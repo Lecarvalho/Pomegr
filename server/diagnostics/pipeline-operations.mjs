@@ -79,6 +79,12 @@ const OBSERVER_COUNTERS = Object.freeze([
   "acquisitionFailures",
 ]);
 
+// Outcomes of the checks on a session's owning process, as counts only.
+const OWNER_PROBE_COUNTERS = Object.freeze([
+  "probeAnswers", "probeNoAnswers", "ownersCurrent", "ownersReplaced", "ownersAbsent", "ownersUnknown",
+  "ownersExited", "sessionsClosed", "sessionsReinstated",
+]);
+
 // Build the fixed monitor-private payload consumed by the passive snapshot reader.
 export function createPipelineOperationsSnapshot(diagnostics, observedAt = new Date().toISOString()) {
   const coordinator = diagnostics?.coordinator || {};
@@ -132,6 +138,7 @@ export function createPipelineOperationsSnapshot(diagnostics, observedAt = new D
           pending: boundedInteger(observer.pendingHydrations, 100_000),
         }),
         counters: counters(observer, OBSERVER_COUNTERS),
+        ownerProbe: counters(observer.ownerProbe, OWNER_PROBE_COUNTERS),
         failures: counters(providerFailures[providerId], PROVIDER_FAILURE_COUNTERS),
         failureDetails: normalizePipelineFailureDetails({
           ...providerFailures[providerId]?.failureDetails,
@@ -197,6 +204,7 @@ export function normalizePipelineOperationsSnapshot(value) {
           pending: boundedInteger(entry.workers?.pending, 100_000),
         }),
         counters: counters(entry.counters, OBSERVER_COUNTERS),
+        ownerProbe: counters(entry.ownerProbe, OWNER_PROBE_COUNTERS),
         failures: counters(entry.failures, PROVIDER_FAILURE_COUNTERS),
         failureDetails: normalizePipelineFailureDetails(entry.failureDetails),
         timings: Object.freeze({

@@ -360,6 +360,7 @@ test("the report tools map every refusal to fixed text and never echo the monito
     invalid: "Pomegr rejected the report as invalid, so nothing was reported.",
     not_found: "No Pomegr task is linked to this session, so nothing was reported.",
     already_reported: "This session already reported on its task, so nothing changed.",
+    stalled: "Pomegr marked this task Stalled, because it read this session as ended before any report, so nothing was reported. Only the user can change that, with Mark done or Requeue on the board. Tell the user what you finished, and do not report again.",
     unavailable: "Pomegr is unavailable, so nothing was reported.",
   };
   for (const [reason, text] of Object.entries(texts)) {

@@ -262,7 +262,7 @@ badge and chip derived from a task.
 
 Stalled is decided in `server/tasks/task-stall.mjs`. After each burst of committed
 revisions the monitor reads the committed facts of every session linked to a task that
-has no report. The task stalls when the catalog state is Closed; or Stopped for a Claude
+has no report. A session reads as ended when the catalog state is Closed; or Stopped for a Claude
 Code session; or Stopped for a Codex session whose primary agent's liveness reason is
 `writer_released`; or Unknown with that same reason. A Codex session reads Stopped after
 a failed or interrupted turn while its process may still be present and able to report,
@@ -270,10 +270,26 @@ so Codex Stopped alone never stalls a task, and its later `complete_task` is acc
 Stopped state of an unrecognized provider is not an end. Idle, Open, Working, Needs
 input, a bare Unknown, and a session with no committed facts leave the task as it is, so
 a Codex session whose turn finished and whose state stays Idle does not stall its task.
+
+One ended reading never stalls a task, because a later reading can reverse it. A Claude
+Code session reads Closed from one check of its owning process, and the catalog shows
+the session live again when the next check finds the process. So the end must be
+confirmed:
+
+- The first ended reading only starts a wait of 20 seconds (`END_CONFIRM_DELAY_MS`).
+  The wait is longer than the provider's ten-second reconciliation, which checks the
+  owning process again.
+- The task stalls when a reading at or after the end of the wait is ended too. The
+  watcher runs that reading on its own timer, so a quiet catalog still gets it.
+- Any reading in between that is not ended drops the first one. The task stays as it
+  is, and a later ended reading starts a new wait.
+- The wait is in memory only. After a restart of the monitor, the first ended reading
+  starts it again.
+
 The decision is written to the task store once. A stalled task keeps its session link
-and has no report; a later report from that session is refused, and only Mark done or
-Requeue changes the state. The sweep reads memory and the task store only: no provider,
-Git, or GitHub read.
+and has no report. A later report from that session is refused with `stalled`, a
+different answer from `already_reported`, and only Mark done or Requeue changes the
+state. The sweep reads memory and the task store only: no provider, Git, or GitHub read.
 
 A linked task whose session has not reported and whose end is not established (a restart
 of the computer or of Pomegr, or a cleared session, can leave it so) keeps its state.
@@ -872,7 +888,7 @@ installed plugin from before the rename sends; a body with both names is `invali
   the task, and kept by Mark done. It is served only as `report.attention` on
   `GET /api/tasks`, shown in the Task modal as the agent's words, and never part of
   the report's answer. A session that ends without a report is
-  Stalled once its end is established (see [States](#states)).
+  Stalled once a second reading confirms its end (see [States](#states)).
 - With no condition checked, the agent's `complete_task` report alone completes the
   task: it has no result to show, and the task still goes to Review.
 - The report keeps only `{ check, passed }` results, the time, the bounded block
@@ -1012,7 +1028,10 @@ installed plugin from before the rename sends; a body with both names is `invali
     the branch or a pull request is not counted, and only the newest retained execution
     tasks are seen.
 - A task takes one report per dispatch. A second `complete_task` or `block_task`, and a
-  report on a task that already has an outcome, change nothing.
+  report on a task that already has an outcome, change nothing; the answer is
+  `already_reported`. A report on a task that Pomegr stalled changes nothing either, and
+  its answer is `stalled`: the session reported nothing, so the tool tells the agent
+  that the task is Stalled and that only the user can change it.
 - The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
   `/block`, under the gate of `add`. The body is `{ sessionRef }`, plus a one-line
   `reason` of at most 200 characters for a block, or an optional one-line `attention`
@@ -1021,7 +1040,10 @@ installed plugin from before the rename sends; a body with both names is `invali
   `{ schemaVersion: 1, ok: true, state, results }` (`state` is `needs_review` or
   `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`
   with `invalid` (400), `not_found` (404, no task is linked to the session),
-  `already_reported` (409), or `unavailable` (503). It never carries a task ID, task
+  `already_reported` (409), `stalled` (409, Pomegr stalled the task before any report),
+  or `unavailable` (503). The plugins know `stalled` from version 0.9.5; an older
+  plugin reads it as an unknown reason and says that Pomegr is unavailable. It never
+  carries a task ID, task
   content, or a repository fact. A completion with a checked condition answers after
   its read, within the read's deadline.
 

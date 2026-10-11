@@ -81,6 +81,7 @@ const REPORT_REASON_TEXT = {
   invalid: "Pomegr rejected the report as invalid, so nothing was reported.",
   not_found: "No Pomegr task is linked to this session, so nothing was reported.",
   already_reported: "This session already reported on its task, so nothing changed.",
+  stalled: "Pomegr marked this task Stalled, because it read this session as ended before any report, so nothing was reported. Only the user can change that, with Mark done or Requeue on the board. Tell the user what you finished, and do not report again.",
   unavailable: "Pomegr is unavailable, so nothing was reported.",
 };
 export const TASK_REPORT_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so nothing was reported.";

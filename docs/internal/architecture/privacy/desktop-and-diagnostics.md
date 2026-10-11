@@ -107,6 +107,11 @@ browser API state.
 **Records must never contain:** session IDs, source paths or fingerprints, prompts,
 responses, transcript/tool content, credentials, or raw errors.
 
+**Owner-probe outcomes:** the operations snapshot, and so the `health` record, holds
+the fixed `ownerProbe` counters of each provider. They are counts of check outcomes
+only. They must never contain a process ID, a process-start identity, a process name, a
+command, a path, a session ID, helper output, or an error.
+
 **Coverage:**
 
 - Explicit gap, loss, lifecycle, health, incomplete-span, and observed-coverage semantics

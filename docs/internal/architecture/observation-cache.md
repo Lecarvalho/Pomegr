@@ -2321,7 +2321,12 @@ reachability.
   After 1.5 seconds, on Windows, the last answer is served while one asynchronous process
   enumeration re-confirms the start identity, so a read inside that five-second bound never
   blocks the event loop on a process spawn. A first check, a changed start identity, and an
-  answer older than five seconds still use a synchronous probe.
+  answer older than five seconds still use a synchronous probe. On Windows the helper
+  answers for every process ID it was asked about, and marks one that is gone. An answer
+  that lacks a requested ID is no answer and leaves every owner in it unknown: a helper
+  that its three-second timeout cuts off as it finishes returns success with empty
+  output, and that is not an exit. The outcomes are counted in the operations snapshot
+  (see [Pipeline operations](../operations/pipeline-diagnostics.md#auxiliary-current-snapshot)).
 - Codex U2 seeds model and reasoning effort from the same agent's prior normalized
   evidence across continuous incremental updates, including empty lifecycle updates
   and live-to-history transitions. A missing field retains its recorded value; an

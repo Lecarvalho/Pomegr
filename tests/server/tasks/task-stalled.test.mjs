@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { createOwnerProbeCounters } from "../../../server/normalize/session-registry.mjs";
+import { createClaudeRegistryObservation } from "../../../server/providers/claude/registry-observation.mjs";
 import { resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
-import { createTaskStallWatcher, sessionEnded } from "../../../server/tasks/task-stall.mjs";
+import { createEndConfirmation, createTaskStallWatcher, END_CONFIRM_DELAY_MS, sessionEnded } from "../../../server/tasks/task-stall.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { passingGates } from "./queue-test-support.mjs";
 
@@ -159,7 +161,7 @@ test("a Codex session that reads Stopped with its writer released stalls the tas
   assert.equal(taskOf(env, id).state, "stalled");
   assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "blocked", blockedBy: id });
   assert.deepEqual(env.store.stallEndedTasks(() => released), { ok: true, stalled: 0 });
-  assert.deepEqual(env.store.completeTask({ sessionId: OTHER_SESSION }, () => null), { ok: false, error: "already_reported" });
+  assert.deepEqual(env.store.completeTask({ sessionId: OTHER_SESSION }, () => null), { ok: false, error: "stalled" });
 
   const closed = await setup(context);
   const closedId = startedTask(closed, OTHER_SESSION);
@@ -207,8 +209,8 @@ test("a stalled task never leaves stalled by itself", async (context) => {
   env.store.stallEndedTasks(() => CLOSED);
   // The session is observed working again, and reports: neither changes the decision.
   assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "working" })), { ok: true, stalled: 0 });
-  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: false, error: "already_reported" });
-  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "Too late" }), { ok: false, error: "already_reported" });
+  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: false, error: "stalled" });
+  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "Too late" }), { ok: false, error: "stalled" });
   const task = taskOf(env, id);
   assert.equal(task.state, "stalled");
   assert.equal(task.report, null);
@@ -284,6 +286,164 @@ test("the watcher sweeps once after start and once per burst of revisions, and s
   watcher.sweep();
   assert.equal(timers.length, 3);
   assert.equal(sweeps.length, 2);
+});
+
+test("an end is confirmed only by a second ended reading after the delay, with no other reading between", () => {
+  let clock = 0;
+  const confirmation = createEndConfirmation({ delayMs: 100, now: () => clock });
+  assert.equal(confirmation.dueIn(), null);
+  assert.equal(confirmation.read("a", true), false);
+  assert.equal(confirmation.dueIn(), 100);
+  clock = 99;
+  assert.equal(confirmation.read("a", true), false);
+  assert.equal(confirmation.dueIn(), 1);
+  assert.equal(confirmation.read("a", false), false);
+  assert.equal(confirmation.dueIn(), null);
+  clock = 150;
+  assert.equal(confirmation.read("a", true), false, "the first reading was dropped");
+  assert.equal(confirmation.read("b", true), false);
+  clock = 250;
+  confirmation.retain(["a"]);
+  assert.equal(confirmation.read("a", true), true);
+  assert.equal(confirmation.read("b", true), false, "a session no sweep read starts again");
+  assert.equal(confirmation.read("a", true), false, "a confirmed end is not kept");
+});
+
+/** The watcher on the real store, with a clock and timers the test moves. */
+function watched(env, resolveSessionFacts) {
+  const timers = [];
+  const clock = { now: 5_000 };
+  const watcher = createTaskStallWatcher({
+    taskStore: env.store, subscribe: () => () => {}, resolveSessionFacts, now: () => clock.now,
+    setTimer: (run, delay) => { timers.push({ run, delay }); return timers.length; },
+    clearTimer: (handle) => { timers[handle - 1] = null; },
+  });
+  return { watcher, clock, timers };
+}
+
+test("one closed reading that the next reading reverses leaves the task as it is, and its report is accepted", async (context) => {
+  const env = await setup(context);
+  const id = startedTask(env);
+  setQueue(env, "running");
+  let facts = CLOSED;
+  const { watcher, clock, timers } = watched(env, () => facts);
+  watcher.sweep();
+  assert.equal(taskOf(env, id).state, "not_queued", "one closed reading stalls nothing");
+  assert.equal(timers.at(-1).delay, END_CONFIRM_DELAY_MS + 50, "the second reading is scheduled");
+  // The session reads live again before the second reading.
+  facts = { state: "working", writerReleased: false };
+  clock.now += 2_000;
+  watcher.sweep();
+  facts = CLOSED;
+  clock.now += END_CONFIRM_DELAY_MS;
+  timers.at(-1).run();
+  assert.equal(taskOf(env, id).state, "not_queued", "a closed reading after a live one is a first reading again");
+  facts = { state: "working", writerReleased: false };
+  clock.now += END_CONFIRM_DELAY_MS;
+  watcher.sweep();
+  assert.equal(taskOf(env, id).state, "not_queued");
+  assert.equal(board(env).queue.status, "running");
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).ok, true);
+  assert.equal(taskOf(env, id).state, "needs_review");
+  watcher.stop();
+});
+
+test("an end that a second reading confirms after the delay stalls the task once", async (context) => {
+  const env = await setup(context);
+  const id = startedTask(env);
+  setQueue(env, "running");
+  const { watcher, clock, timers } = watched(env, () => CLOSED);
+  watcher.sweep();
+  clock.now += END_CONFIRM_DELAY_MS - 1;
+  watcher.sweep();
+  assert.equal(taskOf(env, id).state, "not_queued", "a second reading before the delay confirms nothing");
+  assert.equal(timers.length, 2, "one start sweep and one confirming timer");
+  clock.now += 1;
+  timers.at(-1).run();
+  assert.equal(taskOf(env, id).state, "stalled");
+  assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "blocked", blockedBy: id });
+  assert.equal(timers.length, 2, "nothing waits for a second reading any more");
+  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: false, error: "stalled" });
+  watcher.stop();
+});
+
+test("a task that reports or is requeued between the two readings is not stalled", async (context) => {
+  const env = await setup(context);
+  const reported = startedTask(env);
+  const requeued = startedTask(env, OTHER_SESSION);
+  const { watcher, clock, timers } = watched(env, () => CLOSED);
+  watcher.sweep();
+  assert.equal(env.store.blockTask({ sessionId: SESSION, reason: "Needs a decision" }).ok, true);
+  assert.equal(apply(env, "resolve_requeue", { id: requeued }).ok, true);
+  clock.now += END_CONFIRM_DELAY_MS;
+  timers.at(-1).run();
+  assert.equal(taskOf(env, reported).state, "blocked");
+  assert.equal(taskOf(env, requeued).state, "queued");
+  assert.equal(timers.length, 2, "no reading waits for confirmation");
+  watcher.stop();
+});
+
+async function claudeRegistry(context, readings) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-stalled-registry-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const localId = SESSION.slice("claude:".length);
+  await writeFile(path.join(root, "42.json"), JSON.stringify({ sessionId: localId, status: "busy", pid: 42, procStart: "owner-start" }));
+  const counters = createOwnerProbeCounters();
+  const observation = createClaudeRegistryObservation({
+    root, counters,
+    validateOwners: (entries) => new Map(entries.map((entry) => [entry.sessionId, readings.ownerIsCurrent])),
+    ownerExists: () => readings.processExists,
+  });
+  // The catalog reading the stall sweep judges: Closed only for a session in the closed set.
+  const facts = (sessionId) => {
+    const { registry, closedSessionIds } = observation.read();
+    const local = sessionId.slice("claude:".length);
+    return { title: null, observedModel: null, writerReleased: false,
+      state: closedSessionIds.has(local) ? "closed" : registry.has(local) ? "working" : "unknown" };
+  };
+  return { counters, facts };
+}
+
+test("one false reading that a live Claude Code process is gone does not stall its task", async (context) => {
+  const env = await setup(context);
+  const id = startedTask(env);
+  const readings = { ownerIsCurrent: true, processExists: true };
+  const { counters, facts } = await claudeRegistry(context, readings);
+  const { watcher, clock, timers } = watched(env, facts);
+  watcher.sweep();
+  readings.ownerIsCurrent = false;
+  watcher.sweep();
+  assert.equal(facts(SESSION).state, "closed", "the catalog shows the session closed for one reading");
+  assert.equal(taskOf(env, id).state, "not_queued");
+  readings.ownerIsCurrent = true;
+  clock.now += END_CONFIRM_DELAY_MS;
+  timers.at(-1).run();
+  assert.equal(facts(SESSION).state, "working");
+  assert.equal(taskOf(env, id).state, "not_queued");
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).ok, true);
+  const counted = counters.snapshot();
+  assert.deepEqual([counted.sessionsClosed, counted.sessionsReinstated], [1, 1], "the reversed reading is counted");
+  watcher.stop();
+});
+
+test("a Claude Code process that stays gone stalls its task at the second reading, and its report says so", async (context) => {
+  const env = await setup(context);
+  const id = startedTask(env);
+  const readings = { ownerIsCurrent: true, processExists: true };
+  const { counters, facts } = await claudeRegistry(context, readings);
+  const { watcher, clock, timers } = watched(env, facts);
+  watcher.sweep();
+  readings.ownerIsCurrent = false;
+  readings.processExists = false;
+  watcher.sweep();
+  assert.equal(taskOf(env, id).state, "not_queued");
+  clock.now += END_CONFIRM_DELAY_MS;
+  timers.at(-1).run();
+  assert.equal(taskOf(env, id).state, "stalled");
+  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: false, error: "stalled" });
+  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "Too late" }), { ok: false, error: "stalled" });
+  assert.equal(counters.snapshot().sessionsReinstated, 0);
+  watcher.stop();
 });
 
 test("the watcher survives a store or a feed that throws", () => {

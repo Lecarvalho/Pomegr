@@ -695,7 +695,7 @@ export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
 const AGENT_REPORT_BODY_LIMIT_BYTES = 2048;
 const AGENT_BLOCK_REASON_LIMIT = 200;
-const AGENT_REPORT_STATUS = Object.freeze({ invalid: 400, not_found: 404, already_reported: 409, unavailable: 503 });
+const AGENT_REPORT_STATUS = Object.freeze({ invalid: 400, not_found: 404, already_reported: 409, stalled: 409, unavailable: 503 });
 const REPORT_CHECKS = Object.freeze(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"]);
 
 function writeAgentReportResult(response, reason, answer = null, { close = false } = {}) {

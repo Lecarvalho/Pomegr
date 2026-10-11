@@ -3,7 +3,73 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createSessionRegistryOwnerValidator, normalizeSessionRegistryEntry, preferredRegisteredSessionId, readSessionRegistry } from "../../../server/normalize/session-registry.mjs";
+import { createOwnerProbeCounters, createSessionRegistryOwnerValidator, normalizeSessionRegistryEntry, OWNER_PROBE_COUNTERS, parseWindowsIdentities, preferredRegisteredSessionId, readSessionRegistry } from "../../../server/normalize/session-registry.mjs";
+
+test("a Windows identity answer that lacks a requested pid is no answer, never an exit", () => {
+  // The helper's timeout can cut it off as it finishes: success, with empty output.
+  for (const output of ["", "  \r\n", null, undefined]) assert.equal(parseWindowsIdentities(output, [42]), null, JSON.stringify(output));
+  assert.equal(parseWindowsIdentities('[{"pid":41,"procStart":"134361771552451534","gone":false}]', [41, 42]), null);
+  assert.equal(parseWindowsIdentities("[]", [42]), null);
+  assert.throws(() => parseWindowsIdentities('[{"pid":41,', [41]));
+  const answered = parseWindowsIdentities(JSON.stringify([
+    { pid: 41, procStart: "134361771552451534", gone: false },
+    { pid: 42, procStart: null, gone: true },
+    { pid: 43, procStart: null, gone: false },
+  ]), [41, 42, 43]);
+  assert.deepEqual([...answered], [[41, "134361771552451534"], [43, null]], "gone is absent, an inspection failure is unknown");
+  assert.deepEqual([...parseWindowsIdentities('{"pid":42,"procStart":null,"gone":true}', [42])], []);
+});
+
+test("an identity helper that answers nothing leaves every owner unknown and cached validation intact", () => {
+  let clock = 0;
+  let identities = new Map([[42, "owner-start"]]);
+  const validate = createSessionRegistryOwnerValidator({ now: () => clock, processIdentities: () => identities });
+  const entries = [{ sessionId: "live", pid: 42, procStart: "owner-start" }];
+  assert.deepEqual([...validate(entries)], [["live", true]]);
+  clock += 10_000;
+  identities = parseWindowsIdentities("", [42]);
+  assert.deepEqual([...validate(entries)], [], "no answer is unknown, not false");
+  identities = new Map([[42, "owner-start"]]);
+  assert.deepEqual([...validate(entries)], [["live", true]]);
+});
+
+test("the owner validator counts each probe outcome and holds no process detail", () => {
+  const counters = createOwnerProbeCounters();
+  let clock = 0;
+  let identities = new Map([[41, "start-41"], [42, "other-start"], [44, null]]);
+  let exists = null;
+  const validate = createSessionRegistryOwnerValidator({
+    counters, now: () => clock, processIdentities: () => identities, processExists: () => exists,
+  });
+  const entries = [41, 42, 43, 44].map((pid) => ({ sessionId: `session-${pid}`, pid, procStart: `start-${pid}` }));
+  assert.deepEqual([...validate(entries)], [["session-41", true], ["session-42", false], ["session-43", false]]);
+  clock += 10_000;
+  identities = null;
+  validate(entries);
+  exists = false;
+  assert.equal(validate(entries).get("session-41"), false);
+  counters.record("pid 42");
+  counters.record("procStart");
+  assert.deepEqual(counters.snapshot(), {
+    probeAnswers: 1, probeNoAnswers: 2, ownersCurrent: 1, ownersReplaced: 1, ownersAbsent: 1, ownersUnknown: 1,
+    ownersExited: 1, sessionsClosed: 0, sessionsReinstated: 0,
+  });
+  assert.deepEqual(Object.keys(counters.snapshot()), [...OWNER_PROBE_COUNTERS]);
+  assert.doesNotMatch(JSON.stringify(counters.snapshot()), /start-|session-|4[1-4]/u);
+});
+
+test("the Windows identity helper answers for a live owner, a replaced one, and an absent one", { skip: process.platform !== "win32" }, () => {
+  const counters = createOwnerProbeCounters();
+  const validate = createSessionRegistryOwnerValidator({ counters });
+  const result = validate([
+    { sessionId: "replaced", pid: process.pid, procStart: "1" },
+    { sessionId: "absent", pid: 2_147_483_646, procStart: "1" },
+  ]);
+  // A slow helper answers nothing, and then nothing is judged.
+  if (counters.snapshot().probeAnswers === 0) { assert.equal(result.size, 0); return; }
+  assert.deepEqual([...result], [["replaced", false], ["absent", false]]);
+  assert.deepEqual([counters.snapshot().ownersReplaced, counters.snapshot().ownersAbsent], [1, 1]);
+});
 
 test("classifies only explicit user-attention waits as needing input", () => {
   const input = normalizeSessionRegistryEntry({
