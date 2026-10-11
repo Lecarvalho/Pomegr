@@ -70,6 +70,7 @@ unavailable. **Delete task** asks you to confirm; a task number is never reused.
 | --- | --- |
 | **Run on** | The provider and model of the started session's main agent: **Not set**, or under **Claude Code** or **Codex** a model or **Default model**. Subagents are not set. A task with no provider starts on Claude Code. |
 | **Effort** | **Low**, **Medium**, **High**, or **Xhigh**. Select the chosen button again to clear it. |
+| **Remote Control** | Starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
 | **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |
 | **Feature**, **Step** | Where the task runs among related tasks; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 
@@ -389,7 +390,7 @@ the coding tool, not by anything the model supplies.
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |

@@ -45,7 +45,7 @@ test("promote creates a task in the first column with the composed text and its 
   assert.equal(task.columnId, first.id);
   assert.equal(task.text, "Fix the parser\n\nIt crashes on empty input.");
   assert.deepEqual(task.source, { kind: "github_issue", number: 12 });
-  assert.deepEqual(task.run, { provider: null, model: null, effort: null });
+  assert.deepEqual(task.run, { provider: null, model: null, effort: null, remoteControl: false });
   assert.deepEqual(task.completeWhen, { checks: [], own: null });
   assert.equal(task.state, "not_queued");
   assert.equal(task.featureId, null);

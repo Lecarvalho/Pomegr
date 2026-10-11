@@ -6,7 +6,7 @@ import { TASK_IMAGE_HELPER } from "./task-images-desktop";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  CHECK_SHORT_LABELS, EFFORT_LABELS, runFromSelectValue, runSelectOptions, runSelectValue, withCheck,
+  CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, canRemoteControl, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withRemoteControl,
   type CompleteWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
@@ -71,15 +71,21 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
   </div>;
 }
 
-/** Run on (one select naming provider and model) and the optional four-way Effort, in one two-column row. Both are optional. */
+/**
+ * Run on (one select naming provider and model) and the optional four-way Effort, in one two-column row, then the
+ * Remote Control checkbox under both. All are optional. Remote Control is Claude Code's: choosing Codex clears and disables it.
+ */
 export function RunFields({ run, models, onChange }: { run: TaskRun; models: TaskModelOptions; onChange(run: TaskRun): void }) {
   const selectId = useId();
   const effortId = useId();
+  const remoteId = useId();
+  const remoteHelperId = useId();
+  const remote = canRemoteControl(run);
   return <div className="taskRunRow">
     <div className="newTaskField taskRunOn">
       <label htmlFor={selectId}>Run on</label>
       <CommandSelect id={selectId} aria-label="Run on" options={runSelectOptions(models, run)} value={runSelectValue(run)}
-        onChange={(value) => onChange(runFromSelectValue(value, run.effort))} />
+        onChange={(value) => onChange(withRemoteControl(runFromSelectValue(value, run.effort), run.remoteControl === true))} />
     </div>
     <div className="newTaskField">
       <span id={effortId} className="newTaskEffortLabel">Effort</span>
@@ -88,6 +94,14 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
           // Pressing the pressed segment clears the optional choice.
           onClick={() => onChange({ ...run, effort: run.effort === effort ? null : effort })}>{EFFORT_LABELS[effort]}</button>)}
       </div>
+    </div>
+    <div className="newTaskField taskRemoteControl">
+      <div className="taskCheckRow">
+        <input id={remoteId} type="checkbox" checked={remote && run.remoteControl === true} disabled={!remote} aria-describedby={remoteHelperId}
+          onChange={(event) => onChange(withRemoteControl(run, event.currentTarget.checked))} />
+        <label htmlFor={remoteId}>{REMOTE_CONTROL_LABEL}</label>
+      </div>
+      <p id={remoteHelperId} className="newTaskHelper">{remote ? "Starts the session with Remote Control, so you can also open it on your phone." : "Claude Code only."}</p>
     </div>
   </div>;
 }
