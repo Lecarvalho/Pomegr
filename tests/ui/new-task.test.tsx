@@ -357,12 +357,12 @@ describe("Run on, Effort and Complete when", () => {
     for (const name of ["Low", "Medium", "High", "Xhigh"]) expect(effort(name)).toHaveAttribute("aria-pressed", String(name === "Medium"));
     expect(checkbox("PR open")).toBeChecked();
     expect(checkbox("Tree clean")).toBeChecked();
-    for (const name of ["Commit on branch", "PR merged", "CI passed"]) expect(checkbox(name)).not.toBeChecked();
+    for (const name of ["Commit on branch", "PR merged", "CI passed", "Validated with the user"]) expect(checkbox(name)).not.toBeChecked();
     expect(screen.queryByRole("checkbox", { name: "Use your own condition" })).not.toBeInTheDocument();
     expect(own()).toHaveValue("");
     expect(own()).toHaveAttribute("maxlength", String(TASK_BOUNDS.ownConditionLength));
     expect(own()).toHaveAttribute("placeholder", "Own condition, judged by the agent (optional)");
-    expect(screen.getByText("Pomegr verifies the listed conditions. Your own condition is judged by the agent.")).toBeInTheDocument();
+    expect(screen.getByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).toBeInTheDocument();
   });
 
   it("groups the options by provider from the served model list and always offers Default model", async () => {
@@ -713,8 +713,14 @@ describe("task modal styles (mode new)", () => {
     expect(rule(".taskModalFooter")).toMatch(/gap: var\(--space-2\)[^}]*padding: var\(--space-3\) var\(--space-6\)[^}]*border-top: 1px solid var\(--command-line\)/);
     expect(rule(".newTaskField")).toMatch(/gap: var\(--space-2\)/);
     expect(rule(".newTaskField label")).toMatch(/500 var\(--text-xs\)/);
-    expect(rule(".newTaskField textarea")).toMatch(/min-height: 150px[^}]*border: 1px solid var\(--command-line-strong\)[^}]*border-radius: var\(--control-radius\)[^}]*resize: vertical/);
+    expect(rule(".newTaskField textarea")).toMatch(/min-height: 150px[^}]*border: 1px solid var\(--command-line-strong\)[^}]*border-radius: var\(--control-radius\)[^}]*resize: none/);
     expect(rule(".taskTextCounter")).toMatch(/align-self: flex-end[^}]*var\(--font-data\)/);
+    // The panel is never taller than the window: the Task field shrinks and scrolls first, then the body scrolls.
+    expect(rule(".taskModalScrim > .taskModal")).toMatch(/max-height: 100%/);
+    expect(rule(".taskModalBody")).toMatch(/min-height: 0[^}]*overflow-y: auto/);
+    expect(rule(".taskModalBody > .taskTextField > textarea")).toMatch(/flex-shrink: 1/);
+    expect(rule(".taskModalBody > .taskTextField > .taskComposer")).toMatch(/flex-shrink: 1/);
+    expect(rule(".taskModalBody > .taskTextField .taskRichText")).toMatch(/min-height: 0; max-height: none/);
     expect(styles).toMatch(/@media \(max-width: 760px\)\s*\{[^]*\.taskModal \{[^}]*max-width: none/);
   });
 

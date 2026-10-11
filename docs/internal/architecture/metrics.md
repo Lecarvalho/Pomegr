@@ -812,6 +812,8 @@ files with the same name in different directories stay distinct. A recorded move
 touches both its previous and new path. A Claude agent working in its own worktree under
 the session's `.claude/worktrees/` records the same repository-relative path as the main
 checkout, so two agents changing one file in separate worktrees still count as sharing it.
+The same holds for a file changed in another checkout of the session's repository that the
+session's own Git commands ran in.
 
 - **Shared file changes** fires for each file that at least two agents changed at any
   time in the session, with no time window. It names the file's basename, the agents'
@@ -933,6 +935,13 @@ listed, and neither is a file that merely became uncommitted. Commits are read o
 the live branch matches the recorded branch. Paths that already have a recorded
 file-change row are not repeated. A listed path stays listed: a later amend or rebase that
 moves its commit out of the match does not withdraw it.
+
+The branch is that of the checkout the session is read in. For a Claude session that is
+the launch checkout, unless the session's latest Git command ran in another checkout of
+the same repository. That checkout is inferred from the command: a directory change that
+opens it, `git -C`, or the recorded working directory. The
+[observation cache](observation-cache.md#the-working-checkout-of-a-claude-session) owns
+the rule. It is a heuristic read of command text, not a provider record.
 
 This is a time match, not authorship. It can miss a commit the session made through an
 unrecognized tool or a command still running, and it can include another actor's commit

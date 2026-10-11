@@ -108,7 +108,7 @@ The browser-visible shape follows. `shared/task-contract.ts` owns the
 executable version.
 
 ```ts
-type TaskCheck = "pr_open" | "tree_clean" | "commit_on_branch" | "pr_merged" | "ci_passed";
+type TaskCheck = "pr_open" | "tree_clean" | "commit_on_branch" | "pr_merged" | "ci_passed" | "user_validated";
 type TaskState = "not_queued" | "queued" | "scheduled" | "needs_review" | "stalled" | "blocked" | "done";
 type Task = {
   id: string;                 // "T-<n>", monotonic per repository
@@ -819,7 +819,7 @@ in `server/runtime/task-gate-facts.mjs`:
 
 | Fact | Source | Counts when |
 | --- | --- | --- |
-| Usage | The committed usage response in memory | The provider's usage is available and fresh: its own freshness when it reports one, otherwise a fetch no older than ten minutes. The reading is the highest window of that length |
+| Usage | The committed usage response in memory | The provider's usage is available, its last successful reading is no older than ten minutes, and no refresh has failed since that reading. The reading is the highest window of that length. See [Usage reading](#usage-reading) |
 | Provider status | The committed public provider status in memory | The row is ready, fresh, and not unknown |
 | Working tree | A monitor-private observation of the recognized repository root, in memory only | The last inspection succeeded and is no older than 60 seconds |
 
@@ -832,6 +832,35 @@ unknown. At most 16 repositories are held, least recently asked first out; a rep
 nobody asks about is not inspected, so there is no timer. A read whose `git status`
 failed or timed out is unknown, never clean. Roots, changed files, and Git
 errors stay in the monitor: only clean, dirty, or unknown leaves it.
+
+### Usage reading
+
+Task T-49, 2026-10-11. `gateUsageFact` judges a provider's committed usage by three
+rules, and by nothing else:
+
+1. **Age.** The last successful reading (`fetchedAt`) is no older than ten minutes
+   (`TASK_GATE_USAGE_MAX_AGE_MS`), and is not in the future.
+2. **No failure since.** No refresh failed after that reading: a row with a
+   `failureKind` is unknown when its `attemptedAt` is later than its `fetchedAt`, or is
+   missing. The retained last good percentages stay on Usage limits, but they do not
+   pass the gate. A reading taken after the failed attempt counts again.
+3. **Current window.** A window whose `resetsAt` has passed is unknown: its percentage
+   describes a period that ended. A window with no reset time is judged by rules 1 and 2.
+
+The gate does not read the row's `freshness` label. That label follows each reader's own
+bound: the Claude reader marks a reading stale after five minutes, which is also the
+interval between provider refreshes (`USAGE_REFRESH_INTERVAL_MS`). A refresh answers the
+previous reading while the new request runs, and the monitor commits usage once a
+minute. A healthy account therefore carries a `stale` row for about one minute in every
+five, with a reading five to six minutes old. While the gate followed the label, it held
+manual and queued starts for that minute with `usage_unknown`. Ten minutes is one refresh
+interval, one commit, and a margin, so a healthy account never reads unknown, and a
+reading that missed a whole refresh does.
+
+A reading that is missing, unavailable, older than ten minutes, or followed by a failed
+refresh stays unknown and holds a start. The Start gates panel and the capacity strip
+show **Unknown** whenever the status is `unknown`, also when a seven-day percentage is
+known: a percentage beside a held gate would look like capacity.
 
 What a held gate does:
 
@@ -870,6 +899,7 @@ installed plugin from before the rename sends; a body with both names is `invali
 | Commit on task branch | Committed Git facts of the task branch |
 | Pull request merged | Committed pull-request state |
 | CI passed | Check status of the task branch's pull request, as last read by the monitor |
+| Validated with the user | Not verified; the agent validates the work with the user before it reports |
 | Own condition | Not verified; the agent judges it in its report |
 
 - **A report always sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
@@ -889,6 +919,11 @@ installed plugin from before the rename sends; a body with both names is `invali
   `GET /api/tasks`, shown in the Task modal as the agent's words, and never part of
   the report's answer. A session that ends without a report is
   Stalled once a second reading confirms its end (see [States](#states)).
+- **Validated with the user** (`user_validated`, task T-44, 2026-10-11) is a check
+  Pomegr cannot observe. The session prompt lists it with the other conditions, and the
+  agent judges it like the own condition. `verifyChecks` has no rule for it, so it gets
+  no `{ check, passed }` result and no reading on a waiting task. The forms and the
+  Task tab label it Agent-reported after a report.
 - With no condition checked, the agent's `complete_task` report alone completes the
   task: it has no result to show, and the task still goes to Review.
 - The report keeps only `{ check, passed }` results, the time, the bounded block

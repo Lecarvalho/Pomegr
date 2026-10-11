@@ -139,6 +139,15 @@ describe("SessionTaskTab", () => {
     expect(panel).toHaveTextContent("Cannot reach the remote.");
   });
 
+  it("labels Validated with the user as agent-reported, with no pass or fail", () => {
+    const completeWhen = { checks: ["pr_open" as const, "user_validated" as const], own: null };
+    const reported = { ...mine, completeWhen, state: "needs_review" as const, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open" as const, passed: true }], blockReason: null } };
+    setBoard(board({ tasks: [reported, ...siblings] }));
+    render(<SessionTaskTab task={{ ...reference, state: "needs_review" }} sessionId={sessionId} />);
+    const panel = screen.getByRole("region", { name: "Task T-14" });
+    expect(within(panel).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openPassed", "Validated with the userAgent-reported"]);
+  });
+
   it("shows the monitor's reading of each check while the task waits for its report", () => {
     const session = { id: sessionId, title: null, state: "working", observedModel: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }] };
     setBoard(board({ tasks: [{ ...mine, session }, ...siblings] }));

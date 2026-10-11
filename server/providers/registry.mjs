@@ -360,6 +360,8 @@ export function createProviderRegistry(adapters, options = {}) {
       const provider = parsed ? providersById.get(parsed.providerId)?.provider : null;
       if (!provider || typeof provider.repositoryAttributionForSession !== "function") return null;
       const value = provider?.repositoryAttributionForSession?.(parsed.localSessionId);
+      // A provider with no attribution of its own for this session leaves it on its launch directory.
+      if (value === null || value === undefined) return null;
       if (value?.state === "single" && typeof value.root === "string" && typeof value.fingerprint === "string") return value;
       return value?.state === "multiple" ? { state: "multiple" } : { state: "unknown" };
     },

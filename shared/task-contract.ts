@@ -1,6 +1,6 @@
 // Per-repository task board served from the monitor's private task store.
 
-export type TaskCheck = "pr_open" | "tree_clean" | "commit_on_branch" | "pr_merged" | "ci_passed";
+export type TaskCheck = "pr_open" | "tree_clean" | "commit_on_branch" | "pr_merged" | "ci_passed" | "user_validated";
 export type TaskState = "not_queued" | "queued" | "scheduled" | "needs_review" | "stalled" | "blocked" | "done";
 export type TaskProvider = "claude" | "codex";
 export type TaskEffort = "low" | "medium" | "high" | "xhigh";
@@ -128,7 +128,9 @@ export function plainTaskText(text: string): string {
   return text.replace(TASK_IMAGE_MARKER, "[image]");
 }
 
-export const TASK_CHECKS: readonly TaskCheck[] = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"];
+export const TASK_CHECKS: readonly TaskCheck[] = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"];
+/** Checks Pomegr cannot observe. The agent judges them, like the own condition, and they get no result. */
+export const AGENT_JUDGED_CHECKS: readonly TaskCheck[] = ["user_validated"];
 export const TASK_STATES: readonly TaskState[] = ["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"];
 export const TASK_PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 export const TASK_EFFORTS: readonly TaskEffort[] = ["low", "medium", "high", "xhigh"];
