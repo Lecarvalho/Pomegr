@@ -10,8 +10,8 @@ import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/sto
 import { serveNotificationRoute } from "./notification-routes.mjs";
 import { serveSessionDirectoryWithTasks, validFeatureQuery } from "./session-directory-tasks.mjs";
 import {
-  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REMOVE_PATH, TASK_ACTION_PATH_PREFIX,
-  serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskRemoveRoute, serveAgentTaskReportRoute, serveTaskActionRoute, serveTaskRoute,
+  AGENT_FEATURE_PATHS, AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REMOVE_PATH, TASK_ACTION_PATH_PREFIX,
+  serveAgentFeatureRoute, serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskRemoveRoute, serveAgentTaskReportRoute, serveTaskActionRoute, serveTaskRoute,
 } from "./task-routes.mjs";
 import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
@@ -112,8 +112,9 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      // The agent write paths (add, remove, bind, complete, block); every other agent route stays GET-only.
+      // The agent POST paths (add, remove, bind, complete, block, and the four feature paths); every other agent route stays GET-only.
       const agentTaskWrite = requestUrl.pathname === AGENT_TASK_ADD_PATH ? serveAgentTaskAddRoute
+        : AGENT_FEATURE_PATHS.includes(requestUrl.pathname) ? serveAgentFeatureRoute
         : requestUrl.pathname === AGENT_TASK_REMOVE_PATH ? serveAgentTaskRemoveRoute
         : requestUrl.pathname === AGENT_TASK_BIND_PATH ? serveAgentTaskBindRoute
           : requestUrl.pathname === AGENT_TASK_COMPLETE_PATH || requestUrl.pathname === AGENT_TASK_BLOCK_PATH ? serveAgentTaskReportRoute : null;

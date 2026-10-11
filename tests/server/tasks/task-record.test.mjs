@@ -84,7 +84,7 @@ test("the monitor's mirrored constants match shared/task-contract.ts", () => {
 test("the contract's bounds are the product owner's bounds", () => {
   assert.deepEqual({ ...CONTRACT_BOUNDS }, {
     tasksPerRepository: 500, featuresPerRepository: 50, textLength: 4000,
-    ownConditionLength: 500, featureNameLength: 80, blockReasonLength: 200, modelIdentifierLength: 120,
+    ownConditionLength: 500, featureNameLength: 80, featureDescriptionLength: 2000, featureAppVersionLength: 40, blockReasonLength: 200, modelIdentifierLength: 120,
     imagesPerTask: 4, imageBytes: 5 * 1024 * 1024,
   });
   assert.deepEqual([...CONTRACT_DEFAULT_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);

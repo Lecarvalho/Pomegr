@@ -490,6 +490,101 @@ export async function serveAgentTaskRemoveRoute({ request, response, requestUrl,
   }
 }
 
+export const AGENT_FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
+export const AGENT_FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
+export const AGENT_FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
+export const AGENT_FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
+export const AGENT_FEATURE_PATHS = Object.freeze([AGENT_FEATURE_GET_PATH, AGENT_FEATURE_CREATE_PATH, AGENT_FEATURE_UPDATE_PATH, AGENT_FEATURE_DELETE_PATH]);
+const AGENT_FEATURE_STATUS = Object.freeze({
+  invalid: 400, session_not_found: 404, repository_unavailable: 409, not_found: 404, conflict: 409, limit: 409, unavailable: 503,
+});
+const AGENT_FEATURE_ID_PATTERN = /^feat-[0-9a-f]{12}$/u;
+const AGENT_FEATURE_DESCRIPTION_LIMIT = 2000;
+const AGENT_FEATURE_APP_VERSION_LIMIT = 40;
+// The keys each path takes beside `sessionRef`, and the ones it requires.
+const AGENT_FEATURE_KEYS = Object.freeze({
+  [AGENT_FEATURE_GET_PATH]: { allowed: ["feature"], required: [] },
+  [AGENT_FEATURE_CREATE_PATH]: { allowed: ["title", "description", "appVersion"], required: ["title"] },
+  [AGENT_FEATURE_UPDATE_PATH]: { allowed: ["feature", "title", "description", "appVersion"], required: ["feature"] },
+  [AGENT_FEATURE_DELETE_PATH]: { allowed: ["feature"], required: ["feature"] },
+});
+
+function writeAgentFeatureResult(response, reason, answer = null, { close = false } = {}) {
+  const ok = reason === null;
+  response.writeHead(ok ? 200 : AGENT_FEATURE_STATUS[reason], {
+    ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
+  });
+  response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true, ...answer } : { schemaVersion: 1, ok: false, reason }));
+}
+
+const boundedString = (value, limit) => typeof value === "string" && value.length > 0 && value.length <= limit;
+const clearableString = (value, limit) => value === undefined || value === null || (typeof value === "string" && value.length <= limit);
+
+// Only the four fields of a feature the store answered, each inside its bound, reach the agent.
+function servedFeature(feature) {
+  if (!isPlainObject(feature) || typeof feature.id !== "string" || !AGENT_FEATURE_ID_PATTERN.test(feature.id)
+    || !boundedString(feature.title, AGENT_FEATURE_NAME_LIMIT)) return null;
+  return {
+    id: feature.id, title: feature.title,
+    description: boundedString(feature.description, AGENT_FEATURE_DESCRIPTION_LIMIT) ? feature.description : null,
+    appVersion: boundedString(feature.appVersion, AGENT_FEATURE_APP_VERSION_LIMIT) ? feature.appVersion : null,
+  };
+}
+
+// `POST /api/agent/v1/tasks/feature-get|feature-create|feature-update|feature-delete`: the bound session reads or
+// changes a feature of its own board. No body names a repository or a path.
+export async function serveAgentFeatureRoute({ request, response, requestUrl, taskStore, resolveSession }) {
+  const read = await readAgentJson(request, requestUrl, TASK_PAYLOAD_LIMIT_BYTES);
+  if (read.failed) {
+    writeAgentFeatureResult(response, "invalid", null, { close: true });
+    return;
+  }
+  const { body } = read;
+  const operation = requestUrl.pathname;
+  const keys = AGENT_FEATURE_KEYS[operation];
+  const valid = isPlainObject(body) && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
+    && Object.keys(body).every((key) => key === "sessionRef" || keys.allowed.includes(key))
+    && keys.required.every((key) => Object.hasOwn(body, key))
+    && (body.feature === undefined || boundedString(body.feature, AGENT_FEATURE_NAME_LIMIT))
+    && (body.title === undefined || boundedString(body.title, AGENT_FEATURE_NAME_LIMIT))
+    && clearableString(body.description, AGENT_FEATURE_DESCRIPTION_LIMIT) && clearableString(body.appVersion, AGENT_FEATURE_APP_VERSION_LIMIT);
+  if (!valid) {
+    writeAgentFeatureResult(response, "invalid");
+    return;
+  }
+  try {
+    if (typeof taskStore?.apply !== "function" || typeof taskStore?.readFeature !== "function" || typeof resolveSession !== "function") {
+      writeAgentFeatureResult(response, "unavailable");
+      return;
+    }
+    const { repositoryId, reason: boardReason } = agentBoardRepository(taskStore, resolveSession, body.sessionRef);
+    if (boardReason) {
+      writeAgentFeatureResult(response, boardReason);
+      return;
+    }
+    if (operation === AGENT_FEATURE_GET_PATH) {
+      // Without a feature the read is of the feature the session's own task belongs to.
+      const reference = body.feature ?? taskStore.sessionTasks?.([body.sessionRef])?.get(body.sessionRef)?.featureId ?? null;
+      const feature = reference === null ? null : servedFeature(taskStore.readFeature(repositoryId, reference));
+      if (feature) writeAgentFeatureResult(response, null, { feature });
+      else writeAgentFeatureResult(response, "not_found");
+      return;
+    }
+    const { sessionRef: _sessionRef, ...payload } = body;
+    const action = operation === AGENT_FEATURE_CREATE_PATH ? "agent_feature_create" : operation === AGENT_FEATURE_UPDATE_PATH ? "agent_feature_update" : "agent_feature_delete";
+    const result = taskStore.apply(repositoryId, action, payload);
+    if (result?.ok !== true) {
+      writeAgentFeatureResult(response, ["invalid", "not_found", "conflict", "limit"].includes(result?.error) ? result.error : "unavailable");
+      return;
+    }
+    if (operation === AGENT_FEATURE_DELETE_PATH) writeAgentFeatureResult(response, null);
+    else if (typeof result.featureId === "string" && AGENT_FEATURE_ID_PATTERN.test(result.featureId)) writeAgentFeatureResult(response, null, { featureId: result.featureId });
+    else writeAgentFeatureResult(response, "unavailable");
+  } catch {
+    writeAgentFeatureResult(response, "unavailable");
+  }
+}
+
 export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
 const AGENT_BIND_BODY_LIMIT_BYTES = 1024;
 const AGENT_BIND_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });

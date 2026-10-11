@@ -159,8 +159,8 @@ Pomegr moves a card to another column when its task changes state:
   down buttons. Feature tasks follow their steps, so a card dropped out of that order
   lands back in it.
 
-A board holds up to 500 tasks and 50 features. A feature name is up to 80
-characters.
+A board holds up to 500 tasks and 50 features. A feature title is up to 80
+characters, its description up to 2000, and its app version up to 40.
 
 A board you made before the columns were fixed keeps every task. A column you
 moved goes back to its place. A column you added or renamed is removed, and its
@@ -245,6 +245,14 @@ board, then choose **Step**: **Last · new step N**, or an existing step,
 such as "Step 2 · parallel with T-3". A feature is done when all its tasks are.
 Only unfinished features are offered for a new attachment. Select a feature chip
 in the filter row to show only its tasks.
+
+A feature also holds the context its tasks share: a **description** and an **app
+version**, the version you plan the feature for. Put there what every task of the
+feature needs to know, so that each task's own text stays short. The session Pomegr
+starts for a task gets the feature's title and ID in its prompt, and reads the
+description and the app version with the `get_feature` tool when it needs them. The
+desktop app sets only the title for now: ask an agent to set or change the
+description and the app version (see [What agents report](#what-agents-report)).
 
 A step that holds more than one task starts each task in a Git worktree of its
 own, on a branch named `tasks/<task ID>`, so parallel agents do not edit the same
@@ -385,21 +393,30 @@ clear it. A schedule never stops, pauses, or touches a running session.
 
 ## What agents report
 
-The plugin gives agents four task tools. Each call is tied to the calling session by
+The plugin gives agents eight task tools. Each call is tied to the calling session by
 the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md) lists
 these tools with the plugin's reporting and query tools.
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which puts the task in a new last step. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
+| `get_feature` | Reads one feature of the board: its ID, title, description, and app version. The agent names the feature by its ID or its exact title. With no input, it reads the feature of the task the session was started for. It changes nothing. |
+| `create_feature` | Creates a feature with a title, and optionally a description and an app version. A title that another feature has is refused. |
+| `update_feature` | Changes the title, description, or app version of a feature. A field the agent leaves out stays as it is. It changes no task. |
+| `delete_feature` | Deletes a feature that has no task. A feature that still has tasks is refused, so no task loses its feature or its step. It cannot be undone. |
+
+The four feature tools need plugin 0.9.4 or later. They work on any feature of the
+session's board, also one that you made. In Claude Code, `get_feature` needs no
+approval, because it only reads the session's own board. The three tools that change
+a feature ask for your approval like the other task tools.
 
 `complete_task` and `block_task` act only on the task linked to the calling
 session. In Claude Code, the coding tool ties each call to its session; if Claude
-Code hooks are off or the hook times out, an agent's add, remove, complete, or block call is
-refused and nothing is added, removed, or reported. When Claude Code asks you to approve such
+Code hooks are off or the hook times out, an agent's add, remove, complete, block, or feature call is
+refused and nothing is added, removed, reported, read, or changed. When Claude Code asks you to approve such
 a call, you have up to ten minutes to do so; after that the call is refused and the
 agent can try again. Choose to always allow the tools a session should use without you so
 a session you are not watching does not wait for you. Leave `remove_task` on ask if you
@@ -467,7 +484,9 @@ started for them. Other devices see none of it.
   session that vanished is **Stalled** only after its end is established.
 - Task text, task images, and your other task content stay in a private store on
   this computer, apart from session history, so pruning history never deletes a
-  task. The session Pomegr starts for a task is given that task's images. They are
+  task. The session Pomegr starts for a task is given that task's images. A
+  feature's description and app version are given only to an agent that asks for
+  them with `get_feature`, and so reach its provider like the task text. They are
   never in reports, notifications, or the session list, which carries only a task's
   number, outcome, feature name, step, and GitHub issue number.
 

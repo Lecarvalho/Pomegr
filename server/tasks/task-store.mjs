@@ -15,13 +15,14 @@ import { stallEndedTasks } from "./task-stall.mjs";
 import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs";
 import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
+import { deleteFeatureDetails, findFeature, readFeature, writeFeatureDetails } from "./task-feature-details.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
 import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl } from "./task-remote-control.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
-  composePromotedText, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -364,16 +365,56 @@ function moveTask({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-function createFeature({ database, repositoryId }, payload) {
-  const input = normalizeFeatureCreatePayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
+function insertFeature(database, repositoryId, name) {
   ensureRepository(database, repositoryId);
   const stored = preparedStatement(database, "SELECT name, created_at FROM features WHERE repository_id = ?").all(repositoryId);
   if (stored.length >= TASK_BOUNDS.featuresPerRepository) return { ok: false, error: "limit" };
-  if (stored.some((feature) => feature.name === input.name)) return { ok: false, error: "conflict" };
+  if (stored.some((feature) => feature.name === name)) return { ok: false, error: "conflict" };
   // Features list in creation order, so a creation time never ties with or precedes an earlier one.
   const createdAt = Math.max(Date.now(), ...stored.map((feature) => Number(feature.created_at) + 1));
-  preparedStatement(database, "INSERT INTO features (id, repository_id, name, created_at) VALUES (?, ?, ?, ?)").run(newOpaqueId("feat"), repositoryId, input.name, createdAt);
+  const featureId = newOpaqueId("feat");
+  preparedStatement(database, "INSERT INTO features (id, repository_id, name, created_at) VALUES (?, ?, ?, ?)").run(featureId, repositoryId, name, createdAt);
+  return { ok: true, featureId };
+}
+
+function createFeature({ database, repositoryId }, payload) {
+  const input = normalizeFeatureCreatePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const created = insertFeature(database, repositoryId, input.name);
+  return created.ok ? { ok: true } : created;
+}
+
+// The agent's `create_feature`, `update_feature`, and `delete_feature` (task-feature-details.mjs).
+function agentCreateFeature({ database, repositoryId }, payload) {
+  const input = normalizeAgentFeatureCreatePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const created = insertFeature(database, repositoryId, input.name);
+  if (created.ok) writeFeatureDetails(database, repositoryId, created.featureId, input);
+  return created;
+}
+
+function agentUpdateFeature({ database, repositoryId }, payload) {
+  const input = normalizeAgentFeatureUpdatePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const stored = findFeature(database, repositoryId, input.feature);
+  if (!stored) return { ok: false, error: "not_found" };
+  if (input.name !== undefined && input.name !== stored.name) {
+    if (findFeature(database, repositoryId, { name: input.name })) return { ok: false, error: "conflict" };
+    preparedStatement(database, "UPDATE features SET name = ? WHERE repository_id = ? AND id = ?").run(input.name, repositoryId, stored.id);
+  }
+  writeFeatureDetails(database, repositoryId, stored.id, input);
+  return { ok: true, featureId: stored.id };
+}
+
+// Only a feature with no task is deleted, so no task loses its feature or its step.
+function agentDeleteFeature({ database, repositoryId }, payload) {
+  const input = normalizeAgentFeatureDeletePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const stored = findFeature(database, repositoryId, input.feature);
+  if (!stored) return { ok: false, error: "not_found" };
+  if (highestStep(database, repositoryId, stored.id) > 0) return { ok: false, error: "conflict" };
+  preparedStatement(database, "DELETE FROM features WHERE repository_id = ? AND id = ?").run(repositoryId, stored.id);
+  deleteFeatureDetails(database, repositoryId, stored.id);
   return { ok: true };
 }
 
@@ -440,6 +481,7 @@ const ACTIONS = Object.freeze({
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
   promote_issue: promoteIssue, record_issue: recordIssue,
   agent_create: agentCreateTask, agent_remove: agentRemoveTask,
+  agent_feature_create: agentCreateFeature, agent_feature_update: agentUpdateFeature, agent_feature_delete: agentDeleteFeature,
 });
 
 class ActionRejected extends Error {
@@ -531,6 +573,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   function apply(repositoryId, action, payload, resolvers = {}) {
     if (!isRepositoryId(repositoryId)) return { ok: false, error: "invalid" };
     let taskId = null;
+    let featureId = null;
     let added = null;
     const handler = typeof action === "string" && Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
     if (!handler) return { ok: false, error: "unsupported" };
@@ -542,6 +585,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         const result = handler({ database, repositoryId, ensureRepository, now, recentAdds }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
         added = typeof result.addKey === "string" ? { key: result.addKey, number: result.number } : null;
+        featureId = typeof result.featureId === "string" ? result.featureId : null;
         settleReadyColumn(database, repositoryId);
         // Only `create`, `agent_create`, and `promote_issue` answer the task they made.
         taskId = action === "promote_issue" || action === "create" || action === "agent_create" ? taskIdFromNumber(result.number) ?? null : null;
@@ -553,7 +597,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       // An agent's add is remembered only once it has committed, so a rolled-back add is never answered as made.
       if (added) recentAdds.remember(added.key, added.number);
       if (action === "delete" || action === "agent_remove") removeTaskImageFiles(directory, repositoryId, payload?.id);
-      return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }) };
+      return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }), ...(featureId === null ? {} : { featureId }) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }
@@ -600,6 +644,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
+    featureOf: (featureId) => readFeature({ database, repositoryId, feature: featureId }),
     imagePaths: (taskId) => taskImagePaths({ database, directory, repositoryId, taskId }),
     gatesHold: (taskId) => {
       const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
@@ -624,6 +669,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const featureLink = (featureId) => link(featureSessions, { featureId });
   const featureLinks = () => link(featureSessionGroups, {});
   const reportChecks = (sessionId) => link(reportableChecks, { sessionId });
+  const feature = (repositoryId, reference) => link(readFeature, { repositoryId, feature: reference });
   // A task's images (task-images.mjs): the bytes are files beside the database, the list is in `meta`.
   const image = (operation, repositoryId, payload) => {
     if (!database) return { ok: false, error: "conflict" };
@@ -637,5 +683,5 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
   return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
-    addImage, removeImage, readImage, sessionTasks, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, sessionTasks, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

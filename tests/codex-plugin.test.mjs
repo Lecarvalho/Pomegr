@@ -138,7 +138,10 @@ test("installed Codex plugin starts without repository dependencies and lists bo
       "clear_session_progress",
       "clear_session_signal",
       "complete_task",
+      "create_feature",
+      "delete_feature",
       "get_agent_context",
+      "get_feature",
       "get_provider_health",
       "get_recent_failures",
       "get_session_report",
@@ -150,6 +153,7 @@ test("installed Codex plugin starts without repository dependencies and lists bo
       "report_session_progress",
       "report_session_signal",
       "report_task_signal",
+      "update_feature",
     ]);
     assert.ok(tools.every((tool) => !JSON.stringify(tool).includes("anthropic/alwaysLoad")));
   });

@@ -46,9 +46,9 @@ Guide: [MCP queries](mcp-queries.md).
 
 ## Task tools
 
-These four tools write to the task board of the repository. They are the only tools
-that change something you made or that Pomegr manages. Guide:
-[Tasks](tasks.md#what-agents-report).
+These eight tools work on the task board of the repository. Seven of them write to
+it; they are the only tools that change something you made or that Pomegr manages.
+`get_feature` only reads. Guide: [Tasks](tasks.md#what-agents-report).
 
 | Tool | What it does |
 | --- | --- |
@@ -56,6 +56,10 @@ that change something you made or that Pomegr manages. Guide:
 | `remove_task` | Deletes a task that the same session added, if the task has not started. |
 | `complete_task` | Reports that the task of the session is complete. The task goes to **Review**. |
 | `block_task` | Reports that the agent cannot continue, with a short reason. |
+| `get_feature` | Reads the title, description, and app version of one feature. |
+| `create_feature` | Creates a feature with a title, and optionally a description and an app version. |
+| `update_feature` | Changes the title, description, or app version of a feature. |
+| `delete_feature` | Deletes a feature that has no task. |
 
 `complete_task` and `block_task` work only in a session that Pomegr started for a
 task.

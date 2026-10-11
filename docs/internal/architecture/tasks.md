@@ -1,7 +1,8 @@
 # Task board and session dispatch
 
 > Scope: the per-repository task board, the queue that starts sessions for its tasks,
-> and the agent tools that add, remove, complete, and block tasks. It does not cover
+> and the agent tools that add, remove, complete, and block tasks and that read and
+> change features. It does not cover
 > observation, which stays read-only and is owned by the
 > [observation cache](observation-cache.md).
 > Authority: canonical design contract for tasks and dispatch, decided by the product
@@ -15,7 +16,7 @@
 
 **Status: built.** Every capability on this page has shipped: the board, features and
 steps, the queue with its start gates and schedule, session start for Claude Code and
-Codex on Windows, session binding, the four agent tools, verified conditions, and the
+Codex on Windows, session binding, the eight agent tools, verified conditions, and the
 task reference on the Sessions list and in the session view. The user guide is
 [Tasks](../../public/using-pomegr/tasks.md). Report-less completion (a task finishing
 from a deterministic condition with no agent report) is deliberately not designed or
@@ -61,8 +62,8 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   never rebuilt, and one stored row outside the contract makes the whole board
   `unavailable` instead of partly served.
 - Bounds per repository: 500 tasks and 50 features. Task text is at most 4000
-  characters, an own condition 500, a feature name 80, a block reason 200, and an
-  attention line 200. A task holds at most four images of at most 5 MiB each (see
+  characters, an own condition 500, a feature name 80, a feature description 2000, a
+  feature app version 40, a block reason 200, and an attention line 200. A task holds at most four images of at most 5 MiB each (see
   [Images](#images)). A board
   always has five columns (see [Columns and card moves](#columns-and-card-moves)).
 - `openTaskStore({ directory })` returns `readBoard(repositoryId)`,
@@ -87,6 +88,12 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   (`server/tasks/task-adder.mjs`). It is written in the write that creates the task and
   removed in the one that deletes it, and it is never projected onto a board (see
   [Agent task removal](#agent-task-removal)).
+
+- A feature's description and app version are kept there too, under
+  `feature_description:<repositoryId>:<featureId>` and
+  `feature_app_version:<repositoryId>:<featureId>` (`server/tasks/task-feature-details.mjs`).
+  A row exists only while the field is set, and both go in the write that deletes the
+  feature. Neither is projected onto a board (see [Feature context](#feature-context)).
 
 ## Record
 
@@ -173,7 +180,9 @@ type TaskBoard = {
   it. It never carries a path, a reset time, an incident name, a changed file, or error
   text.
 - A feature is `done` when every task attached to it is done. Only unfinished
-  features are offered when attaching a task.
+  features are offered when attaching a task. A board feature is `{ id, name, done }`:
+  `name` is the feature's title, and its description and app version are not on the
+  board (see [Feature context](#feature-context)).
 - `session` is a borrowed, normalized reference to the bound session (see
   [Session binding](#session-binding)); it carries no transcript content. It is null
   until the session binds, then `{ id, title, state, observedModel }`, filled on every
@@ -385,6 +394,75 @@ paths stay desktop-private and never reach the monitor store or browser state.
   `worktree remove`. The only automatic removal is of a worktree made for a start that
   then failed; the worktrees of finished tasks stay until the user removes them.
 - **Git.** `execFile` with argument arrays and no shell, with a 30-second limit per call.
+
+### Feature context
+
+Task T-33, product-owner decision of 2026-10-10. A feature is a record with three
+fields: a **title** (the stored `name`, one line of 1 to 80 characters, unique in its
+repository), a **description** (plain text of at most 2000 characters, or none), and an
+**app version** (one line of at most 40 characters, or none). The description holds the
+context every task of the feature shares, so a task's own text stays short. The app
+version is the version the feature is planned for. It is free text: Pomegr never parses
+or compares it, and it gates nothing.
+
+- **The prompt carries the title and the ID only.** The session prompt of a task that
+  belongs to a feature holds one fixed line with the feature's title and its ID
+  (`feat-<12 hex>`), and the instruction to call `get_feature` for the rest (see
+  [Starting a session](#starting-a-session)). The description and the app version never
+  enter a prompt.
+- **`get_feature` reads the rest.** It answers `{ id, title, description, appVersion }`
+  for one feature of the calling session's board. The feature is named by its ID or its
+  exact title; with no input it is the feature of the task the session is linked to.
+  A stored description or app version that does not validate reads as not set.
+- **`create_feature`** makes a feature from a title and, optionally, a description and
+  an app version. A title that exists answers `conflict`, and a 51st feature `limit`.
+  It attaches no task; `add_task` attaches one by the feature's title. This replaces
+  the earlier rule that agents never create features.
+- **`update_feature`** changes any of the three fields of one feature. A field that is
+  present replaces the stored one whole, an absent field is left as stored, and a null
+  description or app version clears it (the tool sends null for an empty string). A
+  new title that another feature holds answers `conflict`. It changes no task, step,
+  state, or update time.
+- **`delete_feature`** deletes only a feature that has no task; otherwise it answers
+  `conflict`. A feature's tasks hold their place in the queue through its steps, so
+  deleting it under them would reorder the queue. Its description and app version go
+  in the same write.
+- **Which features.** Any feature of the session's own board, whoever made it. The
+  board is the one `add_task` writes to for that session (see
+  [Session binding](#session-binding)). No input names a repository, a path, or a
+  session.
+- **Store only.** The store actions `agent_feature_create`, `agent_feature_update`, and
+  `agent_feature_delete` are absent from the fixed action list, like `agent_create`, so
+  the desktop route, the paired-device route, and the IPC channel never accept them.
+  The desktop `feature_create` still takes exactly `{ name }`.
+- **Not in the desktop app yet.** The board shows and sets a feature's title only. The
+  description and the app version are read and written through the agent tools; a
+  desktop control for them is not built.
+
+The monitor serves the four tools as `POST /api/agent/v1/tasks/feature-get`,
+`feature-create`, `feature-update`, and `feature-delete`, under the gate of `add` and
+with the same content-type check. Each body is a JSON object of at most 16 KiB with
+`sessionRef` and only these keys:
+
+| Path | Keys beside `sessionRef` | Answer on success |
+| --- | --- | --- |
+| `feature-get` | `feature`, optional | `{ feature: { id, title, description, appVersion } }` |
+| `feature-create` | `title`, and optionally `description` and `appVersion` | `{ featureId }` |
+| `feature-update` | `feature`, and at least one of `title`, `description`, and `appVersion` | `{ featureId }` |
+| `feature-delete` | `feature` | nothing more |
+
+Every answer is `{ schemaVersion: 1, ok: true, ... }` or `{ schemaVersion: 1, ok: false,
+reason }`. Reasons: `invalid` (400), `session_not_found` (404), `repository_unavailable`
+(409), `not_found` (404), `conflict` (409), `limit` (409), and `unavailable` (503). Only
+`feature-get` answers feature content; the three writes answer an ID or nothing. The
+tools are in the plugins from version 0.9.4.
+
+In Claude Code the hook binds and signs each of the four as its own tool name, like the
+task writes. It also approves `get_feature` itself (`permissionDecision: "allow"`), as it
+does for the read of the session's own context: the call reads the session's own board
+and changes nothing, and a session the queue started must not wait at a prompt to read
+its task's context. The three writes get no permission decision from the hook, so Claude
+Code asks or decides as for any MCP write.
 
 ## Queue
 
@@ -832,7 +910,8 @@ supplies.
 
 - **Claude Code**: a `PreToolUse` hook, like `plugins/claude-code/scripts/rename-session.mjs`,
   supplies the session on every call. The hook hands `session_ref` to `add_task`,
-  `remove_task`, `complete_task`, and `block_task` through `updatedInput`, together with `session_proof`:
+  `remove_task`, `complete_task`, `block_task`, and the four feature tools (see
+  [Feature context](#feature-context)) through `updatedInput`, together with `session_proof`:
   `<issuedAtMs>.<base64url HMAC-SHA256>` over the tool name, the session reference, and the
   issue time, keyed by the local agent-query capability token
   (`plugin-src/task-binding-proof.mjs`, shared by hook and server). The hook code is
@@ -853,7 +932,7 @@ supplies.
     permission prompt and the server verifies it after the user approves. This reliance on
     the hook running before the prompt has not been exercised on a device.
   - The hook makes no permission decision for a write, so Claude Code decides as it does
-    for any MCP tool: in its default mode the user approves each of the four tools, and
+    for any MCP tool: in its default mode the user approves each of the write tools, and
     in auto mode Claude Code's own classifier decides. Observed on a device on 2026-10-09
     (plugin 0.9.0): the classifier let ordinary task text through and refused a few calls,
     with reasons that followed the conversation and the free text (`text`, `reason`), not
@@ -886,13 +965,13 @@ supplies.
   the store's. The monitor resolves `sessionRef` to a repository from the task link or, for
   a session without one, from the session's committed repository identity, never reading
   Git or provider files, and creates the task as the desktop `create` action does: last in the first column, not queued. A `feature` must
-  name an unfinished feature of that repository exactly; the task takes a new last step,
-  and agents never create features.
+  name an unfinished feature of that repository exactly; the task takes a new last step.
+  An agent makes a feature with `create_feature` (see [Feature context](#feature-context)).
 - The answer is `{ schemaVersion: 1, ok: true, taskId }` or `{ schemaVersion: 1, ok: false,
   reason }`, never an echo of task content. Reasons: `invalid` (400), `session_not_found`
   (404), `repository_unavailable` (409), `feature_not_found` (404), `limit` (409), and
-  `unavailable` (503). Any other path under `/api/agent/v1/tasks/` is not served, and no
-  other agent route accepts a write.
+  `unavailable` (503). Beside the paths of [Boundaries](#boundaries), no path under
+  `/api/agent/v1/tasks/` is served, and no other agent route accepts a write.
 - **`add_task` is safe to repeat for five minutes.** Decided for task T-14
   (2026-10-10). An agent whose first answer was
   lost asks again, and that second call must not make a second task (seen on a device on
@@ -927,9 +1006,12 @@ supplies.
     a few minutes returns the same task; `complete_task` and `block_task` once more,
     because a task takes one report per dispatch; `remove_task` once more with the same
     ID.
-  - The four tool writes wait longer than a read, because a write is not repeated by
+  - The tool writes wait longer than a read, because a write is not repeated by
     itself and a busy monitor commits it and answers late. `add_task`, `remove_task`,
-    and `block_task` wait 10 seconds. `complete_task` waits 25 seconds, past the 20
+    `block_task`, and the feature tools wait 10 seconds; `get_feature` goes through the
+    same transport, so it waits as long, and when it gets no answer it says only that
+    nothing was read. After an unanswered feature write the agent reads the feature
+    with `get_feature` before it tries again. `complete_task` waits 25 seconds, past the 20
     seconds the monitor may take to read the repository before it judges a report (see
     [Completion](#completion)). Reads keep 2 seconds, and so does the session-start
     `bind`, which runs under the 5-second hook limit. The waits stay under the hosts'
@@ -1056,7 +1138,10 @@ Starting is desktop-only and explicit.
    a command line or a path.
 3. The session prompt is a fixed template holding the task text, the files of the
    task's images when it has any, the Complete when list, and
-   the instruction to call `complete_task` or `block_task`. For a task promoted from a
+   the instruction to call `complete_task` or `block_task`. For a task that belongs to
+   a feature it also holds one fixed line with the feature's title and ID and the
+   instruction to call `get_feature` for the feature's description or app version;
+   neither of those two fields enters the prompt. For a task promoted from a
    GitHub issue it also holds one fixed line with the issue number, asking for
    `Closes #<number>` in the pull request. Only the integer from the task store enters
    that line, and no issue is read when a session starts.
@@ -1425,6 +1510,8 @@ serves no other client.
 | `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
+| `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title in; that feature's ID, title, description, and app version out, or one fixed reason. The only agent path that answers user-authored board content |
+| `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`,
@@ -1453,8 +1540,9 @@ serves no other client.
   detaches (a step sent with it must be null), and the task's own feature ID or a `step`
   alone moves it inside its feature. Steps stay dense (1 to n) after every write that
   changes a task's feature or step, or deletes a task in a feature, renumbering without
-  changing the update time of other tasks. There is no feature rename, delete, or
-  reorder yet.
+  changing the update time of other tasks. The desktop actions have no feature rename,
+  delete, or reorder yet; an agent renames a feature and deletes an empty one (see
+  [Feature context](#feature-context)).
   `queue_add` takes `{ id }` and, optionally, `at`, an instant written as
   `2026-10-09T02:00:00.000Z`. Without `at`, a task in state `not_queued` becomes `queued`
   with its card in Ready (last when it comes from another column), and a `scheduled` task becomes `queued` in the place it has and
@@ -1504,12 +1592,15 @@ serves no other client.
 - A browser that is not a paired device never mutates tasks, and no browser or LAN client
   starts a session.
 - The seven MCP observation tools stay read-only, as in [MCP observation queries](mcp-queries.md).
-  The task tools are a separate registration with the four write paths above.
+  The task tools are a separate registration with the eight POST paths above: seven
+  writes and the `feature-get` read.
 
 ## Privacy
 
-Task text, the own condition, and feature names are user-authored content, a new data
-class. Column names are five fixed values.
+Task text, the own condition, and a feature's name, description, and app version are
+user-authored content, a new data class. A description or an app version that an agent
+wrote with `create_feature` or `update_feature` is the same class. Column names are five
+fixed values.
 
 - Issue titles and bodies are third-party content, text written by other people. They are
   served only by `POST /internal/tasks/issues-list` to desktop main and from there to the
@@ -1530,6 +1621,23 @@ class. Column names are five fixed values.
 
 - They live only in the task store, and are served only by `GET /api/tasks` (to a
   same-computer client or a paired device) and the desktop IPC.
+- A feature's description and app version live only in the task store and are served
+  only by `POST /api/agent/v1/tasks/feature-get`, to an agent whose session is bound to
+  that board (task T-33, 2026-10-10). This is a deliberate widening: an agent could
+  write task content before, and with `get_feature` it also reads feature content, so
+  the feature's title, description, and app version reach the provider through that
+  session, as a task's text does through its prompt.
+  - `GET /api/tasks` serves a feature as `{ id, name, done }` only. The description and
+    the app version never enter it, the Sessions list's task reference, `/api/state`, a
+    session domain, a catalog, a checkpoint, a report, a log, a notification, or
+    diagnostics.
+  - The session prompt carries the feature's title and opaque ID, never the other two
+    fields.
+  - The answers of `feature-create`, `feature-update`, and `feature-delete` carry the
+    opaque feature ID or nothing, and one fixed reason on refusal. `not_found` is the
+    same for a feature that does not exist and one of another repository's board.
+  - `get_feature` reads a feature of the session's own board only. The board is chosen
+    by the session binding, never by an input.
 - Which session added a task is monitor-private. The task store keeps the normalized
   session ID of an `add_task` call beside the task, and only the rule of
   [Agent task removal](#agent-task-removal) reads it. It is on no board, route, list,

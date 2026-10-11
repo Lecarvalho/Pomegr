@@ -10,6 +10,8 @@ export const TASK_BOUNDS = Object.freeze({
   textLength: 4000,
   ownConditionLength: 500,
   featureNameLength: 80,
+  featureDescriptionLength: 2000,
+  featureAppVersionLength: 40,
   blockReasonLength: 200,
   modelIdentifierLength: 120,
   imagesPerTask: 4,
@@ -100,6 +102,16 @@ export function normalizeColumnName(value) {
 
 export function normalizeFeatureName(value) {
   return boundedText(value, TASK_BOUNDS.featureNameLength, { multiline: false });
+}
+
+// A feature's description, or null when it has none.
+export function normalizeFeatureDescription(value) {
+  return optionalText(value, TASK_BOUNDS.featureDescriptionLength, { multiline: true });
+}
+
+// The app version a feature is planned for, as one free line; never compared or parsed.
+export function normalizeFeatureAppVersion(value) {
+  return optionalText(value, TASK_BOUNDS.featureAppVersionLength, { multiline: false });
 }
 
 export function normalizeBlockReason(value) {
@@ -226,6 +238,41 @@ export function normalizeFeatureCreatePayload(value) {
   if (!isPlainObject(value) || !hasOnlyKeys(value, ["name"])) return undefined;
   const name = normalizeFeatureName(value.name);
   return name === undefined ? undefined : { name };
+}
+
+// A feature named by its ID or by its exact title.
+export function normalizeFeatureReference(value) {
+  if (typeof value === "string" && FEATURE_ID.test(value)) return { id: value };
+  const name = normalizeFeatureName(value);
+  return name === undefined ? undefined : { name };
+}
+
+// The agent's `create_feature`: a title, and optionally a description and an app version.
+export function normalizeAgentFeatureCreatePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["title", "description", "appVersion"])) return undefined;
+  const name = normalizeFeatureName(value.title);
+  const description = normalizeFeatureDescription(value.description);
+  const appVersion = normalizeFeatureAppVersion(value.appVersion);
+  return name === undefined || description === undefined || appVersion === undefined ? undefined : { name, description, appVersion };
+}
+
+// The agent's `update_feature`: a present field replaces the stored one, and a null description or app version clears it.
+export function normalizeAgentFeatureUpdatePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["feature", "title", "description", "appVersion"])) return undefined;
+  const feature = normalizeFeatureReference(value.feature);
+  if (feature === undefined) return undefined;
+  const update = { feature };
+  if (value.title !== undefined) update.name = normalizeFeatureName(value.title);
+  if (value.description !== undefined) update.description = normalizeFeatureDescription(value.description);
+  if (value.appVersion !== undefined) update.appVersion = normalizeFeatureAppVersion(value.appVersion);
+  const fields = Object.keys(update).filter((key) => key !== "feature");
+  return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
+}
+
+export function normalizeAgentFeatureDeletePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["feature"])) return undefined;
+  const feature = normalizeFeatureReference(value.feature);
+  return feature === undefined ? undefined : { feature };
 }
 
 export function normalizeDeletePayload(value) {

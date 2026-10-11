@@ -93,6 +93,8 @@ export const TASK_BOUNDS = {
   textLength: 4000,
   ownConditionLength: 500,
   featureNameLength: 80,
+  featureDescriptionLength: 2000,
+  featureAppVersionLength: 40,
   blockReasonLength: 200,
   modelIdentifierLength: 120,
   imagesPerTask: 4,

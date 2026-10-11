@@ -46,8 +46,14 @@ function promptText(text, images) {
   return text.replace(TASK_IMAGE_MARKER, (_marker, id) => (numbers.has(id) ? `[Image #${numbers.get(id)}]` : "[image]"));
 }
 
+// The feature's title and ID only: the session reads the rest with `get_feature` when it needs it.
+function featureLine(feature) {
+  if (typeof feature?.id !== "string" || typeof feature.title !== "string") return [];
+  return [`This task is part of the feature "${feature.title}" (${feature.id}). When you need the feature's description or app version, call the Pomegr MCP tool get_feature.`];
+}
+
 // The fixed session prompt.
-export function buildTaskPrompt(task, images = []) {
+export function buildTaskPrompt(task, images = [], feature = null) {
   const conditions = task.completeWhen.checks.map((check) => `- ${CHECK_LABELS[check]}`);
   if (task.completeWhen.own) conditions.push(`- ${task.completeWhen.own}`);
   return [
@@ -55,6 +61,7 @@ export function buildTaskPrompt(task, images = []) {
     `Task ${task.id}:`,
     promptText(task.text, images),
     ...imageLines(images),
+    ...featureLine(feature),
     "Complete when:",
     ...(conditions.length > 0 ? conditions : ["- No condition is checked: your report alone completes the task."]),
     ...issueLine(task),
@@ -82,7 +89,7 @@ const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_
   && !isLive(parseStoredDispatch(row.dispatch_token), now);
 
 // `start-plan`.
-export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, imagePaths = null, now }) {
+export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, imagePaths = null, featureOf = null, now }) {
   const separate = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.hasOwn(payload, "worktree");
   if (separate && payload.worktree !== true) return { ok: false, error: "invalid" };
   const number = isRepositoryId(repositoryId) ? taskNumber(payload, separate ? ["id", "worktree"] : ["id"]) : undefined;
@@ -114,11 +121,13 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   // The images the task holds now are the ones the session gets; one attached later is not sent to it.
   let images = [];
   try { images = (typeof imagePaths === "function" ? imagePaths(task.id) : []).filter((image) => typeof image?.id === "string" && typeof image.file === "string"); } catch { images = []; }
+  let feature = null;
+  try { feature = task.featureId !== null && typeof featureOf === "function" ? featureOf(task.featureId) : null; } catch { feature = null; }
   return {
     ok: true,
     plan: {
       taskId: task.id, provider, model: task.run.model, effort: task.run.effort, remoteControl: provider === "claude" && task.run.remoteControl,
-      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images), images: images.map((image) => image.file), token,
+      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images, feature), images: images.map((image) => image.file), token,
     },
   };
 }

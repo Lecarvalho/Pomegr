@@ -217,8 +217,15 @@ export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
 export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
 export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
+export const AGENT_FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
+export const AGENT_FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
+export const AGENT_FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
+export const AGENT_FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
 // The only monitor paths the agent write transport may POST to.
-export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_REMOVE_PATH]);
+export const AGENT_TASK_WRITE_PATHS = Object.freeze([
+  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_REMOVE_PATH,
+  AGENT_FEATURE_GET_PATH, AGENT_FEATURE_CREATE_PATH, AGENT_FEATURE_UPDATE_PATH, AGENT_FEATURE_DELETE_PATH,
+]);
 export const AGENT_TASK_MAX_BODY_BYTES = 16 * 1024;
 // How long a tool's write waits for the monitor's answer.
 export const AGENT_TASK_WRITE_TIMEOUT_MS = 10_000;
