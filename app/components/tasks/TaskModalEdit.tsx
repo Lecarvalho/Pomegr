@@ -80,7 +80,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
   // A stalled task has no report: its session ended before the agent reported complete or blocked.
   const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
-  const start = useTaskStart(repositoryId, task, dirty, refresh);
+  const start = useTaskStart(repositoryId, task, board, dirty, refresh);
   const images = useStoredImages(repositoryId, task);
   const imagesOffered = taskImagesAvailable();
   // A task that needs the user offers its resolutions instead of Start session.

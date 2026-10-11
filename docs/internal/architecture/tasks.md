@@ -541,7 +541,10 @@ proceed. A start needs all of the following.
 
 1. The previous step of the task's feature is settled: each of its tasks is done or
    needs review (`previous_step` otherwise). The board names the lowest-numbered task
-   that is neither, in the earliest step before it that is not settled.
+   that is neither, in the earliest step before it that is not settled. This gate holds
+   only the queue's starts. As decided by the product owner on 2026-10-10, a manual start
+   is an override of step order: `start-plan` does not judge this gate, and the other
+   three still hold the start.
 2. The task's provider has usage capacity: its five-hour window, as a whole percentage,
    is below the threshold (`usage_over` otherwise). The threshold is 70, 85, or 95
    percent per repository, 85 by default, set with `queue_settings` `{ threshold }` and
@@ -618,8 +621,10 @@ What a held gate does:
   waits and no state is shown and later retracted; `queue.gates.next.reasons` says why.
 - **Manual start.** `start-plan` answers the fixed `gate_held` before a token is minted,
   after the refusals that precede it (`not_startable`, `unsupported_provider`,
-  `unavailable`, `plugin_missing`). The renderer shows one fixed line that points at the
-  Queue view. A start held only by the root's uncommitted changes answers the fixed
+  `unavailable`, `plugin_missing`). The answer names no gate. The renderer names the
+  gates that hold the task's provider from the readings `queue.gates` already carries
+  ("This task is held: ..."), and falls back to one fixed line that points at the Queue
+  view when those readings show no hold. A start held only by the root's uncommitted changes answers the fixed
   `tree_dirty` instead, and the renderer offers
   [a separate worktree](#separate-worktree-for-a-dirty-repository). The queue runner
   treats `gate_held` and `tree_dirty` like a task that moved: no pause, and the next poll
@@ -1649,7 +1654,7 @@ Each item is owned by the product owner; none is implemented until they answer.
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
 rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
 above now describe the fixed behavior. The first run on a device, on 2026-10-09, found
-three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. Two items remain open, and the maintainer owns each. The stated limits of the age rule for complete-when conditions are listed under
+three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. One item remains open, and the maintainer owns it. A sixth (a held manual start did not say which gate holds) closed on 2026-10-10: the modal names the holding gates from the board's readings, and step order no longer holds a manual start. The stated limits of the age rule for complete-when conditions are listed under
 [Completion](#completion).
 
 1. **A started task without a feature holds every start, but `queue.gates.next` does not
@@ -1659,9 +1664,6 @@ three more, one of which (a start with a plugin too old for tasks) is fixed. A f
    keeps this behavior. A fixed reason such as `task_running` would widen the
    [AGENTS.md](../../../AGENTS.md) rule, so it is not added until the product owner
    decides.
-2. **A held manual start does not say which gate holds.** The modal reads "A start gate
-   holds this task. See Start gates in the Queue view." although the fixed hold reasons
-   are already served on `GET /api/tasks`.
 
 Proven on a device on 2026-10-09 (Windows, Claude Code, plugin 0.9.0): a started session
 opens as the user's own Claude Code, in the repository root and in a new task worktree;

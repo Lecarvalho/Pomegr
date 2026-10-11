@@ -85,12 +85,13 @@ const startProvider = (task) => task.run.provider ?? "claude";
  * Whether the start gates let one task of a projected board start now, judged from `resolveGateFacts(repositoryId)`.
  * Returns `{ ok, reasons }`; a task the board does not hold is not ok, and neither is a scheduled task before its own
  * time at `at` (epoch milliseconds). The queue's own start and stop times are not judged here: they hold the queue's
- * starts, never one the user makes by hand.
+ * starts, never one the user makes by hand. Step order is the queue's too: with `manual`, a start the user makes by
+ * hand, the step before the task's own is not judged.
  */
-export function startGates({ database, repositoryId, board, taskId, resolveGateFacts, at }) {
+export function startGates({ database, repositoryId, board, taskId, resolveGateFacts, at, manual = false }) {
   const task = board.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return { ok: false, reasons: [] };
-  const gates = evaluateGates({ provider: startProvider(task), blockedBy: previousStepBlocker(taskId, board.tasks, board.features) },
+  const gates = evaluateGates({ provider: startProvider(task), blockedBy: manual ? null : previousStepBlocker(taskId, board.tasks, board.features) },
     gateFacts(resolveGateFacts, repositoryId), { threshold: readGateThreshold(database, repositoryId) });
   const early = task.state === "scheduled" && task.scheduledAt !== null && !taskIsDue(Date.parse(task.scheduledAt), at);
   return early ? { ok: false, reasons: gates.reasons, early: true } : gates;

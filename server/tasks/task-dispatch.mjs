@@ -5,7 +5,7 @@
 // the plan; the store keeps only its SHA-256 digest and the mint time, in the existing `dispatch_token`
 // column as `<digest>:<mintMs>`, so no schema change is needed. The digest is never projected onto the
 // board. Task text is untrusted: it is concatenated only into the fixed prompt string, never into a
-// path or command line. The store judges the start gates (capacity, incident, clean tree, previous step) through
+// path or command line. The store judges the start gates (capacity, incident, clean tree; never step order, which holds only the queue) through
 // `gatesHold` before a token is minted, so a held start leaves nothing behind. A start held only by uncommitted
 // changes in the repository root answers `tree_dirty`, and the owner may ask for the same start in a worktree of the
 // task's own (`worktree: true`), which that one gate does not hold.

@@ -92,6 +92,29 @@ describe("Start session", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it("names the gates the board shows holding a gate_held start, for the task's own provider", async () => {
+    const board: TaskBoard = {
+      version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [task({ run: { provider: "codex", model: null, effort: null } })],
+      queue: {
+        status: "idle", blockedBy: null, pauseReason: null, order: [],
+        gates: {
+          threshold: 85, workingTree: "unknown", next: null,
+          usage: { claude: { status: "ok", fiveHourPercent: 10, sevenDayPercent: 10 }, codex: { status: "over", fiveHourPercent: 91, sevenDayPercent: 40 } },
+          providerStatus: { claude: "incident", codex: "ok" },
+        },
+      },
+    };
+    useTasks.mockReturnValue({ board, refresh });
+    taskStart.mockResolvedValue({ status: "gate_held" });
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openModal(user);
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent(
+      "This task is held: Codex is above 85% of the five-hour window; the working tree state is not known."));
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+  });
+
   it("shows no line for a cancelled start and clears an earlier one", async () => {
     taskStart.mockResolvedValueOnce({ status: "busy" }).mockResolvedValueOnce({ status: "cancelled" });
     const user = userEvent.setup();
