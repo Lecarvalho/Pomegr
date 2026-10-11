@@ -41,8 +41,6 @@ function normalizeSnapshot(input: unknown): UsageLimitsSnapshot {
     if (readiness === "loading" || readiness === "ready" || readiness === "unavailable") {
       nextReadiness[provider] = readiness;
     } else if ("usageLimits" in providerEntry) {
-      // Transitional cached responses did not carry per-provider readiness.
-      // A committed provider value is sufficient evidence that this row is ready.
       nextReadiness[provider] = "ready";
     }
   }
@@ -54,7 +52,6 @@ function normalizeSnapshot(input: unknown): UsageLimitsSnapshot {
   };
 }
 
-/** A single application-level provider usage cache with serialized polling. */
 export class UsageLimitsStore {
   private snapshot: UsageLimitsSnapshot = EMPTY_USAGE_LIMITS;
   private listeners = new Set<() => void>();
@@ -192,7 +189,6 @@ export function useUsageLimits() {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
 }
 
-/** Suspend the shared provider-usage poller while any application owner is paused. */
 export function useUsageLimitsPollingPause(paused: boolean) {
   const store = getUsageLimitsStore();
   const owner = useRef(Symbol("usage-limits-pause-owner"));

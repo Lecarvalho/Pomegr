@@ -174,7 +174,7 @@ function publicValue(stored) {
   };
 }
 
-/** A bounded, credential-metadata-bound cache for sanitized Claude API usage. */
+// A bounded, credential-metadata-bound cache for sanitized Claude API usage.
 /** @param {{ root?: string, configDir?: string, now?: () => number }} [options] */
 export function createClaudeUsageApiCache({ root, configDir, now = () => Date.now() } = {}) {
   const cacheRoot = typeof root === "string" && root ? path.resolve(root) : null;

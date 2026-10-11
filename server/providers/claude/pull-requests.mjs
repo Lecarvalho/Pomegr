@@ -79,7 +79,6 @@ function newCreationState(events = [], creationToolIds = []) {
   return { creationToolIds: new Map(creationToolIds), events: [...events], seen: new Set(events.map(({ url }) => url)) };
 }
 
-/** Preserve the existing focused parser API while keeping Claude schema logic in the adapter layer. */
 export function pullRequestUrls(records) {
   return pullRequestCreationEvents(records).map(({ url }) => url);
 }

@@ -5,19 +5,12 @@ import type { DragEvent } from "react";
 import { TASK_ID_PATTERN, type Task } from "../../../shared/task-contract";
 import { reorderTarget, type QueueFeature } from "./task-queue-model";
 
-// Native HTML drag and drop for queued cards (design contract D123, D124, D134, D145, D448). The payload is the
-// plain-text task ID with effect move. A step row, or the dashed new-step zone, takes a drop only from a queued
-// task of the same feature and only when the monitor would accept it: a step whose tasks are all done ignores
-// drag-over and drop, and a drop that would change nothing sends nothing. The fill clears when the pointer leaves,
-// the card drops, or the drag ends.
-
 export type QueueDropHandlers = {
   onDragOver(event: DragEvent<HTMLElement>): void;
   onDragLeave(event: DragEvent<HTMLElement>): void;
   onDrop(event: DragEvent<HTMLElement>): void;
 };
 
-/** Identifies one drop target: a step of a feature, or its new-step zone (`step` null). */
 export const dropKey = (featureId: string, step: number | null) => `${featureId}:${step ?? "new"}`;
 
 export function useQueueDrag(tasks: readonly Task[], onReorder: (id: string, step: number) => void) {
@@ -41,7 +34,6 @@ export function useQueueDrag(tasks: readonly Task[], onReorder: (id: string, ste
     onDragEnd: finish,
   });
 
-  /** `step` null is the new-step zone. */
   const targetHandlers = (panel: QueueFeature, step: number | null): QueueDropHandlers => {
     const key = dropKey(panel.feature.id, step);
     return {

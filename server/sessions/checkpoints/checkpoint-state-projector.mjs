@@ -20,10 +20,6 @@ export function createCheckpointStateProjector({
       return {
         ...projectProviderSessionEvidence({
           evidence, sessionId, source: provider.source, capabilities: provider.capabilities,
-          // The session identity's resolved root never travels through evidence or
-          // checkpoints (see server/normalize/session-identity.mjs), so this restore path reads role
-          // configuration only from legacy "launch" evidence's launch cwd, as before the rule;
-          // live analysis re-projects roles from the identity's root.
           repositoryRoles: repositoryRoleMappings(evidence.session.repositoryAttribution === "launch" ? evidence.session.cwd : ""),
           repository, pullRequests,
           usageLimits: createEmptyUsageLimits(), resources: historical ? null : unavailableResourceUsage(),

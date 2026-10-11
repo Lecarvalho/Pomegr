@@ -12,7 +12,7 @@ const STAGES = Object.freeze([
   "checkpoint", "checkpoint_validation", "checkpoint_privacy", "checkpoint_collection", "checkpoint_candidate", "checkpoint_size", "checkpoint_storage", "revision_notify", "cache_serve",
 ]);
 
-/** Automatic development-only file logging. Production imports none of this composition. */
+// Automatic development-only file logging.
 export function createDevelopmentDiagnostics({
   recorder = null,
   logWriter = null,

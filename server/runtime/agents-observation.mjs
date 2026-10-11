@@ -49,7 +49,7 @@ function nextWindowBoundary(input, currentNow) {
   return earliest;
 }
 
-/** D-only analytics: one input capture, yielded staging, atomic variant-map publication. */
+// D-only analytics: one input capture, yielded staging, atomic variant-map publication.
 export function createAgentsObservation({
   store, catalog, subscribe, isReady = () => false, readiness = null, now = () => Date.now(),
   schedule = setTimeout, cancel = clearTimeout, yieldTask = () => new Promise((resolve) => setImmediate(resolve)),
@@ -73,8 +73,7 @@ export function createAgentsObservation({
   let nextBoundaryAt = null;
   let rebuilds = 0;
   let failures = 0;
-  // Startup must remain cache-only even when an injected observation clock is
-  // unavailable. The wall-clock seed is acquired inside background staging.
+  // Startup must remain cache-only even when an injected observation clock is unavailable.
   let revisionSequence = 0;
 
   function nextRevision() {
@@ -128,9 +127,6 @@ export function createAgentsObservation({
     if (timer !== null && timerDueAt !== null && timerDueAt <= dueAt) return;
     if (timer !== null) cancel(timer);
     timerDueAt = dueAt;
-    // Node clamps larger native timeouts to an immediate wakeup. Keep the
-    // intended boundary in timerDueAt; an early capped wakeup fingerprints,
-    // skips unchanged derivation, and schedules the remaining interval.
     const delay = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, dueAt - now()));
     timer = schedule(() => rebuild(), delay);
   }
@@ -153,7 +149,6 @@ export function createAgentsObservation({
     lastAttemptAt = now();
     try {
       if (readinessState === "unavailable") throw new TypeError("Committed catalog unavailable");
-      // Capture exactly once; all variants derive from this same immutable input.
       const capturedEntries = store.entries();
       const capturedCatalog = catalog();
       const capturedNow = now();

@@ -1,10 +1,8 @@
 import type { AgentRole, ProviderSource, Readiness, WorkKind } from "./monitor-contract";
 
-/** A bounded run summary derived only from a retained normalized session snapshot. */
+// A bounded run summary derived only from a retained normalized session snapshot.
 export type AgentsRun = {
-  /** Opaque, session-qualified key for stable list rendering. */
   id: string;
-  /** Normalized agent identifier for the one-shot session drill-down. */
   agentId: string;
   sessionId: string;
   source: ProviderSource;
@@ -13,9 +11,9 @@ export type AgentsRun = {
   label: string;
   assignment: string | null;
   role: AgentRole;
-  /** Bounded provider type label retained only for an otherwise unknown role. */
+  // Bounded provider type label retained only for an otherwise unknown role.
   customType?: string | null;
-  /** Latest retained agent-level model report; it is not a whole-run history. */
+  // Latest retained agent-level model report; it is not a whole-run history.
   model: string | null;
   modelEvidence: "latest_reported" | "unavailable";
   scope: "main" | "delegated";
@@ -24,11 +22,11 @@ export type AgentsRun = {
   status: "active" | "waiting" | "needs_input" | "warm" | "finished" | "stopped" | "idle" | "unknown";
   startedAt: string | null;
   lastSeen: string | null;
-  /** Latest normalized agent context snapshot, never cumulative throughput. */
+  // Latest normalized agent context snapshot, never cumulative throughput.
   latestContextTotal: number | null;
   toolCalls: number | null;
   executionTaskCount: number | null;
-  /** Only normalized execution-task work kinds attributable to this agent. */
+  // Only normalized execution-task work kinds attributable to this agent.
   work: Array<{ workKind: WorkKind; count: number }>;
 };
 
@@ -42,7 +40,6 @@ export type AgentsCoverage = {
 };
 
 export type AgentsModelAggregate = {
-  /** Null means no retained model report was available for these runs. */
   model: string | null;
   runCount: number;
   mainRunCount: number;
@@ -53,7 +50,6 @@ export type AgentsModelAggregate = {
 export type AgentsAnalyticsSnapshot = {
   revision: number;
   readiness: Readiness;
-  /** Refresh failure is explicit while a last-known-good ready response remains visible. */
   refreshReadiness?: "ready" | "unavailable";
   generatedAt: string | null;
   coverage: AgentsCoverage;
@@ -70,11 +66,9 @@ export type AgentsAnalyticsSnapshot = {
     mainRunCount: number;
     delegatedRunCount: number;
   };
-  /** Groups the latest retained model report; no multi-model history is inferred. */
   models: AgentsModelAggregate[];
-  /** Attributable normalized execution-task work only; absent evidence is omitted. */
+  // Attributable normalized execution-task work only; absent evidence is omitted.
   work: Array<{ workKind: WorkKind; count: number }>;
   runs: AgentsRun[];
-  /** Observed live-session hierarchy, outside the historical time filter. */
   roster: AgentsRun[];
 };

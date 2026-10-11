@@ -11,14 +11,6 @@ function buildGeneration(stat, raw) {
   return { identity: fileIdentity(stat), size: stat.size, mtimeMs: stat.mtimeMs, suffixBytes: raw.bytes, suffixDigest: raw.digest };
 }
 
-/**
- * Per-readSession cache of file stats and their 256-byte tail-suffix reads, shared by every
- * reader (tail cache, activity events, agent lifecycle) that would otherwise independently stat
- * and open the same transcript files to decide whether their own parse is still valid. Each file
- * is stat'd and suffix-read at most once per instance; a failed stat or suffix read is memoized as
- * `null` too, so a missing/unreadable file is never retried within the same readSession call.
- * Discard the instance once readSession returns: nothing here is safe to reuse across calls.
- */
 export function createReadGenerations() {
   const stats = new Map();
   const rawSuffixes = new Map();
@@ -40,7 +32,6 @@ export function createReadGenerations() {
     return value;
   }
 
-  /** Identity + size + sampled tail-suffix digest, or null. Matches `fileGeneration(file, stat)`. */
   function generation(file) {
     if (generations.has(file)) return generations.get(file);
     const value = buildGeneration(stat(file), rawSuffix(file));
@@ -48,8 +39,6 @@ export function createReadGenerations() {
     return value;
   }
 
-  /** Exactly what `incrementalSourceDescriptor(file, historical)` returns today, built from the
-   * shared stat and suffix instead of statting/opening the file again. */
   function descriptor(file, historical = false) {
     const key = `${file}\0${historical ? 1 : 0}`;
     if (descriptors.has(key)) return descriptors.get(key);

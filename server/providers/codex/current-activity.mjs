@@ -31,7 +31,7 @@ function activityLabels(record) {
 }
 
 
-/** Activity is observed metadata. A liveness guess must never poison its incremental reducer. */
+// Activity is observed metadata. A liveness guess must never poison its incremental reducer.
 export function parseCodexCurrentActivityStateRecords(records, options = {}) {
   const previous = options.existingState || {};
   let currentActivity = previous.currentActivity || null;

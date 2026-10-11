@@ -9,7 +9,6 @@ const FAILURE_KINDS = new Set<UsageLimitFailureKind>([
   "unavailable",
 ]);
 
-/** Transitional string checks support cached responses from monitors without failureKind. */
 export function usageLimitFailureKind(usageLimits: UsageLimits): UsageLimitFailureKind | null {
   if (usageLimits.failureKind && FAILURE_KINDS.has(usageLimits.failureKind)) return usageLimits.failureKind;
   if (/returned 401\b/i.test(usageLimits.error || "")) return "authentication_required";
@@ -43,7 +42,6 @@ export type UsageLimitDisplay = {
   localFable: { kind: "retained"; limit: UsageLimit; fetchedAt: string } | { kind: "unavailable"; label: string; detail: string } | null;
 };
 
-/** Keeps a retained Fable API value supplemental to, rather than part of, a local observation. */
 export function usageLimitDisplay(usageLimits: UsageLimits): UsageLimitDisplay {
   if (usageLimits.origin !== "local_observation") {
     return { current: usageLimits.limits, localFable: null };

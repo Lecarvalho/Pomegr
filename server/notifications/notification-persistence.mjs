@@ -93,7 +93,7 @@ function validRow(row) {
     && (row.kind === "provider_recovery" ? row.data.status === "operational" : STATUS.has(row.data.status));
 }
 
-/** Full-record validation. No partial salvage: a bad record cannot supply comparison state. */
+// Full-record validation.
 export function normalizeNotificationPersistence(value, expectedProfile, now = Date.now()) {
   const keys = ["version", "profileScope", "identitySeed", "sequence", "snapshot", "baselines", "active", "evidence"];
   if (Object.hasOwn(value || {}, "usageState")) keys.push("usageState");
@@ -152,7 +152,7 @@ export function normalizeNotificationPersistence(value, expectedProfile, now = D
   return { profileMatches: value.profileScope === expectedProfile, state: normalized };
 }
 
-/** Atomically replaces one monitor-private normalized ledger; invalid/newer files are protected. */
+// Atomically replaces one monitor-private normalized ledger; invalid/newer files are protected.
 export function createNotificationPersistence({ directory, profileScope, now = Date.now, filesystem = fs } = {}) {
   if (typeof directory !== "string" || !directory || typeof profileScope !== "string" || !HASH.test(profileScope)) throw new TypeError("Invalid notification persistence configuration");
   const target = path.join(directory, FILE);

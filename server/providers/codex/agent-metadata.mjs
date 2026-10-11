@@ -218,8 +218,6 @@ function reviewDecisionFeed(decisions, previous = null) {
   const unique = new Map((previous?.items || []).map((decision) => [keyOf(decision), decision]));
   let allowed = previous?.allowed || 0;
   let denied = previous?.denied || 0;
-  // Merge before capping: a large delta can otherwise hide its lookbehind
-  // overlap. Keep counts for prior decisions outside the retained display rows.
   for (const decision of decisions) {
     const key = keyOf(decision);
     const existing = unique.get(key);

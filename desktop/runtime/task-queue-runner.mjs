@@ -6,9 +6,7 @@ const DEFAULT_INTERVAL_MS = 15_000;
 const MIN_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_STARTS = 16;
-// A start that fails for one of these reasons pauses the queue with the same fixed reason; every other
-// failure pauses it as `start_failed`. The rest never pause: a manual start is in flight, the task moved, or a
-// start gate closed between the monitor's answer and the start, and the next tick asks the monitor again.
+// Other failures pause as `start_failed`; a manual start in flight, a moved task, or a closed gate never pause (the next tick asks again).
 const PAUSE_REASONS = new Set(["cli_missing", "plugin_missing", "unsupported_platform", "worktree_dirty"]);
 const SETTLED = new Set(["started", "busy", "not_startable", "gate_held", "tree_dirty", "not_found", "cancelled"]);
 
@@ -26,7 +24,6 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** The valid next starts of an answer, at most MAX_STARTS; anything but a plain `ok` answer yields none. */
 function startsFrom(answer) {
   const starts = [];
   if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.starts)) return starts;
@@ -41,20 +38,12 @@ function startsFrom(answer) {
   return starts;
 }
 
-/** The pause reason for a start status, or null when the start needs none. */
 function pauseReason(status) {
   if (typeof status === "string" && SETTLED.has(status)) return null;
   return typeof status === "string" && PAUSE_REASONS.has(status) ? status : "start_failed";
 }
 
-/**
- * Low-priority advance of the task queue. The monitor decides which tasks of a queue-enabled repository are next
- * (the queued tasks of one step start together); this runner only asks, starts each answer in turn through the starter (the same path as a
- * manual start, minus the confirmation the user gave by turning the queue on) and pauses the queue with a fixed
- * reason when a start fails, so a failure is never retried in a loop. One unref'd timer chain, so a tick never
- * overlaps the previous one and the runner never keeps the app alive. It holds only repository and task IDs
- * for the length of a tick and never touches a started session.
- */
+/** Low-priority queue advance: asks the monitor, starts each answer in turn, and pauses the queue with a fixed reason on failure so a start is never retried in a loop. */
 export function createTaskQueueRunner(options = {}) {
   const starter = options.starter;
   const fetchImpl = options.fetch || fetch;

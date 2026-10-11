@@ -3,10 +3,6 @@ import styles from "./ExternalLink.module.css";
 
 export type ExternalLinkProps = Omit<ComponentPropsWithoutRef<"a">, "rel" | "target">;
 
-/**
- * Inline link for destinations that open outside Pomegr in a new browser tab.
- * The fixed icon and accessible suffix make that context change predictable.
- */
 export function ExternalLink({ children, "aria-label": ariaLabel, ...props }: ExternalLinkProps) {
   const accessibleLabel = ariaLabel
     ? `${ariaLabel}; opens in a new tab`

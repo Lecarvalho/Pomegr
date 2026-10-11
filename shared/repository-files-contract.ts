@@ -1,23 +1,12 @@
-/**
- * Repository file history served from the monitor's committed file-history cache.
- *
- * Privacy: only normalized repository/session/agent identities, an opaque file identity
- * (`f<integer>`), bounded repository-relative paths validated monitor-side, fixed change
- * kinds, bounded counts, and ISO timestamps. Never commands, tool arguments, provider or
- * transcript paths, or absolute paths. Session and agent attribution appears only where
- * recorded evidence proves it; Git-observed moves add file continuity, never attribution.
- */
+// Repository file history served from the monitor's committed file-history cache.
 
 export type FileChangeKind = "created" | "edited" | "deleted" | "moved";
 export type FileHistoryReadiness = "loading" | "ready" | "unavailable" | "rebuilding";
 export type FileHistoryProvider = "claude" | "codex";
 
-/** Opaque file identity: `f` followed by the store's integer file ID. */
 export const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
-/** Upper bound for a repository-relative path accepted in a query or served in a response. */
 export const MAX_REPOSITORY_PATH_LENGTH = 512;
 
-/** One file in a repository listing. */
 export type RepositoryFileEntry = {
   fileId: string;
   path: string; // current repository-relative path
@@ -25,10 +14,9 @@ export type RepositoryFileEntry = {
   deleted: boolean; // last recorded state is deleted (a "historical file")
 };
 
-/** Distinct-session rollup for one folder prefix (e.g. "app/components"); never a sum. */
+// Distinct-session rollup for one folder prefix (e.g.
 export type RepositoryFolderCount = { path: string; sessionCount: number };
 
-/** GET /api/repository-files?repositoryId=<id> */
 export type RepositoryFilesResponse = {
   kind: "files";
   revision: number;
@@ -40,7 +28,6 @@ export type RepositoryFilesResponse = {
   truncated: boolean; // more files exist beyond the bound
 };
 
-/** One session's grouped changes to a single file identity. */
 export type FileHistorySession = {
   sessionId: string;
   title: string | null; // committed catalog title; null when the session left the catalog
@@ -49,13 +36,10 @@ export type FileHistorySession = {
   kind: FileChangeKind; // "created" when the session created the file, otherwise its newest kind
   editCount: number; // number of recorded "edited" changes in this session
   newestAt: string; // ISO time of the session's newest change to this file
-  /** Normalized agent IDs with the identity recorded when they changed the file (label,
-   *  optional assignment, latest reported model); each field null when not recorded. */
   agents: Array<{ id: string; label: string | null; assignment: string | null; model: string | null }>;
   pathAtTime: string | null; // path during the session's newest change when it differs from the current path
 };
 
-/** GET /api/repository-files?repositoryId=<id>&fileId=<f..> or &path=<relative path> */
 export type FileHistoryResponse = {
   kind: "history";
   revision: number;

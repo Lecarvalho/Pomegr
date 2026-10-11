@@ -98,12 +98,12 @@ function validState(state) {
   };
 }
 
-/** Bounded provider-private state suitable for retained complete-record observation. */
+// Bounded provider-private state suitable for retained complete-record observation.
 export function initialCodexRecordedLifecycle() {
   return { turn: null, latestActivityAt: null, pendingInputs: [], inputOverflow: false };
 }
 
-/** Reduce one complete provider record without retaining provider text or payloads. */
+// Reduce one complete provider record without retaining provider text or payloads.
 export function reduceCodexRecordedLifecycle(previous, record) {
   const state = validState(previous);
   if (!record || typeof record !== "object" || Array.isArray(record) || !RECOGNIZED_RECORD_TYPES.has(record.type)) return state;
@@ -188,7 +188,6 @@ function unknownLiveness(state, nowMs, { freshness = "stale" } = {}) {
   };
 }
 
-/** Convert retained complete-record lifecycle state into normalized liveness evidence. */
 export function codexRecordedLiveness(previous, { now = Date.now(), complete = true } = {}) {
   const state = validState(previous);
   const nowMs = Number.isFinite(now) ? now : Number.NaN;

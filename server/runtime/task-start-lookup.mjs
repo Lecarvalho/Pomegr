@@ -3,29 +3,9 @@ import { readTaskCheckFacts, resolveTaskCheckFacts, resolveTaskSession, resolveT
 import { createTaskIssues } from "./task-issues.mjs";
 import { comparePluginVersions } from "../../shared/repository-plugin-state.mjs";
 
-/** The first Pomegr plugin version with the session-start bind hook and the task tools; both provider plugins share it. */
 export const MINIMUM_TASK_PLUGIN_VERSION = "0.9.0";
 
-/**
- * Committed-fact lookups for the task control plane. `resolveTaskStart(repositoryId, provider)` returns the recognized
- * repository root (monitor-private) and whether the committed plugin-setup observation proves the Pomegr
- * plugin for that provider (`claude` or `codex`) is installed, enabled, and at least `MINIMUM_TASK_PLUGIN_VERSION`.
- * An unknown or loading observation, or an unknown or unreadable version, is never proof.
- * `resolveTaskSessionFacts(sessionRef)` returns `{ title, state, observedModel }` for a linked session from the
- * committed catalog row and public state, or null.
- * `resolveTaskCheckFacts(sessionRef)` returns the repository facts the complete-when checks judge for a bound session,
- * from its committed public state, each null when unknown; the board's reading uses it.
- * `readTaskCheckFacts(sessionRef)` resolves the same facts for a `complete_task` report, from one read of the bound
- * session's repository and pull requests made at that moment (`readRepositoryNow`). It is the only lookup that waits
- * for Git or GitHub, and only the agent's report calls it.
- * `resolveRunModels()` returns the last committed Codex client-catalog models `{ id, label }` for the task
- * panel's Run on list, from the catalog the release scheduler already committed in memory.
- * `resolveTaskGateFacts(repositoryId)` returns the start-gate facts `{ usage, providerStatus, treeClean }` from the
- * committed usage response (`gateSources.usageLimits()`), the committed public provider status
- * (`gateSources.providerStatus()`), and the working-tree observation of the recognized root, which refreshes off the
- * request path (task-gate-facts.mjs). Without `gateSources` every fact but the tree is unknown.
- * No provider acquisition and no synchronous Git call happen here.
- */
+// Committed-fact lookups for the task control plane.
 export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null, gateSources = null, issueReader = undefined, readRepositoryNow = null }) {
   const tree = createTaskTreeObservation({
     repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null,
@@ -34,7 +14,7 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
     ...(gateSources?.now ? { now: gateSources.now } : {}),
   });
   return {
-    // GitHub issues for the task board: explicit desktop actions only, never a GET. The root stays inside the composition.
+    // GitHub issues for the task board: explicit desktop actions only, never a GET.
     taskIssues: createTaskIssues({ repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null, reader: issueReader }),
     resolveTaskGateFacts: createTaskGateFacts({
       usageLimits: gateSources?.usageLimits, providerStatus: gateSources?.providerStatus, tree, ...(gateSources?.now ? { now: gateSources.now } : {}),

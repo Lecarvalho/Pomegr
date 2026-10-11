@@ -1,8 +1,7 @@
 import { DEFAULT_TASK_COLUMN_ROLES, createEmptyTaskBoard, type Task, type TaskBoard, type TaskGates, type TaskQueue } from "../../../shared/task-contract";
 import type { TaskBoardEdits } from "../tasks/use-task-board-edits";
 
-// Synthetic task-board data shared by the task samples on /design-system. Every value is invented: no repository, path,
-// session, or task text comes from the app. Times in the far future never pass, so the samples read the same on any day.
+// Synthetic task-board data shared by the task samples on /design-system.
 
 export const SAMPLE_REPOSITORY_ID = "repo-0123456789abcdef01234567";
 export const SAMPLE_FEATURE_ID = "feature-upload";
@@ -25,7 +24,6 @@ export function sampleTask(id: string, text: string, overrides: Partial<Task> = 
 const session = (id: string, title: string, state: string, observedModel: string | null = "model-large") => ({ id: `claude:design-system-${id}`, title, state, observedModel });
 const passed = [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: true }];
 
-// One task per card state. T-2 is the one that changes with the queue: its agent reported it cannot continue while the queue is blocked.
 export const T1_DONE = sampleTask("T-1", "Add retry to the upload client", {
   columnId: "col-done", featureId: SAMPLE_FEATURE_ID, step: 1, state: "done", run: { provider: "claude", model: "model-large", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, session: session("t1", "Upload retry", "closed"), report: { at: CREATED, results: passed, blockReason: null },
@@ -37,7 +35,6 @@ export const T2_REVIEW = { ...T2_QUEUED, columnId: "col-review", state: "needs_r
   report: { at: CREATED, results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }], blockReason: null } } satisfies Task;
 export const T2_STALLED = { ...T2_REVIEW, state: "stalled", report: null } satisfies Task;
 export const T2_BLOCKED = { ...T2_REVIEW, state: "blocked", report: { at: CREATED, results: [], blockReason: "The upload service rejects every retry in the test environment." } } satisfies Task;
-/** A blocked card stays where its session put it: In progress. */
 const T2_BLOCKED_IN_PROGRESS = { ...T2_BLOCKED, columnId: "col-progress" } satisfies Task;
 export const T3_QUEUED = sampleTask("T-3", "Show the retry count in the upload log", {
   featureId: SAMPLE_FEATURE_ID, step: 2, state: "queued", run: { provider: "codex", model: "model-code", effort: "medium" }, completeWhen: { checks: ["pr_open"], own: null },
@@ -50,7 +47,6 @@ export const T6_WORKING = sampleTask("T-6", "Check the cache headers", {
 });
 export const T7_SCHEDULED = sampleTask("T-7", "Rotate the sample logs nightly", { state: "scheduled", scheduledAt: SAMPLE_FUTURE, run: { provider: "codex", model: null, effort: null } });
 export const T8_IDLE = sampleTask("T-8", "Rename the config key", { columnId: "col-backlog" });
-/** A task promoted from GitHub issue 142: its card carries the #N chip after the task ID. */
 export const T9_ISSUE = sampleTask("T-10", "Retry a failed upload from the queue", { columnId: "col-backlog", source: { kind: "github_issue", number: 142 } });
 
 export const GATES_HELD: TaskGates = {
@@ -77,14 +73,11 @@ export const QUEUE_IDLE: TaskQueue = { status: "idle", blockedBy: null, pauseRea
 const base: Omit<TaskBoard, "tasks" | "queue"> = { version: 1, readiness: "ready", repositoryId: SAMPLE_REPOSITORY_ID, columns: COLUMNS, features: FEATURES, runModels: { codex: [] } };
 const place = (tasks: Task[]) => tasks.map((task, index) => ({ ...task, position: index }));
 
-/** The queue is on and the next task waits on a gate. */
 export const BOARD_RUNNING: TaskBoard = { ...base, queue: QUEUE_RUNNING, tasks: place([T1_DONE, T2_QUEUED, T3_QUEUED, T4_QUEUED, T5_IDLE, T6_WORKING, T7_SCHEDULED, T8_IDLE]) };
-/** A task's agent reported it cannot continue, so the queue is blocked on it. */
 export const BOARD_BLOCKED: TaskBoard = { ...BOARD_RUNNING, queue: QUEUE_BLOCKED, tasks: place([T1_DONE, T2_BLOCKED_IN_PROGRESS, T3_QUEUED, T4_QUEUED, T5_IDLE, T6_WORKING, T7_SCHEDULED, T8_IDLE]) };
 export const BOARD_PAUSED: TaskBoard = { ...BOARD_RUNNING, queue: QUEUE_PAUSED };
 export const BOARD_EMPTY: TaskBoard = { ...createEmptyTaskBoard(SAMPLE_REPOSITORY_ID, "ready"), columns: COLUMNS };
 
-/** The desktop app's board edits with every action answered "no": the controls draw exactly as in the app and change nothing. */
 export function inertEdits(board: TaskBoard): TaskBoardEdits {
   const none = async () => false;
   return {

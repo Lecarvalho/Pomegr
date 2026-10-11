@@ -1,6 +1,5 @@
 import { useRef, type MouseEvent, type PointerEvent } from "react";
 
-/** Drag the visible request window while leaving vertical pan and pinch zoom native. */
 export function useRequestChartDrag(enabled: boolean, start: number, total: number, size: number, onMove: (start: number) => void) {
   const gesture = useRef<{ id: number; x: number; y: number; start: number; slot: number; dragging: boolean; last: number } | null>(null);
   const suppressClick = useRef(false);
@@ -15,7 +14,6 @@ export function useRequestChartDrag(enabled: boolean, start: number, total: numb
       suppressClick.current = false;
       const width = event.currentTarget.getBoundingClientRect().width;
       if (width <= 0) return;
-      // Match the phone SVG's plot width and gap, excluding its value axis.
       gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY, start, slot: width / 334 * (330 - 34 + 2.8) / size, dragging: false, last: start };
     },
     onPointerMove: (event: PointerEvent<SVGSVGElement>) => {

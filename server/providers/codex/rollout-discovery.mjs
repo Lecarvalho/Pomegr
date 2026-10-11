@@ -31,10 +31,8 @@ function defaultYield() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-/**
- * Private, bounded rollout-header discovery. Returned metadata retains rollout paths for
- * the provider only; callers must not project it into browser-facing state.
- */
+// Private, bounded rollout-header discovery. Returned metadata retains rollout paths for
+// the provider only; callers must not project it into browser-facing state.
 export function createCodexRolloutDiscovery(options = {}) {
   const maximumFiles = boundedInteger(options.maximumFiles, DEFAULT_MAXIMUM_FILES, DEFAULT_MAXIMUM_FILES);
   const hintLimit = boundedInteger(options.hintLimit, Math.min(DEFAULT_HINT_LIMIT, maximumFiles), maximumFiles);
@@ -109,11 +107,6 @@ export function createCodexRolloutDiscovery(options = {}) {
     return null;
   }
 
-  /** Resolve a candidate rollout path through the same filter `notice` and `inspect`
-   * already apply: a rollout-*.jsonl name and realpath containment in a configured root.
-   * Returns the trusted, realpath-resolved file, or null when the name, every configured
-   * root, or an escaping realpath (a symlink or junction resolving outside the root)
-   * rejects it. Reads no header. */
   async function trustedRolloutPath(file) {
     if (closed || typeof file !== "string" || !file.trim()) return null;
     const candidate = path.resolve(file);
@@ -174,8 +167,6 @@ export function createCodexRolloutDiscovery(options = {}) {
       return;
     }
     if (closed) return;
-    // A changed file can be mid-write. Until a complete replacement validates, retain the
-    // prior complete header instead of publishing an empty or partial source.
     if (!metadata || metadata.rolloutFile !== trusted.file) return;
     let confirmed;
     try {
@@ -358,16 +349,6 @@ export function createCodexRolloutDiscovery(options = {}) {
   };
 }
 
-/**
- * Filter a new rollout file notification through the discovery's own trusted-root check
- * (a rollout-*.jsonl name and realpath containment in a configured root; see
- * `trustedRolloutPath`) and, only when it passes, notice it in the shared source ledger so
- * a later family resolution can locate the session without a directory walk. This adds no
- * second filter: a rejected name, an escaping realpath, or a path outside every configured
- * root is rejected exactly as `notice`/`trustedRolloutPath` already decide, and never
- * reaches the ledger. The existing hint queue is untouched. Returns the trusted file, or
- * null when rejected.
- */
 export async function noticeCodexRolloutSource(discovery, ledger, file) {
   discovery?.notice(file);
   let trusted = null;

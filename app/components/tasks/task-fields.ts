@@ -3,8 +3,6 @@ import type { FeatureInput } from "./task-features";
 import type { ProviderSource } from "../../../shared/monitor-contract";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
 
-// Pure helpers behind the Run on, Effort and Complete when fields shared by the New task and Task modal forms.
-
 export const PROVIDER_LABELS: Record<TaskProvider, ProviderSource> = { claude: "Claude Code", codex: "Codex" };
 export const EFFORT_LABELS: Record<TaskEffort, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Xhigh" };
 export const CHECK_LABELS: Record<TaskCheck, string> = {
@@ -14,7 +12,6 @@ export const CHECK_LABELS: Record<TaskCheck, string> = {
   pr_merged: "Pull request merged",
   ci_passed: "CI passed",
 };
-/** The short check copy of the task modal's Complete when row (design contract G148-G149). Cards and the session view keep CHECK_LABELS. */
 export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
   pr_open: "PR open",
   tree_clean: "Tree clean",
@@ -25,17 +22,14 @@ export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
 
 export const REMOTE_CONTROL_LABEL = "Remote Control";
 
-/** Planned model, effort and Remote Control, for example "opus · high · Remote Control"; each only when set. */
 export function plannedRunText(run: TaskRun) {
   return [run.model, run.effort && EFFORT_LABELS[run.effort].toLowerCase(), run.remoteControl === true && REMOTE_CONTROL_LABEL].filter(Boolean).join(" · ");
 }
 
-/** Remote Control is a Claude Code feature: a task with no provider starts Claude Code, a Codex task has none. */
 export function canRemoteControl(run: TaskRun): boolean {
   return run.provider !== "codex";
 }
 
-/** The run with Remote Control on or off. Off drops the key, so an untouched run stays as it was. */
 export function withRemoteControl(run: TaskRun, on: boolean): TaskRun {
   const { provider, model, effort } = run;
   return on && canRemoteControl(run) ? { provider, model, effort, remoteControl: true } : { provider, model, effort };
@@ -43,14 +37,12 @@ export function withRemoteControl(run: TaskRun, on: boolean): TaskRun {
 
 export const EMPTY_RUN: TaskRun = { provider: null, model: null, effort: null };
 
-/** Models the app has observed per provider. A provider with none offers only its Default model. */
 export type TaskModelOptions = Record<TaskProvider, readonly string[]>;
 export const NO_MODELS: TaskModelOptions = { claude: [], codex: [] };
 
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:+[\]-]*$/u;
 const UNSET = "";
 
-/** A model identifier split into its family (the words) and its version (the numbers), for example `claude-opus` and 4.1. */
 function modelVersion(model: string): { family: string; version: number[]; date: number } {
   const words: string[] = [];
   const version: number[] = [];
@@ -71,10 +63,6 @@ function isNewerModel(candidate: ReturnType<typeof modelVersion>, current: Retur
   return candidate.date > current.date;
 }
 
-/**
- * The newest observed model of each family, so `claude-opus-4-1` hides `claude-opus-4`. A heuristic on the
- * identifier's numbers: a variant such as `[1m]` or `-mini` is its own family, and nothing is invented.
- */
 export function latestModels(models: Iterable<string>): string[] {
   const newest = new Map<string, { model: string; parsed: ReturnType<typeof modelVersion> }>();
   for (const model of models) {
@@ -85,11 +73,7 @@ export function latestModels(models: Iterable<string>): string[] {
   return [...newest.values()].map((entry) => entry.model).sort();
 }
 
-/**
- * Run on models per provider. Claude offers the newest valid identifier of each family seen in agent runs.
- * Codex offers only the monitor's committed client catalog, in catalog order (never observed runs, which include
- * internal identifiers, and never account entitlement). Nothing is invented.
- */
+/** Run on models per provider. */
 export function modelsByProvider(
   runs: ReadonlyArray<{ source: string; model: string | null }>,
   codexCatalog: ReadonlyArray<{ id: string }> = [],
@@ -102,7 +86,6 @@ export function modelsByProvider(
   return { claude: latestModels(claude), codex: [...new Set(codex)] };
 }
 
-/** `provider:default` is the provider's default model; `provider:model:<id>` a named model. A model needs a provider. */
 export function runSelectValue(run: TaskRun): string {
   if (!run.provider) return UNSET;
   return run.model === null ? `${run.provider}:default` : `${run.provider}:model:${run.model}`;
@@ -114,10 +97,6 @@ export function runFromSelectValue(value: string, effort: TaskEffort | null): Ta
   return { provider: provider as TaskProvider, model: kind === "model" ? rest.join(":") : null, effort };
 }
 
-/**
- * "Not set", then one group per provider holding its models and its Default model.
- * A stored model that is no longer observed stays selectable so the closed control still names it.
- */
 export function runSelectOptions(models: TaskModelOptions, run: TaskRun): CommandSelectOption[] {
   const options: CommandSelectOption[] = [{ value: UNSET, label: "Not set" }];
   for (const provider of TASK_PROVIDERS) {
@@ -138,18 +117,15 @@ export function isEffort(value: string): value is TaskEffort {
   return (TASK_EFFORTS as readonly string[]).includes(value);
 }
 
-/** Editable form of `completeWhen`: a non-blank own-condition text is the own condition, a blank one is none. */
 export type CompleteWhenDraft = { checks: readonly TaskCheck[]; ownText: string };
 export type CompleteWhenValue = { checks: TaskCheck[]; own: string | null };
 
-/** A new task starts with Pull request open and Working tree clean checked. */
 export const DEFAULT_COMPLETE_WHEN: CompleteWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "" };
 
 export function completeWhenFromTask(completeWhen: Task["completeWhen"]): CompleteWhenDraft {
   return { checks: [...completeWhen.checks], ownText: completeWhen.own ?? "" };
 }
 
-/** Checks in catalog order; the own condition is the trimmed text, or null while it is blank. */
 export function toCompleteWhen(draft: CompleteWhenDraft): CompleteWhenValue {
   const own = draft.ownText.trim().slice(0, TASK_BOUNDS.ownConditionLength);
   return { checks: TASK_CHECKS.filter((check) => draft.checks.includes(check)), own: own || null };
@@ -159,13 +135,11 @@ export function withCheck(draft: CompleteWhenDraft, check: TaskCheck, on: boolea
   return { ...draft, checks: on ? [...draft.checks.filter((existing) => existing !== check), check] : draft.checks.filter((existing) => existing !== check) };
 }
 
-/** Create payload: `run`, `completeWhen` and the feature keys are omitted when nothing is set. */
 export function createPayload(text: string, run: TaskRun, draft: CompleteWhenDraft, feature?: FeatureInput) {
   const completeWhen = toCompleteWhen(draft);
   return { text, ...(isRunSet(run) && { run }), ...((completeWhen.checks.length > 0 || completeWhen.own) && { completeWhen }), ...feature };
 }
 
-/** Card line: what is checked, ending with the agent's report. Null when no condition is set. */
 export function completeWhenSummary(completeWhen: Task["completeWhen"]): string | null {
   const parts = [
     completeWhen.checks.length > 0 && `${completeWhen.checks.length} ${completeWhen.checks.length === 1 ? "check" : "checks"}`,
@@ -174,11 +148,6 @@ export function completeWhenSummary(completeWhen: Task["completeWhen"]): string 
   return parts.length === 0 ? null : `Complete when: ${[...parts, "agent report"].join(" + ")}`;
 }
 
-/**
- * True only when a model is planned and the latest recorded request used another one. Equal ignoring case, or one
- * containing the other (a planned family alias such as `opus` against `claude-opus-4-1`), is the same model.
- * With Default model planned (null) there is nothing to compare.
- */
 export function observedModelDiffers(planned: string | null, observed: string | null | undefined): boolean {
   if (!planned || !observed) return false;
   const left = planned.toLowerCase();

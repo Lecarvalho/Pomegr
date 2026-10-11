@@ -1,4 +1,4 @@
-/** These are public service identities, never account or session metadata. */
+// These are public service identities, never account or session metadata.
 export const PROVIDER_STATUS_STALE_MS = 15 * 60_000;
 
 /** @type {ReadonlyArray<Readonly<{provider: import('./monitor-contract').ProviderId, source: import('./monitor-contract').ProviderSource, statusPageUrl: string}>>} */

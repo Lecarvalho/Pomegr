@@ -6,12 +6,6 @@ import { TASK_ID_PATTERN, type TaskBoard } from "../../../shared/task-contract";
 import { dropPosition, isNoopMove, leavesReady } from "./task-board-model";
 import type { TaskMove } from "./task-desktop";
 
-// Native HTML drag and drop for cards (design contract D86, D442, D443). The payload is the plain-text task ID with
-// effect move. Dropping on a column appends the card to it; dropping on a card places it before that card; dropping a
-// card on itself changes nothing. The column under the pointer takes the raised fill while a card is over it or any
-// card in it, and loses it when the pointer leaves, the card drops, or the drag ends. A card that waits in the queue
-// stays in Ready: no other column offers itself as its drop target, and a drop there sends nothing.
-
 export type ColumnDropHandlers = {
   onDragOver(event: DragEvent<HTMLElement>): void;
   onDragLeave(event: DragEvent<HTMLElement>): void;
@@ -24,8 +18,7 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void) 
 
   const finish = useCallback(() => { dragged.current = null; setOverColumn(null); }, []);
 
-  // Only a drag this board started is accepted: a column offers itself as a drop target only then, so text or files
-  // dragged in from elsewhere never move a card.
+  // Only a drag this board started is accepted.
   const take = () => {
     const id = dragged.current;
     finish();

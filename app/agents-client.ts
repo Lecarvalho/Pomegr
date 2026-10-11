@@ -61,7 +61,6 @@ export function normalizeAgentsSnapshot(input: unknown): AgentsAnalyticsSnapshot
   return result.success ? result.data : null;
 }
 
-/** One serialized local-cache polling lane per selected filter set. */
 export class AgentsStore {
   private state: AgentsClientState = EMPTY_STATE;
   private listeners = new Set<() => void>();

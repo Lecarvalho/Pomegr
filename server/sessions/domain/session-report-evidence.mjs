@@ -4,7 +4,6 @@ import { normalizedRequestEvidence, requestSnapshotFromEvidence } from "../../no
 const LIMITS = Object.freeze({ refillTransitions: 100, contextBoundaries: 100 });
 
 // Exact private observation identity, including its versioned measurements.
-// These keys never enter report evidence or browser state.
 function requestIdentity(snapshot) {
   return JSON.stringify([
     snapshot.actorId, snapshot.dedupeId, snapshot.timestamp,
@@ -20,10 +19,7 @@ function reportRequestSnapshot(request) {
   return reportRequest;
 }
 
-/**
- * D Derivation only: select bounded public report evidence from committed
- * normalized observations. Never publish the private cache classifier result.
- */
+/** D Derivation only: select bounded public report evidence from committed normalized observations. */
 export function buildSessionReportEvidence({
   sessionId, agents, usageSnapshots, compactions, cacheEvidence, capabilities,
 }) {

@@ -12,7 +12,7 @@ const finite = (value) => Number.isFinite(value) && value >= 0 && value <= Numbe
 const identifier = (value) => Number.isSafeInteger(value) && value > 0;
 const timestamp = (value) => typeof value === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(value) && Number.isFinite(Date.parse(value));
 
-/** Rebuild the fixed diagnostic vocabulary before writing or reporting a log record. */
+// Rebuild the fixed diagnostic vocabulary before writing or reporting a log record.
 export function normalizePipelineLogRecord(value) {
   if (!value || value.version !== 1 || !timestamp(value.at)
     || typeof value.run !== "string" || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(value.run)) return null;
@@ -29,9 +29,6 @@ export function normalizePipelineLogRecord(value) {
       if (!stages.has(value.stage) || !domains.has(value.domain) || !finite(value.startMs)
         || !identifier(value.lane) || value.lane > 1_024 || !optionalIds()) return null;
       Object.assign(result, { stage: value.stage, domain: value.domain, startMs: value.startMs, lane: value.lane });
-      // The observer's actual provider id and its fixed priority-lane name (distinct from
-      // the numeric `lane` above, which is a trace visualization slot). Both are optional:
-      // a record with neither stays unattributed, e.g. legacy records or lane-less stages.
       if (value.provider !== undefined) { if (!providers.has(value.provider)) return null; result.provider = value.provider; }
       if (value.priorityLane !== undefined) { if (!priorityLanes.has(value.priorityLane)) return null; result.priorityLane = value.priorityLane; }
       if (value.kind === "span") {

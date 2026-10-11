@@ -1,7 +1,6 @@
 import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
 
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
-// action list is mirrored here; tests/server/tasks/task-actions.test.mjs pins it to `TASK_ACTIONS` in task-record.mjs.
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
@@ -16,8 +15,7 @@ const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
 const START_STATUS = Object.freeze({
   invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, gate_held: 409, tree_dirty: 409, unsupported_provider: 422, unavailable: 503,
 });
-// Queue actions answer through their own handlers too. `queue-next` takes an empty body and answers the tasks the running
-// queues start now; `queue-pause` takes the usual envelope and records that a start did not succeed. Neither carries a board.
+// Queue actions answer through their own handlers too.
 const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
 const QUEUE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const QUEUE_START_LIMIT = 16;
@@ -25,7 +23,6 @@ const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const RUN_MODEL_LIMIT = 64;
-// The start gates, mirrored like the action list; tests/server/tasks/task-gates-serving.test.mjs pins them to task-gates.mjs.
 export const GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
 export const GATE_REASONS = Object.freeze([
   "previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
@@ -47,11 +44,6 @@ function emptyBoard(readiness, repositoryId) {
   };
 }
 
-/**
- * The Run on list: the last committed Codex client catalog, at most 64 distinct rows with a validated identifier
- * and a validated one-line label (or null). A lookup that is missing or throws yields an empty list.
- * It is a client catalog, never account entitlement.
- */
 export function projectRunModels(lookup) {
   const codex = [];
   try {
@@ -69,11 +61,6 @@ export function projectRunModels(lookup) {
 
 const gatePercent = (value) => value === null || (Number.isInteger(value) && value >= 0 && value <= 100);
 
-/**
- * The queue's start gates, rebuilt field by field: fixed statuses, whole percentages, the threshold, and the next
- * task with its fixed reasons. One value outside the contract drops the whole block, so the board says nothing
- * about the gates instead of something partial.
- */
 export function projectGates(gates) {
   if (!isPlainObject(gates) || !GATE_THRESHOLDS.includes(gates.threshold) || !GATE_TREE_STATES.includes(gates.workingTree)
     || !isPlainObject(gates.usage) || !isPlainObject(gates.providerStatus)) return undefined;
@@ -98,7 +85,6 @@ export function projectGates(gates) {
   return { threshold: gates.threshold, usage, providerStatus, workingTree: gates.workingTree, next };
 }
 
-/** The queue's own start and stop times: two instants or nulls, and nothing when neither is set or one is not an instant. */
 export function projectSchedule(schedule) {
   if (!isPlainObject(schedule)) return undefined;
   const instant = (value) => value === null || (typeof value === "string" && INSTANT_PATTERN.test(value) && Number.isFinite(Date.parse(value)));
@@ -106,7 +92,6 @@ export function projectSchedule(schedule) {
   return { startAt: schedule.startAt, stopAfter: schedule.stopAfter };
 }
 
-// A promoted task's source: the fixed kind and a positive issue number, else none.
 function projectSource(source) {
   return source !== null && typeof source === "object" && source.kind === "github_issue"
     && Number.isSafeInteger(source.number) && source.number >= 1 && source.number <= 999_999_999
@@ -116,7 +101,6 @@ function projectSource(source) {
 
 const projectTask = (task) => (task !== null && typeof task === "object" ? { ...task, source: projectSource(task.source) } : task);
 
-// The store validated every record; the route only pins the contract's top-level keys, the queue's keys, and the requested ID.
 function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
@@ -133,17 +117,6 @@ function projectBoard(repositoryId, board, runModels) {
   };
 }
 
-/**
- * Committed-store task board GET. `authorized` is the same-computer decision the request handler
- * shares with `GET /api/provider-folders`; a denied client learns nothing beyond `desktop_only`.
- * `runModels` reads the last committed Codex client catalog from memory, and `resolveSessionFacts(sessionId)`
- * reads a linked session's title, state, and model from committed facts in memory (task-board.mjs validates them).
- * `resolveGateFacts(repositoryId)` reads the start-gate facts the same way (task-gates.mjs validates them); it may
- * queue an asynchronous refresh of the working-tree observation, never a synchronous read.
- * `resolveCheckFacts(sessionId)` reads the facts the complete-when checks judge, from committed memory only, for the
- * reading a waiting task carries (task-board.mjs).
- * The route never acquires provider evidence and has no write path.
- */
 export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "GET") {
@@ -185,7 +158,7 @@ export function writeActionResult(response, status, body, { close = false } = {}
 
 const rejected = (error) => ({ ok: false, error });
 
-/** Reads the request body up to `limit` bytes. Resolves null when the body is larger, without buffering the rest. */
+// Reads the request body up to `limit` bytes.
 export function readLimitedBody(request, limit) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -217,10 +190,6 @@ export function isPlainObject(value) {
 }
 
 // `start-plan` answers `{ ok: true, plan }` and `start-abort` `{ ok: true }`; a refusal is a fixed code only.
-// `resolveStart(repositoryId, provider)` supplies committed facts `{ root, pluginReady }` and is never called for a refusal
-// that precedes it. A start the gates hold answers the fixed `gate_held`, never which gate or its facts; the one
-// exception is the fixed `tree_dirty`, for a start held only by uncommitted changes in the repository root.
-// Neither answer ever carries the stored digest or an echo of task content.
 function serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId, payload }) {
   try {
     const planning = action === "start-plan";
@@ -243,8 +212,6 @@ function serveStartAction({ response, taskStore, resolveStart, resolveGateFacts,
   }
 }
 
-// `queue-next` answers only `{ ok: true, starts }`, each start a repository ID and a task ID re-validated here, at most 16.
-// It starts nothing and carries no board and no task content. A start the gates hold is simply not in the answer.
 function serveQueueNext({ response, taskStore, resolveGateFacts, body }) {
   try {
     if (!isPlainObject(body) || Object.keys(body).length > 0) {
@@ -268,7 +235,6 @@ function serveQueueNext({ response, taskStore, resolveGateFacts, body }) {
   }
 }
 
-// `queue-pause`: the store validates the payload and the task; the answer is `{ ok: true }` or a fixed code only.
 function serveQueuePause({ response, taskStore, repositoryId, payload }) {
   try {
     const result = typeof taskStore?.pauseQueue === "function" ? taskStore.pauseQueue(repositoryId, payload) : null;
@@ -283,12 +249,7 @@ function serveQueuePause({ response, taskStore, repositoryId, payload }) {
   }
 }
 
-/**
- * `POST /internal/tasks/<action>`. The request handler has already applied the private-action gate
- * (desktop token, loopback host, no Origin, POST), so a refused request never reaches this function
- * and never writes. The body is `{ repositoryId, payload }`; the answer is `{ ok: true, board }` or
- * `{ ok: false, error }`, never an echo of the input. The monitor validates the whole record.
- */
+// `POST /internal/tasks/<action>`.
 export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action)) {
@@ -351,7 +312,6 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     }
     const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts });
     if (result?.ok === true) {
-      // Only `create` answers the task it made, so the caller can name it (for example to open its GitHub issue).
       const taskId = action === "create" && typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId) ? result.taskId : null;
       writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board), ...(taskId === null ? {} : { taskId }) });
       return;
@@ -380,9 +340,6 @@ function writeAgentAddResult(response, reason, taskId = null, { close = false } 
   response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true, taskId } : { schemaVersion: 1, ok: false, reason }));
 }
 
-// The shared prelude of the agent write routes: a JSON content type, no query or chunked body, and a body within
-// `limit` bytes that parses. `failed` means the connection is closed after an `invalid` answer; a body that does
-// not parse is `null`, which each route refuses as `invalid` without closing.
 async function readAgentJson(request, requestUrl, limit) {
   const mediaType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
   if (requestUrl.search || mediaType !== "application/json" || request.headers["transfer-encoding"] !== undefined
@@ -397,8 +354,6 @@ async function readAgentJson(request, requestUrl, limit) {
   try { return { body: JSON.parse(raw.toString("utf8")) }; } catch { return { body: null }; }
 }
 
-// The repository whose board holds the task this session was started for, or null when the session is not
-// linked, the store cannot say, or the stored identity is not a repository ID.
 function linkedBoardRepositoryId(taskStore, sessionRef) {
   try {
     const repositoryId = typeof taskStore?.sessionTasks === "function" ? taskStore.sessionTasks([sessionRef])?.get(sessionRef)?.repositoryId : null;
@@ -408,11 +363,6 @@ function linkedBoardRepositoryId(taskStore, sessionRef) {
   }
 }
 
-// The board an agent write of this session acts on, as `{ repositoryId }`, or the fixed `{ reason }` that names why
-// there is none. A session started for a task acts on the board that holds that task, even when its committed
-// repository identity is missing or another one (a task worktree whose folder is gone, for example). The task
-// store's link wins; it is read from the store alone, and a store that cannot answer leaves the committed identity
-// in charge.
 function agentBoardRepository(taskStore, resolveSession, sessionRef) {
   const linkedRepositoryId = linkedBoardRepositoryId(taskStore, sessionRef);
   let session = null;
@@ -426,15 +376,7 @@ function agentBoardRepository(taskStore, resolveSession, sessionRef) {
   return typeof repositoryId === "string" && REPOSITORY_ID_PATTERN.test(repositoryId) ? { repositoryId } : { reason: "repository_unavailable" };
 }
 
-/**
- * `POST /api/agent/v1/tasks/add`, the first agent write. The request handler has already applied the
- * agent-query gate (loopback host, no Origin, agent token); this route adds the content-type check,
- * the strict body, and the bound session's repository from `resolveSession` (committed facts only).
- * The answer carries the new task ID and never an echo of task content. The store validates the record.
- * The add is safe to repeat for a few minutes: the same session sending the same text and feature again is answered
- * the task it already added (the store's memory, task-recent-adds.mjs), because an agent whose first answer was lost
- * asks again.
- */
+// `POST /api/agent/v1/tasks/add`, the first agent write.
 export async function serveAgentTaskAddRoute({ request, response, requestUrl, taskStore, resolveSession }) {
   const read = await readAgentJson(request, requestUrl, TASK_PAYLOAD_LIMIT_BYTES);
   if (read.failed) {
@@ -479,7 +421,6 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       }
       payload.featureId = match.id;
     }
-    // The store records the adding session beside the task, which is what lets that session remove it later.
     const result = taskStore.apply(repositoryId, "agent_create", { sessionId: body.sessionRef, task: payload });
     if (result?.ok !== true) {
       const reason = result?.error === "invalid" ? "invalid" : result?.error === "limit" ? "limit"
@@ -487,13 +428,10 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       writeAgentAddResult(response, reason);
       return;
     }
-    // The store names the task: the one it just made, or the one this session already added with the same text and
-    // feature a moment ago, so a repeated call answers the same ID and adds nothing.
     if (typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId)) {
       writeAgentAddResult(response, null, result.taskId);
       return;
     }
-    // A store that names none: task numbers only grow, so the newest task of the committed board is the one just created.
     const numbers = projectBoard(repositoryId, result.board).tasks.map((task) => ({ id: task.id, number: Number(String(task.id).slice(2)) }));
     const newest = numbers.reduce((best, task) => (best === null || task.number > best.number ? task : best), null);
     if (!newest) {
@@ -507,7 +445,6 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
 }
 
 export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
-// A session reference (at most 135 characters) and a task ID (at most 11) fit well inside this.
 const AGENT_REMOVE_BODY_LIMIT_BYTES = 1024;
 const AGENT_REMOVE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const AGENT_TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
@@ -520,15 +457,7 @@ function writeAgentRemoveResult(response, reason, { close = false } = {}) {
   response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true } : { schemaVersion: 1, ok: false, reason }));
 }
 
-/**
- * `POST /api/agent/v1/tasks/remove`: the bound session deletes a task it added itself. The request handler has
- * already applied the agent-query gate. The body is `{ sessionRef, taskId }` and nothing else; the board is the one
- * `add_task` writes to for this session, so no repository or path is named. The store removes the task only when this
- * session added it and it still waits (Not queued, Queued, or Scheduled; no linked session, start in flight, or
- * report). Every refusal after a well-formed request is the same `not_found`: a task that does not exist, one the user
- * or another session added, one that started, and a session with no board. The answer never carries a task ID, task
- * content, a state, or who added a task.
- */
+// `POST /api/agent/v1/tasks/remove`: the bound session deletes a task it added itself.
 export async function serveAgentTaskRemoveRoute({ request, response, requestUrl, taskStore, resolveSession }) {
   const read = await readAgentJson(request, requestUrl, AGENT_REMOVE_BODY_LIMIT_BYTES);
   if (read.failed) {
@@ -562,7 +491,6 @@ export async function serveAgentTaskRemoveRoute({ request, response, requestUrl,
 }
 
 export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
-// A token (at most 128 characters) and a session reference (at most 135) fit well inside this.
 const AGENT_BIND_BODY_LIMIT_BYTES = 1024;
 const AGENT_BIND_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 
@@ -574,13 +502,6 @@ function writeAgentBindResult(response, reason, { close = false } = {}) {
   response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true } : { schemaVersion: 1, ok: false, reason }));
 }
 
-/**
- * `POST /api/agent/v1/tasks/bind`: the started session reports its dispatch token and its normalized session ID,
- * and the store links the two once. The request handler has already applied the agent-query gate. The token is
- * the only authority, so the route does not look the session up, and every refusal after a well-formed request
- * (wrong or reused token, expired dispatch, task or session already linked) is the same `not_found`. The answer
- * never carries a task, repository, or any task content. The store validates the token and the session ID.
- */
 export async function serveAgentTaskBindRoute({ request, response, requestUrl, taskStore }) {
   const read = await readAgentJson(request, requestUrl, AGENT_BIND_BODY_LIMIT_BYTES);
   if (read.failed) {
@@ -609,7 +530,6 @@ export async function serveAgentTaskBindRoute({ request, response, requestUrl, t
 
 export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
-// A session reference (at most 135 characters) and a block reason (at most 200) fit well inside this.
 const AGENT_REPORT_BODY_LIMIT_BYTES = 2048;
 const AGENT_BLOCK_REASON_LIMIT = 200;
 const AGENT_REPORT_STATUS = Object.freeze({ invalid: 400, not_found: 404, already_reported: 409, unavailable: 503 });
@@ -630,19 +550,7 @@ function reportResults(results) {
     .map((result) => ({ check: result.check, passed: result.passed }));
 }
 
-/**
- * `POST /api/agent/v1/tasks/complete` and `/block`: the bound session reports on the task it was started for.
- * The request handler has already applied the agent-query gate. The body is `{ sessionRef }`, plus a one-line
- * `reason` for a block, or an optional one-line `attention` for a complete report (what the owner should look at;
- * the same 200-character bound); the session is the only input that names a task, so a session with no linked task is
- * `not_found`, and a task takes one report per dispatch (`already_reported`). On `complete` the store verifies
- * the checked conditions. For a task that can still be reported on and has a checked condition, the route first
- * awaits `readCheckFacts(sessionRef)`, one read of the bound session's repository and pull requests made now
- * (bounded by its own deadline), so the facts are not older than the agent's last command. Without that lookup, or
- * when it fails, the store judges `resolveCheckFacts(sessionRef)`, the committed facts in memory.
- * The answer carries the resulting state and, for `complete`, one `{ check, passed }` per checked condition;
- * never a task ID, task content, command output, or any repository fact.
- */
+// `POST /api/agent/v1/tasks/complete` and `/block`: the bound session reports on the task it was started for.
 export async function serveAgentTaskReportRoute({ request, response, requestUrl, taskStore, resolveCheckFacts = null, readCheckFacts = null }) {
   const blocking = requestUrl.pathname === AGENT_TASK_BLOCK_PATH;
   const read = await readAgentJson(request, requestUrl, AGENT_REPORT_BODY_LIMIT_BYTES);

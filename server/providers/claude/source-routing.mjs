@@ -2,16 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Build the adapter-private mapping from a Claude source notification to its root session.
- * When `options.ledger` is supplied, a notification for a top-level main transcript is also
- * noticed in the shared source ledger, mirroring Codex's `noticeCodexRolloutSource`: the
- * candidate must carry a `.jsonl` extension and its realpath must resolve inside the
- * projects root before it reaches the ledger (a rejected extension, an escaping realpath
- * from a symlink/junction, or a path outside the root never reaches it). This is a filter
- * only, not a second notion of "main transcript"; it reuses the same `isMainTranscript`
- * result the routing decision below already computes. The projects root's own realpath is
- * cached once resolved; a failed resolution is retried on the next notification. The ledger
- * receives the notified path itself, in the configured-root form discovery also uses.
  * @param {string} projectsRoot
  * @param {{registryRoot?: string, liveSessionIds?: () => string[], ledger?: object, fs?: {realpath: Function}}} [options]
  */
@@ -27,9 +17,6 @@ export function createClaudeSourceEventRouter(projectsRoot, options = {}) {
     try { projectsRootRealpath = await operations.realpath(projectsRoot); } catch { return null; }
     return projectsRootRealpath;
   }
-  /** Resolve a candidate main-transcript path through the same filter Codex's
-   * `trustedRolloutPath` applies: a `.jsonl` name and realpath containment in the projects
-   * root. Returns true when the candidate is trusted. Reads no transcript content. */
   async function trustedMainTranscriptPath(candidate) {
     if (path.extname(candidate).toLowerCase() !== ".jsonl") return false;
     const root = await resolvedProjectsRoot();

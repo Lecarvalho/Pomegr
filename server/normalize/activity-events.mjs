@@ -30,17 +30,6 @@ function safeFileChangePath(target, cwd, forbiddenRoots, validatePath) {
   return safePath && safePath.length <= MAX_FILE_CHANGE_PATH ? safePath : null;
 }
 
-/**
- * Map one tool call's raw {target, kind, previousTarget} candidates (absolute
- * or cwd-relative native spellings) to validated, repository-relative file-
- * change evidence rebased onto the session cwd. Anything outside cwd,
- * invalid, over-bound, or of an unrecognized kind is silently dropped;
- * absent evidence returns null so it never enters the checkpointed record.
- * `validatePath` defaults to the uncached `repositoryRelativePath`; a caller
- * revalidating the same cwd repeatedly on a hot path (one candidate per
- * successful tool call) may inject a cached validator with the identical
- * signature instead, one instance per provider.
- */
 export function boundedFileChanges(candidates, cwd, { forbiddenRoots = [], validatePath = repositoryRelativePath } = {}) {
   if (!Array.isArray(candidates) || typeof cwd !== "string" || !cwd) return null;
   const seen = new Set();
@@ -113,11 +102,7 @@ function medianDuration(events) {
   return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
 }
 
-/**
- * Build a public activity window plus aggregates over the full retained evidence. `kindCounts`
- * (work kind to count), when a provider counted its whole source, replaces the retained-call
- * counts so they do not shrink with a bounded read; medians still describe retained calls.
- */
+// Build a public activity window plus aggregates over the full retained evidence.
 export function buildActivityFeed({ events = [], toolCalls = [], messages = 0, failed = 0, kindCounts = null } = {}) {
   const normalizedTools = recentActivityEvents(toolCalls, 4_096);
   const byKind = new Map();

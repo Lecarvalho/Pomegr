@@ -10,9 +10,7 @@ export type AgentTreeRollup = {
 export type AgentTreeNode = {
   id: string;
   agent: Agent;
-  /** The recorded parent, retained even when the edge is invalid. */
   parentId: string | null;
-  /** A valid parent edge used by this forest, or null for an independent root. */
   canonicalParentId: string | null;
   children: AgentTreeNode[];
   depth: number;
@@ -36,7 +34,6 @@ export type AgentTreeContextOptions = {
 };
 
 export type AgentTreeVisualNode = Omit<AgentTreeNode, "children"> & {
-  /** Presentation-only ancestry: may point to a sibling cluster without altering recorded truth. */
   visualParentId: string | null;
   children: Array<AgentTreeVisualNode | AgentTreeCluster>;
   isCluster?: false;
@@ -50,7 +47,6 @@ export type AgentTreeCluster = {
   parentId: string | null;
   canonicalParentId: null;
   visualParentId: string | null;
-  /** Materialized presentation children; each child retains canonical parent truth. */
   children: Array<AgentTreeVisualNode | AgentTreeCluster>;
   depth: number;
   workflowId: string | null;
@@ -64,9 +60,7 @@ export type AgentTreeCluster = {
   clusterCount: number;
   clusterIds: string[];
   label: string;
-  /** Presentation grouping kind. Plain clusters leave this unset. */
   groupKind?: "workflow" | "phase" | "direct";
-  /** Workflow provenance for presentation groups; never changes canonical ancestry. */
   groupStatus?: "running" | "completed" | "unknown";
   groupPhaseCount?: number;
   groupWallTimeMs?: number | null;
@@ -138,7 +132,6 @@ function cycleMembers(agentsById: Map<string, Agent>) {
   return members;
 }
 
-/** Build the recorded spawn forest without inventing ancestry for bad parent links. */
 export function buildAgentForest(agents: Agent[], options: AgentTreeContextOptions = {}): AgentTreeForest {
   const orderedAgents = [...agents];
   const byAgentId = new Map(orderedAgents.map((agent) => [agent.id, agent]));
@@ -219,10 +212,6 @@ export function buildAgentForest(agents: Agent[], options: AgentTreeContextOptio
   return { roots: rootNodes, nodes, byId };
 }
 
-/**
- * Add presentation-only sibling clusters. `forest` and each clustered agent retain
- * their recorded parent relationship; clusters are never written back to the data model.
- */
 export function buildVisualForest(forest: AgentTreeForest, threshold = 4): AgentTreeVisualForest {
   const byId = new Map<string, AgentTreeVisualNode | AgentTreeCluster>();
   const nodes: Array<AgentTreeVisualNode | AgentTreeCluster> = [];
@@ -269,7 +258,6 @@ export function buildVisualForest(forest: AgentTreeForest, threshold = 4): Agent
         visualChildren.push(add(child, node.id));
       }
     }
-    // Clone the node so presentation-only clusters never mutate canonical ancestry.
     const visualNode: AgentTreeVisualNode = { ...node, visualParentId, children: visualChildren };
     byId.set(node.id, visualNode);
     nodes.push(visualNode);
@@ -279,11 +267,6 @@ export function buildVisualForest(forest: AgentTreeForest, threshold = 4): Agent
   return { roots, nodes, byId };
 }
 
-/**
- * Build a bounded, presentation-only view around one recorded agent.  The spawn
- * tree remains the source of truth: workflow fields stay on their original
- * agents and clusters only replace visual sibling sets.
- */
 export function focusVisualForest(forest: AgentTreeForest, focusId: string): AgentTreeVisualForest {
   const focus = forest.byId.get(focusId);
   if (!focus) return buildVisualForest(forest);
@@ -325,7 +308,6 @@ export function focusVisualForest(forest: AgentTreeForest, focusId: string): Age
       workflowPhaseId: null,
       directChildCount: items.length,
       descendantCount: items.reduce((count, item) => count + item.descendantCount + 1, 0),
-      // A cluster has no own agent; all of its rollup belongs to descendants.
       rollup,
       descendantRollup: rollup,
       isCycleRoot: false,
@@ -341,9 +323,6 @@ export function focusVisualForest(forest: AgentTreeForest, focusId: string): Age
 
   const visualChildrenFor = (node: AgentTreeNode): Array<AgentTreeVisualNode | AgentTreeCluster> => {
     if (!node.children.length) return [];
-    // The focused agent keeps every direct child visible. Keep small sibling
-    // sets intact for the original tree behavior; larger sets retain one
-    // neighboring sibling and put the remainder behind one expandable cluster.
     if (node.id === focus.id) return node.children.map((child) => add(child, node.id));
     if (node.id === focusParentId) {
       if (node.children.length <= 4) return node.children.map((child) => add(child, node.id));

@@ -1,11 +1,6 @@
-/**
- * Bounded desktop-only storage retention settings. Values are fixed enums; the
- * monitor applies saved values on its next start and prune cycle. Browser and LAN
- * clients read the effective values from `/api/storage` and never write them.
- */
+// Bounded desktop-only storage retention settings.
 export const STORAGE_SETTING_KEYS = ["retentionDays", "storeMaxMb"] as const;
 
-/** Desktop encoding: `0` means keep all (the monitor contract uses `null`). */
 export const STORAGE_RETENTION_DAY_SETTINGS = [30, 90, 180, 365, 0] as const;
 export const STORAGE_MAX_MB_SETTINGS = [250, 500, 1024, 2048] as const;
 
@@ -21,7 +16,6 @@ export type StorageSettingValues = {
 export type StorageSettingsState = {
   canSave: boolean;
   pendingChanges: boolean;
-  /** The draft shown in the controls: saved values plus uncommitted changes. */
   values: StorageSettingValues;
 };
 

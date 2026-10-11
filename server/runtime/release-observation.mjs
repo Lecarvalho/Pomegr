@@ -1,7 +1,6 @@
 import { createOfficialProviderReleaseReaders, createProviderModelReaders } from "../providers/index.mjs";
 
 const SIX_HOURS = 6 * 60 * 60_000;
-/** One low-priority, single-flight job; failures retain last committed facts. */
 export function createReleaseObservation({ readers = createOfficialProviderReleaseReaders(), accept, setTimer = setTimeout,
   clearTimer = clearTimeout, jitter = Math.random, initialDelayMs = 30_000,
   modelReaders = null, modelOptions = {}, acceptModels = () => {}, now = Date.now } = {}) {

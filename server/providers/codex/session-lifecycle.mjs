@@ -8,11 +8,7 @@ function isWaiting(thread) {
   return statusOf(thread) === "needs_input";
 }
 
-/**
- * Aggregate related Codex actors without treating missing evidence as idle.
- * Live includes unresolved recorded work as well as owner-backed presence.
- * Silence never closes a validated turn, and a child can keep its root working.
- */
+// Aggregate related Codex actors without treating missing evidence as idle.
 export function aggregateCodexSessionLifecycle(rootThread, relatedThreads = []) {
   const related = Array.isArray(relatedThreads) ? relatedThreads : [];
   const root = rootThread || null;
@@ -33,6 +29,5 @@ export function aggregateCodexSessionLifecycle(rootThread, relatedThreads = []) 
   if (allPotentiallyLiveInactive && INACTIVE_STATUSES.has(rootStatus)) {
     return { isLive, needsInput: false, activityStatus: rootStatus === "stopped" ? "stopped" : open ? "open" : "idle" };
   }
-  // Open describes confirmed presence independently of recorded execution.
   return { isLive, needsInput: false, activityStatus: open ? "open" : "unknown" };
 }

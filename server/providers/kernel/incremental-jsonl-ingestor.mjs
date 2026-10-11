@@ -1,9 +1,3 @@
-/**
- * Adapter-private JSONL acquisition primitive.  It deliberately returns only
- * reducer-owned state: raw records and an unfinished final fragment never leave
- * this module or become checkpoint/public data.  Adapters supply the parser
- * and reducer because their native schemas must remain private.
- */
 export function createIncrementalJsonlIngestor(options) {
   const {
     readChunk,
@@ -59,7 +53,7 @@ export function createIncrementalJsonlIngestor(options) {
     };
   }
 
-  /** An optional reducer hook: a skipped record is a gap its reducer may need to treat as unknown, not as absent. */
+  // An optional reducer hook: a skipped record is a gap its reducer may need to treat as unknown, not as absent.
   function markGap(state) {
     if (typeof reduceGap !== "function") return;
     try { state.candidate = reduceGap(state.candidate); } catch { /* a gap marker cannot block acquisition */ }
@@ -110,14 +104,9 @@ export function createIncrementalJsonlIngestor(options) {
         if (bytes.length > requested) throw new TypeError("Incremental JSONL source returned more bytes than requested");
         counters.bytes += bytes.length;
         appendCompleteLines(state, bytes, counters);
-        // Reading all available chunks is required for correctness, but doing it
-        // in one microtask chain can starve the monitor's cache-serving socket.
         await yieldControl();
       }
     } finally {
-      // Counters describe one bounded acquisition pass, not every source chunk
-      // or record. This preserves totals without turning large histories into
-      // diagnostic write pressure.
       if (counters.bytes) recordCounter("bytes", counters.bytes);
       if (counters.records) recordCounter("records", counters.records);
     }
@@ -150,10 +139,6 @@ export function createIncrementalJsonlIngestor(options) {
       return true;
     },
     /**
-     * Consume every currently available byte, not just one chunk.  A replaced
-     * or truncated source is rebuilt into `staged` and becomes visible only
-     * after that independent candidate has been fully normalized.
-     *
      * @param {{identity: string, size: number}} source
      * @param {(candidate: unknown, metadata: Readonly<Record<string, unknown>>) => Promise<void> | void} publish
      */
@@ -163,9 +148,6 @@ export function createIncrementalJsonlIngestor(options) {
       if (!committed) {
         committed = generation(source.identity);
         const changed = await consume(committed, source);
-        // On a cold start, wait for a complete final record.  There is no
-        // previous revision to retain, and publishing this first staged view
-        // would make a partial write indistinguishable from ready evidence.
         if (changed && committed.fragment.length === 0) {
           await publishState(committed, false, publish);
         }
@@ -177,8 +159,6 @@ export function createIncrementalJsonlIngestor(options) {
       if (replacementRequired) {
         if (!staged || staged.identity !== source.identity) staged = generation(source.identity);
         await consume(staged, source);
-        // A replacement is an atomic swap.  Keep the last known-good
-        // candidate while the new source ends with an incomplete record.
         if (staged.completeOffset + staged.fragment.length >= source.size && staged.fragment.length === 0) {
           committed = staged;
           staged = null;

@@ -6,7 +6,6 @@ import { resolveSessionIdentity } from "../../normalize/session-identity.mjs";
 
 export const MAX_SESSION_TITLE_RECORD_BYTES = 16 * 1024;
 
-/** Transcript-file identity: the main file is the primary agent, every other file a subagent. */
 export function actorFor(file, mainFile, metadata, workflowFiles = new Map()) {
   if (file === mainFile) return { id: "primary", label: "Primary agent", kind: "orchestrator", parentId: null };
   const workflowAgent = workflowFiles.get(file);
@@ -41,10 +40,6 @@ function fallbackProjectName(mainFile) {
 }
 
 /**
- * Catalog-header project name. Claude's recorded cwd is its launch directory, and the
- * nearest enclosing repository names it: the launch-directory half of the shared rule in
- * server/normalize/session-identity.mjs, answered from the filesystem so a catalog row never waits
- * on, or caches the timeout of, a Git subprocess.
  * @param {string} mainFile
  * @param {Array<{ cwd?: string }>} records
  */
@@ -54,13 +49,6 @@ export function projectName(mainFile, records) {
 }
 
 /**
- * Full-evidence session identity through the shared rule (server/normalize/session-identity.mjs).
- * A launch directory proven to be one Git repository records `single` with its
- * repositoryId and the rule's project. Otherwise (not Git, a removed worktree, Git
- * unavailable, or a timeout) Claude's evidence stays bound to its launch directory as it
- * always was: the generic `launch` attribution, and the header's project name. Claude
- * never records `multiple`: it has no structured mutation-root evidence.
- * `root` never leaves server/normalize/session-identity.mjs.
  * @param {string} mainFile
  * @param {Array<{ cwd?: string }>} records
  * @param {{ resolveRepository?: ((cwd: string, options?: { requireGit?: boolean }) => Promise<{ repositoryId: string, root: string } | null> | { repositoryId: string, root: string } | null) | null }} [options]

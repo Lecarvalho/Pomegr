@@ -5,7 +5,6 @@ import { CommandTable, type CommandTableColumn } from "../command-center/Command
 import { CommandEmpty, CommandIcon, CommandStatus } from "../command-center/CommandPage";
 import { Sample, Section } from "./DesignSystemKit";
 
-// Fixed display strings keep server and client markup identical regardless of time zone.
 type TableRow = { id: string; title: string; detail: string; agents: number; updated: string; updatedLabel: string; status: string; tone: "positive" | "warning" | "neutral" };
 const TABLE_ROWS: TableRow[] = ([
   ["Audit session readiness states", "Pomegr · main", 6, "2026-08-09T14:10:00Z", "Aug 9, 14:10", "Working", "positive"],

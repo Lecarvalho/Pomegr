@@ -14,25 +14,6 @@ function mergeLiveUsageSnapshots(previous, current) {
     .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
 }
 
-/**
- * Bounded per-file usage snapshots for live transcripts. A live read parses only the file tail, so
- * snapshots already observed are retained and merged; the retained set is dropped whenever the file
- * identity, its recorded suffix, or append-only growth stops matching, because the tail then no
- * longer continues what was parsed before.
- *
- * Historical, non-unlimited reads use a separate bounded cache keyed by generation + actor + session
- * + the compaction-timestamp list + the completeHistory flag passed to the parser: an exact match
- * returns the previously parsed (shared-reference) array unchanged; anything else reparses and
- * replaces the entry. `unlimited` reads never use or populate either cache.
- *
- * `read`'s optional trailing `generation` lets a caller that already computed the file's generation
- * this readSession (see claude-read-generations.mjs) pass it in instead of having it recomputed here;
- * when omitted, it is computed the same way as before (`fileGeneration(file, stat)`).
- *
- * The optional last argument carries tool-change attributions decided from the whole transcript (see
- * session-work-start.mjs), which a bounded tail cannot decide; a given file generation always receives
- * the same decisions for the requests it holds, so the map is not part of the cache key.
- */
 export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile, maxEntries = DEFAULT_HISTORICAL_CACHE_MAX_ENTRIES }) {
   const cache = new Map();
   const historicalCache = new Map();

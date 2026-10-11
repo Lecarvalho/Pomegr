@@ -1,23 +1,9 @@
-/**
- * Pure viewport/selection rules shared by the request chart, request details and the grouped
- * Activities feed. Indexes and offsets are 0-based absolute positions within the scoped history.
- */
-
-/**
- * follow: the latest request is selected and the viewport shows the latest window.
- * track: another request is selected while the viewport stays at the latest edge.
- * anchored: the viewport is not at the latest edge; appends never move it.
- */
 export type SelectionMode = "follow" | "track" | "anchored";
 
 function latestOffset(total: number, size: number) {
   return Math.max(0, total - size);
 }
 
-/**
- * Apply history growth without pushing the selected bar out of the viewport.
- * `offset: null` keeps the current viewport offset.
- */
 export function advanceOnGrowth({ total, size, selectedIndex, mode }: {
   total: number; size: number; selectedIndex: number; mode: SelectionMode;
 }): { mode: SelectionMode; offset: number | null; selectedIndex: number } {
@@ -29,20 +15,12 @@ export function advanceOnGrowth({ total, size, selectedIndex, mode }: {
   return { mode: "track", offset: latest, selectedIndex };
 }
 
-/** Keep a visible selection; otherwise transfer it to the nearest visible bar. */
 export function transferOnViewportMove({ selectedIndex, offset, size }: { selectedIndex: number; offset: number; size: number }): number {
-  // The window moved right (newer): the left-edge bar is nearest.
   if (selectedIndex < offset) return offset;
-  // The window moved left (older): the right-edge bar is nearest.
   if (selectedIndex >= offset + size) return offset + size - 1;
   return selectedIndex;
 }
 
-/**
- * Clamp a keyboard or range step. `offset` is null while the target stays inside the viewport;
- * otherwise it is the new viewport offset (backward: target at the right edge; forward: target at
- * the left edge, capped at the latest window).
- */
 export function stepTarget({ selectedIndex, delta, total, offset, size }: {
   selectedIndex: number; delta: number; total: number; offset: number; size: number;
 }): { index: number; offset: number | null } {
@@ -52,7 +30,6 @@ export function stepTarget({ selectedIndex, delta, total, offset, size }: {
   return { index, offset: Math.min(index, latestOffset(total, size)) };
 }
 
-/** Derive the mode of a committed selection; only an explicit latest selection follows. */
 export function modeFor({ selectedIndex, offset, size, total, explicitLatest }: {
   selectedIndex: number; offset: number; size: number; total: number; explicitLatest: boolean;
 }): SelectionMode {
@@ -60,25 +37,16 @@ export function modeFor({ selectedIndex, offset, size, total, explicitLatest }: 
   return explicitLatest && selectedIndex >= total - 1 ? "follow" : "track";
 }
 
-/** A selected request by opaque id and absolute scoped index. */
 export type SelectedRequest = { id: string; index: number };
 
-/** What a committed page was fetched for: an explicit transfer/step/jump, a lookup, or a verified refresh. */
 export type CommitTarget = {
   select?: number | "latest";
   requestId?: string;
-  /** Present only for user or route lookups; a pinned lookup never follows appends. */
   pin?: boolean;
   keep?: SelectedRequest;
-  /** An absent lookup target resolves to the newest request of the page. */
   absentToLatest?: boolean;
 };
 
-/**
- * The selection a committed request page produces, computed when the page commits so a queued
- * refresh never reads the mode of the previous page. Explicit targets win, then a verified or
- * retained selection, else the newest request of the page (the chart's own fallback).
- */
 export function selectionAfterCommit({ ids, offset, total, size, historical, target, previous }: {
   ids: string[]; offset: number; total: number; size: number; historical: boolean; target: CommitTarget;
   previous: { mode: SelectionMode; keep: SelectedRequest | null };

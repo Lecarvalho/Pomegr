@@ -1,8 +1,6 @@
 import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "../domain/session-current-activity.mjs";
 import { projectSessionCacheTiming } from "../domain/session-cache-timing.mjs";
 
-// The Session row module: one owner for the bounded row summary that Sessions-directory
-// rows and shell rows share. Only normalized, allowlisted fields are ever persisted.
 const PHASES = new Set(["planning", "implementing", "verifying", "blocked", "complete"]);
 const CONFIDENCE = new Set(["low", "medium", "high"]);
 const SOURCES = new Set(["tool", "execution_task"]);
@@ -41,7 +39,6 @@ export function sanitizeRowSummary(value) {
     : { agentCount: value.agentCount, latestContextTotal: value.latestContextTotal, progress, lastObserved };
 }
 
-/** Projects the summary from one committed snapshot; no provider reads or parsing. */
 export function projectRowSummary(snapshot) {
   const state = snapshot?.publicState;
   if (!Number.isFinite(state?.metrics?.agents)) return null;
@@ -54,7 +51,6 @@ export function projectRowSummary(snapshot) {
   });
 }
 
-/** Public row fields for an inventory row's persisted summary (JSON text). Live rows keep active-agent counts null. */
 export function rowSummaryFields(summaryJson, isLive) {
   let summary = null;
   try { summary = typeof summaryJson === "string" ? sanitizeRowSummary(JSON.parse(summaryJson)) : null; } catch { /* unreadable summary is absent */ }
@@ -64,11 +60,6 @@ export function rowSummaryFields(summaryJson, isLive) {
     activityFallback: summary.lastObserved ? { ...summary.lastObserved, state: "last_observed" } : null };
 }
 
-/**
- * The row fields that walk a resident snapshot: every agent, execution task, tool call, and
- * request snapshot. `lifecycle` is the only part of the catalog entry they read, and it carries
- * exactly `isLive` and `activityStatus`, the two fields the memo below compares.
- */
 function projectRowActivity(lifecycle, snapshot, restoredActivity) {
   const state = snapshot?.publicState;
   const primaryAgent = Array.isArray(state?.agents) ? state.agents.find((agent) => agent.id === "primary") : null;
@@ -83,16 +74,10 @@ function frozenActivity(activity) {
   for (const value of Object.values(activity)) if (value) Object.freeze(value);
   return Object.freeze(activity);
 }
-// The store's snapshots are deep-frozen and replaced, never changed. Any other snapshot is walked every time.
+// The store's snapshots are deep-frozen and replaced, never changed.
 const frozenSnapshot = (snapshot) => Object.isFrozen(snapshot) && Object.isFrozen(snapshot.publicState)
   && (snapshot.evidence == null || Object.isFrozen(snapshot.evidence));
 
-/**
- * Remembers each resident shell row's activity fields between catalog commits, so a row whose
- * snapshot, `isLive`, `activityStatus`, and restored flag are unchanged costs a lookup. The memo
- * holds one record per row of the last commit and holds its snapshot weakly: a record never
- * outlives the snapshot or the catalog row it describes.
- */
 export function createRowActivityMemo() {
   let committed = new Map();
   let building = new Map();
@@ -110,10 +95,6 @@ export function createRowActivityMemo() {
       else if (frozenSnapshot(snapshot)) building.set(entry.id, { snapshot: new WeakRef(snapshot), ...lifecycle, restoredActivity, activity });
       return activity;
     },
-    /**
-     * The same fields between catalog commits, for a row whose snapshot the next commit will read.
-     * The record goes where that commit looks for it, so the commit reuses this walk.
-     */
     preview(entry, snapshot, restoredActivity = false) {
       const activity = this.activity(entry, snapshot, restoredActivity);
       const record = building.get(entry.id);
@@ -152,11 +133,6 @@ export function catalogShellRow(entry, { snapshot = null, persisted = null, rest
   };
 }
 
-/**
- * C-time writer for persisted summaries. Non-live rows write immediately; a live row's
- * writes coalesce to the checkpoint cadence (quiet delay, capped by the max delay) and
- * flush when it leaves live. The inventory writes only when the summary differs.
- */
 export function createRowSummaryWriter({ store, inventory, schedule, cancel, now, quietMs, maxMs, isStopped }) {
   const pending = new Map();
   const live = new Set();
@@ -184,7 +160,6 @@ export function createRowSummaryWriter({ store, inventory, schedule, cancel, now
       entry.timer?.unref?.();
       pending.set(id, entry);
     },
-    /** Called with the ids that are live at each catalog commit; a session that left live flushes now. */
     settle(liveIds) {
       live.clear();
       for (const id of liveIds) live.add(id);

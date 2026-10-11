@@ -15,7 +15,7 @@ export type ResourceUsageSample = {
   writeBytesPerSecond: number | null;
 };
 
-/** Live process-tree telemetry. Process identity and sampling internals stay monitor-private. */
+// Live process-tree telemetry.
 export type ResourceUsage = {
   status: "collecting" | "ready" | "unavailable";
   reason: ResourceUsageUnavailableReason | null;

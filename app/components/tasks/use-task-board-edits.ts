@@ -9,37 +9,21 @@ import {
   reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
-// Board edits made in the desktop app. A card move is optimistic: it is drawn in its new place at once and rolled
-// back, with one fixed message, only if the monitor refuses it. Feature, queue and resolve actions are not optimistic; they
-// wait for the committed board before the control returns. Actions run one at a time, in the order they were made.
-
-/** An acknowledged move that the committed board has not shown yet is dropped after this long, the polling interval. */
 const CONFIRM_FALLBACK_MS = 10_000;
 
-/** `epoch` groups the moves queued since the last failure: a failure takes the whole group back with it. */
 type PendingMove = { key: number; epoch: number; move: TaskMove; acknowledged: boolean };
 
 export type TaskBoardEdits = {
-  /** The committed board with every move the monitor has not yet shown applied. */
   board: TaskBoard;
-  /** A fixed message for the last failed action, until the next action starts. */
   failure: string | null;
-  /** A waited action is waiting for the monitor. */
   busy: boolean;
-  /** Counts finished actions, so a view can restore focus once an action settled or was rolled back. */
   settled: number;
   moveTask(move: TaskMove): Promise<boolean>;
-  /** Creates a feature from the board's filter row; the committed board then lists it. */
   addFeature(name: string): Promise<boolean>;
-  /** Moves a queued task of a feature to a step (the Queue view); waits for the committed board. */
   reorderQueueTask(id: string, step: number): Promise<boolean>;
-  /** Turns the queue on or off (on again while paused is the retry); the committed board then shows its status. */
   setQueue(on: boolean): Promise<boolean>;
-  /** Sets the usage above which no new session starts; waits for the committed board. */
   setGateThreshold(threshold: TaskGateThreshold): Promise<boolean>;
-  /** Sets the queue's own start and stop times; waits for the committed board. */
   setQueueSchedule(schedule: TaskQueueSchedule): Promise<boolean>;
-  /** Resolves the task holding the queue: accept it as done, or send it back to the queue; waits for the committed board. */
   resolveTask(id: string, done: boolean): Promise<boolean>;
 };
 
@@ -47,10 +31,6 @@ function withMoves(board: TaskBoard, pending: PendingMove[]) {
   return pending.reduce((current, entry) => applyMove(current, entry.move), board);
 }
 
-/**
- * Once every move is acknowledged and the committed board already shows each moved card where the optimistic board
- * draws it, the overlay is redundant: dropping it changes nothing on screen.
- */
 function isConfirmed(board: TaskBoard, pending: PendingMove[]) {
   if (pending.length === 0 || pending.some((entry) => !entry.acknowledged)) return false;
   const shown = withMoves(board, pending);
@@ -68,26 +48,23 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
   const keys = useRef(0);
   const epoch = useRef(0);
 
-  // A repository switch starts from the committed board of the new one.
   if (repository !== repositoryId) {
     setRepository(repositoryId);
     setPending([]);
     setFailure(null);
   }
-  // The committed board caught up with every acknowledged move: the overlay goes without any visible change.
   const confirmed = isConfirmed(board, pending);
   if (confirmed) setPending([]);
 
   const display = useMemo(() => confirmed ? board : withMoves(board, pending), [board, pending, confirmed]);
 
-  // Otherwise the committed board reads differently for another reason; trust it once it has had time to refresh.
+  // Otherwise the committed board reads differently for another reason.
   useEffect(() => {
     if (pending.length === 0 || pending.some((entry) => !entry.acknowledged)) return undefined;
     const timer = window.setTimeout(() => setPending((list) => list.filter((entry) => !entry.acknowledged)), CONFIRM_FALLBACK_MS);
     return () => window.clearTimeout(timer);
   }, [pending]);
 
-  // The first action in a quiet line starts at once; the rest follow in order once the one before has answered.
   const enqueue = useCallback(<T,>(run: () => Promise<T>): Promise<T> => {
     const next = active.current === 0 ? run() : chain.current.then(run);
     active.current += 1;
@@ -100,14 +77,12 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     setFailure(null);
     setPending((list) => [...list, entry]);
     return enqueue(async () => {
-      // An earlier move in the line failed and took this one back with it.
       if (entry.epoch !== epoch.current) return false;
       const result = await moveDesktopTask(repositoryId, move);
       if (result.ok) {
         setPending((list) => list.map((candidate) => candidate.key === entry.key ? { ...candidate, acknowledged: true } : candidate));
         void refresh();
       } else {
-        // Roll back this move and every later one, which were drawn on top of it. Earlier acknowledged moves stay.
         epoch.current += 1;
         setPending((list) => list.filter((candidate) => candidate.acknowledged || candidate.epoch !== entry.epoch));
         setFailure(MOVE_FAILURE_MESSAGE);

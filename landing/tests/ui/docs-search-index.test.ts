@@ -8,9 +8,6 @@ import { SEARCH_INDEX_MAX_BYTES, SEARCH_TEXT_LIMIT, buildSearchIndex, serializeS
 import type { DocsSearchIndex } from "../../scripts/docs-search.mjs";
 import { FENCE, alphaWith, cleanupScratch, loaded, standard } from "./docs-fixtures";
 
-// The search index generator (WEB-03): a pure function of the prepared content, written by the same
-// prepare step as the content, so it can only hold what the published pages hold.
-
 afterEach(cleanupScratch);
 
 const generatedPath = (name: string) => fileURLToPath(new URL(`../../${name}`, import.meta.url));

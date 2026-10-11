@@ -35,7 +35,7 @@ export function RepositoryOverviewTab({ repository }: { repository: RepositorySu
   const version = versionLabel(bestPlugin?.pluginSetup?.version ?? null);
   const unverifiedPlugin = repository.providers.some(({ pluginSetup }) => !pluginSetup || pluginSetup.readiness === "unavailable" || pluginSetup.installation === "unknown");
   const reporting = reportingState(repository.reporting);
-  // A summary belongs to one provider revision; never add estimates across providers.
+  // A summary belongs to one provider revision.
   const inventoryProvider = repository.providers.filter((provider) => provider.supported)
     .sort((left, right) => (Date.parse(right.currentRevision?.capturedAt ?? "") || 0) - (Date.parse(left.currentRevision?.capturedAt ?? "") || 0))[0];
   const revision = inventoryProvider?.currentRevision;

@@ -158,10 +158,7 @@ async function readResponseText(response, maxBytes) {
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
 }
 
-/**
- * Fetch one read-only agent query using the packaged descriptor when present.
- * Development falls back to the fixed unauthenticated loopback monitor.
- */
+// Fetch one read-only agent query using the packaged descriptor when present.
 export async function fetchAgentQuery(pathname, {
   dataRoot,
   descriptorPath,
@@ -201,7 +198,6 @@ export async function fetchAgentQuery(pathname, {
   }
 }
 
-/** Adapter shape consumed by the MCP tool registry: (path, query params) => JSON body. */
 export function createAgentQueryReader(options = {}) {
   return async (pathname, params = {}) => {
     const query = new URLSearchParams();
@@ -217,27 +213,18 @@ export function createAgentQueryReader(options = {}) {
 }
 
 export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
-/** Links a session started by the task dispatcher to its task (Claude Code SessionStart hook). */
 export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
-/** The bound session reports on the task it was started for (MCP tools `complete_task` and `block_task`). */
 export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
-/** The bound session deletes a task it added itself (MCP tool `remove_task`). */
 export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
-/** The only monitor paths the agent write transport may POST to. */
+// The only monitor paths the agent write transport may POST to.
 export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_REMOVE_PATH]);
 export const AGENT_TASK_MAX_BODY_BYTES = 16 * 1024;
-/**
- * How long a tool's write waits for the monitor's answer. A write is not repeated by itself, so it waits longer than
- * a read: a busy monitor commits a write and answers late. `complete` waits past the 20 seconds the monitor may take
- * to read the session's repository and pull requests before it judges a report. Every bound stays under the hosts'
- * tool-call limits (Codex: 60 seconds by default). The session-start `bind` hook passes its own shorter bound.
- */
+// How long a tool's write waits for the monitor's answer.
 export const AGENT_TASK_WRITE_TIMEOUT_MS = 10_000;
 export const AGENT_TASK_COMPLETE_TIMEOUT_MS = 25_000;
-/** Thrown when nothing was written: the request was not sent, the monitor was not reached, or it refused the request. */
 export const AGENT_TASK_UNAVAILABLE = "AGENT_QUERY_UNAVAILABLE";
-/** Thrown when the request was sent and no usable answer came back: the write may or may not have happened. */
+// Thrown when the request was sent and no usable answer came back: the write may or may not have happened.
 export const AGENT_TASK_NO_ANSWER = "AGENT_QUERY_NO_ANSWER";
 // A connection that was never made carried no request.
 const NOT_CONNECTED_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EADDRNOTAVAIL", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT"]);
@@ -248,14 +235,7 @@ function neverConnected(error) {
   return codes.every((code) => typeof code === "string" && NOT_CONNECTED_CODES.has(code));
 }
 
-/**
- * Adapter shape for the MCP task tools: (allowlisted path, JSON body) => parsed JSON body.
- * Returns the body for any HTTP status that carries a JSON object (refusals use 4xx/5xx).
- * A failure is one of two fixed errors and never carries a detail. `AGENT_QUERY_UNAVAILABLE`: nothing was written
- * (the request was not sent, no connection was made, or the monitor refused it with a 4xx that is not an answer).
- * `AGENT_QUERY_NO_ANSWER`: the request was sent and no usable answer came back in time, so the outcome is unknown.
- * Without a `timeoutMs` the wait is the write bound of the path.
- */
+// Adapter shape for the MCP task tools: (allowlisted path, JSON body) => parsed JSON body.
 export function createAgentTaskWriter({
   dataRoot,
   descriptorPath,

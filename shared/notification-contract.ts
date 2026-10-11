@@ -1,4 +1,4 @@
-/** Public, bounded notification data. Upstream payloads and source scopes stay private. */
+// Public, bounded notification data.
 export type NotificationKind = "needs_input" | "provider_incident" | "provider_recovery" | "monitor_unreachable" | "usage_window_reset" | "usage_capacity_restored" | "usage_reset_available" | "usage_authentication_required" | "release_published" | "installation_update_available" | "model_announced" | "model_deprecated" | "model_client_listed";
 export type NotificationCategory = "attention" | "provider_service" | "system" | "usage" | "provider_news" | "model_news";
 export type NotificationSeverity = "info" | "warning" | "critical";
@@ -7,7 +7,7 @@ export type NotificationSourceReadiness = "loading" | "ready" | "partial" | "sta
 export type NotificationTimeBasis = "recorded" | "observed";
 
 export type NotificationBase = {
-  /** Opaque digest; never a provider or session identifier. */
+  // Opaque digest; never a provider or session identifier.
   id: string;
   kind: NotificationKind;
   category: NotificationCategory;
@@ -16,7 +16,6 @@ export type NotificationBase = {
   priority: number;
   occurredAt: string;
   timeBasis: NotificationTimeBasis;
-  /** False for an existing condition seen at the producer's startup baseline. */
   deliveryEligible: boolean;
   action: NotificationAction;
 };
@@ -39,7 +38,7 @@ export type NotificationRecord =
   | (NotificationBase & { kind: "provider_recovery"; provider: "claude" | "codex"; data: { status: "operational" } })
   | (NotificationBase & { kind: "monitor_unreachable"; provider: null; data: Record<string, never> });
 
-/** Revision changes only after an accepted, material state transition. */
+// Revision changes only after an accepted, material state transition.
 export type NotificationSnapshot = {
   version: 1;
   revision: number;

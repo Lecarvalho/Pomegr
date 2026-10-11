@@ -147,15 +147,10 @@ describe("prepared output", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// The landing boundary audit: a copy of the real script runs against a throwaway package.
-
 describe("artifact boundary audit of the content inputs", () => {
   const auditScript = fileURLToPath(new URL("../../scripts/assert-artifact-boundary.mjs", import.meta.url));
   const validRevision = "a".repeat(64);
 
-  // A package with generated content gets the search index the prepare step would build from it,
-  // unless the case supplies its own.
   function landing(files: Record<string, string | Buffer> = {}): string {
     const root = temporaryDirectory("pomegr-audit-");
     mkdirSync(join(root, "scripts"), { recursive: true });
@@ -424,7 +419,6 @@ describe("artifact boundary audit of the content inputs", () => {
     });
 
     describe("absolute and home-directory paths", () => {
-      // Paths are written into a built file as a JavaScript string literal, in the separator style named.
       const separators = { forward: "/", backslash: "\\", escaped: "\\\\" } as const;
       const styled = (path: string, style: keyof typeof separators) => path.split(/[\\/]/).join(separators[style]);
       const auditWith = (text: string, root = landing(dist())) => {

@@ -14,6 +14,14 @@ rules.
 
 ## Write for a clear purpose
 
+- Write in ASD-STE100 Simplified Technical English. Use one instruction for each
+  sentence, with a maximum of 20 words. Use a maximum of 25 words for a description.
+  Use the active voice and the simple present tense. Use one word for one meaning, and
+  the same word each time. Write “must”, “must not”, “may”, or “never”, not “should”.
+- Give each fact one owner page. Before you add a rule, find its owner. If the owner
+  has the rule, link to it. If the rule is in two places, keep the owner's copy and
+  replace the other with a link. A root entrypoint (`README.md`, `AGENTS.md`,
+  `CONTRIBUTING.md`) and an index hold routes and rules for all changes, not contracts.
 - Lead with the answer, outcome, or responsibility. Give prerequisites before
   steps, and put limitations beside the claims they qualify.
 - Use descriptive headings, short paragraphs, active voice, and familiar words.
@@ -26,9 +34,7 @@ rules.
 - Aim for 3–5 focused sections and roughly 200–600 words for ordinary guides.
   These are editorial defaults, not limits on contracts or reference material.
   Preserve required invariants when shortening or splitting a page.
-- Link to canonical detail instead of copying policy, configuration tables, or
-  procedures. Keep one maintained owner for each rule. Preserve inbound anchors
-  or repair their references when reorganizing headings.
+- Preserve inbound anchors or repair their references when reorganizing headings.
 - Write **Pomegr** for the product and `pomegr` for package, repository, and
   directory identifiers. Use provider names only where the distinction matters.
   Match interface labels exactly, such as **Repositories** and **Plugin**.

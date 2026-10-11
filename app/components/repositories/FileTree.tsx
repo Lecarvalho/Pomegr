@@ -17,13 +17,10 @@ export type FileTreeProps = {
   scope: "session" | "repository";
   rootLabel: string; // repository display name for the header eyebrow
   files: FileTreeFile[];
-  /** Session scope only: uncommitted files the session did not touch ("Changed elsewhere"). */
   elsewhere?: FileTreeFile[];
-  /** Repository scope only: distinct-session rollup per folder path. */
   folderCounts?: ReadonlyMap<string, number>;
   selectedPath: string | null;
   onSelect: (file: FileTreeFile) => void;
-  /** Expand every folder (used while a search query is active). */
   expandAll?: boolean;
   emptyText: string;
   className?: string;
@@ -37,8 +34,6 @@ function TreeChevron() {
   return <svg className="fileTreeChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>;
 }
 
-/** Editor-style single-letter working-tree status, right-aligned at the end of the row. With no
- * working-tree status, falls back to a neutral letter for what the session changed. */
 function FileTreeStatusLetter({ file }: { file: FileTreeFile }) {
   const info = fileStatus(file.status);
   if (!info) {
@@ -50,8 +45,6 @@ function FileTreeStatusLetter({ file }: { file: FileTreeFile }) {
 
 const GIT_OBSERVED_LABEL = "Committed by this session - not a recorded tool edit";
 
-/** Quiet glyph-only marker (never a chip, never amber) for a row one of the session's own Git
- * commands committed but no recorded tool ever touched. Shown on historical rows too; see DESIGN.md. */
 function FileTreeGitObservedGlyph() {
   const label = GIT_OBSERVED_LABEL;
   return <span className="fileTreeGitObservedGlyph" role="img" aria-label={label} title={label}>

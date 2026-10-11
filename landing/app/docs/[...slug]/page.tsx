@@ -6,9 +6,7 @@ import { docsContent, findDocsGroup, findDocsGroupEntry, findDocsPage, slugOf } 
 import { DocsMarkdown } from "../render-markdown";
 import styles from "../docs.module.css";
 
-// The one route behind every published page. Content comes from the generated manifest data; no
-// page has a hand-written route. A slug the manifest does not publish is the site's 404, except the
-// exact id of a group (`/docs/concepts`), which has no content of its own and redirects like `/docs`.
+// The one route behind every published page; a group's exact id redirects like `/docs`, any other unpublished slug is the 404.
 export const dynamicParams = false;
 
 interface RouteProps {
@@ -77,7 +75,6 @@ interface OutlineItem {
   children: OutlineItem[];
 }
 
-/** Second- and third-level headings, each third-level heading nested under the second-level one before it. */
 function buildOutline(headings: readonly DocsHeading[]): OutlineItem[] {
   const items: OutlineItem[] = [];
   for (const heading of headings) {

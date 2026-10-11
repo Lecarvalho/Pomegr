@@ -17,11 +17,8 @@ import { createPortal } from "react-dom";
 export type CommandSelectOption<V extends string | number = string> = {
   value: V;
   label: string;
-  /** Decorative glyph shown before the label; describe it with `iconLabel` when it carries meaning. */
   icon?: ReactNode;
-  /** Visually hidden text appended to the option's accessible name, for example "running". */
   iconLabel?: string;
-  /** Heading drawn above the first of consecutive options that share it; the closed control reads "group · label". */
   group?: string;
 };
 
@@ -33,7 +30,6 @@ type CommandSelectProps<V extends string | number> = {
   id?: string;
   disabled?: boolean;
   className?: string;
-  /** Trigger text when the value matches no option. */
   placeholder?: string;
 };
 
@@ -44,11 +40,7 @@ const EDGE_GAP = 12;
 const TRIGGER_GAP = 4;
 const MAX_LIST_HEIGHT = 320;
 
-/**
- * Shared single-select dropdown: a select-only combobox whose listbox can show a
- * glyph beside each option, which a native select cannot. Focus stays on the
- * trigger; the active option is announced through aria-activedescendant.
- */
+/** Shared single-select dropdown. */
 export function CommandSelect<V extends string | number>({ options, value, onChange, "aria-label": ariaLabel, id, disabled = false, className, placeholder = "" }: CommandSelectProps<V>) {
   const [openState, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -60,10 +52,8 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
   const listId = useId();
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selected = selectedIndex >= 0 ? options[selectedIndex] : null;
-  // Reserve the glyph column on every row once any option has one, so labels stay aligned.
   const hasIcons = options.some((option) => option.icon);
   const optionId = (index: number) => `${listId}-option-${index}`;
-  // Disabling the control while its list is open closes the list.
   const open = openState && !disabled;
 
   const close = useCallback(() => {
@@ -73,7 +63,6 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
   const show = (index: number) => {
     if (disabled || !options.length) return;
     setActiveIndex(Math.min(Math.max(index, 0), options.length - 1));
-    // A modal dialog makes everything outside it inert, so the list renders inside it there.
     setHost(triggerRef.current?.closest("dialog") ?? document.body);
     setOpen(true);
   };
@@ -135,7 +124,6 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
     state.text = now - state.at > TYPEAHEAD_RESET_MS ? key : state.text + key;
     state.at = now;
     const query = state.text.toLowerCase();
-    // Repeating one character cycles through options that start with it.
     const cycling = query.length > 1 && [...query].every((character) => character === query[0]);
     const needle = cycling ? query[0] : query;
     const from = open ? activeIndex : selectedIndex;

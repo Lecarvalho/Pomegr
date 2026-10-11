@@ -15,15 +15,10 @@ export function isCompleteRequestOverview(overview: unknown, total: number): ove
 }
 
 export type RequestRow = RequestSnapshot & {
-  /** 1-based position in the retained feed after applying the selected scope. */
   ordinal: number;
-  /** Stable, session-global request number supplied by paged history. */
   number?: number;
-  /** Summary preview has no stable history number yet. Never label its ordinal as one. */
   numberPending?: boolean;
-  /** The stacked fresh-token segments in the default chart mode. */
   freshTokens: number;
-  /** Whether a recognized compaction occurred after the prior same-agent row. */
   compactionBefore: boolean;
   cacheEvidence?: RequestCacheEvidence;
 };
@@ -53,11 +48,6 @@ function hasCompactionBetween(
   });
 }
 
-/**
- * Projects the retained request feed into the rows consumed by the chart.
- * The monitor feed is chronological, so filtering preserves chronology and
- * ordinals remain stable positions in that retained feed.
- */
 export function scopedRows(
   feed: RequestSnapshotFeed,
   boundaries: ContextHistoryBoundary[],
@@ -94,7 +84,6 @@ export function scopedRows(
   return rows;
 }
 
-/** The persistent history number when available, otherwise retained-feed position. */
 export function requestNumber(row: Pick<RequestRow, "number" | "ordinal">): number {
   return row.number ?? row.ordinal;
 }
@@ -103,7 +92,6 @@ export function requestMarker(row: RequestRow): string {
   return row.numberPending ? shortTime(row.observedAt) : `#${requestNumber(row)}`;
 }
 
-/** Returns a 1-based inclusive window, with an empty range for no rows. */
 export function windowFor(
   rows: RequestRow[],
   selectedOrdinal: number | null,
@@ -137,7 +125,6 @@ export function plottedTotal(row: RequestTokenCounts, mode: ChartMode, cacheWrit
   return nonNegativeFinite(row.uncachedInputTokens + cacheWrite + row.outputTokens);
 }
 
-/** Computes a fixed, readable scale over the complete scoped feed. */
 export function scaleMax(rows: RequestTokenCounts[], mode: ChartMode, cacheWriteAvailable = true): number {
   const maximum = rows.reduce((current, row) => Math.max(current, plottedTotal(row, mode, cacheWriteAvailable)), 0);
   if (maximum === 0) return 0;
@@ -159,7 +146,6 @@ function sortValue(row: RequestRow, sort: LargestSort): number {
   }
 }
 
-/** Returns the largest individual rows, preserving ordinal order for ties. */
 export function largestRequests(rows: RequestRow[], sort: LargestSort, limit: number): RequestRow[] {
   const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
   if (count === 0) return [];

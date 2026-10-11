@@ -36,7 +36,6 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** Serialized request body, or null when the payload is not a plain JSON object within the cap. */
 function requestBody(repositoryId, payload) {
   if (!isPlainObject(payload)) return null;
   try {
@@ -46,7 +45,6 @@ function requestBody(repositoryId, payload) {
   } catch { return null; }
 }
 
-/** Maps a monitor answer to the bounded result the renderer sees. Board, text and HTTP details never cross. */
 function boundedResult(response, body, action) {
   if (!isPlainObject(body)) return UNAVAILABLE;
   if (body.ok === true) {
@@ -62,11 +60,7 @@ function boundedResult(response, body, action) {
   return UNAVAILABLE;
 }
 
-/**
- * Native-only bridge for task-board mutations. It validates only the fixed action name, the repository ID
- * pattern and the payload shape and size. The monitor validates the record, and this bridge never reads or
- * logs task content.
- */
+/** Native-only bridge for task-board mutations; it never reads or logs task content. */
 export function createTaskAction(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
   const fetchImpl = options.fetch || fetch;

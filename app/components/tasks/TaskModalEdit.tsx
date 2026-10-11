@@ -27,40 +27,27 @@ import { useFeatureCreation } from "./use-feature-creation";
 import { shownTaskText, useStoredImages } from "./use-task-images";
 import { useTaskStart } from "./use-task-start";
 
-// Task modal, mode edit (design contract G241-G298), opened from a card. A task promoted from a GitHub issue starts the
-// body with its Source block (G253-G257); its text stays editable like any task's. Text, Run on, Effort, Complete when,
-// Feature and Step are a local draft that Save sends as one patch holding only what changed; Close and Escape discard it. Start at
-// keeps saving by itself. An image in the text is part of the draft like the text: Save stores it, and removes one the text no longer names. A task that is blocked or stalled leads the footer with Mark done and resume
-// queue and Requeue task; one that needs review holds no queue, so its first action reads Mark done. A task whose linked session has not reported offers Mark done and Requeue task too, with a
-// line that neither stops the session; nothing marks such a task done or stalled by itself. While the draft is unsaved
-// Start session, Add to queue, Remove from queue, Mark done and Requeue task are disabled.
-
 const STALLED_NOTE = "The session ended with no report.";
 
 function reportLine(report: NonNullable<Task["report"]>) {
-  // The time sits in parentheses: a locale whose time ends in a period ("p.m.") must not double the sentence's own.
+  // The time sits in parentheses.
   const time = Number.isFinite(Date.parse(report.at)) ? <> (<time dateTime={report.at}>{sessionListTime(report.at)}</time>)</> : null;
   if (report.blockReason !== null) return <>Agent reported it cannot continue{time}: {report.blockReason}</>;
-  // The agent's own line, shown as its words: Pomegr does not judge it.
   return report.attention ? <>Agent reported complete{time} and asks for your attention: {report.attention}</> : <>Agent reported complete{time}.</>;
 }
 
-/** Every change goes through the desktop bridge; success refreshes the board, failure keeps the draft and says so once. */
 export function TaskModalEdit({ repositoryId, repositoryName, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose }: {
   repositoryId: string;
   repositoryName: string | null;
   task: Task;
-  /** The committed board: its features and their tasks fill the Feature fields and the folded list. */
   board: TaskModalBoard;
   refresh(): Promise<void>;
-  /** Opens a sibling's own modal from the folded list. */
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
   onChanged(): void;
   onDeleted(): void;
   onClose(): void;
 }) {
   const models = useTaskModelOptions(board.runModels);
-  // The text is drawn with the task's images in it, so the draft is compared with that same text.
   const shown = useMemo(() => ({ ...task, text: shownTaskText(task.text, task.images) }), [task]);
   const { draft, dirty, canSave, setText, setRun, setCompleteWhen, setFeature } = useTaskDraft(shown);
   const [featureError, setFeatureError] = useState<string | null>(null);
@@ -78,7 +65,6 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const chip = taskChip(task, task.id === board.queue?.order[0]);
   const unresolved = task.state === "needs_review" || task.state === "blocked" || task.state === "stalled";
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
-  // A stalled task has no report: its session ended before the agent reported complete or blocked.
   const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
   const start = useTaskStart(repositoryId, task, board, dirty, refresh);
   const images = useStoredImages(repositoryId, task);
@@ -91,12 +77,10 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const awaitingReport = taskAwaitsReport(task);
   const sessionTitle = taskSessionTitle(task);
   const issueNumber = taskIssueNumber(task);
-  // Only a task with no GitHub issue offers one, and only on the desktop. No GitHub status is read when a task opens.
   const issueOffered = issueNumber === null && taskIssuesAvailable();
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
   const columnName = board.columns.find((column) => column.id === task.columnId)?.name ?? null;
   const blocked = saving || deleting;
-  // The start gate words "Save your changes first." itself; any other offered action gets the same line.
   const startLine = showStart && start.line !== SAVE_FIRST_LINE ? start.line : null;
   const saveLine = dirty && !confirming && startLine === null && (showStart || waiting || unresolved || awaitingReport || issueOffered);
   const folderOffered = showStart && start.folder.offered;
@@ -119,13 +103,11 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         setFeatureError(created.message);
         return;
       }
-      // The feature exists now: a retry after a failed save must attach to it, not create it again.
+      // The feature exists now.
       current = { ...draft, feature: { featureId: created.id, creating: false, name: "", step: null } };
       setFeature(current.feature);
     }
     const patch = taskDraftPatch(shown, current);
-    // An image is saved with the text that names it: new ones are stored before the text, and the stored ones the
-    // saved text no longer names are removed after it. A removal that fails leaves an image the next open shows again.
     const imageFailure = await images.store(task.id, current.text);
     if (imageFailure !== null) {
       saveInFlight.current = false;
@@ -151,7 +133,6 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     setFeature(featureDraftFromTask(task));
   };
 
-  // Add to queue / Remove from queue: only a task in the matching state is offered, and the monitor decides the rest.
   const changeQueue = async (add: boolean) => {
     if (queueing) return;
     setQueueing(true);
@@ -161,7 +142,6 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     if (result.ok) onChanged(); else setFailure(add ? QUEUE_ADD_FAILURE_MESSAGE : QUEUE_REMOVE_FAILURE_MESSAGE);
   };
 
-  // Mark done / Requeue: offered only for a task that needs the user or whose session has not reported, and the monitor decides the rest.
   const resolve = async (done: boolean) => {
     if (resolving) return;
     setResolving(true);

@@ -16,9 +16,6 @@ import {
   TASK_SIGNAL_TOOL,
 } from "../normalize/session-signals.mjs";
 
-// Pomegr's own reporting tools. Claude keeps the namespaced MCP name as the
-// tool; Codex records the tool as `MCP` with a `server / tool` detail. Pomegr
-// read tools are deliberately absent: repeating an identical read is polling.
 const SESSION_TITLE_TOOL = "rename_session";
 const POMEGR_REPORTING_MCP_TOOLS = new Set([
   ...AGENT_SIGNAL_MCP_TOOLS,
@@ -107,10 +104,7 @@ function agentList(labels) {
   return `${labels[0]}, ${labels[1]}, and ${(labels.length - 2).toLocaleString("en-US")} other agents`;
 }
 
-// Groups recorded file changes by file within the session. A move touches both
-// its previous and new path; only the new path counts toward an agent's breadth.
-// Repository-relative paths stay monitor-side: signals carry only the basename
-// and an opaque digest of the file key.
+// Groups recorded file changes by file within the session.
 function fileChangeFootprints(fileChanges, agentIds) {
   const files = new Map();
   const changedByAgent = new Map();
@@ -171,9 +165,6 @@ function fileChangeSignals(agents, fileChanges, overlapDisplays) {
   return signals;
 }
 
-// This is the executable catalog for every rule shown in Efficiency signals.
-// Keep thresholds, evidence, severity, and user-facing explanations together so
-// rule changes remain reviewable and deterministic.
 export function evaluateEfficiencySignals({
   agents = [],
   repetitionCandidates = [],

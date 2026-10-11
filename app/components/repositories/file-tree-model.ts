@@ -1,21 +1,13 @@
-// Pure tree-building helpers for FileTree.tsx. No fetching, no session/monitor imports.
-// FileTreeFile lives here (not in FileTree.tsx, which re-exports it) so the model and the
-// component do not import each other and create a circular dependency.
 
-/** One file the tree shows. `status` is the git porcelain code (e.g. "M", "A", "??", "D"). */
 export type FileTreeFile = {
   path: string; // repository-relative, "/" separated
   fileId: string | null; // null for a working-tree file with no recorded history
   status?: string | null; // session scope: working-tree status chip
   sessionCount?: number | null; // repository scope: distinct recorded sessions
   muted?: boolean; // repository scope: no recorded session history, or deleted
-  /** Session scope only: this row is not a recorded tool edit, only committed while one of the
-   *  session's own Git commands ran. Renders a quiet glyph, never a chip. */
+  /** Session scope only. */
   gitObserved?: "committed";
-  /** Session scope only: a Git-observed row's net change across those commits. */
   gitChange?: "added" | "modified" | "deleted" | null;
-  /** Session scope only: this session's latest recorded change kind. Shown as a neutral letter
-   *  when the working tree reports no status, so a committed file keeps its C/M. */
   recordedKind?: "created" | "edited" | "deleted" | "moved" | null;
 };
 
@@ -55,7 +47,6 @@ function countFiles(entries: FileTreeEntry[]): number {
   return total;
 }
 
-/** Builds a folders-first, alphabetical tree from a flat file list ("/"-separated paths). */
 export function buildFileTree(files: FileTreeFile[]): FileTreeEntry[] {
   const root: FileTreeEntry[] = [];
   for (const file of files) {
@@ -85,7 +76,6 @@ function sortTree(entries: FileTreeEntry[]) {
   for (const entry of entries) if (entry.kind === "folder") sortTree(entry.children);
 }
 
-/** Folder paths that are ancestors of `selectedPath` (e.g. "a", "a/b" for "a/b/c.ts"). */
 export function ancestorFolderPaths(selectedPath: string | null): ReadonlySet<string> {
   const ancestors = new Set<string>();
   if (!selectedPath) return ancestors;
@@ -94,7 +84,6 @@ export function ancestorFolderPaths(selectedPath: string | null): ReadonlySet<st
   return ancestors;
 }
 
-/** Folders open by default: ancestors of the selection, plus top-level folders with <=12 files total. */
 export function defaultOpenFolders(entries: FileTreeEntry[], selectedPath: string | null): ReadonlySet<string> {
   const open = new Set(ancestorFolderPaths(selectedPath));
   for (const entry of entries) if (entry.kind === "folder" && entry.fileCount <= TOP_LEVEL_AUTO_EXPAND_LIMIT) open.add(entry.path);
@@ -105,7 +94,6 @@ export type FileTreeRow =
   | { kind: "folder"; depth: number; node: FileTreeFolderNode; open: boolean }
   | { kind: "file"; depth: number; node: FileTreeFileNode };
 
-/** Flattens the tree into the rows currently visible, given which folders are open. */
 export function visibleFileTreeRows(entries: FileTreeEntry[], isOpen: (path: string) => boolean, depth = 0): FileTreeRow[] {
   const rows: FileTreeRow[] = [];
   for (const entry of entries) {
@@ -125,11 +113,6 @@ export type FileStatus = {
   tone: FileStatusTone;
 };
 
-/**
- * Maps a git porcelain status code to the bounded five-value working-tree status (F3), shown as
- * a single editor-style letter in the tree: amber M, green U (untracked) and A (added), neutral
- * D/R. Unrecognized codes fall back to M.
- */
 export function fileStatus(status: string | null | undefined): FileStatus | null {
   const code = status?.trim();
   if (!code) return null;
@@ -145,9 +128,7 @@ export function sortByPath(files: FileTreeFile[]): FileTreeFile[] {
   return [...files].sort((left, right) => left.path.localeCompare(right.path));
 }
 
-/** A neutral single letter for a touched row the working tree no longer reports (committed or
- * reverted): the session's recorded kind (created C, edited M) wins, else the Git-observed net
- * change (A/M/D). Deleted and moved recorded kinds get no letter. */
+/** A neutral single letter for a touched row the working tree no longer reports (committed or reverted). */
 export function sessionChangeStatus(file: Pick<FileTreeFile, "recordedKind" | "gitChange">): { letter: "C" | "M" | "A" | "D"; label: string } | null {
   if (file.recordedKind === "created") return { letter: "C", label: "Created in this session" };
   if (file.recordedKind === "edited") return { letter: "M", label: "Edited in this session" };

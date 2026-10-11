@@ -17,7 +17,6 @@ export function repositorySetupSummary(repository: RepositorySummary): SetupSumm
   if (attention) return attention;
   const providers = repository.providers;
   if (repository.reporting?.status === "invalid") return { label: "Reporting invalid", tone: "warning" };
-  // The normalized API calls an absent reporting policy "missing".
   if (repository.reporting?.status === "missing") return { label: "Reporting not configured", tone: "neutral" };
   if (providers.some(({ pluginSetup }) => !pluginSetup || pluginSetup.readiness === "unavailable" || pluginSetup.installation === "unknown") || !repository.reporting || repository.reporting.status === "unknown") return { label: "Setup unverified", tone: "neutral" };
   return { label: "Ready", tone: "positive" };

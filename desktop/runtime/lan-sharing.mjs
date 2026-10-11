@@ -15,7 +15,6 @@ function sameNetworkIdentity(left, right) {
     && typeof left?.subnetMask === "string" && left.subnetMask === right?.subnetMask;
 }
 
-/** Optional desktop transport. It owns no provider work or observation state. */
 export function createLanSharingController(options = {}) {
   const reader = options.networkReader || createLanNetworkReader();
   const startGateway = options.startGateway || startLanGateway;

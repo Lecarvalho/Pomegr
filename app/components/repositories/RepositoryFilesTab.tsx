@@ -1,9 +1,5 @@
 "use client";
 
-// Repository page Files tab (F20): search, "With session history only" and "Include historical
-// files" toggles, and the shared FileTree / FileHistoryPanel pair in repository scope. See
-// runs/2026-09-22-ia-session-5/3-file-history/artifacts/plan.md ("implement-tabs") and
-// design-contract.md F17-F22.
 import { useState } from "react";
 import type { FileHistoryReadiness, RepositoryFileEntry } from "../../../shared/repository-files-contract";
 import { useFileHistory, useRepositoryFiles, type FileHistoryTarget } from "../../repository-files-store";
@@ -14,8 +10,6 @@ function toFileTreeFile(entry: RepositoryFileEntry): FileTreeFile {
   return { path: entry.path, fileId: entry.fileId, sessionCount: entry.sessionCount, muted: entry.sessionCount === 0 || entry.deleted };
 }
 
-/** Selection by path; prefers the file's own opaque identity once the listing has resolved it,
- * matching the session-side rule (see app/components/dashboard/repository-files-view.ts). */
 function resolveTarget(path: string | null, files: RepositoryFileEntry[]): FileHistoryTarget | null {
   if (!path) return null;
   const entry = files.find((file) => file.path === path);
@@ -31,7 +25,6 @@ function treeEmptyText(readiness: FileHistoryReadiness): string {
 export function RepositoryFilesTab({ repositoryId, repositoryLabel, path, onSelectPath }: {
   repositoryId: string;
   repositoryLabel: string;
-  /** Selected repository-relative path; null when nothing is selected yet. */
   path: string | null;
   onSelectPath: (path: string | null) => void;
 }) {
@@ -80,7 +73,6 @@ export function RepositoryFilesTab({ repositoryId, repositoryLabel, path, onSele
       <FileHistoryPanel
         repositoryLabel={repositoryLabel}
         path={path}
-        // Repository scope has no working-tree status without a new fetch (plan, implement-tabs).
         workingTreeStatus={null}
         history={history}
         className="repositoryFilesTabPanel"

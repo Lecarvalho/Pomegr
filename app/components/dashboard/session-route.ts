@@ -6,7 +6,6 @@ export type SessionRouteQuery = {
   agent?: string;
   request?: string;
   path?: string;
-  /** Resources tab: the resource field whose session-high peak to open. */
   peak?: string;
 };
 

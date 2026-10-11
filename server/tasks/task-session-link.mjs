@@ -1,17 +1,11 @@
-// What the Sessions list may know about the task a session was started for: the task ID, its
-// repository, an outcome state, the feature and step, and the number of the GitHub issue the task was
-// promoted from. Read from the task store when a directory page is served; nothing here is written to
-// the session catalog or a checkpoint, and task text, the own condition, column names, reports and issue
-// titles or bodies are never selected.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { FEATURE_ID, normalizeFeatureName, taskIdFromNumber } from "./task-record.mjs";
 import { readTaskSource } from "./task-source.mjs";
 
-/** The newest-linked sessions one grouped directory answer may place in features. */
 export const FEATURE_LINK_MAX = 2000;
 
-// The states a session's own state cannot show. Any other task state is served as null.
+// The states a session's own state cannot show.
 const OUTCOME_STATES = new Set(["needs_review", "stalled", "blocked", "done"]);
 
 const REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t.state AS state, t.step AS step,
@@ -33,12 +27,10 @@ function reference(database, row) {
     featureId: attached ? row.featureId : null,
     feature: attached ? feature : null,
     step: attached ? row.step : null,
-    // The issue number alone, from the task store's `meta` row; null for a task that was not promoted from an issue.
     issue: readTaskSource(database, row.repositoryId, row.number),
   };
 }
 
-/** The task reference of each given session that was started for a task, keyed by session ID. */
 export function sessionTaskReferences({ database, sessionIds }) {
   const references = new Map();
   const statement = preparedStatement(database, REFERENCE);
@@ -51,7 +43,6 @@ export function sessionTaskReferences({ database, sessionIds }) {
   return references;
 }
 
-/** One feature and the sessions started for its tasks, or null for an ID that names no feature. */
 export function featureSessions({ database, featureId }) {
   if (typeof featureId !== "string" || !FEATURE_ID.test(featureId)) return null;
   const feature = preparedStatement(database, "SELECT name FROM features WHERE id = ?").get(featureId);
@@ -62,7 +53,6 @@ export function featureSessions({ database, featureId }) {
   return { id: featureId, name, sessionIds };
 }
 
-/** Every linked session of a feature task, newest link first and bounded: session ID to feature ID, and feature ID to name. */
 export function featureSessionGroups({ database }) {
   const members = new Map();
   const labels = new Map();

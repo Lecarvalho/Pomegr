@@ -5,8 +5,7 @@ import { docsContent } from "./content";
 import { DocsNav } from "./DocsNav";
 import styles from "./docs.module.css";
 
-// Layout ids use the `docs-` prefix and never match a heading slug in the published pages (the
-// route tests check this), because page headings carry their GitHub-style slug as the element id.
+// `docs-` ids never match a heading slug, because headings carry their slug as the element id.
 const CONTENT_ID = "docs-content";
 
 export default function DocsLayout({ children }: Readonly<{ children: ReactNode }>) {

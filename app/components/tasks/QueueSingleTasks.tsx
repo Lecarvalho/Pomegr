@@ -8,18 +8,12 @@ import { waitingLine } from "./task-gates-model";
 import { taskCardTitle, taskChip } from "./task-presentation";
 import { scheduleLabel } from "./task-schedule";
 
-/** A single task's state chip; a scheduled one carries its time (D155) when it has one. */
 function chipOf(task: Task, nextQueued: boolean) {
   const chip = taskChip(task, nextQueued);
   const when = task.state === "scheduled" && task.scheduledAt ? scheduleLabel(task.scheduledAt) : null;
   return { ...chip, label: when && chip.label === "Scheduled" ? `Scheduled · ${when}` : chip.label };
 }
 
-/**
- * Tasks with no feature that are queued or further along (design contract D147-D155). They run after the features, one
- * at a time: queued ones in the order the monitor lists them, which is the order of their cards in the Board's Ready
- * column, then the rest by task number.
- */
 export function QueueSingleTasks({ tasks, nextId, queue, onOpenTask }: { tasks: Task[]; nextId: string | null; queue: TaskBoard["queue"]; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
   const headingId = useId();
   return <section className="panel taskQueuePanel" aria-labelledby={headingId}>

@@ -9,7 +9,6 @@ export type CommandTableColumn<Row> = {
   id: string;
   label: string;
   renderCell: (row: Row) => ReactNode;
-  /** Omit to keep this column unsortable. Dates should return a timestamp. */
   sortValue?: (row: Row) => SortValue;
   sortLabel?: string;
   hideLabel?: boolean;
@@ -18,13 +17,10 @@ export type CommandTableColumn<Row> = {
   cellLabel?: string;
 };
 
-/** One labeled section of rows. The caller owns order and collapse: pass no rows for a collapsed group. */
 export type CommandTableRowGroup<Row> = {
   key: Key;
-  /** Rendered in a full-width row-group header cell above the group's rows. */
   header: ReactNode;
   rows: readonly Row[];
-  /** Optional full-width row after the group's rows, such as a "Show all" link. */
   footer?: ReactNode;
 };
 
@@ -35,9 +31,8 @@ type CommandTableProps<Row> = {
   getRowKey: (row: Row) => Key;
   className?: string;
   emptyState?: ReactNode;
-  /** Renders these sections in the caller's order instead of `rows`; sorting and pagination do not apply. */
+  /** Renders these sections in the caller's order instead of `rows`. */
   rowGroups?: readonly CommandTableRowGroup<Row>[];
-  /** Pass a positive pageSize; the caller resets page when its filters change. */
   pagination?: { page: number; pageSize: number; onPageChange: (page: number) => void; label?: string };
 };
 
@@ -45,7 +40,6 @@ function availableValue(value: SortValue) {
   return typeof value === "number" && !Number.isFinite(value) ? null : value;
 }
 
-/** Sorts before optional pagination; ties retain input order. See docs/internal/development/command-table.md. */
 export function CommandTable<Row>({ caption, rows, columns, getRowKey, className = "", emptyState = <p className="commandUnavailableNote">No rows to display.</p>, pagination, rowGroups }: CommandTableProps<Row>) {
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection } | null>(null);
   const sortColumn = columns.find((column) => column.id === sort?.columnId && column.sortValue);
@@ -55,7 +49,6 @@ export function CommandTable<Row>({ caption, rows, columns, getRowKey, className
     return [...rows].sort((left, right) => {
       const a = availableValue(valueFor(left));
       const b = availableValue(valueFor(right));
-      // Missing values stay last, independently of the selected direction.
       if (a == null) return b == null ? 0 : 1;
       if (b == null) return -1;
       const comparison = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true });
@@ -72,7 +65,6 @@ export function CommandTable<Row>({ caption, rows, columns, getRowKey, className
     pagination?.onPageChange(1);
   };
 
-  // Keep sorting state while the caller's filters temporarily return no rows.
   if (rowGroups ? !rowGroups.length : !rows.length) return emptyState;
   const renderRow = (row: Row) => <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.id} className={column.className} data-label={column.cellLabel}>{column.renderCell(row)}</td>)}</tr>;
 

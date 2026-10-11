@@ -5,10 +5,6 @@ import { useAgents } from "../../agents-client";
 import type { TaskBoard } from "../../../shared/task-contract";
 import { modelsByProvider, type TaskModelOptions } from "./task-fields";
 
-/**
- * Claude models come from retained agent runs (Models & delegation); Codex models from the board's committed
- * client catalog. A provider with none offers only its Default model.
- */
 export function useTaskModelOptions(runModels?: NonNullable<TaskBoard["runModels"]>): TaskModelOptions {
   const { data } = useAgents({ project: "all", days: 90, scope: "all" });
   const runs = data?.runs;
@@ -16,7 +12,6 @@ export function useTaskModelOptions(runModels?: NonNullable<TaskBoard["runModels
   return useMemo(() => modelsByProvider(runs ?? [], codex ?? []), [runs, codex]);
 }
 
-/** The clock in epoch milliseconds, read once and again every minute, for lines that say whether a time has passed. */
 export function useMinuteClock(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

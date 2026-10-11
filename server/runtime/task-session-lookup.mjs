@@ -1,10 +1,6 @@
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { pullRequestCheckRead } from "../repository/pull-requests.mjs";
 
-/**
- * The bound session's recognized repository identity for the agent task write, from committed facts
- * only: the observation store's public state, then the committed catalog row. No provider or Git read.
- */
 export function resolveTaskSession(sessionRef, { observationStore, catalogSessions }) {
   const parsed = parseProviderSessionId(sessionRef);
   if (!parsed) return null;
@@ -17,21 +13,11 @@ export function resolveTaskSession(sessionRef, { observationStore, catalogSessio
 const CATALOG_TITLE_LENGTH = 160;
 const UNTITLED_SESSION = "Untitled session";
 
-// The catalog cleans a title the same way: control characters become spaces, then trim and clip. Its own
-// placeholder for a session that has no title yet is no title, so a card keeps showing the task text.
 function sessionTitle(value) {
   const title = typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, CATALOG_TITLE_LENGTH) : "";
   return title !== "" && title !== UNTITLED_SESSION ? title : null;
 }
 
-/**
- * A linked session's borrowed facts, from committed memory only: the catalog row (its title and the
- * `activityStatus` the Sessions list State column renders), then the observation store's committed public
- * state (a title the row lacks, and the primary agent's latest reported model). `null` when neither holds
- * the session. `writerReleased` is true when the primary agent's committed liveness says the Codex writer was
- * released; with an Unknown state it establishes that the session ended (`sessionEnded` in task-stall.mjs).
- * `fillTaskSessions` validates every field it serves. No provider, Git, or new evidence read.
- */
 export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }) {
   const parsed = parseProviderSessionId(sessionRef);
   if (!parsed) return null;
@@ -49,10 +35,6 @@ export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogS
 
 const PULL_REQUEST_STATES = ["open", "merged", "closed"];
 
-// CI passed judges the task branch's open pull requests, or its merged ones when none is open; a closed one
-// never counts. No such pull request is a known "not passed"; one whose check status the monitor has not read
-// is unknown. Only `passed` passes: pending, failed, and no check at all do not. The read time is the oldest
-// among the judged pull requests, and null when the value does not rest on a read.
 function ciPassed(items, checkRead) {
   const judged = ["open", "merged"].map((state) => items.filter((item) => item.state === state)).find((list) => list.length > 0);
   if (!judged) return { value: false, readAt: null };
@@ -67,15 +49,9 @@ function timeOf(value) {
   return Number.isFinite(time) ? time : null;
 }
 
-// Work whose end moves the time a fact must be read after. Git, push, and pull-request commands change the
-// branch comparison and the pull requests; any shell command can change the working tree.
+// Work whose end moves the time a fact must be read after.
 const REPOSITORY_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 
-// The latest time of work in the session's committed public state that could have changed a repository fact:
-// `tree` (recorded file changes and any finished shell command) and `repository` (finished Git, push, and pull-request
-// commands). Null means no such work is recorded. A command still running, a file write with no recorded result, or
-// work finished at no known time, is `Infinity`: the work is not over, so no fact read so far can be later than it. Bounded feeds count too: when the
-// activity feed is truncated and shows no file change, the newest change is at or before its oldest item.
 function workTimes(state) {
   const tasks = [...(Array.isArray(state?.executionTasks) ? state.executionTasks : []),
     ...(Array.isArray(state?.agents) ? state.agents : []).flatMap((agent) => (Array.isArray(agent?.executionTasks) ? agent.executionTasks : []))];
@@ -83,8 +59,7 @@ function workTimes(state) {
   const endOf = (task) => (task?.status === "running" ? Number.POSITIVE_INFINITY : timeOf(task?.finishedAt) ?? Number.POSITIVE_INFINITY);
   const ends = tasks.filter((task) => task && typeof task === "object").map((task) => ({ kind: task.workKind, end: endOf(task) }));
   const items = Array.isArray(state?.activity?.items) ? state.activity.items : [];
-  // A file write's item is dated by its call; the file changes when the call ends (`timestamp + durationMs`). A
-  // write with no recorded result (waiting for approval, still running) is not over.
+  // A file write's item is dated by its call; the file changes when the call ends (`timestamp + durationMs`).
   const writeEnd = (item) => {
     const start = timeOf(item.timestamp);
     return start !== null && Number.isSafeInteger(item.durationMs) && item.durationMs >= 0 ? start + item.durationMs : Number.POSITIVE_INFINITY;
@@ -99,31 +74,6 @@ function workTimes(state) {
   };
 }
 
-/**
- * The repository facts the complete-when checks judge for the bound session: `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt }`. The task branch
- * is the branch recorded for the session. Every fact that the committed state does not establish is null (unknown),
- * which the rule never passes: an unavailable or historical repository block, a branch with no base comparison, and a
- * pull-request block that is not ready. `ciPassed` joins those pull requests with the check status the monitor
- * last read for each (`pullRequestCheckRead`, monitor-private memory).
- *
- * `state` is the session's committed public state. `blocks` holds the repository and pull-request blocks to judge:
- * the committed ones for the board's reading, the ones a report's own read returned for a report. The work times
- * always come from `state`.
- *
- * Each fact carries the time it was read (`readAt`, epoch milliseconds or null) and the latest work that could have
- * changed it (`workAt`, see `workTimes`), so the rule can refuse a fact older than the work it judges. The repository and
- * pull-request blocks carry a monitor-private `readAt` stamped by their producers (session-repository-enrichment.mjs and
- * pull-requests.mjs), committed with the values it dates and removed before the state is served:
- * - `readAt.tree` is the repository block's `readAt`, the start of the Git read its changed files come from.
- * - `readAt.branch` is the same read when the block carries a ready comparison (the Git read computed it against the
- *   last refreshed base). The remote comparison's own `checkedAt` does not date the local read and is not used.
- *   No ready comparison is no read.
- * - `readAt.pullRequests` is the pull-request block's `readAt`, the start of the oldest read its items rest on; the
- *   served `checkedAt` is the newest read and is not used.
- * - `readAt.ci` is the oldest read among the judged pull requests' check statuses and the pull-request block's own
- *   `readAt`: the judged set comes from the committed block, so a check status read after the block does not date it.
- * A block without its stamp (a restored or historical one) leaves its facts unknown. Nothing here reads the request clock.
- */
 function checkFacts(state, blocks, checkRead) {
   const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null,
     readAt: { tree: null, branch: null, pullRequests: null, ci: null }, workAt: { tree: null, repository: null } };
@@ -160,24 +110,15 @@ const committedState = (sessionRef, observationStore) => {
   return parsed ? observationStore.get(parsed.providerId, parsed.localSessionId)?.publicState ?? null : null;
 };
 
-/**
- * The facts for the board's reading of a waiting task, from the session's committed public state in memory only.
- * No Git, GitHub, or provider read.
- */
+// The facts for the board's reading of a waiting task, from the session's committed public state in memory only.
 export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead = pullRequestCheckRead }) {
   const state = committedState(sessionRef, observationStore);
   return checkFacts(state, state?.session, checkRead);
 }
 
-/** The longest a report waits for its own read before it is judged on committed facts. */
+// The longest a report waits for its own read before it is judged on committed facts.
 export const TASK_REPORT_READ_DEADLINE_MS = 20_000;
 
-/**
- * The facts a `complete_task` report is verified on: one read of the bound session's repository and pull requests
- * made now (`readNow`, the session's live repository read), so the facts are not older than the work the agent just
- * finished. The work times are taken from the committed state after the read answered. A session the monitor does
- * not hold reads nothing, and a read that fails or passes the deadline falls back to the committed facts.
- */
 export async function readTaskCheckFacts(sessionRef, { observationStore, readNow, checkRead = pullRequestCheckRead, deadlineMs = TASK_REPORT_READ_DEADLINE_MS }) {
   let blocks = null;
   if (committedState(sessionRef, observationStore) && typeof readNow === "function") {

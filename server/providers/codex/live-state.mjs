@@ -11,11 +11,10 @@ import { parseCodexExecutionTaskStateRecords } from "./execution-tasks.mjs";
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const MAX_LIVE_COMPACTIONS = 100;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
-/** Source bytes whose parsed records one adapter may keep between reads. */
+// Source bytes whose parsed records one adapter may keep between reads.
 export const CODEX_ROLLOUT_RECORD_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 const defaultYield = () => new Promise((resolve) => setImmediate(resolve));
 
-/** Owns bounded live-rollout reads, hydration, and cache reuse for one adapter. */
 export function createCodexLiveState({
   scanLimit,
   maximumLiveTailBytes,
@@ -58,8 +57,6 @@ export function createCodexLiveState({
   };
   const digest = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
-  // Dropping records leaves the per-file normalized state below untouched. Each of
-  // those caches keeps its own file bound and its own generation check.
   function dropRolloutRecords(file) {
     const cached = rolloutCache.get(file);
     if (!cached) return false;
@@ -68,7 +65,6 @@ export function createCodexLiveState({
     return true;
   }
 
-  /** Source loss or replacement: the file's records and its derived state both go. */
   function invalidateRolloutFile(file, { clearContext = false } = {}) {
     dropRolloutRecords(file);
     liveAgentAssignmentCache.delete(file);
@@ -110,7 +106,6 @@ export function createCodexLiveState({
         const record = JSON.parse(line);
         if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
       } catch {
-        // Hydration independently ignores malformed and partially written records.
       }
     }
     return { records, bytes, buffer };
@@ -260,9 +255,6 @@ export function createCodexLiveState({
     }
     const previous = liveContextUsageCache.get(file);
     const monotonic = hasLiveContextContinuity(file, generation);
-    // A tail-only read is not evidence that a retained source generation was
-    // replaced.  Keep the last complete normalized context until acquisition
-    // can establish a compatible append or an authoritative replacement.
     if (previous && !monotonic && context?.preservePreviousOnDiscontinuity !== false) {
       return { snapshots: previous.snapshots, compactions: previous.compactions };
     }
@@ -380,18 +372,11 @@ export function createCodexLiveState({
     return { records, generation };
   }
 
-  /** The sessions the latest catalog pass lists as live; only their families keep records. */
+  // The sessions the latest catalog pass lists as live; only their families keep records.
   function retainRecordsForSessions(localSessionIds) {
     liveSessionIds = new Set(localSessionIds);
   }
 
-  /**
-   * Call once a session's normalized evidence is built. Nothing reads a settled session's
-   * unchanged files again on a routine path, so its family holds no parsed records. A
-   * live family keeps them under the byte bound: a complete-history replay rereads the
-   * appended file and reuses the unchanged ones. The latest catalog pass decides which
-   * sessions are live; before the first pass, only the reader's own view is available.
-   */
   function releaseSettledRecords(localSessionId, historical, files) {
     const settled = liveSessionIds ? !liveSessionIds.has(localSessionId) : historical;
     if (!settled) return;

@@ -30,7 +30,7 @@ const FIELDS = {
   get_recent_failures: ["session_ref", "agent_id", "within_minutes", "limit"],
 };
 
-/** Use only the host's current transcript locator; never open or emit the path. */
+// Use only the host's current transcript locator; never open or emit the path.
 function currentSessionId(transcriptPath) {
   if (typeof transcriptPath !== "string" || transcriptPath.length > 4096
     || /[\u0000-\u001f\u007f]/u.test(transcriptPath) || !path.isAbsolute(transcriptPath)) return null;
@@ -38,14 +38,12 @@ function currentSessionId(transcriptPath) {
   if (!filename.endsWith(".jsonl")) return null;
   const id = filename.slice(0, -6);
   if (UUID.test(id)) return id;
-  // A delegated transcript lives under its owning session's subagents directory.
   const directory = path.dirname(transcriptPath);
   const owner = path.basename(path.dirname(directory));
   return /^agent-[A-Za-z0-9_-]{1,128}\.jsonl$/u.test(filename)
     && path.basename(directory) === "subagents" && UUID.test(owner) ? owner : null;
 }
 
-/** The local agent-query capability the server verifies a binding proof against; null when unavailable. */
 async function defaultReadToken() {
   try {
     return (await readAgentQueryDescriptor({ dataRoot: defaultAgentQueryDataRoot() }))?.token ?? null;
@@ -54,16 +52,6 @@ async function defaultReadToken() {
   }
 }
 
-/**
- * Write tools never honor a model-supplied selector. The binding is the host's
- * current transcript, signed with the local capability so the MCP server can tell
- * this value from one the model typed, or the call is denied. No permission
- * decision is allowed here, so the host still asks the user as it normally would
- * for a write. The token and the proof reach stdout only as `session_proof`.
- *
- * Always async, and null for any other event or tool. The read binder below stays synchronous; the hook runner asks this
- * one first, so neither function returns a Promise on one path and a plain value on another.
- */
 export async function bindClaudeQueryWrite(payload, { readToken = defaultReadToken, now = Date.now } = {}) {
   if (payload?.hook_event_name !== "PreToolUse") return null;
   const match = typeof payload.tool_name === "string" ? WRITE_TOOL.exec(payload.tool_name) : null;
@@ -89,7 +77,7 @@ export async function bindClaudeQueryWrite(payload, { readToken = defaultReadTok
   } };
 }
 
-/** Binds the current session for a read tool, synchronously. A write tool is never bound here: see bindClaudeQueryWrite. */
+// Binds the current session for a read tool, synchronously.
 export function bindClaudeQuerySession(payload) {
   if (payload?.hook_event_name !== "PreToolUse") return null;
   const match = typeof payload.tool_name === "string" ? TOOL.exec(payload.tool_name) : null;
@@ -101,10 +89,6 @@ export function bindClaudeQuerySession(payload) {
   if (Object.hasOwn(input, "session_ref")) return null;
   const id = currentSessionId(payload.transcript_path);
   if (!id) return null;
-  // session_id and launch environment can still identify the pre-/clear session.
-  // The only permission decision is for the read the Pomegr line makes of the session's
-  // own context, bound here to the current session. Every other tool, and any explicit
-  // selector, leaves authorization to the host.
   return { hookSpecificOutput: {
     hookEventName: "PreToolUse",
     ...(match[1] === SELF_GRANTED ? { permissionDecision: "allow" } : {}),

@@ -11,11 +11,6 @@ export const CODEX_WRITER_PRESENCE_TIMEOUT_MS = 8_000;
 export const CODEX_WRITER_PRESENCE_MAX_OUTPUT_BYTES = 256 * 1024;
 export const CODEX_WRITER_PRESENCE_CONFIRMATION_MS = 30_000;
 
-// This is a deliberately read-only Restart Manager query. RM reports the union of
-// users for registered resources, not a file-to-process mapping. A single trusted
-// union owner therefore proves every independently held file in that group; an
-// ambiguous union is split sequentially until a unique group is found. This avoids
-// serializing a full RM session per lock without relying on parallel RM sessions.
 const OWNER_QUERY_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
 try {
@@ -133,7 +128,7 @@ function lockIdentity(stat) {
   return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`;
 }
 
-/** Read exactly one byte without writing.  Any uncertainty is intentionally unavailable. */
+// Read exactly one byte without writing.  Any uncertainty is intentionally unavailable.
 export function readCodexWriterLock(file, options = {}) {
   const fsImpl = options.fs || fs;
   let descriptor;
@@ -181,10 +176,8 @@ function vscodeCandidates(options) {
     .filter((candidate) => fileCandidate(candidate, options.fs));
 }
 
-/**
- * Returns only trusted, local executable paths.  These paths are comparison
- * targets for Restart Manager; this module never launches a discovered Codex exe.
- */
+// Returns only trusted, local executable paths.  These paths are comparison
+// targets for Restart Manager; this module never launches a discovered Codex exe.
 export function resolveCodexWriterExecutables(options = {}) {
   const platform = options.platform || process.platform;
   if (platform !== "win32") return [];
@@ -199,7 +192,6 @@ function powershellPath(environment) {
   return path.join(environment.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
-/** One bounded, hidden, asynchronous process for a complete held-lock batch. */
 export async function queryCodexWriterOwners(files, executables, options = {}) {
   if ((options.platform || process.platform) !== "win32" || !Array.isArray(files) || !Array.isArray(executables)
     || !files.length || files.length > CODEX_WRITER_PRESENCE_MAX_LOCKS || !executables.length || executables.length > 64
@@ -211,9 +203,6 @@ export async function queryCodexWriterOwners(files, executables, options = {}) {
   return new Promise((resolve) => {
     let child; let settled = false; let output = ""; let outputBytes = 0;
     const stop = () => { try { child?.kill(); } catch { /* best effort */ } };
-    // Do not resolve a failed helper early: the collector serializes queries by
-    // awaiting this promise, so waiting for `close` prevents an overlap with a
-    // still-terminating PowerShell process.  The hard deadline is the fallback.
     const onAbort = () => { stop(); };
     const finish = (owners = []) => {
       if (settled) return;
@@ -350,8 +339,6 @@ export function createCodexWriterPresence(options = {}) {
       // but never rewrites any recorded lifecycle state.
       next.clear();
     } else {
-      // A completed scan has direct lock evidence for every requested ID, so
-      // a missing or unlocked lock also removes an older confirmation.
       for (const id of request.ids) next.delete(id);
       try {
         for (let index = 0; index < held.length; index += 1) {
@@ -361,9 +348,6 @@ export function createCodexWriterPresence(options = {}) {
       } catch { next.clear(); failed = true; }
     }
     if (closed || token !== generation) return;
-    // `checkedAt` is the observation time.  Do not renew it merely because a
-    // slow native helper finally completed, but apply the acquisition cooldown
-    // from completion so a long query cannot immediately run itself again.
     const completedAt = safeNow(now);
     refreshCompletedAt = completedAt !== null && completedAt >= checkedAt ? completedAt : checkedAt;
     replaceCurrent(next, refreshCompletedAt); refreshAt = checkedAt;
@@ -406,9 +390,6 @@ export function createCodexWriterPresence(options = {}) {
       return () => { listeners.delete(listener); };
     },
     invalidate() {
-      // Let the native helper finish.  Killing it for every watcher event can
-      // starve a busy lock directory forever; the generation still suppresses
-      // its stale result, while `requested` retains the latest follow-up.
       generation += 1; clear(); refreshAt = null; refreshCompletedAt = null; refreshSignature = null;
     },
     close() {

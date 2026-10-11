@@ -13,12 +13,6 @@ import { activityDuration } from "./duration";
 import { targetBasename } from "./feed-model";
 import type { ActivityFeedView } from "./useActivityFeed";
 
-/**
- * A group's own request record already carries request-local counts (monitor-validated, never a
- * chart-page lookup), so every group can show them regardless of the 60-request chart window. Still
- * defensive: the grouped index only validates id/number/agentId, not these fields, so an
- * incomplete or non-numeric record renders no counts rather than a fabricated or partial one.
- */
 function requestTokens(request: HistoryRequest, cacheWriteAvailable: boolean) {
   const { uncachedInputTokens, cacheWriteTokens, outputTokens } = request;
   if (!Number.isSafeInteger(uncachedInputTokens) || uncachedInputTokens < 0) return null;
@@ -27,16 +21,10 @@ function requestTokens(request: HistoryRequest, cacheWriteAvailable: boolean) {
   return { uncachedInputTokens, cacheWriteTokens, outputTokens };
 }
 
-/** A request's recorded model, or null when the monitor reported none for it. */
 function requestModel(request: HistoryRequest) {
   return typeof request.model === "string" && request.model ? request.model : null;
 }
 
-/**
- * The feed's five served headers and the chart are independently sized. Both carry stable request
- * numbers once history has loaded, so their footer labels can be precise without turning chart
- * positions or preview ordinals into request numbers.
- */
 function requestRangeLabel(selection: SessionRequestSelection, feed: ActivityFeedView) {
   const clauses: string[] = [];
   const firstServed = feed.groups[0]?.request.number;
@@ -56,10 +44,6 @@ function requestRangeLabel(selection: SessionRequestSelection, feed: ActivityFee
   return clauses.join(" · ");
 }
 
-/**
- * Right side of the Activity feed: request groups with nested recorded calls. Only bounded,
- * browser-safe metadata renders here: kind, label, target basename and wall duration.
- */
 export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteAvailable, onOpenAgent, onSelectRequest }: {
   selection: SessionRequestSelection; feed: ActivityFeedView; agents: Agent[]; busy: boolean;
   cacheWriteAvailable: boolean; onOpenAgent: (agentId: string) => void; onSelectRequest?: (requestNumber: number) => void;
@@ -69,8 +53,6 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
   const index = selection.selectedIndex;
   const phone = selection.phone;
   const rangeLabel = requestRangeLabel(selection, feed);
-  // One phone call is open at a time, held here rather than per line so opening one closes the
-  // other. It is view state only: no URL parameter, no sheet, no scroll lock.
   const [openCall, setOpenCall] = useState<string | null>(null);
   return <div className="activityFeed" onKeyDown={(event) => { if (event.key === "Escape" && openCall) setOpenCall(null); }}>
     {feed.status === "unavailable" && <p className="activityHistoryError" role="status">
@@ -80,9 +62,6 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
     {feed.status === "ready" && !feed.groups.length && <p className="sessionTabState">No requests recorded in this scope.</p>}
     {feed.groups.map((group, position) => {
       const agent = agents.find((item) => item.id === group.request.agentId);
-      // Consecutive requests from one agent repeat nothing: both the desktop and phone lines name
-      // the agent on the page's first group and wherever the agent changes, and the model wherever
-      // it changes. The accessible label still names both on every line.
       const previous = position > 0 ? feed.groups[position - 1].request : null;
       const model = requestModel(group.request);
       const showAgent = !previous || previous.agentId !== group.request.agentId;
@@ -93,16 +72,11 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
       const agentName = agent ? agentDisplayName(agent) : "Unknown agent";
       const roleLabel = agent ? agentRoleLabel(agent) : "unreported";
       const selectRequest = () => { if (busy) return; onSelectRequest?.(group.request.number); selection.locate(group.request.id, selection.scope); };
-      // Both labels always open with the agent, even where the line leaves a repeated one
-      // unprinted. The counts stay request-local and are never summed across requests or agents.
       const countsLabel = tokens ? `, uncached input ${tokens.uncachedInputTokens.toLocaleString()}`
         + `${cacheWriteAvailable ? `, cache write ${tokens.cacheWriteTokens.toLocaleString()}` : ""}, output ${tokens.outputTokens.toLocaleString()}` : "";
       const modelLabel = model ? `, model ${model}` : "";
       const ariaLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${modelLabel}${countsLabel}, ${callsText}`;
-      // The phone line prints the same request-local counts as desktop and adds the request time,
-      // which desktop leaves to its call rows.
       const phoneLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${modelLabel}${countsLabel}, ${shortTime(group.request.observedAt)}, ${callsText}`;
-      // One set of counts for both lines: chart-legend colors, compact figures, exact value on hover.
       const tokenValues = tokens && <>
         <span className="activityTokenValue uncached" title={requestTokenTitle("Uncached input", tokens.uncachedInputTokens)}>{compactNumber(tokens.uncachedInputTokens)}</span>
         {cacheWriteAvailable && <span className="activityTokenValue write" title={requestTokenTitle("Cache write", tokens.cacheWriteTokens)}>{compactNumber(tokens.cacheWriteTokens)}</span>}
@@ -120,9 +94,6 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
             </span>
             <span className="activityRequestMeta">{tokenValues && <span className="activityRequestTokens">{tokenValues}</span>}<time dateTime={group.request.observedAt}>{shortTime(group.request.observedAt)}</time></span>
           </button>
-          // The desktop line carries the agent itself, so the row is a grid container rather than
-          // one button: the select control stretches its hit area over the whole row (the roster
-          // row pattern) and the agent link sits beside it without nesting one control in another.
           : <div className={`activityRow activityRequestRow${selected ? " selected" : ""}`}>
             <button type="button" className="commandQuietAction activityRequestSelect" aria-pressed={selected} aria-label={ariaLabel}
               onClick={selectRequest} aria-disabled={busy || undefined}><strong className="requestsActionsNumber">#{group.request.number}</strong></button>
@@ -136,15 +107,12 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
               </>}
               {showModel && <span className="activityRequestModel">{model}</span>}
             </span>
-            {/* The counts sit above the select control's row-wide hit area so each can show its own
-                hover; a pointer click on them still selects the request, as anywhere else on the row. */}
+            {/* The counts sit above the select control's hit area so each shows its own hover; a click still selects. */}
             <span className="activityRequestTokens" onClick={selectRequest}>{tokenValues}</span>
           </div>}
         {group.noMatchingCalls && <p className="activityLinkNote">No recorded calls for this request.</p>}
         {group.calls.length > 0 && <ul className="activityTable">
           {group.calls.map((call) => phone
-            // Tapping a call line still selects its request and chart bar exactly as a request line
-            // does; the disclosure beneath it is purely additive.
             ? <ActivityCallLine key={call.id} call={call} agent={agents.find((item) => item.id === (call.agentId ?? group.request.agentId))} busy={busy} open={openCall === call.id}
               onToggle={() => {
                 setOpenCall((current) => (current === call.id ? null : call.id));

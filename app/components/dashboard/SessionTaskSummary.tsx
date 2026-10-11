@@ -9,7 +9,6 @@ import { TaskIssueChip } from "../tasks/TaskIssueChip";
 import { taskIssueNumber } from "../tasks/task-presentation";
 import { useSessionTask } from "../tasks/use-session-task";
 
-/** "Task" and the task ID in the session header's meta row; the ID is plain text on the Task tab itself (`taskHref` null). */
 export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference; taskHref: string | null }) {
   const { stepTotal } = useSessionTask(task);
   const boardHref = sessionTaskHref(task);
@@ -35,11 +34,6 @@ function Cell({ label, children }: { label: string; children: ReactNode }) {
   return <div className="sessionTaskCell"><span className="sessionTaskEyebrow">{label}</span><span className="sessionTaskValue">{children}</span></div>;
 }
 
-/**
- * The compact task panel at the top of the Overview tab. Its heading opens the Task tab. Task content, including the
- * source line of a task promoted from a GitHub issue, comes only from the committed board; until it is ready (or when it is not available here) the panel carries the reference's own fields
- * and one quiet sentence.
- */
 export function SessionTaskSummary({ task, taskHref }: { task: SessionTaskReference; taskHref: string }) {
   const model = useSessionTask(task);
   const headingId = useId();

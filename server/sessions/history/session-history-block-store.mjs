@@ -6,17 +6,6 @@ import { HistoryConnectionPool } from "./session-history-connection-pool.mjs";
 import crypto from "node:crypto";
 import path from "node:path";
 
-// SQLite's rollback journal is the atomic publication marker: old B-tree pages
-// remain recoverable until COMMIT. Each changed row updates bounded indexed
-// pages; unchanged history is neither deserialized nor rewritten. DELETE mode
-// has no growing WAL or replay chain. Freed pages are reused; reclamation is an
-// explicit, cooperative incremental_vacuum operation, never part of serving.
-//
-// Connections are pooled (see session-history-connection-pool.mjs) once the owner
-// calls resume(): a read-only connection serves reads and a separate read-write
-// connection serves transactions, so a read never gains write access, never creates
-// a file, and never rolls back another writer's hot journal. Neither holds a SQLite
-// lock between calls, and every operation here is synchronous.
 export class SessionHistoryBlockStore {
   constructor(directory, validators, { beforeCommit = null, connections = {} } = {}) {
     this.directory = directory; this.validators = validators; this.beforeCommit = beforeCommit;
@@ -27,9 +16,7 @@ export class SessionHistoryBlockStore {
       onPrepare: () => { this.io.prepares += 1; } });
   }
   location(id) { return path.join(this.directory, `${crypto.createHash("sha256").update(id).digest("hex")}.history.sqlite`); }
-  /** Begin retaining pooled connections between calls. */
   resume() { this.pool.resume(); }
-  /** Close every pooled connection and stop retaining new ones; later calls open and close their own. */
   close() { this.pool.closeAll(); }
   connectionCount() { return this.pool.size; }
   #openDatabase(location, writable) {
@@ -62,7 +49,6 @@ export class SessionHistoryBlockStore {
     return value;
   }
   meta(id) { return this.#withReader(id, (db) => this.metadata(db)); }
-  // Opening read-write rolls back a hot journal left by a killed writer, and validates the metadata.
   recover(id) {
     if (!existsSync(this.location(id))) return null;
     return this.#withWriter(id, (db) => this.metadata(db));
@@ -186,16 +172,12 @@ export class SessionHistoryBlockStore {
       return { record: meta, changed };
     });
   }
-  // Callback is synchronous, so all compact indexes and selected details come
-  // from the same read transaction, with no asynchronous writer/reader race.
   read(id, callback) {
     return this.#withReader(id, (db) => {
       db.exec("BEGIN");
       try {
         const meta = this.metadata(db); if (!meta) return null;
         const index = { ...meta, version: 3 };
-        // An activity ref written before the tool-call marker existed lacks `call`; only then is the
-        // row's label read so the ref can be classified without deserializing the row.
         for (const kind of ["requests", "activity"]) index[kind] = db.prepare(`SELECT ref, CASE WHEN kind='activity' AND json_type(ref,'$.call') IS NULL
             THEN json_extract(data,'$.tool') END AS legacyTool FROM rows WHERE kind=? ORDER BY time ${kind === "activity" ? "DESC" : "ASC"},id`).all(kind)
           .map((row) => { const value = JSON.parse(row.ref);
@@ -207,11 +189,7 @@ export class SessionHistoryBlockStore {
       }
     });
   }
-  // Maintenance keeps its own short-lived connection on purpose: it visits every database in
-  // the directory, so pooling it would evict the connections of the sessions in use. The pool
-  // holds no SQLite lock between calls, so the two never contend.
   maintenanceFile(location, budget) {
-    // Caller obtained this exact allowlisted entry from the owned directory.
     const db = new DatabaseSync(location);
     this.io.opens += 1;
     try {
@@ -297,12 +275,6 @@ export function readCommittedHistoryIndex(query, index, load, { safeRequest, saf
       ...(kind === "requests" && query.overview !== "0" ? { overview } : {}), ...(groups || {}) };
   }
 
-/**
-   * Bounded, explicitly scheduled maintenance.  Publication and serving never
-   * enumerate history directories: callers run this only while no selected or
-   * live history work needs the event loop.  A directory handle is retained so
-   * a large abandoned-generation set is drained over several turns.
-   */
 export class SessionHistoryMaintenance {
   constructor(directory, { busy, leased, vacuum }) {
     Object.assign(this, { directory, busy, leased, vacuum, cursor: null, generation: null, stopped: false });
@@ -347,9 +319,7 @@ export class SessionHistoryMaintenance {
         if (!match) continue;
         const revision = Number(match[2]);
         if (!Number.isSafeInteger(revision)) continue;
-        // Read only the compact current marker for this session.  A missing or
-        // malformed marker is conservative: an interrupted publication is left
-        // for a later reconciliation rather than deleting possible evidence.
+        // Read only the compact current marker for this session.
         let current = null;
         if (this.stopped || shouldYield() === true) return Object.freeze({ scanned, removed, complete: false, yielded: true });
         try {

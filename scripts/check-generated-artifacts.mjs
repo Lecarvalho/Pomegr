@@ -78,8 +78,6 @@ for (const outputFile of [
   if (error) errors.push(error);
 }
 
-// The managed Windows sandbox may deny the system temp directory. Keep this
-// short-lived workspace inside the repository and remove it in the finally block.
 const temporaryRoot = await mkdtemp(path.join(repositoryRoot, ".generated-check-"));
 try {
   for (const [outputFile, entryPoint, builder] of bundleDefinitions) {

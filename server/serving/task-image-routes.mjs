@@ -1,11 +1,7 @@
 import { TASK_BODY_LIMIT_BYTES, isPlainObject, readLimitedBody, writeActionResult } from "./task-routes.mjs";
 
 // The image routes of the task board (desktop token only; the request handler applies the private-action gate).
-// An image is user-authored content like the task text. Its bytes cross only here: in on `image-add`, out on
-// `image-read`, both to desktop main. No GET serves them, and no answer carries a path.
 export const TASK_IMAGE_ACTIONS = Object.freeze(["image-add", "image-remove", "image-read"]);
-// Mirrors `TASK_BOUNDS.imageBytes` and `TASK_IMAGE_TYPES` in server/tasks/task-record.mjs, which the serving layer may
-// not import; tests/server/tasks/task-image-routes.test.mjs pins them together.
 export const TASK_IMAGE_LIMIT_BYTES = 5 * 1024 * 1024;
 export const TASK_IMAGE_MEDIA_TYPES = Object.freeze({ png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" });
 
@@ -18,8 +14,6 @@ const rejected = (error) => ({ ok: false, error });
 const refuse = (response, error, status = STATUS[error], options) => writeActionResult(response, status, rejected(error), options);
 const fixedError = (result) => (Object.hasOwn(STATUS, result?.error) ? result.error : "unavailable");
 
-// `image-add` carries the bytes as the whole body, so the identifiers travel in the query: exactly one repository ID
-// and task ID, and optionally the image ID the caller already wrote into the task text.
 async function addImage({ request, response, requestUrl, taskStore }) {
   const keys = [...requestUrl.searchParams.keys()];
   const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
@@ -49,7 +43,6 @@ async function addImage({ request, response, requestUrl, taskStore }) {
   refuse(response, fixedError(result));
 }
 
-// `image-remove` and `image-read` take the usual `{ repositoryId, payload }` envelope with exactly a task ID and an image ID.
 async function readEnvelope(request, response, requestUrl) {
   if (requestUrl.search) { refuse(response, "invalid"); return null; }
   if (Number(request.headers["content-length"] || 0) > TASK_BODY_LIMIT_BYTES) { refuse(response, "invalid", 413, { close: true }); return null; }
@@ -72,11 +65,7 @@ async function readEnvelope(request, response, requestUrl) {
   return body;
 }
 
-/**
- * `POST /internal/tasks/image-add | image-remove | image-read`. `image-add` answers `{ ok: true, imageId }`,
- * `image-remove` `{ ok: true }`, and `image-read` the image bytes with their fixed media type. Every refusal is
- * `{ ok: false, error }` with a fixed code; no answer echoes the input or names a file.
- */
+// `POST /internal/tasks/image-add | image-remove | image-read`.
 export async function serveTaskImageRoute({ request, response, requestUrl, taskStore }) {
   const action = requestUrl.pathname.slice(PREFIX.length);
   if (!TASK_IMAGE_ACTIONS.includes(action)) { refuse(response, "invalid", 404); return; }

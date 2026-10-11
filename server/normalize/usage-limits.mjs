@@ -133,8 +133,7 @@ export function createCoordinatedUsageLimitsReader({
   }
 
   async function get({ afterSignIn = false } = {}) {
-    // A local feed may have returned while an older account request was still
-    // pending. Its rejection must not consume the native recovery trigger.
+    // A local feed may have returned while an older account request was still pending.
     if (afterSignIn && cache.pending) await cache.pending;
     if (cache.pending) return afterSignIn ? cache.pending : cache.value || cache.pending;
     if (afterSignIn && (cache.value?.failureKind === "authentication_required"

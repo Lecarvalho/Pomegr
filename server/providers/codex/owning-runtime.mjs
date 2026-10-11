@@ -23,7 +23,7 @@ export function appServerLiveness(runtimeStatus, observedAt) {
   };
 }
 
-/** An explicitly supplied owning connection. Never starts/resumes a task or spawns a server. */
+// An explicitly supplied owning connection. Never starts/resumes a task or spawns a server.
 export function createCodexOwningRuntime(connection, { now = () => Date.now() } = {}) {
   const observations = new Map();
   let catalogFailed = false;

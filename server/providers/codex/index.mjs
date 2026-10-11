@@ -556,8 +556,6 @@ export function createCodexProvider(options = {}) {
       onRepositoryBinding(binding) { provenRepositories.set(binding.repositoryId, binding); },
     });
     publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls });
-    // The launch directory names the project unless proven mutations point elsewhere
-    // (approved by the product owner on 2026-09-27); see server/normalize/session-identity.mjs.
     const identity = await repositoryAttributionTracker.resolveIdentity(metadata.localId, {
       launchCwd: metadata.cwd, recordedBranch: metadata.recordedGitBranch, resolveRepository: repositoryResolver, bindings: provenRepositories,
     });
@@ -670,9 +668,6 @@ export function createCodexProvider(options = {}) {
     usageLimits: { status: "supported" },
     workflows: { status: "unsupported", limitation: { code: "unsupported_transcript_format", documentation: "Codex does not expose the structured workflow artifacts required by the normalized workflow contract." } },
   };
-  // One copy action needs one file location, so resolve it from the cached thread-metadata
-  // tree instead of reading every rollout. Only a child that tree cannot place, such as one
-  // linked solely by a parent rollout record, still needs the full session read.
   async function readTranscriptPath(localSessionId = "", agentId = "") {
     if (!isSafeCodexSessionId(localSessionId) || typeof agentId !== "string" || !agentId.startsWith("agent-")) return null;
     const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
@@ -754,10 +749,6 @@ export function createCodexProvider(options = {}) {
       concurrency: options.observerConcurrency ?? 2,
       watchTargets,
       catalogWatchTargets: [indexFile, writerLocksRoot],
-      // Codex keeps two routine source-update lanes so one slow normalization
-      // cannot hide activity in every other live session. The normalized
-      // observer still reserves the third interactive lane for first-live
-      // publication and explicit selection.
       interactiveConcurrency: options.observerInteractiveConcurrency ?? 3,
       backgroundConcurrency: options.observerBackgroundConcurrency ?? 1,
       subscribeLifecycleChanges: (notify) => writerPresence.subscribe?.(notify),

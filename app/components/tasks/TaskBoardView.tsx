@@ -18,30 +18,25 @@ import type { TaskBoardEdits } from "./use-task-board-edits";
 
 type OpenTask = (task: Task, opener: HTMLElement) => void;
 
-/** Design contract D87, shown where cards can be dragged. */
 const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
 
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 
-// Five default columns, so the placeholder holds the layout the first answer will fill.
 export function TaskBoardSkeleton() {
   return <div className="taskBoardSkeleton" aria-label="Loading tasks">
     {Array.from({ length: 5 }, (_, index) => <div className="taskBoardSkeletonColumn" key={index}><span /><span /></div>)}
   </div>;
 }
 
-/** A focus the board restores after a keyboard action re-draws the card control, until that action has settled. */
 type Restore = { find(): HTMLElement | null; settled: number };
 
-/** A card to bring into view: the task chosen in the Search bar. `turn` grows with each choice, so the same task can be chosen again. */
 export type TaskReveal = { id: string; turn: number };
 
 function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
   const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
-  // A feature filter could hide the card to show, so a new reveal clears it, adjusted during render.
   const [revealed, setRevealed] = useState(reveal ?? null);
   if ((reveal ?? null) !== revealed) { setRevealed(reveal ?? null); setChosenFilter(ALL_FEATURES); }
-  // A filter hides cards, so positions drawn would not be positions on the monitor: nothing can move while one is on.
+  // A filter hides cards, so positions drawn would not be positions on the monitor.
   const filter = effectiveFeatureFilter(board, chosenFilter);
   const filtered = filter !== ALL_FEATURES;
   const allColumns = taskColumns(board);
@@ -54,7 +49,6 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   const signature = columns.map((column) => `${column.id}:${column.tasks.map((task) => task.id).join(",")}`).join("|");
   const settled = edits?.settled ?? 0;
 
-  // A card that changes column is a new element: put focus back on the control that was used, then let go once the monitor has answered (a rolled-back move re-draws it once more).
   useLayoutEffect(() => {
     const request = restore.current;
     if (!request) return;
@@ -65,7 +59,6 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     if (request.settled !== settled) restore.current = null;
   }, [signature, settled]);
 
-  // Scroll the revealed card into view and put focus on it: on its open control, or on the card itself where it is read-only.
   useEffect(() => {
     if (!reveal) return;
     const card = [...(scroller.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === reveal.id);
@@ -111,17 +104,14 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   </>;
 }
 
-/** One lane of the Board: header, cards, and for the first lane the + New task action. Exported for `/design-system`. */
 export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, drop, cardMoveFor, newTask }: {
   column: TaskColumnView;
   lines: ReadonlyMap<string, string>;
-  /** The queued task the monitor lists first: its chip reads "Queued · next". */
   nextId: string | null;
   onOpen?: OpenTask;
   dropTarget: boolean;
   drop?: ColumnDropHandlers;
   cardMoveFor(task: Task): TaskCardMove | undefined;
-  /** Given to the first column only: a new task always lands there. */
   newTask?: NewTaskEntry;
 }) {
   const headingId = useId();
@@ -134,13 +124,6 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, drop, ca
 
 export type TaskView = "board" | "queue";
 
-/**
- * Lanes with a name and a count, each holding its task cards, or with `view="queue"` the Queue view of the same
- * data, both under the Queue banner while the queue is blocked or paused. Cards open the Task modal only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard;
- * without it the board is read-only: no draggable card, no control, no mutation. `newTask` (the desktop app) adds the
- * + New task action to the first lane of the Board; the Queue view has no lanes and so no such entry. `reveal` names
- * a card the Board scrolls to and focuses, for a client that cannot open the Task modal.
- */
 export function TaskBoardView({ board, onOpenTask, edits, view = "board", newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;

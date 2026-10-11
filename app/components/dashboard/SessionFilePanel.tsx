@@ -17,9 +17,6 @@ function committedText(file: CommittedFile): string {
   return file.change ? COMMITTED_CHANGE_TEXT[file.change] : "Net change not recorded";
 }
 
-/** Recorded agents for the file, one line each: the name (a visible agent opens in the Agents
- * inspector), its latest reported model, a per-agent count when several agents changed the
- * file, and its recorded assignment. */
 function RecordedAgents({ agents, onOpenAgent }: { agents: RecordedFile["agents"]; onOpenAgent?: (agentId: string) => void }) {
   if (agents.length === 0) return null;
   const showCounts = agents.length > 1;
@@ -40,23 +37,14 @@ function RecordedAgents({ agents, onOpenAgent }: { agents: RecordedFile["agents"
   </ul>;
 }
 
-/** The session Repository tab's right panel: what this session did to the selected file, built
- * only from the repository domain the tab already holds, so selecting a file never waits on a
- * fetch. The file's history across sessions lives on the repository page, one link away. */
 export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingTreeStatus, statusRecorded = false, file, readiness, onOpenAgent, className = "" }: {
   repositoryId: string;
   repositoryLabel: string;
-  /** Selected repository-relative path; null renders the "no file selected" state. */
   path: string | null;
   workingTreeStatus: string | null;
-  /** The status was recorded at the session's last live check (historical session), not read now. */
   statusRecorded?: boolean;
-  /** The path's entry in this session's Touched here list: a recorded change summary, or how Git
-   *  saw the path change in the session window when no tool recorded it; null when it has none. */
   file: SessionTouchedFile | null;
-  /** Recorded history readiness; explains an absent `file`. */
   readiness: SessionTouchedFiles["readiness"];
-  /** Opens a recorded agent in the session's Agents tab. */
   onOpenAgent?: (agentId: string) => void;
   className?: string;
 }) {

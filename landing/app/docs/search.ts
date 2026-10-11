@@ -1,13 +1,7 @@
 import type { DocsSearchHeading, DocsSearchIndex, DocsSearchPage } from "../../scripts/docs-search.mjs";
 
-// Matching for the documentation search (WEB-03): plain, deterministic word-prefix matching over
-// the prepared index. No fuzzy matching and no dependency, because the index is 17 short pages
-// and a visitor types the words they see in a title or heading. Every query word must match
-// somewhere in a page (AND), and a page ranks by where each word matches: title, then a heading,
-// then the description, then the body text. A one-character word such as the "a" in "Spot a
-// compaction" is not matched as a prefix, because it would match nearly every page and heading; it
-// still counts toward the phrase bonus, so typing a heading word for word keeps ranking it first.
-// This module is pure so the tests can drive it directly.
+// Plain word-prefix matching over the prepared index; every query word must match, ranked by title, heading, description, then body.
+// A one-character word is not matched as a prefix (it would match nearly every page) but still counts toward the phrase bonus.
 
 export const MAX_RESULTS = 8;
 export const MAX_HEADINGS_PER_RESULT = 3;
@@ -20,12 +14,10 @@ const PHRASE_BONUS = { title: 10, heading: 6 } as const;
 
 export interface SearchResult {
   page: DocsSearchPage;
-  /** Headings that contain at least one query word, strongest first, then in document order. */
   headings: DocsSearchHeading[];
   score: number;
 }
 
-/** Lowercase words of a text: letters and digits only, accents folded. */
 export function words(text: string): string[] {
   return text.normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -55,7 +47,6 @@ function prepare(page: DocsSearchPage): PreparedPage {
 
 const matches = (haystack: readonly string[], token: string) => haystack.some((word) => word.startsWith(token));
 
-/** Whether `phrase` appears as consecutive words of `haystack`, each query word a prefix of its word. */
 function containsPhrase(haystack: readonly string[], phrase: readonly string[]): boolean {
   if (phrase.length < 2) return false;
   for (let start = 0; start + phrase.length <= haystack.length; start += 1) {
@@ -65,21 +56,14 @@ function containsPhrase(haystack: readonly string[], phrase: readonly string[]):
 }
 
 export interface SearchOutcome {
-  /** How many pages contain every query word, before the result limit. */
   total: number;
-  /** At most MAX_RESULTS pages, best first. */
   results: SearchResult[];
 }
 
 const queryWords = (query: string) => words(query.slice(0, MAX_QUERY_LENGTH)).slice(0, MAX_QUERY_WORDS);
 
-/** Whether `query` holds a word long enough to match; when it does not, the interface asks for more letters. */
 export const isSearchable = (query: string) => queryWords(query).some((word) => word.length >= MIN_PREFIX_LENGTH);
 
-/**
- * The pages that contain every word of `query` that is at least MIN_PREFIX_LENGTH characters, best
- * first (ties keep reading order). An empty query, or one with no such word, matches nothing.
- */
 export function searchDocs(index: DocsSearchIndex, query: string): SearchOutcome {
   const phrase = queryWords(query);
   const tokens = [...new Set(phrase)].filter((word) => word.length >= MIN_PREFIX_LENGTH);

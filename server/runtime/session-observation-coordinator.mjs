@@ -25,8 +25,6 @@ function inventoryLifecycleRows(providerId, entries, checkedAt) {
   }));
 }
 
-
-/** Coordinates U1/U2 provider observers with C/D committed session snapshots. */
 export function createSessionObservationCoordinator(options = {}) {
   const { registry, store, deriveSession } = options;
   if (!registry || !store || typeof deriveSession !== "function") {
@@ -38,9 +36,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const cancel = options.cancel || clearTimeout;
   const now = options.now || Date.now;
   const catalogCache = options.catalogCache || createCommittedResponseCache({ includeRevision: true });
-  // The directory owns all normalized headers. The coordinator retains only a
-  // bounded shell for live/selected consumers; never use that shell as an
-  // inventory or a count.
+  // The directory owns all normalized headers.
   const catalogInventory = options.catalogInventory || createSessionCatalogInventory({
     store: () => options.monitorStoreRuntime?.store?.() || null,
     now,
@@ -70,15 +66,12 @@ export function createSessionObservationCoordinator(options = {}) {
     activeSessionIds: options.notificationActiveSessionIds });
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
-  // `commitDelayMs` is the minimum spacing between two derivation starts of one session, and
-  // the gathering delay of a rederivation that carries no new provider evidence.
   const publication = createSessionPublicationSchedule({ schedule, cancel, now: monotonicNow, spacingMs: commitDelayMs,
     publish: (qualifiedId) => { void commitSession(qualifiedId); } });
   const sessionRetryAttempts = new Map();
   const deferredProjectionRefreshes = new Set();
   let persistenceQueue = null;
   const restoredActivitySessions = new Set();
-  // The row D projects against between a session commit and the catalog commit it schedules.
   const rowEvidence = createRowEvidenceView({ store, memo: rowActivity, isRestored: (id) => restoredActivitySessions.has(id),
     pendingEntry(row) {
       const entry = catalogsByProvider.get(row.provider)?.find((candidate) => candidate.id === row.id);
@@ -191,9 +184,7 @@ export function createSessionObservationCoordinator(options = {}) {
         return projectOpenVisibility(nativeEntry, checkedAt);
       });
       projectedCatalogs.set(providerId, projectedEntries);
-      // Directory filters and counts must use the same lifecycle projection as
-      // the committed shell. In particular, an expired Open row is historical
-      // even while the provider still reports native process presence.
+      // Directory filters and counts must use the same lifecycle projection as the committed shell.
       catalogInventory.updateProviderLifecycle(providerId, inventoryLifecycleRows(providerId, projectedEntries, checkedAt));
     }
     const entries = [...projectedCatalogs.values()].flat().sort(compareCatalogEntries);
@@ -208,9 +199,6 @@ export function createSessionObservationCoordinator(options = {}) {
     rowActivity.settle();
     rowEvidence.clear();
     const providerStates = (registry.providers || []).map((provider) => catalogReadinessByProvider.get(provider.id) || "loading");
-    // One provider's empty result cannot establish that the combined catalog is
-    // empty while another is still discovering sessions. Available rows can be
-    // shown immediately, independently of slower providers or detail hydration.
     const catalogReadiness = !sessions.length && providerStates.includes("loading")
       ? "loading"
       : providerStates.length > 0 && providerStates.every((value) => value === "unavailable")
@@ -280,7 +268,7 @@ export function createSessionObservationCoordinator(options = {}) {
       if (pendingSessions.get(qualifiedId) !== candidate) {
         trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope, outcome: "superseded" });
         trace?.finishFlow(flow, { outcome: "superseded" });
-        // The pending candidate keeps the timer its arrival set. This arms one only if none is left.
+        // The pending candidate keeps the timer its arrival set.
         if (pendingSessions.has(qualifiedId)) publication.gathered(qualifiedId);
         return;
       }
@@ -315,8 +303,6 @@ export function createSessionObservationCoordinator(options = {}) {
       trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope,
         outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
       trace?.finishFlow(flow, { outcome: snapshot?.accepted ? "completed" : "rejected" });
-      // Restored task state remains last-observed until new provider evidence
-      // validates and commits, including an otherwise unchanged observation.
       if (snapshot?.accepted && candidate.freshObservation && restoredActivitySessions.delete(qualifiedId)) {
         scheduleCatalogCommit(catalogStructuralDelayMs);
       }
@@ -324,8 +310,6 @@ export function createSessionObservationCoordinator(options = {}) {
         pendingSessions.delete(qualifiedId);
         sessionRetryAttempts.delete(qualifiedId);
         qa.sessionCommits += 1;
-        // Evidence is already committed: don't add a second summary delay before
-        // publishing current activity and notifying the catalog's consumers.
         rowEvidence.mark(qualifiedId);
         scheduleCatalogCommit(catalogStructuralDelayMs);
         notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision,
@@ -344,9 +328,7 @@ export function createSessionObservationCoordinator(options = {}) {
       if (deferredProjectionRefreshes.delete(qualifiedId)) refreshProjection(qualifiedId);
     } catch {
       trace?.finishFlow(flow, { outcome: "failed" });
-      // D failures retain the previous committed revision. Retry this candidate
-      // only while it is current; an obsolete failure must not mark newer work
-      // as a retry or move its already-scheduled publication deadline.
+      // D failures retain the previous committed revision.
       qa.rejectedCandidates += 1;
       if (pendingSessions.get(qualifiedId) === candidate) scheduleSessionRetry(qualifiedId);
     }
@@ -375,9 +357,6 @@ export function createSessionObservationCoordinator(options = {}) {
     },
     checkpointFor(providerId, localSessionId) {
       const snapshot = store.get(providerId, localSessionId);
-      // A restored cursor alone cannot revalidate downgraded live lifecycle:
-      // unchanged bytes would skip normalization forever. Reacquire once while
-      // retaining the saved response, then resume cursor reuse after commit.
       if (snapshot?.evidence?.historical === false
         && restoredActivitySessions.has(qualifiedSessionId(providerId, localSessionId))) return null;
       const source = snapshot?.source;
@@ -392,14 +371,10 @@ export function createSessionObservationCoordinator(options = {}) {
         ? entries.map((entry) => publicCatalogEntry(providerId, provider?.source || entry?.source || "", entry)).filter(Boolean)
         : [];
       notificationCatalog.acceptProvider(providerId, normalized, readiness);
-      // Retain only the current shell. Historical directory pages are served
-      // from the inventory index, so a large provider scan cannot become a
-      // resident browser-facing catalog array.
+      // Retain only the current shell.
       const shell = normalized.slice().sort((left, right) => Number(right.isLive || right.needsInput) - Number(left.isLive || left.needsInput)
         || compareCatalogEntries(left, right)).slice(0, MAX_CATALOG_SHELL_ROWS);
-      // The ordinary observer catalog is a bounded lifecycle shell. It may
-      // update current live state for known headers, but it cannot establish
-      // completeness or let header scans erase an observed lifecycle.
+      // The ordinary observer catalog is a bounded lifecycle shell.
       catalogInventory.updateProviderLifecycle(providerId, inventoryLifecycleRows(providerId, shell, now()));
       if (readiness === "unavailable") catalogInventory.replaceProvider(providerId, [], "unavailable");
       const structuralChange = catalogStructure(catalogsByProvider.get(providerId)) !== catalogStructure(shell);
@@ -413,8 +388,6 @@ export function createSessionObservationCoordinator(options = {}) {
       if (stopped) return;
       qa.sessionCandidates += 1;
       const qualifiedId = qualifiedSessionId(providerId, localSessionId);
-      // Track even evicted/invalidated candidates until L2 settles. Overflow
-      // skips restoration rather than risking an older replacement.
       if (restoreFreshSessions && restoreFreshSessions.size < 4096) restoreFreshSessions.add(qualifiedId);
       const provider = registry.providers?.find((candidate) => candidate.id === providerId);
       const scope = traceScope(providerId, localSessionId);
@@ -432,10 +405,7 @@ export function createSessionObservationCoordinator(options = {}) {
         traceFlow: trace?.createFlow({ scope }),
       }));
       sessionRetryAttempts.delete(qualifiedId);
-      // A quiet session derives in the next turn. One that derived within the spacing waits it
-      // out, and later candidates replace this one without moving that deadline, so continuous
-      // work cannot starve publication. Fresh evidence still moves a delayed failure retry or a
-      // gathered refresh forward; behind a pending restore it joins that batch.
+      // A quiet session derives in the next turn.
       publication.fresh(qualifiedId);
     },
 
@@ -465,8 +435,6 @@ export function createSessionObservationCoordinator(options = {}) {
     },
   });
 
-  // Applies one validated L2 record from the bulk or on-demand restore. Fresh
-  // candidates and already committed revisions always win over a saved record.
   function applyRestoredRecord(record, freshSessions) {
     const id = qualifiedSessionId(record.providerId, record.localSessionId);
     if (freshSessions.size >= 4096 || freshSessions.has(id)
@@ -477,15 +445,12 @@ export function createSessionObservationCoordinator(options = {}) {
     if (!restored.accepted) return false;
     restoredActivitySessions.add(restored.snapshot.qualifiedId);
     const scope = traceScope(record.providerId, record.localSessionId);
-    // Rederive the restored evidence, including its downgraded lifecycle; the
-    // original checkpoint must not resurrect a prior process's status.
     pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
       providerId: record.providerId, localSessionId: record.localSessionId, evidence: restored.snapshot.evidence,
       source: provider.source || "", checkpointSource: record.source, observedAt: record.observedAt,
       pinned: Boolean(record.evidence?.historical === false), queuedAt: monotonicNow(),
       traceScope: scope, traceFlow: trace?.createFlow({ scope }),
     }));
-    // The restored revision is already served. Its rederivation gathers, so a whole restore keeps one deadline.
     publication.restored(restored.snapshot.qualifiedId);
     return true;
   }
@@ -494,8 +459,6 @@ export function createSessionObservationCoordinator(options = {}) {
   const checkpointRestore = createCheckpointRestore({ checkpointStore, ready: (qualifiedId) => options.checkpointRestoreReady?.(qualifiedId),
     projectState: options.restoreState || (({ evidence }) => evidence), apply: applyRestoredRecord });
 
-  // A requested miss during the startup restore reads its own checkpoint first (one file,
-  // asynchronously); `onMissing` keeps today's hydration when none is valid.
   function restoreRequested(qualifiedId, onMissing) {
     return checkpointRestore.request(qualifiedId, (restored) => {
       const snapshot = stopped ? null : store.getByQualifiedId(qualifiedId);
@@ -535,9 +498,7 @@ export function createSessionObservationCoordinator(options = {}) {
         return null;
       }
       lifecycle = observerLifecycle;
-      // Directory scans run independently from observer startup. Tokens for
-      // every configured source are opened before any one source can finish,
-      // so a partial rescan can never momentarily claim a global exact count.
+      // Directory scans run independently from observer startup.
       void startCatalogHeaderEnumeration(controller.signal);
       if (startupSelection) {
         const selectedId = startupSelection;
@@ -555,7 +516,6 @@ export function createSessionObservationCoordinator(options = {}) {
     headerScanRunning = true;
     try {
       // Header inventory persistence is independent from live observer startup.
-      // A slow or unavailable store must never delay selected/live publication.
       try { await options.monitorStoreRuntime?.start?.(); } catch { /* bounded partial fallback remains explicit */ }
       if (stopped || signal?.aborted) return;
       catalogInventory.configureProviders((registry.providers || []).map((provider) => provider.id), { scopeKey: catalogSourceScopeKey(registry) });
@@ -575,8 +535,7 @@ export function createSessionObservationCoordinator(options = {}) {
   function hydrate(requestedSessionId, { selected = false, restored = false } = {}) {
     if (!requestedSessionId || stopped) return false;
     if (typeof lifecycle?.hydrate !== "function") {
-      // Selection can arrive while checkpoints are already served but provider
-      // observers are still starting. Retain only the latest selection.
+      // Selection can arrive while checkpoints are already served but provider observers are still starting.
       if (selected) startupSelection = requestedSessionId;
       return false;
     }
@@ -596,19 +555,11 @@ export function createSessionObservationCoordinator(options = {}) {
     return true;
   }
 
-  // A checkpoint-restored live session serves its downgraded lifecycle until fresh provider
-  // evidence commits. A viewer's request prioritizes that revalidation; the restored hydration
-  // itself is deduplicated, so repeated requests queue no additional work.
   function prioritizeRestoredLive(qualifiedId, snapshot = store.getByQualifiedId(qualifiedId)) {
     if (snapshot?.evidence?.historical !== false || !restoredActivitySessions.has(qualifiedId)) return false;
     return hydrate(qualifiedId, { selected: true, restored: true });
   }
 
-  // Queues one asynchronous hydration for a session that has neither committed evidence nor a
-  // catalog row (for example one older than the bounded provider catalog window). Returns `false`
-  // when the ID does not belong to a registered provider, `null` when nothing could be queued yet
-  // (observers not started, or stopped), and otherwise a promise resolving whether the hydration
-  // published evidence. It never acquires synchronously, and failures resolve `false`.
   function probeUncatalogued(requestedSessionId) {
     const parsed = typeof requestedSessionId === "string" ? parseProviderSessionId(requestedSessionId) : null;
     if (!parsed || !registry.providers?.some((provider) => provider.id === parsed.providerId)) return false;
@@ -671,7 +622,6 @@ export function createSessionObservationCoordinator(options = {}) {
     restoreFreshSessions = null;
     try { await lifecycle?.stop?.(); } catch { /* shutdown remains best-effort */ }
     // Producers stop before the bounded P owner drains its newest accepted revisions.
-    // Maintenance is deliberately not part of this durable-write barrier.
     await persistenceQueue?.stop();
     persistenceQueue = null;
     lifecycle = null;
@@ -727,8 +677,6 @@ export function createSessionObservationCoordinator(options = {}) {
       if (!lifecycle) startupSelection = null;
       if (snapshot || catalogEntry || parsed) {
         const selected = parseProviderSessionId(selectedId);
-        // Pin a known selection before hydration so other commits cannot evict
-        // its first snapshot before the next browser poll receives it.
         store.setPinned(selected.providerId, selected.localSessionId, true);
         if (selectedPinnedId && selectedPinnedId !== selectedId) {
           const previous = parseProviderSessionId(selectedPinnedId);

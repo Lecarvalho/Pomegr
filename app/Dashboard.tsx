@@ -58,11 +58,6 @@ function SessionLoading({ error }: { error?: string | null }) {
   return <section className="commandView commandSessionView" aria-busy="true"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Loading session…" meta="Reading the latest committed summary." /><div className="sessionTabState" role="status">Loading session summary…</div>{error && <div className="notice" role="alert"><span aria-hidden="true">!</span>{error}</div>}</section>;
 }
 
-// The store never resolves `data` from a request that failed before any committed body was
-// ever retained (see `session-domain-store.ts`'s catch branch), so without this a session whose
-// very first request fails would render `SessionLoading` forever instead of recovering. Once a
-// later poll succeeds `summary.data` becomes non-null and the caller stops rendering this state
-// on its own, so no local retry bookkeeping is needed here.
 function SessionConnectionIssue({ message }: { message: string }) {
   return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session evidence unavailable" meta="Pomegr has not yet reached the local monitor for this session." /><div className="notice" role="alert"><span aria-hidden="true">!</span>{message}</div></section>;
 }
@@ -71,8 +66,6 @@ function SessionUnavailable({ meta }: { meta: string }) {
   return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session unavailable" meta={meta} /><div className="sessionTabState">Choose another session from the Sessions page.</div></section>;
 }
 
-// A detected session whose provider has not recorded anything yet is not unavailable: keep its
-// catalog identity and say that its evidence will appear once the provider records it.
 function SessionAwaitingActivity({ session }: { session: SessionSummary }) {
   return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><CommandBreadcrumbSeparator /><span aria-current="page">{session.project}</span></>} title={session.title} meta={<div className="sessionHeaderMeta"><ProviderBadge source={session.source} /></div>} /><div className="sessionTabState" role="status">No recorded activity yet. Activity and context appear here once the provider records them.</div></section>;
 }
@@ -86,9 +79,6 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
   const [paused, setPaused] = useState(false);
   const [reportGenerating, setReportGenerating] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
-  // The catalog row can be loading, unavailable, or simply missing while the session's own
-  // fetched summary already confirms `view: "history"`. Latch that confirmation so a recorded
-  // session never keeps the live polling cadence just because the catalog has no matching row.
   const [trackedSessionId, setTrackedSessionId] = useState(sessionId);
   const [knownHistorical, setKnownHistorical] = useState(catalogHistorical);
   if (sessionId !== trackedSessionId) { setTrackedSessionId(sessionId); setKnownHistorical(catalogHistorical); }
@@ -98,8 +88,6 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
   if (summary?.view === "history" && !knownHistorical) setKnownHistorical(true);
   const historical = summary?.view === "history" || catalogHistorical;
   const activeTab = parseSessionTab(initialQuery.tab);
-  // The task this session was started for, or none. Until it is known nothing about a task is shown. It is asked
-  // only for a session with a committed summary, so an unavailable session starts no second read.
   const sessionTask = useSessionTaskReference(sessionId, { enabled: !paused && Boolean(summary?.session) });
 
   useEffect(() => {
@@ -115,7 +103,6 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
     const next = { ...changes };
     if (Object.prototype.hasOwnProperty.call(changes, "agent") && changes.agent !== initialQuery.agent
       && !Object.prototype.hasOwnProperty.call(changes, "request")) next.request = null;
-    // A peak link belongs to the navigation that carried it; any other tab change drops it.
     if (Object.prototype.hasOwnProperty.call(changes, "tab") && !Object.prototype.hasOwnProperty.call(changes, "peak")) next.peak = null;
     const query = sessionQueryString(initialQuery, next);
     router.replace(`/sessions/${encodeSessionRoute(sessionId)}${query ? `?${query}` : ""}`, { scroll: false });
@@ -146,14 +133,9 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
     finally { setReportGenerating(false); }
   };
 
-  // A definitive monitor answer (its hydration found no recorded evidence for this session) is not
-  // a connection problem: show it honestly instead of "not yet reached the monitor", with no retry.
+  // A definitive monitor answer (its hydration found no recorded evidence for this session) is not a connection problem.
   if (!summary && summaryResult.unavailable) return <SessionUnavailable meta="Pomegr found no recorded evidence for this session." />;
   if (!summary) return summaryResult.error ? <SessionConnectionIssue message={summaryResult.error} /> : <SessionLoading />;
-  // A retained "loading" body (no session yet) is still evidence that a request once completed,
-  // so a later poll failure surfaces the connection notice alongside it rather than silently
-  // showing "Loading session…" forever; the next successful response clears `summaryResult.error`
-  // on its own (see session-domain-store.ts), so no local retry bookkeeping is needed here either.
   if (summary.readiness === "loading" && !summary.session) return <SessionLoading error={summaryResult.error} />;
   if (!summary.session || summary.readiness === "unavailable") return catalogSession
     ? <SessionAwaitingActivity session={catalogSession} />

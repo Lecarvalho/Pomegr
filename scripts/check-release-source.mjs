@@ -52,8 +52,7 @@ export async function checkReleaseSource({
     const archivePath = path.join(temporaryRoot, `pomegr-${version}-source.zip`);
     const extractedRoot = path.join(temporaryRoot, "source");
     git(repositoryRoot, ["archive", "--format=zip", `--prefix=pomegr-${version}/`, "--output", archivePath, sourceRef], "RELEASE_SOURCE_ARCHIVE_FAILED");
-    // ZIP storage can leave test fixtures visible in raw bytes. Apply the
-    // path-specific sentinel policy to extracted files, keeping the ZIP bound.
+    // ZIP storage can leave test fixtures visible in raw bytes.
     await assertFileHasNoPrivacySentinel(archivePath, { allowSentinel: true });
     await mkdir(extractedRoot);
     extract(archivePath, extractedRoot);

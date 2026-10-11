@@ -44,8 +44,6 @@ function modelFromContextRecord(record) {
 function cacheLifetimeForModel(model) {
   // Documented model-policy minimum, not a recorded expiry or an API retention
   // setting. Keep the family allowlist explicit; unknown future models fail closed.
-  // https://developers.openai.com/api/docs/guides/prompt-caching#cache-lifetime
-  // https://developers.openai.com/api/docs/guides/latest-model
   return /^(?:gpt-5\.6(?:-(?:sol|terra|luna|pro|cyber))?|gpt-6-(?:astra|sol|luna)|gpt-6\.1-sol)(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
     ? "30m+"
     : null;
@@ -242,8 +240,6 @@ function usageFromRecord(record) {
   const componentTotal = input + output + cacheWrite + cacheRead;
   if (componentTotal === 0) return null;
 
-  // Context normalization remains compatible with older records. Read-drop
-  // inference additionally requires explicit, uncoerced and unclamped counts.
   const recordedInput = recordedCount(usage, ["input_tokens", "inputTokens"]);
   const recordedRead = recordedCount(usage, ["cached_input_tokens", "cachedInputTokens"]);
   const recordedWrite = recordedCount(usage, [
@@ -274,7 +270,6 @@ function laterEvidence(previous, next) {
   return Number.isFinite(nextTime) && (!Number.isFinite(previousTime) || nextTime >= previousTime) ? next : previous;
 }
 
-/** Keep proven context when the same immutable request is reread in a smaller tail. */
 export function mergeCodexContextSnapshot(previous, next) {
   if (!previous || previous.cacheReadComparable !== true || next.cacheReadComparable !== true
     || !sameRecordedUsage(previous, next)

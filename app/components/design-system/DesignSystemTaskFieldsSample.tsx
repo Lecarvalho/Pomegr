@@ -17,7 +17,6 @@ import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
 const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] } as const;
 const RESULTS = new Map([["pr_open", false], ["tree_clean", true]] as const);
 const noop = () => undefined;
-// Static samples: an image that is still being read has no URL, so no image file ships with the page.
 const SAMPLE_IMAGE_IDS = ["img-000000000001", "img-000000000002", "img-000000000003", "img-000000000004"];
 const SAMPLE_IMAGE_URLS = new Map<string, string | null>(SAMPLE_IMAGE_IDS.map((id) => [id, null]));
 const noImages = () => [];
@@ -112,7 +111,7 @@ export function TaskFieldsSection() {
 
 const STORED_TEXT = "Retry failed uploads with a capped backoff and cover it with a test.";
 
-/** Mode edit as static chrome: Save sends nothing here. Changing the text shows how an unsaved draft holds the other footer actions. */
+/** Mode edit as static chrome. */
 function TaskModalEditSamples() {
   const draftId = useId();
   const reviewId = useId();
@@ -186,7 +185,7 @@ const HIDDEN_START = HIDDEN_BODY.indexOf("<!--");
 const HIDDEN_END = HIDDEN_BODY.indexOf("-->") + 3;
 const CHANGED = sampleIssue({ authorAssociation: "outsider", body: HIDDEN_BODY, hiddenComments: { count: 1, ranges: [{ start: HIDDEN_START, end: HIDDEN_END }] }, characters: 151, digest: "1".repeat(64) });
 
-/** Mode issue as static chrome: the same pieces as the real form, with nothing sent. The fields keep local state. */
+/** Mode issue as static chrome. */
 function TaskModalPromoteSamples() {
   const normalId = useId();
   const changedId = useId();
@@ -247,7 +246,6 @@ const CANNOT: { label: string; option: IssueCreateOption }[] = [
   { label: "GitHub could not be read", option: { kind: "cannot", reason: "unreadable" } },
 ];
 
-/** Create a GitHub issue from a task: the New task checkbox in each state, and the Edit row for a task with no source. */
 function IssueCreateSamples() {
   const [checked, setChecked] = useState(true);
   const [off, setOff] = useState(false);

@@ -1,19 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-/*
- * Proof that the Pomegr PreToolUse hook, and not the model, set a task tool's `session_ref`.
- * The hook signs the tool name, the session reference, and the issue time with the local
- * agent-query capability token; the Claude MCP server verifies it with the same token read
- * from the descriptor at call time. The token is only ever an HMAC key here: it is never
- * returned, logged, or put in a message. Both sides import this one module.
- */
 const PREFIX = "pomegr-task-binding/v1";
-/*
- * The hook issues a proof before the host asks the user to approve the write, and the MCP server verifies it only after
- * the approval, so the window must outlast a slow human decision. Ten minutes does; the proof stays bound to the tool name
- * and the session, so a longer life lets nothing be replayed against another tool, session, or token.
- */
-/** A proof older than this, or issued more than FUTURE_SKEW_MS ahead of the verifier, is refused. */
 export const TASK_BINDING_PROOF_WINDOW_MS = 10 * 60_000;
 export const TASK_BINDING_PROOF_FUTURE_SKEW_MS = 5_000;
 const TOOL = /^[a-z][a-z_]{0,31}$/u;
@@ -29,14 +16,13 @@ function usable(token, tool, sessionRef) {
     && typeof sessionRef === "string" && SESSION_REF.test(sessionRef);
 }
 
-/** `<issuedAtMs>.<base64url HMAC-SHA256>`, or null when an input is unusable. */
 export function createTaskBindingProof(input) {
   const { token, tool, sessionRef, now = Date.now() } = input ?? {};
   if (!usable(token, tool, sessionRef) || !Number.isSafeInteger(now) || now < 1e9 || now > 1e16) return null;
   return `${now}.${mac(token, tool, sessionRef, now)}`;
 }
 
-/** True only for a well-formed, fresh proof made with this token for this tool and session. Never throws. */
+// True only for a well-formed, fresh proof made with this token for this tool and session.
 export function verifyTaskBindingProof(input) {
   try {
     const { token, tool, sessionRef, proof, now = Date.now() } = input ?? {};

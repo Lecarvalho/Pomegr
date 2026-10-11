@@ -53,11 +53,6 @@ function newerSignal(first, second) {
   return secondTime >= firstTime ? second : first;
 }
 
-/**
- * Record pass: discover every Bash tool call and fold its result/notification evidence into one
- * task per tool-use ID, in insertion order. This half of buildExecutionTasks depends only on the
- * transcript records, so it is safe to cache per file while a file's generation is unchanged.
- */
 function recordPass(records) {
   const tasks = new Map();
   const toolUseIdByBackgroundId = new Map();
@@ -131,12 +126,7 @@ function recordPass(records) {
   return tasks;
 }
 
-/**
- * Finish pass: signals, the historical "still running" stop rule, sort, and bound. Always runs on
- * fresh copies of the (possibly cached) record-pass tasks, since taskSignals and sessionUpdatedAt
- * can differ call to call even when the underlying transcript has not changed, and a cached task
- * object must never be mutated in place.
- */
+// Finish pass: signals, the historical "still running" stop rule, sort, and bound.
 function finishPass(tasks, { historical = false, sessionUpdatedAt = null, taskSignals = new Map() } = {}) {
   const historicalFinishedAt = isoTimestampFromDateInput(sessionUpdatedAt);
   const finished = [...tasks.values()].map((task) => ({ ...task }));
@@ -161,13 +151,6 @@ export function buildExecutionTasks(records, options = {}) {
   return finishPass(recordPass(records), options);
 }
 
-/**
- * Per-file cache of the record pass, reused across warm readSession calls while a file's
- * generation key is unchanged; the finish pass always reruns on fresh copies. `key` is an opaque
- * generation-key string from the caller (see claude-file-generation.mjs / claude-read-generations.mjs);
- * a null key never caches, matching completeHistory/unlimited reads, which must not use or populate
- * this reuse cache. Bounded to `maxEntries`, evicted least-recently-used.
- */
 export function createExecutionTaskReader({ maxEntries = 512 } = {}) {
   const cache = new Map();
 

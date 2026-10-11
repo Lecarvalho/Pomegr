@@ -1,4 +1,4 @@
-/** Incremental P maintenance owns one low-priority batch per turn, never GETs. */
+// Incremental P maintenance owns one low-priority batch per turn, never GETs.
 export function createPersistenceMaintenance({
   steps = [], isBusy = () => false, intervalMs = 1_000, budget = 32,
   schedule = setTimeout, cancel = clearTimeout,

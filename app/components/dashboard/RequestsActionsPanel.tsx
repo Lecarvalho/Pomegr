@@ -24,7 +24,6 @@ const FRESH_NOTE = "Fresh tokens leaves out cache reads; every request re-reads 
 
 type ChartLayout = "lanes" | "single";
 
-/** The loaded window as request markers. Session numbers skip other agents, so a scoped window also counts its requests. */
 function windowRange(visible: RequestRow[], total: number, scoped: boolean): string | null {
   const first = visible[0];
   const last = visible.at(-1);
@@ -39,15 +38,11 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   selection: SessionRequestSelection;
 }) {
   const [mode, setMode] = useState<ChartMode>("fresh");
-  // Desktop defaults to lanes; phone always draws the single chart with its role track, legend and
-  // Largest strip. Expanded lane groups and the layout live here so switching between lanes and the
-  // single chart keeps both.
   const [layout, setLayout] = useState<ChartLayout>("lanes");
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const { selected, start, end, select, step, moveWindow, phone, size, rows, scope: resolvedScope, setScope, history: requestHistory } = selection;
   const single = phone || layout === "single";
-  // One status for every line the five-second history retry would otherwise flicker.
   const historyStatus = useStableHistoryStatus(requestHistory.status);
   const overview = requestHistory.enabled ? requestHistory.overview : null;
   const visibleRows = useMemo(() => rows.slice(start - 1, end), [rows, start, end]);
@@ -68,9 +63,7 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
     const running = !historical && isAgentWallTimeAdvancing(agent);
     return { value: agent.id, label: agentDisplayName(agent), icon: running ? <i className="commandStatusDot online" /> : undefined, iconLabel: running ? "running" : undefined };
   })], [agents, historical]);
-  // The preview's markers are times, and its retention note already says what is shown.
   const range = requestHistory.preview ? null : windowRange(visibleRows, chartTotal, resolvedScope !== "all");
-  // Explanations collect in one quiet footer popover so the heading and range line stay plain text.
   const notes = [
     mode === "fresh" && FRESH_NOTE,
     !single && LANE_NOTE,

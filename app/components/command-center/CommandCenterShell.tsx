@@ -69,10 +69,8 @@ const destinationTerms: Array<[RegExp, string]> = [
   [/home/i, "/"],
 ];
 
-/** A destination carries an `href`; an item of the page in view carries its `scopeId` instead. */
 type PaletteResult = { id: string; href?: string; scopeId?: string; label: string; detail: string; icon: CommandIconName };
 
-/** How many items of the page in view the palette lists at once. */
 const SCOPE_RESULT_LIMIT = 20;
 
 function Palette({ open, onClose, query, onQueryChange, results, onSelect, inputRef, placeholder, emptyLine }: {
@@ -86,9 +84,7 @@ function Palette({ open, onClose, query, onQueryChange, results, onSelect, input
   placeholder: string;
   emptyLine: string;
 }) {
-  // The highlight tracks the query it was computed for. When the query changes (typing
-  // narrows or widens the results) we adjust the highlight back to the top result during
-  // render instead of in an effect, per React's "adjust state during render" pattern.
+  // The highlight tracks the query it was computed for.
   const [highlight, setHighlight] = useState({ query, index: 0 });
   const activeIndex = highlight.query === query ? highlight.index : 0;
   if (highlight.query !== query) setHighlight({ query, index: 0 });
@@ -159,8 +155,6 @@ export function sidebarLimitsForCatalog(sessions: SessionSummary[], providers: R
   return providers.flatMap((entry) => {
     if (!recentProviders.has(entry.provider)) return [];
     const tightest = [...(entry.usageLimits?.limits || [])].sort((left, right) => right.percent - left.percent)[0];
-    // Severity is reconstructed monitor-side (see AGENTS.md); mirror the Usage limits page and
-    // trust the provided value instead of re-deriving thresholds from the percent here.
     return tightest ? [{ provider: entry.source, percent: Math.max(0, Math.min(100, tightest.percent)), label: sidebarResetLabel(tightest.resetsAt, referenceTime), severity: tightest.severity ?? "normal" }] : [];
   });
 }
@@ -210,12 +204,10 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
     const routedDestination = destinationTerms.find(([pattern]) => pattern.test(normalized))?.[1];
     const routed = routedDestination ? destinations.filter((result) => result.href === routedDestination) : [];
     const ordered = [...routed, ...destinations.filter((result) => result.href !== routedDestination)];
-    // The search leads with the module in view: its sessions or repositories go before the destinations.
     const candidates = pathname === "/sessions" || pathname.startsWith("/sessions/") ? [...recentSessions, ...ordered, ...recentRepositories]
       : pathname === "/repositories" || pathname.startsWith("/repositories/") ? [...recentRepositories, ...ordered, ...recentSessions]
         : [...ordered, ...recentSessions, ...recentRepositories];
     const matched = normalized ? candidates.filter((result) => `${result.label} ${result.detail}`.toLowerCase().includes(normalized)) : candidates;
-    // A page that registered a scope (the task board) has its own items searched first.
     const scoped: PaletteResult[] = scope ? matchPaletteScopeItems(scope.items, normalized, SCOPE_RESULT_LIMIT).map((item) => ({ id: `scope-${item.id}`, scopeId: item.id, label: item.label, detail: item.detail, icon: "grid" })) : [];
     return [...scoped, ...matched];
   }, [pathname, query, repositorySnapshot.repositories, scope, sessions]);
@@ -272,7 +264,6 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
     return () => document.removeEventListener("keydown", focusSearch);
   }, [closePalette, openPalette, paletteOpen]);
   const selectPaletteResult = useCallback((result: PaletteResult) => {
-    // Close first: an item of the page in view takes focus itself (a card, or the modal it opens).
     closePalette(false);
     if (result.scopeId !== undefined) scope?.onSelect(result.scopeId);
     else if (result.href !== undefined) router.push(result.href);

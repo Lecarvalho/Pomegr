@@ -12,11 +12,7 @@ const GIT_CHECK_MIN_INTERVAL_MS = 60_000;
 const MAX_GIT_RENAMES = 512;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
-// v2 stops replaying unbound Codex paths through session.cwd. Old rows can be
-// attributed to the wrong checkout, so rebuilds discard this derived index.
 const FILE_INDEX_VERSION = "2";
-// v1 backfills `file_change_agents` by replaying retained checkpoints once. The replay is
-// additive: already-recorded changes are skipped, so it only adds agent identities.
 const FILE_AGENTS_VERSION = "1";
 
 function readMeta(store, key) {
@@ -61,27 +57,16 @@ function recordChange(store, fileId, change) {
   `).run(fileId, change.sessionId, change.agentId, change.kind, change.observedAt);
 }
 
-/** created/edited/deleted: a single tracked path, keyed by (repository_id, current_path). */
 function applyMutation(store, repositoryId, change) {
   const row = ensureFile(store, repositoryId, change.path, change.observedAt);
   if (change.kind === "deleted") {
     preparedStatement(store.database, "UPDATE files SET deleted_at = ? WHERE id = ?").run(change.observedAt, row.id);
   } else if (row.deletedAt !== null) {
-    // A recorded create/edit at a path this index last saw deleted proves the file
-    // currently exists again; clear the tombstone rather than leaving it stale.
     preparedStatement(store.database, "UPDATE files SET deleted_at = NULL WHERE id = ?").run(row.id);
   }
   recordChange(store, row.id, change);
 }
 
-/**
- * moved: rewrites current_path on the source file's row, closing its open `file_paths`
- * row and opening a new `shell_move` one. Continuity is skipped (the event is still
- * recorded, against whichever row already occupies the target path) whenever the source
- * identity is unknown or the target path already belongs to a different tracked file —
- * `files_repository_path` is unique on (repository_id, current_path) regardless of
- * whether that other row is live or tombstoned.
- */
 function applyMove(store, repositoryId, change) {
   const source = change.previousPath ? findFile(store, repositoryId, change.previousPath) : null;
   const liveSource = source && source.deletedAt === null ? source : null;
@@ -102,11 +87,6 @@ function applyMove(store, repositoryId, change) {
   recordChange(store, liveSource.id, change);
 }
 
-/**
- * True when this exact recorded change (session, agent, kind, timestamp, path) is already
- * indexed. The path matches the file's current path or any path it ever held, so a later
- * Git or shell move does not make a replayed change look new.
- */
 function isRecorded(store, repositoryId, change) {
   return Boolean(preparedStatement(store.database, `
     SELECT 1 AS present
@@ -135,12 +115,6 @@ function safeRebasedPath(root, cwd, relativeToCwd) {
   return repositoryRelativePath(rebasedPath(root, cwd, relativeToCwd), root);
 }
 
-/**
- * Turns one checkpoint snapshot's `evidence.toolCalls[].fileChanges` into re-validated,
- * repository-rooted change records. The evidence side already bounds and validates each
- * entry relative to the session cwd; every path is re-validated here against the real
- * Git root before it can reach the store.
- */
 function collectChanges(snapshot, sessionId, root, cwd, fallbackRepositoryId) {
   const toolCalls = Array.isArray(snapshot?.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
   const changes = [];
@@ -155,10 +129,6 @@ function collectChanges(snapshot, sessionId, root, cwd, fallbackRepositoryId) {
       const boundRepositoryId = typeof entry.repositoryId === "string" && REPOSITORY_ID.test(entry.repositoryId)
         ? entry.repositoryId : null;
       const repositoryId = boundRepositoryId || fallbackRepositoryId;
-      // An entry without its own per-call binding and no single-repository session
-      // identity to fall back on (an old checkpoint, an incomplete observation, or a
-      // session whose identity is multiple/unknown) is never reinterpreted through a
-      // navigated cwd; see resolveSessionIdentity in server/normalize/session-identity.mjs.
       if (!repositoryId) continue;
       const safePath = boundRepositoryId
         ? (isSafeRecordedRepositoryPath(entry.path) ? entry.path : null)
@@ -177,15 +147,6 @@ function collectChanges(snapshot, sessionId, root, cwd, fallbackRepositoryId) {
   return changes;
 }
 
-/**
- * The fallback repository for entries with no per-call binding of their own,
- * read only from the session's own recorded identity (evidence.session.repositoryAttribution/
- * repositoryId; see server/normalize/session-identity.mjs) — never from a fresh resolveRepository(cwd)
- * call, and never gated on providerId. A multiple or unknown identity (or an evidence
- * shape recorded before this rule existed) has no fallback repository. Legacy "launch"
- * evidence (repository-snapshot.mjs withLegacyRepositoryAttribution) is resolved from its
- * launch cwd in applySnapshot, exactly as before the rule.
- */
 function sessionFallbackRepositoryId(snapshot) {
   const session = snapshot?.evidence?.session;
   return session?.repositoryAttribution === "single" && REPOSITORY_ID.test(session.repositoryId || "")
@@ -202,15 +163,9 @@ async function applySnapshot(store, snapshot, resolveRepository) {
   const legacyLaunch = snapshot?.evidence?.session?.repositoryAttribution === "launch";
   let fallbackRepositoryId = sessionFallbackRepositoryId(snapshot);
   if (!hasBoundChanges && !fallbackRepositoryId && !legacyLaunch) return;
-  // Only fetch the real root (needed to rebase an unbound path) once the session's own
-  // identity already proved a single repository, or its legacy evidence was launch-bound.
-  // A proven identity is never re-derived: a cwd that resolves elsewhere supplies no root.
   let root = "";
   if ((fallbackRepositoryId || legacyLaunch) && typeof cwd === "string" && cwd) {
     try {
-      // The inventory's cached lookup (no Git subprocess per snapshot). A proven identity
-      // accepts only the root of the same repository ID; launch evidence also accepts the
-      // non-Git fallback root, as before the rule.
       const resolved = await resolveRepository(cwd);
       const resolvedId = typeof resolved?.repositoryId === "string" ? resolved.repositoryId : "";
       if (legacyLaunch && resolvedId) fallbackRepositoryId = resolvedId;
@@ -220,9 +175,6 @@ async function applySnapshot(store, snapshot, resolveRepository) {
   if (!hasBoundChanges && !fallbackRepositoryId) return;
   const sessionId = `${providerId}:${localSessionId}`;
   const changes = collectChanges(snapshot, sessionId, root, cwd || "", fallbackRepositoryId);
-  // Additive: live evidence is a bounded tail (Claude transcript tail, Codex tool-call cap),
-  // so a snapshot that no longer carries early tool calls must never delete their committed
-  // rows. Already-recorded changes are skipped, which keeps replaying a checkpoint idempotent.
   const agentIds = new Set(changes.map(({ change }) => change.agentId));
   const observedAt = Math.max(0, ...changes.map(({ change }) => change.observedAt));
   store.transaction(() => {
@@ -231,12 +183,6 @@ async function applySnapshot(store, snapshot, resolveRepository) {
   });
 }
 
-/**
- * Git-only rename continuity: current_path + a `git` `file_paths` row, never a
- * `file_changes` row and never session/agent/request attribution. Skipped when the
- * source path has no live tracked identity (nothing to continue) or the target path
- * already belongs to a different tracked file (would collide on the unique index).
- */
 function applyGitRename(store, repositoryId, rename, observedAt) {
   if (!rename || typeof rename.from !== "string" || typeof rename.to !== "string") return;
   const source = findFile(store, repositoryId, rename.from);
@@ -257,12 +203,6 @@ function isoOrNull(ms) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
-/**
- * Creates the monitor-store contributor that keeps `files`/`file_paths`/`file_changes`
- * in sync with committed checkpoints, plus asynchronous Git rename continuity. Registered
- * once with `monitorStoreRuntime.registerContributor`; every write happens inside
- * `store.transaction`, and the contributor never runs during a GET.
- */
 export function createFileChangeIndexContributor({ resolveRepository, checkpointStore, readRenames, now = Date.now } = {}) {
   if (typeof resolveRepository !== "function") {
     throw new TypeError("File-change index contributor requires resolveRepository");
@@ -286,17 +226,10 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
         }
       }
       // v1 Codex rows were assigned through session.cwd and cannot be trusted.
-      // Keep Claude's longer-lived additive history; only a database-declared
-      // full rebuild clears every provider.
       if (needsRebuild) store.transaction(() => {
         if (store.rebuilt === true) {
           preparedStatement(store.database, "DELETE FROM file_changes").run();
         } else if (priorVersion !== FILE_INDEX_VERSION) {
-          // A v1 Codex move/delete may have rewritten the shared `files` row
-          // and its path timeline before this migration starts. Removing only
-          // the Codex change would leave that false path/deletion attached to
-          // a surviving Claude row, so discard every identity touched by an
-          // unbound legacy Codex change. Untouched Claude identities remain.
           preparedStatement(store.database, `
             DELETE FROM file_changes
             WHERE file_id IN (
@@ -332,9 +265,6 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
       if (typeof cwd !== "string" || !cwd) continue;
       let resolved;
       try { resolved = await resolveRepository(cwd); } catch { resolved = null; }
-      // Rename continuity is repository-scoped and keeps one head per repository ID, so it reads the
-      // main root: a linked worktree shares the ID but sits on another branch, and reading whichever
-      // checkout came first would diff one branch's head against the other's.
       const root = typeof resolved?.mainRoot === "string" && resolved.mainRoot ? resolved.mainRoot : resolved?.root;
       if (resolved && typeof resolved.repositoryId === "string" && resolved.repositoryId
         && typeof root === "string" && root && !found.has(resolved.repositoryId)) {
@@ -357,9 +287,6 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
       try { result = await readRenames(root, { sinceHead: storedHead || undefined }); } catch { continue; }
       if (!result || typeof result.head !== "string" || !result.head) continue;
       store.transaction(() => {
-        // With no stored head yet, this is the first time the contributor has seen the
-        // repository: baseline the head without applying renames (there is no prior
-        // observation to continue from).
         if (storedHead) {
           const renames = Array.isArray(result.renames) ? result.renames.slice(0, MAX_GIT_RENAMES) : [];
           for (const rename of renames) applyGitRename(store, repositoryId, rename, nowMs);
@@ -382,12 +309,6 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
   };
 }
 
-/**
- * Observation-runtime wiring helper: builds the contributor and registers it, unless the
- * given `repositoryInventory`-style `resolveRepository` isn't a function (a pre-this-
- * contributor test double for `repositoryInventory`), in which case it is a no-op. Keeps
- * `observation-runtime.mjs` to one call instead of duplicating this guard there.
- */
 export function registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository, checkpointStore, readRenames = readGitRenamesAsync, now } = {}) {
   if (typeof resolveRepository !== "function") return;
   const contributor = createFileChangeIndexContributor({ resolveRepository, checkpointStore, readRenames, now });
@@ -395,7 +316,6 @@ export function registerFileChangeIndexContributor(monitorStoreRuntime, { resolv
   return contributor;
 }
 
-/** Newest-first, keyset-paged file-change history for one session. */
 export function listSessionFileChanges(store, sessionId, { limit, before } = {}) {
   if (typeof sessionId !== "string" || sessionId.length === 0) return [];
   const boundedLimit = normalizeLimit(limit);
@@ -415,7 +335,6 @@ export function listSessionFileChanges(store, sessionId, { limit, before } = {})
   }));
 }
 
-/** ID-ascending, keyset-paged file listing for one repository. */
 export function listRepositoryFiles(store, repositoryId, { historical = false, limit, after } = {}) {
   if (typeof repositoryId !== "string" || repositoryId.length === 0) return [];
   const boundedLimit = normalizeLimit(limit);
@@ -434,7 +353,6 @@ export function listRepositoryFiles(store, repositoryId, { historical = false, l
   }));
 }
 
-/** Newest-first, keyset-paged change history for one file identity. */
 export function fileHistory(store, fileId, { limit, before } = {}) {
   if (!Number.isSafeInteger(fileId)) return [];
   const boundedLimit = normalizeLimit(limit);

@@ -5,7 +5,7 @@ export const CLAUDE_MODEL_SOURCE_CAPABILITIES = Object.freeze({
   deprecation: "unavailable",
 });
 
-/** No documented read-only Claude Code subscription model catalog is used. */
+// No documented read-only Claude Code subscription model catalog is used.
 export function createClaudeModelObservation() {
   return {
     capabilities: CLAUDE_MODEL_SOURCE_CAPABILITIES,

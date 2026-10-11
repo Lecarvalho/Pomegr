@@ -61,20 +61,12 @@ function mergeAgents(previous = [], current = [], toolCalls = []) {
   });
 }
 
-/**
- * Codex's per-field fold policy. Codex-specific preferences — context
- * snapshot merge, compaction strength, and fileChanges retention on
- * toolCalls — live here in the adapter, not in the shared fold engine.
- */
 const CODEX_FOLD_POLICY = {
   usageSnapshots: { kind: "keyed", key: (item) => item?.dedupeId, maximum: MAX_USAGE_SNAPSHOTS, prefer: mergeCodexContextSnapshot },
   toolCalls: {
     kind: "keyed",
     key: (item) => item?.id,
     maximum: MAX_TOOL_CALLS,
-    // A complete reread can momentarily lose repository resolution for a call
-    // that already succeeded; keep the last resolved fileChanges rather than
-    // clearing them.
     prefer: (older, newer) => (
       newer?.status !== "failed" && newer?.fileChanges === null && Array.isArray(older?.fileChanges) && older.fileChanges.length
         ? { ...newer, fileChanges: older.fileChanges }
@@ -96,10 +88,6 @@ const CODEX_FOLD_POLICY = {
   },
   pullRequestCreations: { kind: "keyed", key: (item) => item?.id, maximum: MAX_PULL_REQUESTS },
   efficiencyRuleEvidence: { kind: "or-flags" },
-  // A SessionStart plugin marker is never legitimately cleared once observed: a
-  // delta that raced past the marker record is missing evidence, not proof the
-  // plugin was removed. Signals, progress, status, and any other clearable
-  // field must never use this kind.
   "session.pomegrPlugin": { kind: "retain-if-absent" },
   agents: {
     kind: "custom",
@@ -108,12 +96,10 @@ const CODEX_FOLD_POLICY = {
   },
 };
 
-/** Merge a bounded live delta into the complete normalized Codex story. */
 export function mergeCodexObservationEvidence(previous, current) {
   return foldSessionEvidence(CODEX_FOLD_POLICY, previous, current);
 }
 
-/** A complete reread may temporarily lose repository resolution while retaining the same call. */
 function retainResolvedFileChanges(previous, current) {
   const prior = new Map((previous?.toolCalls || []).map((call) => [call?.id, call?.fileChanges]));
   return {
@@ -409,9 +395,6 @@ export function createCodexIncrementalObserver(options = {}) {
       if (replacementPending && options.noticeRollout) {
         const expected = sourceSet.selectedMetadata.find((item) => item.rolloutFile === descriptor.file);
         const header = readCodexRolloutHeader(descriptor.file);
-        // A rewritten path may now belong to another session. Keep the committed
-        // evidence until discovery establishes its identity;
-        // ordinary appends continue through the incremental path without this read.
         if (!header || !expected) return null;
         if (header.localId !== expected.localId) {
           options.noticeRollout?.(descriptor.file);
@@ -446,8 +429,6 @@ export function createCodexIncrementalObserver(options = {}) {
         const validRecords = snapshot?.malformedRecords === 0 && snapshot?.oversizedFragments === 0;
         const complete = Boolean(stable && part.ready && snapshot?.completeOffset === part.descriptor.size && validRecords);
         return { file, generation: part.descriptor, state: snapshot?.candidate?.lifecycle, complete,
-          // Keep incomplete acquisition separate from invalid acquired evidence.
-          // The lifecycle owner additionally verifies continuity with its accepted source.
           pending: !complete && validRecords };
       });
       if (observeLifecycleSources(observations)) {

@@ -9,10 +9,6 @@ function freeze(value, seen = new WeakSet()) {
   return Object.freeze(value);
 }
 
-/**
- * Provider-neutral L1 response cache. Derivation commits one complete immutable
- * value; Serving reuses the exact serialized representation for that revision.
- */
 export function createCommittedResponseCache(options = {}) {
   const serialize = options.serialize || JSON.stringify;
   const clone = options.clone || structuredClone;

@@ -13,17 +13,11 @@ import {
 } from "./docs-fixtures";
 import type { Ran, Repo } from "./docs-fixtures";
 
-// The built artifact (WEB-05). The real landing package is copied beside a fixture documentation
-// tree and built with the release commands (`npm run build:audit`), so the prebuild step, the
-// source audit, the bundler and the artifact audit all run for real. The fixture holds internal
-// pages, a plan, a mockup, an unselected public page and unreferenced images, each carrying a
-// canary word; the built `dist/` must contain none of them, and a mistaken manifest must stop the
-// build before anything is emitted. The real documentation is never read.
+// The real landing package is built against a fixture documentation tree with the release commands; the built dist/ must contain no canary, and a mistaken manifest must stop the build.
 
 const BUILD_TIMEOUT = 300_000;
 afterAll(cleanupScratch);
 
-/** Canaries (and the non-public paths that name them) found in any file under the given roots. */
 function leaks(roots: Record<string, string>, extra: Array<{ path: string; data: Buffer }> = []): string[] {
   const found: string[] = [];
   const files = [...Object.entries(roots).flatMap(([label, root]) => filesUnder(root).map((file) => ({ ...file, path: `${label}/${file.path}` }))), ...extra];

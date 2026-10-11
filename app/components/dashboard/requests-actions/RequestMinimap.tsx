@@ -2,7 +2,6 @@ import { memo, useId, useMemo, useRef, type PointerEvent } from "react";
 import type { RequestOverviewPoint } from "../../../../shared/session-history-contract";
 import { isCompleteRequestOverview, plottedTotal, type ChartMode, type RequestRow } from "./model";
 
-/** Not rendered inline: a hover tooltip and the slider's accessible description. */
 const MINIMAP_HINT = "Drag the window, or use arrow keys, Page Up / Page Down, Home and End.";
 
 const MiniBars = memo(function MiniBars({ values, offset, slotWidth }: { values: number[]; offset: number; slotWidth: number }) {

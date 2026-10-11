@@ -26,9 +26,6 @@ export function isActiveCodexWriterLock(file, options = {}) {
   let descriptor;
   try {
     descriptor = openFileSync(file, "r");
-    // Windows can let the read-only open succeed while a writer lock blocks the
-    // one-byte read at offset zero, including the beyond-EOF range. A false
-    // result means the lock was not confirmed, not that the writer is idle.
     readSync(descriptor, Buffer.alloc(1), 0, 1, 0);
     return false;
   } catch (error) {
@@ -41,7 +38,7 @@ export function isActiveCodexWriterLock(file, options = {}) {
 }
 
 
-/** CLI cold discovery requires its own writer lock; other surfaces do not inherit it. */
+// CLI cold discovery requires its own writer lock; other surfaces do not inherit it.
 export function createCliObservation(maximum = 16) {
   let coldReads = 0;
   return {
@@ -56,7 +53,7 @@ export function createCliObservation(maximum = 16) {
 
 
 
-/** Only the interactive CLI treats an unmatched edit as a possible approval wait. */
+// Only the interactive CLI treats an unmatched edit as a possible approval wait.
 export function parseCodexCliRolloutLiveness(records, options = {}) {
   const common = parseCodexRolloutLiveness(records, options);
   if (common?.needsInput) return common;

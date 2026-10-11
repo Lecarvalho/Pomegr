@@ -5,10 +5,6 @@ import type { FormEvent, KeyboardEvent } from "react";
 import { TASK_BOUNDS } from "../../../shared/task-contract";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
-/**
- * + New feature (design contract D44): a Quiet action at the end of the feature filter row. It is unavailable once the
- * board holds the most features it can. Activating it swaps in a one-line form (name, Add, Cancel).
- */
 export function AddFeatureAction({ edits, full }: { edits: TaskBoardEdits; full: boolean }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const field = useRef<HTMLInputElement>(null);

@@ -1,20 +1,3 @@
-// Committed source for file history served from the monitor's checkpoint-backed SQLite
-// index (`server/repository/file-change-index.mjs`): per-session touched-file summaries (folded into
-// the `repository` session domain's `fileHistory` block), a per-repository file/folder
-// listing, and a per-file grouped session history. Every public lookup below is a pure
-// in-memory map read; all SQLite reads happen inside the `file-history-domain` monitor-store
-// contributor's `onCheckpoint`, registered after the file-change-index contributor so it
-// always groups already-committed rows. See docs/internal/architecture/observation-cache.md ("Approved
-// file-history persistence contract" and "Monitor SQLite store") for the runtime contract
-// this follows, and AGENTS.md's "File-change history" privacy bullet for the served shape.
-//
-// Privacy: every response carries only normalized repository/session/agent identities, an
-// opaque file identity (`f<integer>`), bounded repository-relative paths re-validated with
-// `isSafeRecordedRepositoryPath`, fixed change kinds, bounded counts, and ISO timestamps.
-// Never commands, tool arguments, provider paths, or transcript paths. Session and agent
-// attribution appears only where a recorded `file_changes` row proves it; a Git-only move
-// (source: `git` in `file_paths`) contributes path continuity only, never attribution.
-
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { readFileChangeAgents, SAFE_FILE_CHANGE_AGENT_ID as SAFE_AGENT_ID } from "./file-change-agents.mjs";
 import { registerFileChangeIndexContributor } from "./file-change-index.mjs";
@@ -34,8 +17,6 @@ const MAX_SESSION_FILES = 200;
 const MAX_SESSION_FILE_AGENTS = 12;
 const MAX_REPOSITORY_FILES = 5000;
 const MAX_HISTORY_SESSIONS = 100;
-// Defensive resource-exhaustion guards; the contract above only bounds files/sessions, not
-// these intermediate row counts, so a pathological repository or file cannot balloon memory.
 const MAX_FOLDER_PAIRS = 50_000;
 
 function isoOrNull(ms) {
@@ -60,8 +41,6 @@ function safeAgentLabel(agentLabelFn, sessionId, agentId) {
   }
 }
 
-/** One session's agents for a file's history: the recorded identity, with the live label
- * from a session the monitor currently holds taking precedence. */
 function historyAgents(store, sessionId, agentIds, agentLabelFn) {
   const ids = [...(agentIds || [])];
   const identities = readFileChangeAgents(store, sessionId, new Set(ids));
@@ -113,11 +92,7 @@ function readinessOverride(monitorStoreRuntime, indexReady) {
   return null;
 }
 
-/** Session files: file_changes for the session grouped by file; newest kind, count, newest time. */
 function buildSessionFiles(store, sessionId) {
-  // The session surface has one repository context. Keep independently indexed
-  // evidence available in repository listings, but never merge ambiguous paths
-  // from multiple roots into that single-context list.
   const repositories = preparedStatement(store.database, `
     SELECT DISTINCT f.repository_id AS repositoryId
     FROM file_changes fc JOIN files f ON f.id = fc.file_id
@@ -138,9 +113,6 @@ function buildSessionFiles(store, sessionId) {
   const kindStatement = preparedStatement(store.database, 
     "SELECT kind FROM file_changes WHERE file_id = ? AND session_id = ? ORDER BY observed_at DESC, id DESC LIMIT 1",
   );
-  // Recorded agents per file: only rows whose agent_id the index stored from the tool call's
-  // own actor, newest-touching agent first, with the identity recorded beside the index. The
-  // session-domain projection prefers the same session's visible agent fields when present.
   const agentStatement = preparedStatement(store.database, `
     SELECT agent_id AS agentId, COUNT(*) AS changeCount, MAX(observed_at) AS newestAt
     FROM file_changes
@@ -186,7 +158,6 @@ function rollupFolders(pairs) {
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
 }
 
-/** Repository listing: every file with a distinct attributed-session count, plus folder rollups. */
 function buildRepositoryListing(store, repositoryId) {
   const fileRows = preparedStatement(store.database, `
     SELECT f.id AS fileId, f.current_path AS path, f.deleted_at AS deletedAt,
@@ -221,7 +192,6 @@ function buildRepositoryListing(store, repositoryId) {
   };
 }
 
-/** Resolves a query target to a tracked file row: by ID, by current path, else by any path it ever held. */
 function resolveFileTarget(store, repositoryId, target) {
   if (typeof target.fileId === "string") {
     const id = Number(target.fileId.slice(1));
@@ -241,12 +211,9 @@ function resolveFileTarget(store, repositoryId, target) {
   return row ? { fileId: row.id, currentPath: row.path } : { fileId: null, currentPath: null };
 }
 
-/** File history: file_changes for one file grouped by session, newest first, bounded. */
 function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) {
   const requestedPath = typeof target.path === "string" ? target.path : null;
   const resolved = resolveFileTarget(store, repositoryId, target);
-  // A resolved row whose stored path fails re-validation (a corrupted or pre-validator row)
-  // is served exactly like no match at all, never an unsafe path.
   if (resolved.fileId !== null && !isSafeRecordedRepositoryPath(resolved.currentPath)) resolved.fileId = null;
   if (resolved.fileId === null) {
     return {
@@ -254,9 +221,7 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
       fileId: null, path: requestedPath, sessions: [], unattributedChanges: 0, truncated: false,
     };
   }
-  // Aggregate in SQLite before applying the public 100-session bound. A raw-row
-  // limit here would let a busy recent session hide older history and undercount
-  // edits while reporting the result as complete.
+  // Aggregate in SQLite before applying the public 100-session bound.
   const rows = preparedStatement(store.database, `
     WITH sessions AS (
       SELECT session_id AS sessionId, MAX(observed_at) AS newestAt,
@@ -329,15 +294,6 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
   };
 }
 
-/**
- * Commits session/repository/file file-history blocks on the monitor-store checkpoint
- * cycle. Registers a `file-history-domain` contributor (always `rebuildComplete: true`:
- * this is a derived cache over already-committed SQLite tables, never a rebuild target
- * itself). `sessionFiles`/`repositoryFiles`/`fileHistory` are pure in-memory map reads, safe
- * to call from a serving-side GET; `repositoryFiles`/`fileHistory` self-queue hydration for a
- * missing key, and `requestSessionFiles` lets the session-domain store's `onDemand` nudge a
- * newly demanded session's first build.
- */
 export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLabel, demandedSessionIds, onSessionChange, indexReady = () => true, now = Date.now } = {}) {
   if (!monitorStoreRuntime || typeof monitorStoreRuntime.registerContributor !== "function" || typeof monitorStoreRuntime.store !== "function") {
     throw new TypeError("File history source requires a monitor store runtime");
@@ -379,8 +335,6 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
     }
   }
 
-  // Per-cycle build order: keys with no committed block first, then rebuilds of existing
-  // blocks, each newest-touched first, so a fresh selection is never starved by older keys.
   function cycleOrder(requestedAt, blocks) {
     const newestFirst = [...requestedAt.keys()].reverse();
     return [...newestFirst.filter((key) => !blocks.has(key)), ...newestFirst.filter((key) => blocks.has(key))];
@@ -399,9 +353,6 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
     let demandedIds;
     try { demandedIds = demandedSessionIds(); } catch { demandedIds = null; }
     if (Array.isArray(demandedIds)) {
-      // Explicit on-demand requests lead the cycle. The retained-session list
-      // can be longer than 32, so slicing it first would starve a requested
-      // session merely because it is older than the current retention prefix.
       const sessionIds = [...new Set([...pendingSessionRequests, ...demandedIds])];
       for (const sessionId of sessionIds.slice(0, MAX_DEMANDED_SESSIONS_PER_CYCLE)) {
         if (typeof sessionId !== "string" || sessionId.length === 0) {
@@ -417,10 +368,6 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
         sessionSerialized.set(sessionId, nextSerialized);
         try { onSessionChange(sessionId); } catch { /* one failing subscriber cannot break the cycle */ }
       }
-      // A checkpoint runtime coalesces request nudges. When more explicit
-      // requests exist than this cycle can build, schedule exactly the next
-      // pass; entries are removed before their build so failed builds cannot
-      // keep re-scheduling themselves forever.
       if (pendingSessionRequests.size > 0) nudge();
     }
 
@@ -471,7 +418,7 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
   }));
 
   return Object.freeze({
-    /** Pure map lookup; never touches SQLite. Safe to call from a serving-side GET. */
+    /** Pure map lookup; never touches SQLite. */
     sessionFiles(sessionId) {
       if (typeof sessionId !== "string" || sessionId.length === 0) return LOADING_SESSION_FILES;
       const override = readinessOverride(monitorStoreRuntime, indexReady);
@@ -486,7 +433,6 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
       pendingSessionRequests.add(sessionId);
       nudge();
     },
-    /** Pure map lookup; self-queues hydration and returns the loading factory on a miss. */
     repositoryFiles(repositoryId) {
       if (typeof repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(repositoryId)) return loadingRepositoryFiles(String(repositoryId || ""));
       touchBounded(listingRequestedAt, listingBlocks, listingSerialized, repositoryId, now(), MAX_LISTINGS, [listingRevisions]);
@@ -496,7 +442,6 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
       if (!block) { nudge(); return loadingRepositoryFiles(repositoryId, "loading"); }
       return block;
     },
-    /** Pure map lookup; self-queues hydration and returns the loading factory on a miss. */
     fileHistory(repositoryId, target) {
       const requestedPath = target && typeof target.path === "string" ? target.path : null;
       const validTarget = target && typeof target === "object"
@@ -517,12 +462,6 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
   });
 }
 
-/**
- * Observation-runtime wiring helper: registers the file-change index contributor (unchanged
- * from before this module existed) and then this module's own `file-history-domain`
- * contributor, in that order, so `observation-runtime.mjs` replaces one call with another
- * instead of duplicating both registrations inline.
- */
 export function attachFileHistory(monitorStoreRuntime, {
   resolveRepository, checkpointStore, readRenames, now,
   catalog, agentLabel, demandedSessionIds, onSessionChange,

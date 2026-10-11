@@ -11,19 +11,13 @@ import { startsLine } from "./task-schedule";
 
 export type QueueCardMove = {
   drag: Pick<HTMLAttributes<HTMLLIElement>, "onDragStart" | "onDragEnd">;
-  /** Steps that accept this task, then "New last step". */
   choices: { step: number; label: string }[];
   onMove(step: number): void;
 };
 
-/**
- * One task in a step (design contract D131-D143): ID, state chip, title (the task text until its session has one),
- * the planned run line with the observed model, and Open session for a task with a session. A queued task of a feature can be dragged and, from the keyboard, moved with the select.
- */
 export function QueueTaskCard({ task, nextQueued, waiting, onOpen, move }: {
   task: Task;
   nextQueued: boolean;
-  /** Why a start gate holds this task, or null. */
   waiting?: string | null;
   onOpen?: (task: Task, opener: HTMLElement) => void;
   move?: QueueCardMove;

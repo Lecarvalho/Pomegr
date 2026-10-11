@@ -1,19 +1,8 @@
-// Search index for the public documentation website (WEB-03).
-//
-// A pure function of the prepared content (`docs-content.mjs` output): it reads no files and
-// names no path, so the index can only contain what the published pages already contain, and it
-// carries the same `revision` as the pages and the sitemap. `writePreparedDocs` writes it beside
-// the content as `generated/docs-search.json`; the browser loads it lazily on first use and the
-// Worker never reads it. The matching rules live in `app/docs/search.ts`.
-//
-// Shape (per page, in reading order): route, group title, title, description, the `##` to `####`
-// headings as { id, text }, and a bounded plain-text body. Code blocks, image alt text and the
-// single `#` title are left out; the body is cut at a word boundary after SEARCH_TEXT_LIMIT
-// characters, so the index stays small however long a page grows.
+// Search index for the public docs: a pure function of the prepared content, so it can only contain what the pages already contain.
+// The body is bounded plain text cut at a word boundary after SEARCH_TEXT_LIMIT characters.
 
 export const SEARCH_SCHEMA_VERSION = 1;
 
-/** Generated output, relative to the landing root (gitignored, like the content it derives from). */
 export const GENERATED_SEARCH_FILE = "generated/docs-search.json";
 
 /** Longest plain-text body kept per page, in characters. */
@@ -58,7 +47,6 @@ function blockText(blocks, parts) {
   return parts;
 }
 
-/** Collapse whitespace and cut at the last word boundary that keeps the text within `limit`. */
 function bound(text, limit) {
   const flat = text.replace(/\s+/g, " ").trim();
   if (flat.length <= limit) return flat;
@@ -67,7 +55,6 @@ function bound(text, limit) {
   return (boundary > 0 ? cut.slice(0, boundary) : cut).trimEnd();
 }
 
-/** Build the search index of a prepared content object (see `DocsContent`). */
 export function buildSearchIndex(content) {
   const groupTitles = new Map(content.navigation.map((group) => [group.id, group.title]));
   return {
@@ -84,7 +71,6 @@ export function buildSearchIndex(content) {
   };
 }
 
-/** Deterministic serialization: stable key order, compact, LF, no timestamps. */
 export function serializeSearchIndex(index) {
   return `${JSON.stringify(index)}\n`;
 }

@@ -1,10 +1,4 @@
-/**
- * A small in-process persistence owner for normalized observations.  Queue
- * byte accounting deliberately counts only bounded persistence fields using
- * string lengths and fixed object overhead; it never serializes public state
- * (which could both allocate a large temporary string and violate the
- * persistence boundary).  The estimate is an admission bound, not disk size.
- */
+// A small in-process persistence owner for normalized observations.
 const DEFAULT_MAX_PENDING = 128;
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -85,8 +79,6 @@ export function createObservationPersistenceQueue({
   const counters = { admitted: 0, replaced: 0, rejected: 0, written: 0, failed: 0, exhausted: 0, retries: 0 };
 
   function emit(kind, { count = 1, waitedMs = 0 } = {}) {
-    // The event object has a closed vocabulary and numeric facts only; queue
-    // identities and snapshots remain monitor-private.
     try { onEvent?.(Object.freeze({ kind, count: Math.max(0, Math.floor(Number(count) || 0)), waitedMs: Math.max(0, Math.floor(Number(waitedMs) || 0)) })); } catch { /* diagnostics cannot block persistence */ }
   }
   function keyFor(snapshot) { return `${snapshot.providerId}\u0000${snapshot.localSessionId}`; }
@@ -106,7 +98,6 @@ export function createObservationPersistenceQueue({
   function scheduleEntry(entry, dueAt) {
     if (entry.timer !== null) cancel(entry.timer);
     entry.timer = null;
-    // One ready position per key, including while a write holds the pump.
     entry.ready = false;
     entry.dueAt = dueAt;
     const delay = Math.max(0, dueAt - now());
@@ -117,8 +108,7 @@ export function createObservationPersistenceQueue({
     }
   }
   function requestPump() {
-    // Even a zero-delay admission crosses an async turn.  Provider commit
-    // publication must never spend its own synchronous turn in filesystem IO.
+    // Even a zero-delay admission crosses an async turn.
     if (!pumpPromise && !stopped) {
       pumpPromise = Promise.resolve().then(pump).finally(() => {
         pumpPromise = null;
@@ -156,8 +146,6 @@ export function createObservationPersistenceQueue({
           }
           counters.retries += 1;
           emit("retry");
-          // Retrying at the tail keeps an unrelated cold session from being
-          // trapped behind a persistently failing hot session.
           scheduleEntry(entry, draining ? now() : now() + retryDelayMs);
         } finally { activeEntry = null; }
       }
@@ -256,4 +244,3 @@ export function checkpointFailureStage(error) {
   if (message.startsWith("checkpoint ")) return "checkpoint_validation";
   return "checkpoint_storage";
 }
-

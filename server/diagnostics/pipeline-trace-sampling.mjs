@@ -1,6 +1,6 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 
-/** Sample process/queue cost only during explicit recording; never acquire evidence. */
+// Sample process/queue cost only during explicit recording; never acquire evidence.
 export function startPipelineTraceSampling({ recorder, diagnostics, intervalMs = 250,
   cpuUsage = process.cpuUsage, memoryUsage = process.memoryUsage,
   histogram = monitorEventLoopDelay({ resolution: 20 }), schedule = setInterval, cancel = clearInterval } = {}) {

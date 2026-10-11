@@ -102,10 +102,6 @@ function boundsForRects(rects: Map<string, LayoutRect>): ContentBounds {
   return contentBounds(rects);
 }
 
-/**
- * Lay out a desktop forest from top to bottom. Depth advances down the canvas;
- * sibling subtrees spread horizontally, with each parent centered above them.
- */
 export function layoutTopDown(
   input: LayoutForest | AgentTreeNode[] | LayoutNode[],
   rootOrOptions: string | LayoutNode | ColumnLayoutOptions | null = null,
@@ -155,7 +151,6 @@ export function layoutTopDown(
   return createLayoutMap(rects, boundsForRects(rects));
 }
 
-/** Lay out visible nodes as fixed-height indented rows for narrow containers. */
 export function layoutRail(
   input: LayoutForest | AgentTreeNode[] | LayoutNode[],
   options: RailLayoutOptions = {},

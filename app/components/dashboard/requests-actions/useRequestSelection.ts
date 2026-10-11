@@ -12,11 +12,6 @@ function sameRows(left: RequestRow[], right: RequestRow[]) {
   return left.length === right.length && left.every((row, index) => row.id === right[index]?.id);
 }
 
-/**
- * Keep retained evidence anchored by identity when the bounded feed rolls over.
- * Selecting the newest request on the latest live page resumes following,
- * regardless of whether selection came from a bar, a row link, or a step.
- */
 export function useRequestSelection(
   rows: RequestRow[],
   scope: string,
@@ -30,8 +25,6 @@ export function useRequestSelection(
   let current = stored;
   if ((!sameRows(stored.rows, rows)) || stored.scope !== scope || stored.size !== size) {
     const follow = atLatest && !historical && !stored.pinned && stored.selectedId === stored.rows.at(-1)?.id && stored.start + stored.size - 1 >= stored.rows.length;
-    // A selection absent from the new rows is never clamped to a false position: it rejoins the
-    // newest request instead. History navigation supplies explicit transfer targets separately.
     const retainedId = rows.find((row) => row.id === stored.selectedId)?.id ?? null;
     if (stored.scope !== scope || !stored.rows.length || follow || retainedId === null) current = newest(rows, scope, size, historical || !atLatest);
     else {
@@ -47,13 +40,11 @@ export function useRequestSelection(
   }
   const selected = rows.find((row) => row.id === current.selectedId) ?? null;
   const end = Math.min(rows.length, current.start + size - 1);
-  /** `pin` keeps a newest selection from following later appends (for example a located deep link). */
   const select = (row: RequestRow, center = false, pin = false) => {
     const followsLatest = !pin && !historical && atLatest && row.id === rows.at(-1)?.id;
     setNavigation({ id: row.id, followLatest: followsLatest });
     setStored({ ...current, pinned: !followsLatest, selectedId: row.id, start: center ? windowFor(rows, row.ordinal, size).start : current.start });
   };
-  /** Moving the window away from the selection transfers it to the nearest visible bar. */
   const moveWindow = (start: number) => {
     const nextStart = Math.max(1, Math.min(start, Math.max(1, rows.length - size + 1)));
     const target = selected ? rows[transferOnViewportMove({ selectedIndex: selected.ordinal - 1, offset: nextStart - 1, size })] : null;

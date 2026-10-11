@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 
-/** Verify bounded append continuity before carrying normalized evidence forward. */
+// Verify bounded append continuity before carrying normalized evidence forward.
 export function priorSourceSuffixMatches(file, generation) {
   if (!generation?.suffixDigest || !Number.isInteger(generation.suffixBytes) || generation.suffixBytes < 1) return false;
   let descriptor;

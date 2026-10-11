@@ -5,9 +5,6 @@ import type { KeyboardEvent } from "react";
 import { CommandIcon } from "../command-center/CommandIcon";
 import type { CardMoveKind } from "./task-board-model";
 
-// The keyboard alternative to dragging a card: four Icon-role actions in one toolbar (one tab stop, arrow keys inside).
-// The bar is drawn only while the card holds keyboard focus (or on a coarse pointer); it stays in the accessibility tree.
-
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 const PHRASES: Record<CardMoveKind, string> = { up: "up", down: "down", left: "to the previous column", right: "to the next column" };
 
@@ -16,7 +13,6 @@ export type CardMoves = Record<CardMoveKind, boolean>;
 export function TaskMoveBar({ id, available, onMove }: { id: string; available: CardMoves; onMove(kind: CardMoveKind): void }) {
   const enabled = KINDS.filter((kind) => available[kind]);
   const [current, setCurrent] = useState<CardMoveKind | null>(null);
-  // The one tab stop is the last button used, or the first that can move.
   const stop = current && available[current] ? current : enabled[0];
 
   const navigate = (event: KeyboardEvent<HTMLDivElement>) => {

@@ -1,11 +1,5 @@
 import { parseableTimestamp } from "../normalize/primitives.mjs";
 
-// Monitor SQLite store retention: settings resolution, the age/size prune cycle, and the
-// read-only facts and readiness projection. Runs only after checkpoint writes; never inside
-// a GET, IPC, or HTTP handler. The only tables this module deletes from are resource_minutes
-// and resource_peak_samples; resource_peaks, file_changes, file_change_agents, files, file_paths, and meta are
-// never touched here.
-
 export const RETENTION_DAY_CHOICES = Object.freeze([30, 90, 180, 365, null]);
 export const STORE_THRESHOLD_MB_CHOICES = Object.freeze([250, 500, 1024, 2048]);
 export const DEFAULT_RETENTION_DAYS = 90;
@@ -33,8 +27,6 @@ export function resolveRetentionSettings({ environment = process.env, desktop = 
   let retentionDays;
   let thresholdMb;
   if (desktop && typeof desktop === "object") {
-    // Desktop settings win over environment entirely; each field is still validated against
-    // the recognized choices before use, falling back to the default when it is not one of them.
     retentionDays = validChoice(desktop.retentionDays, RETENTION_DAY_CHOICES);
     thresholdMb = validChoice(desktop.thresholdMb, STORE_THRESHOLD_MB_CHOICES);
   } else {
@@ -85,9 +77,6 @@ export function runRetention(store, settings, { now = Date.now(), maxSessionsPer
   let removedMinuteSessions = 0;
   let removedSampleSessions = 0;
 
-  // 1. Age: drop resource_minutes and resource_peak_samples for sessions whose latest
-  // observation is older than the retention window. Keep-all (`retentionDays === null`)
-  // skips this entirely.
   if (settings.retentionDays !== null) {
     const cutoff = now - settings.retentionDays * MS_PER_DAY;
     const staleSessionIds = findStaleSessionIds(database, cutoff);
@@ -110,9 +99,6 @@ export function runRetention(store, settings, { now = Date.now(), maxSessionsPer
     }
   }
 
-  // 2. Size: while the store is at or above the soft threshold, remove the oldest sessions'
-  // resource_minutes first, then resource_peak_samples once no resource_minutes remain, up to
-  // maxSessionsPerCycle sessions total.
   let databaseBytes = store.sizeBytes();
   if (databaseBytes >= settings.thresholdBytes) {
     store.vacuumIncremental();

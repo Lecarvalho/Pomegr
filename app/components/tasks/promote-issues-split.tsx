@@ -6,10 +6,6 @@ import { IssueBody, IssueCharacterCount, IssueNotices, IssueStatusChip } from ".
 import { GITHUB_SETTINGS_HREF, TRUNCATED_LINE, canPromote, issueDateLabel, tasksHref, type IssuesNotice } from "./promote-issues-model";
 import type { TaskIssue } from "./task-issues-desktop";
 
-// The list and detail panes of the Promote issues page (design contract G72-G107). They draw what they are given and
-// read nothing, so `/design-system` renders them from static issues without the desktop bridge.
-
-/** A state drawn in place of the list: fixed copy and no issue text. A sign-in problem links to Settings. */
 export function IssuesState({ notice }: { notice: IssuesNotice }) {
   return <div className="promoteIssuesState" role="status">
     {notice.title && <p className="promoteIssuesStateTitle">{notice.title}</p>}
@@ -61,10 +57,6 @@ function IssueDetail({ repositoryId, issue, onPromote }: { repositoryId: string;
   </article>;
 }
 
-/**
- * The split body: the open issues on the left, the chosen issue's notices, raw body and Promote on the right. `Promote`
- * only reports the chosen issue; opening the task modal for it belongs to the caller.
- */
 export function PromoteIssuesSplit({ repositoryId, issues, truncated, selected, onSelect, onPromote }: {
   repositoryId: string;
   issues: readonly TaskIssue[];

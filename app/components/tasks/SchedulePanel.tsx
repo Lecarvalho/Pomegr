@@ -8,7 +8,6 @@ import type { TaskBoardEdits } from "./use-task-board-edits";
 
 const NOTE = "A running session is never stopped by the schedule. Pomegr must be open for scheduled tasks to start.";
 
-/** What the stored times mean right now, one line each, or null. */
 function startLine(schedule: TaskQueueSchedule, status: TaskBoard["queue"]["status"], now: number): string | null {
   const label = schedule.startAt === null ? null : scheduleLabel(schedule.startAt);
   if (schedule.startAt === null || label === null) return null;
@@ -24,12 +23,6 @@ function stopLine(schedule: TaskQueueSchedule, now: number): string | null {
     : `No task starts from ${label}.`;
 }
 
-/**
- * The queue's own schedule in the Queue view's right column (design contract D170-D177, D452): Run now or Start at a
- * time, and a time after which nothing new starts. Each time is typed as a time of day and stored as its next
- * occurrence, so the lines under the fields name the day. The controls exist only in the desktop app (`edits`); any
- * other client reads the stored times.
- */
 export function SchedulePanel({ queue, edits }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits }) {
   const headingId = useId();
   const startId = useId();
@@ -38,11 +31,9 @@ export function SchedulePanel({ queue, edits }: { queue: TaskBoard["queue"]; edi
   const stored = queue.schedule ?? NO_SCHEDULE;
   const storedStart = timeOfDay(stored.startAt);
   const storedStop = timeOfDay(stored.stopAfter);
-  // "Start at a time" with no time chosen yet is only this panel's: nothing is stored until a time is.
   const [picking, setPicking] = useState(false);
   const [start, setStart] = useState(storedStart);
   const [stop, setStop] = useState(storedStop);
-  // The committed times win once the board shows them.
   const committed = `${stored.startAt}|${stored.stopAfter}`;
   const [seen, setSeen] = useState(committed);
   if (seen !== committed) {
@@ -58,7 +49,6 @@ export function SchedulePanel({ queue, edits }: { queue: TaskBoard["queue"]; edi
     setStart("");
     if (stored.startAt !== null) send({ startAt: "" });
   };
-  // An emptied start field is not a choice: Run now is how the start time is cleared.
   const commitStart = () => {
     if (start === "") setStart(storedStart);
     else if (start !== storedStart) send({ startAt: start });

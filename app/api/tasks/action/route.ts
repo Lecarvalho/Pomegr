@@ -3,14 +3,8 @@ import { isPairedGatewayRequest } from "../../paired-gateway";
 
 export const dynamic = "force-dynamic";
 
-// A paired device's task-board actions. The desktop's LAN gateway forwards this one POST for a paired device, and
-// nothing else may call it: a same-computer browser and the development server's peers are refused. The body is
-// `{ repositoryId, action, payload }`; the monitor validates the record behind `POST /internal/tasks/<action>`.
-// The answer is `{ ok: true }` (with the new task's ID after a create) or one fixed error, never the board or task
-// text: the client reads the board again through GET /api/tasks.
+// A paired device's task-board actions.
 
-// The fixed actions of `pomegr:task-action` (desktop/runtime/task-action.mjs). Starting a session, a task's images,
-// and GitHub issues are not among them and stay in the desktop app.
 const ACTIONS = new Set([
   "create", "update", "delete", "move",
   "feature_create",
@@ -49,8 +43,6 @@ export async function POST(request: Request) {
   const { repositoryId, action, payload } = body;
   const serialized = JSON.stringify(payload);
   if (Buffer.byteLength(serialized, "utf8") > PAYLOAD_MAX_BYTES) return answer({ ok: false, error: "invalid" });
-  // Turning the queue on lets Pomegr start sessions with no prompt, so that consent stays in the desktop app.
-  // A paired device may turn the queue off and change its other settings.
   if (action === "queue_settings" && Object.hasOwn(payload, "on") && payload.on !== false) return answer({ ok: false, error: "unsupported" });
   try {
     const response = await fetch(`${monitorOrigin()}/internal/tasks/${action}`, {
@@ -65,7 +57,6 @@ export async function POST(request: Request) {
     if (!plainObject(parsed)) return answer({ ok: false, error: "unavailable" });
     if (parsed.ok === true) {
       if (!response.ok) return answer({ ok: false, error: "unavailable" });
-      // Only a create answers the one validated field it may carry: the new task's ID.
       return answer(action === "create" && typeof parsed.taskId === "string" && TASK_ID.test(parsed.taskId) ? { ok: true, taskId: parsed.taskId } : { ok: true });
     }
     return answer({ ok: false, error: typeof parsed.error === "string" && MONITOR_ERRORS.has(parsed.error) ? parsed.error : "unavailable" });

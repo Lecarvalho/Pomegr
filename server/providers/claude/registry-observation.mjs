@@ -10,9 +10,6 @@ function processExists(pid) {
   catch (error) { return error?.code === "ESRCH" ? false : null; }
 }
 
-// U1-only, memory-only ownership evidence. A missing/partial registry entry alone
-// is not an exit. Retain validated owners briefly enough to observe actual exit
-// after Claude removes its entry, without blocking on another process enumeration.
 export function createClaudeRegistryObservation({ root, validateOwners, now = Date.now, ownerExists = processExists }) {
   const owners = new Map();
   const closed = new Set();

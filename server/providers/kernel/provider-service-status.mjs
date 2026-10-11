@@ -13,10 +13,6 @@ const PROVIDERS = Object.freeze({
   codex: Object.freeze({
     origin: "https://status.openai.com",
     summaryUrl: "https://status.openai.com/api/v2/summary.json",
-    // The public summary has no incident collection. The Statuspage-style unresolved
-    // endpoint is unavailable, while incidents.json is a large historical feed
-    // without affected-component data. Components remain the authoritative,
-    // conservative live signal for Codex until an equivalent live feed exists.
     components: new Set([
       "01KMP3KP5MGE23B80K1EK4S8PV", // Codex API
       "01KMKFAMWKQ81YWSE1Z18R6VHR", // Codex in ChatGPT Desktop
@@ -232,10 +228,6 @@ function strongest(left, right) {
 }
 
 /**
- * Fetch and normalize public provider status data. The returned value contains
- * only bounded public health metadata; provider records and transport errors
- * are intentionally discarded before this boundary.
- *
  * @param {"claude" | "codex"} providerId
  * @param {{signal?: AbortSignal, fetchImpl?: typeof fetch}} [options]
  * @returns {Promise<{status: "operational" | "degraded" | "outage" | "maintenance" | "unknown", updatedAt: string | null, incidents: {id: string, label: string, status: "investigating" | "identified" | "monitoring" | "maintenance", impact: "none" | "minor" | "major" | "critical", updatedAt: string | null, url: string}[]}>}

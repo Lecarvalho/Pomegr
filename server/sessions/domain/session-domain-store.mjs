@@ -35,8 +35,6 @@ function semanticValue(value) {
   return semantic;
 }
 
-// A value whose identity stands for its content: a primitive, or an object its owner froze and
-// replaces instead of mutating. Anything else is compared by projecting, as before.
 function immutable(value) {
   return value === null || value === undefined || typeof value !== "object" || Object.isFrozen(value);
 }
@@ -45,8 +43,7 @@ function immutableSnapshot(snapshot) {
     && Boolean(snapshot.publicState) && typeof snapshot.publicState === "object" && Object.isFrozen(snapshot.publicState)
     && immutable(snapshot.evidence) && immutable(snapshot.readiness);
 }
-// The inputs of one evidence projection, held only by identity or as short strings. The
-// snapshot is held weakly so this record never keeps evicted evidence alive.
+// The inputs of one evidence projection, held only by identity or as short strings.
 const EVIDENCE_INPUT_NAMES = Object.freeze([
   "catalogKey", "repositoryRoot", "repositoryUnavailableReason", "retainedResources", "fileHistory",
   "gitObserved", "commitTimes", "recordedEvents", "liveFilesKey",
@@ -66,25 +63,6 @@ function sameEvidenceInputs(previous, next, snapshot) {
   return EVIDENCE_INPUT_NAMES.every((name) => previous[name] === next[name]);
 }
 
-/**
- * Independently revisioned D projections. S reads exact committed JSON only.
- *
- * Retention is demand-ordered. A commit whose semantic JSON is unchanged is a
- * no-op: it neither advances a revision nor refreshes retention, so catalog
- * churn cannot reorder or evict retained sessions. Idle eviction applies only
- * after no request and no semantic change for the idle window. Sessions the
- * runtime marks as protected (live or open catalog rows) and the most recently
- * requested session are exempt from the soft session bound, up to a hard
- * ceiling. Otherwise never-requested sessions evict first, then the least
- * recently used.
- *
- * A commit whose inputs are the ones this session last projected from skips the projection: it
- * is the same no-op, decided before deriving and serializing seven domains. The inputs are the
- * immutable committed snapshot, the compared view of the catalog row, and every side-channel
- * value read below. The live repository file list is validated against the filesystem on each
- * commit, as before, and compared with the last validated list, so a path that stops being
- * safely contained is still withdrawn by the next commit.
- */
 export function createSessionDomainStore(options = {}) {
   const now = options.now || Date.now;
   const maxSessions = Number.isSafeInteger(options.maxSessions)
@@ -94,22 +72,11 @@ export function createSessionDomainStore(options = {}) {
   const isProtected = typeof options.isProtected === "function" ? options.isProtected : () => false;
   let records = new Map();
   let revisionClocks = new Map(SESSION_DOMAIN_NAMES.map((domain) => [domain, 0]));
-  // sessionId -> { changedAt, demandedAt, kind: "evidence" | "unavailable" }
   const sessions = new Map();
-  // Requests for a session without a committed projection yet. The first commit
-  // after asynchronous hydration or rebuild inherits that demand.
+  // Requests for a session without a committed projection yet.
   const pendingDemand = new Map();
-  // sessionId -> the recorded commit times of its last evidence commit. The repository recorder
-  // holds fewer records than the disk, so a projection can find it without an answer; the last
-  // committed list then stands in until the recorder reads the record back, instead of
-  // withdrawing commit events. Bounded by `sessions`.
   const lastCommitTimes = new Map();
-  // sessionId -> the recorded refill and compaction times of its last evidence commit, kept for
-  // the same reason: the event recorder may not hold the session's record at a projection.
   const lastEventRecords = new Map();
-  // sessionId -> the inputs of the projection its retained records were last committed from.
-  // Present only while a re-projection from the same inputs would change nothing, including the
-  // records above. Bounded by `sessions`.
   const lastInputs = new Map();
   const counts = { projections: 0, unchangedInputs: 0, liveRepositoryValidations: 0 };
   const subscribers = new Set();
@@ -219,7 +186,6 @@ export function createSessionDomainStore(options = {}) {
       stagedRecords.set(agentKey, { comparable: agentCandidate, snapshot: null, agents, revision });
       changed.push(Object.freeze({ domain: "agent", sessionId, revision }));
     }
-    // Semantically identical re-commits change neither revisions nor retention.
     if (existing && changed.length === 0 && existing.kind === kind) return Object.freeze([]);
     const at = now();
     records = stagedRecords;
@@ -233,8 +199,6 @@ export function createSessionDomainStore(options = {}) {
     }
     evictIdle(at);
     enforceBound();
-    // A commit displaced at once by higher-priority sessions publishes nothing;
-    // the domain clock floor is still retained.
     const retained = sessions.has(sessionId) ? changed : [];
     for (const event of retained) publish(event);
     return Object.freeze(retained);
@@ -244,13 +208,10 @@ export function createSessionDomainStore(options = {}) {
       if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) {
         throw new TypeError("Invalid session domain identity");
       }
-      // One read of the session's recorded repository snapshot per projection.
       const recorded = options.repositoryRecordForSession?.(sessionId) ?? null;
       const commitTimes = Array.isArray(recorded?.commitTimes) ? recorded.commitTimes : lastCommitTimes.get(sessionId) ?? null;
       const lastEventRecord = lastEventRecords.get(sessionId) ?? null;
       const recordedEvents = options.eventRecordForSession?.(sessionId) ?? null;
-      // Every hook is still read on every commit: a source may change its answer without
-      // announcing it (a store that became available, a live check that found another branch).
       const projectionOptions = {
         catalogEntry: sessionDomainCatalogInputs(catalogEntry),
         forbiddenRoots: options.forbiddenRoots || [],
@@ -286,12 +247,9 @@ export function createSessionDomainStore(options = {}) {
       const retained = sessions.has(sessionId);
       if (retained && Array.isArray(commitTimes)) lastCommitTimes.set(sessionId, commitTimes);
       if (retained) lastEventRecords.set(sessionId, projection.eventRecord);
-      // Remembered only once the event record stopped moving: a commit that changed it hands it
-      // to the recorder below, and the next commit must still do what it did before.
       const settled = retained && projection.eventRecord === lastEventRecord ? evidenceInputs(snapshot, inputs) : null;
       if (settled) lastInputs.set(sessionId, settled);
       else lastInputs.delete(sessionId);
-      // Hands a changed union to the recorder, which merges it into the session's sidecar.
       if (projection.eventRecord !== lastEventRecord && !sessionEventRecordIsEmpty(projection.eventRecord)) options.onEventRecord?.(sessionId, projection.eventRecord);
       return published;
     },
@@ -317,9 +275,6 @@ export function createSessionDomainStore(options = {}) {
       const at = now();
       evictIdle(at);
       recordDemand(sessionId, at);
-      // Lets a source (the resource-domain and file-history-domain SQLite caches) queue its
-      // own asynchronous hydration for a session this store now tracks; never a synchronous
-      // read here.
       options.onDemand?.(sessionId);
       const record = records.get(key(sessionId, domain));
       if (!record) return Object.freeze({ status: "empty", revision: 0, snapshot: null });
@@ -348,8 +303,6 @@ export function createSessionDomainStore(options = {}) {
       return () => subscribers.delete(subscriber);
     },
     evictIdle,
-    /** Pure peek at a committed agent label for another cache's display (file history);
-     * never records demand, queues hydration, or reports a missing agent as anything but null. */
     agentLabel(sessionId, agentId) {
       if (typeof agentId !== "string" || !SAFE_AGENT_ID.test(agentId)) return null;
       const agents = records.get(key(sessionId, "agents"))?.snapshot?.value?.agents;
@@ -359,8 +312,6 @@ export function createSessionDomainStore(options = {}) {
     has(sessionId) { return sessions.has(sessionId); },
     sessionIds() { return Object.freeze([...sessions.keys()]); },
     size() { return sessions.size; },
-    /** Monitor-private work counters: projections run, commits skipped on unchanged inputs, and
-     * live repository file lists validated against the filesystem. */
     stats() { return Object.freeze({ ...counts }); },
     clear() { records.clear(); sessions.clear(); pendingDemand.clear(); lastCommitTimes.clear(); lastEventRecords.clear(); lastInputs.clear(); },
   });

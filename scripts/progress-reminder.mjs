@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 
-/*
- * Provider-neutral, event-driven progress reminder hook. Keep this file
- * self-contained: the two plugin build scripts bundle it for installation.
- */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -48,8 +44,7 @@ function eventTime(payload, observedNow = null) {
 }
 
 function isRootEvent(payload) {
-  // Providers omit agent_id for the root session. A non-empty agent id is the
-  // only subagent marker this hook is allowed to inspect.
+  // Providers omit agent_id for the root session.
   return !(typeof payload?.agent_id === "string" && payload.agent_id.length > 0);
 }
 
@@ -208,8 +203,6 @@ function atomicWriteState(directory, sessionId, state) {
       fs.renameSync(temporary, destination);
     } catch (error) {
       // Windows does not replace an existing destination with rename(2).
-      // Remove only this hook's own validated destination, then complete the
-      // atomic temp-file install for the common path.
       if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
       try {
         const existing = fs.lstatSync(destination);
@@ -246,8 +239,6 @@ function pruneStates(directory, now) {
         }
         states.push({ file, at: value.last_activity_at ?? 0 });
       } catch {
-        // Malformed state is inert; leave it in place so the current session
-        // remains suppressed rather than silently starting a new window.
       }
     }
     states.sort((left, right) => right.at - left.at);

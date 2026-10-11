@@ -471,8 +471,6 @@ describe("images", () => {
   });
 });
 
-// Screenshots ship byte for byte and the text checks never read binary data, so the loader refuses
-// metadata blocks that could carry a private path or user name (docs-images.mjs).
 describe("image metadata", () => {
   const exif = (payloadBytes: number) => jpegSegment(0xe1, Buffer.concat([Buffer.from("Exif  ", "latin1"), Buffer.alloc(payloadBytes)]));
   const ihdr = IHDR;
@@ -528,8 +526,6 @@ describe("image metadata", () => {
   });
 });
 
-// The page reserves each image's box from its pixel size, so the loader reads it from the file's
-// header and refuses a file that states none (docs-images.mjs).
 describe("image dimensions", () => {
   const size = { width: IMAGE_WIDTH, height: IMAGE_HEIGHT };
   const riff = (type: string, data: Buffer) => {

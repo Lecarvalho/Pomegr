@@ -1,4 +1,3 @@
-/** Deterministic advisory policy over normalized, already committed observations. */
 export const USAGE_GUARD_DEFAULTS = Object.freeze({
   version: 1,
   mode: "advisory",
@@ -14,7 +13,7 @@ export const USAGE_GUARD_MAX_AGE_MS = 5 * 60_000;
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 
-/** A missing or invalid configuration never enables an integration. */
+// A missing or invalid configuration never enables an integration.
 export function normalizeUsageGuardConfig(input) {
   if (!record(input) || input.version !== 1 || !["advisory", "off"].includes(input.mode)
     || Object.keys(input).some((key) => !Object.hasOwn(USAGE_GUARD_DEFAULTS, key))) return null;
@@ -58,7 +57,6 @@ function validWindow(window, now) {
     && window.usedPercent >= 0 && window.usedPercent <= 100
     && typeof window.active === "boolean"
     // A missing reset still permits a warning about an observed percentage.
-    // A passed/malformed reset never turns an old window into a fresh allowance.
     && (window.resetsAt === null || timestamp(window.resetsAt) > now);
 }
 
@@ -69,7 +67,7 @@ function windowKind(provider, id) {
   return /-primary$/.test(id) ? "primary" : /-secondary$/.test(id) ? "secondary" : "model_specific";
 }
 
-/** Concurrency adjusts a reserve heuristic, never the account percentage or a token rate. */
+// Concurrency adjusts a reserve heuristic, never the account percentage or a token rate.
 export function evaluateUsageGuard(snapshot, provider, config, now = Date.now()) {
   const unavailable = (activity = null) => ({ stage: "unknown", activity, reserve: 0, usedPercent: null, kind: null, resetsAt: null });
   if (!["claude", "codex"].includes(provider) || !Number.isFinite(now)
@@ -96,7 +94,6 @@ export function evaluateUsageGuard(snapshot, provider, config, now = Date.now())
   let stage = limiting.usedPercent >= thresholds.stop ? "stop"
     : limiting.usedPercent >= thresholds.handoff ? "handoff"
     : limiting.usedPercent >= thresholds.warn ? "warn" : "normal";
-  // Preserve actionable high readings even when another window is missing.
   if (stage === "normal" && incomplete) return unavailable(activity);
   const scoped = valid.some((window) => windowKind(provider, window.id) === "model_specific" && window.usedPercent >= thresholds.warn);
   if (stage === "normal" && scoped) stage = "model_warning";

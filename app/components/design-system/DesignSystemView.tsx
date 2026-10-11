@@ -54,8 +54,6 @@ import { GitHubSettingsSection } from "./DesignSystemGitHubSettingsSample";
 import { SessionTaskSection } from "./DesignSystemSessionTaskSample";
 import { CommandTableSection, SettingsRailSection } from "./DesignSystemLayoutSamples";
 
-// Layer 1 of the web-only gate: the desktop preload exposes `window.pomegrDesktop`
-// whenever the page runs inside the Electron renderer. Presence alone is the signal.
 function subscribeAvailability() { return () => {}; }
 function isDesktopRuntime() {
   return typeof window !== "undefined" && Boolean((window as Window & { pomegrDesktop?: unknown }).pomegrDesktop);
@@ -308,17 +306,13 @@ function ChipsSection() {
   </Section>;
 }
 
-// Static file-tree samples. The session-scope selection sits three folders deep so the sample
-// demonstrates ancestor auto-expansion; the repository-scope sample mixes counted and muted files.
 const FILE_TREE_SESSION_FILES: FileTreeFile[] = [
   { path: "app/components/command-center/CommandCenterShell.tsx", fileId: "f101", status: "M" },
   { path: "app/components/dashboard/SessionTabs.tsx", fileId: "f102", status: "??" },
   { path: "app/components/dashboard/RequestLanes.tsx", fileId: "f103", status: "??" },
   { path: "app/Dashboard.tsx", fileId: "f104", status: "M" },
-  // Committed after the session recorded it: neutral C/M from the recorded kind.
   { path: "app/components/dashboard/SessionFilePanel.tsx", fileId: "f105", status: null, recordedKind: "created" },
   { path: "app/components/dashboard/RepositoryTab.tsx", fileId: "f106", status: null, recordedKind: "edited" },
-  // Git-observed, not a recorded tool edit (F/plan "2026-09-23-session-file-coverage" part 2).
   { path: "app/components/dashboard/GitObservedSample.tsx", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
 ];
 const FILE_TREE_SESSION_ELSEWHERE: FileTreeFile[] = [
@@ -466,8 +460,6 @@ function RoleFamilySection() {
   </Section>;
 }
 
-// Static request-chart sample: nine roster agents plus a compaction agent, so the lane chart
-// crosses the eight-lane threshold and shows one expanded and one collapsed group.
 const SAMPLE_WINDOW = 32;
 const SAMPLE_WORKFLOW_ID = "sample-test-sweep";
 
@@ -489,7 +481,6 @@ const SAMPLE_WORKFLOWS: Workflow[] = [{
   agentIds: ["worker-1", "worker-2", "worker-3", "worker-4", "worker-5"], phases: [],
 }];
 
-// One key per request in order: p primary, e explore, l plan, r review, c compaction, 1-5 workers.
 const SAMPLE_KEYS: Record<string, string> = { p: "primary", e: "explore", l: "plan", r: "review", c: "compaction", 1: "worker-1", 2: "worker-2", 3: "worker-3", 4: "worker-4", 5: "worker-5" };
 const SAMPLE_ROWS: RequestRow[] = "p p e e p l p 1 2 3 1 4 5 2 p c p r r p p e p 3 4 p l p 5 1 p p c p r p e p 2 p".split(" ").map((key, index) => {
   const agentId = SAMPLE_KEYS[key];
@@ -503,7 +494,6 @@ const SAMPLE_ROWS: RequestRow[] = "p p e e p l p 1 2 3 1 4 5 2 p c p r r p p e p
     uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens, totalTokens: uncachedInputTokens + cacheWriteTokens + cacheReadTokens + outputTokens,
     precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null,
     ordinal: index + 1, number: index + 1, freshTokens: uncachedInputTokens + cacheWriteTokens + outputTokens,
-    // The primary rows after each compaction-agent request, and one recorded refill.
     compactionBefore: index === 16 || index === 33,
     ...(index === 37 ? { cacheEvidence: { kind: "refill" as const } } : {}),
   };
@@ -512,8 +502,6 @@ const SAMPLE_LANES = buildRequestLanes(SAMPLE_ROWS, SAMPLE_AGENTS, "fresh", true
 const SAMPLE_PANEL_STYLE = { marginTop: "var(--space-4)" };
 function ignoreFocus() {}
 
-// Static calls for the unrecorded-request section: oldest first, as the flat pager serves them, none with
-// a request number or a token value. Fourteen exist in the scope and six are loaded, so the load-more shows.
 function unrecorded(id: number, minute: number, tool: string, workKind: WorkKind, detail: string, overrides: Partial<HistoryActivity> = {}): HistoryActivity {
   return { id: `sample-unrecorded-${id}`, timestamp: new Date(SAMPLE_TIME + minute * 60_000).toISOString(), actor: "Primary agent", tool, workKind, detail, status: null, durationMs: 1_500, requestId: null, agentId: "primary", requestNumber: null, ...overrides };
 }
@@ -620,7 +608,6 @@ const REFILLS_DEFERRED_DEFINITIONS = [{ ...REFILL_COUNT, count: 1, occurrences: 
 const REFILLS_UNEXPLAINED = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, reason: null }] }];
 const REFILLS_REMOTE_CONTROL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, toolChangeAttribution: { cause: "remote_control_connected" as const, changes: [...REMOTE_CONTROL_CHANGES] } }], reasons: [{ reason: "tools_changed" as const, count: 1 }], toolChangeAttributions: [{ cause: "remote_control_connected" as const, count: 1, changes: [...REMOTE_CONTROL_CHANGES] }] }];
 
-// Sixteen requests, one provider-diagnosed marker beside one possible full refill; both open the real request popover.
 const DEFERRED_OCCURRENCE: CacheRefillOccurrence = { ...REFILL_BASE, toolChangeAttribution: { cause: "deferred_definitions_loaded", changes: [], addedDefinitionCount: 8 } };
 const MARKER_ROWS: RequestRow[] = SAMPLE_ROWS.slice(0, 16).map((row, index) => {
   const refill = (kind: "refill" | "provider_diagnosed", occurrence: CacheRefillOccurrence): RequestRow => ({ ...row, cacheEvidence: { kind, occurrence: { ...occurrence, observedAt: row.observedAt } } });

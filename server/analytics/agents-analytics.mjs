@@ -151,14 +151,12 @@ function rosterOrder(runs) {
     };
     const roots = group.filter((run) => !run.parentId || !byId.has(run.parentId)).sort(compareRuns);
     for (const root of roots) visit(root);
-    // Cycles and parent-only filtered rows have no root. Keep their persisted
-    // depth, but emit each component once in a deterministic safe order.
+    // Cycles and parent-only filtered rows have no root.
     for (const run of [...group].sort(compareRuns)) visit(run);
   }
   return ordered;
 }
 
-/** Normalize once from committed public state, then bound a coherent v1 evidence set. */
 export function collectAgentsAnalyticsInput({ entries = [], catalog = [] } = {}) {
   if (!Array.isArray(entries) || !Array.isArray(catalog)) throw new TypeError("Agents analytics requires committed array snapshots");
   const rawRuns = [];
@@ -233,7 +231,6 @@ function aggregate(runs) {
   };
 }
 
-/** Build one bounded, browser-safe response solely from retained public snapshots. */
 export function buildAgentsAnalytics({ input = null, entries = [], catalog = [], project = "all", days = 30, scope = "all", now = Date.now(), refreshReadiness = "ready" } = {}) {
   const normalized = input || collectAgentsAnalyticsInput({ entries, catalog });
   const catalogRows = normalized.catalog;

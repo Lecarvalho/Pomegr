@@ -2,14 +2,9 @@ const PAGE_SIZE = 60;
 const MAX_READS = 24;
 const USER_MESSAGE_ROUTE = /^at:(\d{1,16})$/u;
 
-/** One flat activity-history page, earliest first. Null when the page is not ready. */
 export type ActivityRowsPage = { offset: number; total: number; items: unknown[] };
 export type ReadActivityRows = (offset: number | "latest") => Promise<ActivityRowsPage | null>;
 
-/**
- * The Activities `request` route value for a user-message event. The event feed carries no request
- * number, so the link names the recorded time and the request is looked up in history on arrival.
- */
 export function userMessageRoute(at: string): string | null {
   const time = Date.parse(at);
   return Number.isSafeInteger(time) && time >= 0 ? `at:${time}` : null;
@@ -31,12 +26,6 @@ function linkedRequestNumber(row: unknown, time: number) {
     ? requestNumber : null;
 }
 
-/**
- * Finds the request recorded as answering the user input at `time`, bisecting the chronological
- * activity history a page at a time. `undefined` means history could not be read (retry later);
- * `null` means it was read and holds no linked input at that time. Only an exact recorded time
- * matches: a nearby request is never substituted.
- */
 export async function locateUserInputRequest(time: number, read: ReadActivityRows): Promise<number | null | undefined> {
   let low = 0;
   let high: number | null = null;

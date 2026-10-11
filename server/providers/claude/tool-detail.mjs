@@ -9,11 +9,6 @@ function boundedOneLine(value, maximum = 54) {
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "MultiEdit", "NotebookEdit"]);
 
-/**
- * Candidate {target, kind} file changes for one successful Claude tool call. Only structured
- * file tools with an explicit path contribute; shell commands never do, because the files a
- * command writes cannot be known reliably from its text.
- */
 export function claudeFileChangeCandidates(tool, input = {}, toolUseResult) {
   if (tool === "Write") {
     const target = input.file_path || input.path;
@@ -28,7 +23,6 @@ export function claudeFileChangeCandidates(tool, input = {}, toolUseResult) {
   return [];
 }
 
-/** Per tool_use_id outcome index built once per transcript file: ordered {timestamp, isError, toolUseResult}. */
 export function claudeToolOutcomes(records) {
   const outcomes = new Map();
   for (const record of records) {
@@ -46,7 +40,7 @@ export function claudeToolOutcomes(records) {
   return outcomes;
 }
 
-/** The first non-error outcome recorded at or after a call's start, or null when nothing succeeded. */
+// The first non-error outcome recorded at or after a call's start, or null when nothing succeeded.
 export function firstSuccessfulClaudeToolOutcome(outcomes, toolUseId, startedAt) {
   const start = Date.parse(startedAt || "");
   if (!Number.isFinite(start)) return null;

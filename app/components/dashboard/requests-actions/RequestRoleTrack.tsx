@@ -7,17 +7,12 @@ const FAMILY_ORDER: readonly RoleFamily[] = ["neutral", "reading", "planning", "
 
 type RequestAgentRole = { name: string; role: string; family: RoleFamily; className: string };
 
-/** The agent a request belongs to, as name, role label and role family; roster misses read as unknown. */
 export function requestAgentRole(row: RequestRow, agents: Agent[]): RequestAgentRole {
   const agent = agents.find((candidate) => candidate.id === row.agentId);
   const { family, className } = roleFamilyPresentation(agent?.role ?? "unknown");
   return { name: agent ? agentDisplayName(agent) : "Unknown agent", role: agent ? agentRoleLabel(agent) : "unknown", family, className };
 }
 
-/**
- * Single-chart agent track: one segment under each visible bar, tinted by its agent's role family.
- * Same-role agents share a tint; the bars' accessible names carry the agent, so the track is decorative.
- */
 export function RequestRoleTrack({ rows, agents, barX, width, y, height }: {
   rows: RequestRow[]; agents: Agent[]; barX: (index: number) => number; width: number; y: number; height: number;
 }) {
@@ -26,10 +21,6 @@ export function RequestRoleTrack({ rows, agents, barX, width, y, height }: {
   </g>;
 }
 
-/**
- * Legend for the track: roles present among the visible requests with distinct agent counts
- * ("explore ×3"), then the agent of the hovered or focused bar, else of the selected one.
- */
 export function RequestRoleLegend({ rows, agents, named }: { rows: RequestRow[]; agents: Agent[]; named: RequestRow | undefined }) {
   const roles = new Map<string, { family: RoleFamily; className: string; agents: Set<string> }>();
   for (const row of rows) {

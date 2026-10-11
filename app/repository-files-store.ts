@@ -21,14 +21,7 @@ function isVisible() {
   return typeof document === "undefined" || document.visibilityState === "visible";
 }
 
-/**
- * One URL-keyed committed cache with reference-counted subscribers. Polls the monitor's
- * committed file-history cache (never triggers acquisition itself): 1.5s while loading or
- * rebuilding, backing off to 5s if that persists; 15s once ready and the tab is visible; it
- * stops scheduling while hidden, paused, or unsubscribed, and wakes on visibilitychange.
- * A failed fetch keeps the last resolved (non-"loading") body -- only a still-loading
- * placeholder downgrades to "unavailable" so the UI does not spin forever.
- */
+/** One URL-keyed committed cache with reference-counted subscribers. */
 class KeyedFilesStore<T extends Loadable> {
   private data: T;
   private readonly listeners = new Set<() => void>();
@@ -111,7 +104,6 @@ class KeyedFilesStore<T extends Loadable> {
       try {
         const response = await fetch(this.url, { cache: "no-store", signal: controller.signal });
         if (controller.signal.aborted) return;
-        // A failed poll (for example a 503 "unavailable" body) keeps the last resolved response.
         if (!response.ok) throw new Error("file-history request failed");
         const next = (await response.json().catch(() => null)) as T | null;
         if (controller.signal.aborted) return;
@@ -174,7 +166,6 @@ function useKeyedFiles<T extends Loadable>(url: string | null, initial: () => T,
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
-/** Committed repository file listing; null until the first response arrives. */
 export function useRepositoryFiles(repositoryId: string | null, options: { paused?: boolean } = {}): RepositoryFilesResponse | null {
   const url = repositoryId ? `/api/repository-files?${new URLSearchParams({ repositoryId })}` : null;
   return useKeyedFiles<RepositoryFilesResponse>(url, () => createLoadingRepositoryFiles(repositoryId || ""), options.paused === true);
@@ -186,7 +177,6 @@ function fileHistoryUrl(repositoryId: string, target: FileHistoryTarget) {
   return `/api/repository-files?${params}`;
 }
 
-/** Committed per-file session history; null while no target is selected or before the first response. */
 export function useFileHistory(repositoryId: string | null, target: FileHistoryTarget | null, options: { paused?: boolean } = {}): FileHistoryResponse | null {
   const path = target && "path" in target ? target.path : null;
   const url = repositoryId && target ? fileHistoryUrl(repositoryId, target) : null;

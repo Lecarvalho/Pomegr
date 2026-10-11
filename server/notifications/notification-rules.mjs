@@ -20,7 +20,6 @@ export function opaqueNotificationId(kind, key, generation) {
 }
 export function sourceReadiness(value) { return READINESS.has(value) ? value : "unavailable"; }
 
-/** Each rule declares the policy consumed by the occurrence ledger. */
 export const NOTIFICATION_RULES = Object.freeze([
   USAGE_NOTIFICATION_RULE,
   RELEASE_NOTIFICATION_RULE,
@@ -44,7 +43,7 @@ export const NOTIFICATION_RULES = Object.freeze([
 
 function validIso(value) { return typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value; }
 
-/** Only explicit ready rows may clear an active session; absence is never false. */
+// Only explicit ready rows may clear an active session; absence is never false.
 export function deriveNeedsInput(facts) {
   if (!facts || sourceReadiness(facts.readiness) !== "ready" || !Array.isArray(facts.sessions)) return [];
   const seen = new Set();
@@ -61,7 +60,6 @@ export function deriveNeedsInput(facts) {
   });
 }
 
-/** Incident and recovery are one provider condition with one coalesced recovery transition. */
 export function deriveProviderStatus(facts) {
   if (!facts || !Array.isArray(facts.providers)) return [];
   const seen = new Set();
@@ -78,7 +76,7 @@ export function deriveProviderStatus(facts) {
   });
 }
 
-/** Test-only producers use this same registration seam, without presentation changes. */
+// Test-only producers use this same registration seam, without presentation changes.
 export function createNotificationRuleRegistry(rules = NOTIFICATION_RULES) {
   if (!Array.isArray(rules) || new Set(rules.map((rule) => rule.kind)).size !== rules.length) throw new TypeError("Invalid notification rules");
   for (const rule of rules) {
