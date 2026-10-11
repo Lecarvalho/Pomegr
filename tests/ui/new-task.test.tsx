@@ -354,6 +354,29 @@ describe("Run on, Effort and Complete when", () => {
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Use the default", run: { provider: "claude", model: null, effort: null }, completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
+  it("sends Remote Control only when checked, and clears and disables it for Codex", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "On my phone");
+    expect(checkbox("Remote Control")).not.toBeChecked();
+    await user.click(checkbox("Remote Control"));
+    expect(checkbox("Remote Control")).toBeChecked();
+    // Codex has no Remote Control: choosing it drops the choice, and coming back does not restore it.
+    chooseCommandOption(runOn(), "codex:default");
+    expect(checkbox("Remote Control")).not.toBeChecked();
+    expect(checkbox("Remote Control")).toBeDisabled();
+    expect(screen.getByText("Claude Code only.")).toBeInTheDocument();
+    chooseCommandOption(runOn(), "claude:default");
+    expect(checkbox("Remote Control")).toBeEnabled();
+    expect(checkbox("Remote Control")).not.toBeChecked();
+    await user.click(checkbox("Remote Control"));
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", {
+      text: "On my phone", run: { provider: "claude", model: null, effort: null, remoteControl: true }, completeWhen: DEFAULT_COMPLETE_WHEN,
+    });
+  });
+
   it("clears Effort by pressing the pressed segment and Run on by choosing Not set", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);

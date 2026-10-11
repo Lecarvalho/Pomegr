@@ -45,6 +45,7 @@ function inputShape(hookBound) {
     provider: z.enum(["claude", "codex"]).optional().describe("Optional provider that should run the task."),
     model: modelSchema.optional(),
     effort: z.enum(["low", "medium", "high", "xhigh"]).optional().describe("Optional effort level."),
+    remote_control: z.boolean().optional().describe("Optional. True starts the task's Claude Code session with Remote Control on, so the user can also reach it from their phone. Claude Code only; not valid with the codex provider."),
     complete_when: z.array(z.enum(CHECKS)).max(5)
       .refine((items) => new Set(items).size === items.length, "Checks must be unique.")
       .optional().describe("Optional conditions Pomegr verifies when the agent reports the task complete."),
@@ -56,8 +57,10 @@ function inputShape(hookBound) {
 
 export function buildAddTaskBody(ref, input) {
   const body = { sessionRef: ref, text: input.text };
-  if (input.provider !== undefined || input.model !== undefined || input.effort !== undefined) {
+  if (input.provider !== undefined || input.model !== undefined || input.effort !== undefined || input.remote_control === true) {
     body.run = { provider: input.provider ?? null, model: input.model ?? null, effort: input.effort ?? null };
+    // Sent only when asked for, so a monitor from before the option still takes every other task.
+    if (input.remote_control === true) body.run.remoteControl = true;
   }
   if (input.complete_when !== undefined || input.own_condition !== undefined) {
     body.completeWhen = { checks: input.complete_when ?? [], own: input.own_condition ?? null };

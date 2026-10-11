@@ -35,7 +35,11 @@ export type TaskColumnRole = "in_progress" | "review" | "done";
 /** `role` is null for Backlog and Ready, where no card is moved by itself, and absent from an older monitor, which means the same. */
 export type TaskColumn = { id: string; name: string; position: number; role?: TaskColumnRole | null };
 export type TaskFeature = { id: string; name: string; done: boolean };
-export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null };
+/**
+ * `remoteControl` starts the task's Claude Code session with Remote Control on, so its owner can also reach it from
+ * another device. It is never true on a Codex task, and absent from an older monitor, which means off.
+ */
+export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null; remoteControl?: boolean };
 /**
  * `checks` is the monitor's reading of the task's checked conditions while the task waits for its report, by the rule
  * and from the facts that will judge the report. It is absent once a report or an outcome is recorded, when no

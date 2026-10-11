@@ -30,6 +30,7 @@ import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
+import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl } from "./task-remote-control.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
@@ -243,6 +244,7 @@ function createTask({ database, repositoryId }, payload) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
       JSON.stringify(input.completeWhen.checks), input.completeWhen.own, now, now, input.featureId, step);
+  if (input.run.remoteControl) writeTaskRemoteControl(database, repositoryId, number, true);
   reserveTaskNumber(database, repositoryId, number + 1);
   return { ok: true, number };
 }
@@ -284,13 +286,14 @@ function updateTask({ database, repositoryId }, payload) {
     .get(repositoryId, input.number);
   if (!stored) return { ok: false, error: "not_found" };
   // A field the payload left out keeps its stored value; one it carried is replaced whole.
-  const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort };
+  const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort, remoteControl: readTaskRemoteControl(database, repositoryId, input.number) };
   const completeWhen = input.completeWhen ? { checks: JSON.stringify(input.completeWhen.checks), own: input.completeWhen.own } : { checks: stored.checks, own: stored.own_condition };
   const placement = updatedPlacement(database, repositoryId, stored, input);
   if (placement.error) return { ok: false, error: placement.error };
   preparedStatement(database, `UPDATE tasks SET text = ?, run_provider = ?, run_model = ?, run_effort = ?, checks = ?, own_condition = ?, feature_id = ?, step = ?, updated_at = ?
     WHERE repository_id = ? AND number = ?`)
     .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, placement.featureId, placement.step, Date.now(), repositoryId, input.number);
+  if (input.run) writeTaskRemoteControl(database, repositoryId, input.number, run.remoteControl);
   // The feature the task left and the one it joined each close any gap in their steps.
   for (const featureId of new Set([stored.feature_id, placement.featureId])) if (featureId) renumberSteps(database, repositoryId, featureId);
   return { ok: true };
@@ -322,6 +325,7 @@ function deleteTask({ database, repositoryId }, payload) {
   deleteTaskAttention(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
+  writeTaskRemoteControl(database, repositoryId, input.number, false);
   // The deleted number stays retired even when it was newer than the stored counter.
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
@@ -557,6 +561,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const attentions = readTaskAttentions(database, repositoryId);
     // A task's image list is kept there as well; the bytes are files beside the database (task-images.mjs).
     const images = readTaskImages(database, repositoryId);
+    // Whether a task's session starts with Remote Control on is one more flag there (task-remote-control.mjs).
+    const remoteControls = readTaskRemoteControls(database, repositoryId);
     return {
       // The pause reason and the queue's own times are kept in `meta` (task-queue-advance.mjs); the projection validates them.
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
@@ -564,7 +570,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
-        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [] })),
+        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)) })),
     };
   }
 

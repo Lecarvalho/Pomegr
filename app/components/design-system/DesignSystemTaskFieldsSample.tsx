@@ -38,15 +38,23 @@ export function TaskFieldsSection() {
   const [fullText, setFullText] = useState(TEXT_FULL);
   const [issueChecked, setIssueChecked] = useState(true);
   const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
+  const [remote, setRemote] = useState<TaskRun>({ ...EMPTY_RUN, remoteControl: true });
+  const [codexRun, setCodexRun] = useState<TaskRun>({ ...EMPTY_RUN, provider: "codex" });
   const [modalCompleteWhen, setModalCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." });
-  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
+  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Remote Control is one checkbox under both, for a Claude Code session only. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
         <RunFields run={run} models={MODELS} onChange={setRun} />
       </Sample>
       <Sample label="Nothing chosen, no model list" note="Nothing selected is valid. A provider with no observed model offers only its Default model.">
         <RunFields run={unset} models={NO_MODELS} onChange={setUnset} />
+      </Sample>
+      <Sample label="Remote Control, on" note="Checked for a task that starts Claude Code, named or by default. The started session can also be opened on a phone.">
+        <RunFields run={remote} models={MODELS} onChange={setRemote} />
+      </Sample>
+      <Sample label="Remote Control, unavailable" note="A Codex task has no Remote Control: the checkbox is cleared and disabled, with the one reason as its helper.">
+        <RunFields run={codexRun} models={MODELS} onChange={setCodexRun} />
       </Sample>
       <Sample label="Complete when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">
         <CompleteWhenField draft={fresh} onDraftChange={setFresh} />
