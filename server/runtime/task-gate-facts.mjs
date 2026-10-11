@@ -1,7 +1,9 @@
 import { readGitStateAsync } from "../repository/git-state.mjs";
 
 const PROVIDERS = Object.freeze(["claude", "codex"]);
-// Usage with no provider freshness of its own is fresh for this long after it was fetched.
+// A successful usage reading counts for this long after it was fetched. It must stay longer than one
+// refresh interval (`USAGE_REFRESH_INTERVAL_MS`) plus one usage poll, or a healthy account reads unknown
+// at the end of every refresh cycle.
 export const TASK_GATE_USAGE_MAX_AGE_MS = 10 * 60 * 1000;
 export const TASK_GATE_TREE_MAX_AGE_MS = 60 * 1000;
 export const TASK_GATE_TREE_REFRESH_MS = 15 * 1000;
@@ -9,19 +11,31 @@ export const TASK_GATE_TREE_LIMIT = 16;
 
 const percent = (value) => (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null);
 
-function windowPercent(limits, window) {
-  const readings = limits.filter((limit) => limit?.window === window).map((limit) => percent(limit.percent));
+// A window whose reset time has passed describes a period that ended: its percentage is not known.
+function windowPercent(limits, window, now) {
+  const readings = limits.filter((limit) => limit?.window === window).map((limit) => {
+    const resetsAt = typeof limit.resetsAt === "string" ? Date.parse(limit.resetsAt) : Number.NaN;
+    return Number.isFinite(resetsAt) && resetsAt <= now ? null : percent(limit.percent);
+  });
   return readings.length === 0 || readings.includes(null) ? null : Math.max(...readings);
 }
 
+// A refresh that failed after the reading was taken: the reading is the last known value, not the current one.
+function failedSince(usageLimits, fetchedAt) {
+  if (usageLimits.failureKind === null || usageLimits.failureKind === undefined) return false;
+  const attemptedAt = Date.parse(usageLimits.attemptedAt || "");
+  return !Number.isFinite(attemptedAt) || attemptedAt > fetchedAt;
+}
+
 // One provider's usage as the gates read it, `{ fiveHourPercent, sevenDayPercent }`, or null.
+// The gate judges the reading by its own age and failure record, never by the provider's `freshness`
+// label: that label follows each reader's own display bound, which can be as short as one refresh interval.
 export function gateUsageFact(usageLimits, now) {
   if (!usageLimits || usageLimits.available !== true || !Array.isArray(usageLimits.limits)) return null;
   const fetchedAt = Date.parse(usageLimits.fetchedAt || "");
-  if (!Number.isFinite(fetchedAt) || fetchedAt > now) return null;
-  const fresh = usageLimits.freshness === undefined ? now - fetchedAt <= TASK_GATE_USAGE_MAX_AGE_MS : usageLimits.freshness === "fresh";
-  if (!fresh) return null;
-  return { fiveHourPercent: windowPercent(usageLimits.limits, "5 hours"), sevenDayPercent: windowPercent(usageLimits.limits, "7 days") };
+  if (!Number.isFinite(fetchedAt) || fetchedAt > now || now - fetchedAt > TASK_GATE_USAGE_MAX_AGE_MS) return null;
+  if (failedSince(usageLimits, fetchedAt)) return null;
+  return { fiveHourPercent: windowPercent(usageLimits.limits, "5 hours", now), sevenDayPercent: windowPercent(usageLimits.limits, "7 days", now) };
 }
 
 export function gateProviderStatusFact(row) {

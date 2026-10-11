@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { DESKTOP_AUTH_HEADER } from "../../../shared/local-auth.mjs";
+import { USAGE_REFRESH_INTERVAL_MS } from "../../../server/normalize/usage-limits.mjs";
+import { captureClaudeStatuslineUsage } from "../../../server/providers/claude/usage-feed.mjs";
+import { createClaudeUsageLimitsReader } from "../../../server/providers/claude/usage-limits.mjs";
+import { createCodexUsageLimitsCoordinator } from "../../../server/providers/codex/usage-limits.mjs";
 import {
   TASK_GATE_TREE_LIMIT, TASK_GATE_TREE_MAX_AGE_MS, TASK_GATE_TREE_REFRESH_MS, TASK_GATE_USAGE_MAX_AGE_MS,
   createTaskGateFacts, createTaskTreeObservation, gateProviderStatusFact, gateUsageFact,
@@ -296,27 +303,124 @@ test("a task linked to a session is not the next start, so its gates are not the
   assert.equal(store.readBoard(REPOSITORY, { resolveGateFacts: passingGates }).queue.gates.next.taskId, "T-2");
 });
 
-test("usage counts only when available and fresh, by the five-hour and seven-day windows", () => {
+test("usage counts only when available, recent, and not failed since, by the five-hour and seven-day windows", () => {
   const limits = [
     { id: "current-session", window: "5 hours", percent: 62.4 },
     { id: "all-models", window: "7 days", percent: 31 },
     { id: "model", window: "7 days", percent: 12 },
   ];
   const at = new Date(NOW - 60_000).toISOString();
-  assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, freshness: "fresh", limits }, NOW), { fiveHourPercent: 62.4, sevenDayPercent: 31 });
-  assert.equal(gateUsageFact({ available: true, fetchedAt: at, freshness: "stale", limits }, NOW), null);
+  const known = { fiveHourPercent: 62.4, sevenDayPercent: 31 };
+  assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, freshness: "fresh", limits }, NOW), known);
   assert.equal(gateUsageFact({ available: false, fetchedAt: at, freshness: "fresh", limits }, NOW), null);
   assert.equal(gateUsageFact({ available: true, fetchedAt: null, freshness: "fresh", limits }, NOW), null);
   assert.equal(gateUsageFact({ available: true, fetchedAt: new Date(NOW + 60_000).toISOString(), freshness: "fresh", limits }, NOW), null);
   for (const value of [null, undefined, "usage", { available: true, fetchedAt: at, limits: "none" }]) assert.equal(gateUsageFact(value, NOW), null);
-  // A provider that reports no freshness of its own is fresh by the age of its fetch.
+  // The age of the last successful reading decides, whatever freshness label the provider put on it.
+  const edge = new Date(NOW - TASK_GATE_USAGE_MAX_AGE_MS).toISOString();
   const old = new Date(NOW - TASK_GATE_USAGE_MAX_AGE_MS - 1).toISOString();
+  for (const freshness of ["fresh", "stale", undefined]) {
+    assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, freshness, limits }, NOW), known);
+    assert.deepEqual(gateUsageFact({ available: true, fetchedAt: edge, freshness, limits }, NOW), known);
+    assert.equal(gateUsageFact({ available: true, fetchedAt: old, freshness, limits }, NOW), null);
+  }
+  // A refresh that failed after the reading makes it unknown; a reading taken after the failure counts.
+  const earlier = new Date(NOW - 120_000).toISOString();
+  const later = new Date(NOW - 30_000).toISOString();
+  for (const failureKind of ["authentication_required", "rate_limited", "unavailable", "runtime_unavailable"]) {
+    assert.equal(gateUsageFact({ available: true, fetchedAt: at, attemptedAt: later, failureKind, limits }, NOW), null);
+    assert.equal(gateUsageFact({ available: true, fetchedAt: at, attemptedAt: null, failureKind, limits }, NOW), null);
+    assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, attemptedAt: earlier, failureKind, limits }, NOW), known);
+  }
+  assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, attemptedAt: later, failureKind: null, limits }, NOW), known);
+  // A window whose reset time has passed is not known; one with no reset time, or a later one, is.
+  const reset = (resetsAt) => [{ window: "5 hours", percent: 18, resetsAt }, { window: "7 days", percent: 9, resetsAt: null }];
+  assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, limits: reset(new Date(NOW).toISOString()) }, NOW), { fiveHourPercent: null, sevenDayPercent: 9 });
+  assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, limits: reset(new Date(NOW + 1).toISOString()) }, NOW), { fiveHourPercent: 18, sevenDayPercent: 9 });
   const codex = [{ id: "codex-primary", window: "5 hours", percent: 18 }, { id: "other-primary", window: "5 hours", percent: 40 }, { id: "codex-secondary", window: "7 days", percent: 9 }];
   assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, limits: codex }, NOW), { fiveHourPercent: 40, sevenDayPercent: 9 });
-  assert.equal(gateUsageFact({ available: true, fetchedAt: old, limits: codex }, NOW), null);
   // A missing window, or one malformed reading among several, is not known.
   assert.deepEqual(gateUsageFact({ available: true, fetchedAt: at, limits: [{ window: "7 days", percent: 9 }] }, NOW), { fiveHourPercent: null, sevenDayPercent: 9 });
   assert.equal(gateUsageFact({ available: true, fetchedAt: at, limits: [{ window: "5 hours", percent: 18 }, { window: "5 hours", percent: "40" }] }, NOW).fiveHourPercent, null);
+});
+
+// The monitor asks each reader once a minute and commits what it answers; the gate reads that row at any later moment.
+const USAGE_POLL_MS = 60_000;
+const TIMER_DRIFT_MS = 40;
+
+/** Polls a real usage reader for `minutes` and returns each committed row with the gate's reading of it until the next poll. */
+async function pollUsage(read, clock, minutes) {
+  const rows = [];
+  for (let poll = 0; poll <= minutes; poll += 1) {
+    const usageLimits = await read();
+    await settle();
+    rows.push({ usageLimits, atPoll: gateUsageFact(usageLimits, clock.now), beforeNextPoll: gateUsageFact(usageLimits, clock.now + USAGE_POLL_MS + TIMER_DRIFT_MS - 1) });
+    clock.now += USAGE_POLL_MS + TIMER_DRIFT_MS;
+  }
+  return rows;
+}
+
+test("a healthy Claude account never reads unknown between refreshes, and a failed or expired reading does", async (context) => {
+  assert.ok(TASK_GATE_USAGE_MAX_AGE_MS > USAGE_REFRESH_INTERVAL_MS + 2 * USAGE_POLL_MS, "the gate's age bound must outlast a refresh interval and the poll that publishes it");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pomegr-gate-usage-"));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const clock = { now: NOW };
+  let healthy = true;
+  const reader = createClaudeUsageLimitsReader({
+    homeDir: root, usageSnapshotsRoot: root, now: () => clock.now,
+    usageRequest: async () => (healthy ? new Response(JSON.stringify({ limits: [
+      { kind: "session", percent: 7, resets_at: new Date(NOW + 4 * 3_600_000).toISOString() },
+      { kind: "weekly_all", percent: 30, resets_at: new Date(NOW + 6 * 86_400_000).toISOString() },
+    ] }), { status: 200 }) : new Response("", { status: 503 })),
+  });
+  const rows = await pollUsage(reader, clock, 16);
+  // The reader's own label is `stale` for the poll that starts each refresh; the gate must not follow it.
+  const labels = new Set(rows.map((row) => row.usageLimits.freshness));
+  assert.ok(labels.has("fresh") && [...labels].every((label) => label === "fresh" || label === "stale"), [...labels].join());
+  for (const row of rows) {
+    assert.equal(row.usageLimits.origin, "provider_api");
+    assert.deepEqual(row.atPoll, { fiveHourPercent: 7, sevenDayPercent: 30 }, `${row.usageLimits.freshness} at ${row.usageLimits.fetchedAt}`);
+    assert.deepEqual(row.beforeNextPoll, row.atPoll);
+  }
+
+  healthy = false;
+  const failed = (await pollUsage(reader, clock, 12)).filter((row) => row.usageLimits.failureKind !== null);
+  assert.ok(failed.length > 0);
+  for (const row of failed) {
+    assert.equal(row.usageLimits.available, true, "the last good reading is retained for display");
+    assert.equal(row.atPoll, null);
+  }
+
+  // A local observation of a five-hour window that has ended is not a reading of the current one.
+  const expired = { rate_limits: { five_hour: { used_percentage: 23, resets_at: (clock.now - 1_000) / 1_000 }, seven_day: { used_percentage: 61, resets_at: (clock.now + 86_400_000) / 1_000 } } };
+  captureClaudeStatuslineUsage(expired, { root, now: new Date(clock.now) });
+  const local = await reader();
+  assert.equal(local.origin, "local_observation");
+  assert.equal(gateUsageFact(local, clock.now).fiveHourPercent, null);
+
+  const missing = await createClaudeUsageLimitsReader({ homeDir: root, usageSnapshotsRoot: path.join(root, "none"), now: () => clock.now, usageRequest: async () => new Response("", { status: 401 }) })();
+  assert.equal(gateUsageFact(missing, clock.now), null);
+});
+
+test("a healthy Codex account never reads unknown between refreshes, and a failed reading does", async () => {
+  const clock = { now: NOW };
+  let healthy = true;
+  const window = (usedPercent, windowDurationMins) => ({ usedPercent, windowDurationMins, resetsAt: (NOW + windowDurationMins * 60_000) / 1_000 });
+  const coordinator = createCodexUsageLimitsCoordinator({ now: () => clock.now, request: async () => {
+    if (!healthy) throw new Error("unavailable");
+    return { result: { rateLimitsByLimitId: { codex: { limitId: "codex", limitName: "Codex", primary: window(18, 300), secondary: window(9, 10_080) } } } };
+  } });
+  const rows = await pollUsage(() => coordinator.get(), clock, 16);
+  for (const row of rows) {
+    assert.equal(row.usageLimits.freshness, undefined, "Codex usage carries no freshness of its own");
+    assert.deepEqual(row.atPoll, { fiveHourPercent: 18, sevenDayPercent: 9 });
+    assert.deepEqual(row.beforeNextPoll, row.atPoll);
+  }
+
+  healthy = false;
+  const failed = (await pollUsage(() => coordinator.get(), clock, 12)).filter((row) => row.usageLimits.failureKind !== null);
+  assert.ok(failed.length > 0);
+  for (const row of failed) assert.equal(row.atPoll, null);
 });
 
 test("provider status counts only when ready, fresh, and known", () => {
@@ -401,7 +505,7 @@ test("the gate facts join committed usage, provider status, and the tree, and ex
   const at = new Date(NOW - 1000).toISOString();
   const resolve = createTaskGateFacts({
     usageLimits: () => ({ providers: [
-      { provider: "claude", usageLimits: { available: true, fetchedAt: at, freshness: "fresh", error: "secret", limits: [{ window: "5 hours", percent: 62, resetsAt: at }, { window: "7 days", percent: 31 }] } },
+      { provider: "claude", usageLimits: { available: true, fetchedAt: at, freshness: "fresh", error: "secret", limits: [{ window: "5 hours", percent: 62, resetsAt: new Date(NOW + 3_600_000).toISOString() },{ window: "7 days", percent: 31 }] } },
       { provider: "codex", usageLimits: { available: false, fetchedAt: null, limits: [] } },
     ] }),
     providerStatus: () => ({ providers: [{ provider: "claude", readiness: "ready", freshness: "fresh", status: "degraded", statusPageUrl: "https://example.test", incidents: [{ name: "secret" }] }] }),

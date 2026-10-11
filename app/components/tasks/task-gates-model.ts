@@ -3,8 +3,9 @@ import { scheduleLabel } from "./task-schedule";
 
 export const PROVIDER_NAMES: Record<TaskProvider, string> = { claude: "Claude Code", codex: "Codex" };
 
+/** The percentages to show, or null when the gate reads the usage as unknown: a seven-day figure alone must not look like capacity. */
 export function usageReading(usage: TaskGateUsage): string | null {
-  if (usage.fiveHourPercent === null && usage.sevenDayPercent === null) return null;
+  if (usage.status === "unknown" || (usage.fiveHourPercent === null && usage.sevenDayPercent === null)) return null;
   const part = (label: string, value: number | null) => `${label} ${value === null ? "–" : `${value}%`}`;
   return `${part("5h", usage.fiveHourPercent)} · ${part("7d", usage.sevenDayPercent)}`;
 }
