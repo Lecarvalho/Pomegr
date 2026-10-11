@@ -1,4 +1,4 @@
-import type { TaskBoard, TaskGateReason, TaskGates, TaskGateUsage, TaskProvider } from "../../../shared/task-contract";
+import type { Task, TaskBoard, TaskGateReason, TaskGates, TaskGateUsage, TaskProvider } from "../../../shared/task-contract";
 import { scheduleLabel } from "./task-schedule";
 
 export const PROVIDER_NAMES: Record<TaskProvider, string> = { claude: "Claude Code", codex: "Codex" };
@@ -48,6 +48,26 @@ function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<
     case "before_queue_start": return at(schedule?.startAt) ? `the queue starts ${at(schedule?.startAt)}` : "the queue's start time has not come";
     case "after_queue_stop": return at(schedule?.stopAfter) ? `the queue stopped starting tasks ${at(schedule?.stopAfter)}` : "the queue's stop time has passed";
   }
+}
+
+/**
+ * The line for a manual start the monitor held (`gate_held`): which gates hold this task, read from the readings the
+ * committed board already carries. The answer itself never names a gate. Step order is not read: it holds only the
+ * queue. Null when the board shows no hold, as when a reading changed since the answer.
+ */
+export function heldStartLine(task: Task, queue: Pick<TaskBoard["queue"], "gates" | "schedule"> | undefined): string | null {
+  const gates = queue?.gates;
+  if (!gates) return null;
+  const provider = task.run.provider ?? "claude";
+  const usage = gates.usage[provider].status;
+  const status = gates.providerStatus[provider];
+  const reasons: TaskGateReason[] = [];
+  if (usage !== "ok") reasons.push(usage === "over" ? "usage_over" : "usage_unknown");
+  if (status !== "ok") reasons.push(status === "incident" ? "provider_incident" : "provider_status_unknown");
+  if (gates.workingTree !== "clean") reasons.push(gates.workingTree === "dirty" ? "tree_dirty" : "tree_unknown");
+  if (reasons.length === 0) return null;
+  const next = { taskId: task.id, provider, blockedBy: null, reasons };
+  return `This task is held: ${reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}.`;
 }
 
 /** The one muted line on the held next task, or null when nothing holds it or the queue is not running. */

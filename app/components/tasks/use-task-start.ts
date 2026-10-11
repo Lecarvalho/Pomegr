@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { openDesktopTaskWorktree, startDesktopTask, taskDesktopBridge, useTaskDesktopAvailability, type TaskStartStatus, type TaskWorktreeOpenStatus } from "./task-desktop";
+import { heldStartLine } from "./task-gates-model";
+import type { TaskModalBoard } from "./task-modal-types";
 import { useMinuteClock } from "./task-panel-hooks";
 import { worktreeOpenLine } from "./task-queue-banner";
 import { scheduleLabel, waitsForOwnTime } from "./task-schedule";
@@ -12,7 +14,8 @@ import { scheduleLabel, waitsForOwnTime } from "./task-schedule";
 // session state once the monitor links the session. After a `worktree_dirty` answer it also offers Open folder (the same
 // fixed channel and result lines as the queue banner); the folder path stays in the desktop and never reaches the modal.
 // After a `tree_dirty` answer (only the repository's uncommitted changes hold the start) it offers the same start in a
-// worktree of the task's own, behind the desktop's own confirmation.
+// worktree of the task's own, behind the desktop's own confirmation. After a `gate_held` answer, which names no gate, the
+// line names the gates the committed board shows holding this task.
 
 const LINES: Record<TaskStartStatus, string | null> = {
   started: "Session started in a new terminal window.",
@@ -52,7 +55,7 @@ function boardReason(task: Task, unsaved: boolean, now: number): string | null {
   return null;
 }
 
-export function useTaskStart(repositoryId: string, task: Task, unsaved: boolean, refresh: () => Promise<void>) {
+export function useTaskStart(repositoryId: string, task: Task, board: TaskModalBoard, unsaved: boolean, refresh: () => Promise<void>) {
   const available = useTaskDesktopAvailability() === "available";
   const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<{ status: TaskStartStatus; mark: string } | null>(null);
@@ -83,7 +86,8 @@ export function useTaskStart(repositoryId: string, task: Task, unsaved: boolean,
     setAnswer({ status: separateWorktree && status === "cancelled" ? "tree_dirty" : status, mark });
     if (status === "started") await refresh().catch(() => {});
   };
-  const line = pending ? null : locked ? LINES[result] : reason ?? (result ? LINES[result] : null);
+  const resultLine = result === null ? null : (result === "gate_held" ? heldStartLine(task, board.queue) : null) ?? LINES[result];
+  const line = pending ? null : locked ? resultLine : reason ?? resultLine;
   // Offered only while the dirty-worktree line is the one showing, and only where this desktop build can open a folder.
   const folderOffered = available && !pending && reason === null && result === "worktree_dirty" && typeof taskDesktopBridge()?.taskWorktreeOpen === "function";
   const openFolder = async () => {

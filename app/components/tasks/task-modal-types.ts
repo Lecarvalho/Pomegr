@@ -7,7 +7,7 @@ import type { TaskIssue, TaskIssueError } from "./task-issues-desktop";
 /** What both modal forms read from the committed board: its columns, features and tasks, the Codex model catalog and the queue order. */
 export type TaskModalBoard = Pick<TaskBoard, "columns" | "features" | "tasks"> & {
   runModels?: NonNullable<TaskBoard["runModels"]>;
-  queue?: Pick<TaskBoard["queue"], "order">;
+  queue?: Pick<TaskBoard["queue"], "order" | "gates" | "schedule">;
 };
 
 /** The column's name by position: the first column is where a new task lands. */

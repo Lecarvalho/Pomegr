@@ -685,7 +685,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     database = null;
   }
 
-  // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs). A start that only
+  // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs). It is made by hand,
+  // so the step order the queue keeps does not hold it. A start that only
   // the repository root's uncommitted changes hold is named, so the owner can be offered a worktree of the task's own.
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
@@ -693,7 +694,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     gatesHold: (taskId) => {
       const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
       if (!board) return true;
-      const gates = startGates({ database, repositoryId, board, taskId, resolveGateFacts, at: now() });
+      const gates = startGates({ database, repositoryId, board, taskId, resolveGateFacts, at: now(), manual: true });
       if (gates.ok) return false;
       return gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty" ? "tree_dirty" : true;
     },
