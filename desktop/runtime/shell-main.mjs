@@ -59,7 +59,7 @@ import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
 import { installTaskActionIpc, installTaskImageIpc } from "./task-action.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
-import { installTaskStartIpc } from "./task-dispatch.mjs";
+import { installTaskStartIpc, taskStartConfirmation } from "./task-dispatch.mjs";
 import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 import {
   clampWindowState,
@@ -717,13 +717,12 @@ async function startDesktop() {
           environment: taskSessionEnvironment,
           worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
           openPath: (directory) => shell.openPath(directory),
-          confirm: async ({ taskId }) => {
+          confirm: async (request) => {
             if (!mainWindow || mainWindow.isDestroyed()) return false;
             const answer = await dialog.showMessageBox(mainWindow, {
               type: "question",
               title: "Start a session",
-              message: `Start task ${taskId}?`,
-              detail: "A session will open in a new terminal window in this repository, or in the task's own worktree when its step runs in parallel, on the provider set in the task's Run on (Claude Code when none is set).",
+              ...taskStartConfirmation(request),
               buttons: ["Start session", "Cancel"],
               defaultId: 1,
               cancelId: 1,

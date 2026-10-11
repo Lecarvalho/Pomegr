@@ -11,6 +11,8 @@ import { scheduleLabel, waitsForOwnTime } from "./task-schedule";
 // (pre-disabled reasons) and one fixed line per result. It never shows a running state: the card borrows the
 // session state once the monitor links the session. After a `worktree_dirty` answer it also offers Open folder (the same
 // fixed channel and result lines as the queue banner); the folder path stays in the desktop and never reaches the modal.
+// After a `tree_dirty` answer (only the repository's uncommitted changes hold the start) it offers the same start in a
+// worktree of the task's own, behind the desktop's own confirmation.
 
 const LINES: Record<TaskStartStatus, string | null> = {
   started: "Session started in a new terminal window.",
@@ -26,6 +28,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   unavailable: "The session could not be started.",
   failed: "The session could not be started.",
   gate_held: "A start gate holds this task. See Start gates in the Queue view.",
+  tree_dirty: "This repository has uncommitted changes. Commit or discard them, or start the task in a separate worktree, which leaves them out.",
   worktree_dirty: "This task's worktree has uncommitted changes. Pomegr never removes them. Open the folder to commit or discard them, then try again.",
 };
 /** A retry cannot succeed after these, or after `started`, for as long as the board shows the task unchanged. */
@@ -66,17 +69,18 @@ export function useTaskStart(repositoryId: string, task: Task, unsaved: boolean,
   }
   const result = answer === null || stale ? null : answer.status;
   const locked = result !== null && FINAL.has(result);
-  const run = async () => {
+  const run = async (separateWorktree = false) => {
     if (inFlight.current || locked || reason !== null) return;
     inFlight.current = true;
     setPending(true);
     setAnswer(null);
     setFolder(null);
     const mark = taskMark(task);
-    const status = await startDesktopTask(repositoryId, task.id);
+    const status = await startDesktopTask(repositoryId, task.id, separateWorktree);
     inFlight.current = false;
     setPending(false);
-    setAnswer({ status, mark });
+    // Cancelling the confirmation of the separate-worktree start leaves the offer it was made from in place.
+    setAnswer({ status: separateWorktree && status === "cancelled" ? "tree_dirty" : status, mark });
     if (status === "started") await refresh().catch(() => {});
   };
   const line = pending ? null : locked ? LINES[result] : reason ?? (result ? LINES[result] : null);
@@ -87,9 +91,12 @@ export function useTaskStart(repositoryId: string, task: Task, unsaved: boolean,
     setFolder("opening");
     setFolder(await openDesktopTaskWorktree(repositoryId, task.id));
   };
+  // Offered only while the dirty-repository line is the one showing.
+  const separateOffered = available && !pending && reason === null && result === "tree_dirty";
   const folderLine = folderOffered && folder !== null && folder !== "opening" ? worktreeOpenLine(folder) : null;
   return {
-    available, pending, disabled: pending || locked || reason !== null, line, run,
+    available, pending, disabled: pending || locked || reason !== null, line, run: () => run(),
+    separate: { offered: separateOffered, run: () => run(true) },
     folder: { offered: folderOffered, opening: folder === "opening", line: folderLine, open: openFolder },
   };
 }
