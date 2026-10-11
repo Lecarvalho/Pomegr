@@ -455,3 +455,14 @@ test("reports a provider's declared legacy repository attribution only as the fi
   assert.equal(registry.legacyRepositoryAttribution("codex"), null);
   assert.equal(registry.legacyRepositoryAttribution("unknown"), null);
 });
+
+test("a provider with no repository attribution of its own for a session leaves it on its launch directory", () => {
+  const single = { state: "single", repositoryId: "repo-0123456789abcdef01234567", root: "C:\workspace\linked", fingerprint: "f".repeat(32), recordedBranch: null, anyBranch: true };
+  const answers = new Map([["bound", single], ["ambiguous", { state: "multiple", root: "C:\private" }], ["unresolved", { state: "unknown" }]]);
+  const registry = createProviderRegistry([{ ...provider("claude", []), repositoryAttributionForSession: (localId) => answers.get(localId) ?? null }, provider("codex", [])]);
+  assert.equal(registry.repositoryAttributionForSession("claude:launch"), null);
+  assert.equal(registry.repositoryAttributionForSession("codex:launch"), null);
+  assert.deepEqual(registry.repositoryAttributionForSession("claude:bound"), single);
+  assert.deepEqual(registry.repositoryAttributionForSession("claude:ambiguous"), { state: "multiple" });
+  assert.deepEqual(registry.repositoryAttributionForSession("claude:unresolved"), { state: "unknown" });
+});

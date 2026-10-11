@@ -7,6 +7,7 @@ import { toolWorkKind } from "../../normalize/work-kind.mjs";
 import { userInputContentType } from "./activity-events.mjs";
 import { claudeToolResultTimestamps, firstClaudeToolResultAfter } from "./activity-correlation.mjs";
 import { claudeFileChangeCandidates, claudeToolOutcomes, firstSuccessfulClaudeToolOutcome, safeDetail } from "./tool-detail.mjs";
+import { rebaseCheckoutTarget } from "./working-checkout.mjs";
 
 const DEFAULT_MAX_ENTRIES = 512;
 
@@ -100,16 +101,20 @@ function rebaseAgentWorktreeTarget(target, cwd) {
   return path.join(cwd, ...segments.slice(3));
 }
 
-function rebaseAgentWorktreeCandidates(candidates, cwd) {
-  return candidates.map((candidate) => ({ ...candidate, target: rebaseAgentWorktreeTarget(candidate.target, cwd) }));
+function rebaseAgentWorktreeCandidates(candidates, cwd, checkouts) {
+  const rebase = (target) => rebaseAgentWorktreeTarget(rebaseCheckoutTarget(target, checkouts), cwd);
+  return candidates.map((candidate) => ({
+    ...candidate, target: rebase(candidate.target),
+    ...(candidate.previousTarget === undefined ? {} : { previousTarget: rebase(candidate.previousTarget) }),
+  }));
 }
 
-function toolCallsFromTemplate(templates, actor, cwd, forbiddenRoots, validatePath) {
+function toolCallsFromTemplate(templates, actor, cwd, forbiddenRoots, validatePath, checkouts) {
   return templates.map(({ fileChangeCandidates, ...rest }) => ({
     ...rest,
     actor: { id: actor.id, label: actor.label },
     fileChanges: fileChangeCandidates
-      ? boundedFileChanges(rebaseAgentWorktreeCandidates(fileChangeCandidates, cwd), cwd, { forbiddenRoots, validatePath })
+      ? boundedFileChanges(rebaseAgentWorktreeCandidates(fileChangeCandidates, cwd, checkouts), cwd, { forbiddenRoots, validatePath })
       : null,
   }));
 }
@@ -117,7 +122,7 @@ function toolCallsFromTemplate(templates, actor, cwd, forbiddenRoots, validatePa
 export function createClaudeToolCallEvidenceReader({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
   const cache = new Map();
 
-  function read({ file, key, records, actor, isMain, stat, cwd, forbiddenRoots, validatePath }) {
+  function read({ file, key, records, actor, isMain, stat, cwd, forbiddenRoots, validatePath, checkouts = null }) {
     const cacheKey = key ? `${key}\u0000${actor.id}\u0000${Boolean(isMain)}` : null;
     let template;
     if (!cacheKey) {
@@ -137,7 +142,7 @@ export function createClaudeToolCallEvidenceReader({ maxEntries = DEFAULT_MAX_EN
     }
 
     return {
-      toolCalls: toolCallsFromTemplate(template.toolCallTemplates, actor, cwd, forbiddenRoots, validatePath),
+      toolCalls: toolCallsFromTemplate(template.toolCallTemplates, actor, cwd, forbiddenRoots, validatePath, checkouts),
       userInputActivity: template.userInputActivity.map((event) => ({ ...event })),
       calls: template.calls,
       updatedAt: template.updatedAt,
