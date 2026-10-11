@@ -81,7 +81,7 @@ done, and requeue a started task.
 | **Remote Control** | Starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
 | **Remove worktree and branch when done** | When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It is on by default. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 | **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |
-| **Feature**, **Step** | Where the task runs among related tasks; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
+| **Feature** | The group of related tasks the task runs with; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 
 Claude Code lists the newest model of each family Pomegr has seen in your
 sessions. Codex lists the models in the client catalog Pomegr last read, which
@@ -251,8 +251,9 @@ cannot start again, so you do not get two sessions.
 A feature is an ordered list of steps. Tasks in the same step run in parallel; the
 next step starts only when every task of the step before it is done. Select
 **New feature…** in a task's **Feature** field or **+ New feature** above the
-board, then choose **Step**: **Last · new step N**, or an existing step,
-such as "Step 2 · parallel with T-3". A feature is done when all its tasks are.
+board. A task that joins a feature takes a new last step, so it runs after the
+feature's other tasks. To run it in parallel with another task, or earlier, move it
+to that step in the **Queue** view (see [Run the queue](#run-the-queue)). A feature is done when all its tasks are.
 Only unfinished features are offered for a new attachment. Select a feature chip
 in the filter row to show only its tasks.
 

@@ -112,7 +112,7 @@ describe("mode issue", () => {
     expect(dialog().querySelector("textarea")).toBeNull();
     // The same fields as New task, with the same defaults.
     expect(modal.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-    expect(modal.getByRole("combobox", { name: "Step" })).toBeDisabled();
+    expect(modal.queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
     expect(modal.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Not set");
     expect(modal.getByRole("group", { name: "Effort" })).toBeInTheDocument();
     expect(modal.getByRole("checkbox", { name: "PR open" })).toBeChecked();

@@ -11,7 +11,6 @@ export const NO_FEATURE_DRAFT: FeatureDraft = { featureId: null, creating: false
 
 const NONE = "none";
 const NEW = "new";
-const LAST = "last";
 
 export function featureDraftFromTask(task: Pick<Task, "featureId" | "step">): FeatureDraft {
   return { featureId: task.featureId, creating: false, name: "", step: task.featureId === null ? null : task.step };
@@ -25,16 +24,6 @@ export function featureDraftFromSelect(value: string, current: FeatureDraft): Fe
   if (value === NEW) return { featureId: null, creating: true, name: current.creating ? current.name : "", step: null };
   if (value.startsWith("feature:")) return { featureId: value.slice("feature:".length), creating: false, name: "", step: null };
   return NO_FEATURE_DRAFT;
-}
-
-export function stepSelectValue(draft: FeatureDraft): string {
-  if (draft.creating) return LAST;
-  if (draft.featureId === null) return NONE;
-  return draft.step === null ? LAST : `step:${draft.step}`;
-}
-
-export function stepFromSelect(value: string, current: FeatureDraft): FeatureDraft {
-  return { ...current, step: value.startsWith("step:") ? Number(value.slice("step:".length)) : null };
 }
 
 export function featureSelectOptions(features: readonly TaskFeature[], currentFeatureId: string | null): CommandSelectOption[] {
@@ -62,23 +51,6 @@ function stepsOf(tasks: readonly Task[], featureId: string) {
 
 export function highestStep(tasks: readonly Task[], featureId: string): number {
   return Math.max(0, ...stepsOf(tasks, featureId).keys());
-}
-
-function idList(ids: readonly string[]) {
-  return ids.length > 3 ? `${ids.slice(0, 3).join(", ")} +${ids.length - 3}` : ids.join(", ");
-}
-
-export function stepSelectOptions(tasks: readonly Task[], draft: FeatureDraft, selfId?: string): { options: CommandSelectOption[]; disabled: boolean } {
-  if (draft.creating) return { options: [{ value: LAST, label: "Last · new step 1" }], disabled: true };
-  if (draft.featureId === null) return { options: [{ value: NONE, label: "None" }], disabled: true };
-  const steps = stepsOf(tasks, draft.featureId);
-  const highest = Math.max(0, ...steps.keys());
-  const options: CommandSelectOption[] = [{ value: LAST, label: `Last · new step ${highest + 1}` }];
-  for (let step = highest; step >= 1; step -= 1) {
-    const others = (steps.get(step) ?? []).filter((task) => task.id !== selfId).sort(byIdNumber).map((task) => task.id);
-    options.push({ value: `step:${step}`, label: others.length > 0 ? `Step ${step} · parallel with ${idList(others)}` : `Step ${step}` });
-  }
-  return { options, disabled: false };
 }
 
 export function featureCreateInput(draft: FeatureDraft, createdId: string | null): FeatureInput | undefined {

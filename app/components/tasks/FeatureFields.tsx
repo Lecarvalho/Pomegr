@@ -5,8 +5,7 @@ import type { KeyboardEvent } from "react";
 import { TASK_BOUNDS, type Task, type TaskBoard } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  featureCounts, featureDraftFromSelect, featureSelectOptions, featureSelectValue, featureSiblings, stepFromSelect,
-  stepSelectOptions, stepSelectValue, type FeatureDraft,
+  featureCounts, featureDraftFromSelect, featureSelectOptions, featureSelectValue, featureSiblings, type FeatureDraft,
 } from "./task-features";
 import { taskCardTitle, taskChip } from "./task-presentation";
 
@@ -52,9 +51,7 @@ export function FeatureFields({ draft, board, selfId, error, disabled, onChange,
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
 }) {
   const featureId = useId();
-  const stepId = useId();
   const errorId = useId();
-  const steps = stepSelectOptions(board.tasks, draft, selfId);
   const known = draft.featureId !== null && board.features.some((feature) => feature.id === draft.featureId);
   const nameKeys = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") { event.preventDefault(); onCommitName?.(); return; }
@@ -72,11 +69,6 @@ export function FeatureFields({ draft, board, selfId, error, disabled, onChange,
           value={draft.name} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange({ ...draft, name: event.currentTarget.value })}
           onKeyDown={nameKeys} onBlur={onCommitName} />}
         {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
-      </div>
-      <div className="newTaskField">
-        <label htmlFor={stepId}>Step</label>
-        <CommandSelect id={stepId} aria-label="Step" options={steps.options} value={stepSelectValue(draft)} disabled={disabled || steps.disabled}
-          onChange={(value) => onChange(stepFromSelect(value, draft))} />
       </div>
     </div>
     {known && draft.featureId !== null && <FeatureSiblings key={draft.featureId} board={board} featureId={draft.featureId} selfId={selfId} onOpenTask={onOpenTask} />}

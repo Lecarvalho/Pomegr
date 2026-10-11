@@ -134,7 +134,7 @@ describe("Task modal, mode edit", () => {
     expect(dialog.getByRole("button", { name: "Close" })).toHaveClass("commandIconAction");
     expect(dialog.getByRole("button", { name: "Delete task" })).toHaveClass("commandQuietAction");
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-    expect(dialog.getByRole("combobox", { name: "Step" })).toBeDisabled();
+    expect(dialog.queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
     // Nothing is written by opening the modal.
     expect(taskAction).not.toHaveBeenCalled();
   });
@@ -283,7 +283,8 @@ describe("Task modal, mode edit", () => {
       expect(dialog.getByText(note), text).toHaveClass("newTaskHelper");
       expect(dialog.getByRole("textbox", { name: "Task" }), text).toHaveAttribute("readonly");
       expect(dialog.getByRole("textbox", { name: "Own condition" }), text).toHaveAttribute("readonly");
-      for (const name of ["Run on", "Feature", "Step"]) expect(dialog.getByRole("combobox", { name }), `${text} ${name}`).toBeDisabled();
+      for (const name of ["Run on", "Feature"]) expect(dialog.getByRole("combobox", { name }), `${text} ${name}`).toBeDisabled();
+      expect(dialog.queryByRole("combobox", { name: "Step" }), text).not.toBeInTheDocument();
       for (const name of ["Low", "High"]) expect(dialog.getByRole("button", { name }), `${text} ${name}`).toBeDisabled();
       for (const name of ["PR open", "CI passed", "Remote Control"]) expect(dialog.getByRole("checkbox", { name }), `${text} ${name}`).toBeDisabled();
       expect(dialog.queryByRole("button", { name: "Save" }), text).not.toBeInTheDocument();

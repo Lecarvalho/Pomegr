@@ -27,7 +27,8 @@ export function taskDraftPatch(task: Task, draft: TaskDraft, createdFeatureId: s
   const completeWhen = toCompleteWhen(draft.completeWhen);
   if (JSON.stringify(completeWhen) !== JSON.stringify(toCompleteWhen(completeWhenFromTask(task.completeWhen)))) patch.completeWhen = completeWhen;
   const feature = featureUpdateInput(draft.feature, createdFeatureId);
-  if (draft.feature.creating || JSON.stringify(feature) !== JSON.stringify(featureUpdateInput(featureDraftFromTask(task)))) Object.assign(patch, feature);
+  // The forms have no Step field, so a feature chosen back to the stored one keeps the task in its step.
+  if (draft.feature.creating || draft.feature.featureId !== task.featureId) Object.assign(patch, feature);
   return Object.keys(patch).length === 0 ? null : patch;
 }
 

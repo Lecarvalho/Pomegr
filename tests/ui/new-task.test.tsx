@@ -135,7 +135,7 @@ describe("with the desktop bridge", () => {
     expect(dialog).toHaveTextContent("Effort");
     expect(dialog).toHaveTextContent("Complete when");
     expect(screen.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-    expect(screen.getByRole("combobox", { name: "Step" })).toBeDisabled();
+    expect(screen.queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
   });
 
   it("drops the repository from the subtitle when its name is unknown", async () => {

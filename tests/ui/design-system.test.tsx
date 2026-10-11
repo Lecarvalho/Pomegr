@@ -512,15 +512,15 @@ describe("Design-system reference page", () => {
 
     const fields = sectionOf("Task fields");
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(3);
-    expect(within(fields).getAllByRole("combobox", { name: "Step" })).toHaveLength(3);
+    expect(within(fields).queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })[0]).toHaveTextContent("Upload reliability");
     const created = sample(fields, "New feature");
     expect(within(created).getByRole("textbox", { name: "Feature name" })).toHaveValue("Retry telemetry");
-    const placed = sample(fields, "Feature and Step");
+    const placed = sample(fields, "Feature");
     expect(placed.querySelector(".taskFeatureDetails > summary")).toHaveTextContent("In this feature4 tasks · 1 done");
     expect(placed.querySelectorAll(".taskFeatureItem")).toHaveLength(4);
     expect(placed.querySelector(".taskFeatureItem.hasStep")).toBeNull();
-    const inPanel = sample(fields, "Feature and Step, in the Task modal");
+    const inPanel = sample(fields, "Feature, in the Task modal");
     expect(inPanel.querySelectorAll(".taskFeatureItem")).toHaveLength(3);
     expect(inPanel.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(3);
     await user.type(within(created).getByRole("textbox", { name: "Feature name" }), "!");

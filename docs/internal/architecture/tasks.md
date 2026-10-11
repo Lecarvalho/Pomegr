@@ -417,7 +417,7 @@ or without a role. Such a board is brought to the five columns once
 
 A feature is an ordered list of steps. Tasks in the same step run in parallel, each in
 its own Git worktree; a step starts only when every task of the step before it is
-done. A task attached to a feature defaults to a new last step, and `step` is at least
+done. A task attached to a feature takes a new last step (the task forms have no Step field since task T-39, 2026-10-11; the Queue view moves a task to another step), and `step` is at least
 1. Worktree creation and cleanup belong to the desktop (`task-worktree.mjs`); worktree
 paths stay desktop-private and never reach the monitor store or browser state.
 

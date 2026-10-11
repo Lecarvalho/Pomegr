@@ -254,7 +254,7 @@
 
 /* Feature fields and the folded "In this feature" list (D217-D233, D273-D294): two selects in a row, a native
    disclosure between two lines, and rows that lead with the step number only in the Task modal. */
-.taskFeatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.taskFeatureRow { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-items: start; }
 .taskFeatureRow .commandSelect { display: grid; }
 .taskFeatureName { width: 100%; }
 .taskFeatureDetails { border-top: 1px solid var(--command-line); border-bottom: 1px solid var(--command-line); }
@@ -275,7 +275,6 @@
 .taskFeatureOpen.commandQuietAction { flex: 1 1 auto; min-width: 0; padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
 .taskFeatureOpen.commandQuietAction:hover:not(:disabled) .taskFeatureTitle { text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 761px) and (pointer: fine) { .taskFeatureOpen.commandQuietAction { min-height: 0; } }
-@media (max-width: 760px) { .taskFeatureRow { grid-template-columns: minmax(0, 1fr); } }
 
 /* Feature filter row above the board (D40-D44) and the feature line on a card (D78-D85). */
 .taskFeatureFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
