@@ -11,13 +11,6 @@ function remainingLabel(remainingMs: number) {
   return `Cache ~${Math.max(1, Math.ceil(remainingMs / 60_000))}m left`;
 }
 
-/**
- * Quiet 12px timer glyph after a session's Updated time: amber while the
- * primary agent's cache lifetime is nearing its threshold, faint once it has
- * elapsed, nothing while it is neither. The glyph carries no text; its
- * accessible name and the hover/tap popover hold the reading. Historical rows
- * keep their recorded evidence. See docs/internal/architecture/cache-timing.md.
- */
 export function SessionCacheTiming({ session }: { session: SessionSummary }) {
   const now = useLiveNowOrFrozen();
   const timing = session.cacheTiming;

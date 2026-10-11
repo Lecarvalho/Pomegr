@@ -53,8 +53,7 @@ export function AgentsView({ initialModel = null }: { initialModel?: string | nu
   const [selection, setSelection] = useState<{ title: string; runs: AgentsRun[] } | null>(null);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
   const result = useAgents({ project, days, scope });
-  // Retain only the displayed response, never a cache of filter variants. Apply the
-  // controls and their matching evidence together once the next response is ready.
+  // Retain only the displayed response, never a cache of filter variants.
   const [retained, setRetained] = useState(result);
   if (result.data && result !== retained) {
     setRetained(result);
@@ -67,7 +66,6 @@ export function AgentsView({ initialModel = null }: { initialModel?: string | nu
   const loading = result.loading;
   const connected = switching ? retained.connected : result.connected;
 
-  // A selected project remains a valid option while its independent cache is loading.
   const projects = useMemo(() => Array.from(new Set([...(data?.filters.projects || []), ...(project === "all" ? [] : [project])])).sort((left, right) => left.localeCompare(right)), [data?.filters.projects, project]);
   const openEvidence = useCallback((title: string, runs: AgentsRun[], trigger: HTMLElement) => { evidenceTrigger.current = trigger; setSelection({ title, runs }); }, []);
   const closeEvidence = useCallback(() => { setSelection(null); window.requestAnimationFrame(() => evidenceTrigger.current?.focus()); }, []);

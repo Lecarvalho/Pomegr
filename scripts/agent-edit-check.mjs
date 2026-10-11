@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// Post-edit agent hook: after a source edit in a checked tier, run the dependency-boundary and
-// architecture checks and report violations back to the agent (exit 2) so it fixes them in the
-// same turn. Wired from .claude/settings.json and .codex/hooks.json.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

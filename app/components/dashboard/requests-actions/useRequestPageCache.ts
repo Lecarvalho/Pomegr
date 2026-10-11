@@ -1,9 +1,7 @@
 import { useEffect, useMemo } from "react";
 import type { HistoryRequest, RequestHistoryPage } from "../../../../shared/session-history-contract";
 
-/** Only the viewed session/scope is resident. Positions are valid within one committed revision. */
 class RequestPageCache {
-  // The identity makes cache invalidation explicit at the construction site.
   readonly identity: string;
   page: RequestHistoryPage | null = null;
   private items = new Map<number, HistoryRequest>();
@@ -54,7 +52,6 @@ class RequestPageCache {
   }
 }
 
-/** Preload each committed revision once; foreground events start a replacement revision. */
 export function useRequestPageCache(key: string, sessionId: string, scope: string, page: RequestHistoryPage | null) {
   const cache = useMemo(() => new RequestPageCache(key), [key]);
   const revision = page?.revision;

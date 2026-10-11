@@ -13,12 +13,6 @@ import type { TaskBoardEdits } from "./use-task-board-edits";
 
 const EMPTY_TEXT = "Nothing is in the queue yet. Open a task on the Board and choose Add to queue.";
 
-/**
- * The Queue view of a ready board (design contract D101-D155): one panel per unfinished feature with its steps, then
- * the single tasks, then the fixed rules for when the queue blocks (D178-D183); beside them the start gates and the
- * queue's schedule (D156-D177). The monitor owns the start order; this view draws it and, with `edits` (the desktop app), lets a
- * queued task move to another step by drag or from the keyboard. Without `edits` it is read-only.
- */
 export function TaskQueueView({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask?: (task: Task, opener: HTMLElement) => void; edits?: TaskBoardEdits }) {
   const panels = useMemo(() => queueFeatures(board), [board]);
   const singles = useMemo(() => singleQueueTasks(board), [board]);

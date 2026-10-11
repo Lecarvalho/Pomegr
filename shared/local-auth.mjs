@@ -1,7 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
 export const DESKTOP_AUTH_HEADER = "x-pomegr-desktop-authorization";
-/** Capability used exclusively by local MCP agent-query routes. */
 export const AGENT_QUERY_AUTH_HEADER = "x-pomegr-agent-authorization";
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 

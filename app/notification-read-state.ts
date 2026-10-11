@@ -19,8 +19,6 @@ function validMarker(value: unknown, now: number): value is [string, number] {
     && Number.isSafeInteger(value[1]) && value[1] >= 0 && value[1] <= now + MAX_CLOCK_LEAD_MS;
 }
 
-/** Browser-local read state. Origin storage isolates local clients; random occurrence
- * identities isolate monitor/profile generations without exposing source scope. */
 export class NotificationReadStore {
   private entries = new Map<string, number>();
   private state: ReadonlySet<string> = EMPTY;

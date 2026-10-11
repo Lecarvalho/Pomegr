@@ -19,11 +19,9 @@ export type AgentsTabProps = {
   selectedAgentId: string | null;
   onSelectAgent: (agentId: string | null) => void;
   onOpenActivities: (selection: { agentId?: string; request?: string }) => void;
-  /** Desktop pause halts both mounted domain subscriptions but keeps their committed entries visible. */
   paused?: boolean;
 };
 
-/** Stable T05 mount point. T04 keeps this bounded to the agents domain. */
 export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgent, onOpenActivities, paused = false }: AgentsTabProps) {
   const [viewPreference, setViewPreference] = useState<{ sessionId: string | null; viewMode: AgentActivityViewMode }>(
     () => ({ sessionId, viewMode: storedAgentActivityViewMode(sessionId) }),
@@ -34,12 +32,8 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
     try {
       window.localStorage.setItem(`pomegr-agent-activity-view-${sessionId}`, mode);
     } catch {
-      // The in-memory controlled state remains usable when preferences are unavailable.
     }
   };
-  // A choice made here applies at once. The link is written by a server navigation that can lag or
-  // fail, so the chosen agent is held until the link next changes: it caught up, or another
-  // navigation replaced it.
   const [chosen, setChosen] = useState<{ sessionId: string; linkedAgentId: string | null; agentId: string | null } | null>(null);
   const held = chosen && chosen.sessionId === sessionId && chosen.linkedAgentId === selectedAgentId ? chosen : null;
   if (chosen && !held) setChosen(null);
@@ -49,7 +43,6 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
     onSelectAgent(agentId);
   };
   const result = useSessionDomain({ sessionId, domain: "agents" }, { historical, enabled: !paused });
-  // The store may expose its bounded loading envelope before the agents payload is ready.
   const agents = Array.isArray(result.data?.agents) ? result.data.agents : [];
   const defaultAgentId = agents.find((agent) => agent.id === "primary")?.id || agents[0]?.id || null;
   // An unknown linked agent falls back to the default without rewriting the link: a retained agents
@@ -64,7 +57,6 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
   if (result.data.readiness === "unavailable") return <div className="sessionTabState">Agent evidence is unavailable for this session.</div>;
   if (agents.length === 0) return <div className="sessionTabState">No agents were recorded for this session.</div>;
   const agentEvidence = inspector.data?.readiness === "ready" ? inspector.data : null;
-  // The inspector opens for the chosen agent at once and says what it is waiting for.
   const inspectorPendingText = agentEvidence ? undefined
     : inspector.unavailable || inspector.data?.readiness === "unavailable" ? "Agent evidence is unavailable for this agent."
       : inspector.error || "Loading agent evidence…";

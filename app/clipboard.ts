@@ -4,7 +4,6 @@ export async function copyText(value: string) {
       await navigator.clipboard.writeText(value);
       return;
     } catch {
-      // A denied clipboard permission rejects; the selection copy below may still work.
     }
   }
   const textarea = document.createElement("textarea");

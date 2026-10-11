@@ -10,11 +10,6 @@ const SQLITE_WARNING_PREFIX = "SQLite is an experimental feature";
 let sqliteModulePromise = null;
 let warningFilterInstalled = false;
 
-/**
- * Node prints an ExperimentalWarning on every `node:sqlite` import; `process.on("warning")`
- * cannot suppress it, only `process.emitWarning` interception can. Every other warning
- * (including a future non-SQLite ExperimentalWarning) still passes through unchanged.
- */
 export function installSqliteExperimentalWarningFilter() {
   if (warningFilterInstalled) return;
   warningFilterInstalled = true;
@@ -159,8 +154,6 @@ function openExistingDatabase(DatabaseSync, databasePath) {
     createSchema(database); // idempotent: backfills a missing table/index without touching existing rows
     return database;
   } catch (error) {
-    // Any failure here (open, pragma, quick_check, or a mismatch) must release the file
-    // handle before the caller deletes and recreates it.
     try { database?.close(); } catch { /* already unusable */ }
     throw error;
   }
@@ -187,11 +180,7 @@ function sizeBytesSync(directory) {
   return total;
 }
 
-/**
- * Opens (or rebuilds) the monitor-owned SQLite index. `rebuilt` is true whenever the
- * database file was missing, corrupt, or on a different schema version: the store is a
- * rebuildable index, never a migration target. Never throws a path or raw SQLite error.
- */
+// Opens (or rebuilds) the monitor-owned SQLite index.
 export async function openMonitorStore({ directory } = {}) {
   try {
     if (typeof directory !== "string" || directory.length === 0) throw new Error("invalid directory");

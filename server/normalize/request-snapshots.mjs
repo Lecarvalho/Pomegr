@@ -3,9 +3,6 @@ import { normalizedRequestWork } from "./request-work.mjs";
 
 const MAX_REQUEST_SNAPSHOTS_PER_AGENT = 100;
 const CACHE_LIFETIMES = new Set(["5m", "1h", "mixed", "30m+"]);
-// A provider model identifier: letters, digits and a few separators, never a
-// path (drive-relative included), prose, markup or control text. Anything
-// else is unreported.
 const REQUEST_MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/;
 
 function count(value) {
@@ -31,8 +28,7 @@ function normalizedParts(snapshot) {
 
 function opaqueId(sessionId, snapshot) {
   return `request-${crypto.createHash("sha256")
-    // A request can acquire later streamed fragments with a newer observation
-    // time.  Its opaque identity is recorded evidence, never observation time.
+    // A request can acquire later streamed fragments with a newer observation time.
     .update(`${sessionId}|${snapshot.actorId}|${snapshot.dedupeId}`)
     .digest("hex").slice(0, 16)}`;
 }
@@ -65,19 +61,13 @@ export function normalizedRequestEvidence(agents, usageSnapshots, maximumPerAgen
     || left.snapshot.dedupeId.localeCompare(right.snapshot.dedupeId));
 }
 
-/** Bounded recorded model identifier for one request, or null when unreported or unsafe. */
 export function normalizedRequestModel(value) {
   if (typeof value !== "string") return null;
   const model = value.trim();
   return REQUEST_MODEL.test(model) ? model : null;
 }
 
-/**
- * Normalize independent request-local usage observations. This feed never
- * carries values forward, computes deltas, or consumes cumulative totals.
- * Only the paged session history asks for each request's recorded model; the
- * state feed, cache evidence and reports never carry it.
- */
+// Normalize independent request-local usage observations.
 export function buildRequestSnapshots({ sessionId = "session", agents = [], usageSnapshots = [], unlimited = false, includeModel = false } = {}) {
   const items = normalizedRequestEvidence(agents, usageSnapshots, unlimited ? Infinity : MAX_REQUEST_SNAPSHOTS_PER_AGENT).map((item) => (includeModel
     ? { ...requestSnapshotFromEvidence(sessionId, item), model: normalizedRequestModel(item.snapshot.model) }
@@ -86,7 +76,7 @@ export function buildRequestSnapshots({ sessionId = "session", agents = [], usag
   return { status: items.length > 0 ? "ready" : "unavailable", items };
 }
 
-/** Monitor-private lookup for correlating already-normalized tool evidence. */
+// Monitor-private lookup for correlating already-normalized tool evidence.
 export function requestSnapshotIdsByEvidence({ sessionId = "session", agents = [], usageSnapshots = [], unlimited = false } = {}) {
   return new Map(normalizedRequestEvidence(agents, usageSnapshots, unlimited ? Infinity : MAX_REQUEST_SNAPSHOTS_PER_AGENT).map(({ snapshot }) => [
     `${snapshot.actorId}\u0000${snapshot.dedupeId}`,
@@ -94,7 +84,6 @@ export function requestSnapshotIdsByEvidence({ sessionId = "session", agents = [
   ]));
 }
 
-/** Serialize public request-local fields from validated evidence. */
 export function requestSnapshotFromEvidence(sessionId, { snapshot, timestamp, parts }) {
   const precedingWork = normalizedRequestWork(snapshot.precedingWork);
   const issuedWork = normalizedRequestWork(snapshot.issuedWork);
@@ -117,7 +106,7 @@ export function requestSnapshotFromEvidence(sessionId, { snapshot, timestamp, pa
   };
 }
 
-/** Monitor-private model evidence corresponding exactly to valid request snapshots. */
+// Monitor-private model evidence corresponding exactly to valid request snapshots.
 export function buildRequestModelObservations({ sessionId = "session", agents = [], usageSnapshots = [] } = {}) {
   return normalizedRequestEvidence(agents, usageSnapshots).flatMap(({ snapshot, timestamp }) => {
     if (typeof snapshot.model !== "string") return [];

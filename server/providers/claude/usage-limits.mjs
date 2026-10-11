@@ -34,7 +34,7 @@ function usageRequest(configDir, fetchImpl) {
   };
 }
 
-/** Coordinates complete local and provider usage observations without mixing windows. */
+// Coordinates complete local and provider usage observations without mixing windows.
 export function createClaudeUsageLimitsReader(options = {}) {
   const environment = options.env ?? process.env;
   const homeDir = options.homeDir || os.homedir();
@@ -181,10 +181,8 @@ export function createClaudeUsageLimitsReader(options = {}) {
 
 const MAX_USAGE_LIMIT_REJECTION_WINDOWS = 16;
 
-/**
- * The earliest recorded five-hour rejection per reset window. Only the normalized local
- * observation time and its reset timestamp are retained; raw quota payloads stay private.
- */
+// The earliest recorded five-hour rejection per reset window. Only the normalized local
+// observation time and its reset timestamp are retained; raw quota payloads stay private.
 export function claudeFiveHourLimitRejections(recordGroups = []) {
   const earliestByReset = new Map();
   for (const records of recordGroups) {

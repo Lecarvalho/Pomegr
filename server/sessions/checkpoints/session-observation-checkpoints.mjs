@@ -10,8 +10,6 @@ const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPOSITORY_SNAPSHOT_BYTES = 64 * 1024;
 const MAX_SESSION_EVENT_RECORD_BYTES = 128 * 1024;
-// Sidecars outlive their checkpoint: a checkpoint is rebuilt from its transcript, a recorded
-// repository snapshot cannot be. They are bounded on their own, oldest first.
 const DEFAULT_MAX_REPOSITORY_SNAPSHOTS = 2_000;
 const ORPHAN_TEMP_GRACE_MS = 60 * 60 * 1000;
 const MAX_COLLECTION_ENTRIES = 4_096;
@@ -23,9 +21,6 @@ const DEFAULT_PRIVACY_SENTINELS = Object.freeze([
   "AUTH_FILE",
 ]);
 const FORBIDDEN_KEY = /(?:prompt|response|reasoning|command|patch|stdout|stderr|tool.?result|oauth|credential|authorization|transcript|diagnostic|fragment|raw)/i;
-// These contract-defined normalized fields happen to contain terms rejected by
-// the generic raw-content guard. Keep the exception set exact and narrow: the
-// provider contract still validates their bounded primitive/enum values.
 const ALLOWED_NORMALIZED_KEYS = new Set([
   "cacheMissDiagnosticState",
   "reasoningOutput",
@@ -67,12 +62,6 @@ function assertIdentity(payload) {
   }
 }
 
-// Shape-only: this never resolves against a real filesystem root, so it
-// rejects every forbidden spelling (absolute, drive, UNC/device, traversal,
-// backslashes, control characters, private-root segments) independent of
-// repositoryRelativePath, which validates against an actual session cwd.
-// Shared with repository-snapshot.mjs's recorded repository files so the
-// two checkpoint-adjacent sidecars apply one identical path rule.
 function assertSafeFileChangePath(value, label) {
   if (!isSafeRecordedRepositoryPath(value)) throw new TypeError(`checkpoint ${label} is invalid`);
 }
@@ -175,10 +164,6 @@ export function assertCheckpointPayload(payload, privacySentinels = DEFAULT_PRIV
   return payload;
 }
 
-/**
- * L2 persistence for complete L1 observations. It never accepts raw records or
- * public response state, so restart recovery must re-project public state locally.
- */
 export class SessionObservationCheckpointStore {
   constructor({
     directory,
@@ -201,8 +186,6 @@ export class SessionObservationCheckpointStore {
     }
     this.directory = directory;
     this.validateCandidate = validateCandidate;
-    // Restore-time normalization of evidence recorded before a later field existed
-    // (see withLegacyRepositoryAttribution); never applied to writes.
     this.upgradeEvidence = typeof upgradeEvidence === "function" ? upgradeEvidence : null;
     this.maxEntries = maxEntries;
     this.maxBytes = maxBytes;
@@ -253,20 +236,12 @@ export class SessionObservationCheckpointStore {
       if (!committed) await unlink(temporary).catch(() => {});
     }
     const bytes = Buffer.byteLength(serialized);
-    // Writes update only their own known inventory entry.  Capacity eviction,
-    // corruption reconciliation and orphan cleanup are maintenance work.
+    // Writes update only their own known inventory entry.
     this.qa.writes += 1;
     this.qa.writtenBytes += bytes;
     return Object.freeze({ filename, bytes });
   }
 
-  /**
-   * Write one bounded historical repository snapshot sidecar for a checkpointed
-   * session, atomically like `write`. The sidecar is validated independently
-   * (contract shape, byte budget, privacy sentinels) and never touches the
-   * checkpoint payload itself. It outlives an evicted checkpoint; maintenance
-   * removes it only under the sidecars' own bound.
-   */
   async writeRepositorySnapshot(providerId, localSessionId, snapshot) {
     const normalized = normalizeRepositorySnapshot(snapshot);
     if (!normalized) throw new TypeError("repository snapshot is invalid");
@@ -292,11 +267,6 @@ export class SessionObservationCheckpointStore {
     return Object.freeze({ filename, bytes: Buffer.byteLength(serialized) });
   }
 
-  /**
-   * Write one session's recorded refill and compaction times as a sidecar, atomically like
-   * `writeRepositorySnapshot`. Validated as a whole record; it outlives an evicted checkpoint,
-   * because its older entries cannot be rebuilt once their requests leave the retained evidence.
-   */
   async writeSessionEventRecord(providerId, localSessionId, record) {
     const normalized = normalizeSessionEventRecord(record);
     if (!normalized) throw new TypeError("session event record is invalid");
@@ -322,7 +292,6 @@ export class SessionObservationCheckpointStore {
     return Object.freeze({ filename, bytes: Buffer.byteLength(serialized) });
   }
 
-  /** Read one session's event sidecar by its identity-keyed filename; null when absent or invalid. */
   async loadSessionEventRecord(providerId, localSessionId) {
     assertIdentity({ providerId, localSessionId });
     try {
@@ -338,13 +307,6 @@ export class SessionObservationCheckpointStore {
     }
   }
 
-  /**
-   * Read valid repository-snapshot sidecars on startup; invalid ones are silently ignored.
-   * `withCheckpoint` reads only the sidecars whose checkpoint is on disk: the set the bulk
-   * checkpoint restore projects, so startup cost follows the checkpoint bound rather than
-   * every retained sidecar. Any other session reads its own file through
-   * `loadRepositorySnapshot`.
-   */
   async loadRepositorySnapshots({ withCheckpoint = false } = {}) {
     const records = [];
     const checkpoints = withCheckpoint ? new Set(await this.#filenames()) : null;
@@ -373,15 +335,10 @@ export class SessionObservationCheckpointStore {
       assertPrivacy(payload, this.privacySentinels);
       return Object.freeze({ providerId: payload.providerId, localSessionId: payload.localSessionId, snapshot });
     } catch {
-      // An absent, unreadable or invalid sidecar contributes nothing.
       return null;
     }
   }
 
-  /**
-   * Read compatible records on startup. The caller supplies projection because
-   * public response state is intentionally not stored in the checkpoint.
-   */
   async load({ projectState = ({ evidence }) => evidence, includeRecord = () => true } = {}) {
     if (typeof projectState !== "function" || typeof includeRecord !== "function") {
       throw new TypeError("checkpoint load hooks must be functions");
@@ -405,9 +362,7 @@ export class SessionObservationCheckpointStore {
         ignored += 1;
       }
     }
-    // Startup may enumerate valid checkpoints to restore durable evidence, but
-    // never turns that path into a cleanup scan.  Orphan temps are left for
-    // bounded maintenance after live observation has priority.
+    // Startup may enumerate valid checkpoints to restore durable evidence, but never turns that path into a cleanup scan.
     this.qa.loads += 1;
     this.qa.restored += records.length;
     this.qa.skipped += skipped;
@@ -415,11 +370,6 @@ export class SessionObservationCheckpointStore {
     return Object.freeze({ records: Object.freeze(records), skipped, ignored });
   }
 
-  /**
-   * Read one session's checkpoint by its identity-keyed filename, with the same
-   * payload, upgrade and candidate validation as `load`. It never enumerates the
-   * directory. Returns null when the file is absent, invalid or rejected.
-   */
   async loadOne(providerId, localSessionId, { projectState = ({ evidence }) => evidence } = {}) {
     if (typeof projectState !== "function") throw new TypeError("checkpoint load hooks must be functions");
     assertIdentity({ providerId, localSessionId });
@@ -460,7 +410,6 @@ export class SessionObservationCheckpointStore {
         const [info, payload] = await Promise.all([stat(path.join(this.directory, filename)), this.#readPayload(filename)]);
         files.push({ filename, size: info.size, modified: info.mtimeMs, invalid: !payload });
       } catch {
-        // An interrupted or externally removed Pomegr checkpoint is simply ignored.
       }
     }
     files.sort((left, right) => Number(right.invalid) - Number(left.invalid)
@@ -477,7 +426,6 @@ export class SessionObservationCheckpointStore {
         bytes -= file.size;
         removed.push(file.filename);
       } catch {
-        // A concurrent Pomegr writer may have already replaced this file.
       }
     }
     this.qa.pruned += removed.length;
@@ -486,11 +434,6 @@ export class SessionObservationCheckpointStore {
     return Object.freeze({ entries: retained, bytes, removed: Object.freeze(removed) });
   }
 
-  /**
-   * Process at most `budget` directory entries or pending deletes.  The
-   * persistent opendir cursor means a directory with thousands of abandoned
-   * temp files cannot block startup or a live checkpoint commit.
-   */
   async maintenanceStep({ budget = 32, shouldYield = () => false } = {}) {
     budget = Number.isSafeInteger(budget) && budget > 0 ? budget : 32;
     if (typeof shouldYield !== "function") throw new TypeError("checkpoint maintenance yield hook is invalid");
@@ -525,10 +468,6 @@ export class SessionObservationCheckpointStore {
         for (const [filename, info] of this.inventory) if (info.generation > state.startedGeneration) state.inventory.set(filename, info);
         this.inventory = state.inventory;
         state.removals.push(...this.#plannedEvictions());
-        // A checkpoint eviction never takes its sidecar: the checkpoint is rebuilt from the
-        // transcript on the next hydration, the recorded repository state cannot be. Sidecars
-        // leave only under their own bound, and a rewrite after planning is rechecked above.
-        // Each sidecar kind is bounded on its own, by the same limit.
         for (const prefix of ["repository-", "events-"]) {
           const sidecars = [...state.sidecars].filter(([filename]) => filename.startsWith(prefix));
           const excess = sidecars.length - this.maxRepositorySnapshots;
@@ -553,8 +492,7 @@ export class SessionObservationCheckpointStore {
       } else if (/^(?:repository|events)-[a-f0-9]{64}\.json$/u.test(filename)) {
         try { state.sidecars.set(filename, (await stat(path.join(this.directory, filename))).mtimeMs); } catch { /* retry later */ }
       } else if (/^\.(?:checkpoint|repository|events)-[a-f0-9]{64}\.json\.[a-f0-9-]+\.tmp$/u.test(filename)) {
-        // Only our exact atomic-write naming convention is eligible, and only
-        // after a conservative age grace. Never remove arbitrary dot files.
+        // Only our exact atomic-write naming convention is eligible, and only after a conservative age grace.
         try {
           const info = await stat(path.join(this.directory, filename));
           if (!this.ownedTemps.has(path.join(this.directory, filename)) && Date.now() - info.mtimeMs >= this.tempGraceMs) {
@@ -630,13 +568,6 @@ export class SessionObservationCheckpointStore {
     return names.sort();
   }
 
-  /**
-   * A repository-snapshot sidecar is removed when it is invalid, or when it is among the oldest
-   * beyond the sidecars' own bound. One written by a newer build (a higher snapshot version than
-   * this build knows) is kept, counted toward the bound, and never loaded. A sidecar is never
-   * removed with its checkpoint: an evicted checkpoint is rebuilt from its transcript, a recorded
-   * repository snapshot cannot be.
-   */
   async #pruneRepositorySnapshots() {
     const valid = [];
     for (const filename of await this.#repositorySnapshotFilenames()) {
@@ -644,8 +575,6 @@ export class SessionObservationCheckpointStore {
       let remove;
       try {
         const payload = JSON.parse(await readFile(filePath, "utf8"));
-        // A record from a newer build is never loaded here, and never deleted either: recorded
-        // repository state cannot be rebuilt, so a downgrade must leave it for the newer build.
         const newer = isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
           && Number.isSafeInteger(payload.snapshot?.version) && payload.snapshot.version > REPOSITORY_SNAPSHOT_VERSION;
         remove = !newer && !(isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
@@ -665,11 +594,7 @@ export class SessionObservationCheckpointStore {
     }
   }
 
-  /**
-   * A session-event sidecar is removed when it is invalid, or when it is among the oldest beyond
-   * the sidecars' bound. One written by a newer build (a higher record version) is kept, counted
-   * toward the bound, and never loaded. It is never removed with its checkpoint.
-   */
+  /** A session-event sidecar is removed when it is invalid, or when it is among the oldest beyond the sidecars' bound. */
   async #pruneSessionEventRecords() {
     const valid = [];
     for (const filename of await this.#matchingFilenames(/^events-[a-f0-9]{64}\.json$/u)) {

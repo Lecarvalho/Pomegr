@@ -10,7 +10,6 @@ function synthetic(value) {
     || value?.metadata?.synthetic === true || value?.metadata?.isSynthetic === true;
 }
 
-/** Rollout deliveries distinguish submitted input from role=user context and mirror records. */
 export function parseCodexUserInputRecords(records, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
   if (actor.id !== "primary" || options.userInputEnabled === false) return [];

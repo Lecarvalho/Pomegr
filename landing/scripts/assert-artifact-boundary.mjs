@@ -13,9 +13,7 @@ const textExtensions = new Set([
 ]);
 const failures = [];
 
-// Content-input boundary (WEB-01). The build-time docs loader is the only landing module that
-// may read outside landing/, and only these two inputs. The list is deliberately independent of
-// the loader so widening the loader alone cannot widen the boundary.
+// Only the docs loader may read outside landing/, and only these two inputs.
 const contentLoaderFile = "scripts/docs-content.mjs";
 const allowedContentInputs = new Set(["../docs/site.json", "../docs/public"]);
 const runtimeRoots = new Set(["app", "server", "worker"]);
@@ -26,13 +24,9 @@ const generatedSearchFile = join(landingRoot, "generated", "docs-search.json");
 const generatedPublicDocs = join(landingRoot, "public", "docs");
 const docsRoutePattern = /^\/docs\/(?:get-started|using-pomegr|concepts|help)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const docsImageRoutePattern = /^\/docs\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif)$/;
-// Public pages may name an example repository path when describing a screenshot. Only the exact
-// matched text is exempt, and only inside the generated docs content (and, in the artifact, only in
-// files that carry the content revision), never elsewhere.
+// Only the exact example path text is exempt, inside generated docs content.
 const allowedDocsMentions = new Set(["app/Dashboard.tsx"]);
 
-// Search index, sitemap and robots (WEB-03). The bounds and shapes are restated here, independently
-// of the generator, so growing the generator alone cannot widen what ships.
 const searchIndexMaxBytes = 128 * 1024;
 const searchTextMaxCharacters = 2000;
 const searchIndexKeys = ["pages", "revision", "schema"];
@@ -44,9 +38,7 @@ const publicSitePages = ["/", "/about", "/download"];
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// The checkout that contains landing/, derived from this package's location instead of one
-// machine's path, so the rule holds on every developer machine and in CI. Both separators match, and
-// this package's own directory (landing/) is allowed.
+// Derived from this package's location, not one machine's path; both separators match.
 function repositoryRootPattern() {
   const segments = resolve(landingRoot, "..").split(/[\\/]+/);
   const lead = segments[0] === "" ? "[\\\\/]" : "";
@@ -71,22 +63,15 @@ const forbiddenText = [
 ];
 const globalForbiddenText = forbiddenText.map(({ label, pattern }) => ({ label, pattern: new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`) }));
 
-// This package's own directory as plain, forward-slash, and JSON-escaped text. Build tools record it
-// (the generated Worker configuration names landing/wrangler.jsonc), wherever the checkout lives.
+// This package's own directory as plain, forward-slash, and JSON-escaped text (build tools record it).
 const landingRootTexts = [...new Set([landingRoot, landingRoot.split(sep).join("/"), landingRoot.split(sep).join("\\\\")])].map((text) => text.toLowerCase());
 const homePathLabels = new Set(["Windows user-profile path", "POSIX home directory path"]);
 
-/** Whether the path that starts at `index` is this package's directory or something inside it. */
 function startsInsideLanding(text, index) {
   return landingRootTexts.some((root) => text.slice(index, index + root.length).toLowerCase() === root && /^(?:[\\/"'`\s]|$)/.test(text.slice(index + root.length, index + root.length + 1)));
 }
 
-/**
- * Every forbidden match in `text`, except in two cases. With `allowExamples`, the Dashboard pattern
- * may match exactly an allowlisted example path that stands alone; a preceding path character, as
- * in ../app/Dashboard.tsx or src/app/Dashboard.tsx, is never the example. A home-directory path
- * that is this package's own location is never reported.
- */
+/** Every forbidden match in `text`; a preceding path character (../app/Dashboard.tsx) is never an allowlisted example. */
 function forbiddenMatches(text, { allowExamples }) {
   const found = [];
   for (const { label, pattern } of globalForbiddenText) {
@@ -166,12 +151,7 @@ function blankComments(text) {
     .replace(/(^|[^:\\"'`])\/\/[^\n]*/gm, "$1");
 }
 
-/**
- * Only the docs loader may name a path outside landing/, and only its two content inputs.
- * This is a tripwire over string literals (the loader's own path validation and tests are the
- * real enforcement); it also keeps the Worker free of filesystem access and of any reference to
- * non-public documentation.
- */
+/** A tripwire over string literals; the loader's own validation and tests are the real enforcement. */
 function auditContentInputs() {
   for (const path of sourcePaths()) {
     const rel = relative(landingRoot, path).split(sep).join("/");
@@ -201,26 +181,17 @@ function* stringValues(value) {
   else if (value && typeof value === "object") for (const item of Object.values(value)) yield* stringValues(item);
 }
 
-/** Report every forbidden pattern in any string of a generated value, except the allowlisted example paths. */
 function scanGeneratedText(where, value) {
   for (const text of stringValues(value)) {
     for (const match of forbiddenMatches(text, { allowExamples: true })) failures.push(`${where} contains ${match.label}: ${match.text}`);
   }
 }
 
-/**
- * Image bytes are scanned as Latin-1 text, so a path or user name in metadata cannot ride along unseen.
- * The mirrored copies under public/docs are scanned; dist/client/docs/images must match them byte for byte.
- */
+/** Scanned as Latin-1 text so a path or user name in metadata cannot ride along unseen. */
 function scanImageBytes(where, path) {
   for (const match of forbiddenMatches(readFileSync(path).toString("latin1"), { allowExamples: false })) failures.push(`${where} contains ${match.label} in its image data`);
 }
 
-/**
- * Audit the generated docs content and the images mirrored beside the landing assets: the JSON must
- * have the expected shape, carry no local-app or non-public text, and declare exactly the images that
- * exist under public/docs, byte for byte. Returns the parsed content, or null when absent.
- */
 function auditGeneratedDocs({ artifact }) {
   const hasPublicDocs = existsSync(generatedPublicDocs);
   if (!existsSync(generatedContentFile)) {
@@ -269,12 +240,6 @@ function auditGeneratedDocs({ artifact }) {
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const hasExactKeys = (value, keys) => isObject(value) && Object.keys(value).sort().join() === keys.join();
 
-/**
- * Audit the generated search index against the generated content it must derive from: same
- * revision, exactly the published pages in the same order, titles, descriptions and headings
- * identical to the content, a bounded plain-text body, and no forbidden text anywhere. Returns the
- * parsed index, or null when it is absent or unusable.
- */
 function auditGeneratedSearch(content) {
   if (!content) return null;
   if (!existsSync(generatedSearchFile)) {
@@ -320,10 +285,7 @@ function auditGeneratedSearch(content) {
   return index;
 }
 
-/**
- * The search index loads lazily as its own client chunk. The built client must carry a copy of it
- * (recognized by its revision), complete and within the size bound.
- */
+/** The built client must carry a complete copy of the search index within the size bound. */
 function auditDistSearchIndex(docsContent, index, files, client) {
   if (!docsContent || !index || index.revision !== docsContent.revision) return;
   const carriers = files.filter((file) => isInsideRoot(client, file) && extname(file) === ".js" && readFileSync(file, "utf8").includes(index.revision));
@@ -336,11 +298,7 @@ function auditDistSearchIndex(docsContent, index, files, client) {
   }
 }
 
-/**
- * sitemap.xml and robots.txt are application routes today, so the artifact holds no copy. If a
- * static copy ever ships, it may list only the public pages under the public origin and must not
- * name any path of its own.
- */
+/** No static copy of sitemap or robots ships today; if one did, it could list only public pages. */
 function auditStaticSiteIndexes(docsContent, files, client) {
   const allowed = new Set([...publicSitePages, ...(docsContent?.pages ?? []).map((page) => page.route)]);
   for (const file of files) {
@@ -391,7 +349,6 @@ function comparableDeploymentConfig(config) {
   });
 }
 
-/** dist/client/docs/images must hold exactly the images the generated docs content declares. */
 function auditDistDocsImages(docsContent, files, client) {
   if (!docsContent) return;
   const declared = new Map(docsContent.images.map((image) => [image.route, image.sha256]));
@@ -409,10 +366,7 @@ function auditDistDocsImages(docsContent, files, client) {
   }
 }
 
-/**
- * Every root-relative `url()` in a built stylesheet must name a file the assets binding serves.
- * A wrong address would only show as a missing font or background in a browser.
- */
+/** A wrong address would only show as a missing font or background in a browser. */
 function auditDistStylesheetUrls(files, client) {
   for (const file of files) {
     if (extname(file) !== ".css" || !isInsideRoot(client, file)) continue;
@@ -450,9 +404,7 @@ function auditArtifact(docsContent, searchIndex) {
     if (!textExtensions.has(extname(path)) && !path.endsWith(".vite/manifest.json")) continue;
 
     const contents = readFileSync(path, "utf8");
-    // Bundled documentation content (recognized by its revision) may name the allowlisted example
-    // paths. The exemption covers those exact matches only and the text is never altered, so a path
-    // around an example (../app/Dashboard.tsx) is still judged by every rule.
+    // The text is never altered, so a path around an example (../app/Dashboard.tsx) is still judged.
     const carriesRevision = Boolean(docsContent) && contents.includes(docsContent.revision);
     for (const match of forbiddenMatches(contents, { allowExamples: carriesRevision })) failures.push(`${rel} contains ${match.label}`);
   }
@@ -487,9 +439,7 @@ function auditArtifact(docsContent, searchIndex) {
     }))
     .sort((a, b) => a.path.localeCompare(b.path));
   const digestOf = (entries) => createHash("sha256").update(JSON.stringify(entries)).digest("hex");
-  // The whole-artifact digest identifies this one build: the server bundle carries secrets vinext
-  // draws for every build. The client digest covers what browsers receive and is equal for two
-  // builds of one commit, so it is the one to compare between audits.
+  // The server bundle carries per-build secrets; compare the client digest between audits.
   const clientInventory = inventory.filter((entry) => entry.path.startsWith("client/"));
   if (!failures.length) {
     console.log(`landing/dist boundary verified: ${inventory.length} files, sha256 ${digestOf(inventory)}`);

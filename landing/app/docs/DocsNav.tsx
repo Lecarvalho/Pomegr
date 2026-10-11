@@ -8,16 +8,12 @@ import type { DocsNavigationGroup } from "../../scripts/docs-content.mjs";
 import { DocsSearch } from "./DocsSearch";
 import styles from "./docs.module.css";
 
-// The documentation sidebar. It is always visible beside the page on wide screens; on a phone a
-// real button discloses it in place. It is a client component only for that disclosure and for
-// reading the current route: the page list comes from the generated navigation, never from hand
-// written links. Search sits at the top of the same panel, so it is also inside the phone menu.
+// A client component only for the phone disclosure and reading the current route; the page list comes from the generated navigation.
 
 const PANEL_ID = "docs-nav-panel";
 
 interface DocsNavProps {
   navigation: readonly DocsNavigationGroup[];
-  /** Id of the focusable main element a phone visitor lands on after choosing a page. */
   contentId: string;
 }
 

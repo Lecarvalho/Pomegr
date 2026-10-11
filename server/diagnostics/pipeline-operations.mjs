@@ -17,7 +17,7 @@ function percentile(sorted, ratio) {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
 }
 
-/** Bounded, value-only duration window. It never retains source or session identity. */
+// Bounded, value-only duration window.
 export function createDurationSeries({ windowSize = DEFAULT_WINDOW_SIZE } = {}) {
   const limit = Number.isInteger(windowSize) && windowSize > 0 && windowSize <= 4_096
     ? windowSize
@@ -79,7 +79,7 @@ const OBSERVER_COUNTERS = Object.freeze([
   "acquisitionFailures",
 ]);
 
-/** Build the fixed monitor-private payload consumed by the passive snapshot reader. */
+// Build the fixed monitor-private payload consumed by the passive snapshot reader.
 export function createPipelineOperationsSnapshot(diagnostics, observedAt = new Date().toISOString()) {
   const coordinator = diagnostics?.coordinator || {};
   const observers = coordinator.observers && typeof coordinator.observers === "object"
@@ -152,7 +152,7 @@ export function createPipelineOperationsSnapshot(diagnostics, observedAt = new D
   });
 }
 
-/** Re-allowlist an IPC payload so a local endpoint collision cannot widen CLI output. */
+// Re-allowlist an IPC payload so a local endpoint collision cannot widen CLI output.
 export function normalizePipelineOperationsSnapshot(value) {
   if (value?.version !== PIPELINE_OPERATIONS_VERSION || !Array.isArray(value.providers)) {
     throw new TypeError("Pipeline operations snapshot is unavailable");

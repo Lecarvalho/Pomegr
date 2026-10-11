@@ -13,8 +13,7 @@ const RULES = new Set([
   "unrecognized_keys", "invalid_union", "invalid_key", "invalid_element", "invalid_value", "custom",
 ]);
 
-// Derive vocabulary from trusted normalized contracts, never rejected input or raw
-// provider schemas. Only object, array, optional and nullable shapes are traversed.
+// Derive vocabulary from trusted normalized contracts, never rejected input or raw provider schemas.
 const fields = new Set(["$", "unavailable"]);
 function collectFields(schema, prefix = "", depth = 0) {
   if (depth > MAX_PATH_DEPTH || prefix.length > 128) return;
@@ -46,7 +45,6 @@ function fieldFromPath(path) {
   return fields.has(field || "$") ? field || "$" : "unavailable";
 }
 
-/** Re-allowlist fixed field/rule pairs at both monitor and CLI boundaries. */
 export function normalizeSchemaValidationSummary(value) {
   const input = Array.isArray(value?.issues) ? value.issues : [];
   const issues = [];
@@ -64,7 +62,6 @@ export function normalizeSchemaValidationSummary(value) {
   return Object.freeze({ issues: Object.freeze(issues), truncated });
 }
 
-/** Never retain issue messages, input, unknown keys, enum values, limits or indices. */
 export function summarizeSchemaValidationFailure(error) {
   try {
     if (!(error instanceof z.ZodError)) return null;

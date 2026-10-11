@@ -3,7 +3,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-/** Shared phone surface; cache evidence may portal beside it above the modal. */
 export function InspectorSheet({ title, subtitle, onClose, action, children }: { title: string; subtitle?: string; onClose: () => void; action?: ReactNode; children: ReactNode }) {
   const surface = useRef<HTMLDivElement>(null);
   const back = useRef<HTMLButtonElement>(null);

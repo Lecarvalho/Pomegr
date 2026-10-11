@@ -408,7 +408,6 @@ describe("the real generated pages", () => {
   it.each(content.pages.map((page) => [page.route, page] as const))("renders %s in strict mode", (_route, page) => {
     const html = render(page.blocks);
 
-    // Headings: one h1, every generated id exactly once, a permalink for every heading below the title.
     expect(count(html, "<h1 ")).toBe(1);
     for (const heading of page.headings) {
       expect(count(html, ` id="${heading.id}"`), `${page.route}#${heading.id}`).toBe(1);
@@ -416,7 +415,6 @@ describe("the real generated pages", () => {
     }
     expect(count(html, "Link to this section: ")).toBe(page.headings.filter((heading) => heading.depth >= 2).length);
 
-    // Links: published docs routes or anchors inside this page, and external links that never keep an opener.
     for (const match of html.matchAll(/<a [^>]*?href="([^"]*)"[^>]*>/g)) {
       const [tag, href] = match;
       if (href.startsWith("#")) expect(html, tag).toContain(` id="${href.slice(1)}"`);
@@ -425,7 +423,6 @@ describe("the real generated pages", () => {
       else expect(href, tag).toMatch(/^mailto:/);
     }
 
-    // Images: a mirrored route, alt text, and lazy loading.
     for (const tag of tagsOf(html, "img")) {
       const attributes = attributesOf(tag);
       expect(imageRoutes.has(attributes.src ?? ""), tag).toBe(true);
@@ -435,7 +432,6 @@ describe("the real generated pages", () => {
       expect(attributes.height, tag).toMatch(/^[1-9]\d*$/);
     }
 
-    // Tables live in a named region; nothing executable or inline-styled is emitted.
     expect(count(html, 'role="region"')).toBe(count(html, "<table"));
     expect(html).not.toMatch(/<script|<iframe|<object|<embed|<style|javascript:|\sstyle=|\son[a-z]+=/i);
   });

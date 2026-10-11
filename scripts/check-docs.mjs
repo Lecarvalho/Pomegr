@@ -1,28 +1,5 @@
 #!/usr/bin/env node
-// Documentation checker (WEB-04): `npm run check:docs`.
-//
-//   node scripts/check-docs.mjs [--json] [--root <repository>]
-//
-// One command validates every documentation rule that can be checked without rendering:
-//
-//   1. Public documentation. The publication manifest (docs/site.json) and the pages and
-//      images it selects are validated by the landing loader itself (`inspectDocsContent`:
-//      manifest, front matter, routes, headings, links, anchors, images and alt text, the
-//      supported Markdown syntax), so the website build and this checker share ONE
-//      implementation. The search index built from the same content is checked against it.
-//   2. The public tree. Every Markdown file under docs/public/ must be selected by the
-//      manifest, and every other file there must be an image a selected page references.
-//   3. The public boundary. No public page, selected or not, links to a file outside
-//      docs/public/ (internal documentation, plans, source files) or to an internal
-//      documentation page on GitHub. Internal pages may link public pages.
-//   4. Maintained Markdown. Relative links, anchors, images, and non-empty alt text across
-//      docs/**, root *.md, landing/*.md, and .agents/skills/** (see docs-check-links.mjs).
-//
-// Dependency direction: this root script imports landing's loader; landing never imports
 // anything outside landing/ (both directions are enforced by .dependency-cruiser.cjs). The
-// loader needs landing's own dependencies, so a missing `npm ci --prefix landing` is reported
-// as a setup error (exit 2) rather than a crash. Exit codes: 0 passed, 1 documentation
-// failures, 2 the checker could not run.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -33,7 +10,7 @@ const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MAX_PRINTED_FAILURES = 200;
 const MARKDOWN_FILE = /\.md$/i;
 
-/** The checker could not run (for example, landing's dependencies are not installed). */
+// The checker could not run (for example, landing's dependencies are not installed).
 export class CheckDocsSetupError extends Error {
   constructor(message) {
     super(message);
@@ -61,16 +38,13 @@ async function loadLandingModules(importModules) {
 
 const failure = (file, line, rule, message) => ({ file, line, rule, message });
 
-// ---------------------------------------------------------------- public documentation
-
-/** Loader issues look like `docs/public/x.md:12: message`, `docs/site.json: message`, or a bare sentence. */
 function issueToFailure(issue) {
   const match = /^(docs\/[^\s:]+)(?::(\d+))?:\s+([\s\S]+)$/.exec(issue);
   if (match) return failure(match[1], match[2] ? Number(match[2]) : null, "public-content", match[3]);
   return failure("docs/public/", null, "public-content", issue);
 }
 
-/** The search index must be derived from the content: same revision and pages, bounded size and text. */
+// The search index must be derived from the content: same revision and pages, bounded size and text.
 function checkSearchIndex(content, search) {
   const failures = [];
   const fail = (message) => failures.push(failure("docs/public/", null, "search-index", message));
@@ -86,8 +60,6 @@ function checkSearchIndex(content, search) {
   return { failures, bytes };
 }
 
-// ---------------------------------------------------------------- public tree and boundary
-
 function listFiles(directory, prefix = "") {
   const files = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -98,7 +70,6 @@ function listFiles(directory, prefix = "") {
   return files.sort();
 }
 
-/** Every file in docs/public/ is a selected page or an image a selected page references. */
 function checkPublicTree(publicRoot, content, routePrefix) {
   const failures = [];
   const selected = new Set(content.pages.map((page) => page.source));
@@ -120,14 +91,11 @@ function isInside(directory, path) {
   return rel === "" || (!/^\.\.(?:[\\/]|$)/.test(rel) && !isAbsolute(rel));
 }
 
-// The directories under docs/ that never ship: the alternation of nonPublicDocsPattern in
-// landing/scripts/assert-artifact-boundary.mjs, so this check catches what the build would reject
-// (tests/docs-check.test.mjs keeps the two lists equal).
 const NON_PUBLIC_DOCS = "internal|plans|mockups|design|user-guide";
 const INTERNAL_GITHUB_PATH = new RegExp(`/docs/(?:${NON_PUBLIC_DOCS})(?:/|$)`);
 const INTERNAL_REPOSITORY_PATH = new RegExp(`^docs/(?:${NON_PUBLIC_DOCS})(?:/|$)`);
 
-/** No public page (selected or not) may link outside docs/public/ or to internal documentation. */
+// No public page (selected or not) may link outside docs/public/ or to internal documentation.
 function checkPublicBoundary(root, publicRoot) {
   const failures = [];
   const pages = listFiles(publicRoot).filter((file) => MARKDOWN_FILE.test(file));
@@ -143,7 +111,6 @@ function checkPublicBoundary(root, publicRoot) {
         try {
           url = new URL(target, "https://placeholder.invalid");
         } catch {
-          // Malformed URLs are the loader's concern.
         }
         if (url && /^(?:www\.)?github\.com$|^raw\.githubusercontent\.com$/.test(url.hostname) && INTERNAL_GITHUB_PATH.test(url.pathname)) {
           fail(`public pages may not link internal documentation (${JSON.stringify(target)})`);
@@ -166,13 +133,7 @@ function checkPublicBoundary(root, publicRoot) {
   return { failures, pages: pages.length };
 }
 
-// ---------------------------------------------------------------- run
-
-/**
- * Run every check against a repository root. Resolves to `{ ok, summary, failures }`;
- * rejects with `CheckDocsSetupError` when the landing loader cannot be imported.
- * `importModules` exists so tests can exercise the missing-dependency path.
- */
+// Run every check against a repository root.
 export async function checkDocs({ root = REPOSITORY_ROOT, importModules = importLandingModules } = {}) {
   const base = resolve(root);
   const landing = await loadLandingModules(importModules);
@@ -205,7 +166,6 @@ export async function checkDocs({ root = REPOSITORY_ROOT, importModules = import
     boundaryPages = boundary.pages;
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
-    // A missing docs/public/ is already reported by the loader.
   }
   summary.boundaryPages = boundaryPages;
 
@@ -224,8 +184,6 @@ export async function checkDocs({ root = REPOSITORY_ROOT, importModules = import
   summary.failures = distinct.length;
   return { ok: distinct.length === 0, summary, failures: distinct };
 }
-
-// ---------------------------------------------------------------- command line
 
 const kib = (bytes) => `${(bytes / 1024).toFixed(1)} KiB`;
 

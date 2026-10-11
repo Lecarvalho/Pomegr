@@ -28,22 +28,15 @@ export type RepositoryTabProps = {
   sessionId: string;
   historical: boolean;
   paused?: boolean;
-  /** Deep-linked or previously selected repository-relative path (F21); null selects nothing. */
   selectedPath?: string | null;
   onSelectPath?: (path: string | null) => void;
-  /** Opens a recorded agent in the session's Agents tab. */
   onOpenAgent?: (agentId: string) => void;
 };
 
 type Repository = NonNullable<RepositoryDomain["repository"]>;
 type Comparison = Repository["comparison"];
-// Local shape for the Fixed interface's `gitTasks` field (shared/session-domain-contract.ts),
-// kept independent of RepositoryDomain so this file typechecks whether or not the parallel
-// monitor change has landed that field yet.
 type GitTasks = { total: number; failed: number } | null;
 
-// Compact chip text for the top bar (G3). Distinct from the longer sentence `comparisonLabel`
-// (app/dashboard-utils.ts) used by the Overview repository row.
 function comparisonChipText(comparison: Comparison): string | null {
   if (!comparison) return null;
   if (comparison.integrated) return `Integrated into ${comparison.branch}`;
@@ -110,14 +103,11 @@ function FilesTreeSkeleton() {
   </div>;
 }
 
-/** The session Repository tab's body (F17/F18): a search field, a Touched here / Uncommitted /
- * Changed elsewhere segment, and the shared FileTree plus the fetch-free SessionFilePanel. */
 function RepositoryTabFiles({ domain, workingTreeFiles, repositoryId, historical, workingTreeKnown, sessionId, selectedPath, onSelectPath, onOpenAgent }: {
   domain: RepositoryDomain;
   workingTreeFiles: Repository["files"];
   repositoryId: string;
   historical: boolean;
-  /** False without Git state (no saved snapshot, or no live repository): only recorded changes can be listed. */
   workingTreeKnown: boolean;
   sessionId: string;
   selectedPath: string | null;
@@ -129,8 +119,6 @@ function RepositoryTabFiles({ domain, workingTreeFiles, repositoryId, historical
   const { sessions } = useSessionCatalog();
   const rootLabel = sessions.find((session) => session.id === sessionId)?.project ?? "Repository";
   const segments = buildRepositoryTabFilesSegments(domain.touchedFiles.files, workingTreeFiles);
-  // Without a snapshot the Uncommitted and Changed elsewhere segments would read as "none", so
-  // only Touched here (the recorded file-change index) is offered.
   const segment = workingTreeKnown ? manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments) : "touched";
   const query = search.trim();
   const treeLoading = segment === "touched" && domain.touchedFiles.readiness === "loading";
@@ -193,9 +181,6 @@ function RepositoryTabFiles({ domain, workingTreeFiles, repositoryId, historical
   </div>;
 }
 
-/** The session Repository tab: a top bar (branch, comparison, PR, git-task summary) plus the
- * file tree / file history body (F17/F18). The commit list moved to the repository page Git tab
- * (RepositoryGitTab.tsx); see docs/internal/plans/ia-redesign for the design contract. */
 export function RepositoryTab({ sessionId, historical, paused = false, selectedPath: selectedPathInput = null, onSelectPath = () => {}, onOpenAgent }: RepositoryTabProps) {
   const result = useSessionDomain({ sessionId, domain: "repository" }, { historical, enabled: !paused });
   const domain = result.data;
@@ -223,8 +208,6 @@ export function RepositoryTab({ sessionId, historical, paused = false, selectedP
     </div>;
   }
 
-  // G10: a historical session with no saved live-check snapshot has no Git state to show. Its
-  // recorded file changes come from the file-change index, not the snapshot, and still render.
   const snapshotMissing = repository.historical && domain.recordedAt === null;
 
   const pullRequests = domain.pullRequests?.items || [];

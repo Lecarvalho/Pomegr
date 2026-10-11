@@ -10,8 +10,6 @@ import { IssuesState, PromoteIssuesSplit } from "../tasks/promote-issues-split";
 import type { TaskIssue } from "../tasks/task-issues-desktop";
 import { Sample, Section } from "./DesignSystemKit";
 
-// Static issues with invented text: no bridge, no read, nothing from a real repository.
-
 const noop = () => undefined;
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 

@@ -118,17 +118,12 @@ export function buildContextBoundaryEvidence(usages, {
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || right.id.localeCompare(left.id));
 }
 
-/** Preserve the existing bounded UI feed; report counts use retained evidence. */
 export function buildContextBoundaries(usages, options = {}) {
   return buildContextBoundaryEvidence(usages, options)
     .slice(-MAX_CONTEXT_BOUNDARIES)
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id));
 }
 
-/**
- * Build actual context levels from carried latest per-agent observations.
- * These are neither request throughput nor positive-delta token spend.
- */
 export function buildContextHistory(usages, {
   startedAt = null,
   updatedAt = null,

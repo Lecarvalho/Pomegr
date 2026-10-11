@@ -43,12 +43,6 @@ export function liveSessionFiles(files, registrySessionIds, {
 
 const MAX_GIT_POINTER_BYTES = 4096;
 
-/**
- * The main repository folder of a linked worktree, read from the worktree's own `.git` pointer file
- * (`gitdir: <main>/.git/worktrees/<name>`). One bounded local read of that one small file; the path
- * stays here and only its last segment names the project. Null for anything else: a `.git` directory,
- * a submodule or separate-Git-directory pointer, an oversized or unreadable file.
- */
 function linkedWorktreeMainRoot(directory, gitEntry) {
   try {
     const stat = fs.statSync(gitEntry);
@@ -62,10 +56,6 @@ function linkedWorktreeMainRoot(directory, gitEntry) {
   } catch { return null; }
 }
 
-/**
- * The name of the nearest enclosing repository, from the filesystem alone. A linked worktree names its
- * main repository (product-owner decision, 2026-10-10), the same name the shared identity rule gives it.
- */
 export function repositoryProjectName(cwd) {
   if (!cwd) return "";
   let current = path.resolve(cwd);
@@ -131,17 +121,6 @@ function jsonlEntries(dirents) {
 }
 
 /**
- * A `listSessionFiles` equivalent that reuses each directory's previous listing while the
- * directory's identity and modification time are unchanged. Adding, removing, or renaming an
- * entry advances its parent directory's modification time, so only changed directories are
- * read again; every transcript is still stat-ed on every pass because appends do not touch
- * the directory. A listing is trusted only once its directory had been settled for
- * `settleMs` when it was read, so a change inside the timestamp granularity is never missed.
- * Output equals `listSessionFiles` for the same tree: same traversal order, depth limit,
- * dirent classification, missing-directory handling, and thrown read errors. `listAsync`
- * does the same walk through `fs.promises`, so the event loop is free between directory
- * reads and file-stat batches. Listings live only in memory and are replaced by each
- * completed pass, so they are bounded by the current tree and never persisted or logged.
  * @param {{fs?: typeof fs, now?: () => number, settleMs?: number, maxDepth?: number}} [options]
  */
 export function createSessionFileLister({ fs: operations = fs, now = Date.now, settleMs = DIRECTORY_SETTLE_MS, maxDepth = 6 } = {}) {
@@ -225,15 +204,6 @@ export function findSessionById(projectsRoot, sessionId) {
 }
 
 /**
- * The single-file equivalent of `liveSessionFiles` above, for one already-resolved main
- * file, so a fast lookup (e.g. through a session-to-file index) never needs a full-catalog
- * liveness comparison to answer the same `historical` question `liveSessionFiles` would.
- * Semantics are copied, not reinterpreted: an explicit session is live only if it is the
- * selected file; a registered session is always live; a session the registry has recorded
- * closed is never live; otherwise liveness follows recorded activity (the main file's own
- * mtime and every file under its own `subagents` tree) within the same registry-aware
- * window `liveSessionFiles` uses.
- *
  * @param {string} file
  * @param {{explicitFile?: string | null, registrySessionIds?: Iterable<string>, closedSessionIds?: Set<string>, registryAvailable?: boolean, nowMs?: number, agentDir?: string}} [options]
  */

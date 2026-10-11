@@ -41,9 +41,7 @@ function keyFor(record) {
   return `${record.run}|${record.lane}|${record.startMs}`;
 }
 
-// Records written before provider/lane attribution, or emitted for a stage with no
-// known lane (e.g. catalog_discovery), group under this fixed label rather than being
-// dropped or misattributed.
+// Records written before provider/lane attribution, or emitted for a stage with no known lane (e.g.
 const UNATTRIBUTED = "unattributed";
 
 function attributionKey(stageName, providerValue, laneValue) {
@@ -57,7 +55,6 @@ function sampleAdd(stat, duration) {
   stat.max = Math.max(stat.max, duration);
   if (stat.reservoir.length < RESERVOIR_SIZE) stat.reservoir.push(duration);
   else {
-    // A deterministic reservoir is bounded and has no hidden randomness in reports.
     const index = (stat.samples * 2_654_435_761 >>> 0) % stat.samples;
     if (index < RESERVOIR_SIZE) stat.reservoir[index] = duration;
   }
@@ -257,8 +254,6 @@ export async function analyzePipelineLogs(options = {}, dependencies = {}) {
     attribution(pending.stage, pending.provider, pending.priorityLane).incomplete += 1;
   }
   const stages = Object.fromEntries([...state.stages.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([name, stat]) => [name, publicStat(stat)]));
-  // Nested { stage: { provider: { priorityLane: stat } } }; both keys are "unattributed"
-  // for a legacy record or a stage with no known lane, so every span is still counted.
   const stagesByAttribution = {};
   for (const stat of [...state.attribution.values()].sort((left, right) =>
     left.stage.localeCompare(right.stage) || left.provider.localeCompare(right.provider) || left.priorityLane.localeCompare(right.priorityLane))) {
@@ -299,7 +294,7 @@ function recordMatches(options, record) {
     && (!options.stage || !Object.hasOwn(record, "stage") || record.stage === options.stage);
 }
 
-/** Polling tailer that retains only offsets and at most one bounded partial line per writer file. */
+// Polling tailer that retains only offsets and at most one bounded partial line per writer file.
 export async function createPipelineLogFollower(options = {}, { fs = { lstat, open }, listFiles = findPipelineLogFiles } = {}) {
   const offsets = new Map();
   const partials = new Map();
@@ -382,7 +377,7 @@ export async function createPipelineLogFollower(options = {}, { fs = { lstat, op
               discardingLine = false;
               break;
             }
-            // The next read reuses chunk. Retained line bytes must own their storage.
+            // The next read reuses chunk.
             partial = Buffer.from(bytes.subarray(start));
             if (partial.length > MAX_LINE_BYTES) {
               partial = Buffer.alloc(0);

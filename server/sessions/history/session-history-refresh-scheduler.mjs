@@ -1,6 +1,5 @@
 const FOREGROUND = 0;
 
-/** Bounded replay lanes. Tasks must yield cooperatively for the foreground lane to preempt CPU-heavy maintenance. */
 export function createSessionHistoryRefreshScheduler({ run, foregroundConcurrency = 1, backgroundConcurrency = 1 } = {}) {
   if (typeof run !== "function") throw new TypeError("History refresh scheduler requires a runner");
   for (const [name, value] of [["foreground", foregroundConcurrency], ["background", backgroundConcurrency]]) {

@@ -4,17 +4,11 @@ import path from "node:path";
 
 const USER_ATTENTION_REASONS = ["input", "approval", "permission", "question"];
 const ACTIVE_STATUSES = new Set(["active", "busy", "running"]);
-// A validated owner identity (pid + procStart) is trusted without a new process
-// enumeration for OWNER_FRESH_MS, the same window the former whole-batch cache used.
-// After that, where an asynchronous probe exists (Windows PowerShell), the last result
-// is served while one background re-enumeration runs, but never once it is older than
-// OWNER_MAX_STALE_MS; a synchronous probe then answers. A cheap, non-spawning liveness
-// check ends a positive identity as soon as the pid is definitely gone.
 const OWNER_FRESH_MS = 1_500;
 const OWNER_MAX_STALE_MS = 5_000;
 const MAX_OWNER_VALIDATION_ENTRIES = 2_048;
 
-/** Non-spawning liveness: true, false only for a definitely absent pid, null when unknown. */
+// Non-spawning liveness: true, false only for a definitely absent pid, null when unknown.
 export function processAlive(pid) {
   try { process.kill(pid, 0); return true; }
   catch (error) { return error?.code === "ESRCH" ? false : error?.code === "EPERM" ? true : null; }
@@ -74,10 +68,6 @@ function parseWindowsIdentities(output) {
   }));
 }
 
-/**
- * The asynchronous counterpart of `processIdentities`, or null where a synchronous
- * probe is already cheap (Linux /proc) or the caller injected a synchronous probe.
- */
 function asyncProcessIdentities(options = {}) {
   if (typeof options.processIdentitiesAsync === "function") return options.processIdentitiesAsync;
   if (typeof options.processIdentities === "function" || (options.platform || process.platform) !== "win32") return null;
@@ -110,28 +100,17 @@ function processIdentities(pids, options = {}) {
         const processStart = normalizedProcessStart(fields[19]);
         identities.set(pid, processStart);
       } catch (error) {
-        // Only absence proves exit. Permission and malformed-read failures are unknown.
+        // Only absence proves exit.
         if (error?.code !== "ENOENT" && error?.code !== "ESRCH") identities.set(pid, null);
       }
     }
     return identities;
   } catch {
-    // Process inspection failures degrade to the provider registry instead of
-    // incorrectly retiring every session on the machine.
     return null;
   }
 }
 
-/**
- * Validates registry owners by pid and process-start identity. A result is reused
- * for `cacheMs` (default OWNER_FRESH_MS) while the registry reports the same pid
- * and procStart; a different procStart is always re-probed. A cheap liveness check
- * ends a positive result as soon as the pid is definitely gone. An older result is
- * served only while one asynchronous re-enumeration is pending and only until
- * OWNER_MAX_STALE_MS, so reads inside that bound never block the event loop on a
- * process spawn and never trust an identity much longer than the former cache did.
- * A first check, a changed identity, or a read after the bound still probes synchronously.
- */
+// Validates registry owners by pid and process-start identity.
 export function createSessionRegistryOwnerValidator(options = {}) {
   const now = options.now || (() => Date.now());
   const freshMs = Number.isFinite(options.cacheMs) ? Math.max(0, options.cacheMs) : OWNER_FRESH_MS;
@@ -158,7 +137,6 @@ export function createSessionRegistryOwnerValidator(options = {}) {
       for (const entry of pending) {
         refreshing.delete(entry.sessionId);
         const cached = cache.get(entry.sessionId);
-        // A newer registry identity or an unavailable answer leaves the cache to the next read.
         if (!identities || !cached || cached.pid !== entry.pid || cached.procStart !== entry.procStart) continue;
         const identity = identities.get(entry.pid);
         if (identity === null) continue;
@@ -245,7 +223,6 @@ export function readSessionRegistry(root, options = {}) {
       const current = registry.get(entry.sessionId);
       if (!current || entry.updatedAt >= current.updatedAt) registry.set(entry.sessionId, entry);
     } catch {
-      // A partially-written or removed provider registry entry is ignored independently.
       options.onIncomplete?.();
     }
   }
@@ -263,8 +240,6 @@ export function readSessionRegistry(root, options = {}) {
         };
       }
     } catch {
-      // Owner inspection is an optional strengthening signal. Registry parsing
-      // remains available if the operating-system check fails unexpectedly.
     }
   }
 

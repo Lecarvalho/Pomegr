@@ -1,11 +1,3 @@
-// Images attached to a task. They are user-authored content like the task text and live only in the private task
-// store: the bytes as one file per image under `images/<repositoryId>/<taskId>/` beside the database, and the list of a
-// task's images in the existing `meta` table under `task_images:<repositoryId>:<taskId>`, so the schema version does
-// not change. The list is the authority: a file no list names is never served, and a listed image whose file is gone
-// reads as `not_found`. A file name is built from validated identifiers only, never from anything the user typed.
-//
-// The type is decided here from the leading bytes, never from a name or a declared type. Only the four raster formats
-// below are kept; anything else is refused before a byte is written.
 
 import crypto from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -22,7 +14,7 @@ const prefixOf = (repositoryId) => `task_images:${repositoryId}:`;
 const startsWith = (bytes, signature, offset = 0) => bytes.length >= offset + signature.length
   && signature.every((value, index) => bytes[offset + index] === value);
 
-/** The fixed type of an image from its leading bytes, or null when it is none of the four. */
+// The fixed type of an image from its leading bytes, or null when it is none of the four.
 export function sniffImageType(bytes) {
   if (!(bytes instanceof Uint8Array)) return null;
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
@@ -37,7 +29,7 @@ function parseList(value) {
   try { return normalizeStoredImages(JSON.parse(value)); } catch { return []; }
 }
 
-/** Every stored image list of one repository as `Map<taskNumber, { id, type, bytes }[]>`. */
+// Every stored image list of one repository as `Map<taskNumber, { id, type, bytes }[]>`.
 export function readTaskImages(database, repositoryId) {
   const images = new Map();
   if (!isRepositoryId(repositoryId)) return images;
@@ -63,7 +55,7 @@ function writeList(database, repositoryId, taskId, list) {
     .run(keyOf(repositoryId, taskId), JSON.stringify(list));
 }
 
-/** Drops a deleted task's list. The caller owns the transaction; the files go after it commits. */
+// Drops a deleted task's list.
 export function deleteTaskImageList(database, repositoryId, taskNumber) {
   preparedStatement(database, "DELETE FROM meta WHERE key = ?").run(keyOf(repositoryId, `T-${taskNumber}`));
 }
@@ -71,7 +63,7 @@ export function deleteTaskImageList(database, repositoryId, taskNumber) {
 const taskDirectory = (directory, repositoryId, taskId) => path.join(directory, IMAGE_DIRECTORY, repositoryId, taskId);
 const imageFile = (directory, repositoryId, taskId, image) => path.join(taskDirectory(directory, repositoryId, taskId), `${image.id}.${EXTENSIONS[image.type]}`);
 
-/** Removes the image files of one task. Best effort and never throws: a task number is never reused, so a leftover file is never served. */
+// Removes the image files of one task.
 export function removeTaskImageFiles(directory, repositoryId, taskId) {
   if (typeof directory !== "string" || !isRepositoryId(repositoryId) || !isTaskId(taskId)) return;
   try { rmSync(taskDirectory(directory, repositoryId, taskId), { recursive: true, force: true }); } catch { /* left behind, never served */ }
@@ -88,14 +80,7 @@ function shaped(payload, keys) {
     && Object.keys(payload).length === keys.length && keys.every((key) => Object.hasOwn(payload, key));
 }
 
-/**
- * Attaches one image to an existing task. `payload` is `{ taskId, bytes }` and, optionally, `imageId`: the ID the
- * caller already put in the task's text as a marker. It must have the ID shape, and one the task already holds is
- * `conflict`; without it the store makes the ID. The file is written first and
- * the list in one transaction after it; a refused or failed list write removes the file again. Answers
- * `{ ok: true, imageId }` or a fixed error: `invalid` (not one of the four types, empty, or over the size bound),
- * `not_found`, or `limit` (the task already holds the most it may).
- */
+// Attaches one image to an existing task.
 export function addTaskImage({ database, transaction, directory, repositoryId, payload }) {
   const named = payload !== null && typeof payload === "object" && Object.hasOwn(payload, "imageId");
   if (!isRepositoryId(repositoryId) || !shaped(payload, named ? ["taskId", "bytes", "imageId"] : ["taskId", "bytes"]) || !isTaskId(payload.taskId)
@@ -115,7 +100,6 @@ export function addTaskImage({ database, transaction, directory, repositoryId, p
     writeFileSync(partial, bytes, { flag: "wx" });
     renameSync(partial, file);
     const result = transaction(() => {
-      // The task may have gone, or filled up, since the read above.
       if (!taskExists(database, repositoryId, taskId)) return { ok: false, error: "not_found" };
       const list = readList(database, repositoryId, taskId);
       if (list.some((entry) => entry.id === image.id)) return { ok: false, error: "conflict" };
@@ -137,7 +121,6 @@ function imagePayload(repositoryId, payload) {
     && typeof payload.imageId === "string" && IMAGE_ID.test(payload.imageId);
 }
 
-/** Removes one image from a task: the list first, in one transaction, then the file. `{ ok: true }` or `invalid` / `not_found`. */
 export function removeTaskImage({ database, transaction, directory, repositoryId, payload }) {
   if (!imagePayload(repositoryId, payload)) return { ok: false, error: "invalid" };
   const { taskId, imageId } = payload;
@@ -154,7 +137,7 @@ export function removeTaskImage({ database, transaction, directory, repositoryId
   return { ok: true };
 }
 
-/** One listed image's bytes: `{ ok: true, type, bytes }`, or `invalid` / `not_found`. A file that no longer matches its listed type or size is `not_found`. */
+// One listed image's bytes: `{ ok: true, type, bytes }`, or `invalid` / `not_found`.
 export function readTaskImage({ database, directory, repositoryId, payload }) {
   if (!imagePayload(repositoryId, payload)) return { ok: false, error: "invalid" };
   const image = readList(database, repositoryId, payload.taskId).find((entry) => entry.id === payload.imageId);
@@ -164,7 +147,6 @@ export function readTaskImage({ database, directory, repositoryId, payload }) {
   return bytes.length === image.bytes && sniffImageType(bytes) === image.type ? { ok: true, type: image.type, bytes } : { ok: false, error: "not_found" };
 }
 
-/** A task's listed images whose file exists with its listed size, as `{ id, file }` with the absolute file, in list order, for a session start. */
 export function taskImagePaths({ database, directory, repositoryId, taskId }) {
   if (typeof directory !== "string" || !isRepositoryId(repositoryId) || !isTaskId(taskId)) return [];
   const paths = [];

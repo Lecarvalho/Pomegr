@@ -95,10 +95,7 @@ function safeTranscriptPath(value) {
   return value;
 }
 
-// Repository roots are monitor-private binding evidence.  A launch cwd alone
-// is not enough: a shared checkout can have moved since a session recorded it,
-// and a session with no unique structured file binding must not borrow another
-// session's current tree.
+// Repository roots are monitor-private binding evidence.
 export function createMonitorRuntime(options = {}) {
   const registry = options.providerRegistry || providerRegistry;
   const providerFolders = registry.providerFolders || EMPTY_PROVIDER_FOLDERS;
@@ -369,9 +366,7 @@ export function createMonitorRuntime(options = {}) {
       const cached = cachedHomeSummary(entry, endMs, resourceUsageFor);
       const summary = cached.found
         ? cached.summary
-        // Header selection may identify an historical session for a Home
-        // correlation, but Home never hydrates its body. Only retained detail
-        // can contribute to a historical limit/model observation.
+        // Header selection may identify an historical session for a Home correlation, but Home never hydrates its body.
         : entry.isLive ? await loadHomeSummary(entry, endMs, resourceUsageFor(entry.id)) : null;
       if ((!summary || summary.requestObservationsAvailable === false)
         && activityEntries.some((activityEntry) => activityEntry.id === entry.id)) {
@@ -395,9 +390,7 @@ export function createMonitorRuntime(options = {}) {
       if (cached.found) history.push({ entry, summary: cached.summary });
       else missingHistory.push(entry);
     }
-    // Home aggregates are derived only from already retained header/detail
-    // evidence. A seven-day directory window must never schedule historical
-    // transcript hydration merely to improve a dashboard statistic.
+    // Home aggregates are derived only from already retained header/detail evidence.
     const historyLoading = false;
     const summaries = [...immediate, ...history];
     const limitActivities = homeLimitActivityTracker.build({
@@ -536,8 +529,7 @@ export function createMonitorRuntime(options = {}) {
   async function transcriptPath(requestedSessionId = "", agentId = "") {
     if (typeof requestedSessionId !== "string" || requestedSessionId.length === 0 || requestedSessionId.length > 256) return null;
     if (typeof agentId !== "string" || agentId.length === 0 || agentId.length > 256 || /[\u0000-\u001f\u007f]/.test(agentId)) return null;
-    // The copy button renders only from committed evidence, which already proves the agent's
-    // transcript. Re-reading the whole session per click can outlast the web proxy's timeout.
+    // The copy button renders only from committed evidence, which already proves the agent's transcript.
     const committed = observation.observationActive() ? observation.store.getByQualifiedId(requestedSessionId) : null;
     const selection = committed
       ? { evidence: committed.evidence, localId: committed.localSessionId, provider: registry.providerForSessionId?.(requestedSessionId) }
@@ -658,10 +650,6 @@ export function createMonitorRuntime(options = {}) {
   });
 }
 
-// The task store is the control plane's own private store in the data root, outside the observation
-// cache's retention and prune cycle. Like the other data-root stores, an injected runtime or checkpoint
-// store (a test, an embedded runtime) or `monitorStore: false` never opens the real one, and an explicit
-// `taskStore` is used as given and left to its owner to close. A failed open leaves the board unavailable.
 function resolveTaskStore(options) {
   if (options.taskStore !== undefined) return { store: options.taskStore || null, owned: false };
   if (options.runtime !== undefined || options.checkpointStore !== undefined || options.monitorStore === false) {
@@ -753,13 +741,10 @@ export async function startMonitorServer(options = {}) {
       }));
     }
     await runtime.startObservation?.();
-    // A linked task whose session ended without a report stalls, decided from committed session facts.
     if (tasks.store && typeof runtime.resolveTaskSessionFacts === "function") {
       stallWatcher = createTaskStallWatcher({ taskStore: tasks.store, subscribe: runtime.subscribeRevisionEvents,
         resolveSessionFacts: (id) => runtime.resolveTaskSessionFacts(id) });
     }
-    // Provider-owned watch targets remain private and are initialized only
-    // after the listener and background observation lifecycle are ready.
     await registry.watchTargets();
     options.logger?.log?.(`[pomegr] Monitor ready on ${handle.origin}.`);
     let closePromise = null;

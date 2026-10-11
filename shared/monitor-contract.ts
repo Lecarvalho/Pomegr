@@ -33,16 +33,11 @@ export type PomegrPluginMetadata = {
   observedAt: string | null;
 };
 
-/** Transient provider-authored activity heading for an open agent turn. */
 export type AgentCurrentActivity = {
   label: string;
   observedAt: string;
 };
 
-/**
- * Bounded, provider-neutral display role. Full provider-specific types stay
- * inside the monitor; unknown roles may carry a validated customType label.
- */
 export type AgentRole =
   | "orchestrator"
   | "explore"
@@ -57,15 +52,13 @@ export type AgentRole =
   | "compaction"
   | "unknown";
 
-/** Readiness describes the publication state of normalized evidence, not support. */
+// Readiness describes the publication state of normalized evidence, not support.
 export type Readiness = "loading" | "ready" | "unavailable";
 
 export type HomeReadiness = {
   catalog: Readiness;
   providerLimits: Record<ProviderId, Readiness>;
-  /** Qualified provider + limit identity, for example `claude:current-session`. */
   limitActivity: Record<string, Readiness>;
-  /** Qualified session identity, for example `codex:abc123`. */
   sessionSummaries: Record<string, Readiness>;
 };
 
@@ -95,12 +88,10 @@ export type ExecutionTask = {
 };
 
 export type ReviewDecision = {
-  /** Deterministic bounded category derived monitor-side from the reviewed request. */
   action: "build_or_test" | "browser_interaction" | "dependency_change" | "file_change" | "filesystem_action" | "local_process" | "network_access" | "version_control" | "shell_command" | "privileged_action";
   outcome: "allowed" | "denied";
-  /** Bounded provider-reported assessment; never inferred by Pomegr. */
+  // Bounded provider-reported assessment; never inferred by Pomegr.
   risk: "low" | "medium" | "high" | "unknown";
-  /** Provider-reported review duration, capped monitor-side. */
   durationMs: number | null;
   reviewedAt: string;
 };
@@ -116,21 +107,17 @@ export type ReviewDecisionFeed = {
 export type Agent = {
   id: string;
   parentId: string | null;
-  /** Whether an explicit one-shot request can resolve this agent's local transcript path. */
   transcriptAvailable?: boolean;
-  /** Normalized workflow association. Provider task IDs never cross this boundary. */
+  // Normalized workflow association.
   workflowId: string | null;
-  /** Present only when a structured provider artifact verifies the phase association. */
+  // Present only when a structured provider artifact verifies the phase association.
   workflowPhaseId: string | null;
-  /** Stable provider-evidence order within the owning workflow. */
   workflowOrder: number | null;
-  /** Workflow lifecycle evidence; independent from transcript-recency status. */
   workflowState: "running" | "done" | "error" | "unknown" | null;
-  /** Bounded provider-reported work assignment when distinct from the agent identity. */
   assignment?: string | null;
   label: string;
   role: AgentRole;
-  /** Monitor-validated terminal type name for an unmapped role; display only. */
+  // Monitor-validated terminal type name for an unmapped role; display only.
   customType?: string | null;
   model: string;
   effort: string;
@@ -147,13 +134,12 @@ export type Agent = {
   toolCalls: number;
   skills: Array<{ name: string; calls: number; lastUsed: string | null }>;
   executionTasks?: ExecutionTask[];
-  /** Bounded normalized approval outcomes. Reviewed content and rationale remain monitor-private. */
+  // Bounded normalized approval outcomes.
   reviewDecisions?: ReviewDecisionFeed;
   lastSeen: string;
   startedAt: string;
   updatedAt: string;
   durationMs: number;
-  /** Aggregate of every resolved request cache lifetime observed for this agent. */
   cacheLifetime: CacheLifetime | null;
   tokens: {
     total: number;
@@ -174,9 +160,7 @@ export type Activity = {
   workKind: WorkKind;
   detail: string;
   status: "failed" | null;
-  /** Wall time from the tool call to its recorded result, in milliseconds. */
   durationMs: number | null;
-  /** Opaque request-snapshot id linked to this tool call or assistant reply. */
   requestId: string | null;
 };
 
@@ -222,7 +206,6 @@ export type CacheEvent = {
   cacheWriteTokens: number;
   previousCacheReadPercent: number | null;
   gapMs: number | null;
-  /** A reuse points to the tracked refill or miss-refill it follows. */
   relatedEventId: string | null;
 };
 
@@ -232,7 +215,6 @@ export type CacheMessageChangeSequence = "post_tool_task_notification_resume";
 
 export type CacheLifetimeInference = {
   cause: "cache_lifetime_elapsed";
-  /** Lifetime recorded on the preceding comparable request. */
   cacheLifetime: Exclude<CacheLifetime, "30m+">;
   elapsedMs: number;
 };
@@ -247,25 +229,21 @@ export type CacheToolDefinitionChange = { tool: "RemoteTrigger" | "PushNotificat
 export type CacheToolChangeAttributionCount = {
   cause: "remote_control_connected" | "deferred_definitions_loaded";
   count: number;
-  /** Fixed monitor-derived tool delta, Remote Control only (empty otherwise); provider schemas remain private. */
+  // Fixed monitor-derived tool delta, Remote Control only (empty otherwise); provider schemas remain private.
   changes: CacheToolDefinitionChange[];
-  /** Deferred definitions only, on an occurrence: 1 to 64, where 64 is a cap. Names stay private. */
+  // Deferred definitions only, on an occurrence: 1 to 64, where 64 is a cap.
   addedDefinitionCount?: number;
 };
 
 export type CacheRefillOccurrence = {
   observedAt: string;
-  /** Omitted for a possible full refill; a partial rewrite with a provider reason or an elapsed-lifetime inference is not counted as one. */
   kind?: "provider_diagnosed" | "lifetime_elapsed";
-  /** Provider-diagnosed cause when recognized; otherwise unavailable. */
+  // Provider-diagnosed cause when recognized; otherwise unavailable.
   reason: CacheRefillReason | null;
-  /** Bounded provider status; raw diagnostics remain monitor-private. */
+  // Bounded provider status; raw diagnostics remain monitor-private.
   providerStatus: CacheRefillProviderStatus | null;
-  /** Deterministic inference from the preceding request's resolved lifetime. */
   cacheLifetimeInference: CacheLifetimeInference | null;
-  /** Bounded transcript sequence observed around a messages-changed request. */
   messageChangeSequence: CacheMessageChangeSequence | null;
-  /** Inference tied to this occurrence's recognized lifecycle evidence. */
   toolChangeAttribution: Omit<CacheToolChangeAttributionCount, "count"> | null;
 };
 
@@ -274,29 +252,24 @@ export type CacheRefillCount = {
   count: number; // possible full refills only
   providerDiagnosedCount?: number; // bounded to 999; present only when positive
   lifetimeElapsedCount?: number; // bounded to 999; present only when positive
-  /** Chronological, bounded details for each counted refill. */
   occurrences: CacheRefillOccurrence[];
-  /** Provider-diagnosed causes for a bounded subset of these refills. */
   reasons: CacheRefillReasonCount[];
-  /** Bounded Pomegr inferences tied to recognized provider lifecycle evidence. */
   toolChangeAttributions: CacheToolChangeAttributionCount[];
 };
 
 export type CacheEventFeed = {
   status: "ready" | "unavailable";
   items: CacheEvent[];
-  /** Bounded per-agent counts of comparable high-read to low-read large rewrites. */
   possibleFullRefills: CacheRefillCount[];
 };
 
-/** Read-drop evidence is separate from provider-recorded cache writes. */
 export type CacheReadDropOccurrence = {
   id: string;
   observedAt: string;
   previousCacheReadPercent: number;
   cacheReadPercent: number;
   gapMs: number;
-  /** A recorded model changed between otherwise comparable adjacent requests. */
+  // A recorded model changed between otherwise comparable adjacent requests.
   kind?: "model_change";
 };
 
@@ -311,7 +284,7 @@ export type CacheReadDropFeed = {
   items: CacheReadDropCount[];
 };
 
-/** Bounded selection from retained normalized evidence, before UI caps. */
+// Bounded selection from retained normalized evidence, before UI caps.
 export type SessionReportRefill = {
   id: string;
   agentId: string;
@@ -369,13 +342,11 @@ export type WorkflowPhase = {
   agentIds: string[];
 };
 
-/** Sanitized provider-authored workflow metadata; no executable or transcript content. */
 export type Workflow = {
   id: string;
   name: string;
   summary: string | null;
   status: "running" | "completed" | "unknown";
-  /** Whether exact structured phase and worker metadata has been published. */
   metadataStatus: "pending" | "ready" | "unavailable";
   startedAt: string | null;
   updatedAt: string | null;
@@ -387,13 +358,12 @@ export type Workflow = {
 export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string; agentId?: string | null };
 export type LoopPattern = { id: string; agent: string; agentId?: string | null; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
-/** Bounded observed work/presence state. Provider-native lifecycle values stay monitor-private. */
+// Bounded observed work/presence state.
 export type SessionActivityStatus = "working" | "needs_input" | "idle" | "open" | "stopped" | "closed" | "unknown";
-/** Catalog qualification derived monitor-side from the primary agent's lifecycle. */
 export type SessionCurrentActivity = AgentCurrentActivity & {
   state: "current";
 };
-/** Catalog-only work summary derived from normalized task/tool evidence. */
+// Catalog-only work summary derived from normalized task/tool evidence.
 export type SessionActivityFallback = {
   label: string;
   observedAt: string;
@@ -401,12 +371,6 @@ export type SessionActivityFallback = {
   source: "execution_task" | "tool";
   actor: "primary" | "subagent" | "multiple" | "unknown";
 };
-/** Bounded session-directory row derived from committed normalized evidence. */
-/**
- * Primary agent's newest retained request with cache activity, live or
- * recorded. The browser derives the nearing/elapsed indication; null when
- * unavailable. See docs/internal/architecture/cache-timing.md.
- */
 export type SessionCacheTiming = {
   lastCacheTouchAt: string;
   cacheLifetime: CacheLifetime | null;
@@ -428,11 +392,8 @@ export type SessionSummary = {
   activeAgentCount: number | null;
   latestContextTotal: number | null;
   progress: SessionProgress | null;
-  /** Confirmed current primary heading; null for inactive, uncertain, or historical rows. */
   currentActivity: SessionCurrentActivity | null;
-  /** Separate from provider-authored activity; optional for older monitor responses. */
   activityFallback?: SessionActivityFallback | null;
-  /** Optional for older monitor responses. */
   cacheTiming?: SessionCacheTiming | null;
   repositoryId?: string | null;
   contextInventoryRef?: ContextInventoryReference | null;
@@ -440,13 +401,11 @@ export type SessionSummary = {
 
 export type SessionCatalogSnapshot = {
   sessions: SessionSummary[];
-  /** Optional during migration; absent means legacy catalog semantics. */
   revision?: number | string | null;
   readiness?: Pick<HomeReadiness, "catalog">;
   coverage?: SessionCatalogCoverage;
 };
 
-/** One bounded page from a committed inventory revision. */
 export type SessionDirectorySnapshot = Omit<SessionCatalogSnapshot, "sessions"> & SessionDirectoryGroups<WithSessionTask<SessionSummary>> & SessionDirectoryTaskFields<SessionSummary> & {
   revision: string | number;
   coverage: SessionCatalogCoverage;
@@ -454,7 +413,6 @@ export type SessionDirectorySnapshot = Omit<SessionCatalogSnapshot, "sessions"> 
   counts: { all: number; live: number; needs: number };
   pageSize: number;
   nextCursor: string | null;
-  /** An invalid cursor, or one issued for a different query, restarts at the first page. */
   cursorReset?: boolean;
 };
 
@@ -483,7 +441,7 @@ export type HomeSessionSummary = {
 
 export type HomeProjectHistory = {
   status?: "loading" | "ready";
-  /** Summary of retained observations; never a complete inventory aggregate. */
+  // Summary of retained observations; never a complete inventory aggregate.
   coverage?: "retained";
   observedSessionCount?: number;
   windowDays: 7;
@@ -508,7 +466,7 @@ export type HomeProviderUsageLimits = {
   usageLimits: UsageLimits;
 };
 
-/** One bounded request-time observation used only to correlate provider-reported limit movement. */
+// One bounded request-time observation used only to correlate provider-reported limit movement.
 export type HomeLimitRequestObservation = {
   id: string;
   observedAt: string;
@@ -531,17 +489,13 @@ export type HomeLimitMovement = {
   sessionIds: string[];
 };
 
-/**
- * Provider-reported plan movement aligned with local request timestamps. This is
- * correlation evidence, never proportional session attribution or billing.
- */
+// Provider-reported plan movement aligned with local request timestamps.
 export type HomeLimitActivity = {
   provider: ProviderId;
   source: ProviderSource;
   limitId: string;
   label: string;
   window: string;
-  /** Whether local activity is correlated to the whole account limit or one model-scoped limit. */
   scope: "account" | "model";
   percent: number;
   resetsAt: string | null;
@@ -549,7 +503,6 @@ export type HomeLimitActivity = {
   windowStartsAtExact: boolean;
   generatedAt: string;
   observedFrom: string;
-  /** Earliest locally recorded provider rejection in this reset window. */
   firstRejectedAt: string | null;
   status: "collecting" | "ready";
   partialCoverage: boolean;
@@ -570,7 +523,6 @@ export type HomeSnapshot = {
   error?: string;
 };
 
-/** Home data that is independent from project and live-session presentation. */
 export type HomeAggregateSnapshot = {
   generatedAt: string | null;
   revision?: number | string | null;
@@ -600,7 +552,6 @@ export type PullRequest = {
 export type ProviderId = "claude" | "codex";
 export type ProviderSource = "Claude Code" | "Codex";
 
-/** Public service reporting, independent of local session evidence and account quotas. */
 export type ProviderServiceIncident = {
   id: string;
   label: string;
@@ -629,12 +580,10 @@ export type ProviderStatusSnapshot = {
   providers: ProviderServiceStatus[];
 };
 
-/** Optional provider features; false means unsupported rather than a zero value. */
 export type ProviderCapabilities = {
   approvalMode: boolean;
   automaticCompactions: boolean;
   contextMachinery: boolean;
-  /** Optional during the repository-inventory capability rollout. */
   repositoryContextInventory?: boolean;
   repositoryPluginSetup?: boolean;
   estimatedCost: boolean;
@@ -673,11 +622,9 @@ export type UsageLimits = {
   fetchedAt: string | null;
   attemptedAt: string | null;
   origin?: "local_observation" | "provider_api";
-  /** Freshness of the complete observation at monitor read time. */
   freshness?: "fresh" | "stale";
-  /** Bounded monitor-side classification of the latest failed refresh. */
   failureKind?: "authentication_required" | "rate_limited" | "unavailable" | "runtime_unavailable" | null;
-  /** Earliest local retry eligibility after the latest failed refresh. */
+  // Earliest local retry eligibility after the latest failed refresh.
   retryAt?: string | null;
   error?: string;
   limits: Array<{
@@ -689,14 +636,13 @@ export type UsageLimits = {
     severity: "normal" | "warning" | "critical";
     active: boolean;
   }>;
-  /** Earlier API windows absent from the current observation; display only, with their own age. */
+  // Earlier API windows absent from the current observation; display only, with their own age.
   retainedLimits?: {
     fetchedAt: string;
     limits: UsageLimits["limits"];
   };
 };
 
-/** Provider/account-scoped usage cache shared by Home and session surfaces. */
 export type UsageLimitsSnapshot = {
   revision: number | string | null;
   generatedAt: string | null;
@@ -705,7 +651,7 @@ export type UsageLimitsSnapshot = {
 };
 
 export type MonitorState = {
-  /** Committed catalog identity when detailed provider evidence is not available. */
+  // Committed catalog identity when detailed provider evidence is not available.
   catalogIdentity?: SessionSummary | null;
   revision?: number | string | null;
   readiness?: SessionReadiness;

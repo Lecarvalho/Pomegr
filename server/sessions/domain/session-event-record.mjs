@@ -1,5 +1,4 @@
 export const SESSION_EVENT_RECORD_VERSION = 1;
-/** Newest entries kept per list; well above the 50 events the feed shows. */
 export const SESSION_EVENT_RECORD_LIMIT = 256;
 
 const SAFE_AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
@@ -29,8 +28,6 @@ function entry(at, agentId, field, value, allowed) {
   return { at: time, agentId, [field]: value };
 }
 
-// One entry per agent and recorded time, oldest to newest, the newest SESSION_EVENT_RECORD_LIMIT.
-// A later entry for the same agent and time replaces the earlier one.
 function bounded(entries) {
   const unique = new Map();
   for (const item of entries) if (item) unique.set(`${item.agentId}\u0000${item.at}`, item);
@@ -52,10 +49,6 @@ function exactKeys(value, keys) {
   return own.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 }
 
-/**
- * Validates a persisted record as a whole: exact keys, canonical times, safe agent IDs, fixed
- * kinds, both lists within the bound. Returns a frozen record, or null when anything is off.
- */
 export function normalizeSessionEventRecord(value) {
   if (!isPlainObject(value) || value.version !== SESSION_EVENT_RECORD_VERSION || !exactKeys(value, ["version", "refills", "compactions"])) return null;
   if (!Array.isArray(value.refills) || !Array.isArray(value.compactions)) return null;
@@ -75,11 +68,6 @@ export function normalizeSessionEventRecord(value) {
   return frozen(bounded(refills), bounded(compactions));
 }
 
-/**
- * The refill and compaction times derivable from the current public state: each per-agent refill
- * occurrence of a ready cache-event feed, and each automatic or manual compaction boundary. Only
- * the recorded time, the agent ID, and the fixed kind are read.
- */
 export function derivedSessionEventRecord({ cacheEvents, contextBoundaries } = {}) {
   const refills = [];
   if (cacheEvents?.status === "ready" && Array.isArray(cacheEvents.possibleFullRefills)) {
@@ -97,11 +85,6 @@ export function derivedSessionEventRecord({ cacheEvents, contextBoundaries } = {
   return frozen(bounded(refills), bounded(compactions));
 }
 
-/**
- * Union of recorded and newly derived entries. Entries only accumulate: one that the current
- * evidence no longer derives (its request left the retained window) stays recorded. For the same
- * agent and time the later record's kind wins. Returns `prior` itself when nothing changed.
- */
 export function mergeSessionEventRecord(prior, next) {
   const left = prior || EMPTY;
   const right = next || EMPTY;
@@ -125,18 +108,11 @@ function parseQualifiedSessionId(value) {
 
 const DEFAULT_RECORDER_MAX_ENTRIES = 512;
 
-/**
- * Bounded in-memory recorder for the session-event sidecars persisted next to session
- * observation checkpoints. `recorded` is a synchronous lookup, so a projection never waits on
- * disk. `record` merges into what the disk holds, never over it: it reads the session's sidecar
- * first when this recorder has no answer yet. Neither `ensure` nor `record` rejects.
- */
 export function createSessionEventRecorder({ store, maxEntries } = {}) {
   if (!store || typeof store.writeSessionEventRecord !== "function" || typeof store.loadSessionEventRecord !== "function") {
     throw new TypeError("Session event recorder requires a checkpoint store");
   }
   const bound = Number.isSafeInteger(maxEntries) && maxEntries > 0 ? maxEntries : DEFAULT_RECORDER_MAX_ENTRIES;
-  // qualifiedId -> record, or null for a session known to have no sidecar. Most recently used last.
   const entries = new Map();
   const pending = new Map();
   const reading = new Map();
@@ -147,7 +123,6 @@ export function createSessionEventRecorder({ store, maxEntries } = {}) {
     while (entries.size > bound) entries.delete(entries.keys().next().value);
   }
 
-  /** Resolves whether a record exists once this recorder holds an answer for the session. */
   function ensure(qualifiedId) {
     if (entries.has(qualifiedId)) return Promise.resolve(Boolean(entries.get(qualifiedId)));
     const parsed = parseQualifiedSessionId(qualifiedId);
@@ -158,7 +133,6 @@ export function createSessionEventRecorder({ store, maxEntries } = {}) {
       .then(() => store.loadSessionEventRecord(parsed.providerId, parsed.localSessionId))
       .catch(() => null)
       .then((record) => {
-        // A write that settled during the read is newer than what the read saw.
         if (!entries.has(qualifiedId)) retain(qualifiedId, record || null);
         return Boolean(entries.get(qualifiedId));
       })
@@ -167,7 +141,6 @@ export function createSessionEventRecorder({ store, maxEntries } = {}) {
     return read;
   }
 
-  /** Resolves true when the recorded union grew or changed and was written. */
   function record(qualifiedId, derived) {
     const parsed = parseQualifiedSessionId(qualifiedId);
     if (!parsed) return Promise.resolve(false);
@@ -195,7 +168,6 @@ export function createSessionEventRecorder({ store, maxEntries } = {}) {
     return held;
   }
 
-  /** Whether this recorder already holds an answer (a record, or a known absence) for the session. */
   function has(qualifiedId) {
     return entries.has(qualifiedId);
   }
@@ -203,17 +175,11 @@ export function createSessionEventRecorder({ store, maxEntries } = {}) {
   return Object.freeze({ ensure, record, recorded, has });
 }
 
-/**
- * The two session-domain store hooks that connect a projection to the recorder. Both are
- * monitor-private and feed only the session-event derivation. A store without event sidecars
- * (a minimal test double) records nothing.
- */
 export function createSessionEventRecording({ store, isActive, commit } = {}) {
   const recorder = typeof store?.writeSessionEventRecord === "function" ? createSessionEventRecorder({ store }) : null;
   const recommit = (sessionId) => (changed) => { if (changed && isActive()) commit(sessionId); };
   return Object.freeze({
-    // A record the recorder has not read yet is read off the request path, and the session's
-    // domains recommit when it exists.
+    // A record the recorder has not read yet is read off the request path, and the session's domains recommit when it exists.
     eventRecordForSession(sessionId) {
       if (!recorder) return null;
       if (!recorder.has(sessionId)) void recorder.ensure(sessionId).then(recommit(sessionId)).catch(() => {});

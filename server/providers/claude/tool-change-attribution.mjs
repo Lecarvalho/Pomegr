@@ -2,21 +2,12 @@ import {
   assistantIdentity, assistantRecord, boundedIdentity, normalizedCacheMissReason, plainObject, structuredContent, structuredToolResultIds,
 } from "./record-shapes.mjs";
 
-/**
- * Tool-change attribution as reducers over a transcript's records, so one rule set serves a complete
- * in-memory record list and the incremental whole-transcript pass whose bounded state does not depend
- * on the 2 MiB display tail. Decisions are made when a request is first seen with `tools_changed` and
- * kept (newest `MAX_DECISIONS`), so a later read never withdraws or alters one. Entry names are replayed
- * only to tell new from known; no name, description, schema, identifier or search query leaves this module.
- */
-
 const DEFERRED_DEFINITIONS_LOADED = "deferred_definitions_loaded";
 const REMOTE_CONTROL_CONNECTED = "remote_control_connected";
 const REMOTE_CONTROL_ACTIVE_PREFIX = "/remote-control is active";
 const MAX_BRIDGE_STATUS_DISTANCE = 12;
 const MAX_ADDED_DEFINITIONS = 64;
 const MAX_DEFINITION_NAME_LENGTH = 256;
-// The usage window keeps at most the newest 1,000 requests; the name set is far above any real deferred roster.
 const MAX_DECISIONS = 1_000;
 const MAX_KNOWN_DEFINITIONS = 8_192;
 
@@ -25,7 +16,6 @@ function remember(map, key, value) {
   if (map.size > MAX_DECISIONS) map.delete(map.keys().next().value);
 }
 
-/** `inlineSidechains`: skip inline sidechain records, which a primary transcript can carry for its subagents. */
 export function createToolChangeState({ expectedSessionId = "", inlineSidechains = false } = {}) {
   return {
     deferred: { inlineSidechains, known: new Set(), loads: new Map(), request: null, pending: null, gap: false },
@@ -39,14 +29,13 @@ export function reduceToolChange(state, record) {
   return state;
 }
 
-/** A record the source could not read: no new attribution is made from here, and none already made changes. */
+// A record the source could not read: no new attribution is made from here, and none already made changes.
 export function markToolChangeGap(state) {
   state.deferred.gap = true;
   state.remote.gap = true;
   return state;
 }
 
-/** Request identity -> `{ cause, added? }`. A competing transition or a Remote Control claim on the same request makes a load ambiguous. */
 export function toolChangeCauses(state) {
   const causes = new Map();
   const remote = new Map(state.remote.causes);
@@ -58,14 +47,12 @@ export function toolChangeCauses(state) {
   return causes;
 }
 
-/** Attribution over a complete record list. */
 export function inferredToolChangeCauses(records, options) {
   const state = createToolChangeState(options);
   for (const record of Array.isArray(records) ? records : []) reduceToolChange(state, record);
   return toolChangeCauses(state);
 }
 
-/** Entry names of a provider-written `deferred_tools_record`, null for any other record; an unreadable entry is null. */
 function deferredDefinitionNames(record) {
   const attachment = record?.type === "attachment" ? record.attachment : null;
   if (!plainObject(attachment) || attachment.type !== "deferred_tools_record" || !Array.isArray(attachment.entries)) return null;
@@ -73,7 +60,6 @@ function deferredDefinitionNames(record) {
     && entry.name.length > 0 && entry.name.length <= MAX_DEFINITION_NAME_LENGTH ? entry.name : null));
 }
 
-/** A provider-owned record that is a competing transition in a request interval: a bridge, delta, compaction, or new user prompt. */
 function competingTransitionRecord(record) {
   return record?.type === "bridge-session"
     || (record?.type === "system" && ["bridge_status", "compact_boundary"].includes(record.subtype))
@@ -81,17 +67,10 @@ function competingTransitionRecord(record) {
     || (record?.type === "user" && structuredToolResultIds(record).length === 0);
 }
 
-/**
- * A request whose first distinct successor records newly added deferred tool definitions after a matched
- * ToolSearch call carries a load: identity -> bounded count and whether a competing transition fell in the
- * interval before the successor's first fragment. An unreadable record, or one adding names before the
- * discovery result, makes its interval ambiguous for good so a later record never yields an understated count.
- */
 function reduceDeferredDefinitions(state, record) {
   if (state.inlineSidechains && record?.isSidechain === true) return;
   const identity = assistantIdentity(record);
   if (assistantRecord(record) && !identity) {
-    // An assistant record with no identity could be an intervening request.
     state.pending = null;
     state.request = null;
     return;

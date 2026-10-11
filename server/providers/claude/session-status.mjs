@@ -17,9 +17,6 @@ function remoteIdentity(value) {
 // Provider transport identities stay inside the adapter, never in catalog/evidence.
 export function normalizeClaudeSessionRegistryEntry(value, updatedAt) {
   const entry = normalizeSessionRegistryEntry(value, updatedAt);
-  // Claude Code writes `shell` when the primary agent is idle while a background
-  // shell task (a backgrounded Bash command or a Monitor) is still running. The
-  // session is idle between turns, so an owned one stays Open, never Unknown.
   if (entry?.status === "shell") entry.status = "idle";
   const ownerStart = typeof value?.startedAt === "number" ? value.startedAt : Date.parse(value?.startedAt || "");
   if (entry && Number.isFinite(ownerStart) && ownerStart > 0) entry.ownerStartedAt = ownerStart;
@@ -43,9 +40,6 @@ export function sessionActivityStatus(isLive, entry, backgroundRunning = null) {
   if (!isLive) return "idle";
   if (entry?.needsInput) return "needs_input";
   if (entry?.status === "active" || entry?.status === "waiting" || backgroundRunning === true) return "working";
-  // A validated owner proves the interactive runtime is still open even when
-  // the primary worker has become idle between turns. Keep that distinction
-  // at the session level; individual agents retain their native idle status.
   if (entry?.status === "idle" && entry?.resourceOwner) return "open";
   return entry?.status === "idle" ? "idle" : "unknown";
 }
@@ -101,10 +95,7 @@ function statusFromResponse(body, remoteId) {
   }
 }
 
-/** Read-only Remote Control metadata, acquired only by background provider work.
- * Never list remote sessions, attach to a worker, refresh credentials, or read events.
- * Cache only normalized lifecycle; raw response bodies die with each bounded request.
- */
+// Read-only Remote Control metadata, acquired only by background provider work.
 export function createClaudeSessionStatusReader(options = {}) {
   const { configRoot } = resolveClaudeProfileRoots(options);
   const { fetch: fetchImpl = globalThis.fetch, now = Date.now } = options;
@@ -194,10 +185,6 @@ export function createClaudeSessionStatusReader(options = {}) {
             changed = true;
           }
           item.nextReadAt = now() + (value ? STATUS_INTERVAL_MS : FAILURE_RETRY_MS);
-          // A refresh can have observed a replacement owner or credential while
-          // this request was in flight. Only wake the observer for the still
-          // current private cache association; its next catalog pass rechecks
-          // owner identity before projecting the normalized status.
           if (changed && cache.get(id) === item && credentialIdentity === identity) notify(id);
         }).finally(() => { item.pending = null; });
       }

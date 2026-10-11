@@ -93,10 +93,6 @@ export function createCodexLivenessCoordinator(options = {}) {
     } catch { return null; }
   }
 
-  // One observation reads each needed writer lock at most once. Codex takes a
-  // thread's lock before it creates the rollout and holds it while the thread is
-  // loaded, so where Windows lock evidence exists a missing or uncontended lock
-  // proves no process can resolve that thread's recorded work.
   function writerLockStates() {
     const states = new Map();
     let rootAvailable = null;
@@ -109,8 +105,6 @@ export function createCodexLivenessCoordinator(options = {}) {
           rootAvailable ??= fs.statSync(writerLocksRoot, { throwIfNoEntry: false })?.isDirectory() === true;
           const file = path.join(writerLocksRoot, `${localId}.lock`);
           const lock = rootAvailable ? readWriterLock(file)?.state : null;
-          // Release needs the cold-discovery contention probe to agree, so a
-          // writer that takes the lock between the two reads still counts as held.
           state = lock === "held" ? "held"
             : lock === "missing" || lock === "unlocked" ? (writerLockIsActive(file) === true ? "held" : "released")
               : "unavailable";
@@ -121,9 +115,6 @@ export function createCodexLivenessCoordinator(options = {}) {
     };
   }
 
-  // Unresolved recorded work is live only while a writer could still resolve
-  // it. When neither this thread's lock nor its root's is held, it is unknown
-  // and not live; nothing about completion, idle, or success is inferred.
   function writerReleased(thread, lockState) {
     const ids = [...new Set([thread.localId, thread.sessionId, thread.parentThreadId].filter(isSafeCodexSessionId))];
     return ids.length > 0 && ids.every((id) => lockState(id) === "released");
@@ -136,11 +127,6 @@ export function createCodexLivenessCoordinator(options = {}) {
     return released;
   }
 
-  // A recorded failed or interrupted turn reads Stopped while its process may
-  // still be present and able to resolve it. Release adds only the reason: the
-  // recorded status, evidence, and freshness stay, so Stopped is never retracted
-  // and the row still renders as Stopped. Live (heuristic or open-turn) rollouts
-  // take `releasedLiveness` instead.
   function isRecordedStop(liveness) {
     return liveness?.live === false && liveness.status === "stopped"
       && liveness.source === "structured_lifecycle" && liveness.evidence === "observed";
@@ -160,9 +146,6 @@ export function createCodexLivenessCoordinator(options = {}) {
     if (!file) return null;
     const current = incrementalSourceDescriptor(file);
     if (!current) return null;
-    // A confirmed native owner narrows this read to a genuine live candidate,
-    // so its header may look farther back for an explicit turn boundary without
-    // broadening the ordinary recent/history catalog scan.
     const tailBytes = ownerConfirmed ? maximumOwnerTailBytes : maximumTailBytes;
     const tailRecords = ownerConfirmed ? maximumOwnerTailRecords : CODEX_LIVENESS_MAX_TAIL_RECORDS;
     const fileKey = canonicalCodexSourcePath(file);
@@ -196,10 +179,6 @@ export function createCodexLivenessCoordinator(options = {}) {
           stats.rolloutBytes += Math.min(current.size, tailBytes);
         }
         const retained = codexRecordedLiveness(successor.state, { now: nowMs, complete: successor.complete });
-        // A complete retained source can begin inside a long-running turn. A
-        // confirmed owner plus fresh structured activity may refine that one
-        // unresolved case through the bounded tail below; ownership alone still
-        // cannot establish execution.
         if (retained && (!ownerConfirmed || retained.status !== "unknown"
           || successor.state.turn || successor.state.pendingInputs.length || successor.state.inputOverflow)) return retained;
       }
@@ -314,8 +293,6 @@ export function createCodexLivenessCoordinator(options = {}) {
         ? rolloutEvidence(thread.rolloutFile, checkedAt, implementation, thread.runtimeAvailability || null, Boolean(owner))
         : null;
       // A current owning-runtime snapshot is authoritative for its loaded task.
-      // Release never outranks an owning runtime or a confirmed owner. The lock
-      // reads stay inside this observation; only the fixed reason is exposed.
       const unowned = !app && !owner;
       const released = unowned && rollout?.live === true && writerReleased(thread, lockState);
       const stopReleased = unowned && isRecordedStop(rollout) && writerReleased(thread, lockState);
@@ -324,7 +301,6 @@ export function createCodexLivenessCoordinator(options = {}) {
       return {
         ...thread,
         liveStatus: liveness?.status || "unknown",
-        // Keep owner-backed presence separate from an unresolved recorded turn.
         presenceConfirmed: Boolean(app || owner),
         liveness: liveness ? {
           source: liveness.source, observedAt: liveness.observedAt,

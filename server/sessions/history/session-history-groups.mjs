@@ -51,26 +51,14 @@ export function scopeMatches(item, scope) {
     || (scope === "subagents" && item.agentId && item.agentId !== "primary") || item.agentId === scope;
 }
 
-// Monitor-authored labels of rows that are not tool calls. Only rows committed before the explicit
-// `call` marker existed are classified by label; new rows always carry the marker.
+// Monitor-authored labels of rows that are not tool calls.
 const LEGACY_NON_CALL_TOOLS = new Set(["User input", "Assistant replied", "Summary updated", "Shell failed"]);
 
-/**
- * Whether a history row (or its compact index ref) records a tool call rather than user input, an
- * assistant reply, a background-task notice, or a failed-shell outcome row. A legacy ref that
- * carries neither the marker nor a label counts as a call, as it did before the marker existed.
- */
 export function isToolCallRow(row) {
   if (typeof row?.call === "boolean") return row.call;
   return typeof row?.tool !== "string" || !(LEGACY_NON_CALL_TOOLS.has(row.tool) || row.tool.startsWith("Task "));
 }
 
-/**
- * A tool call with no recorded request: the `unassociated=1` activity filter and `unassociatedTotal`
- * select exactly these rows. Strict null, so a ref that lacks `requestId` is never one, and non-call
- * rows (user input, replies, notices) are excluded although their request is also null. A legacy index
- * ref with neither the marker nor a label cannot be told from a non-call row, so it is never one either.
- */
 export function isUnassociatedCall(row) {
   if (typeof row?.call !== "boolean" && typeof row?.tool !== "string") return false;
   return isToolCallRow(row) && row.requestId === null;
@@ -111,8 +99,7 @@ export function activityGroupPlan(requests, activity, query) {
     };
   });
   const requestGroups = headers.map((request) => plannedGroups.find((group) => group.request.id === request.id));
-  // Aggregates count tool calls only, so their total matches the session Tool calls KPI. Request
-  // groups still list every recorded row.
+  // Aggregates count tool calls only, so their total matches the session Tool calls KPI.
   const toolCalls = allScopedCalls.filter(isToolCallRow);
   const byKind = WORK_KINDS.map((kind) => {
     const calls = toolCalls.filter((item) => item.workKind === kind);
@@ -127,7 +114,6 @@ export function activityGroupPlan(requests, activity, query) {
     range: { from: headers[0]?.number || 0, to: headers.at(-1)?.number || 0 },
     requestTotal: scopedRequests.length,
     callTotal: scopedCalls.length,
-    // Scoped tool calls with no recorded request; unlike callTotal it ignores the five-request window.
     unassociatedTotal: toolCalls.filter(isUnassociatedCall).length,
     byKind,
     shellTasks: {

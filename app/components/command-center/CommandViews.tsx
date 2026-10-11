@@ -50,14 +50,12 @@ const activityActorLabel = {
 } as const;
 
 function sessionActivity(session: SessionSummary): DisplayActivity | null {
-  // Guard older monitor responses during upgrades; lifecycle qualification is backend-owned.
   const canShowCurrent = session.isLive && ["working", "needs_input"].includes(session.activityStatus);
   if (canShowCurrent && session.currentActivity?.state === "current") {
     return { ...session.currentActivity, provenance: "Provider-reported" };
   }
   const fallback = session.activityFallback;
   if (!fallback || !["current", "last_observed"].includes(fallback.state)) return null;
-  // A task-derived current label cannot outlive the live lifecycle qualification.
   if (fallback.state === "current" && !canShowCurrent) return null;
   return {
     ...fallback,
@@ -68,7 +66,6 @@ function sessionActivity(session: SessionSummary): DisplayActivity | null {
 function SessionCurrentActivity({ session, compact = false }: { session: SessionSummary; compact?: boolean }) {
   const activity = sessionActivity(session);
   const label = activity?.label ?? "—";
-  // Relative time, actor, and provenance can refresh independently; only a displayed label change fades in.
   const identity = label;
   const labelRef = useRef<HTMLSpanElement | null>(null);
   const previousIdentity = useRef<string | null>(null);
@@ -117,7 +114,6 @@ function SessionSummaryLoading({ session }: { session: SessionSummary }) {
 type SessionGrouping = "recent" | "project" | "provider" | "feature";
 const SESSION_GROUPINGS: { id: SessionGrouping; label: string }[] = [{ id: "recent", label: "Recent" }, { id: "project", label: "Repository" }, { id: "provider", label: "Provider" }, { id: "feature", label: "Feature" }];
 const SESSION_GROUPING_KEY = "pomegr-sessions-group-by";
-// The catalog's project field names the repository a session ran in; the interface calls it a repository.
 const SESSION_GROUP_NOUNS = { project: ["repository", "repositories"], provider: ["provider", "providers"], feature: ["feature", "features"] } as const;
 
 function storedSessionGrouping(): SessionGrouping {
@@ -130,7 +126,6 @@ function storedSessionGrouping(): SessionGrouping {
   }
 }
 
-// The directory is ordered newest-created first, so Recent sections follow the creation time.
 const RECENT_SECTIONS = [["today", "Started today"], ["yesterday", "Started yesterday"], ["week", "Started in the previous 7 days"], ["earlier", "Started earlier"]] as const;
 
 function recentSection(createdAt: string | null | undefined, now: number): (typeof RECENT_SECTIONS)[number][0] {
@@ -153,7 +148,6 @@ function SessionGroupHeader({ label, open, onToggle, tallies }: { label: string;
   </button>;
 }
 
-/** `omit` drops the field the enclosing group header already names. `showTask` adds the Task column, second (D326). */
 function sessionColumns(providers: ProviderServiceStatus[], omit: "project" | "provider" | "feature" | null, showTask: boolean): CommandTableColumn<SessionDirectoryRow>[] { return [
   {
     id: "session", label: "Session", colClassName: "commandSessionColSession",
@@ -203,7 +197,6 @@ function SessionProviderWarning({ session, providers }: { session: SessionSummar
   return <ProviderStatusDetails status={status} compact chip />;
 }
 
-/** Mounted only while a repository filter is active, so the Sessions page reads the inventory only then. */
 function RepositoryFilterChip({ repositoryId, onClear }: { repositoryId: string; onClear: () => void }) {
   const { snapshot } = useRepositoryInventory();
   const name = snapshot.repositories.find((entry) => entry.id === repositoryId)?.displayName;
@@ -222,10 +215,9 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const [provider, setProvider] = useState<{ id: ProviderId; label: string } | null>(null);
   const [feature, setFeature] = useState<{ id: string; label: string } | null>(null);
   const [closedGroups, setClosedGroups] = useState<ReadonlySet<string>>(() => new Set());
-  // A scope that already names one project, provider or feature leaves a single group, so its rows page as a list.
   const serverGroup = grouping === "project" && !project ? "project" : grouping === "provider" && !provider ? "provider" : grouping === "feature" && !feature ? "feature" : null;
   const [directory, setDirectory] = useState<SessionDirectorySnapshot | null>(null);
-  // Task references reach a same-computer client only. The column follows the last answer, so it never appears and goes.
+  // Task references reach a same-computer client only.
   const taskReadiness = directory?.taskReadiness;
   const showTask = taskReadiness === "ready";
   const columns = useMemo(() => sessionColumns(providers, serverGroup, showTask), [providers, serverGroup, showTask]);
@@ -336,15 +328,12 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const coverage = directoryMatchesQuery ? directory?.coverage : undefined;
   const counts = directoryMatchesQuery ? directory?.counts : undefined;
   const matchedCount = directoryMatchesQuery ? directory?.matchedCount : null;
-  // An empty page under a search, scope, project, or repository filter is a filtered result, not an empty catalog.
   const narrowed = Boolean(query.trim() || project || repositoryId || provider || feature || filter !== "all");
-  // Grouping by feature lists only sessions started for a feature's task, so an empty answer has its own wording.
   const featureEmpty = serverGroup === "feature" && directoryMatchesQuery
     ? taskReadiness === "desktop_only" ? { title: "Features are not shown here", detail: "Task and feature details are shown in the Pomegr desktop app, or in a browser on the same computer." }
       : taskReadiness === "unavailable" ? { title: "Features are unavailable", detail: "Pomegr could not read the task board." }
         : !narrowed ? { title: "No feature sessions", detail: "A session appears here once it is started for a task that belongs to a feature." } : null
     : null;
-  // The filter chip names the feature the monitor resolved; until then, the group it was opened from.
   const featureName = (directoryMatchesQuery && directory?.feature?.id === feature?.id ? directory?.feature?.name : undefined) ?? feature?.label;
   const liveSessionCount = counts?.live;
   const needsInputCount = counts?.needs;

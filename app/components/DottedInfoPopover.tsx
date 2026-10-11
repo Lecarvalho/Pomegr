@@ -37,12 +37,6 @@ type PopoverPosition = {
   top: number;
 };
 
-/**
- * Compact evidence disclosure for explanatory inline text. The dotted
- * underline is intentionally reserved for text; icons, buttons, and chips
- * should keep their own established affordances. Keep the supplied content
- * factual and use the optional link for longer explanations.
- */
 export function DottedInfoPopover({ ariaLabel, children, className = "", content, link }: DottedInfoPopoverProps) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<PopoverPosition | null>(null);

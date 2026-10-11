@@ -1,16 +1,9 @@
-// Pure Markdown handling for the public documentation loader (WEB-01): front matter, heading
-// anchors, link and image resolution, and conversion of marked lexer tokens into the structured
-// blocks the website renders. It performs no filesystem access and names no path outside the
-// package; `docs-content.mjs` supplies the pages and an image reader. Raw HTML never survives:
-// every html token is an error.
+// Pure Markdown handling for the docs loader: no filesystem access. Raw HTML never survives; every html token is an error.
 
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { marked } from "marked";
 import { imageDimensions, imageMetadataProblem } from "./docs-images.mjs";
-
-// ---------------------------------------------------------------------------
-// Shared constants and primitives
 
 export const PUBLIC_LABEL = "docs/public/";
 export const IMAGE_ROUTE_PREFIX = "/docs/images/";
@@ -54,20 +47,11 @@ function startsWith(bytes, prefix) {
 export const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 export const quote = (value) => JSON.stringify(String(value).length > 80 ? `${String(value).slice(0, 77)}...` : String(value));
 
-// ---------------------------------------------------------------------------
-// Text, slugs, and character references
-
-/** Decode the named character references in `NAMED_REFERENCES` in one pass. */
 export function decodeCharacterReferences(text) {
   return text.replace(/&([A-Za-z]+);/g, (match, name) => NAMED_REFERENCES[name] ?? match);
 }
 
-/**
- * GitHub-compatible heading anchor for already-rendered plain heading text: lowercase,
- * drop everything except letters, marks, numbers, connector punctuation, hyphens and
- * spaces, then turn each space into a hyphen. The renderer, link validation and the
- * future docs checker all use this function.
- */
+/** GitHub-compatible heading anchor for plain heading text. */
 export function slugifyHeading(text) {
   return String(text).trim().toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc}\- ]/gu, "").replace(/ /g, "-");
 }
@@ -92,7 +76,6 @@ export function createSlugger() {
   };
 }
 
-/** Plain rendered text of marked inline tokens (no markup, references decoded). */
 function inlineText(tokens) {
   let out = "";
   for (const token of tokens ?? []) {
@@ -130,9 +113,6 @@ function plainTextOfInlines(nodes) {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Front matter
-
 function parseScalar(value) {
   if (value.startsWith('"')) {
     if (!/^"(?:[^"\\]|\\.)*"$/.test(value)) return { error: "a double-quoted value must be one complete string" };
@@ -152,10 +132,6 @@ function parseScalar(value) {
   return { value };
 }
 
-/**
- * Parse the `---` front matter of a public page: only `title` and `description`, each a
- * single-line plain-text string. `markdown` must already use LF line endings.
- */
 export function parseFrontMatter(markdown) {
   const issues = [];
   const fail = (message, line) => issues.push({ message, line });
@@ -217,10 +193,6 @@ export function parseFrontMatter(markdown) {
   return { metadata, body, bodyLine: end + 2, issues };
 }
 
-// ---------------------------------------------------------------------------
-// Link and image resolution
-
-/** Resolve a link destination relative to `fromSource`; returns a `{ source, fragment }` or an error. */
 function resolveRelativeTarget(fromSource, href) {
   const hashIndex = href.indexOf("#");
   const pathPart = hashIndex < 0 ? href : href.slice(0, hashIndex);
@@ -238,9 +210,6 @@ function resolveRelativeTarget(fromSource, href) {
   }
   return { source: joined, fragment };
 }
-
-// ---------------------------------------------------------------------------
-// Markdown -> structured blocks
 
 const SUPPORTED_BLOCKS = "headings, paragraphs, lists, tables, fenced code, blockquotes and images";
 
@@ -527,7 +496,6 @@ export function createConverter(state) {
   };
 }
 
-/** Lex a page body and collect its top-level headings and anchors (first pass). */
 export function lexPage(page, markdown, issues) {
   const label = `${PUBLIC_LABEL}${page.source}`;
   const front = parseFrontMatter(markdown);

@@ -27,11 +27,6 @@ function CapacityRow({ provider, usage }: { provider: TaskProvider; usage: TaskG
   return <Row label={label} mono>{reading}</Row>;
 }
 
-/**
- * The start gates in the Queue view's right column (design contract D156-D169): what is checked before every session
- * Pomegr starts, as the monitor last judged it. The threshold is a control only in the desktop app (`edits`). The
- * Queue view places it in its aside, above the Schedule panel.
- */
 export function StartGatesPanel({ queue, edits }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits }) {
   const headingId = useId();
   const gates = queue.gates;

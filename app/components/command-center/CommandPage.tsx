@@ -3,7 +3,6 @@ import { CommandIcon, type CommandIconName } from "./CommandIcon";
 export { CommandIcon } from "./CommandIcon";
 export { CommandSelect, type CommandSelectOption } from "./CommandSelect";
 
-/** Chevron between breadcrumb steps; decorative, so the steps read as a plain list. */
 export function CommandBreadcrumbSeparator() {
   return <CommandIcon name="chevron" size="small" className="commandIcon commandBreadcrumbSeparator" />;
 }

@@ -165,7 +165,7 @@ export function parseCodexRolloutLiveness(records, options = {}) {
 }
 
 
-/** Retain recorded execution state; an open turn is not proof of a running process. */
+// Retain recorded execution state; an open turn is not proof of a running process.
 export function observedCodexRolloutLifecycle(records, { now = Date.now(), previous = null } = {}) {
   const boundary = reduceCodexTurnLifecycle(records, previous);
   if (!boundary) return { boundary: null, liveness: null };

@@ -1,4 +1,4 @@
-/** Cache-only notification GET. The owning runtime has already committed and serialized the value. */
+// Cache-only notification GET.
 export function serveNotificationRoute({ request, response, runtime, requestedRevision, writeCommitted }) {
   if (request.method !== "GET") {
     response.writeHead(405, { Allow: "GET" });

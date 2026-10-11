@@ -21,7 +21,6 @@ export function ActivitiesTab({ sessionId, historical, paused, route, onRouteCha
   </TransitionalSessionPanel>;
 }
 
-/** One shared selection drives the chart, request details and the grouped feed; agent scope applies to all. */
 function ActivitiesContent({ state, historical, paused, route, onRouteChange, onOpenAgent }: {
   state: MonitorState; historical: boolean; paused: boolean; route: RequestSelectionRoute;
   onRouteChange: (next: RequestSelectionRoute) => void; onOpenAgent: (agentId: string) => void;
@@ -33,11 +32,6 @@ function ActivitiesContent({ state, historical, paused, route, onRouteChange, on
     historical, cacheEvents: tokens.cacheEvents, cacheReadDrops: tokens.cacheReadDrops, route, onRouteChange,
   });
   const historyRevision = selection.history.revision;
-  // The served feed is five request groups around one number, so re-anchoring it on every selection
-  // slides every line. A selection made by tapping a group keeps the window that group was read in;
-  // any other selection (paging, Jump to latest, a live session following the newest request) drops
-  // the pin, so the feed still follows the selection everywhere else. Adjusted during render rather
-  // than in an effect: an effect would let one feed page render against the previous anchor first.
   const [tappedRequest, setTappedRequest] = useState<number | null>(null);
   const [feedWindow, setFeedWindow] = useState<{ selected: number | null; anchor: number | null }>({ selected: selection.selectedNumber, anchor: null });
   const selectedNumber = selection.selectedNumber;
@@ -57,9 +51,6 @@ function ActivitiesContent({ state, historical, paused, route, onRouteChange, on
     <RequestsActionsPanel agents={state.agents} workflows={state.workflows} requestSnapshots={tokens.requestSnapshots} contextBoundaries={tokens.contextHistory.boundaries} cacheWriteAvailable={state.capabilities.cacheWriteUsage} historical={historical} cacheEvents={tokens.cacheEvents} cacheReadDrops={tokens.cacheReadDrops} selection={selection} />
     {selection.history.enabled
       ? <ActivityFeedPanel selection={selection} feed={feed} agents={state.agents} busy={!feed.correlated || selection.pending} cacheWriteAvailable={state.capabilities.cacheWriteUsage} onOpenAgent={onOpenAgent} onSelectRequest={setTappedRequest} />
-      // Paused desktop sessions stop polling the paged history endpoint: an honest unavailable
-      // state replaces the feed instead of silently rendering nothing (the deleted ActivityPanel
-      // was the only surface that still worked in this state, off its own local activity prop).
       : <section className="panel activityPanel" aria-label="Activity feed"><p className="sessionTabState">Activity history is unavailable while this session view is paused.</p></section>}
   </div>;
 }

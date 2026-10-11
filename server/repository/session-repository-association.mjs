@@ -4,9 +4,6 @@ export function createSessionRepositoryAssociations({ registry, inventory, previ
   const pending = new Map();
   // Keys outlive the bounded value cache: a committed association is reused only for its own key.
   const settledKeys = new Map();
-  // Sessions settled on a provisional identity (a removed task worktree whose repository was not known
-  // yet), with their private launch directory. Any later lookup asks for their projection again once the
-  // repository is known, so the provisional identity does not outlive that moment. Memory only.
   const awaitingOwner = new Map();
   const cwdOf = (key) => JSON.parse(key)[0];
   function refreshKnownOwners() {
@@ -35,14 +32,10 @@ export function createSessionRepositoryAssociations({ registry, inventory, previ
       const key = JSON.stringify([cwd, attribution?.state, session.repositoryAttribution]);
       const cached = associations.get(id);
       // A removed task worktree whose repository was not known yet settled on a provisional identity.
-      // Once the repository is known it is derived again, and the settled value is served meanwhile.
       const stale = cached?.key === key && cached.provisional === true && inventory.taskWorktreeOwner?.(cwd) === "known";
       if (cached?.key === key && !stale) return cached.value;
       const committed = () => stale ? cached.value : settledKeys.get(id) === key ? previousAssociation?.(candidate) || null : null;
       if (pending.get(id)?.key === key) return committed();
-      // The bounded cache holds fewer sessions than the store. A miss serves the
-      // committed association so re-derivation cannot flip it to null, and the
-      // settled lookup rederives only when it actually changes the value served.
       const operation = { key, value: null };
       pending.set(id, operation);
       const unavailable = session.repositoryAttribution && !["single", "recorded", "launch"].includes(session.repositoryAttribution);

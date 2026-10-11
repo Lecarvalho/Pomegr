@@ -66,11 +66,6 @@ function latestPendingActivity(pending) {
   ))[0] || null;
 }
 
-/**
- * Reduce only Claude's native, user-visible Bash activity descriptions. Raw
- * commands, arbitrary tool arguments, results, thinking, and message text are
- * deliberately outside this parser.
- */
 export function parseClaudeCurrentActivityStateRecords(records, options = {}) {
   const previous = options.existingState || {};
   const pending = new Map((Array.isArray(previous.pending) ? previous.pending : []).flatMap((item) => (
@@ -148,7 +143,7 @@ function priorSuffixMatches(file, source) {
   }
 }
 
-/** Cooperative complete-record reader with bounded provider-private state. */
+// Cooperative complete-record reader with bounded provider-private state.
 export function createClaudeCurrentActivityReader(options = {}) {
   const maximumEntries = Number.isInteger(options.maximumEntries)
     ? Math.max(1, Math.min(options.maximumEntries, 256)) : 100;

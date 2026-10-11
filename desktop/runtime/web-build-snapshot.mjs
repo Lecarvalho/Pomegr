@@ -14,10 +14,7 @@ function processIsRunning(pid) {
   }
 }
 
-// A build in a source checkout replaces dist's hashed assets, while a running web server
-// keeps the asset names of the build it loaded. Serving a private copy keeps them together.
-// Returns the copy's directory; it is removed when the process exits, and a copy left by a
-// process that no longer runs is removed by the next start.
+// A private copy keeps a running server's hashed asset names together with its assets; stale copies are removed on the next start.
 export async function createWebBuildSnapshot(applicationRoot, options = {}) {
   const pid = String(options.pid ?? process.pid);
   const isRunning = options.isRunning ?? processIsRunning;

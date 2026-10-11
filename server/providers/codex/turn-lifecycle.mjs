@@ -4,7 +4,7 @@ const STARTS = new Set(["task_started", "turn_started", "turn/started"]);
 const ENDS = new Set(["task_complete", "task_completed", "task_failed", "task_interrupted", "turn_complete", "turn_completed", "turn/completed", "turn_failed", "turn_interrupted", "turn_aborted"]);
 const SAFE_TURN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
 
-/** Provider-private boundary decoder. Context identifies a turn, not a same-turn restart. */
+// Provider-private boundary decoder. Context identifies a turn, not a same-turn restart.
 export function codexTurnBoundary(record) {
   const payload = record?.payload;
   const type = record?.type === "event_msg" ? payload?.type : record?.type;
@@ -25,7 +25,7 @@ export function codexTurnBoundary(record) {
   };
 }
 
-/** Reduce only explicit turn boundaries; retain identity/order across incremental batches. */
+// Reduce only explicit turn boundaries; retain identity/order across incremental batches.
 export function reduceCodexTurnLifecycle(records, previous = null) {
   let state = previous;
   for (const record of records || []) {

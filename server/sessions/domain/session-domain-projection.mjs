@@ -7,14 +7,7 @@ import { derivedSessionEventRecord, mergeSessionEventRecord } from "./session-ev
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
 
-/**
- * Every catalog-row field a session-domain projection reads. The domain store compares exactly
- * this view of a row to decide whether a catalog commit changed a retained session's inputs, and
- * the projection is handed only this view. A row field outside the list is therefore absent for
- * the projection, never silently stale: to read a new one, add it here.
- */
 export const SESSION_DOMAIN_CATALOG_FIELDS = Object.freeze(["isLive", "needsInput", "activityStatus", "currentActivity", "activityFallback"]);
-/** The unavailable placeholder also takes its observation time from the row. */
 export const UNAVAILABLE_SESSION_DOMAIN_CATALOG_FIELDS = Object.freeze([...SESSION_DOMAIN_CATALOG_FIELDS, "updatedAt"]);
 
 /** The compared view of one catalog row, or null without a row. */
@@ -137,9 +130,6 @@ function publicInventoryRef(value) {
   return result ? { ...result, contextAllocation: publicContextAllocation(value.contextAllocation) } : null;
 }
 function publicRepositoryFile(value, cwd, forbiddenRoots, historical) {
-  // A historical repository has no live root to resolve against (cwd is null), so it is
-  // validated shape-only against the recorded snapshot's own path rule; a live repository
-  // keeps validating against its actual session cwd.
   if (historical === true) return isSafeRecordedRepositoryPath(value?.path) ? { status: value.status, path: value.path } : null;
   const safePath = repositoryRelativePath(value?.path, cwd, { forbiddenRoots });
   return safePath ? { status: value.status, path: safePath } : null;
@@ -155,15 +145,6 @@ function publicRepository(value, cwd, forbiddenRoots, validatedFiles = null) {
   };
 }
 
-/**
- * The one projection step that reads outside its arguments. A live repository's changed files
- * are validated against the filesystem, so the same committed inputs can yield a shorter list
- * once a path is no longer safely contained under the recognized root. Returns that validated
- * list, or null when the repository projection consults no filesystem state (no repository, a
- * recorded historical one, or no changed files). A caller that skips unchanged projections
- * must compare this list too, and may hand it back as `options.liveRepositoryFiles` so one
- * projection validates each path once.
- */
 export function liveRepositoryFiles(snapshot, options = {}) {
   const repository = snapshot?.publicState?.session?.repository;
   if (!repository || repository.historical === true || !Array.isArray(repository.files) || repository.files.length === 0) return null;
@@ -198,9 +179,6 @@ const RESOURCE_RETAINED_READINESS = new Set(["loading", "ready", "unavailable", 
 const RESOURCE_RETENTION_REASONS = new Set(["age_retention", "size_cleanup", "not_recorded"]);
 const MAX_RESOURCE_TASK_DURATION_MS = 24 * 60 * 60 * 1000;
 
-/** Combined top-level domain readiness: ready when either side is ready, loading when
- * either side is still loading (never a stored SQLite "rebuilding" for the outer readiness,
- * only for retained.readiness), otherwise unavailable. */
 function resourcesDomainReadiness(liveReadiness, retainedBlock) {
   const retainedReadiness = retainedBlock?.readiness === "ready" ? "ready"
     : retainedBlock?.readiness === "loading" || retainedBlock?.readiness === "rebuilding" ? "loading"
@@ -215,9 +193,6 @@ function resourceAvailabilityHasData(liveReadiness, retainedBlock, state) {
   const retainedHasData = Boolean(retainedBlock?.minutes?.length || retainedBlock?.peaks?.length);
   if (liveHasData || retainedHasData) return true;
   const liveResolved = liveReadiness === "ready";
-  // No retained block at all (a caller that never wired a resources retained source)
-  // behaves like the live-only rule this replaces: it never blocks a definitive false.
-  // A present block must itself reach "ready" before its absence of rows counts.
   const retainedResolved = retainedBlock == null || retainedBlock.readiness === "ready";
   return liveResolved && retainedResolved ? false : null;
 }
@@ -276,8 +251,6 @@ function publicResourcePeak(value, tasksById) {
     cpuMachinePercent: value.field === "cpu_cores" && Number.isFinite(value.cpuMachinePercent) && value.cpuMachinePercent >= 0
       ? Math.min(100, value.cpuMachinePercent) : null,
     tasks: matchedTaskIds.map((taskId) => resolveResourcePeakTask(taskId, tasksById)).filter(Boolean),
-    // resource_peaks.matched_request_number is always null today; request numbers live
-    // only in the async session-history store. See docs/internal/plans/ia-redesign.md T09.
     request: null,
     window: publicResourceWindow(value.window),
   };
@@ -354,7 +327,6 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
     metrics: {
       agents: state.metrics?.agents || 0,
       activeAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => agent.status === "active").length : 0,
-      // An agent waiting for input is idle in these totals, as in the roster's status tally.
       idleAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => ["idle", "waiting", "warm", "needs_input"].includes(agent.status)).length : null,
       finishedAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => ["finished", "stopped"].includes(agent.status)).length : null,
       toolCalls: state.metrics?.toolCalls || 0,
@@ -440,7 +412,6 @@ function agentDetails(agentId, agents, workflows, boundaries) {
   };
 }
 
-/** Derive complete browser-safe domain candidates from one committed public state. */
 export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const state = snapshot?.publicState;
   if (!state || typeof state !== "object") throw new TypeError("Session domain projection requires committed public state");
@@ -458,8 +429,6 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const repositoryReadiness = readiness(ready.repository);
   const retainedResources = options.retainedResources || null;
   const liveResourcesReadiness = readiness(ready.resources);
-  // Historical sessions are no longer forced to unavailable: ready when live is ready OR
-  // retained (SQLite-backed) data is ready.
   const resourcesReadiness = resourcesDomainReadiness(liveResourcesReadiness, retainedResources);
   const resourceHasData = resourceAvailabilityHasData(liveResourcesReadiness, retainedResources, state);
   const requests = publicRequestFeed(state.metrics?.tokens?.requestSnapshots);
@@ -468,14 +437,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const insights = list(state.insights, publicInsight);
   const loops = list(state.loops, publicLoop);
   const toolCalls = Array.isArray(snapshot.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
-  // Never read from session.repository (which /api/state serializes verbatim): the recorded file
-  // history and the recorded Git-observed block arrive only through options.fileHistory and
-  // options.gitObserved, side channels, and one module owns the finished list and its count.
   const touchedFiles = sessionTouchedFiles({ fileHistory: options.fileHistory, gitObserved: options.gitObserved, agents });
-  // Derived here, from the same committed inputs as the other domains, so a resource, repository,
-  // or evidence change re-projects the summary and an unchanged feed leaves its revision alone.
-  // The recorded refill and compaction times plus the ones this evidence derives. The union is
-  // returned beside the domains so the store can record it; it is monitor-private.
   const eventRecord = mergeSessionEventRecord(options.eventRecord || null, derivedSessionEventRecord({ cacheEvents, contextBoundaries: boundaries }));
   const events = sessionEvents({
     readiness: sectionReadiness(ready, SESSION_EVENT_READINESS_SECTIONS),
@@ -484,8 +446,6 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     userMessageTimes: snapshot.evidence?.userMessageTimes,
     pullRequestCreations: snapshot.evidence?.pullRequestCreations,
     pullRequests,
-    // Never read from session.repository (which /api/state serializes verbatim): the recorded
-    // commit times arrive only through options.commitTimes, a side channel like options.gitObserved.
     commitTimes: options.commitTimes,
     retainedResources,
     eventRecord,
@@ -518,8 +478,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     repositoryId: session?.repositoryId || null,
     contextInventoryRef: publicInventoryRef(session?.contextInventoryRef),
     repository,
-    // Live views only, and only while no repository is shown: the one recognized reason the
-    // live Git check found none. A side channel like options.gitObserved, never /api/state.
+    // Live views only, and only while no repository is shown: the one recognized reason the live Git check found none.
     unavailableReason: repository?.available !== true && repository?.historical !== true
       && options.repositoryUnavailableReason === "branch_changed" ? "branch_changed" : null,
     pullRequests,

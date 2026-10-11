@@ -29,9 +29,7 @@ const IMAGE_MAX = 4;
 const IMAGE_FILE = /^img-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/u;
 const LAUNCH_TIMEOUT_MS = 15_000;
 
-// A detached child of a windowless app gets no console, so the session is opened through one fixed
-// PowerShell command. The executable, its argument string and the directory travel only as environment
-// variables: PowerShell reads them as values and never parses them as script.
+// A windowless app gives a detached child no console, so one fixed PowerShell command opens the session; its inputs travel as environment variables and are never parsed as script.
 export const TASK_START_LAUNCH_ARGUMENTS = Object.freeze([
   "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
   "$ErrorActionPreference='Stop';"
@@ -40,7 +38,6 @@ export const TASK_START_LAUNCH_ARGUMENTS = Object.freeze([
     + "Start-Process -FilePath $f -ArgumentList $a -WorkingDirectory $d",
 ]);
 
-/** The words of the native confirmation of a manual start: only the task ID enters them. */
 export function taskStartConfirmation({ taskId, separateWorktree } = {}) {
   return separateWorktree === true
     ? {
@@ -75,10 +72,7 @@ function powershellExecutable(environment, fileExists) {
 
 const result = (status) => Object.freeze({ status });
 
-// One entry per startable provider: where its CLI is and its flags. Every provider's session runs in the user's
-// own environment (`userSessionEnvironment`). A flag is
-// passed only when the task sets it. Codex takes the effort as a configuration override and accepts every
-// task effort by name, `xhigh` included. Only Claude Code has Remote Control.
+// One entry per startable provider; a flag is passed only when the task sets it.
 const PROVIDERS = Object.freeze({
   claude: Object.freeze({
     executable: (environment, fileExists) => resolveClaudeExecutable(claudeDiscoveryEnvironment(environment), fileExists),
@@ -113,10 +107,6 @@ function defaultDirectoryExists(directory) {
   try { return statSync(directory).isDirectory(); } catch { return false; }
 }
 
-/**
- * The plan's image files: at most four absolute, normalized paths with a store-made file name, all in one folder, each
- * an existing file and named in the prompt. Null when any of that fails; an older monitor sends none.
- */
 function planImages(images, prompt, fileExists) {
   if (images === undefined) return [];
   if (!Array.isArray(images) || images.length > IMAGE_MAX) return null;
@@ -130,14 +120,12 @@ function planImages(images, prompt, fileExists) {
   return new Set(images).size === images.length ? [...images] : null;
 }
 
-/** Returns a validated plan, or null when anything about it is unsafe to use. */
 function validatePlan(plan, taskId, directoryExists, fileExists) {
   if (!isPlainObject(plan) || !Object.hasOwn(PROVIDERS, plan.provider) || plan.taskId !== taskId) return null;
   if (!(plan.model === null || (typeof plan.model === "string" && MODEL.test(plan.model)))) return null;
   if (!(plan.effort === null || (typeof plan.effort === "string" && EFFORTS.has(plan.effort)))) return null;
   if (typeof plan.token !== "string" || !TOKEN.test(plan.token)) return null;
   if (!(plan.worktree === undefined || typeof plan.worktree === "boolean")) return null;
-  // An older monitor sends no key; a provider without Remote Control never gets the flag.
   if (!(plan.remoteControl === undefined || typeof plan.remoteControl === "boolean")) return null;
   if (plan.remoteControl === true && typeof PROVIDERS[plan.provider].remoteControlFlags !== "function") return null;
   const { prompt, repositoryRoot: root } = plan;
@@ -151,7 +139,6 @@ function validatePlan(plan, taskId, directoryExists, fileExists) {
   return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true, remoteControl: plan.remoteControl === true, images };
 }
 
-/** Resolves true when the launcher exits with code 0 in time, false otherwise. Never throws. */
 function waitForLaunch(child, timeoutMs) {
   return new Promise((resolve) => {
     if (!child || typeof child.once !== "function") { resolve(false); return; }
@@ -171,24 +158,7 @@ function waitForLaunch(child, timeoutMs) {
   });
 }
 
-/**
- * Native-only start of one Claude Code or Codex session for one task. The confirmation precedes the plan
- * request because the monitor mints a single-use token with the plan, so the provider is known only after it:
- * a start is refused before the confirmation when no provider CLI is installed, and after the plan when the
- * task's own provider CLI is missing. The session runs in its own terminal window and is never killed or
- * tracked by Pomegr. Nothing but a fixed status reaches the renderer. The queue runner starts the next task
- * through `startQueued`, the same path without a renderer event or a confirmation, because the user turned the
- * queue on; both entry points share one in-flight slot, so a manual and a queued start never overlap. When the
- * plan asks for a worktree (a task of a step that runs in parallel), the session starts in the task's own Git
- * worktree (`task-worktree.mjs`) instead of the repository root; a worktree that cannot be made or safely reused
- * fails the start. A worktree made for a start that then fails is removed again, by the rule that discards no work.
- * A manual start that only the repository root's uncommitted changes hold answers `tree_dirty`; the owner may then ask
- * for the same start with `separateWorktree`, which the confirmation names and which asks the monitor for a plan in a
- * worktree of the task's own.
- * A task's images are files in the monitor's task store that the plan names: Claude Code is given their folder as an
- * extra readable directory, and Codex gets them attached to the prompt. When the plan asks for Remote Control, Claude
- * Code is started with its own `--remote-control` flag; Pomegr never connects to that session itself.
- */
+/** Native-only start of one session for one task. Manual and queued starts share one in-flight slot; only a fixed status reaches the renderer. */
 export function createTaskStart(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
   const fetchImpl = options.fetch || fetch;
@@ -316,15 +286,10 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: true, separateWorktree: separateWorktree === true }, repositoryId, taskId);
   }
 
-  // Only the queue runner calls this, and only for a repository whose queue the user turned on.
   function startQueued(repositoryId, taskId) {
     return exclusive({ confirmRequired: false }, repositoryId, taskId);
   }
 
-  /**
-   * Opens a task's worktree folder in the file manager. The worktree must exist and be listed by Git on the task
-   * branch; nothing in it is touched, and only a fixed status leaves main, never the path or an error.
-   */
   async function openWorktree(event, repositoryId, taskId) {
     if (!isTrustedEvent(event)) return result("invalid");
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
@@ -348,8 +313,6 @@ export function installTaskStartIpc(options = {}) {
   if (!ipcMain?.handle || !ipcMain?.removeHandler) throw new TypeError("Task start requires ipcMain");
   ipcMain.removeHandler(TASK_START_CHANNEL);
   const starter = options.starter || createTaskStart(options);
-  // The runner is optional: an injected object replaces it and `false` turns it off. It arms no timer until
-  // `start()`, and then only with a trusted monitor origin and a token.
   const runner = options.queueRunner === false ? null : options.queueRunner || createTaskQueueRunner({
     starter, fetch: options.fetch, monitorOrigin: options.monitorOrigin, authorizationToken: options.authorizationToken,
   });

@@ -1,8 +1,3 @@
-/**
- * Enumerate every provider's session headers into the catalog inventory once.
- * Each provider scans independently; a failed or incomplete scan keeps that
- * provider's previously committed headers.
- */
 export async function scanProviderHeaders({ registry, catalogInventory, signal, isStopped, onChange }) {
   const scans = new Map();
   for (const provider of registry.providers || []) {

@@ -41,8 +41,7 @@ const EXACT_ROLES = new Map([
   ["compaction", "compaction"],
 ]);
 
-// Ordered to make a composite provider-specific type deterministic. This is a
-// display heuristic only; provider type text never reaches browser state.
+// Ordered to make a composite provider-specific type deterministic.
 const KEYWORD_ROLES = Object.freeze([
   ["review", "reviewer"],
   ["audit", "reviewer"],
@@ -89,8 +88,7 @@ export function normalizeAgentType(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-// Validate the entire source before taking its terminal name. Never turn paths,
-// prose, markup, or truncated provider text into a public type label.
+// Validate the entire source before taking its terminal name.
 export function customAgentType(kind, role) {
   if (role !== "unknown" || typeof kind !== "string" || kind.length > MAX_KEY_LENGTH
     || !/^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)*$/i.test(kind)) return null;
@@ -98,7 +96,7 @@ export function customAgentType(kind, role) {
   return ["unknown", "unavailable", "none", "null"].includes(normalized) ? null : normalized;
 }
 
-/** Revalidate an already-normalized label without repairing or truncating it. */
+// Revalidate an already-normalized label without repairing or truncating it.
 export function validatedCustomAgentType(value, role) {
   const normalized = customAgentType(value, role);
   return normalized === value ? normalized : null;
@@ -128,7 +126,7 @@ function diagnostic(status, roles = new Map(), errors = [], file = "") {
   return { status, roles, errors, file };
 }
 
-/** Read and validate a repository-local mapping without exposing it to clients. */
+// Read and validate a repository-local mapping without exposing it to clients.
 export function validateRoleConfig(cwd) {
   const file = configPath(cwd);
   if (!file) return diagnostic("missing");

@@ -26,7 +26,6 @@ async function readReporting(root, now) {
   } catch (error) { return { status: error?.code === "ENOENT" ? "missing" : "unknown", version: null, checkedAt }; }
 }
 
-/** Bounded independent current-configuration observation. No GET invokes this work. */
 export function createRepositoryPluginRuntime(options = {}) {
   const now = options.now || Date.now;
   const release = options.readRelease || createRepositoryPluginReleaseReader({ now, fetch: options.fetch });

@@ -23,8 +23,7 @@ const ALLOWED_PROVIDER_STATUS_ORIGINS = Object.freeze([
   "https://status.openai.com",
 ]);
 const POMEGR_GITHUB_PATH_PREFIX = "/Lecarvalho/pomegr";
-// The public documentation website. Only the exact apex origin and its /docs routes may
-// open externally; the landing, download, and API paths of the same origin stay denied.
+// Only the exact apex origin and its /docs routes may open externally.
 const POMEGR_DOCS_ORIGIN = "https://pomegr.com";
 const POMEGR_DOCS_PATH = "/docs";
 const POMEGR_DOCS_SEGMENT = "[a-z0-9]+(?:-[a-z0-9]+)*";

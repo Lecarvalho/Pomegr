@@ -15,7 +15,7 @@ function iso(value) { return typeof value === "string" && Number.isFinite(Date.p
 function exact(value, keys) { return value && typeof value === "object" && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
 
-/** Whole-record persistence validation of the bounded private comparison baseline. */
+// Whole-record persistence validation of the bounded private comparison baseline.
 export function validUsageNotificationState(value, now) {
   if (!exact(value, ["claude", "codex", "authentication"]) || !exact(value.authentication, ["claude", "codex"])) return false;
   return ["claude", "codex"].every((provider) => {
@@ -42,10 +42,7 @@ export function validUsageNotificationState(value, now) {
   });
 }
 
-/** Only committed, complete, fresh observations can change a comparison baseline.
- * Unknown evidence breaks comparisons; old/duplicate evidence cannot rewind them.
- * All source identity and window comparisons remain private to the monitor.
- */
+// Only committed, complete, fresh observations can change a comparison baseline.
 export function reduceUsageNotifications(input, previous = null, now = Date.now()) {
   const state = structuredClone(previous || { claude: null, codex: null, authentication: { claude: null, codex: null } });
   const items = [];
@@ -57,8 +54,7 @@ export function reduceUsageNotifications(input, previous = null, now = Date.now(
     const scope = typeof source?.sourceScope === "string" && HASH.test(source.sourceScope) ? source.sourceScope : null;
     const auth = state.authentication[provider];
     const attempt = usage?.attemptedAt;
-    // Only an adapter-recognized authentication failure on a later completed
-    // retry qualifies. Generic failures, cached attempts, and the clock do not.
+    // Only an adapter-recognized authentication failure on a later completed retry qualifies.
     if (scope && iso(attempt) && Date.parse(attempt) <= now && now - Date.parse(attempt) <= MAX_AGE_MS) {
       if (!auth || auth.scope !== scope || Date.parse(attempt) > Date.parse(auth.attemptedAt)) {
         if (usage.failureKind === "authentication_required" && iso(usage.retryAt)
@@ -78,7 +74,6 @@ export function reduceUsageNotifications(input, previous = null, now = Date.now(
     const observedAt = usage?.fetchedAt;
     if (prior && iso(observedAt) && Date.parse(observedAt) <= Date.parse(prior.observedAt)) {
       // Aging a previously accepted cached reading is not a new observation.
-      // Keep it for a later fresh comparison; never emit from this old copy.
       if (usage.failureKind || usage.error || source?.complete !== true) state[provider] = { ...prior, windows: [], count: null };
       continue;
     }

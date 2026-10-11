@@ -22,7 +22,7 @@ export const PROVIDER_SOURCES = Object.freeze({
   codex: "Codex",
 });
 
-/** Monitor-private provider capability catalog. */
+// Monitor-private provider capability catalog.
 export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
   { key: "approvalMode", label: "Approval mode", evidencePath: "session.approvalMode", requiredOperation: "readSession" },
   { key: "automaticCompactions", label: "Automatic compactions", evidencePath: "compactions", requiredOperation: "readSession" },
@@ -43,7 +43,7 @@ export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
 
 export const PROVIDER_CAPABILITY_KEYS = Object.freeze(PROVIDER_CAPABILITY_CATALOG.map(({ key }) => key));
 
-/** Bounded reasons an adapter intentionally cannot implement a capability. */
+// Bounded reasons an adapter intentionally cannot implement a capability.
 export const PROVIDER_LIMITATION_CODES = Object.freeze([
   "provider_does_not_expose",
   "monitor_not_implemented",
@@ -78,11 +78,6 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "repositoryAttributionForSession", "legacyRepositoryAttribution",
 ]);
 
-/**
- * Reasons are intentionally provider-neutral.  Native filesystem, event, or
- * API failure details stay inside the adapter and must never cross into a
- * committed observation or browser response.
- */
 export const PROVIDER_OBSERVATION_INVALIDATION_REASONS = Object.freeze([
   "source_replaced",
   "source_unavailable",
@@ -136,9 +131,6 @@ export function providerSource(providerId) {
 }
 
 /**
- * Optional capabilities are deny-by-default so adding a provider never causes
- * the UI to imply support for metadata the adapter did not explicitly supply.
- *
  * @param {Partial<ProviderCapabilities>} [overrides]
  * @returns {Readonly<ProviderCapabilities>}
  */
@@ -157,13 +149,7 @@ export function createProviderCapabilities(overrides = {}) {
   return Object.freeze(capabilities);
 }
 
-/**
- * A capability declaration is intentionally more precise than the browser
- * boolean: static harness support is either explicit support or an explicit,
- * documented limitation. Omission is never a limitation.
- *
- * @param {ProviderCapabilityManifest} manifest
- */
+/** @param {ProviderCapabilityManifest} manifest */
 export function createProviderCapabilityManifest(manifest) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new TypeError("Provider capability manifest must be an object");
@@ -287,11 +273,7 @@ const providerUsageLimitActivityPolicySchema = z.object({
   ]),
 }).strict();
 
-/**
- * Home-level policy is adapter-owned, bounded, and has no provider IDs. It
- * prevents generic monitor code from growing Claude/Codex conditionals.
- * @param {ProviderHomePolicy} policy
- */
+/** @param {ProviderHomePolicy} policy */
 export function createProviderHomePolicy(policy) {
   if (!policy || typeof policy !== "object" || Array.isArray(policy) || Object.keys(policy).length !== 3) {
     throw new TypeError("Provider home policy must be complete");
@@ -313,10 +295,6 @@ export function createProviderHomePolicy(policy) {
 }
 
 /**
- * Create the opaque browser/API identifier for a provider-local session.
- * Local IDs are data identifiers only; path separators, traversal, and extra
- * namespace delimiters are rejected.
- *
  * @param {ProviderId} providerId
  * @param {string} localSessionId
  */
@@ -329,8 +307,6 @@ export function qualifyProviderSessionId(providerId, localSessionId) {
 }
 
 /**
- * Parse an opaque browser/API identifier without resolving or accepting paths.
- *
  * @param {unknown} value
  * @returns {{ providerId: ProviderId, localSessionId: string } | null}
  */
@@ -435,11 +411,6 @@ const evidenceWorkflow = z.object({
 }).strict();
 const evidenceCompaction = z.object({ actorId: evidenceId, timestamp: evidenceTimestamp, trigger: z.enum(["auto", "manual", "unknown"]), preTokens: evidenceCount.nullable(), inferred: z.literal(true).optional() }).strict();
 
-/**
- * The single runtime authority for normalized adapter output. It is strict at
- * every object boundary: raw provider records cannot be smuggled through an
- * otherwise valid normalized field.
- */
 export const providerSessionEvidenceSchema = z.object({
   localId: z.string().regex(SAFE_LOCAL_SESSION_ID, "Unsafe provider-local session ID"),
   historical: z.boolean(),
@@ -511,7 +482,7 @@ export const providerUsageLimitsSchema = z.object({
 }).strict();
 
 /** @typedef {z.infer<typeof providerSessionEvidenceSchema>} ProviderSessionEvidence */
-/** Parse evidence for the requested local session. @param {unknown} value @param {string | undefined} [expectedLocalId] */
+/** @param {unknown} value @param {string | undefined} [expectedLocalId] */
 export function parseProviderSessionEvidence(value, expectedLocalId) {
   const evidence = providerSessionEvidenceSchema.parse(value);
   if (expectedLocalId !== undefined && evidence.localId !== expectedLocalId) {
@@ -521,11 +492,6 @@ export function parseProviderSessionEvidence(value, expectedLocalId) {
 }
 
 /**
- * Validate the monitor-owned publication boundary.  Provider adapters receive
- * a scoped publisher from the registry, but the monitor/store-facing shape
- * always retains the provider ID so no adapter can publish into another
- * provider's namespace.
- *
  * @param {unknown} publisher
  * @returns {NormalizedObservationPublisher}
  */
@@ -542,7 +508,7 @@ export function assertNormalizedObservationPublisher(publisher) {
   return /** @type {NormalizedObservationPublisher} */ (value);
 }
 
-/** Bound monitor-private source-domain ordering for an Activity contribution. */
+// Bound monitor-private source-domain ordering for an Activity contribution.
 export function parseHistoryActivityContribution(/** @type {unknown} */ value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Activity contribution is invalid");
@@ -568,10 +534,6 @@ export function parseHistoryRequestContribution(/** @type {unknown} */ value) {
 }
 
 /**
- * Scope a monitor-owned publisher to a single adapter.  The wrapper validates
- * catalog references and evidence before the provider-neutral store ever sees
- * them.  It intentionally contains no native source data or paths.
- *
  * @param {ProviderId} providerId
  * @param {unknown} publisher
  * @returns {ScopedNormalizedObservationPublisher}
@@ -619,10 +581,6 @@ export function createScopedNormalizedObservationPublisher(providerId, publisher
 }
 
 /**
- * Provider observers are long-lived acquisition/normalization workers.  The
- * contract stays deliberately small: adapters own source schemas and cursors;
- * the shared layer sees only validated normalized candidates.
- *
  * @param {unknown} observer
  * @returns {ProviderObserver}
  */
@@ -660,7 +618,7 @@ function evidenceValuesAtPath(value, path) {
   }), /** @type {unknown[]} */ ([value]));
 }
 
-/** Monitor-private per-session observation state; never exposed as provider support. */
+// Monitor-private per-session observation state; never exposed as provider support.
 /** @param {ReturnType<typeof createProviderCapabilityManifest>} manifest @param {z.infer<typeof providerSessionEvidenceSchema>} evidence */
 export function createProviderEvidenceAvailability(manifest, evidence) {
   return Object.freeze(Object.fromEntries(PROVIDER_CAPABILITY_CATALOG.map((capability) => {
@@ -676,8 +634,6 @@ export function createProviderEvidenceAvailability(manifest, evidence) {
 }
 
 /**
- * Shared conformance assertion for every registered adapter and future harness
- * fixture set. It deliberately validates only normalized, browser-safe data.
  * @param {any} adapter
  * @param {unknown[]} [fixtures]
  */
@@ -715,12 +671,7 @@ export function assertProviderConformance(adapter, fixtures = []) {
   return true;
 }
 
-/**
- * Validate and freeze an adapter declaration. This establishes the runtime
- * side of the TypeScript/JSDoc contract before providers are registered.
- *
- * @param {any} adapter
- */
+/** @param {any} adapter */
 export function defineProvider(adapter) {
   if (!adapter || typeof adapter !== "object") throw new TypeError("Provider adapter must be an object");
   if (!isProviderId(adapter.id)) throw new TypeError(`Unknown provider: ${String(adapter.id)}`);

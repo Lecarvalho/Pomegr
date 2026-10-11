@@ -14,15 +14,10 @@ const FAILED_CONCLUSIONS = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION
 const PENDING_RUN_STATUSES = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"]);
 const metadataCache = new Map();
 const branchCache = new Map();
-// Monitor-private: the latest check status read for a canonical pull-request URL. It never joins the
-// normalized pull-request item, so no browser surface carries it.
+// Monitor-private: the latest check status read for a canonical pull-request URL.
 const checkStatuses = new Map();
 
 /**
- * Read bounded URLs from normalized provider evidence. Provider transcript
- * parsing belongs in adapters; this generic enrichment module never receives
- * a provider-native record or transcript path.
- *
  * @param {unknown} creations
  */
 export function pullRequestUrls(creations) {
@@ -78,7 +73,6 @@ function normalizedState(value) {
   return state === "open" || state === "closed" ? state : "unknown";
 }
 
-// One recognized check entry as passed, failed, or pending; anything else is unknown.
 function checkEntryStatus(entry) {
   if (entry?.__typename === "CheckRun") {
     if (entry.status === "COMPLETED") return PASSED_CONCLUSIONS.has(entry.conclusion) ? "passed" : FAILED_CONCLUSIONS.has(entry.conclusion) ? "failed" : null;
@@ -92,15 +86,7 @@ function checkEntryStatus(entry) {
   return null;
 }
 
-/**
- * Normalize gh's `statusCheckRollup` list to the aggregate check status of a pull request's head
- * commit: `none` (no check), `failed` (any check failed), `pending` (none failed, one unfinished), or
- * `passed`. A missing, oversized, or unrecognized list is `null` (unknown). Names, URLs, and every
- * other field of a check are dropped here.
- *
- * @param {unknown} rollup
- * @returns {"passed" | "failed" | "pending" | "none" | null}
- */
+/** @param {unknown} rollup @returns {"passed" | "failed" | "pending" | "none" | null} */
 export function normalizeCheckStatus(rollup) {
   if (!Array.isArray(rollup) || rollup.length > MAX_CHECK_ENTRIES) return null;
   if (rollup.length === 0) return "none";
@@ -109,9 +95,6 @@ export function normalizeCheckStatus(rollup) {
   return statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "passed";
 }
 
-// `checkedAt` is the time the gh read that produced `value` began (a cached read keeps its own time), kept in
-// memory with the status so a consumer can tell how old the fact is. A read older than the status already
-// held does not replace it.
 function recordCheckStatus(url, value, checkedAt) {
   const status = normalizeCheckStatus(value?.[GH_CHECK_FIELD]);
   const parsed = Date.parse(checkedAt);
@@ -124,21 +107,12 @@ function recordCheckStatus(url, value, checkedAt) {
   if (checkStatuses.size > MAX_CHECK_STATUSES) checkStatuses.delete(checkStatuses.keys().next().value);
 }
 
-/**
- * The aggregate check status last read for a normalized pull-request URL together with the time (epoch
- * milliseconds) the read that established it began, or `null` when the latest read did not establish one.
- * A memory lookup: it never runs gh. For the task complete-when rule only.
- *
- * @param {unknown} url
- * @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number } | null}
- */
+/** @param {unknown} url @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number } | null} */
 export function pullRequestCheckRead(url) {
   const held = typeof url === "string" ? checkStatuses.get(url) : undefined;
   return held ? { status: held.status, readAt: held.readAt } : null;
 }
 
-// Ask for the check field with the metadata; when that read fails, the metadata alone, so a gh that
-// cannot read checks still answers the pull request.
 async function readGhJson(ghRunner, cwd, args) {
   return await ghRunner(cwd, [...args, `${GH_FIELDS},${GH_CHECK_FIELD}`]) || ghRunner(cwd, [...args, GH_FIELDS]);
 }
@@ -167,9 +141,6 @@ export function normalizePullRequest(value, association = "session", fallbackUrl
   };
 }
 
-// A read is dated by the moment its gh call began: whatever it saw is no newer than that, and a change made
-// while the call ran may be missing from it. The cache lifetime still counts from the moment the call ended.
-// A `fresh` read reuses neither a cached answer nor a read already under way: both began before the caller asked.
 async function cached(cache, key, loader, fresh = false) {
   const previous = cache.get(key);
   if (!fresh && previous?.value && Date.now() - previous.timestamp < CACHE_TTL_MS) return previous.value;
@@ -213,10 +184,6 @@ async function pullRequestsForBranch(cwd, branch, ghRunner, fresh) {
 }
 
 /**
- * Enrich normalized pull-request creation evidence with GitHub metadata.
- * The first argument is retained for existing callers, but it accepts only
- * normalized creation objects (never provider records).
- *
  * @param {unknown} sessionCreations
  * @param {{ sessionCreations?: unknown, sessionUrls?: unknown, cwd?: string, branch?: string, historical?: boolean, fresh?: boolean, ghRunner?: typeof runGh }} [options]
  *   `fresh` skips the read cache, for a caller that must not judge an answer older than its own call.
@@ -253,9 +220,6 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
     }
   }
 
-  // The reads the items rest on, oldest first: a cached read keeps its own time, so the newest of them says
-  // when the block was last refreshed (`checkedAt`, served) and the oldest says how old its oldest item can be
-  // (`readAt`, monitor-private).
   const reads = available
     ? [...metadata.filter(({ result }) => result.loaded !== null).map(({ result }) => result.checkedAt), branchValues !== null ? branchResult.checkedAt : null]
       .filter(Boolean).sort()
@@ -263,8 +227,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
   return {
     status: !queried || available ? "ready" : "unavailable",
     checkedAt: reads.at(-1) || null,
-    // Monitor-private: the complete-when rule judges the block by this time. The session state serializer
-    // removes it before the block is served, and the repository snapshot never copies it.
+    // Monitor-private: the complete-when rule judges the block by this time.
     readAt: reads[0] || null,
     items: [...itemsByUrl.values()].slice(0, MAX_PULL_REQUESTS),
   };

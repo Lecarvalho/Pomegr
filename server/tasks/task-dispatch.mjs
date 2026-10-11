@@ -1,18 +1,3 @@
-// Session dispatch for one task: the start plan the desktop turns into a terminal, its abort, and the
-// bind that links the started session to the task.
-//
-// A plan is minted only after every refusal passed. The opaque token leaves this module once, inside
-// the plan; the store keeps only its SHA-256 digest and the mint time, in the existing `dispatch_token`
-// column as `<digest>:<mintMs>`, so no schema change is needed. The digest is never projected onto the
-// board. Task text is untrusted: it is concatenated only into the fixed prompt string, never into a
-// path or command line. The store judges the start gates (capacity, incident, clean tree; never step order, which holds only the queue) through
-// `gatesHold` before a token is minted, so a held start leaves nothing behind. A start held only by uncommitted
-// changes in the repository root answers `tree_dirty`, and the owner may ask for the same start in a worktree of the
-// task's own (`worktree: true`), which that one gate does not hold.
-//
-// The started session reports the token with its normalized session ID, and `bindDispatch` links the
-// two once and discards the digest. The token is the only authority: the session is not looked up,
-// because the catalog has no row for it yet at session start.
 
 import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
@@ -27,7 +12,6 @@ export { TASK_DISPATCH_UNBOUND_TTL_MS };
 export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "tree_dirty", "unavailable"]);
 
 const STARTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
-/** Providers a session can be started on. A task with no provider runs on Claude Code. */
 export const TASK_START_PROVIDERS = Object.freeze(["claude", "codex"]);
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
 const CHECK_LABELS = Object.freeze({
@@ -41,15 +25,12 @@ export const TASK_PROMPT_OPENING = "You are working on one task from the Pomegr 
 
 const digestOf = (token) => crypto.createHash("sha256").update(token, "utf8").digest("hex");
 
-// A promoted task names its issue so the pull request closes it. Only the validated integer enters the line.
 function issueLine(task) {
   const source = taskSourceOf(task.source?.kind === "github_issue" ? task.source.number : undefined);
   return source === null ? [] : [`This task comes from GitHub issue #${source.number}. Write "Closes #${source.number}" in the pull request description.`];
 }
 
-// A task's images are files in the private task store. The session is told where they are; each path is built by the
-// store from validated identifiers, never from task text. `images` is `{ id, file }[]`: an image is named by its
-// number, the same number its marker in the task text is shown as.
+// A task's images are files in the private task store.
 function imageLines(images) {
   if (images.length === 0) return [];
   return [
@@ -60,16 +41,12 @@ function imageLines(images) {
   ];
 }
 
-// The task text as the session reads it: a marker of a listed image becomes its number, any other the plain word.
 function promptText(text, images) {
   const numbers = new Map(images.map((image, index) => [image.id, index + 1]));
   return text.replace(TASK_IMAGE_MARKER, (_marker, id) => (numbers.has(id) ? `[Image #${numbers.get(id)}]` : "[image]"));
 }
 
-/**
- * The fixed session prompt. It begins with a fixed non-dash sentence, so it can never parse as a CLI
- * flag, and holds the task text only as quoted data between fixed sentences.
- */
+// The fixed session prompt.
 export function buildTaskPrompt(task, images = []) {
   const conditions = task.completeWhen.checks.map((check) => `- ${CHECK_LABELS[check]}`);
   if (task.completeWhen.own) conditions.push(`- ${task.completeWhen.own}`);
@@ -94,8 +71,6 @@ function taskNumber(payload, keys) {
 const loadRow = (database, repositoryId, number) =>
   withTaskRemoteControl(database, withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number)));
 
-// A task of a feature step that holds more than one task runs in a Git worktree of its own, because the tasks of one
-// step run in parallel. A task alone in its step, and a task without a feature, runs in the repository root.
 function worktreeRequired(database, row) {
   if ((row.feature_id ?? null) === null || (row.step ?? null) === null) return false;
   const inStep = preparedStatement(database, "SELECT COUNT(*) AS count FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
@@ -103,23 +78,10 @@ function worktreeRequired(database, row) {
   return Number(inStep?.count) > 1;
 }
 
-// Startable: a startable state, no linked session, no live dispatch.
 const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_id ?? null) === null
   && !isLive(parseStoredDispatch(row.dispatch_token), now);
 
-/**
- * `start-plan`. `resolveFacts(provider)` returns `{ root, pluginReady }` from committed facts, `pluginReady`
- * for the plugin of the provider the session runs on, and is called only after the task, provider, and state
- * refusals. `gatesHold(taskId)` is the store's start-gate judgement for this task from committed facts: false when
- * nothing holds it, `"tree_dirty"` when only uncommitted changes in the repository root do, and anything else for
- * every other hold. A held start answers `gate_held`, or `tree_dirty` for that one hold, and mints nothing. The
- * payload is `{ id }`, or `{ id, worktree: true }` when the owner asked for a worktree of the task's own: that start
- * is not held by `tree_dirty`, because the session does not run in the root. `transaction(work)` runs `work` in one
- * write transaction. The plan's `worktree` says whether the session must run in a worktree of its own (the owner
- * asked for it, or the task's step runs in parallel); where that worktree is, only the desktop knows.
- * `imagePaths(taskId)` supplies the files of the task's images from the store; the plan carries them in `images` and
- * names them in the prompt. `remoteControl` is true only for a Claude Code session whose task asks for Remote Control.
- */
+// `start-plan`.
 export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, imagePaths = null, now }) {
   const separate = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.hasOwn(payload, "worktree");
   if (separate && payload.worktree !== true) return { ok: false, error: "invalid" };
@@ -161,7 +123,7 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   };
 }
 
-/** `start-abort`: clears the unbound dispatch only when the token matches. Idempotent for an existing task. */
+// `start-abort`: clears the unbound dispatch only when the token matches.
 export function startAbort({ database, transaction, repositoryId, payload }) {
   const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id", "token"]) : undefined;
   if (number === undefined || typeof payload.token !== "string" || !TOKEN_PATTERN.test(payload.token)) return { ok: false, error: "invalid" };
@@ -183,15 +145,6 @@ export function startAbort({ database, transaction, repositoryId, payload }) {
 
 const BIND_REFUSED = Object.freeze({ ok: false, error: "not_found" });
 
-/**
- * `bind`: links the session that reported a live dispatch token to the task that minted it, in one write
- * transaction, and clears the digest. The lookup is monitor-wide: the token is the only input that names a
- * task. A wrong or reused token, an expired unbound dispatch, a task that already has a session, and a session
- * already linked to another task all answer the same `not_found`, so the answer says nothing about which
- * one failed and never carries a task or repository. The link is single assignment; it changes no state,
- * moves the card to the In progress column in the same write, and a linked task is never
- * startable again.
- */
 export function bindDispatch({ database, transaction, payload, now }) {
   const shaped = payload !== null && typeof payload === "object" && !Array.isArray(payload)
     && Object.keys(payload).length === 2 && Object.hasOwn(payload, "token") && Object.hasOwn(payload, "sessionId");
@@ -218,7 +171,6 @@ export function bindDispatch({ database, transaction, payload, now }) {
       moveTaskToRole(database, match.repository_id, Number(match.number), "in_progress");
       return { ok: true };
     } catch (error) {
-      // The unique `tasks_session` index is the last guard of single assignment; anything else is unavailable.
       if (/constraint/iu.test(String(error?.message))) return BIND_REFUSED;
       throw error;
     }

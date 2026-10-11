@@ -293,9 +293,6 @@ function publicFailure(item) {
   };
 }
 
-// Every normalized failure of one committed snapshot, before the time window and the
-// task-over-call preference are applied. Walking the tool calls and execution tasks depends
-// only on the snapshot, so an unchanged snapshot reuses the list.
 function failureCandidates(entry, failureTemplates) {
   let template = null;
   if (failureTemplates && entry && typeof entry === "object") template = failureTemplates.get(entry) || null;
@@ -506,13 +503,9 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
   });
 }
 
-/** Small immutable revision cache around the projection. Refresh is D-only. */
 export function createAgentQueryProjectionCache({ sources = {}, now = Date.now } = {}) {
   let revision = 0;
   let serialized = new Map();
-  // SessionObservationStore publishes immutable copy-on-write snapshots. These
-  // WeakMaps reuse report and agent/context derivation only for that exact
-  // committed state and release evicted snapshots without another retention owner.
   const reportTemplates = new WeakMap();
   const agentDetailTemplates = new WeakMap();
   const failureTemplates = new WeakMap();

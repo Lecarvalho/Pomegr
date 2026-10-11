@@ -1,7 +1,7 @@
-/** Normalized cache lifetime; 30m+ is a documented model-policy minimum, not a recorded expiry. */
+// Normalized cache lifetime; 30m+ is a documented model-policy minimum, not a recorded expiry.
 export type CacheLifetime = "5m" | "1h" | "mixed" | "30m+";
 
-/** Bounded monitor-derived purpose. Raw commands and provider-native tool schemas stay private. */
+// Bounded monitor-derived purpose.
 export type WorkKind = "shell" | "search" | "read" | "write" | "test" | "build" | "git" | "git_push" | "pull_request" | "process" | "web" | "image" | "input" | "transfer" | "skill" | "report" | "agent" | "integration" | "wait" | "reply" | "plan" | "other";
 
 export type RequestSnapshot = {
@@ -14,7 +14,7 @@ export type RequestSnapshot = {
   cacheReadTokens: number;
   outputTokens: number;
   totalTokens: number;
-  /** Bounded work-kind tallies. Never a cost per operation. */
+  // Bounded work-kind tallies.
   precedingWork: Array<{ kind: WorkKind; count: number }>;
   precedingAssociation: "transcript_adjacency" | null;
   issuedWork: Array<{ kind: WorkKind; count: number }>;
@@ -26,6 +26,5 @@ export type RequestSnapshotFeed = {
   items: RequestSnapshot[];
 };
 
-/** Report evidence intentionally omits per-request action correlation. */
 export type SessionReportRequestSnapshot = Omit<RequestSnapshot,
   "precedingWork" | "precedingAssociation" | "issuedWork" | "issuedAssociation">;

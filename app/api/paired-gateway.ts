@@ -5,7 +5,6 @@ function isLoopbackHost(value: string | null) {
   } catch { return false; }
 }
 
-// Compares every character whatever the first difference, so the time taken says nothing about the token.
 function tokensMatch(actual: string, expected: string) {
   if (actual.length !== expected.length) return false;
   let difference = 0;
@@ -13,11 +12,7 @@ function tokensMatch(actual: string, expected: string) {
   return difference === 0;
 }
 
-/**
- * True for a request the desktop's LAN gateway forwarded for a paired device. The gateway forwards only for a paired
- * device, marks what it forwards, and is the only sender of that mark that also holds the desktop token. The
- * development server sets the same mark on a peer that is not local, which has no token, so it is never paired.
- */
+/** True for a request the desktop's LAN gateway forwarded for a paired device. */
 export function isPairedGatewayRequest(request: Request) {
   const expected = process.env.POMEGR_MONITOR_TOKEN;
   const supplied = request.headers.get("x-pomegr-desktop-authorization");

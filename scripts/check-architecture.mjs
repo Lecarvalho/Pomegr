@@ -23,8 +23,6 @@ const SKIP_DIRECTORIES = new Set([
   "workers",
 ]);
 
-// Existing large files are grandfathered at their current size. They may shrink,
-// but a change that makes one of them larger fails the verifier.
 const GRANDFATHERED_LINE_LIMITS = new Map([
   ["server/providers/codex/liveness.mjs", 881],
   ["tests/server/providers/claude/provider.test.mjs", 861],

@@ -1,15 +1,5 @@
 import { parseProviderSessionId } from "../../providers/provider-contract.mjs";
 
-/**
- * Owns session-domain commit and serving bookkeeping: indexing the observed
- * catalog for lookup and soft-bound protection, committing observed evidence
- * (or a catalog-derived unavailable placeholder) into the session-domain
- * store, requesting bounded deduplicated asynchronous hydration for
- * hydratable rows, and probing sessions absent from every provider catalog
- * window. Extracted from observation-runtime.mjs to keep that module within
- * the repository's file-size budget; the runtime calls this factory at the
- * same points, in the same order, as the inlined code it replaced.
- */
 export function createSessionDomainServing({
   registry,
   sessionDomains,
@@ -45,23 +35,12 @@ export function createSessionDomainServing({
   }
 
   const pendingDomainRebuilds = new Set();
-  // sessionId -> monotonic request time of a domain-requested hydration. One
-  // queued hydration serves every domain and poll until evidence commits.
   const pendingDomainHydrations = new Map();
   const DOMAIN_HYDRATION_RETRY_MS = 30_000;
-  // sessionId -> { state: "pending" | "found" | "absent", at } for session-domain requests whose
-  // session has neither committed evidence nor a row in the bounded provider catalog window. Both
-  // the retained outcomes and the concurrently outstanding probes are bounded, so requests for
-  // absent or made-up IDs cannot queue unbounded hydration work.
   const uncataloguedProbes = new Map();
   const MAX_UNCATALOGUED_PROBE_RECORDS = 128;
   const MAX_PENDING_UNCATALOGUED_PROBES = 4;
 
-  // The row a projection reads. A session event arrives before the catalog commit that rebuilds
-  // the session's row from the same evidence, so until then the coordinator supplies the row's
-  // activity from the committed evidence, unless a lifecycle change of the row is waiting for
-  // that commit. The summary is then complete in one revision, and the catalog commit that
-  // follows finds its inputs unchanged. Every commit of the session reads this same view.
   function projectionCatalogEntry(sessionId) {
     const row = indexedCatalog().get(sessionId);
     return row ? coordinator.rowWithCommittedEvidence?.(row) ?? row : domainCatalogEntry(sessionId);
@@ -70,8 +49,6 @@ export function createSessionDomainServing({
   function commitSessionDomains(sessionId, snapshot = observationStore.getByQualifiedId(sessionId)) {
     if (snapshot) return sessionDomains.commit(sessionId, snapshot, projectionCatalogEntry(sessionId));
     const catalogEntry = domainCatalogEntry(sessionId);
-    // A hydratable row has no placeholder: it stays loading until evidence
-    // commits, and any retained projection remains last-known-good.
     if (catalogEntry?.summaryReadiness !== "unavailable") return null;
     const provider = registry.providerForSessionId(sessionId) || registry.defaultProvider;
     return sessionDomains.commitUnavailable(sessionId, catalogEntry, provider.source, provider.capabilities);
@@ -105,12 +82,6 @@ export function createSessionDomainServing({
     });
     return true;
   }
-  // A session-domain request for a session outside every provider catalog. Catalog absence is not
-  // proof of absence (catalogs are bounded windows), so the request queues one deduplicated,
-  // bounded asynchronous hydration and serves loading. It answers unavailable only after that
-  // hydration published no evidence; a proven absence is re-probed at most once per retry window
-  // and keeps answering unavailable meanwhile. A found session commits normally, and its domain
-  // revision event lets an open page recover.
   function serveUncataloguedSessionDomain(sessionId) {
     const unavailable = { status: "unavailable", revision: 0, snapshot: null };
     const loading = { status: "loading", revision: 0, snapshot: null };
@@ -136,25 +107,15 @@ export function createSessionDomainServing({
     const result = sessionDomains.read(sessionId, domain, agentId, revision);
     const committed = observationStore.getByQualifiedId(sessionId);
     const catalogEntry = domainCatalogEntry(sessionId);
-    // Without committed L1 evidence, a requested hydratable row queues the
-    // same asynchronous, pinned selection hydration as /api/state. Serving
-    // itself never acquires, parses, or normalizes provider data.
     const hydratable = !committed && catalogEntry && catalogEntry.summaryReadiness !== "unavailable";
     if (committed || catalogEntry) uncataloguedProbes.delete(sessionId);
-    // Like /api/state, a request for a checkpoint-restored live session prioritizes its
-    // deduplicated revalidation instead of waiting for eager live hydration.
     if (committed) coordinator.prioritizeRestoredLive(sessionId);
     if (result.status !== "empty") {
       if (hydratable && result.snapshot?.value?.readiness === "unavailable") requestDomainHydration(sessionId);
       return result;
     }
     if (!committed && !catalogEntry) {
-      // Catalog absence is never proof of absence. Before every provider
-      // catalog has published (monitor startup) the request is loading and
-      // queues the same asynchronous selection hydration; its commit publishes
-      // the revision event a browser entry recovers from. Afterwards the
-      // session may still exist outside the bounded catalog window, so a
-      // bounded probe decides (see serveUncataloguedSessionDomain).
+      // Catalog absence is never proof of absence.
       if (domainCatalogComplete()) return serveUncataloguedSessionDomain(sessionId);
       requestDomainHydration(sessionId);
       return { status: "loading", revision: 0, snapshot: null };
@@ -172,9 +133,6 @@ export function createSessionDomainServing({
       pendingDomainHydrations.clear();
       uncataloguedProbes.clear();
     },
-    // Consumed by the sessionDomains store's `isProtected` option: live and
-    // open catalog rows are exempt from its soft session bound, so commits
-    // for other sessions cannot displace them.
     protectedSessionIds: () => { indexedCatalog(); return protectedCatalogIds; },
     serveSessionDomain,
   });

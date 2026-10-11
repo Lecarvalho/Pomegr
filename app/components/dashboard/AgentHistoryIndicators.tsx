@@ -43,7 +43,6 @@ export function summarizeCacheRefills(cacheRefills: CacheRefillCount[], agentIds
   return cacheRefills.reduce((count, refill) => observedAgents.has(refill.agentId) ? count + refill.count : count, 0);
 }
 
-/** Provider-diagnosed partial rewrites are counted apart from `count`, which covers possible full refills only. */
 export function summarizeProviderDiagnosedRefills(cacheRefills: CacheRefillCount[], agentIds: string[]) {
   const observedAgents = new Set(agentIds);
   return cacheRefills.reduce((total, { agentId, providerDiagnosedCount: n }) => (
@@ -51,7 +50,6 @@ export function summarizeProviderDiagnosedRefills(cacheRefills: CacheRefillCount
   ), 0);
 }
 
-/** Partial rewrites kept by an elapsed-lifetime inference, also counted apart from `count`. */
 export function summarizeLifetimeElapsedRefills(cacheRefills: CacheRefillCount[], agentIds: string[]) {
   const observedAgents = new Set(agentIds);
   return cacheRefills.reduce((total, { agentId, lifetimeElapsedCount: n }) => (
@@ -59,7 +57,6 @@ export function summarizeLifetimeElapsedRefills(cacheRefills: CacheRefillCount[]
   ), 0);
 }
 
-/** Every partial rewrite: provider-diagnosed plus elapsed-lifetime. */
 export function summarizePartialRefills(cacheRefills: CacheRefillCount[], agentIds: string[]) {
   return summarizeProviderDiagnosedRefills(cacheRefills, agentIds) + summarizeLifetimeElapsedRefills(cacheRefills, agentIds);
 }
@@ -196,7 +193,6 @@ export function cacheRefillOccurrenceDescriptions(
   return occurrences;
 }
 
-/** Possible full refills by default; `true` or a kind selects that partial-rewrite kind instead. */
 export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[], agentIds: string[], partial: boolean | NonNullable<CacheRefillOccurrence["kind"]> = false) {
   const kind = partial === true ? "provider_diagnosed" : partial || undefined;
   const diagnosed = kind !== undefined;
@@ -220,7 +216,6 @@ export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[]
               : "reason unavailable",
           inference,
           lifetimeInference,
-          // Only a recorded possible full refill with nothing to explain it points upstream.
           unexplained: !diagnosed && !recognizedReason && !occurrence.providerStatus && !inference,
           signal: cacheRefillSignalDefinition(occurrence),
         };
@@ -283,14 +278,12 @@ export function cacheRefillDescription(
   return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Inference: ${inference}.` : ""}`;
 }
 
-/** Shown in the agent and request popovers for a possible full refill that nothing explains. */
 function UnexplainedRefillNote() {
   return <p className="cacheRefillInference">
     No cause was recorded. Follow <ExternalLink href={CACHE_REFILL_UPSTREAM_ISSUE.href}>{CACHE_REFILL_UPSTREAM_ISSUE.label}</ExternalLink> for the upstream issue.
   </p>;
 }
 
-/** Popover frame props for one agent set; possible full refills keep their wording, provider-diagnosed ones get their own list. */
 export function cacheRefillEvidenceView(cacheRefills: CacheRefillCount[], agentIds: string[]) {
   const fullCount = summarizeCacheRefills(cacheRefills, agentIds);
   const diagnosedCount = summarizeProviderDiagnosedRefills(cacheRefills, agentIds);

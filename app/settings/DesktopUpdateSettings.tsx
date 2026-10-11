@@ -71,7 +71,6 @@ export function useDesktopUpdates() {
     }
   }
 
-  /** Adopts the snapshot a desktop mutation returned, ahead of a late initial read. */
   function apply(next: DesktopState | null) {
     if (!next || !active.current) return;
     generation.current += 1;

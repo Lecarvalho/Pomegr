@@ -139,11 +139,6 @@ export function codexThreadRuntimeStatus(status) {
     : [] } : { type };
 }
 
-/** The timestamp of the newest record that parses as complete JSON, scanned from the end
- * of `text`'s lines backward. Codex does not advance a rollout file's own modification
- * time reliably, so header recency comes from record time, not file mtime. A
- * truncated trailing line left by a write still in flight fails to parse and is skipped
- * in favor of the newest line that parses in full. */
 function newestParsedRecordTimestamp(text) {
   const lines = text.split(/\r?\n/);
   for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -154,17 +149,11 @@ function newestParsedRecordTimestamp(text) {
       const timestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp ?? record?.message?.timestamp);
       if (timestamp) return timestamp;
     } catch {
-      // A write still in flight can leave a truncated trailing line; keep scanning
-      // backward for the newest record that parses in full.
     }
   }
   return null;
 }
 
-/** Header recency: the newest complete record's time. The header window already holds
- * the whole file unless maximumBytes truncated it; only then is a bounded tail read
- * needed, cached by size and mtime. A newest record larger than the 64 KiB tail gets one
- * 1 MiB read; past that, recency is the later of creation time and file mtime. */
 function rolloutRecency(file, stat, headText, maximumBytes, createdAt) {
   if (stat.size <= maximumBytes) return newestParsedRecordTimestamp(headText) || createdAt;
   const cached = recencyCache.get(file);
@@ -175,7 +164,6 @@ function rolloutRecency(file, stat, headText, maximumBytes, createdAt) {
   return rememberRecency(file, stat, updatedAt);
 }
 
-/** `rolloutRecency` with asynchronous tail reads; same cache, same answer. */
 async function rolloutRecencyAsync(file, stat, headText, maximumBytes, createdAt) {
   if (stat.size <= maximumBytes) return newestParsedRecordTimestamp(headText) || createdAt;
   const cached = recencyCache.get(file);
@@ -198,9 +186,6 @@ function rememberRecency(file, stat, updatedAt) {
   return updatedAt;
 }
 
-/** `readBoundedFile` through one async file handle. Also reports the handle's stat and
- * the bytes actually read, so a caller can classify an unusable header without a second
- * open. Text is decoded from the full requested buffer, exactly as the sync reader does. */
 async function readBoundedFileAsync(file, maximum, fromEnd = false) {
   let handle;
   try { handle = await fs.promises.open(file, "r"); } catch { return { text: "", stat: null, bytesRead: 0 }; }
@@ -238,13 +223,6 @@ function findSessionRecord(headText) {
   return null;
 }
 
-/**
- * The asynchronous equivalent of `readCodexRolloutHeader` for the default header window:
- * one file handle for the stat and header read, async recency tails, and, when no header
- * results, the same `invalid`/`inconclusive` classification `enumerateCodexRolloutHeaders`
- * previously established with a second open. `stat` is null when the file could not be
- * opened, stat-ed, or read.
- */
 async function inspectCodexRolloutHeader(file, options = {}) {
   const { text: headText, stat, bytesRead } = await readBoundedFileAsync(file, DEFAULT_HEADER_BYTES);
   const sessionRecord = findSessionRecord(headText);
@@ -265,16 +243,7 @@ function headerGeneration(stat) {
   return `${stat.dev ?? ""}:${stat.ino ?? ""}:${stat.birthtimeMs ?? ""}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs ?? ""}`;
 }
 
-/**
- * A bounded, in-memory header cache for `enumerateCodexRolloutHeaders`, keyed by file,
- * archived flag, and file generation (identity, size, modification and change times). An
- * entry is reused only when that generation is unchanged and the file had been settled for
- * `settleMs` when it was read, so a change inside the timestamp granularity is read again.
- * Unusable headers cache their `invalid` classification the same way. Entries for missing
- * files are dropped, a complete enumeration drops every file it did not visit, and the
- * oldest entries leave first past the bound. Never persisted, logged, or exposed.
- * @param {{now?: () => number, settleMs?: number, maxEntries?: number}} [options]
- */
+/** @param {{now?: () => number, settleMs?: number, maxEntries?: number}} [options] */
 export function createCodexRolloutHeaderCache({ now = Date.now, settleMs = HEADER_SETTLE_MS, maxEntries = HEADER_CACHE_LIMIT } = {}) {
   const entries = new Map();
   let visited = null;
@@ -417,10 +386,6 @@ export function isTopLevelCodexSession(metadata) {
   return Boolean(metadata && !metadata.parentThreadId && TOP_LEVEL_SOURCE_KINDS.has(metadata.sourceKind));
 }
 
-/** Translate a full Codex rollout/thread header into the source ledger's bounded,
- * provider-neutral shape. `groupId` carries Codex's shared `sessionId` only when it
- * names a group distinct from the header's own identity (Codex defaults an absent
- * `sessionId` to the header's own `localId`, which is not a group relation). */
 export function codexHeaderToLedgerHeader(header) {
   if (!header || !isSafeCodexSessionId(header.localId)) return null;
   return {
@@ -434,7 +399,6 @@ export function codexHeaderToLedgerHeader(header) {
     createdAt: typeof header.createdAt === "string" ? header.createdAt : null,
     // The header's own updatedAt is already record time, never file mtime.
     lastRecordAt: typeof header.updatedAt === "string" ? header.updatedAt : null,
-    // Between two files carrying one identity, keep the copy the whole-tree walk chose.
     preference: Date.parse(header.updatedAt || "") || null,
   };
 }
@@ -449,7 +413,6 @@ function datePartsBefore(parts, since) {
   return false;
 }
 
-/** The `YYYY/MM/DD` directory date of a rollout file under an active root, or null. */
 function rolloutDirectoryDate(roots, file) {
   if (typeof file !== "string") return null;
   for (const source of roots) {
@@ -462,14 +425,7 @@ function rolloutDirectoryDate(roots, file) {
   return null;
 }
 
-/**
- * List rollout files that can belong to a family whose root file is `rootFile`.
- * Descendants are always created after their root, so dated `YYYY/MM/DD` directories
- * before the root file's own directory (less a one-day margin) are skipped; archive roots,
- * undated directories and an archived or undated root are listed in full. Returns null
- * when a directory cannot be read or the listing exceeds its bound, so the caller falls
- * back to the complete walk instead of trusting a partial listing.
- */
+// List rollout files that can belong to a family whose root file is `rootFile`.
 export async function listCodexRolloutFilesSince(roots, rootFile, options = {}) {
   const { signal } = options;
   if (!Array.isArray(roots)) return null;
@@ -505,8 +461,6 @@ export async function listCodexRolloutFilesSince(roots, rootFile, options = {}) 
   return files;
 }
 
-/** The source ledger's `parseHeader` hook: one bounded rollout header read,
- * translated into the ledger's neutral shape. */
 export function readCodexLedgerHeader(file, options = {}) {
   const archived = options.archived ?? /[\\/]archived_sessions[\\/]/i.test(file);
   return codexHeaderToLedgerHeader(readCodexRolloutHeader(file, { ...options, archived }));
@@ -515,32 +469,17 @@ export function readCodexLedgerHeader(file, options = {}) {
 const LISTING_YIELD_EVERY = 32;
 const yieldToEventLoop = () => new Promise((resolve) => setImmediate(resolve));
 
-/** True unless the path is definitely gone; an unreadable file still exists. */
+// True unless the path is definitely gone; an unreadable file still exists.
 function fileMayExist(file) {
   try { fs.statSync(file); return true; } catch (error) { return !["ENOENT", "ENOTDIR"].includes(error?.code); }
 }
 
-/**
- * Resolve one rollout family through the shared source ledger instead of a fresh
- * whole-tree header walk. The ledger only locates the root and caches headers, so family
- * completeness never depends on what the bounded, lagging index holds: every rollout file
- * that can belong to the family (dated directories from the root file's own directory on,
- * undated directories, and archive roots) is listed, each listed file's header comes from
- * the ledger when its filesystem identity is unchanged and is parsed otherwise (yielding to
- * the event loop between batches), and the family is closed over those listed headers
- * alone. Each member's full header is then re-read from its file. An unknown root, a failed
- * or oversized listing, or a member whose file is gone or now carries another identity
- * falls back to the bounded cold walk, whose result is ingested. An empty cold result is
- * remembered briefly, unless the root's file still exists but could not be read. Bound
- * overflow still throws `selected_family_limit`.
- */
 export async function resolveCodexRolloutFamily(ledger, roots, localSessionId, options = {}) {
   if (!ledger) return findCodexRolloutFamily(roots, localSessionId, options);
   if (!isSafeCodexSessionId(localSessionId)) return null;
   const located = ledger.locate(localSessionId);
   const rootFile = located?.file || null;
   if (rootFile) {
-    // A root that joins another thread's group can have older siblings: list everything.
     const candidates = await listCodexRolloutFilesSince(roots, rootFile, { ...options, listAll: Boolean(located.header.groupId) });
     if (candidates) {
       const listed = [];
@@ -578,7 +517,7 @@ export async function resolveCodexRolloutFamily(ledger, roots, localSessionId, o
   return cold;
 }
 
-/** Resolve only one selected rollout subtree with repeated bounded header passes. */
+// Resolve only one selected rollout subtree with repeated bounded header passes.
 export async function findCodexRolloutFamily(roots, localSessionId, options = {}) {
   const { signal } = options;
   if (!isSafeCodexSessionId(localSessionId) || !Array.isArray(roots)) return null;
@@ -630,11 +569,7 @@ export async function findCodexRolloutFamily(roots, localSessionId, options = {}
   return selected.has(localSessionId) ? [...selected.values()] : null;
 }
 
-/**
- * Walk every configured rollout root without retaining a catalog in memory.
- * This is deliberately separate from the bounded, recency-oriented discovery
- * cache used by the live shell.  It reads only the fixed rollout header window.
- */
+// Walk every configured rollout root without retaining a catalog in memory.
 /** @param {{ onBatch?: (batch: any[]) => boolean | Promise<boolean>, onHeader?: (header: any) => void, signal?: AbortSignal, headerCache?: ReturnType<typeof createCodexRolloutHeaderCache> }} [options] */
 export async function enumerateCodexRolloutHeaders(roots, options = {}) {
   const { onBatch, onHeader, signal } = options;
@@ -646,10 +581,6 @@ export async function enumerateCodexRolloutHeaders(roots, options = {}) {
     batch = [];
     try { return (await onBatch(next)) !== false; } catch { return false; }
   };
-  // Header reads are asynchronous, one open per changed file; unchanged files come from
-  // the provider's header cache. A full bounded header with no valid session_meta is an
-  // explicit non-candidate (`invalid`); a larger or unreadable file whose header cannot
-  // establish identity may be mid-write or truncated, so exactness degrades.
   const headerCache = options.headerCache || createCodexRolloutHeaderCache({ maxEntries: 0 });
   headerCache.beginPass();
   async function walk(directory, archived, depth) {

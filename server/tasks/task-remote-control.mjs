@@ -1,7 +1,4 @@
-// Whether a task's Claude Code session starts with Remote Control on. One fixed flag, kept in the existing `meta` table
-// under `task_remote_control:<repositoryId>:<taskId>` like a task's source (task-source.mjs), so the schema version does
-// not change. A row exists only while the flag is on. It is written in the transaction that creates or updates the task
-// and removed in the one that deletes it.
+// Whether a task's Claude Code session starts with Remote Control on.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { isRepositoryId, isTaskId, taskIdFromNumber } from "./task-record.mjs";
@@ -9,7 +6,7 @@ import { isRepositoryId, isTaskId, taskIdFromNumber } from "./task-record.mjs";
 const ON = "1";
 const prefixOf = (repositoryId) => `task_remote_control:${repositoryId}:`;
 
-/** The numbers of one repository's tasks that have the flag on. A row that is not a task ID and the fixed value is ignored. */
+// The numbers of one repository's tasks that have the flag on.
 export function readTaskRemoteControls(database, repositoryId) {
   const numbers = new Set();
   if (!isRepositoryId(repositoryId)) return numbers;
@@ -22,14 +19,12 @@ export function readTaskRemoteControls(database, repositoryId) {
   return numbers;
 }
 
-/** Whether one task has the flag on. */
 export function readTaskRemoteControl(database, repositoryId, taskNumber) {
   const taskId = taskIdFromNumber(taskNumber);
   if (!isRepositoryId(repositoryId) || taskId === undefined) return false;
   return preparedStatement(database, "SELECT value FROM meta WHERE key = ?").get(`${prefixOf(repositoryId)}${taskId}`)?.value === ON;
 }
 
-/** Turns the flag on or off for one task; off removes the row. */
 export function writeTaskRemoteControl(database, repositoryId, taskNumber, on) {
   const key = `${prefixOf(repositoryId)}${taskIdFromNumber(taskNumber)}`;
   if (on === true) {
@@ -39,7 +34,6 @@ export function writeTaskRemoteControl(database, repositoryId, taskNumber, on) {
   }
 }
 
-/** A stored row with its `run_remote_control` attached, the way the projection reads it. */
 export function withTaskRemoteControl(database, row) {
   return row ? { ...row, run_remote_control: readTaskRemoteControl(database, row.repository_id, row.number) } : row;
 }

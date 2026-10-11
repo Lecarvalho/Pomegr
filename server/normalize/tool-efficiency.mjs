@@ -50,8 +50,7 @@ function diffScopes(target, diff) {
   return (hunks.length ? hunks : [diff]).map((hunk) => `${target}:anchor:${digest(hunk)}`);
 }
 
-// Exact inputs stay monitor-side and are represented only by a digest. This keeps
-// separate file regions and search windows distinct without exposing their content.
+// Exact inputs stay monitor-side and are represented only by a digest.
 export function repetitionSignature(tool, input = {}) {
   return `${String(tool).toLowerCase()}:${digest(JSON.stringify(stableValue(input)))}`;
 }

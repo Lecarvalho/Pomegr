@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { normalizePipelineLogRecord } from "./pipeline-log-schema.mjs";
 
-/** Translate instrumented events into ordinary, identity-free JSONL records. */
 export function createPipelineLogStream({ writer, run = randomUUID(), now = () => new Date().toISOString() } = {}) {
   const scopes = new WeakMap();
   let nextScope = 0, rejected = 0, failed = false, lastDropped = 0, lastRejected = 0;

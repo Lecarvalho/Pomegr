@@ -26,7 +26,6 @@ export type HomePreferences = {
   rememberSession(id: string): void;
   updateDismissed: boolean;
   dismissUpdate(): void;
-  /** Whether the current update's dialog has already opened by itself once. */
   updateSeen: boolean;
   markUpdateSeen(): void;
 };
@@ -66,8 +65,6 @@ let hydrated = false;
 let inMemoryOnly = false;
 const listeners = new Set<() => void>();
 
-// The desktop renderer's browser storage is emptied on every launch, so there the announcement's
-// seen and dismissed markers also live in the desktop settings file, reached through the bridge.
 type DesktopUpdateKey = "seenId" | "dismissedId";
 type DesktopUpdateState = { homeUpdate?: { seenId?: unknown; dismissedId?: unknown } };
 type DesktopUpdateBridge = {

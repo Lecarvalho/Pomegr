@@ -1,6 +1,6 @@
 import { parseCodexRolloutLiveness } from "./rollout-lifecycle.mjs";
 
-/** The recorded vscode origin is not proof of the branded client currently viewing it. */
+// The recorded vscode origin is not proof of the branded client currently viewing it.
 export function createVscodeOriginObservation(maximum = 16) {
   let coldReads = 0;
   return {

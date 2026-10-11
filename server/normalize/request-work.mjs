@@ -2,7 +2,7 @@ import { WORK_KINDS } from "./work-kind.mjs";
 
 const KINDS = new Set(WORK_KINDS);
 
-/** Retain only bounded request-local counts; discard all other tool evidence. */
+// Retain only bounded request-local counts; discard all other tool evidence.
 export function normalizedRequestWork(value) {
   const counts = new Map();
   for (const item of Array.isArray(value) ? value : []) {

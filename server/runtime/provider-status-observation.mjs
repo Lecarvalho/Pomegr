@@ -38,7 +38,6 @@ function validatedCandidate(value, source) {
   return candidate;
 }
 
-/** Independent U1/U2 -> C/D -> S service domain; no transcript work or persistence. */
 export function createProviderStatusObservation({
   readStatus,
   now = Date.now,

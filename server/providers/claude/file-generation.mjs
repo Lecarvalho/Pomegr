@@ -1,13 +1,11 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 
-/** Bytes sampled from a transcript tail to prove that earlier content still matches. */
+// Bytes sampled from a transcript tail to prove that earlier content still matches.
 export const FILE_SUFFIX_SAMPLE_BYTES = 256;
 
-/**
- * Append-only transcript files are cached by generation: a stable file identity plus a digest of
- * the recorded tail. Both must still match before a cached parse may be continued instead of redone.
- */
+// Append-only transcript files are cached by generation: a stable file identity plus a digest of
+// the recorded tail. Both must still match before a cached parse may be continued instead of redone.
 export function fileIdentity(stat) {
   const device = Number.isFinite(stat?.dev) ? stat.dev : null;
   const inode = Number.isFinite(stat?.ino) && stat.ino > 0 ? stat.ino : null;
@@ -15,12 +13,6 @@ export function fileIdentity(stat) {
     ? `${device ?? "device"}:${inode}`
     : `birth:${Number.isFinite(stat?.birthtimeMs) ? stat.birthtimeMs : "unknown"}`;
 }
-/**
- * Shared primitive behind `readFileSuffix` (size >= 1) and the file-generation reuse cache's
- * descriptor path (size >= 0, e.g. a just-created empty file): opens the file once and reads up
- * to `suffixBytes` trailing bytes, returning both the requested byte count and how many were
- * actually read so callers can apply their own "was this a complete read" rule without re-reading.
- */
 export function readFileSuffixRaw(file, size, suffixBytes) {
   if (!Number.isInteger(size) || size < 0 || !Number.isInteger(suffixBytes) || suffixBytes < 1) return null;
   const bytes = Math.min(size, suffixBytes);
@@ -56,7 +48,6 @@ export function fileGeneration(file, stat) {
     suffixDigest: suffix.digest,
   } : null;
 }
-/** `identity|size|mtimeMs|suffixDigest`: the exact-match key for per-file derived reuse. */
 export function generationKey(generation) {
   return generation ? `${generation.identity}|${generation.size}|${generation.mtimeMs}|${generation.suffixDigest}` : null;
 }

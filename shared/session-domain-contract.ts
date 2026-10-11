@@ -72,7 +72,6 @@ export type SessionSummaryDomain = SessionDomainBase & {
     available: boolean;
     branch: string | null;
     changedFiles: number | null;
-    /** Size of the Repository tab's Touched here list (recorded plus Git-observed paths); null until file history is ready. */
     touchedFiles: number | null;
     pullRequestCount: number | null;
     comparison: NonNullable<MonitorState["session"]>["repository"]["comparison"] | null;
@@ -105,13 +104,9 @@ export const SESSION_EVENT_KINDS = [
 
 export type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
 
-/** Newest-first cap on `SessionEventFeed.items`; `total` counts the events derivable from retained evidence before the cap, not a complete session history. */
 export const SESSION_EVENT_LIMIT = 50;
 
-/**
- * One high-level transition derived monitor-side from already-normalized evidence.
- * Every field other than `id`, `kind`, and `at` is null unless its kind uses it.
- */
+// One high-level transition derived monitor-side from already-normalized evidence.
 export type SessionEvent = {
   id: string; // opaque digest, stable while the underlying evidence is unchanged
   kind: SessionEventKind;
@@ -123,7 +118,6 @@ export type SessionEvent = {
   progress: Pick<NonNullable<NonNullable<MonitorState["session"]>["progress"]>, "percent" | "phase"> | null; // estimate_updated
   resource: ResourceField | null; // resource_peak: the retained session high for that resource
   pullRequestNumber: number | null; // pull_request_opened, when the recorded creation matches a listed pull request
-  /** cache_refill: the fixed kind of the agent's recorded refill occurrence. `lifetime_elapsed` is an inference. */
   refill: "possible_full" | "provider_diagnosed" | "lifetime_elapsed" | null;
   compaction: "automatic" | "manual" | null; // context_compacted: the recorded compaction trigger
 };
@@ -138,7 +132,6 @@ export type AgentsDomain = SessionDomainBase & {
   domain: "agents";
   agents: Agent[];
   workflows: Workflow[];
-  /** Roster-row and focused-tree history marks; the selected-agent inspector keeps its own bounded copy. */
   insights: Insight[];
   loops: LoopPattern[];
   cacheRefills: CacheRefillCount[];
@@ -179,66 +172,43 @@ export type RepositoryDomain = SessionDomainBase & {
   repositoryId: string | null;
   contextInventoryRef: NonNullable<MonitorState["session"]>["contextInventoryRef"] | null;
   repository: NonNullable<MonitorState["session"]>["repository"] | null;
-  /** Why a live view shows no repository: "branch_changed" when Git answered for the session's
-   *  repository on a branch other than the recorded one. null when a repository is shown, the
-   *  view is historical, or the reason is not recognized. */
   unavailableReason: "branch_changed" | null;
   pullRequests: NonNullable<MonitorState["session"]>["pullRequests"] | null;
-  /** ISO time of the live check a historical view is served from; null for live views and
-   *  for historical sessions without a recorded snapshot. */
   recordedAt: string | null;
-  /** Commits whose committer time lies inside the session wall-time window on the session's
-   *  branch, measured at the (last) live check; null when not measured. */
   commitsInSession: number | null;
-  /** Execution tasks whose workKind is git, git_push or pull_request; null until activity
-   *  evidence is ready. */
   gitTasks: { total: number; failed: number } | null;
-  /** The Repository tab's Touched here list, built monitor-side from recorded evidence only. */
+  // The Repository tab's Touched here list, built monitor-side from recorded evidence only.
   touchedFiles: SessionTouchedFiles;
 };
 
-/** One file this session touched. A path is listed once: a path both recorded and committed is
- *  its `recorded` entry only. */
+// One file this session touched.
 export type SessionTouchedFile =
   | {
       path: string; // safe repository-relative path, same root as repository.files
-      /** A recorded tool change, from the committed file-history cache (never a GET-time read). */
+      // A recorded tool change, from the committed file-history cache (never a GET-time read).
       source: "recorded";
       fileId: string; // opaque `f<integer>`, see shared/repository-files-contract.ts
       kind: "created" | "edited" | "deleted" | "moved"; // newest kind in this session
       changeCount: number;
       lastObservedAt: string; // ISO
-      /** Agents a recorded tool call proves changed this file in this session, newest first, at
-       *  most 12. `label`, `assignment`, and `model` come from the visible agent when listed,
-       *  else from the identity recorded with the file index; `model` is the agent's latest
-       *  reported model, never the model of the request that made a change. Shell-command and
-       *  Git-only changes never appear here. */
+      // Agents a recorded tool call proves changed this file in this session, newest first, at most 12.
       agents: Array<{ id: string; label: string | null; assignment: string | null; model: string | null; changeCount: number }>;
     }
   | {
       path: string; // safe repository-relative path, same root as repository.files
-      /** Changed by a commit on the live HEAD branch whose committer time lies inside one of this
-       *  session's own finished Git commands, and no recorded tool touched it. A time match, not
-       *  proof of authorship. Never a recorded tool edit: no agent, request, or edit count. A
-       *  historical session serves its recorded snapshot values only. */
       source: "committed";
-      /** Net Git change across the matched commits; null when not recorded. */
+      // Net Git change across the matched commits; null when not recorded.
       change: "added" | "modified" | "deleted" | null;
     };
 
-/** Files this session touched, sorted by path. Committed entries are listed whatever the
- *  recorded history's readiness. */
 export type SessionTouchedFiles = {
   readiness: "loading" | "ready" | "unavailable" | "rebuilding"; // recorded history readiness
   files: SessionTouchedFile[]; // sorted by path; a path appears once
   truncated: boolean; // either source was cut at its cap
 };
 
-/** Display fields; peaks and curves use these four. CPU is identified by `cpu_cores` and
- *  presented as its whole-machine percentage, carried alongside the occupied-core value. */
 export type ResourceField = "cpu_cores" | "memory_bytes" | "read_bps" | "write_bps";
 
-/** Why stored minute curves are absent or incomplete for this session. */
 export type ResourceRetentionReason =
   | "age_retention" // removed by the retention-days setting
   | "size_cleanup" // removed by the soft size threshold cleanup
@@ -248,7 +218,6 @@ export type ResourceMinuteAggregate = { min: number; avg: number; max: number; m
 
 export type ResourceMinute = {
   minuteStart: string; // ISO
-  // For each field: min/avg/max and ISO timestamp of the max sample; null when no sample in that minute.
   cpuCores: ResourceMinuteAggregate | null;
   cpuMachinePercent: ResourceMinuteAggregate | null; // the same samples as a share of all logical processors, 0–100
   memoryBytes: ResourceMinuteAggregate | null;
@@ -270,14 +239,11 @@ export type ResourcePeak = {
   field: ResourceField;
   observedAt: string; // ISO, second-level instant of the peak sample
   value: number;
-  // cpu_cores peaks only: the whole-machine percentage (0–100) recorded for the same minute's
-  // peak; null for other fields or when that record is absent.
   cpuMachinePercent: number | null;
   tasks: ResourcePeakTask[]; // matched tasks resolved from committed normalized task metadata; unresolved IDs dropped
   matchedTaskCount: number; // count of matched task IDs, including unresolved ones
   request: { number: number; uncachedInputTokens: number | null } | null; // always null in this part (see below)
   window: {
-    // retained full-resolution samples of this peak's field, 2 min each side
     status: "retained" | "not_retained";
     samples: Array<{ at: string; value: number | null }>; // empty when not_retained
     minute: ResourceMinute | null; // the minute row containing the peak, for the not_retained fallback
@@ -292,7 +258,6 @@ export type ResourcesDomain = SessionDomainBase & {
     minutes: ResourceMinute[]; // ascending, newest 1440 at most
     minutesTruncated: boolean; // true when older minutes exist beyond the bound
     curveRemoval: { reason: ResourceRetentionReason; removedAt: string | null } | null;
-    // non-null when minutes are empty but peaks exist, or when a recorded removal exists
     peaks: ResourcePeak[]; // top 3 per ResourceField by value (12 max), sorted by observedAt desc
   };
 };

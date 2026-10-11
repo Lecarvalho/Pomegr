@@ -97,7 +97,6 @@ function killChild(child, signal = "SIGTERM") {
   try {
     child.kill(signal);
   } catch {
-    // The process already stopped.
   }
 }
 

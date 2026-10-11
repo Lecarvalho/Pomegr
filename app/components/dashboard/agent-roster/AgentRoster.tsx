@@ -25,9 +25,7 @@ export type AgentRosterProps = {
   sessionId?: string; viewMode?: AgentActivityViewMode; onViewModeChange?: (mode: AgentActivityViewMode) => void;
   selectedAgentId?: string | null; onSelectAgent?: (id: string | null) => void; workflowNavigation?: { id: string; request: number } | null;
   agentNavigation?: { id: string; request: number } | null;
-  /** The inspector owns only one bounded per-agent domain; roster data stays in agents. */
   inspector?: AgentDomain | null; onOpenActivities?: (agentId: string) => void;
-  /** Shown in the inspector while the chosen agent's domain has not resolved. */
   inspectorPendingText?: string;
 };
 
@@ -36,7 +34,6 @@ function readOpenGroups(sessionId: string): Set<string> {
 }
 
 const LEGEND_LABELS: Record<RosterLegendStatus, string> = { active: "Active", idle: "Idle", needs_input: "Needs input", finished: "Finished", stopped: "Stopped", other: "Other" };
-// The phone and desktop mockups order the legend differently; stopped and other appear only when present.
 const PHONE_LEGEND_ORDER: RosterLegendStatus[] = ["active", "idle", "needs_input", "finished", "stopped", "other"];
 const DESKTOP_LEGEND_ORDER: RosterLegendStatus[] = ["finished", "idle", "active", "needs_input", "stopped", "other"];
 
@@ -91,8 +88,6 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const defaultSelection = agents.find((agent) => agent.id === "primary")?.id || agents[0]?.id || null;
   const selectionCandidate = selectedAgentId === undefined ? selection : selectedAgentId;
   const selected = selectionCandidate && agents.some((agent) => agent.id === selectionCandidate) ? selectionCandidate : defaultSelection;
-  // This preference is restored once for the keyed session instance. Later
-  // polling updates must preserve the user's current selection.
   useEffect(() => {
     // Restore browser-only preferences after hydration; the server renders closed groups.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -119,14 +114,12 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
       setOpenGroups((current) => { const next = new Set(current).add(targetGroupId); try { window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next])); } catch { /* Optional. */ } return next; });
       setRevealed((current) => new Set(current).add(targetGroupId));
     }
-    // Selection and workflow navigation open their group once, without defeating manual collapse.
   }, [targetGroupId, sessionId]);
   useEffect(() => {
     if (!phone || !selectedAgentId || !agents.some((agent) => agent.id === selectedAgentId)) return;
     const selectionKey = `${sessionId}:${selectedAgentId}`;
     if (handledExternalSelection.current === selectionKey) return;
     handledExternalSelection.current = selectionKey;
-    // A scoped URL is an explicit inspection request on phone; no route or page handoff is needed.
     setPhoneInspectorOpen(true);
   }, [agents, phone, selectedAgentId, sessionId]);
   const requestedWorkflowGroup = groups.find((group) => workflowNavigation && group.id === `workflow:${workflowNavigation.id}`)?.id;
@@ -155,7 +148,6 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     if (handledAgentNavigation.current === navigationKey) return;
     handledAgentNavigation.current = navigationKey;
     pendingAgentScroll.current = true;
-    // Insight links are explicit navigation: reset every excluding roster view constraint.
     setFilters(DEFAULT_FILTERS);
     setSelection(requestedAgentId);
     setTreeFocusId(null);
@@ -273,11 +265,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     const opener = phoneInspectorOpener.current;
     phoneInspectorOpener.current = null;
     setPhoneInspectorOpen(false);
-    // Controlled session selections are URL evidence links. Closing the phone sheet
-    // must clear that link so a reload does not reopen an inspector the reader closed.
     if (selectedAgentId !== undefined) onSelectAgent?.(null);
-    // A sheet reopened from the focused tree returns focus to the tree opener below;
-    // a later frame-scheduled fallback would otherwise steal it back to the row.
     if (!treeReturnsToSheet) window.requestAnimationFrame(() => {
       const fallback = returnId ? (viewMode === "grid" ? tileRefs.current.get(returnId) : rowRefs.current.get(returnId)?.querySelector<HTMLButtonElement>(".rosterSelectAgent")) : null;
       (opener?.isConnected ? opener : fallback)?.focus({ preventScroll: true });

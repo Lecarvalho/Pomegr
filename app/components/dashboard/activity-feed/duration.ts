@@ -1,4 +1,3 @@
-/** Wall time from a call to its recorded result, compacted for feeds and kind medians. */
 export function activityDuration(value: number | null) {
   if (value === null) return "—";
   if (value < 1_000) return `${Math.round(value)}ms`;

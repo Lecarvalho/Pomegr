@@ -1,10 +1,7 @@
 import { execFileSync } from "node:child_process";
 import type { NextConfig } from "next";
 
-// vinext bakes a build ID and a deployment ID into the bundles and draws both at random when the
-// configuration names none, so two builds of one commit would differ in every content hash. The
-// commit pins them; a new commit still gets new IDs, which the client uses to detect a deployment
-// it was not built for. Outside a Git checkout the IDs stay random.
+// vinext draws random build and deployment IDs when none are named; pinning them to the commit keeps two builds of one commit identical.
 function commitId(): string | null {
   try {
     const id = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();

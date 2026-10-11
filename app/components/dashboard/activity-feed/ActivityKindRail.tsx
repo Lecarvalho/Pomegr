@@ -8,16 +8,9 @@ import { WORK_LABELS } from "../../agents/agent-presentation";
 import { activityDuration } from "./duration";
 import type { ActivityFeedView } from "./useActivityFeed";
 
-/** The rail is a summary column, not a task list: four rows keep it shorter than the kind rows. */
 const SHOWN_TASKS = 4;
 
-/**
- * Left rail: read-only per-kind call counters, the latest shell tasks, and the aggregate shell
- * counts. Only bounded, browser-safe metadata renders here: kind, count, share and median wall
- * duration for calls; Bash description, status, exit code and wall duration for tasks.
- */
 export function ActivityKindRail({ feed, tasks, selectedKinds }: { feed: ActivityFeedView; tasks: ExecutionTask[]; selectedKinds: ReadonlySet<WorkKind> }) {
-  // Latest first, so the running task a reader is waiting on sits at the top of a bounded list.
   const latestTasks = [...tasks].sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt) || right.id.localeCompare(left.id));
   const shownTasks = latestTasks.slice(0, SHOWN_TASKS);
   const running = tasks.filter((task) => task.status === "running").length;
@@ -31,15 +24,13 @@ export function ActivityKindRail({ feed, tasks, selectedKinds }: { feed: Activit
       {rows.map(({ kind, count, medianDurationMs }) => <div key={kind} className={`activityKindRow${selectedKinds.has(kind) ? " selected" : ""}`} role="listitem"
         aria-label={selectedKinds.has(kind) ? `${WORK_LABELS[kind]} · recorded for selected request` : undefined}>
         <WorkKindIcon kind={kind} /><span className="activityKindLabel">{WORK_LABELS[kind]}</span>
-        {/* The bar compares kinds against the busiest one; the share column keeps the count-over-total
-            reading. A recorded kind keeps a 2% sliver so one call is still visible beside 59. */}
+        {/* A recorded kind keeps a 2% sliver so one call stays visible beside a busy kind. */}
         <span className="activityKindBar" aria-hidden="true"><i style={{ width: `${kindMax ? Math.max(2, Math.round(count / kindMax * 100)) : 0}%` }} /></span>
         <strong>{count.toLocaleString()}</strong><span>{kindTotal ? Math.round(count / kindTotal * 100) : 0}%</span><span>{activityDuration(medianDurationMs)}</span>
       </div>)}
     </div>
     <div className="activityShellTasks">
-      {/* The header counts the tasks this scope still retains, not the recorded shell calls the
-          Shell kind row and Failed shell runs count: two sources, so they never share one line. */}
+      {/* Counts retained tasks, not recorded shell calls: two sources that never share a line. */}
       <div className="activityShellHeader"><h3 className="sessionEyebrow">Shell tasks</h3>{latestTasks.length > 0 && <span>{latestTasks.length.toLocaleString()} {latestTasks.length === 1 ? "task" : "tasks"}{running ? ` · ${running} running` : ""}</span>}</div>
       {shownTasks.length > 0
         ? <div role="group" aria-label="Latest shell tasks">{shownTasks.map((task) => <ExecutionTaskRow task={task} key={task.id} dense />)}</div>

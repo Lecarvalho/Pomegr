@@ -8,10 +8,6 @@ function directory(value) {
   try { return path.resolve(value); } catch { return null; }
 }
 
-/**
- * Resolve all Claude-owned local roots from one selected configuration profile.
- * Explicit adapter roots remain useful for fixtures and trusted local operators.
- */
 export function resolveClaudeProfileRoots(options = {}) {
   const environment = options.env ?? options.environment ?? process.env;
   const homeDir = directory(options.homeDir) || os.homedir();

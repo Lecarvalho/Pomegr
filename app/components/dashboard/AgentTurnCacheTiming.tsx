@@ -38,7 +38,6 @@ function newestSnapshot(items: RequestSnapshot[]) {
   return newest;
 }
 
-/** Live nearing/elapsed evaluation shared by agent rows and the sessions page. */
 export function deriveCacheLifetimeTiming(lastCacheTouchAt: string, cacheLifetime: CacheLifetime | null | undefined, now: number): { state: CacheTimingState; remainingMs: number | null } {
   const lifetimeMs = CACHE_LIFETIME_MS[cacheLifetime || "mixed"];
   const nearWindowMs = CACHE_NEAR_WINDOW_MS[cacheLifetime || "mixed"];

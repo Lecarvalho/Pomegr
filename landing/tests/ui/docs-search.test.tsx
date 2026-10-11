@@ -6,10 +6,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocsSearchIndex } from "../../scripts/docs-search.mjs";
 
-// The documentation search (WEB-03): the matching rules over the real generated index, and the
-// accessible search box in the sidebar. The index comes from the real prepared content, so a newly
-// published page is covered automatically.
-
 const mocks = vi.hoisted(() => ({ pathname: "/docs/get-started/introduction" }));
 
 vi.mock("next/navigation", async (importOriginal) => {
@@ -67,7 +63,6 @@ describe("matching", () => {
     expect(routes("reuse cache")).toEqual(expect.arrayContaining(routes("cache reuse")));
     expect(find("cache zzzzqqqq").total).toBe(0);
     expect(find("zzzzqqqq").results).toEqual([]);
-    // A fragment inside a word is not a match; only the start of a word is.
     expect(find("ache").results.every((result) => words(`${result.page.title} ${result.page.description} ${result.page.headings.map((heading) => heading.text).join(" ")} ${result.page.text}`).some((word) => word.startsWith("ache")))).toBe(true);
   });
 
@@ -110,7 +105,6 @@ describe("matching", () => {
     const summary = (query: string) => outcome(query).results.map((result) => [result.page.route, result.headings.map((heading) => heading.text)]);
 
     it("does not match a lone letter as a prefix, so an article neither widens nor narrows a match", () => {
-      // Pages that hold "spot" and "compaction" but no word starting with "a" still match.
       expect(summary("spot a compaction").map(([route]) => route)).toEqual(["/docs/concepts/first", "/docs/concepts/second"]);
       expect(summary("spot a compaction")).toEqual(summary("spot compaction"));
     });
@@ -207,7 +201,6 @@ describe("the search box", () => {
     const headingLink = within(sections).getByRole("link", { name: sampleHeading.text });
     expect(headingLink.getAttribute("href")).toBe(`${sample.route}#${sampleHeading.id}`);
 
-    // Every result link points at a published page, optionally at one of its real headings.
     for (const link of within(list).getAllByRole("link")) {
       const [route, id] = link.getAttribute("href")!.split("#");
       expect(byRoute.has(route), route).toBe(true);
@@ -235,7 +228,6 @@ describe("the search box", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/^Showing the best 8 of \d+ pages\.$/));
     expect(within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link").length).toBeGreaterThan(MAX_RESULTS - 1);
 
-    // A single letter is not matched as a prefix: the field asks for more and keeps the page list.
     await typing.clear(box());
     await typing.type(box(), "a");
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Type at least 2 letters."));

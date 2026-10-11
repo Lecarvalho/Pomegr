@@ -19,7 +19,6 @@ export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   providerFolders: Object.freeze({ claudeConfigDir: null, claudeProjectsDir: null, codexHome: null }),
   // null means not set: the monitor inherits the launch environment, else its own defaults (90 days / 500 MB).
   storage: Object.freeze({ retentionDays: null, storeMaxMb: null }),
-  // The Home announcement identifiers whose dialog already opened once and whose card was dismissed.
   homeUpdate: Object.freeze({ seenId: null, dismissedId: null }),
 });
 

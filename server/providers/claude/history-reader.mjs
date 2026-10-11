@@ -12,7 +12,6 @@ function sameFile(left, right) {
   return left.birthtimeMs === right.birthtimeMs;
 }
 
-/** Read one stable Claude JSONL generation while yielding between bounded chunks. */
 export async function readClaudeHistoryRecords(file, yieldControl = defaultYield) {
   let stat;
   try { stat = fs.statSync(file); } catch { return { records: [], complete: false }; }

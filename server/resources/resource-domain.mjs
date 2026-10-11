@@ -1,12 +1,3 @@
-// Committed source for the session `resources` domain's retained (SQLite-backed) block:
-// minute curves, curve-removal explanations, and matched peaks with their sample windows.
-// Built on the monitor-store checkpoint cycle only; `retained()` is a pure in-memory map
-// lookup so a domain GET never triggers a synchronous SQLite read. See
-// docs/internal/architecture/observation-cache.md for the committed-domain-cache contract this follows.
-//
-// Privacy: the block carries only normalized session/peak/task identity, ISO timestamps,
-// bounded numeric aggregates, and bounded retention-reason enums. No PIDs, process
-// identity, paths, command text, or raw provider evidence.
 
 import { createResourceHistoryQueries } from "./resource-history.mjs";
 
@@ -16,8 +7,6 @@ const TOP_PEAKS_PER_FIELD = 3;
 const MAX_DEMANDED_SESSIONS_PER_CYCLE = 32;
 
 // The four display fields the resources domain shows curves and peaks for.
-// cpu_machine_percent is never a peak of its own: its minute aggregates ride on each minute
-// and its same-minute peak value rides on the cpu_cores peak, as the value CPU is presented in.
 const DISPLAY_FIELDS = new Set(["cpu_cores", "memory_bytes", "read_bps", "write_bps"]);
 const CPU_FIELD = "cpu_cores";
 const CPU_MACHINE_PERCENT_FIELD = "cpu_machine_percent";
@@ -62,7 +51,6 @@ function aggregateFromRow(row, prefix) {
   };
 }
 
-/** Turns one camelized resource_minutes row (numeric minuteStart) into the domain's ResourceMinute. */
 function toResourceMinute(row) {
   return {
     minuteStart: isoOrNull(row.minuteStart),
@@ -80,8 +68,6 @@ function minuteStartOf(observedAtMs) {
 
 function buildPeak(queries, peakRow, minutesByStart, machinePercentByMinute) {
   const sampleKey = FIELD_SAMPLE_KEY[peakRow.field];
-  // Resource history keeps one peak row per field per minute, so the machine-percent row of
-  // the same minute describes the same peak.
   const cpuMachinePercent = peakRow.field === CPU_FIELD
     ? numberOrNull(machinePercentByMinute.get(minuteStartOf(peakRow.observedAtMs)))
     : null;
@@ -104,15 +90,12 @@ function buildPeak(queries, peakRow, minutesByStart, machinePercentByMinute) {
     observedAt: isoOrNull(peakRow.observedAtMs),
     value: peakRow.value,
     cpuMachinePercent,
-    // Task resolution (label/workKind/duration) happens in the projection layer against
-    // committed normalized execution tasks; this block carries only the raw matched IDs.
     matchedTaskIds,
     matchedTaskCount: matchedTaskIds.length,
     window,
   };
 }
 
-/** Builds the complete retained block for one session from the committed SQLite store. */
 function buildBlock(store, sessionId) {
   const queries = createResourceHistoryQueries(store);
   const bounded = queries.sessionResourceCurvesRecent(sessionId, { limit: MAX_MINUTES });
@@ -129,7 +112,6 @@ function buildBlock(store, sessionId) {
     }
     if (!DISPLAY_FIELDS.has(peakRow.field)) continue;
     const bucket = byField.get(peakRow.field) || [];
-    // sessionResourcePeaks already orders each field's rows by value desc.
     if (bucket.length < TOP_PEAKS_PER_FIELD) {
       bucket.push(peakRow);
       byField.set(peakRow.field, bucket);
@@ -163,14 +145,7 @@ function storageReadinessKind(monitorStoreRuntime) {
   }
 }
 
-/**
- * Commits the session `resources` domain's retained block on the monitor-store checkpoint
- * cycle. Registers a `resource-domain` contributor (always `rebuildComplete: true`: this
- * data is a derived cache over already-committed SQLite tables, never a rebuild target
- * itself) that, for each demanded session, reads curves/removal/peaks/windows and keeps the
- * normalized result in an in-memory map. `retained()` only reads that map; `request()` only
- * nudges the store runtime to schedule a cycle, never inline.
- */
+// Commits the session `resources` domain's retained block on the monitor-store checkpoint cycle.
 export function createResourceDomainSource({ monitorStoreRuntime, demandedSessionIds, onChange, now = Date.now } = {}) {
   if (!monitorStoreRuntime || typeof monitorStoreRuntime.registerContributor !== "function"
     || typeof monitorStoreRuntime.store !== "function") {
@@ -185,9 +160,7 @@ export function createResourceDomainSource({ monitorStoreRuntime, demandedSessio
   const serialized = new Map(); // sessionId -> last committed block's JSON, for change detection
   const requestedSessionIds = new Set(); // sessions with an outstanding, coalesced hydration nudge
 
-  // An explicit retained-resource request wins the next bounded cycle. The remaining
-  // demanded IDs retain their supplied order, which lets normal catalog recency decide
-  // among sessions that were not explicitly selected by the user.
+  // An explicit retained-resource request wins the next bounded cycle.
   function cycleSessionIds(sessionIds) {
     const demanded = new Set();
     for (const sessionId of sessionIds) {
@@ -216,15 +189,12 @@ export function createResourceDomainSource({ monitorStoreRuntime, demandedSessio
     const demanded = new Set(sessionIds.filter((sessionId) => typeof sessionId === "string" && sessionId.length > 0));
     const selectedSessionIds = cycleSessionIds(sessionIds).slice(0, MAX_DEMANDED_SESSIONS_PER_CYCLE);
     for (const sessionId of selectedSessionIds) {
-      // Consume explicit priority on the first attempt. A failed read can be
-      // requested again by a later GET, but cannot monopolize every future cycle.
+      // Consume explicit priority on the first attempt.
       requestedSessionIds.delete(sessionId);
       let nextBlock;
       try {
         nextBlock = buildBlock(store, sessionId);
       } catch {
-        // A failed read for one session keeps its previous block (last-known-good) and
-        // never blocks other demanded sessions in the same cycle.
         continue;
       }
       const nextSerialized = JSON.stringify(nextBlock);
@@ -235,8 +205,6 @@ export function createResourceDomainSource({ monitorStoreRuntime, demandedSessio
     }
 
     // The store runtime turns this into at most one extra pass after the current cycle.
-    // Only requests beyond this cycle's budget cause it. Failed reads have
-    // consumed their priority, so they cannot create an automatic retry loop.
     for (const sessionId of requestedSessionIds) {
       if (!demanded.has(sessionId)) continue;
       try { monitorStoreRuntime.afterCheckpointWrite?.(); } catch { /* best-effort nudge */ }
@@ -251,14 +219,14 @@ export function createResourceDomainSource({ monitorStoreRuntime, demandedSessio
   }));
 
   return Object.freeze({
-    /** Pure map lookup; never touches SQLite. Safe to call from a serving-side GET. */
+    // Pure map lookup; never touches SQLite.
     retained(sessionId) {
       if (typeof sessionId !== "string" || sessionId.length === 0) return LOADING_BLOCK;
       if (!monitorStoreRuntime.store()) return UNAVAILABLE_BLOCK;
       if (storageReadinessKind(monitorStoreRuntime) === "rebuilding") return REBUILDING_BLOCK;
       return blocks.get(sessionId) || LOADING_BLOCK;
     },
-    /** Queues asynchronous hydration for a demanded session with no block yet; never inline. */
+    // Queues asynchronous hydration for a demanded session with no block yet; never inline.
     request(sessionId) {
       if (typeof sessionId !== "string" || sessionId.length === 0) return;
       if (blocks.has(sessionId) || requestedSessionIds.has(sessionId)) return;

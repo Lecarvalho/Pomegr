@@ -1,9 +1,6 @@
 import { isIssueNumber, issueTitleOf, stripHiddenComments } from "../repository/issues.mjs";
 import { TASK_BODY_LIMIT_BYTES, isPlainObject, readLimitedBody, writeActionResult } from "./task-routes.mjs";
 
-// The GitHub issue routes of the task board (desktop token only; the request handler applies the private-action gate).
-// Issue text is written by other people and is untrusted: nothing from the request body reaches the store except the
-// issue number and digest, which are only compared against a fresh read of the issue from GitHub.
 export const TASK_ISSUE_ACTIONS = Object.freeze(["github-status", "issues-list", "issue-promote", "issue-create"]);
 
 const PREFIX = "/internal/tasks/";
@@ -16,12 +13,10 @@ const STATUS = Object.freeze({
   cli_missing: 502, not_signed_in: 502, no_access: 502, issues_disabled: 502, failed: 502,
 });
 const CREATE_FAILURES = new Set(["cli_missing", "not_signed_in", "no_access", "issues_disabled", "failed"]);
-// Creates in flight, as `<repositoryId>:<taskId>`: a second create for the same task is refused until the first ends.
 const creating = new Set();
 const rejected = (error) => ({ ok: false, error });
 const refuse = (response, error, status = STATUS[error], options) => writeActionResult(response, status, rejected(error), options);
 
-/** An explicit allowlist: `taskText` and every other field of the held issue never reach the answer. */
 function projectIssue(issue, taskId) {
   return {
     number: issue.number,
@@ -69,9 +64,6 @@ const promotePayload = (payload) => {
 
 const createPayload = (payload) => Object.keys(payload).length === 1 && typeof payload.taskId === "string" && TASK_ID_PATTERN.test(payload.taskId);
 
-// Creates the GitHub issue of one existing task from its saved text, then records the issue number as the task's source.
-// The task text goes to GitHub once and only through the issue reader's standard input; no answer carries it, a title,
-// a path, or a message from `gh`. On every failure the task store is untouched.
 async function createIssue({ response, taskStore, taskIssues, repositoryId, payload }) {
   const draft = taskStore.issueDraft(repositoryId, payload.taskId);
   if (draft === null || typeof draft?.text !== "string") { refuse(response, "not_found"); return; }
@@ -88,7 +80,6 @@ async function createIssue({ response, taskStore, taskIssues, repositoryId, payl
       return;
     }
     if (!isIssueNumber(created.number)) { refuse(response, "failed"); return; }
-    // GitHub already holds the issue: a store that cannot record it answers `failed`, never a half-success.
     const recorded = taskStore.apply(repositoryId, "record_issue", { id: payload.taskId, number: created.number });
     if (recorded?.ok !== true) { refuse(response, "failed"); return; }
     writeActionResult(response, 200, { ok: true, number: created.number });
@@ -114,10 +105,6 @@ async function promote({ response, taskStore, taskIssues, repositoryId, payload 
   refuse(response, Object.hasOwn(STATUS, result?.error) ? result.error : "unavailable");
 }
 
-/**
- * `POST /internal/tasks/github-status | issues-list | issue-promote | issue-create`. The body is `{ repositoryId, payload }`; the
- * answer is `{ ok: true, ... }` or `{ ok: false, error }`, never an echo of the input, a path, or the repository root.
- */
 export async function serveTaskIssueRoute({ request, response, requestUrl, taskStore, taskIssues }) {
   const action = requestUrl.pathname.slice(PREFIX.length);
   if (!TASK_ISSUE_ACTIONS.includes(action)) { refuse(response, "invalid", 404); return; }

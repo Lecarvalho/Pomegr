@@ -24,11 +24,6 @@ function commitsHeading(repository: NonNullable<RepositoryDomain["repository"]>)
   return "Recent commits on the default branch";
 }
 
-/** Repository page Git tab: the live commit list that used to live on the session Repository tab
- * (see app/components/dashboard/RepositoryTab.tsx). Only a live session in this repository can
- * supply commits -- a historical session's recorded snapshot never carries a commit list
- * (G16-G18 in the repository-snapshot design contract), and the current working tree is never
- * substituted for it. */
 export function RepositoryGitTab({ repositoryId }: RepositoryGitTabProps) {
   const { sessions } = useSessionCatalog();
   const liveSession = newestLiveSession(sessions, repositoryId);

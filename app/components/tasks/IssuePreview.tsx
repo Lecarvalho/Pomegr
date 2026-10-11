@@ -4,9 +4,6 @@ import { useId, type ReactNode } from "react";
 import { TASK_BOUNDS } from "../../../shared/task-contract";
 import type { IssueAuthorAssociation, TaskIssue } from "./task-issues-desktop";
 
-// The issue preview shared by the Promote issues page and the task modal (design contract G90-G92, G97-G104). Titles
-// and bodies are third-party text: every one is rendered as a React text node, never as markup, a link or Markdown.
-
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 const LIMIT = COUNT_FORMAT.format(TASK_BOUNDS.textLength);
 
@@ -18,10 +15,6 @@ export function issueAssociationLabel(association: IssueAuthorAssociation): stri
   return ASSOCIATION_LABELS[association];
 }
 
-/**
- * The notices of one issue, in the order of the design contract: outside contributor, hidden comments, too long. The
- * caller's `children` follow them (the promoted notice on the page, for example). Nothing is drawn when none applies.
- */
 export function IssueNotices({ issue, children }: { issue: TaskIssue; children?: ReactNode }) {
   const hidden = issue.hiddenComments.count;
   return <>
@@ -41,7 +34,7 @@ export function IssueNotices({ issue, children }: { issue: TaskIssue; children?:
 
 type BodyPart = { text: string; hidden: boolean };
 
-/** Splits the body at the monitor's hidden-comment ranges. Ranges are ordered and inside the body; anything else is ignored. */
+/** Splits the body at the monitor's hidden-comment ranges. */
 function bodyParts(body: string, ranges: readonly { start: number; end: number }[]): BodyPart[] {
   const parts: BodyPart[] = [];
   let cursor = 0;
@@ -55,10 +48,6 @@ function bodyParts(body: string, ranges: readonly { start: number; end: number }
   return parts;
 }
 
-/**
- * The read-only raw body box: exactly the text GitHub returned, hidden HTML comments struck through (they are removed
- * at promote). A hidden segment is announced as such; `truncated` says the preview was cut by the monitor.
- */
 export function IssueBody({ body, ranges, truncated }: { body: string; ranges: readonly { start: number; end: number }[]; truncated: boolean }) {
   const labelId = useId();
   const parts = bodyParts(body, ranges);
@@ -78,12 +67,11 @@ export function IssueBody({ body, ranges, truncated }: { body: string; ranges: r
   </div>;
 }
 
-/** The task text a promote would store against the 4,000 character limit; the error tone marks one over it. */
+/** The task text a promote would store against the 4,000 character limit. */
 export function IssueCharacterCount({ issue }: { issue: TaskIssue }) {
   return <p className={`taskIssueCount${issue.tooLong ? " over" : ""}`}>{COUNT_FORMAT.format(issue.characters)} / {LIMIT} characters</p>;
 }
 
-/** The one chip of an issue: too long, else promoted with its task ID, else who opened it (G77-G80). */
 export function IssueStatusChip({ issue }: { issue: TaskIssue }) {
   if (issue.tooLong) return <span className="commandChip negative">Too long</span>;
   if (issue.taskId) return <span className="commandChip positive">Promoted · {issue.taskId}</span>;

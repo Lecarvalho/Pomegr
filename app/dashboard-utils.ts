@@ -98,10 +98,6 @@ export function compactNumber(value: number) {
   }).format(value);
 }
 
-/**
- * The one request-local token count format: print `compactNumber(value)` (139.7K) and put this
- * exact value in the hover title, so every compact count keeps its exact reading.
- */
 export function requestTokenTitle(label: string, value: number) {
   return `${label}: ${value.toLocaleString()} ${value === 1 ? "token" : "tokens"}, this request only`;
 }
@@ -144,8 +140,6 @@ export function gitPathParts(filePath: string) {
     : { directory: filePath.slice(0, separator + 1), filename: filePath.slice(separator + 1) };
 }
 
-/** Overview's longer-form repository comparison sentence. Distinct from the compact top-bar
- * comparison chip text in app/components/dashboard/RepositoryTab.tsx. */
 export function comparisonLabel(comparison: NonNullable<MonitorState["session"]>["repository"]["comparison"]) {
   if (!comparison) return null;
   if (comparison.integrated) return `Changes integrated into ${comparison.branch}`;

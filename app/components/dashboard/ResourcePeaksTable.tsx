@@ -65,7 +65,6 @@ function MinuteFallback({ peak }: { peak: ResourcePeak }) {
   </div>;
 }
 
-/** The full-resolution (or minute-fallback) inspector for one selected peak. */
 export function ResourcePeakZoomPanel({ sessionId, peak }: { sessionId: string; peak: ResourcePeak | null }) {
   if (!peak) return <section className="sessionOverviewPanel resourcePeakZoomPanel">
     <p className="resourcePeaksEmpty">Select a peak to inspect its evidence.</p>
@@ -104,7 +103,6 @@ export function ResourcePeakZoomPanel({ sessionId, peak }: { sessionId: string; 
   </section>;
 }
 
-/** The ranked list of peaks in the selected window; selecting a row drives the zoom panel. */
 export function ResourcePeaksTable({ sessionId, peaks, selectedPeakId, onSelect }: {
   sessionId: string;
   peaks: ResourcePeak[];

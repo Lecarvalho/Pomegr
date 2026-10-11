@@ -18,12 +18,10 @@ function Parts({ parts, empty }: { parts: TextPart[]; empty: string }) {
   return <>{parts.map((part, index) => <span key={index}>{index > 0 && " · "}{part.code ? <code>{part.text}</code> : part.text}</span>)}</>;
 }
 
-/** "Open on board" (D410): the Secondary role, to the repository board that holds the task. */
 function BoardAction({ href }: { href: string | null }) {
   return href ? <Link className="commandSecondaryAction" href={href}>Open on board</Link> : null;
 }
 
-/** A related task: its number, its title linked to its session (or to the board when it has none), and its chip. */
 function RelatedRow({ task, sessionId, boardHref }: { task: Task; sessionId: string; boardHref: string | null }) {
   const chip = taskChip(task);
   const sessionHref = task.session && task.session.id !== sessionId ? taskSessionHref(task.session.id) : null;
@@ -113,12 +111,6 @@ function TaskPanel({ task, model, boardHref, headingId }: { task: SessionTaskRef
   </section>;
 }
 
-/**
- * The read-only Task tab of a session started for a task: the task as the board holds it (with its source line for a task
- * promoted from a GitHub issue), and its feature. There is no
- * mutation here; changing a task happens on the board in the desktop app. Without a ready board, or without the task on it,
- * only the reference's own fields are drawn.
- */
 export function SessionTaskTab({ task, sessionId }: { task: SessionTaskReference; sessionId: string }) {
   const model = useSessionTask(task);
   const headingId = useId();

@@ -7,7 +7,6 @@ export const createCodexUserMessageTimeState = () => new Map();
 
 export function reduceCodexUserMessageTimes(state, record) {
   for (const input of parseCodexUserInputRecords([record])) {
-    // Match the shared evidence contract's four-digit-year canonical UTC spelling.
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(input.timestamp)) continue;
     state.set(input.id, input.timestamp);
   }
@@ -20,7 +19,7 @@ export function reduceCodexUserMessageTimes(state, record) {
 
 export const codexUserMessageTimesFromState = (state) => [...state.values()].sort();
 
-/** Complete-source reads use the same reducer as incremental observation; partial tails cannot assert message times. */
+// Complete-source reads use the same reducer as incremental observation; partial tails cannot assert message times.
 export function codexUserMessageTimes(records) {
   const state = createCodexUserMessageTimeState();
   for (const record of records) reduceCodexUserMessageTimes(state, record);

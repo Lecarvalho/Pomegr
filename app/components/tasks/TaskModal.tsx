@@ -7,14 +7,9 @@ import { TaskModalPromote } from "./TaskModalPromote";
 import type { TaskIssue } from "./task-issues-desktop";
 import type { TaskModalBoard } from "./task-modal-types";
 
-// The one task modal (design contract G115-G298). `mode` picks the form that fills the shared frame: a new task, one
-// GitHub issue being promoted into a task, or an existing task. Another mode is one more form component and one more
-// case below.
-
 type Shared = {
   repositoryId: string;
   repositoryName: string | null;
-  /** The committed board: its features and their tasks fill the Feature fields. */
   board: TaskModalBoard;
   refresh(): Promise<void>;
   onClose(): void;

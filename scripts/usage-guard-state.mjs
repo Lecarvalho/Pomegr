@@ -20,7 +20,7 @@ function regularFile(file, maxBytes) {
   return stat.isFile() && !stat.isSymbolicLink() && stat.size > 0 && stat.size <= maxBytes;
 }
 
-/** Nearest repository configuration, never a provider settings or transcript read. */
+// Nearest repository configuration, never a provider settings or transcript read.
 export function readUsageGuardConfig(cwd) {
   if (typeof cwd !== "string" || cwd.length > 4096 || !path.isAbsolute(cwd)) return null;
   let directory = path.resolve(cwd);
@@ -58,8 +58,7 @@ function readState(file, now) {
 
 function prune(directory, now) {
   const names = fs.readdirSync(directory);
-  // Hooks can be killed between lock/temp creation and cleanup. Reclaim only
-  // this module's allowlisted expired scratch files, including clock rollback.
+  // Hooks can be killed between lock/temp creation and cleanup.
   for (const name of names.filter((name) => COORDINATION_NAME.test(name))) {
     try {
       const file = path.join(directory, name);
@@ -81,7 +80,6 @@ function prune(directory, now) {
   }
 }
 
-/** Hook subprocesses serialize one actor's checks, including parallel tool batches. */
 export function openGuardState(dataRoot, identity, now) {
   const directory = path.join(dataRoot, "usage-guards");
   const file = path.join(directory, `${guardHash(identity)}.json`);

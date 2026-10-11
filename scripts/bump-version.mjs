@@ -12,8 +12,6 @@ async function captured(runCommand, args, cwd) {
   return (typeof result === "string" ? result : result?.stdout || "").trim();
 }
 
-// The version commit a release starts from: set the version, commit both package files, and push
-// the checked-out branch. It reaches main the way that branch does; the release runs from main.
 export async function bumpVersion({
   version,
   cwd = REPOSITORY_ROOT,

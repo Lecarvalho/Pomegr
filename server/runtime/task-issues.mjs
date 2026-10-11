@@ -3,13 +3,6 @@ import { createIssueReader } from "../repository/issues.mjs";
 const HELD_REPOSITORY_LIMIT = 16;
 
 /**
- * The monitor's GitHub issue composition for the task board. It joins the recognized repository root (monitor-private,
- * it never leaves this module) to the issue reader. Every call is an explicit desktop action: no GET reaches it and
- * nothing runs on a timer.
- *
- * The last successful list of each repository is held in memory only, for at most 16 repositories (the oldest is
- * evicted). It is never persisted, logged, or served as such: a promote always reads its issue again.
- *
  * @param {{ repositoryRoot: (repositoryId: string) => string | null | undefined, reader?: ReturnType<typeof createIssueReader>, now?: () => number }} options
  */
 export function createTaskIssues({ repositoryRoot, reader = createIssueReader(), now = Date.now }) {
@@ -19,7 +12,6 @@ export function createTaskIssues({ repositoryRoot, reader = createIssueReader(),
     return typeof root === "string" && root !== "" ? root : null;
   };
 
-  /** `{ connection, repository }`; `repository` is `{ visibility, capabilities }` only when connected and the root is recognized. */
   async function status(repositoryId) {
     const connection = await reader.connection();
     const root = connection === "connected" ? rootOf(repositoryId) : null;
@@ -28,7 +20,7 @@ export function createTaskIssues({ repositoryRoot, reader = createIssueReader(),
     return { connection, repository: { visibility: access.visibility, capabilities: [...access.capabilities] } };
   }
 
-  /** Reads the open issues now. Issues are empty unless the status is `ok`; an unknown root is `unavailable`. */
+  // Reads the open issues now.
   async function list(repositoryId) {
     const root = rootOf(repositoryId);
     const result = root === null ? { status: "unavailable", issues: [], truncated: false } : await reader.listOpenIssues(root);
@@ -46,7 +38,6 @@ export function createTaskIssues({ repositoryRoot, reader = createIssueReader(),
     return answer;
   }
 
-  /** Reads one issue again from GitHub, never from the held list. */
   async function read(repositoryId, number) {
     const root = rootOf(repositoryId);
     if (root === null) return { status: "unavailable", issue: null };
@@ -54,7 +45,6 @@ export function createTaskIssues({ repositoryRoot, reader = createIssueReader(),
     return { status: result.status, issue: result.status === "ok" ? result.issue : null };
   }
 
-  /** Creates one issue now. `{ status: "ok", number }` or one fixed failure; an unknown root is `unavailable`. */
   async function create(repositoryId, { title, body }) {
     const root = rootOf(repositoryId);
     if (root === null) return { status: "unavailable", number: null };

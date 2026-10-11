@@ -8,7 +8,7 @@ export function usageNotificationPolicy(kind) {
     ? { category: "provider_news", severity: "warning", priority: 75 }
     : { category: "usage", severity: "info", priority: 60 };
 }
-/** A shared public-data allowlist, never a provider transition rule. */
+// A shared public-data allowlist, never a provider transition rule.
 export function normalizeUsageNotificationData(kind, provider, data) {
   if (!data || typeof data !== "object" || Array.isArray(data) || !["claude", "codex"].includes(provider)) return null;
   if (kind === "usage_authentication_required") return {};

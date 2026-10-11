@@ -4,11 +4,7 @@ import type { ReactNode } from "react";
 import type { DocsBlock, DocsInline } from "../../scripts/docs-content.mjs";
 import styles from "./markdown.module.css";
 
-// Renders the generated documentation blocks (`landing/generated/docs-content.json`) to React
-// elements. There is no raw-HTML path: every node becomes an element from a fixed mapping, text is
-// always a React child, and a node or destination the renderer does not recognize is dropped (a
-// link keeps its visible text). Pass `strict` to throw instead, which tests and development use so
-// a new token type or a malformed link cannot pass unnoticed.
+// No raw-HTML path: unrecognized nodes and destinations are dropped; `strict` throws instead so tests catch new token types.
 
 interface Context {
   strict: boolean;
@@ -16,7 +12,6 @@ interface Context {
 
 export interface DocsMarkdownProps {
   blocks: readonly DocsBlock[];
-  /** Throw on an unrecognized block, inline, or destination instead of dropping it. */
   strict?: boolean;
 }
 
@@ -36,7 +31,6 @@ const CALLOUTS = {
   caution: { label: "Caution", className: styles.caution },
 } as const;
 
-/** Drop the unrecognized node, or fail loudly when `strict`. The description never carries content. */
 function unsupported(context: Context, description: string): null {
   if (context.strict) throw new Error(`Unsupported documentation ${description}`);
   return null;
@@ -68,7 +62,6 @@ function rawText(nodes: readonly DocsInline[]): string {
   return out;
 }
 
-/** Visible text of inline nodes, used only for accessible names. */
 const plainText = (nodes: readonly DocsInline[]) => rawText(nodes).replace(/\s+/g, " ").trim();
 
 function externalKind(href: string): "web" | "mail" | null {
@@ -77,7 +70,6 @@ function externalKind(href: string): "web" | "mail" | null {
     if (protocol === "https:" || protocol === "http:") return "web";
     if (protocol === "mailto:") return "mail";
   } catch {
-    // Not an absolute URL.
   }
   return null;
 }
@@ -250,7 +242,6 @@ function renderBlocks(blocks: readonly DocsBlock[], context: Context): ReactNode
   return blocks.map((block, index) => <Fragment key={index}>{renderBlock(block, context)}</Fragment>);
 }
 
-/** The reading column for one page's blocks. The docs layout supplies the page frame and navigation. */
 export function DocsMarkdown({ blocks, strict = false }: DocsMarkdownProps) {
   return <div className={styles.markdown}>{renderBlocks(blocks, { strict })}</div>;
 }

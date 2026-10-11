@@ -1,6 +1,5 @@
 import { boundedActivityDuration } from "../../normalize/activity-events.mjs";
 
-/** The provider status vocabulary reduced to running, completed, or failed. */
 export function normalizedStatus(value, fallback = "running") {
   const status = String(value ?? "").toLowerCase().replace(/[_ -]/g, "");
   if (["completed", "complete", "success", "succeeded"].includes(status)) return "completed";
@@ -13,13 +12,6 @@ const ROLLOUT_EXECUTION_ITEMS = new Set([
   "filechange", "commandexecution", "mcptoolcall", "dynamictoolcall", "collabagenttoolcall", "imageview", "websearch", "extension",
 ]);
 
-/**
- * The kind of a completed rollout item that records one executed action: a file change, a shell
- * command, an MCP, dynamic or collaboration tool call, an image view, a web search, or an
- * extension action. A code-mode `exec` cell runs these inside its wrapper call, and they are the
- * only structured record of what the cell did. Items that record no tool call (messages,
- * reasoning, plans, compactions, sub-agent activity) are never execution items.
- */
 export function rolloutExecutionItemKind(payload) {
   const type = String(payload?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const itemType = String(payload?.item?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -33,7 +25,6 @@ export function rolloutExecutionStatus(kind, item) {
   return normalizedStatus(item.status, "completed");
 }
 
-/** Recorded start time and bounded wall duration of a completed rollout item, when both are valid. */
 export function rolloutExecutionTiming(payload) {
   const started = payload.started_at_ms ?? payload.startedAtMs;
   const completed = payload.completed_at_ms ?? payload.completedAtMs;
@@ -42,7 +33,7 @@ export function rolloutExecutionTiming(payload) {
   return { startedAt, durationMs: boundedActivityDuration(startedAt, new Date(completed).toISOString()) };
 }
 
-/** A code-mode cell: the `exec` custom tool whose input is a program, not one tool's arguments. */
+// A code-mode cell: the `exec` custom tool whose input is a program, not one tool's arguments.
 export function isCodeModeWrapper(payload) {
   return payload?.type === "custom_tool_call" && String(payload.name || "").toLowerCase() === "exec"
     && typeof (payload.input ?? payload.arguments) === "string";

@@ -37,7 +37,6 @@ function statusSummary(group: RosterGroup) {
     .map(([status, count]) => `${count} ${status.replaceAll("_", " ")}`).join(" · ");
 }
 
-/** Filters only affect the tiles. Every metric shares one scale across the whole session. */
 function GridTreeGlyph() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="19" cy="19" r="2" /><path d="M12 7v5m0 0-6 5m6-5 6 5" /></svg>; }
 
 export function AgentGridView({ groups, agents, selectedAgentId, onSelect, onOpenTree, insights, metric, historical, now, tileRef }: {

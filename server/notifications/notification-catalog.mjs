@@ -1,15 +1,14 @@
 import { isSafeSessionId } from "./notification-rules.mjs";
 import { copyInputNotificationTime } from "../normalize/input-notification-facts.mjs";
 
-/** Bounded notification facts from normalized catalog commits, before shell truncation. */
+// Bounded notification facts from normalized catalog commits, before shell truncation.
 export function createNotificationCatalog({ projectVisibility, activeSessionIds = () => [] }) {
   const byProvider = new Map();
   const trackedActiveIds = new Set();
   let snapshot = null;
 
   function acceptProvider(providerId, normalized, readiness) {
-    // Restored conditions need an explicit false row even before this process
-    // has observed them active. Missing or partial evidence still cannot clear them.
+    // Restored conditions need an explicit false row even before this process has observed them active.
     for (const id of activeSessionIds().slice(0, 100)) {
       if (trackedActiveIds.size >= 100) break;
       if (isSafeSessionId(id)) trackedActiveIds.add(id);
@@ -45,7 +44,6 @@ export function createNotificationCatalog({ projectVisibility, activeSessionIds 
     for (const entry of candidates) {
       if (!trackedActiveIds.has(entry.id)) continue;
       selected.set(entry.id, entry);
-      // Missing rows reserve their slots until an explicit current false arrives.
       if (!entry.isLive || !entry.needsInput) trackedActiveIds.delete(entry.id);
     }
     for (const entry of candidates) {

@@ -1,7 +1,4 @@
-/**
- * Bounded read-only readiness for the monitor's private SQLite store. Database paths,
- * table contents, and raw retention error text never appear here.
- */
+// Bounded read-only readiness for the monitor's private SQLite store.
 export const RETENTION_DAY_CHOICES = [30, 90, 180, 365, null] as const;
 export const STORE_THRESHOLD_MB_CHOICES = [250, 500, 1024, 2048] as const;
 

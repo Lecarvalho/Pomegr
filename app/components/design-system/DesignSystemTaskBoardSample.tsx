@@ -25,7 +25,6 @@ const REVEALED_ENTRY = newTaskEntry();
 const COLUMNS = taskColumns(BOARD_RUNNING);
 const noMove = () => undefined;
 
-// What the desktop app adds to a card: drag handlers and the four keyboard move actions (the first column cannot move left).
 const MOVE: TaskCardMove = { drag: {}, available: { up: false, down: true, left: false, right: true }, onMove: noop };
 
 const CARD_STATES: { label: string; note: string; task: Task; next?: boolean }[] = [

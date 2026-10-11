@@ -1,5 +1,3 @@
-// Source comparability is deliberately out of band: JSON, structuredClone and
-// provider/browser schemas cannot serialize credential-source fingerprints.
 const metadata = new WeakMap();
 export function withUsageNotificationSource(value, sourceScope, complete = true, windows = null) {
   if (value && typeof value === "object") metadata.set(value, { sourceScope, complete, windows });

@@ -1,13 +1,6 @@
-// Prepares the documentation content the website bundles: validates the publication
-// manifest and the public Markdown it selects, then writes the generated content module, the
-// search index built from that same content, and the referenced images inside landing/ (all
-// locations are gitignored).
-//
+// Validates the docs manifest and public Markdown, then writes the generated content, search index and images inside landing/.
 //   node scripts/prepare-docs.mjs          validate, then write generated output
 //   node scripts/prepare-docs.mjs --check  validate only; write nothing
-//
-// npm runs this before dev, test, typecheck and build, so those commands always see output
-// that matches the current documentation. Invalid content stops the command.
 
 import { inspectDocsContent, writePreparedDocs } from "./docs-content.mjs";
 

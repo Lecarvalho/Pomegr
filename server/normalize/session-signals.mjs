@@ -236,7 +236,6 @@ async function scanCompleteTranscript(file) {
     try {
       mergeTranscriptSignals(latest, signalsFromRecord(JSON.parse(line)));
     } catch {
-      // Ignore malformed or partially written JSONL records.
     }
   }
   return latest;

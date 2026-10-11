@@ -41,18 +41,11 @@ function subscribeAvailability() { return () => {}; }
 function storageBridgeAvailable() {
   return Boolean(desktopBridge());
 }
-/**
- * SSR-safe: the server render and the first client paint both report no bridge (matching),
- * so the desktop draft only takes over once React has settled past hydration. This mirrors
- * the other desktop-bridge gates in this file's siblings (Providers, Phone access), but the
- * Storage nav entry itself stays unconditional (D1), so only the draft/read-only state here
- * needs the gate.
- */
+/** SSR-safe. */
 function useStorageDesktopBridge() {
   return useSyncExternalStore(subscribeAvailability, storageBridgeAvailable, () => false);
 }
 
-/** Rejects anything that does not match `shared/storage-contract.ts` field by field. */
 function validateSnapshot(body: unknown): StorageSnapshot | null {
   if (!body || typeof body !== "object") return null;
   const value = body as Record<string, unknown>;
@@ -88,10 +81,6 @@ async function fetchSnapshot(): Promise<StorageSnapshot | null> {
   }
 }
 
-/**
- * 1024-base: under 10 MB keeps one decimal, under 1024 MB rounds to whole MB, and at or above
- * 1024 MB switches to GB with one decimal, dropping a trailing `.0` (so 1024 MB -> `1 GB`).
- */
 export function formatStorageBytes(bytes: number): string {
   const mb = bytes / (1024 * 1024);
   if (mb < 10) return `${mb.toFixed(1)} MB`;
@@ -112,7 +101,6 @@ export function storageUsageText(snapshot: StorageSnapshot | null): string {
   return `${formatStorageBytes(snapshot.databaseBytes)} / ${formatStorageBytes(snapshot.thresholdBytes)} · ${snapshot.percent}%`;
 }
 
-/** Clamps a (possibly over-100) percent to the 0-100 range the meter fill may occupy. */
 export function storageMeterFill(percent: number): number {
   return Math.min(100, Math.max(0, percent));
 }
@@ -140,7 +128,7 @@ export function storageStatusLine(snapshot: StorageSnapshot | null, now: number 
 
 const USAGE_BAR_COPY = "At 100%, older resource curves and detailed sample windows become eligible for automatic cleanup. File history and recorded peaks are preserved. Age retention applies independently: data older than the retention age is removed whatever the store size.";
 
-/** Shared informational meter, also rendered at /design-system. Never focusable, never a slider. */
+/** Shared informational meter, also rendered at /design-system. */
 export function StorageUsageBar({ snapshot }: { snapshot: StorageSnapshot | null }) {
   const available = usageAvailable(snapshot);
   const text = storageUsageText(snapshot);
@@ -205,8 +193,7 @@ export function StorageSettings() {
   }, []);
 
   useEffect(() => {
-    // No bridge yet (SSR/pre-hydration, or a genuine browser/LAN client): leave the draft at
-    // its initial null, which the read-only fallbacks below already treat as "use the snapshot".
+    // No bridge yet (SSR/pre-hydration, or a genuine browser/LAN client).
     const bridge = desktopBridge();
     if (!bridge) return;
     let active = true;

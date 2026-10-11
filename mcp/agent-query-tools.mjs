@@ -28,7 +28,6 @@ const reportFilenameSchema = z.string().regex(/^pomegr-[a-z0-9](?:[a-z0-9-]{0,11
 
 const safeLocalSessionId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
-/** Codex supplies a thread identity; Claude's per-call hook supplies its current reference. */
 export function resolveCurrentSessionRef(environment = process.env) {
   const value = environment && typeof environment === "object" ? environment : {};
   const codexValues = [value.CODEX_THREAD_ID, value.CODEX_SESSION_ID]
@@ -41,8 +40,7 @@ export function resolveCurrentSessionRef(environment = process.env) {
   const codexIds = [...new Set(codexValues)];
   const claudeIds = [...new Set(claudeValues)];
   if (codexIds.length > 1 || claudeIds.length > 1 || codexIds.length + claudeIds.length !== 1) return null;
-  // Claude keeps the subprocess launch ID after /clear or an interactive session
-  // switch. Without the per-call hook reference, returning that ID is unsafe.
+  // Claude keeps the subprocess launch ID after /clear or an interactive session switch.
   return codexIds.length ? `codex:${codexIds[0]}` : null;
 }
 

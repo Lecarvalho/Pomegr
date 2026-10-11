@@ -20,7 +20,7 @@ export function validReleaseNotificationState(value, now) {
     });
 }
 
-/** Published versions have one baseline per product. Installation is qualified only by current setup evidence. */
+// Published versions have one baseline per product.
 export function reduceReleaseNotifications(input, previous = null, now = Date.now()) {
   const state = structuredClone(previous || { claude_code: null, codex_cli: null, pomegr_plugin: null });
   const items = [];

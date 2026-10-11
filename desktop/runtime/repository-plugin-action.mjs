@@ -65,7 +65,6 @@ function verifiedSetup(result, targetVersion) {
     && setup?.version === targetVersion;
 }
 
-/** Native-only bridge for repository plugin mutations. It deliberately returns only bounded status words. */
 export function createRepositoryPluginAction(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
   const fetchImpl = options.fetch || fetch;

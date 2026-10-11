@@ -6,11 +6,6 @@ import { AddFeatureAction } from "./AddFeatureAction";
 import { ALL_FEATURES, WITHOUT_FEATURE, type FeatureFilterValue } from "./task-features";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
-/**
- * Feature filter row (design contract D40-D44, as one list since the product owner's decision of 2026-10-10, so the
- * row stays one control however many features a board holds): a select whose options carry a task count, All first
- * and No feature last, then the desktop-only + New feature. The filter is client state; the board decides what it hides.
- */
 export function FeatureFilter({ board, filter, onFilter, edits }: {
   board: Pick<TaskBoard, "features" | "tasks">;
   filter: FeatureFilterValue;

@@ -1,9 +1,6 @@
 const QUALIFIED_SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u;
 
-/**
- * Keep the normalized-session-to-recorder association only in the development
- * composition. Recorder APIs receive opaque scopes, never session identifiers.
- */
+// Keep the normalized-session-to-recorder association only in the development composition.
 export function createDevelopmentTraceScopeRegistry({ createScope, now = () => performance.now(), maxEntries = 1_024, ttlMs = 300_000 } = {}) {
   if (typeof createScope !== "function") throw new TypeError("Development trace scopes require a recorder scope factory");
   const limit = Number.isInteger(maxEntries) && maxEntries >= 1 && maxEntries <= 1_024 ? maxEntries : 1_024;

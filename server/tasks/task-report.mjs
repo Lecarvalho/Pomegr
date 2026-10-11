@@ -1,20 +1,4 @@
 // The agent's report on the task its session was started for, and the user's two resolutions.
-//
-// `complete` verifies the task's checked conditions from committed repository facts and always sets Needs
-// review: the report puts the card in Review with each condition's result and the agent's optional bounded
-// one-line attention note, and only the owner sets Done (`resolve_done`); `block` stores the agent's bounded reason and sets Blocked by agent. Both find the task
-// only through the session the harness bound the call to, and a task takes one report per dispatch: a
-// second report, or a report on a task that already has an outcome, changes nothing. The stored report
-// holds only `{ check, passed }` results, the time, the block reason, and the attention note. A task is never
-// completed here without a report.
-//
-// A block stops a running queue (the task is named in `queue_blocked_by`), and so does a stalled task
-// (task-stall.mjs); resolving the last of them lets it run again. An idle or paused queue keeps its status.
-// Needs review never stops the queue: the work is finished and waits in the Review column for the owner.
-//
-// The write that sets Needs review (a report) or Done (the owner's Mark done) also moves the card to the column that holds that role
-// (task-columns.mjs). Blocked leaves the card where it is; Requeue puts it back in Ready, last, like any task that
-// joins the queue (`settleReadyColumn`, run by the store after the action).
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
@@ -24,9 +8,7 @@ import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueue
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
 
-/** Outcomes the user resolves with Mark done or Requeue. */
 const UNRESOLVED_STATES = Object.freeze(["needs_review", "stalled", "blocked"]);
-/** The ones that hold the queue. A task that needs review is finished work, so the queue goes on past it. */
 const QUEUE_HOLDING_STATES = Object.freeze(["stalled", "blocked"]);
 
 const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "object" && !Array.isArray(payload)
@@ -34,16 +16,13 @@ const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "
 
 const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT * FROM tasks WHERE session_id = ?").get(sessionId);
 
-// A session can still report on a task in flight that has no report yet; an outcome is final for its dispatch.
 const reportable = (row) => IN_FLIGHT_STATES.includes(row.state) && (row.report_at ?? null) === null;
 
-// The first stalled or blocked task holds a running queue; a queue already blocked keeps its first blocker.
 export function blockQueue(database, repositoryId, taskId) {
   preparedStatement(database, "UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = ? WHERE repository_id = ? AND queue_status = 'running'")
     .run(taskId, repositoryId);
 }
 
-// After a resolution or a deletion, and when the store opens: a blocked queue names the lowest-numbered task that still holds it, or runs again when none does.
 export function releaseQueue(database, repositoryId) {
   const repository = preparedStatement(database, "SELECT queue_status FROM repositories WHERE repository_id = ?").get(repositoryId);
   if (repository?.queue_status !== "blocked") return;
@@ -66,10 +45,6 @@ function storeReport(database, row, { state, at, results, blockReason, attention
   return true;
 }
 
-/**
- * The checked conditions of the task linked to the session, when that task can still be reported on; otherwise null.
- * The report route asks before it reads the repository, so only a report that will be verified costs a read.
- */
 export function reportableChecks({ database, sessionId }) {
   if (!isTaskSessionId(sessionId)) return null;
   const row = linkedRow(database, sessionId);
@@ -77,13 +52,7 @@ export function reportableChecks({ database, sessionId }) {
   return task ? [...task.completeWhen.checks] : null;
 }
 
-/**
- * `complete`: the bound session reports its task complete. `resolveFacts()` returns the plain repository facts
- * `verifyChecks` judges, read by the entry point (for a report, from a read made when the report arrived), and is
- * called only for a task that can still be reported on. The payload is `{ sessionId }`, or `{ sessionId, attention }`
- * with one line of at most 200 characters that names what the owner should look at. Answers `{ ok: true, state, results }`
- * with `state` always `needs_review`: a report never sets Done, whatever the conditions say. The owner does.
- */
+// `complete`: the bound session reports its task complete.
 export function reportComplete({ database, transaction, payload, resolveFacts, now }) {
   const noted = hasExactKeys(payload, ["sessionId", "attention"]);
   if ((!noted && !hasExactKeys(payload, ["sessionId"])) || !isTaskSessionId(payload.sessionId)) return { ok: false, error: "invalid" };
@@ -99,7 +68,6 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   const results = verifyChecks(task.completeWhen.checks, facts);
   const state = "needs_review";
   const stored = transaction(() => {
-    // The task may have been reported, resolved, or deleted since the read above.
     const fresh = linkedRow(database, payload.sessionId);
     return Boolean(fresh) && fresh.number === row.number && fresh.repository_id === row.repository_id && reportable(fresh)
       && storeReport(database, fresh, { state, at: now(), results, blockReason: null, attention });
@@ -107,7 +75,7 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   return stored ? { ok: true, state, results } : { ok: false, error: "already_reported" };
 }
 
-/** `block`: the bound session reports it cannot continue, with a one-line reason of at most 200 characters. */
+// `block`: the bound session reports it cannot continue, with a one-line reason of at most 200 characters.
 export function reportBlock({ database, transaction, payload, now }) {
   if (!hasExactKeys(payload, ["sessionId", "reason"]) || !isTaskSessionId(payload.sessionId)) return { ok: false, error: "invalid" };
   const reason = normalizeBlockReason(payload.reason);
@@ -124,8 +92,6 @@ export function reportBlock({ database, transaction, payload, now }) {
   return stored ? { ok: true, state: "blocked" } : { ok: false, error: "already_reported" };
 }
 
-// A linked task whose session has not reported is in flight: the session could still report, and nothing marks it
-// done or stalled by itself, so it can hold the queue with no exit. The user resolves it like an outcome.
 const awaitingReport = (row) => rowInFlight(row) && reportable(row);
 
 function unresolvedTask(database, repositoryId, payload) {
@@ -136,11 +102,6 @@ function unresolvedTask(database, repositoryId, payload) {
   return UNRESOLVED_STATES.includes(task.state) || awaitingReport(task) ? { number: input.number } : { error: "conflict" };
 }
 
-/**
- * `resolve_done`: the user accepts a task that needs review, is blocked, or stalled, or a linked task whose session
- * has not reported. Its report and session link stay as recorded. It never touches the session: a report that
- * arrives afterwards is refused, because the task has an outcome. The card moves to the Done column.
- */
 export function resolveDone({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
@@ -151,12 +112,7 @@ export function resolveDone({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-/**
- * `resolve_requeue`: the user sends the task back to the end of the queue for a new session. The report, the
- * session link, and any dispatch are cleared, so the task can be started and reported on once more. The same
- * tasks as `resolve_done` qualify, including a linked task with no report; the session is not stopped. The card goes
- * to the end of Ready in the same store write, which is the end of the single tasks.
- */
+// `resolve_requeue`: the user sends the task back to the end of the queue for a new session.
 export function resolveRequeue({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };

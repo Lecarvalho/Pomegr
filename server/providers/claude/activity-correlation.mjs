@@ -1,7 +1,6 @@
 import { requestSnapshotIdsByEvidence } from "../../normalize/request-snapshots.mjs";
 import { normalizedRequestWork } from "../../normalize/request-work.mjs";
 
-/** Usage is the latest snapshot; issued calls span every fragment of that request. */
 export function mergeClaudeRequestFragments(previous, next) {
   if (!previous) return next;
   const latest = Date.parse(previous.timestamp) > Date.parse(next.timestamp) ? previous : next;
@@ -34,7 +33,6 @@ export function mergeClaudeRequestFragments(previous, next) {
   return merged;
 }
 
-/** Keep request correlation indexes inside the Claude adapter. */
 export function splitClaudeRequestCorrelationEvidence(snapshots) {
   const toolUseIdsByRequest = new Map();
   const replyIdsByRequest = new Map();
@@ -56,7 +54,7 @@ export function splitClaudeRequestCorrelationEvidence(snapshots) {
   return { normalizedSnapshots, toolUseIdsByRequest, replyIdsByRequest, userInputIdsByRequest };
 }
 
-/** Stamp only opaque served request ids after all valid request evidence is known. */
+// Stamp only opaque served request ids after all valid request evidence is known.
 export function stampClaudeActivityRequestIds({ sessionId, agents, usageSnapshots, toolCalls, activity, toolUseIdsByRequest, replyIdsByRequest, userInputIdsByRequest = new Map(), unlimited = false }) {
   const requestIds = requestSnapshotIdsByEvidence({ sessionId: `claude:${sessionId}`, agents, usageSnapshots, unlimited });
   const requestIdByToolUseId = new Map();

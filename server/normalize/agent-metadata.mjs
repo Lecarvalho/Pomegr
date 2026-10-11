@@ -156,9 +156,7 @@ function closestPromptLaunch(launches, prompt, startedAtMs, usedLaunches) {
     })[0] || null;
 }
 
-// Claude writes a foreground child's transcript before the Agent result containing
-// its ID. Resolve that live interval by matching the exact launch prompt in memory;
-// prompts remain internal and are never included in the returned metadata.
+// Claude writes a foreground child's transcript before the Agent result containing its ID.
 export function resolveAgentMetadata(transcripts) {
   const metadata = new Map();
   const resolvedLaunches = new Map();

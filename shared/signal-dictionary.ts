@@ -43,7 +43,6 @@ export const CACHE_REFILL_REASON_SIGNAL_DEFINITIONS: Record<CacheRefillReason, C
   ),
 };
 
-/** A recognized provider reason on a rewrite that still read part of the prefix from cache. */
 export const CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION: CacheSignalDefinition = {
   code: "cache.provider_diagnosed_refill",
   anchor: "cache-provider-diagnosed-refill",
@@ -52,7 +51,6 @@ export const CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION: CacheSignalDefin
   impact: "Part of the prefix was reused; counted separately.",
 };
 
-/** An elapsed-lifetime inference on a rewrite that still read part of the prefix from cache. */
 export const CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION: CacheSignalDefinition = {
   code: "cache.lifetime_elapsed_partial_refill",
   anchor: "cache-lifetime-elapsed-partial-refill",
@@ -92,7 +90,6 @@ export const CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS = {
 
 export const DEFERRED_DEFINITION_COUNT_CAP = 64;
 
-/** The bounded added-definition count of a deferred-definitions attribution, or null when missing or out of range. */
 export function deferredDefinitionCount(attribution: { addedDefinitionCount?: unknown } | null | undefined) {
   const count = attribution?.addedDefinitionCount;
   return typeof count === "number" && Number.isSafeInteger(count) && count >= 1 && count <= DEFERRED_DEFINITION_COUNT_CAP ? count : null;

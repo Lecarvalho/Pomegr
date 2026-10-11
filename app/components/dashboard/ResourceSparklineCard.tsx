@@ -4,7 +4,6 @@ import type { ResourceUsageUnavailableReason } from "../../../shared/monitor-con
 import type { ResourceField, ResourceMinute, ResourceMinuteAggregate, ResourcePeak } from "../../../shared/session-domain-contract";
 import { timelineTime } from "../../dashboard-utils";
 
-/** Human labels for the four fields peaks, curves, and cards share. */
 export const RESOURCE_FIELD_LABEL: Record<ResourceField, string> = {
   cpu_cores: "CPU",
   memory_bytes: "Memory",
@@ -68,12 +67,10 @@ export function formatResourceFieldValue(field: ResourceField, value: number | n
   return formatRate(value);
 }
 
-/** The value a peak is presented in: CPU as its whole-machine percentage, other fields as recorded. */
 export function resourcePeakDisplayValue(peak: ResourcePeak): number | null {
   return peak.field === "cpu_cores" ? peak.cpuMachinePercent : peak.value;
 }
 
-/** The stored minute aggregate for one display field; the only field-to-column mapping. */
 export function resourceMinuteAggregate(minute: ResourceMinute, field: ResourceField): ResourceMinuteAggregate | null {
   if (field === "cpu_cores") return minute.cpuMachinePercent;
   if (field === "memory_bytes") return minute.memoryBytes;
@@ -110,7 +107,6 @@ export type ResourceCardModel = {
   peakAt: string | null;
   axisStartLabel: string;
   axisEndLabel: string;
-  /** Set when the whole window is known unavailable/loading; replaces the chart with a message. */
   unavailableMessage?: string | null;
 };
 
@@ -167,7 +163,6 @@ function windowMaximum(model: ResourceCardModel) {
   return maximum > 0 ? maximum * 1.08 : 1;
 }
 
-/** One sparkline card: CPU, Memory, or Disk I/O. Gaps render as gaps, never as zero. */
 export function ResourceSparklineCard({ model }: { model: ResourceCardModel }) {
   const hasPrimary = model.points.some((point) => point.value !== null);
   const hasSecondary = (model.secondaryPoints || []).some((point) => point.value !== null);

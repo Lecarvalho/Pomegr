@@ -99,10 +99,6 @@ function inspectCatalogEntries(entries) {
 }
 
 /**
- * Register provider adapters behind the provider-neutral monitor boundary.
- * Browser session IDs are parsed only as opaque provider-qualified IDs; they
- * are never interpreted as filesystem paths or handed to another provider.
- *
  * @param {any[]} adapters
  * @param {{serviceStatusReader?: Function}} options
  */
@@ -145,11 +141,6 @@ export function createProviderRegistry(adapters, options = {}) {
   let catalogInFlight = null;
 
   /**
-   * Start provider-owned acquisition/normalization workers.  The registry is
-   * the sole bridge to the monitor-owned store publisher, so all values are
-   * validated and scoped before crossing the provider boundary.  Existing
-   * request-driven reads deliberately remain available during migration.
-   *
    * @param {unknown} publisher
    * @param {AbortSignal | undefined} [parentSignal]
    */
@@ -351,7 +342,6 @@ export function createProviderRegistry(adapters, options = {}) {
     providerFolders,
     defaultProvider: providers[0],
 
-    // Public service observation is independent of account authentication and discovery.
     async readServiceStatus(providerId, requestOptions = {}) {
       if (!providersById.has(providerId) || typeof options.serviceStatusReader !== "function") {
         throw new Error("Provider service status unavailable");
@@ -364,7 +354,7 @@ export function createProviderRegistry(adapters, options = {}) {
       return parsed ? providersById.get(parsed.providerId)?.provider || null : null;
     },
 
-    /** Monitor-private repository root selection. Never returns through browser state. */
+    // Monitor-private repository root selection. Never returns through browser state.
     repositoryAttributionForSession(sessionId) {
       const parsed = parseProviderSessionId(sessionId);
       const provider = parsed ? providersById.get(parsed.providerId)?.provider : null;
@@ -374,7 +364,6 @@ export function createProviderRegistry(adapters, options = {}) {
       return value?.state === "multiple" ? { state: "multiple" } : { state: "unknown" };
     },
 
-    /** "launch" when the provider declares that its pre-identity-rule evidence was bound to its launch cwd. */
     legacyRepositoryAttribution(providerId) {
       return providersById.get(providerId)?.provider?.legacyRepositoryAttribution === "launch" ? "launch" : null;
     },
@@ -383,7 +372,6 @@ export function createProviderRegistry(adapters, options = {}) {
       return (await inspectSessions()).sessions;
     },
 
-    /** Complete provider-owned header discovery for the monitor inventory. */
     /** @param {{ onBatch?: (batch: unknown[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
     async enumerateSessionHeaders(providerId, options = {}) {
       const { onBatch, signal } = options;

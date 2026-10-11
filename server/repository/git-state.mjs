@@ -423,17 +423,6 @@ export function readGitState(cwd, { forbiddenRoots = [] } = {}) {
 
 const gitStateInFlight = new Map();
 
-/**
- * Live Git state for one working tree. Concurrent callers for the same directory and
- * forbidden roots share one in-flight inspection (the same Git commands at the same
- * moment), and each receives its own copy of the answer. Nothing is reused after the
- * inspection finishes, so every later call observes Git afresh.
- *
- * Two private keys date and qualify the answer for callers that judge it against later work:
- * `_readStartedAt` is the moment the shared inspection began (a caller that joined it later
- * still gets that earlier time), and `_statusUnknown` is true when `git status` failed or timed
- * out, so the empty `files` list says nothing about the working tree. Callers strip both.
- */
 export function readGitStateAsync(cwd, options = {}) {
   const forbiddenRoots = Array.isArray(options?.forbiddenRoots) ? options.forbiddenRoots : [];
   const key = JSON.stringify([cwd || "", forbiddenRoots]);
@@ -507,20 +496,12 @@ function parseRenameRecords(output, root, forbiddenRoots) {
         if (safeFrom && safeTo) renames.push({ from: safeFrom, to: safeTo });
       }
     } else {
-      // A non-rename status field is followed by exactly one path.
       index += 2;
     }
   }
   return renames;
 }
 
-/**
- * Reads Git-only rename continuity for the file-change index: the current HEAD plus
- * renames detected between `sinceHead` and HEAD (or, with no `sinceHead`, uncommitted
- * working-tree renames against HEAD). Every path is validated with the same repository-
- * relative validator the rest of the monitor uses; an invalid or cross-root candidate is
- * dropped rather than surfaced. Never throws: a Git failure yields an empty result.
- */
 export async function readGitRenamesAsync(root, { sinceHead, forbiddenRoots = [] } = {}) {
   if (typeof root !== "string" || root.length === 0 || !path.isAbsolute(root)) return { head: "", renames: [] };
   const head = (await tryGitAsync(root, ["rev-parse", "HEAD"], 5_000)).trim();

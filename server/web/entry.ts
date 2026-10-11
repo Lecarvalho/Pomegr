@@ -1,8 +1,3 @@
-/**
- * Server entry for the dashboard build. `vite.config.ts` compiles it to
- * `dist/server/index.js`, which `server/web/server.mjs` serves on Node through
- * vinext's production server.
- */
 import handler from "vinext/server/app-router-entry";
 
 interface Env {

@@ -1,5 +1,3 @@
-/** Provider-record shape helpers shared by the Claude usage parser and the tool-change attribution reducers. */
-
 export const CACHE_MISS_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
 
 export function plainObject(value) {

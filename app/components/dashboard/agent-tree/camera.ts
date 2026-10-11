@@ -22,7 +22,6 @@ function coordinate(value: CameraPoint | LayoutRect) {
   return { x: value.x, y: value.y };
 }
 
-/** Fit and center the complete tree inside the viewport. */
 export function fitCamera(bounds: ContentBounds, viewport: CameraViewport, form: CameraForm = "columns", margin = FIT_MARGIN): Camera {
   void form;
   const width = Math.max(0, bounds.width);
@@ -45,7 +44,6 @@ export function fitCamera(bounds: ContentBounds, viewport: CameraViewport, form:
   };
 }
 
-/** Zoom around a screen point, preserving the world coordinate beneath that point. */
 export function zoomAt(camera: Camera, point: CameraPoint, factor: number): Camera {
   const scale = clamp(camera.scale * (Number.isFinite(factor) ? factor : 1), MIN_ZOOM_SCALE, MAX_ZOOM_SCALE);
   const ratio = camera.scale ? scale / camera.scale : 1;
@@ -56,7 +54,6 @@ export function zoomAt(camera: Camera, point: CameraPoint, factor: number): Came
   };
 }
 
-/** Translate only so the selected card keeps its screen position through relayout. */
 export function pinCard(camera: Camera, before: CameraPoint | LayoutRect, after: CameraPoint | LayoutRect): Camera {
   const oldPosition = coordinate(before);
   const newPosition = coordinate(after);
@@ -67,10 +64,6 @@ export function pinCard(camera: Camera, before: CameraPoint | LayoutRect, after:
   };
 }
 
-/**
- * Translate only until every newly revealed child that is outside the viewport is
- * visible. The camera never changes scale, even when the children are wider/taller.
- */
 export function revealChildren(
   camera: Camera,
   children: Array<CameraPoint | LayoutRect>,

@@ -7,18 +7,10 @@ import type { UnassociatedActivity } from "./useUnassociatedActivity";
 
 const TITLE = "Actions without a recorded request";
 
-/**
- * Tool calls with no recorded request in the retained history, kept apart from the request groups. It renders
- * only what the view object holds (no fetching here) and implies no owner: rows carry the recorded
- * time, kind, target, status and wall duration, never a request number or a token value. The count
- * is the committed feed's own scoped tool-call total, so it is shown whether or not rows are loaded
- * and never replaced by the loaded length.
- */
 export function ActivityUnassociatedSection({ unassociated, agents, busy }: {
   unassociated: UnassociatedActivity; agents: Agent[]; busy: boolean;
 }) {
   const { total, status, calls, remaining, open, setOpen, loadMore, retry } = unassociated;
-  // One call detail is open at a time, as in the request groups; it is view state only.
   const [openCall, setOpenCall] = useState<string | null>(null);
   const headingId = useId();
   const bodyId = useId();

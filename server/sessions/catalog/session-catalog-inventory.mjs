@@ -5,12 +5,9 @@ import { rowSummaryFields, sanitizeRowSummary } from "./session-catalog-row.mjs"
 
 const PAGE_MAX = 100;
 const MEMORY_MAX = 256;
-// A grouped directory response holds at most GROUP_MAX groups of GROUP_ROWS rows each.
 const GROUP_MAX = 20;
 const GROUP_ROWS = 5;
 const GROUP_COLUMNS = { project: "project", provider: "provider" };
-// A caller may narrow a query to a set of session IDs, or group by a caller-supplied session-to-group map (`group: "set"`).
-// Both are bounded, validated IDs passed to SQLite as one JSON parameter, so the statement text stays fixed.
 const SET_MAX = 2000;
 const SESSION_KEY_SQL = "provider || ':' || local_id";
 const SET_FROM = `session_catalog_headers JOIN json_each(?) AS link ON link.key = ${SESSION_KEY_SQL}`;
@@ -32,7 +29,6 @@ const needsOf = (row) => Boolean(row.needsInput) || row.activityStatus === "need
 const SOURCES = { claude: "Claude Code", codex: "Codex" };
 const ACTIVITY = new Set(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"]);
 const COLUMNS = "provider,local_id AS localId,title,project,created_at AS createdAt,updated_at AS updatedAt,is_live AS isLive,needs_input AS needsInput,activity_status AS activityStatus,settled_status AS settledStatus,repository_id AS repositoryId,summary_json AS summaryJson";
-// Durable non-live outcomes, separate from volatile presence. `open` and `unknown` are never settled.
 const SETTLED = new Set(["idle", "closed", "stopped"]);
 const CONFIRMED = new Set(["closed", "stopped"]);
 const settledOf = (row) => !row.isLive && !row.needsInput && SETTLED.has(row.activityStatus) ? row.activityStatus : null;
@@ -43,7 +39,6 @@ const clean = (value, max) => typeof value === "string" ? value.replace(/[\u0000
 const date = (value) => typeof value === "string" && value.length <= 48 && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
 const safeRepository = (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u.test(value) ? value : null;
 const key = (row) => `${row.provider}:${row.localId}`;
-// Newest-created first, matching ORDER's binary provider/local_id tiebreak.
 const compareCreation = (a, b) => b.createdMs - a.createdMs
   || (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : a.localId < b.localId ? -1 : a.localId > b.localId ? 1 : 0);
 function normalize(provider, value) {
@@ -85,7 +80,6 @@ const matchesScope = (scope) => (row) => (!scope.query || `${row.title} ${row.pr
   && (!scope.repositoryId || row.repositoryId === scope.repositoryId) && (scope.filter !== "live" || row.isLive) && (scope.filter !== "needs" || needsOf(row))
   && (!scope.sessionIds || scope.sessionIds.includes(key(row)));
 
-/** A committed normalized index. Only mutation methods initialize or write SQLite. */
 export function createSessionCatalogInventory({ store = () => null, now = Date.now, providers = [], scopeKey: initialScopeKey = "", maxMemoryRows = MEMORY_MAX } = {}) {
   const memory = new Map();
   const lifecycleIds = new Map();
@@ -96,9 +90,6 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   let database = null, revision = 0, observedAt = null, lastCompletedTotal = null, lastCompletedAt = null, overflow = false;
   let scopeKey = typeof initialScopeKey === "string" && /^[a-f0-9]{64}$/u.test(initialScopeKey) ? initialScopeKey : "";
   const stamp = () => new Date(now()).toISOString();
-  // Presence wins while live or needing input. Otherwise the settled outcome is shown, but only once
-  // this run has observed the provider's presence, so a resumed session never flashes Idle before Working.
-  // An expired Open row is not live but keeps its presence status, as in the shell feed.
   const shownStatus = (row) => row.isLive || row.needsInput || row.activityStatus === "needs_input" || row.activityStatus === "open" ? row.activityStatus
     : presenceObserved.has(row.provider) && SETTLED.has(row.settledStatus) ? row.settledStatus : "unknown";
   const toPublic = (row) => publicRow(row, shownStatus(row));
@@ -123,7 +114,6 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       CREATE INDEX IF NOT EXISTS session_catalog_project ON session_catalog_headers(project,created_ms);
       CREATE INDEX IF NOT EXISTS session_catalog_repository ON session_catalog_headers(repository_id,created_ms);
       CREATE TABLE IF NOT EXISTS session_catalog_facts (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL,observed_at TEXT,completed_total INTEGER,completed_at TEXT,scope_key TEXT NOT NULL DEFAULT '');`);
-    // Additive migration: older inventories (before the settled status and the row summary) keep their rows.
     for (const [column, type] of [["settled_status", "TEXT"], ["summary_json", "TEXT"], ["summary_updated_ms", "INTEGER"]]) {
       if (!preparedStatement(database, "SELECT 1 AS found FROM pragma_table_info('session_catalog_headers') WHERE name=?").get(column)) database.exec(`ALTER TABLE session_catalog_headers ADD COLUMN ${column} ${type}`);
     }
@@ -161,10 +151,6 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       changed();
     });
   }
-  // Returns whether the stored row changed. The conflict branch writes only when a merged column
-  // differs, so a repeated header leaves no dirty page and its transaction commits without a disk sync.
-  // :overlay is the overlay flag and :lifecycle whether lifecycle columns follow the incoming row. They are
-  // named because Node 22 cannot bind a numbered parameter next to anonymous ones.
   function writeRow(row, generation, overlay, preserveLifecycle = false) {
     if (database) {
       const result = preparedStatement(database, `INSERT INTO session_catalog_headers (provider,local_id,title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,settled_status,repository_id,generation)
@@ -231,8 +217,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     });
     return true;
   }
-  // Persists one validated row summary bound to the recorded updatedAt. It never moves to an older
-  // recorded time and writes only when the summary differs from the persisted one.
+  // Persists one validated row summary bound to the recorded updatedAt.
   function upsertSummary(provider, localId, summary, updatedAt) {
     initialize();
     const clean = sanitizeRowSummary(summary), ms = Date.parse(date(updatedAt) || "");
@@ -287,7 +272,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       lifecycleIds.set(provider,current); presenceObserved.add(provider); if (removed || firstPass) changed();
     });
   }
-  // Compatibility publishers only overlay bounded lifecycle rows. A ready shell is not a complete enumeration.
+  // Compatibility publishers only overlay bounded lifecycle rows.
   function replaceProvider(provider, entries, readiness = "ready") {
     updateHeaders(provider, Array.isArray(entries)?entries:[]);
     if (readiness === "unavailable" && states.has(provider)) { states.get(provider).status="partial"; changed(); }
@@ -309,12 +294,6 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     const row=preparedStatement(database, `SELECT COUNT(*) AS all_count,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN ${NEEDS_SQL} THEN 1 ELSE 0 END),0) AS needs FROM session_catalog_headers`).get();
     return {all:Number(row.all_count),live:Number(row.live),needs:Number(row.needs)};
   }
-  // Groups the scoped inventory by project or provider. Groups are ordered by their newest-created
-  // session and rows inside a group keep the directory's newest-created order, so live updates never
-  // reorder either. The response is bounded
-  // to GROUP_MAX groups of GROUP_ROWS rows and has no cursor: a group's remaining rows are read by
-  // narrowing the ordinary paged directory to that project or provider. A `set` grouping uses the
-  // caller's session-to-group map instead of a column: only mapped sessions are grouped or counted.
   function groupedDirectory(scope,where,whereArgs,sets) {
     const column=sets?"link.value":GROUP_COLUMNS[scope.group];
     const from=sets?SET_FROM:"session_catalog_headers";
@@ -348,8 +327,6 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   }
   function directory(query={}) {
     const {scope,hash,where,args,sets}=queryParts(query);
-    // Keyset cursors name the last row's creation position, so live updates and newly
-    // created sessions never move a later page; new sessions appear only on the first page.
     let after=null,cursorReset=false;
     if (query.cursor) {
       let cursor;

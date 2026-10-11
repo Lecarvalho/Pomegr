@@ -7,8 +7,6 @@ import { AgentActivityPanel, type AgentActivityViewMode } from "../dashboard/Age
 import { AgentInspector } from "../dashboard/agent-roster/AgentInspector";
 import { Sample, Section, sampleAgent } from "./DesignSystemKit";
 
-// Static roster sample. Every status is non-advancing (no active or waiting agent), so wall times
-// stay frozen and the server and client render the same text; nothing here reads session state.
 const WORKFLOW_ID = "sample-test-sweep";
 const context = (total: number) => ({ total, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 });
 

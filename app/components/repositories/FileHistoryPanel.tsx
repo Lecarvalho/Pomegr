@@ -10,13 +10,9 @@ import { fileStatus } from "./file-tree-model";
 
 export type FileHistoryPanelProps = {
   repositoryLabel: string; // breadcrumb root
-  /** Selected repository-relative path; null renders the "no file selected" state. */
   path: string | null;
-  /** Git porcelain status of the path in the working tree, when currently modified. */
   workingTreeStatus: string | null;
-  /** The status was recorded at the session's last live check (historical session), not read now. */
   statusRecorded?: boolean;
-  /** null while loading the selected file's history. */
   history: FileHistoryResponse | null;
   className?: string;
 };
@@ -50,7 +46,6 @@ function agentsSummary(session: FileHistorySession): string | null {
   const knownCount = session.agents.filter((agent) => agent.label).length;
   if (knownCount === session.agents.length) return session.agents.map((agent) => agent.label).join(" · ");
   if (knownCount === 0) return `${session.agents.length} agent${session.agents.length === 1 ? "" : "s"}`;
-  // Labels resolve only for sessions the monitor currently holds; name the known ones, count the rest.
   const unknownCount = session.agents.length - knownCount;
   const known = session.agents.flatMap((agent) => agent.label ? [agent.label] : []);
   return [...known, `${unknownCount} other agent${unknownCount === 1 ? "" : "s"}`].join(" · ");
@@ -82,7 +77,7 @@ function FileHistoryEntry({ session, linkPath }: {
     <div className="fileHistoryEntryBody">
       {href ? <Link className="fileHistoryEntryTitle" href={href}>{title}</Link> : <span className="fileHistoryEntryTitle">{title}</span>}
       <div className="fileHistoryEntryMeta">
-        {/* Edited is the common case, so only the rarer kinds earn a chip; an edited row reads as plain text. */}
+        {/* Edited is the common case, so only the rarer kinds earn a chip. */}
         {session.kind !== "edited" && <span className={`commandChip${kind.tone ? ` ${kind.tone}` : ""}`}>{kind.label}</span>}
         {providerSource && <ProviderBadge source={providerSource} />}
         {metaText && <span className="fileHistoryEntryMetaText">{metaText}</span>}
@@ -94,8 +89,6 @@ function FileHistoryEntry({ session, linkPath }: {
   </article>;
 }
 
-/** Breadcrumb, file name, and working-tree chip shared by the repository Files tab's history
- * panel and the session Repository tab's file panel; `action` fills the right of the title row. */
 export function FilePanelHeader({ repositoryLabel, path, workingTreeStatus, statusRecorded = false, action, children }: {
   repositoryLabel: string;
   path: string;
@@ -129,8 +122,6 @@ export function FileHistoryPanel({ repositoryLabel, path, workingTreeStatus, sta
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<number | null>(null);
 
-  // Reset local UI state when the selected path changes, per React's "adjust state on prop
-  // change" pattern (no effect needed, so the reset lands before this render paints).
   if (path !== resetKey) {
     setResetKey(path);
     setProviderFilter("all");

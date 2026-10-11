@@ -23,7 +23,6 @@ export const TASK_ISSUES_LAUNCH_ARGUMENTS = Object.freeze([
 ]);
 
 const ROUTES = Object.freeze({ status: "github-status", list: "issues-list", promote: "issue-promote", create: "issue-create" });
-// The fixed failures of a create: GitHub's own refusals travel as these strings and nothing else.
 const CREATE_ERRORS = new Set(["cli_missing", "not_signed_in", "no_access", "issues_disabled", "failed"]);
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 // One create is a GitHub write behind the monitor's 20 second deadline, so it gets a longer wait than a read.
@@ -50,7 +49,6 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** Serialized payload when it is a plain object of the right shape for the operation, otherwise null. */
 function validPayload(operation, payload) {
   if (!isPlainObject(payload)) return null;
   const keys = Object.keys(payload);
@@ -68,7 +66,6 @@ function validPayload(operation, payload) {
   } catch { return null; }
 }
 
-/** The monitor's answer is the one place issue text crosses to the renderer; a refusal keeps only its fixed error. */
 function boundedResult(response, body, operation) {
   if (!isPlainObject(body)) return UNAVAILABLE;
   if (body.ok === true && operation === "create") {
@@ -89,7 +86,6 @@ function safeDirectory(value) {
   return typeof value === "string" && value && !/[\u0000\r\n"]/u.test(value) && path.isAbsolute(value) ? path.resolve(value) : null;
 }
 
-/** The GitHub CLI executable on PATH or in its standard install folder; null when it cannot be found. */
 function resolveGitHubCli(environment, fileExists) {
   const directories = (environmentValue(environment, "PATH") || "").split(path.delimiter);
   for (const name of ["ProgramFiles", "ProgramFiles(x86)"]) {
@@ -131,11 +127,7 @@ function waitForLaunch(child, timeoutMs) {
   });
 }
 
-/**
- * Native-only bridge for GitHub issues. The three monitor operations pass fixed, validated inputs and return the
- * monitor's bounded answer. Sign-in opens the GitHub CLI's own terminal sign-in after a native confirmation and
- * never reads, stores or forwards a GitHub credential, nor waits for the sign-in to finish.
- */
+/** Native-only bridge for GitHub issues; sign-in never reads, stores or forwards a credential. */
 export function createTaskIssues(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
   const fetchImpl = options.fetch || fetch;

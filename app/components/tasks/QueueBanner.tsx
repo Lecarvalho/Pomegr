@@ -6,13 +6,6 @@ import { openDesktopTaskWorktree, taskDesktopBridge, useTaskDesktopAvailability,
 import { queueBanner, worktreeOpenLine, type QueueBannerView } from "./task-queue-banner";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
-/**
- * Why the queue is not starting tasks (design contract D30-D34, D108-D114): drawn above the Board and above the Queue
- * only while the committed status is blocked or paused. It words the monitor's answer and decides nothing itself.
- * Open needs a task opener (the desktop app); Mark done and Requeue need `edits` and appear on the Queue view only.
- * Open folder appears only for a dirty task worktree and only where the desktop can open it; the path stays in the
- * desktop, so the banner shows one fixed line per result.
- */
 export function QueueBanner({ board, view, onOpenTask, edits }: {
   board: Pick<TaskBoard, "queue" | "tasks"> & { repositoryId?: string };
   view: QueueBannerView;

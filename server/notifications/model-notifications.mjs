@@ -12,7 +12,7 @@ function exact(value, keys) { return object(value) && Object.keys(value).length 
 function known(value) { return Array.isArray(value) && value.length <= MAX_KNOWN && value.every(validModelIdentifier) && new Set(value).size === value.length; }
 function empty() { return { catalogs: { claude: null, codex: null }, announcements: { claude: null, codex: null } }; }
 
-/** Private comparison state contains identities and ages, never source HTML, URLs or credentials. */
+// Private comparison state contains identities and ages, never source HTML, URLs or credentials.
 export function validModelNotificationState(value, now) {
   return exact(value, ["catalogs", "announcements"]) && ["catalogs", "announcements"].every((type) =>
     exact(value[type], PROVIDERS) && PROVIDERS.every((provider) => {
@@ -25,7 +25,7 @@ export function validModelNotificationState(value, now) {
     }));
 }
 
-/** Missing catalog rows never mean retirement; only explicit official announcements do. */
+// Missing catalog rows never mean retirement; only explicit official announcements do.
 export function reduceModelNotifications(input, previous = null, now = Date.now()) {
   const state = structuredClone(previous || empty());
   const items = [];

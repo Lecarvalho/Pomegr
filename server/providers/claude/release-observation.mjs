@@ -3,7 +3,7 @@ import { createOfficialReleaseReader } from "../kernel/official-release-reader.m
 const VERSION = /^v(\d{1,4}\.\d{1,4}\.\d{1,4})$/u;
 const BASE = "https://github.com/anthropics/claude-code/releases/tag/";
 
-/** GitHub is the official Claude Code release publication feed, not its delayed stable channel. */
+// GitHub is the official Claude Code release publication feed, not its delayed stable channel.
 export function parseClaudeCodeReleases(rows, observedAt) {
   if (!Array.isArray(rows) || rows.length > 30) return null;
   const valid = rows.flatMap((row) => {

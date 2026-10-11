@@ -63,11 +63,6 @@ function snapshotPath(root = claudeUsageSnapshotsRoot()) {
   return path.join(root, SNAPSHOT_FILE);
 }
 
-/**
- * Captures only the two account-wide statusline windows.  The whole pair is
- * accepted or rejected together so independent window observations cannot be
- * mixed into a synthetic account snapshot.
- */
 export function captureClaudeStatuslineUsage(input, options = {}) {
   const limits = input?.rate_limits;
   const fiveHour = normalizedStatuslineWindow(limits?.five_hour);
@@ -81,9 +76,6 @@ export function captureClaudeStatuslineUsage(input, options = {}) {
   const root = options.root || claudeUsageSnapshotsRoot(options);
   const file = snapshotPath(root);
 
-  // A status line is emitted repeatedly for unchanged data.  Preserve the
-  // original observation time so consumers do not treat that repetition as a
-  // new provider observation.
   const previous = readClaudeUsageSnapshot({ root });
   if (previous && JSON.stringify(previous.limits) === JSON.stringify(snapshot.limits)) return previous;
 
@@ -103,7 +95,7 @@ export function captureClaudeStatuslineUsage(input, options = {}) {
   }
 }
 
-/** Reads the last complete, sanitized local observation without exposing its path. */
+// Reads the last complete, sanitized local observation without exposing its path.
 export function readClaudeUsageSnapshot(options = {}) {
   const file = snapshotPath(options.root || claudeUsageSnapshotsRoot(options));
   try {

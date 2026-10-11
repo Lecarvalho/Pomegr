@@ -37,7 +37,6 @@ function requestRevision(requestUrl, request) {
   return /^\d+$/u.test(etag) ? Number(etag) : null;
 }
 
-/** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
 export function createRequestHandler({
   runtime,
   taskStore = null,
@@ -56,10 +55,7 @@ export function createRequestHandler({
   // A linked task's session facts, read lazily from committed memory only; absent, the board shows them unknown.
   const resolveSessionFacts = (id) => runtime.resolveTaskSessionFacts?.(id);
   // The start-gate facts of a repository, from committed memory only; read lazily like the session facts.
-  // A runtime without the lookup serves a board with no gates, and holds every start.
   const resolveGateFacts = typeof runtime.resolveTaskGateFacts === "function" ? (repositoryId) => runtime.resolveTaskGateFacts(repositoryId) : null;
-  // The facts the complete-when checks judge, for the board's reading of a waiting task: the lookup the report is verified
-  // with, read lazily from committed memory only. Absent, the board carries no reading.
   const resolveCheckFacts = (ref) => runtime.resolveTaskCheckFacts?.(ref);
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
@@ -68,7 +64,6 @@ export function createRequestHandler({
     const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const isAgentQuery = requestUrl.pathname === "/api/agent/v1"
       || requestUrl.pathname.startsWith("/api/agent/v1/");
-    // The same-computer read gate shared by the provider-folder and task-board routes.
     const sameComputerRead = request.headers.host === expectedHost
       && request.headers.origin === undefined
       && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
@@ -394,7 +389,6 @@ export function createRequestHandler({
             const group = requestUrl.searchParams.get("group") || "";
             const feature = requestUrl.searchParams.get("feature") || "";
             const tasks = requestUrl.searchParams.get("tasks") || "";
-            // One session's own row, for the session view's task reference. It excludes every other scope.
             const session = requestUrl.searchParams.get("session") || "";
             const sessionScope = !session || (Boolean(parseProviderSessionId(session)) && session.length <= 200
               && !query && !project && !repositoryId && !provider && !group && !feature && !cursor);
@@ -405,7 +399,6 @@ export function createRequestHandler({
               response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
               response.end(JSON.stringify({ error: "Invalid session directory query" })); return;
             }
-            // Task references are joined here from the task store, for a same-computer client the proxy marked.
             const page = serveSessionDirectoryWithTasks({ runtime, taskStore, allowed: tasks === "1" && sameComputerRead, feature, session, groupFeature: group === "feature",
               query: { query, filter, project, repositoryId, provider, group: group === "feature" ? "" : group, pageSize: pageSize ? Number(pageSize) : 25, cursor } });
             response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",

@@ -29,11 +29,7 @@ function privateScope(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-/**
- * Accepts already committed normalized facts; it performs no acquisition.
- * One accepted batch is transactional. Exceptions preserve the prior snapshot.
- * The runtime may persist its bounded exported comparison state after each commit.
- */
+// Accepts already committed normalized facts; it performs no acquisition.
 export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_RULES, onUpdate = () => {}, onCommit = () => {} } = {}) {
   const registry = createNotificationRuleRegistry(rules);
   let active = new Map(); // private rule/scope/key -> occurrence ID
@@ -80,8 +76,6 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
       if (rule.source === "models") nextModelState = result.state;
       if (!Array.isArray(derived) || derived.length > 1000) throw new TypeError("Invalid derived notification facts");
       const ready = rule.occurrence || (rule.source === "catalog" ? input.readiness === "ready" : derived.length > 0);
-      // A source/profile switch retires all of that producer's old history at
-      // once, including when the new source has no usable evidence yet.
       for (const old of [...nextBaselines]) {
         if (!old.startsWith(`${rule.kind}\0`) || old === group) continue;
         nextBaselines.delete(old);
@@ -92,7 +86,6 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
         for (const key of [...nextEvidence.keys()]) if (key.startsWith(`${old}\0`)) nextEvidence.delete(key);
       }
       // A failed or incomplete observation cannot establish a new private source.
-      // Readiness still reaches clients for an already established source.
       if (!ready) {
         if (rule.source === "catalog") nextReadiness.catalog = sourceReadiness(input.readiness);
         else if (rule.source === "providerStatus") nextReadiness.providerStatus = providerReadiness(input);
@@ -164,11 +157,9 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     }
 
     rows = rows.filter((row) => row.lifecycle === "active" || clockMs - Date.parse(row.occurredAt) <= NOTIFICATION_RETENTION_MS);
-    // Keep current conditions before retained history. Display priority must not
-    // evict a still-active lower-priority condition and manufacture a recurrence.
+    // Keep current conditions before retained history.
     rows.sort((a, b) => Number(b.lifecycle === "active") - Number(a.lifecycle === "active") || Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
     rows = rows.slice(0, NOTIFICATION_MAX_OCCURRENCES);
-    // Keep a response below the serialized budget even if a future registered rule is too verbose.
     while (rows.length && Buffer.byteLength(stable(rows), "utf8") > NOTIFICATION_MAX_BYTES - 1024) rows.pop();
     rows.sort((a, b) => b.priority - a.priority || Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
     const retained = new Set(rows.map((row) => row.id));
@@ -212,8 +203,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     usageState = structuredClone(state.usageState ?? null);
     releaseState = structuredClone(state.releaseState ?? null);
     modelState = structuredClone(state.modelState ?? null);
-    // Producer revisions are process-local clocks. The first fresh commit after
-    // restart must compare against restored conditions regardless of its number.
+    // Producer revisions are process-local clocks.
     sourceVersions = new Map();
     snapshot = freezeSnapshot(state.snapshot);
     try { onUpdate(snapshot); } catch { /* Subscriber failure cannot break restore. */ }

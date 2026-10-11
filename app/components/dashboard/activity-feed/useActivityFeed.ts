@@ -6,17 +6,13 @@ import { useUnassociatedActivity, type UnassociatedActivity } from "./useUnassoc
 
 export type ActivityFeedQuery = {
   sessionId: string;
-  /** History scope: `all`, `primary`, or a normalized agent id. */
   scope: string;
-  /** Null only while selection follows latest without a stable number. */
   selected: number | null;
 };
 
 export type ActivityFeedView = {
   status: "idle" | "loading" | "ready" | "unavailable";
-  /** The shown groups were fetched for exactly the current query and request-page revision. */
   correlated: boolean;
-  /** Continuation calls merged in, deduped by call id, chronological. */
   groups: ActivityRequestGroup[];
   byKind: ActivityFeed["byKind"];
   shellTasks: { total: number; failed: number };
@@ -26,7 +22,6 @@ export type ActivityFeedView = {
   loadMore: (requestNumber: number) => void;
   loadingMore: number | null;
   retry: () => void;
-  /** Tool calls with no recorded request, in the feed's scope and independent of the selected request. */
   unassociated: UnassociatedActivity;
 };
 
@@ -42,18 +37,9 @@ function feedParams(query: ActivityFeedQuery) {
   return params;
 }
 
-/**
- * Five request groups around the shared selection. There is no own event subscription or timer:
- * a changed request-page revision (already SSE-primary with its fallbacks) revalidates the exact
- * query, and a historical session fetches once per query.
- */
 export function useActivityFeed({ enabled, query, historyRevision }: { enabled: boolean; query: ActivityFeedQuery; historyRevision: string }): ActivityFeedView {
   const { sessionId, scope, selected } = query;
   const queryKey = JSON.stringify([sessionId, scope, selected]);
-  // The selected number only slides the five-group window, so a retained body still describes the
-  // right requests while the next page loads. Scope changes which requests exist at all, and the
-  // feed is disabled while the chart previews, so a body from another scope would sit there
-  // unlabelled until history recovered. It is dropped instead.
   const scopeKey = JSON.stringify([sessionId, scope]);
   const [body, setBody] = useState<Body | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);

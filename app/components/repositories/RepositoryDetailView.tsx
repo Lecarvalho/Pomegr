@@ -46,7 +46,6 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
     }
   }, [tab]);
   const restoreActionFocus = (opener: Element | null) => {
-    // Do not interrupt someone who moved to another control while the native action ran.
     if (document.activeElement === document.body || document.activeElement === opener) {
       tabsRef.current.find((button) => button?.getAttribute("aria-selected") === "true")?.focus();
     }

@@ -9,29 +9,15 @@ const MAX_FILES = 200;
 const MAX_PULL_REQUESTS = 10;
 const MAX_COUNT = 100_000;
 const SNAPSHOT_VERSION = 6;
-/** The newest sidecar version this build reads and writes. */
 export const REPOSITORY_SNAPSHOT_VERSION = SNAPSHOT_VERSION;
-/**
- * The longest a recorded snapshot's check may follow its session's last recorded evidence and
- * still be used (product-owner decision, 2026-10-07). A snapshot is the repository state while
- * its session was live, so a check made more than this long after the evidence stopped was
- * taken later, from whatever the checkout then held. A check exactly at the bound is used.
- */
 export const MAX_SNAPSHOT_CHECK_AFTER_EVIDENCE_MS = 24 * 60 * 60 * 1000;
-// Newest in-window commit times one record keeps; matches the session-event feed cap.
 export const MAX_COMMIT_TIMES = 50;
 const MAX_COMMIT_TIME_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
 const CANONICAL_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const WINDOW_TIMEOUT_MS = 3_000;
 const WINDOW_MAX_BUFFER = 256 * 1024;
-// Character budget for one Git-observed path list (sessionCommitPaths, and the
-// version 2 to 5 lists still validated on load). Bounds the worst case of a 200-entry,
-// long-path list so a valid snapshot always fits the checkpoint store's
-// serialized-record byte cap alongside files/comparison/pullRequests.
 const MAX_GIT_OBSERVED_LIST_CHARS = 6_000;
 
-// The version-1 shape, kept exact so an on-disk v1 record still validates and
-// can be transparently upgraded (see normalizeRepositorySnapshot).
 const SNAPSHOT_KEYS_V1 = new Set([
   "version", "branch", "isMain", "files", "comparison", "comparisonCheckedAt",
   "pullRequests", "commitsInSession", "checkedAt",
@@ -42,17 +28,13 @@ const SNAPSHOT_KEYS_V2 = new Set([
 const SNAPSHOT_KEYS_V3 = new Set([...SNAPSHOT_KEYS_V2, "committedChanges"]);
 const SNAPSHOT_KEYS_V4 = new Set([...SNAPSHOT_KEYS_V3, "repositoryId"]);
 const SNAPSHOT_KEYS_V5 = new Set([...SNAPSHOT_KEYS_V4, "commitTimesInWindow"]);
-// Version 6 drops the window-wide lists (dirtyAtFirstCheck, becameDirty, committedInWindow,
-// committedChanges, gitObservedTruncated) for the paths of this session's own commits.
 const SNAPSHOT_KEYS = new Set([
   ...SNAPSHOT_KEYS_V1, "repositoryId", "commitTimesInWindow",
   "sessionCommitPaths", "sessionCommitChanges", "sessionCommitsTruncated",
 ]);
-// Execution-task work kinds whose command may have created a commit.
 const GIT_COMMAND_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 const MAX_GIT_COMMAND_INTERVALS = 256;
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
-// Net Git change per session-committed path, aligned index-for-index with sessionCommitPaths.
 const COMMITTED_CHANGES = new Set(["added", "modified", "deleted"]);
 const NAME_STATUS_LINE = /^([AMDT])\t(.+)$/u;
 const COMPARISON_KEYS = new Set(["branch", "kind", "ahead", "behind", "integrated"]);
@@ -88,13 +70,6 @@ function isBoundedCount(value, maximum = MAX_COUNT) {
   return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
 }
 
-/**
- * Shape-only repository-relative path check: it never resolves against a real
- * filesystem root, so it rejects every forbidden spelling (absolute, drive,
- * UNC/device, traversal, backslashes, control characters, private-root
- * segments) independent of any actual session cwd. Shared by the checkpoint
- * module's file-change validation and this module's recorded repository files.
- */
 export function isSafeRecordedRepositoryPath(value) {
   if (typeof value !== "string" || value.length < 1 || value.length > 512
     || CONTROL.test(value) || value.includes("\\") || RECORDED_PATH_DRIVE.test(value)) {
@@ -159,12 +134,6 @@ function normalizeSnapshotPullRequests(value) {
   return { checkedAt: value.checkedAt, items };
 }
 
-/**
- * Validate one git-observed path list: null when nullable (never measured),
- * else an array of at most MAX_FILES safe paths whose combined character
- * length stays within MAX_GIT_OBSERVED_LIST_CHARS. Returns undefined for any
- * shape violation so the caller can reject the whole record.
- */
 function normalizeGitObservedPathList(value, { nullable }) {
   if (value === null) return nullable ? null : undefined;
   if (!Array.isArray(value) || value.length > MAX_FILES) return undefined;
@@ -179,21 +148,12 @@ function normalizeGitObservedPathList(value, { nullable }) {
   return paths;
 }
 
-/**
- * Validate a committed-change list: null (never measured, or not recorded) or exactly one
- * fixed change per path of its aligned path list. Undefined on any violation.
- */
 function normalizeCommittedChanges(value, paths) {
   if (value === null) return null;
   if (!Array.isArray(paths) || !Array.isArray(value) || value.length !== paths.length) return undefined;
   return value.every((change) => COMMITTED_CHANGES.has(change)) ? [...value] : undefined;
 }
 
-/**
- * Validate the in-window commit times: null (never measured, or a record from before version 5)
- * or at most MAX_COMMIT_TIMES canonical UTC ISO strings, oldest to newest. Undefined on any
- * violation so the caller rejects the whole record. Times only: never a hash, subject, or author.
- */
 function normalizeCommitTimes(value) {
   if (value === null) return null;
   if (!Array.isArray(value) || value.length > MAX_COMMIT_TIMES) return undefined;
@@ -207,7 +167,6 @@ function normalizeCommitTimes(value) {
   return [...value];
 }
 
-/** Fields shared by every snapshot version; returns null on any violation. */
 function normalizeSnapshotCore(value) {
   if (!isBoundedText(value.branch, 256)) return null;
   if (typeof value.isMain !== "boolean") return null;
@@ -237,20 +196,6 @@ function normalizeSnapshotCore(value) {
   };
 }
 
-/**
- * Validate a candidate bounded historical repository snapshot. Every field is
- * checked against its documented bound; any violation, at any nesting level,
- * rejects the whole record rather than dropping the offending piece. Callers
- * that want lenient per-file/per-comparison fallback (the live-check path)
- * build their own candidate first and only call this as the final gate.
- *
- * A record from an earlier version is validated against its own exact key set
- * and loaded as the current version, so existing on-disk snapshots survive the
- * upgrade. Versions 2 to 5 carried window-wide Git-observed lists; those are
- * validated and then dropped, never reinterpreted as this session's commits, so
- * such a record loads with sessionCommitPaths null ("never measured"). Fields a
- * version predates (repositoryId, commitTimesInWindow) load as null.
- */
 export function normalizeRepositorySnapshot(value) {
   if (!isPlainObject(value)) return null;
   const legacyKeys = value.version === 1 ? SNAPSHOT_KEYS_V1
@@ -298,14 +243,6 @@ function commitTimeCounts(times) {
   return counts;
 }
 
-/**
- * Pure derivation of the next recorded in-window commit times from the previous recorded list (or
- * null) and this check's window read (undefined/null when this check did not read the window).
- * Sticky: a time recorded once stays until it ages out of the newest MAX_COMMIT_TIMES, so a later
- * read that no longer lists a commit (an amend, a rebase, a reset) never withdraws it. Commits
- * that share one second are kept as many times as the fullest single read showed. Null only while
- * no check has ever read the window.
- */
 export function nextCommitTimes(previousTimes, readTimes) {
   if (!Array.isArray(readTimes)) return Array.isArray(previousTimes) ? previousTimes : null;
   const counts = commitTimeCounts(previousTimes);
@@ -317,11 +254,6 @@ export function nextCommitTimes(previousTimes, readTimes) {
   return merged.slice(-MAX_COMMIT_TIMES);
 }
 
-/**
- * Truncate a candidate path list to the shared bounds (at most MAX_FILES
- * entries, combined length at most MAX_GIT_OBSERVED_LIST_CHARS), sorted and
- * de-duplicated. Pure and total: never throws, always returns a list.
- */
 function truncatePathList(paths) {
   const sorted = [...new Set(paths)].sort();
   const kept = [];
@@ -336,17 +268,6 @@ function truncatePathList(paths) {
   return { list: kept, truncated: false };
 }
 
-/**
- * Pure derivation of the next session-commit fields from the previous recorded
- * snapshot (or null) and this check's read of the paths changed by this
- * session's own commits (undefined/null when this check did not read them).
- * Sticky: a path recorded once stays, so a later read that no longer matches
- * its commit (an amend, a rebase, a task that left retained evidence) never
- * withdraws it. A path this read lists takes this read's net change; any other
- * keeps its recorded one. `sessionCommitChanges` is null when any kept path has
- * no recorded change. `sessionCommitPaths` is null only while no check has ever
- * read the commits, and `sessionCommitsTruncated` is sticky.
- */
 export function nextSessionCommits(previous, { paths, changes } = {}) {
   const priorPaths = Array.isArray(previous?.sessionCommitPaths) ? previous.sessionCommitPaths : null;
   const priorChanges = priorPaths && Array.isArray(previous.sessionCommitChanges)
@@ -367,12 +288,6 @@ export function nextSessionCommits(previous, { paths, changes } = {}) {
   };
 }
 
-/**
- * Project a recorded snapshot's session-commit paths into the public Git-observed
- * file list. Every path carries its net Git change when recorded; otherwise null.
- * Returns null for a record whose session commits were never read (one from before
- * version 6, or one with no live check yet).
- */
 export function gitObservedFilesFromSnapshot(snapshot) {
   if (!snapshot || !Array.isArray(snapshot.sessionCommitPaths)) return null;
   const paths = snapshot.sessionCommitPaths;
@@ -383,11 +298,6 @@ export function gitObservedFilesFromSnapshot(snapshot) {
   };
 }
 
-/**
- * The closed wall intervals of a session's finished Git commands, from its normalized
- * execution tasks: [startedAt floored to its second, finishedAt] in epoch milliseconds,
- * because a committer time has one-second resolution. A running task has no interval yet.
- */
 export function sessionGitCommandIntervals(executionTasks) {
   const intervals = [];
   for (const task of Array.isArray(executionTasks) ? executionTasks : []) {
@@ -400,24 +310,9 @@ export function sessionGitCommandIntervals(executionTasks) {
   return intervals.slice(-MAX_GIT_COMMAND_INTERVALS);
 }
 
-/**
- * Build a candidate snapshot from one live Git/pull-request check. Only the
- * repository's own files are re-validated (they were already validated
- * against the live root by git-state); comparison, pull requests, and
- * commitsInSession each independently carry the previous recorded value
- * forward when this particular check could not observe them, and the recorded
- * in-window commit times and session-commit paths only ever accumulate (see
- * nextCommitTimes and nextSessionCommits). Returns null
- * (never a partial record) when the candidate fails final normalization; the
- * caller must keep whatever snapshot it already had.
- */
 export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, sessionCommitPaths, sessionCommitChanges, commitTimes, checkedAt, repositoryId = null, previous = null, adoptsUnboundSidecar = false } = {}) {
   if (!repository || repository.available !== true || repository.historical !== false) return null;
-  // A new bound identity begins a new repository timeline. In particular, an
-  // old v3 (unbound) sidecar must not donate its carry-forward fields when a
-  // session is later proven to belong to a repository.
-  // The exception is a provider whose unbound sidecars were always launch-bound
-  // (adoptsUnboundSidecar): its session's proven repository adopts that timeline.
+  // A new bound identity begins a new repository timeline.
   const prior = previous?.repositoryId === repositoryId || adoptsUnboundSidecar && previous?.repositoryId === null ? previous : null;
   const files = (Array.isArray(repository.files) ? repository.files : [])
     .slice(0, MAX_FILES)
@@ -449,13 +344,6 @@ export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSessi
   });
 }
 
-/**
- * Restore-time upgrade for checkpoint evidence written before the shared session-identity
- * rule recorded repositoryAttribution. A provider that declares its legacy evidence was
- * bound to its launch cwd (provider contract `legacyRepositoryAttribution: "launch"`) gets
- * the generic "launch" attribution, which keeps that evidence's pre-rule behavior; evidence
- * from any other provider, or evidence that already records an attribution, is unchanged.
- */
 export function withLegacyRepositoryAttribution(evidence, legacyAttribution) {
   const session = evidence?.session;
   if (legacyAttribution !== "launch" || !session || typeof session !== "object"
@@ -463,17 +351,6 @@ export function withLegacyRepositoryAttribution(evidence, legacyAttribution) {
   return { ...evidence, session: { ...session, repositoryAttribution: "launch" } };
 }
 
-/**
- * Whether a recorded snapshot's check is close enough to its session's last recorded evidence
- * to be used. It compares the snapshot's `checkedAt`, the time of the live check that wrote
- * it and never earlier than its comparison or pull-request check times, with the committed
- * evidence's `session.updatedAt`. A pure function of those two stored values, so every read and
- * every restart gives the same answer, and the stored file is never touched. When either time
- * is missing or unparseable the comparison cannot be made and the snapshot is not used, so a
- * snapshot is never trusted by default. Live-mode evidence is exempt: a live session's check
- * keeps following its evidence and is governed by the live check and the recording rule in
- * observation-startup-repository.mjs, so this rule never withdraws what a live session shows.
- */
 function checkedWithinEvidenceBound(evidence, snapshot) {
   if (evidence?.historical === false) return true;
   const checkedAt = Date.parse(snapshot.checkedAt);
@@ -482,22 +359,6 @@ function checkedWithinEvidenceBound(evidence, snapshot) {
     && checkedAt - evidenceAt <= MAX_SNAPSHOT_CHECK_AFTER_EVIDENCE_MS;
 }
 
-/**
- * Return only a sidecar whose repository identity matches its session, for
- * every provider: a session's recorded snapshot is trusted only when the
- * shared session-identity rule (server/normalize/session-identity.mjs) resolved that
- * session to a single, validated repository matching the sidecar's own
- * repositoryId. Legacy "launch" evidence (see withLegacyRepositoryAttribution)
- * keeps its pre-rule trust in the sidecar recorded for it. Evidence without an
- * attribution never reinterprets its sidecar. `adoptsUnboundSidecar` is true only
- * for a provider that declares launch-bound legacy evidence (provider contract
- * `legacyRepositoryAttribution`): its sidecars without a repository ID were
- * recorded from the launch directory, so a proven single identity adopts them.
- * A snapshot checked more than MAX_SNAPSHOT_CHECK_AFTER_EVIDENCE_MS after the historical
- * evidence's last update is not used (see checkedWithinEvidenceBound); the caller then
- * sees exactly what it sees for a session with no snapshot. This is the one function every
- * reader of a recorded snapshot goes through.
- */
 export function sessionRepositorySnapshot(evidence, snapshot, { adoptsUnboundSidecar = false } = {}) {
   if (!snapshot || !checkedWithinEvidenceBound(evidence, snapshot)) return null;
   if (evidence?.session?.repositoryAttribution === "launch") return snapshot;
@@ -508,7 +369,6 @@ export function sessionRepositorySnapshot(evidence, snapshot, { adoptsUnboundSid
 
 const UNAVAILABLE_PULL_REQUESTS = Object.freeze({ status: "unavailable", checkedAt: null, items: Object.freeze([]) });
 
-/** Project a recorded, bounded snapshot into the public repository/pullRequests shapes. */
 export function historicalRepositoryFromSnapshot(snapshot) {
   if (!snapshot) return null;
   return {
@@ -532,12 +392,6 @@ export function historicalRepositoryFromSnapshot(snapshot) {
   };
 }
 
-/**
- * checkpointPublicState's historical repository resolution: recorded snapshot,
- * else recordedGitState fallback. The recorded branch is shown only when the
- * shared session-identity rule resolved a single, validated repository for
- * this session, for every provider; see sessionRepositorySnapshot above.
- */
 function sessionRecordedBranch(evidence) {
   const attribution = evidence.session.repositoryAttribution;
   return attribution === "launch" || attribution === "single" && REPOSITORY_ID.test(evidence.session.repositoryId || "")
@@ -550,12 +404,6 @@ export function resolveCheckpointRepository({ historical, evidence, snapshot, ad
     || { repository: recordedGitState(sessionRecordedBranch(evidence)), pullRequests: unavailablePullRequests() };
 }
 
-/**
- * projectSelection's historical repository resolution: a recorded snapshot never
- * calls Git or GitHub.  With no snapshot, the recorded branch is display-only:
- * the live working tree may now be another session's checkout, so no current
- * GitHub association query is safe either.
- */
 export async function resolveHistoricalRepositoryAndPullRequests({ evidence, snapshot, adoptsUnboundSidecar = false, recordedGitState, pullRequestReader, unavailablePullRequests }) {
   const matchedSnapshot = sessionRepositorySnapshot(evidence, snapshot, { adoptsUnboundSidecar });
   if (matchedSnapshot) return historicalRepositoryFromSnapshot(matchedSnapshot);
@@ -563,32 +411,11 @@ export async function resolveHistoricalRepositoryAndPullRequests({ evidence, sna
   return { repository, pullRequests: unavailablePullRequests() };
 }
 
-/**
- * Net change for one path from its matched commits' statuses, newest first: deleted when the
- * newest change deleted it, added when any matched commit added it, otherwise modified.
- */
 function netCommittedChange(statusesNewestFirst) {
   if (statusesNewestFirst[0] === "D") return "deleted";
   return statusesNewestFirst.includes("A") ? "added" : "modified";
 }
 
-/**
- * Read commits on the current HEAD whose committer time falls inside
- * [since, until]: their count and committer times (times only, the newest
- * MAX_COMMIT_TIMES). Paths are kept only for a commit whose committer time also
- * falls inside one of `commandIntervals` (see sessionGitCommandIntervals), a commit
- * made while one of the session's own Git commands ran: the distinct paths those
- * commits touched and each path's net change (added/modified/deleted; a type change
- * counts as modified). With no intervals no path is kept. Only meaningful
- * when called on the live HEAD branch; a caller that knows the session's
- * recorded branch differs from HEAD should not call this at all. `git log
- * --name-status` reports paths relative to the repository's top level, the
- * same root `git status --porcelain` (and therefore repository.files) uses,
- * so no root remapping is needed between this reader's paths and the
- * session's other recorded repository paths. Every failure (missing root,
- * bad window, Git error, timeout, oversized output) resolves to null rather
- * than throwing.
- */
 export function readCommitsInWindow(repositoryRoot, { since, until, commandIntervals } = {}) {
   return new Promise((resolve) => {
     if (typeof repositoryRoot !== "string" || repositoryRoot.length === 0
@@ -612,7 +439,6 @@ export function readCommitsInWindow(repositoryRoot, { since, until, commandInter
         let count = 0;
         let ownCommit = false;
         const commitTimes = [];
-        // git log lists commits newest first, so each path's statuses arrive newest first.
         const statusesByPath = new Map();
         for (const line of String(stdout).split(/\r?\n/u)) {
           if (!line) continue;
@@ -659,25 +485,11 @@ function parseQualifiedSessionId(value) {
 
 const DEFAULT_RECORDER_MAX_ENTRIES = 512;
 
-/**
- * Bounded in-memory recorder for the sidecar repository snapshots persisted
- * next to session observation checkpoints. `record` is fire-and-forget from
- * the caller's perspective (it never throws and its returned promise never
- * rejects); `recorded` is a synchronous lookup so historical serving never
- * waits on, or triggers, disk or Git activity.
- *
- * The disk holds more sidecars than this memory does. `load` restores only the
- * ones the startup checkpoint restore projects; every other session's sidecar
- * is read on demand by `ensure`, one identity-keyed file, before its projection.
- */
 export function createRepositorySnapshotRecorder({ store, now = () => Date.now(), maxEntries, adoptsUnboundSidecar = () => false } = {}) {
   if (!store || typeof store.writeRepositorySnapshot !== "function" || typeof store.loadRepositorySnapshots !== "function") {
     throw new TypeError("Repository snapshot recorder requires a checkpoint store");
   }
   const bound = Number.isSafeInteger(maxEntries) && maxEntries > 0 ? maxEntries : DEFAULT_RECORDER_MAX_ENTRIES;
-  // qualifiedId -> { snapshot, lastUsedAt }. Recency covers both writes and
-  // reads, so an actively viewed historical session outlives an idle one.
-  // A null snapshot is a session known to have no sidecar, so it is not re-read.
   const entries = new Map();
   const pending = new Map();
   const reading = new Map();
@@ -701,11 +513,7 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
     }
   }
 
-  /**
-   * Make one session's sidecar available to `recorded`, reading its file only when
-   * this recorder holds no answer for it yet. Resolves whether a snapshot exists;
-   * never rejects. A store without single-sidecar reads keeps what `load` restored.
-   */
+  /** Make one session's sidecar available to `recorded`, reading its file only when this recorder holds no answer for it yet. */
   function ensure(qualifiedId) {
     const held = entries.get(qualifiedId);
     if (held) return Promise.resolve(Boolean(held.snapshot));
@@ -717,7 +525,6 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
       .then(() => store.loadRepositorySnapshot(parsed.providerId, parsed.localSessionId))
       .catch(() => null)
       .then((snapshot) => {
-        // A write that settled during the read is newer than what the read saw.
         if (!entries.has(qualifiedId)) retain(qualifiedId, snapshot || null);
         return Boolean(entries.get(qualifiedId)?.snapshot);
       })
@@ -731,9 +538,7 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
     if (!parsed) return Promise.resolve(false);
     const chain = (pending.get(qualifiedId) || Promise.resolve())
       .catch(() => {})
-      // Derive only after the prior write for this session settles. A concurrent
-      // second check must see the first check's retained dirty baseline rather
-      // than independently treating its own working tree as the first check.
+      // Derive only after the prior write for this session settles.
       .then(async () => {
         // A sidecar this recorder has not read yet is still the session's baseline.
         await ensure(qualifiedId);
@@ -772,15 +577,12 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
     if (typeof qualifiedId !== "string") return null;
     const entry = entries.get(qualifiedId);
     if (!entry) return null;
-    // Move to the most-recently-used end so a live-viewed historical session
-    // outlives an idle one when the bound forces an eviction.
     entries.delete(qualifiedId);
     entry.lastUsedAt = now();
     entries.set(qualifiedId, entry);
     return entry.snapshot;
   }
 
-  /** Whether this recorder already holds an answer (a snapshot, or a known absence) for the session. */
   function has(qualifiedId) {
     return entries.has(qualifiedId);
   }

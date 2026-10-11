@@ -8,11 +8,9 @@ import { expect } from "vitest";
 import { inspectDocsContent } from "../../scripts/docs-content.mjs";
 import type { DocsBlock, DocsContent, DocsInline, DocsPage } from "../../scripts/docs-content.mjs";
 
-// Shared fixtures for the documentation loader tests: a throwaway repository with landing/
-// beside docs/site.json and docs/public/.
+// Shared fixtures for the docs loader tests: a throwaway repository.
 
-// Minimal well-formed images: the loader walks their structure to refuse metadata blocks and reads
-// their pixel size. Every fixture image is IMAGE_WIDTH by IMAGE_HEIGHT.
+// Minimal well-formed images; every fixture image is IMAGE_WIDTH by IMAGE_HEIGHT.
 export const IMAGE_WIDTH = 3;
 export const IMAGE_HEIGHT = 2;
 export function pngChunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
@@ -23,26 +21,21 @@ export function pngChunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
 export const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 export const IHDR = pngChunk("IHDR", Buffer.from([0, 0, 0, IMAGE_WIDTH, 0, 0, 0, IMAGE_HEIGHT, 8, 2, 0, 0, 0]));
 export const PNG = Buffer.concat([PNG_SIGNATURE, IHDR, pngChunk("IEND")]);
-/** A JPEG segment: marker, then a length that counts its own two bytes. */
 export function jpegSegment(marker: number, payload: Buffer): Buffer {
   const length = Buffer.alloc(2);
   length.writeUInt16BE(payload.length + 2);
   return Buffer.concat([Buffer.from([0xff, marker]), length, payload]);
 }
 const JFIF = Buffer.concat([Buffer.from("JFIF\0", "latin1"), Buffer.from([1, 1, 0, 0, 1, 0, 1, 0, 0])]);
-/** A baseline frame header: 8-bit precision, height, width, one component. */
 const SOF0 = jpegSegment(0xc0, Buffer.from([8, 0, IMAGE_HEIGHT, 0, IMAGE_WIDTH, 1, 1, 0x11, 0]));
-/** SOI, a 16-byte JFIF segment, the given segments, the frame header, the start of scan, and EOI. */
 export const jpegWith = (...segments: Buffer[]) =>
   Buffer.concat([Buffer.from([0xff, 0xd8]), jpegSegment(0xe0, JFIF), ...segments, SOF0, Buffer.from([0xff, 0xda, 0x00, 0x02, 1, 2, 3, 4, 0xff, 0xd9])]);
 export const JPG = jpegWith();
-/** A RIFF chunk, padded to an even size. */
 export function riffChunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
   const size = Buffer.alloc(4);
   size.writeUInt32LE(data.length);
   return Buffer.concat([Buffer.from(type, "latin1"), size, data, Buffer.alloc(data.length % 2)]);
 }
-/** A lossy frame header: three tag bytes, the start code, then the 14-bit width and height. */
 const VP8_FRAME = Buffer.from([0, 0, 0, 0x9d, 0x01, 0x2a, IMAGE_WIDTH, 0, IMAGE_HEIGHT, 0]);
 export const webpWith = (...chunks: Buffer[]) => {
   const body = Buffer.concat([Buffer.from("WEBP", "latin1"), riffChunk("VP8 ", VP8_FRAME), ...chunks]);
@@ -50,14 +43,12 @@ export const webpWith = (...chunks: Buffer[]) => {
   size.writeUInt32LE(body.length);
   return Buffer.concat([Buffer.from("RIFF", "latin1"), size, body]);
 };
-/** The signature and the logical screen size; the loader reads nothing else of a GIF. */
 export const GIF = Buffer.concat([Buffer.from("GIF89a", "latin1"), Buffer.from([IMAGE_WIDTH, 0, IMAGE_HEIGHT, 0])]);
 export const FENCE = "```";
 export const sha256 = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
 
 const scratch: string[] = [];
 
-/** Register with `afterEach` in every test file that creates fixtures. */
 export function cleanupScratch() {
   for (const directory of scratch.splice(0)) rmSync(directory, { recursive: true, force: true });
 }
@@ -118,8 +109,7 @@ export function standard(overrides: Record<string, string | Buffer> = {}, manife
 
 export const alphaWith = (body: string) => ({ "get-started/alpha.md": doc("Alpha", `## Alpha section\n\n${body}`) });
 
-// A publication beside every kind of content that must never ship. Each canary is a single
-// distinctive word, so one scan over generated or built output can prove its absence.
+// Each canary is a distinctive word so one scan can prove its absence.
 export const PUBLIC_CANARY = "PUBLICCANARYQZX";
 export const NON_PUBLIC_CANARIES = {
   internalPage: "INTERNAL_SENTINEL", // docs/internal/secret.md (makeRepo)
@@ -132,11 +122,6 @@ export const NON_PUBLIC_CANARIES = {
 } as const;
 export const NON_PUBLIC_CANARY_TEXT = Object.values(NON_PUBLIC_CANARIES);
 
-/**
- * A valid three-page publication (`baseManifest`, unless a manifest is given) whose first page
- * carries `PUBLIC_CANARY` and one screenshot, beside internal pages, a plan, a mockup, an unselected
- * public page, an unreferenced public image, and an internal image, all carrying canaries.
- */
 export function canaryRepo(manifest: unknown = baseManifest): Repo {
   const repo = standard(
     {
@@ -192,24 +177,16 @@ export function* inlinesOf(blocks: DocsBlock[]): Generator<DocsInline> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Staged copies of the real landing package, for tests that run the real scripts (and the real
-// build) against a fixture repository instead of the real documentation.
+// Staged copies of the real landing package, for tests that run the real scripts against a fixture repository.
 
-/** The real landing directory the staged copies are made from. */
 export const LANDING_SOURCE = fileURLToPath(new URL("../../", import.meta.url));
 
-/** Copy landing/scripts into the fixture's landing/ and link landing's dependencies (the loader needs `marked`). */
 export function stageScripts(repo: Repo) {
   cpSync(join(LANDING_SOURCE, "scripts"), join(repo.landingRoot, "scripts"), { recursive: true });
   symlinkSync(join(LANDING_SOURCE, "node_modules"), join(repo.landingRoot, "node_modules"), "junction");
 }
 
-/**
- * A real node_modules directory holding a link to each of landing's packages, so a build run in the
- * fixture writes its own Vite caches (.vite, .vite-temp) inside the fixture's temporary root rather
- * than into the shared landing/node_modules.
- */
+/** Builds run in the fixture write their Vite caches here instead of the shared landing/node_modules. */
 function linkDependencies(repo: Repo) {
   const source = join(LANDING_SOURCE, "node_modules");
   const target = join(repo.landingRoot, "node_modules");
@@ -222,12 +199,7 @@ function linkDependencies(repo: Repo) {
 
 const STAGED_ENTRIES = ["app", "db", "public", "scripts", "server", "worker", "next.config.ts", "package.json", "tsconfig.json", "vite.config.ts", "wrangler.jsonc"];
 
-/**
- * Copy everything `npm run build:audit` needs into the fixture's landing/, and link landing's
- * dependencies. Generated and local output (`generated/`, `public/docs/`, `dist/`, secrets) is never
- * copied, so the staged package can only bundle what its own fixture documentation produces.
- * Only tracked sources are staged: gitignored files such as next-env.d.ts are absent on a fresh CI checkout.
- */
+/** Only tracked sources are staged: gitignored files are absent on a fresh CI checkout. */
 export function stageLanding(repo: Repo) {
   const generatedImages = join(LANDING_SOURCE, "public", "docs");
   for (const entry of STAGED_ENTRIES) {
@@ -255,7 +227,6 @@ function ran(result: ReturnType<typeof spawnSync>): Ran {
   return { ok: result.status === 0, status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }
 
-/** Run a node script in `cwd`. */
 export function runNode(cwd: string, args: string[]): Ran {
   return ran(spawnSync(process.execPath, args, { cwd, env: childEnvironment(), encoding: "utf8", timeout: 120_000 }));
 }
@@ -265,7 +236,6 @@ export function runNpm(cwd: string, script: string, timeout = 240_000): Ran {
   return ran(spawnSync(`npm run ${script}`, { cwd, env: childEnvironment(), encoding: "utf8", shell: true, timeout }));
 }
 
-/** Every file beneath `root` as `{ path (relative, forward slashes), data }`; a missing root is empty. */
 export function filesUnder(root: string): Array<{ path: string; data: Buffer }> {
   if (!existsSync(root)) return [];
   const found: Array<{ path: string; data: Buffer }> = [];
