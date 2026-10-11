@@ -12,7 +12,7 @@ import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 import { openDesktopTaskWorktree, startDesktopTask } from "../../app/components/tasks/task-desktop";
 
 const repositoryId = "repo-0123456789abcdef01234567";
-const taskStart = vi.fn<(repositoryId: string, taskId: string) => Promise<unknown>>();
+const taskStart = vi.fn<(repositoryId: string, taskId: string, separateWorktree?: true) => Promise<unknown>>();
 const taskAction = vi.fn(async () => ({ ok: true }));
 const refresh = vi.fn(async () => {});
 const columns = ["Backlog", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
@@ -311,7 +311,63 @@ describe("Open folder after a dirty worktree", () => {
   });
 });
 
+describe("Start in separate worktree after a dirty repository", () => {
+  beforeEach(() => {
+    taskStart.mockResolvedValue({ status: "tree_dirty" });
+    setBridge({ taskAction, taskStart });
+  });
+  async function startHeld() {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openModal(user);
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("This repository has uncommitted changes."));
+    return { user, dialog };
+  }
+
+  it("is hidden until a start answers tree_dirty", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openModal(user);
+    expect(dialog.queryByRole("button", { name: "Start in separate worktree" })).not.toBeInTheDocument();
+    taskStart.mockResolvedValueOnce({ status: "gate_held" });
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("A start gate holds this task"));
+    expect(dialog.queryByRole("button", { name: "Start in separate worktree" })).not.toBeInTheDocument();
+  });
+
+  it("is a secondary action that asks the desktop for the same start with the fixed mark", async () => {
+    const { user, dialog } = await startHeld();
+    expect(taskStart.mock.calls).toEqual([[repositoryId, "T-1"]]);
+    const separate = dialog.getByRole("button", { name: "Start in separate worktree" });
+    expect(separate).toHaveClass("commandSecondaryAction");
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+    taskStart.mockResolvedValueOnce({ status: "started" });
+    await user.click(separate);
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal window."));
+    expect(taskStart.mock.calls).toEqual([[repositoryId, "T-1"], [repositoryId, "T-1", true]]);
+    expect(dialog.queryByRole("button", { name: "Start in separate worktree" })).not.toBeInTheDocument();
+  });
+
+  it("stays offered when the owner cancels the confirmation", async () => {
+    const { user, dialog } = await startHeld();
+    taskStart.mockResolvedValueOnce({ status: "cancelled" });
+    await user.click(dialog.getByRole("button", { name: "Start in separate worktree" }));
+    await waitFor(() => expect(taskStart).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled());
+    expect(dialog.getByRole("status")).toHaveTextContent("This repository has uncommitted changes.");
+    expect(dialog.getByRole("button", { name: "Start in separate worktree" })).toBeInTheDocument();
+  });
+});
+
 describe("the desktop start and folder wrappers", () => {
+  it("pass tree_dirty through and send the worktree mark only when asked", async () => {
+    taskStart.mockResolvedValue({ status: "tree_dirty" });
+    expect(await startDesktopTask(repositoryId, "T-1")).toBe("tree_dirty");
+    expect(await startDesktopTask(repositoryId, "T-1", true)).toBe("tree_dirty");
+    expect(taskStart.mock.calls).toEqual([[repositoryId, "T-1"], [repositoryId, "T-1", true]]);
+  });
+
   it("pass worktree_dirty through as its own start status, never as a generic failure", async () => {
     taskStart.mockResolvedValue({ status: "worktree_dirty" });
     expect(await startDesktopTask(repositoryId, "T-1")).toBe("worktree_dirty");

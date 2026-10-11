@@ -15,7 +15,7 @@ export const TASK_WORKTREE_OPEN_STATUSES = Object.freeze(["opened", "not_found",
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_START_STATUSES = Object.freeze([
   "started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "worktree_dirty",
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -23,7 +23,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const TOKEN = /^[A-Za-z0-9_-]{32,128}$/u;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
-const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "unavailable"]);
+const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "tree_dirty", "unavailable"]);
 const PROMPT_MAX = 8000;
 const IMAGE_MAX = 4;
 const IMAGE_FILE = /^img-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/u;
@@ -39,6 +39,19 @@ export const TASK_START_LAUNCH_ARGUMENTS = Object.freeze([
     + "Remove-Item Env:POMEGR_START_FILE,Env:POMEGR_START_ARGUMENTS,Env:POMEGR_START_DIRECTORY;"
     + "Start-Process -FilePath $f -ArgumentList $a -WorkingDirectory $d",
 ]);
+
+/** The words of the native confirmation of a manual start: only the task ID enters them. */
+export function taskStartConfirmation({ taskId, separateWorktree } = {}) {
+  return separateWorktree === true
+    ? {
+      message: `Start task ${taskId} in a separate worktree?`,
+      detail: "A session will open in a new terminal window in a worktree of the task's own, on the task's branch at this repository's current commit, on the provider set in the task's Run on (Claude Code when none is set). The uncommitted changes in this repository are not part of it and are left untouched.",
+    }
+    : {
+      message: `Start task ${taskId}?`,
+      detail: "A session will open in a new terminal window in this repository, or in the task's own worktree when its step runs in parallel, on the provider set in the task's Run on (Claude Code when none is set).",
+    };
+}
 
 /** Quotes one argument the way the Windows C runtime parses a command line, so it arrives unchanged. */
 export function windowsArgument(value) {
@@ -169,6 +182,9 @@ function waitForLaunch(child, timeoutMs) {
  * plan asks for a worktree (a task of a step that runs in parallel), the session starts in the task's own Git
  * worktree (`task-worktree.mjs`) instead of the repository root; a worktree that cannot be made or safely reused
  * fails the start. A worktree made for a start that then fails is removed again, by the rule that discards no work.
+ * A manual start that only the repository root's uncommitted changes hold answers `tree_dirty`; the owner may then ask
+ * for the same start with `separateWorktree`, which the confirmation names and which asks the monitor for a plan in a
+ * worktree of the task's own.
  * A task's images are files in the monitor's task store that the plan names: Claude Code is given their folder as an
  * extra readable directory, and Codex gets them attached to the prompt. When the plan asks for Remote Control, Claude
  * Code is started with its own `--remote-control` flag; Pomegr never connects to that session itself.
@@ -207,7 +223,7 @@ export function createTaskStart(options = {}) {
     try { await post("start-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ }
   }
 
-  async function run(repositoryId, taskId, { confirmRequired }) {
+  async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false }) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
@@ -219,18 +235,20 @@ export function createTaskStart(options = {}) {
     if (!Object.values(executables).some(Boolean)) return result("cli_missing");
     const launcher = powershellExecutable(sourceEnvironment, fileExists);
     if (!launcher) return result("unavailable");
-    if (confirmRequired && await confirm({ taskId }) !== true) return result("cancelled");
+    if (confirmRequired && await confirm({ taskId, separateWorktree }) !== true) return result("cancelled");
     if (disposed) return result("cancelled");
 
     let answer;
-    try { answer = await post("start-plan", repositoryId, { id: taskId }); } catch { return result("unavailable"); }
+    try { answer = await post("start-plan", repositoryId, separateWorktree ? { id: taskId, worktree: true } : { id: taskId }); } catch { return result("unavailable"); }
     if (!isPlainObject(answer)) return result("unavailable");
     if (answer.ok !== true) {
       return result(typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
     }
     const rawToken = isPlainObject(answer.plan) && typeof answer.plan.token === "string" && TOKEN.test(answer.plan.token)
       ? answer.plan.token : null;
-    const plan = validatePlan(answer.plan, taskId, directoryExists, fileExists);
+    const validated = validatePlan(answer.plan, taskId, directoryExists, fileExists);
+    // A start the owner confirmed for a separate worktree never runs in the repository root.
+    const plan = separateWorktree && validated?.worktree !== true ? null : validated;
     if (!plan) {
       if (rawToken) await abort(repositoryId, taskId, rawToken);
       return result("failed");
@@ -292,9 +310,10 @@ export function createTaskStart(options = {}) {
     try { return await run(repositoryId, taskId, mode); } catch { return result("failed"); } finally { active = false; }
   }
 
-  async function start(event, repositoryId, taskId) {
+  async function start(event, repositoryId, taskId, separateWorktree) {
     if (!isTrustedEvent(event)) return result("invalid");
-    return exclusive({ confirmRequired: true }, repositoryId, taskId);
+    if (separateWorktree !== undefined && separateWorktree !== true) return result("invalid");
+    return exclusive({ confirmRequired: true, separateWorktree: separateWorktree === true }, repositoryId, taskId);
   }
 
   // Only the queue runner calls this, and only for a repository whose queue the user turned on.
@@ -334,8 +353,8 @@ export function installTaskStartIpc(options = {}) {
   const runner = options.queueRunner === false ? null : options.queueRunner || createTaskQueueRunner({
     starter, fetch: options.fetch, monitorOrigin: options.monitorOrigin, authorizationToken: options.authorizationToken,
   });
-  ipcMain.handle(TASK_START_CHANNEL, async (event, repositoryId, taskId) => {
-    try { return await starter.start(event, repositoryId, taskId); } catch { return result("failed"); }
+  ipcMain.handle(TASK_START_CHANNEL, async (event, repositoryId, taskId, separateWorktree) => {
+    try { return await starter.start(event, repositoryId, taskId, separateWorktree); } catch { return result("failed"); }
   });
   ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL);
   ipcMain.handle(TASK_WORKTREE_OPEN_CHANNEL, async (event, repositoryId, taskId) => {

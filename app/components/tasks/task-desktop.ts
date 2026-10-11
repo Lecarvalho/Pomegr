@@ -13,7 +13,7 @@ export type TaskActionResult = { ok: true; /** Only a create answers it: the new
 export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
   /** Absent on an older desktop build; `startDesktopTask` then answers `unavailable`. */
-  taskStart?: (repositoryId: string, taskId: string) => Promise<{ status: TaskStartStatus }>;
+  taskStart?: (repositoryId: string, taskId: string, separateWorktree?: true) => Promise<{ status: TaskStartStatus }>;
   /** Absent on an older desktop build; `openDesktopTaskWorktree` then answers `unavailable`. */
   taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
 };
@@ -24,9 +24,9 @@ const OPEN_STATUSES = new Set<string>(["opened", "not_found", "invalid", "unavai
 
 /** Fixed outcome of one desktop session start. */
 export type TaskStartStatus = "started" | "cancelled" | "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable"
-  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held" | "worktree_dirty";
+  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held" | "worktree_dirty" | "tree_dirty";
 const START_STATUSES = new Set<string>(["started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held", "worktree_dirty"]);
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held", "worktree_dirty", "tree_dirty"]);
 
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const FAILURES = new Set<string>(["invalid", "not_found", "limit", "conflict", "unsupported", "unavailable"]);
@@ -93,12 +93,15 @@ export function deleteDesktopTask(repositoryId: string, id: string): Promise<Tas
   return sendTaskAction(repositoryId, "delete", { id });
 }
 
-/** Asks the desktop to confirm and start a session for one task. Never throws; sends only the two IDs. */
-export async function startDesktopTask(repositoryId: string, id: string): Promise<TaskStartStatus> {
+/**
+ * Asks the desktop to confirm and start a session for one task. Never throws; sends only the two IDs and, when the
+ * owner chose it after a `tree_dirty` answer, the fixed mark that asks for a worktree of the task's own.
+ */
+export async function startDesktopTask(repositoryId: string, id: string, separateWorktree = false): Promise<TaskStartStatus> {
   const bridge = typeof window === "undefined" ? undefined : (window as Window & { pomegrDesktop?: Partial<TaskDesktopBridge> }).pomegrDesktop;
   if (typeof bridge?.taskStart !== "function") return "unavailable";
   try {
-    const result: unknown = await bridge.taskStart(repositoryId, id);
+    const result: unknown = await (separateWorktree ? bridge.taskStart(repositoryId, id, true) : bridge.taskStart(repositoryId, id));
     const status = typeof result === "object" && result !== null ? (result as { status?: unknown }).status : undefined;
     if (typeof status !== "string") return "unavailable";
     return START_STATUSES.has(status) ? status as TaskStartStatus : "failed";

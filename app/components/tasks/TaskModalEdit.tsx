@@ -101,7 +101,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const saveLine = dirty && !confirming && startLine === null && (showStart || waiting || unresolved || awaitingReport || issueOffered);
   const folderOffered = showStart && start.folder.offered;
   const folderLine = showStart ? start.folder.line : null;
-  const resolveRow = !confirming && (startLine || saveLine || folderLine || folderOffered || unresolved || awaitingReport);
+  const separateOffered = showStart && start.separate.offered;
+  const resolveRow = !confirming && (startLine || saveLine || folderLine || folderOffered || separateOffered || unresolved || awaitingReport);
 
   const save = async () => {
     if (!canSave || saveInFlight.current) return;
@@ -193,6 +194,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {saveLine && <span className="taskModalNote" role="status" aria-live="polite">{SAVE_FIRST_LINE}</span>}
         {folderLine && <span className="taskModalNote" role="status" aria-live="polite">{folderLine}</span>}
         {folderOffered && <button type="button" className="commandSecondaryAction" disabled={start.folder.opening} onClick={() => void start.folder.open()}>Open folder</button>}
+        {separateOffered && <button type="button" className="commandSecondaryAction" onClick={() => void start.separate.run()}>Start in separate worktree</button>}
         {unresolved && <>
           <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(true)}>{task.state === "needs_review" ? "Mark done" : "Mark done and resume queue"}</button>
           <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(false)}>Requeue task</button>

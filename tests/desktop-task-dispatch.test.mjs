@@ -10,6 +10,7 @@ import {
   TASK_START_STATUSES,
   TASK_WORKTREE_OPEN_CHANNEL,
   TASK_WORKTREE_OPEN_STATUSES,
+  taskStartConfirmation,
   windowsArgument,
 } from "../desktop/runtime/task-dispatch.mjs";
 
@@ -50,7 +51,7 @@ function harness({ plan = basePlan(), answer, spawnImpl, confirmImpl, overrides 
     environment,
     fileExists: (f) => f === exe || f === powershell,
     directoryExists: (d) => d === root,
-    confirm: confirmImpl || (async (info) => { log.push("confirm"); assert.deepEqual(info, { taskId: "T-3" }); return true; }),
+    confirm: confirmImpl || (async (info) => { log.push("confirm"); assert.deepEqual(info, { taskId: "T-3", separateWorktree: false }); return true; }),
     fetch: async (url, options) => {
       log.push(url.split("/").pop());
       calls.push({ url, options, body: JSON.parse(options.body) });
@@ -70,7 +71,8 @@ const aborted = (h) => h.calls.filter((c) => c.url.endsWith("start-abort"));
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");
   assert.ok(Object.isFrozen(TASK_START_STATUSES));
-  assert.equal(TASK_START_STATUSES.length, 14);
+  assert.equal(TASK_START_STATUSES.length, 15);
+  assert.ok(TASK_START_STATUSES.includes("tree_dirty"));
   assert.ok(TASK_START_STATUSES.includes("worktree_dirty"));
   assert.ok(TASK_START_STATUSES.includes("gate_held"));
 });
@@ -527,6 +529,54 @@ test("a dirty reused worktree answers worktree_dirty, aborts the dispatch and sp
     const other = harness({ plan: { ...basePlan(), worktree: true }, overrides: { worktrees: fakeWorktrees(made) } });
     assert.deepEqual(await go(other), { status: "failed" });
   }
+});
+
+test("a start held by the repository's uncommitted changes answers tree_dirty and spawns nothing", async () => {
+  const h = harness({ answer: json({ ok: false, error: "tree_dirty" }) });
+  assert.deepEqual(await go(h), { status: "tree_dirty" });
+  assert.equal(h.spawns.length, 0);
+  assert.equal(aborted(h).length, 0);
+});
+
+test("a start asked for a separate worktree says so in the confirmation and the plan request, and runs in the worktree", async () => {
+  const worktrees = fakeWorktrees();
+  const confirmed = [];
+  const h = harness({
+    plan: { ...basePlan(), worktree: true },
+    confirmImpl: async (info) => { confirmed.push(info); return true; },
+    overrides: { worktrees },
+  });
+  assert.deepEqual(await h.start.start(trusted, repositoryId, "T-3", true), { status: "started" });
+  assert.deepEqual(confirmed, [{ taskId: "T-3", separateWorktree: true }]);
+  assert.deepEqual(h.calls[0].body, { repositoryId, payload: { id: "T-3", worktree: true } });
+  assert.equal(h.spawns[0][2].cwd, worktreeDirectory);
+  assert.deepEqual(worktrees.calls[0], ["ensure", { repositoryRoot: root, repositoryId, taskId: "T-3" }]);
+});
+
+test("the confirmation of a separate-worktree start says the uncommitted changes are left out", () => {
+  assert.equal(taskStartConfirmation({ taskId: "T-3", separateWorktree: false }).message, "Start task T-3?");
+  const separate = taskStartConfirmation({ taskId: "T-3", separateWorktree: true });
+  assert.equal(separate.message, "Start task T-3 in a separate worktree?");
+  assert.match(separate.detail, /uncommitted changes in this repository are not part of it and are left untouched/u);
+});
+
+test("a separate-worktree start never runs in the repository root, and takes only the fixed mark", async () => {
+  // A plan that does not ask for the worktree the owner confirmed is malformed: the dispatch is aborted.
+  for (const plan of [basePlan(), { ...basePlan(), worktree: false }]) {
+    const h = harness({ plan, confirmImpl: async () => true, overrides: { worktrees: fakeWorktrees() } });
+    assert.deepEqual(await h.start.start(trusted, repositoryId, "T-3", true), { status: "failed" });
+    assert.equal(h.spawns.length, 0);
+    assert.equal(aborted(h).length, 1);
+  }
+  for (const mark of [false, "true", 1, null, {}, "C:\\Work\\elsewhere"]) {
+    const h = harness({ confirmImpl: async () => true });
+    assert.deepEqual(await h.start.start(trusted, repositoryId, "T-3", mark), { status: "invalid" });
+    assert.deepEqual(h.calls, []);
+  }
+  // The queue never asks for one.
+  const queued = harness();
+  assert.deepEqual(await queued.start.startQueued(repositoryId, "T-3"), { status: "started" });
+  assert.deepEqual(queued.calls[0].body, { repositoryId, payload: { id: "T-3" } });
 });
 
 /** The open channel: a fake worktrees with `locate`, an injected `openPath` and the same trust check as the start. */

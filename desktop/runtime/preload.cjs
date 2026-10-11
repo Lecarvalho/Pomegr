@@ -149,10 +149,13 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-image", repositoryId, operation, payload);
   },
-  taskStart(repositoryId, taskId) {
+  taskStart(repositoryId, taskId, separateWorktree) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
-      || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
-    return ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId);
+      || typeof taskId !== "string" || !TASK_ID.test(taskId)
+      || (separateWorktree !== undefined && separateWorktree !== true)) return Promise.resolve({ status: "invalid" });
+    return separateWorktree === true
+      ? ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId, true)
+      : ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId);
   },
   taskWorktreeOpen(repositoryId, taskId) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
