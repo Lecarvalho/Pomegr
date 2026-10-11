@@ -1627,14 +1627,15 @@ serves no other client.
   takes exactly `{ id }`: a `queued` or `scheduled` task becomes `not_queued` and loses
   its time; any other state is `conflict`. `resolve_requeue` clears the time too.
   `queue_reorder` takes exactly `{ id, step }` with `step` an integer of at least 1. The task
-  must exist (`not_found`) and be queued and in a feature (otherwise `conflict`; a single
+  must exist (`not_found`), be in a feature, and not have started: state `not_queued`,
+  `queued`, or `scheduled` with no linked session (otherwise `conflict`; a single
   task is not reordered). `step` is valid from 1 to the feature's highest step + 1, measured
   before the move, where the highest + 1 is a new last step; anything else is `invalid`. A
   target step whose tasks are all done answers `conflict`. Moving a task to its own step, or
   the only task of the last step to a new last step, succeeds and changes nothing. Otherwise
   the steps are renumbered densely in the same transaction (a step the move empties
-  disappears) without changing the update time of other tasks, and the task stays
-  `queued`. The three actions start no session and leave the stored queue status as it is,
+  disappears) without changing the update time of other tasks, and the task keeps
+  its state. The three actions start no session and leave the stored queue status as it is,
   except `queue_remove` of the task a pause names, which ends that pause (see
   [Queue](#queue)).
   There is no insertion of a step between two others yet. `resolve_done` and

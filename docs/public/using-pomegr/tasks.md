@@ -284,9 +284,9 @@ queue** in its task window. With the queue off, queued tasks start only when you
 them. Turning it off never touches a running session.
 
 The **Queue** view shows what runs when. Each unfinished feature lists its steps,
-marked **Parallel** or **One task**. Drag a queued task to another step, or to
-**New last step**, or use **Move to step…** from the keyboard; a step whose tasks
-are all done accepts none. Tasks with no feature appear under **Single tasks**.
+marked **Parallel** or **One task**. Drag a task that has not started to another step, or to
+**New last step**, or use **Move to step…** from the keyboard; the task does not
+have to be in the queue. A step whose tasks are all done accepts none. Tasks with no feature appear under **Single tasks**.
 
 - **Order.** Features come first, in the order the board lists them, then each
   feature's steps in order, then single tasks in the order of their cards in the

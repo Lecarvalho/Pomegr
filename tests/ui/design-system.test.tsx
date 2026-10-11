@@ -420,8 +420,8 @@ describe("Design-system reference page", () => {
     expect(browserPanel.querySelector(".taskQueueNote")?.textContent).not.toMatch(/Drag/);
     expect(browserPanel.querySelector(".taskQueueNewStep")).toBeNull();
     const desktopPanel = within(sample(queue, "Feature panel, desktop app")).getByRole("region", { name: "Upload reliability" });
-    expect(desktopPanel.querySelector(".taskQueueNote")?.textContent).toMatch(/^Steps run in order\..*Drag a queued task/);
-    expect(within(desktopPanel).getByRole("group", { name: "New last step" })).toHaveTextContent("Drop a queued task here to add a step at the end");
+    expect(desktopPanel.querySelector(".taskQueueNote")?.textContent).toMatch(/^Steps run in order\..*Drag a task that has not started/);
+    expect(within(desktopPanel).getByRole("group", { name: "New last step" })).toHaveTextContent("Drop a task here to add a step at the end");
     expect(desktopPanel.querySelectorAll(".taskQueueCard[draggable='true']")).toHaveLength(3);
 
     const singles = within(sample(queue, "Single tasks")).getByRole("region", { name: "Single tasks" });

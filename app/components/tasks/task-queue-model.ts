@@ -37,7 +37,7 @@ export function singleQueueTasks(board: Pick<TaskBoard, "tasks" | "queue">): Tas
 }
 
 export function isMovableQueueTask(task: Task) {
-  return task.state === "queued" && task.session === null && task.featureId !== null && task.step !== null;
+  return (task.state === "not_queued" || task.state === "queued" || task.state === "scheduled") && task.session === null && task.featureId !== null && task.step !== null;
 }
 
 /** The step a drop would send, or null when nothing should be sent. */

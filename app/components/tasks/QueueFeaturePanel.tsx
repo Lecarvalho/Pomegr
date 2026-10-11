@@ -7,9 +7,9 @@ import { waitingLine } from "./task-gates-model";
 import { isMovableQueueTask, moveChoices, stepModeLabel, type QueueFeature } from "./task-queue-model";
 import { dropKey, type QueueDropHandlers, type useQueueDrag } from "./use-queue-drag";
 
-const NOTE = "Steps run in order. Tasks inside one step run at the same time. Drag a queued task to another step to change when it runs. Tasks that started or finished stay where they are.";
+const NOTE = "Steps run in order. Tasks inside one step run at the same time. Drag a task that has not started to another step to change when it runs. Tasks that started or finished stay where they are.";
 const READ_ONLY_NOTE = "Steps run in order. Tasks inside one step run at the same time. Tasks that started or finished stay where they are.";
-const NEW_STEP_TEXT = "Drop a queued task here to add a step at the end";
+const NEW_STEP_TEXT = "Drop a task here to add a step at the end";
 
 type Drag = ReturnType<typeof useQueueDrag>;
 
