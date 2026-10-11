@@ -10,7 +10,7 @@ import { TaskModalFrame } from "./TaskModalFrame";
 import { CompleteWhenField, RunFields } from "./TaskFields";
 import { canPromote, tasksHref } from "./promote-issues-model";
 import { updateDesktopTask } from "./task-desktop";
-import { DEFAULT_COMPLETE_WHEN, EMPTY_RUN, type CompleteWhenDraft } from "./task-fields";
+import { newTaskDefaults, type CompleteWhenDraft } from "./task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "./task-features";
 import { promoteTaskIssue, type TaskIssue } from "./task-issues-desktop";
 import {
@@ -77,8 +77,8 @@ export function TaskModalPromote({ repositoryId, repositoryName, issue, board, r
   const mounted = useRef(false);
   const inFlight = useRef(false);
   const models = useTaskModelOptions(board.runModels);
-  const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
-  const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
+  const [run, setRun] = useState<TaskRun>(() => newTaskDefaults(board.tasks).run);
+  const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(() => newTaskDefaults(board.tasks).completeWhen);
   const [feature, setFeature] = useState<FeatureDraft>(NO_FEATURE_DRAFT);
   const [featureError, setFeatureError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

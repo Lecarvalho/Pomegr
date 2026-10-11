@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
-import { TASK_BOUNDS, createEmptyTaskBoard } from "../../shared/task-contract";
+import { TASK_BOUNDS, createEmptyTaskBoard, type Task } from "../../shared/task-contract";
 import { chooseCommandOption } from "./command-select-helpers";
 
 const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
@@ -466,6 +466,39 @@ describe("Run on, Effort and Complete when", () => {
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Effort only", run: { provider: null, model: null, effort: "low" }, completeWhen: DEFAULT_COMPLETE_WHEN });
+  });
+
+  it("starts from the Run on, Effort and Complete when of the newest task on the board", async () => {
+    const earlier = (id: string, overrides: Partial<Task>): Task => ({
+      id, text: "Earlier work", columnId: "col-1", position: 0, featureId: null, step: null,
+      run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
+      session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
+    });
+    useTasks.mockReturnValue({ board: {
+      ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }],
+      // T-12 is newer than T-9, whatever the order the board lists them in.
+      tasks: [
+        earlier("T-12", { run: { provider: "claude", model: "claude-opus-5-5", effort: "high", remoteControl: true }, completeWhen: { checks: ["pr_open", "ci_passed"], own: "Docs updated." } }),
+        earlier("T-9", { run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["tree_clean"], own: null } }),
+      ],
+    }, refresh });
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Next one");
+    expect(runOn()).toHaveTextContent("claude-opus-5-5");
+    expect(effort("High")).toHaveAttribute("aria-pressed", "true");
+    expect(checkbox("Remote Control")).toBeChecked();
+    expect(checkbox("PR open")).toBeChecked();
+    expect(checkbox("CI passed")).toBeChecked();
+    expect(checkbox("Tree clean")).not.toBeChecked();
+    expect(own()).toHaveValue("Docs updated.");
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", {
+      text: "Next one",
+      run: { provider: "claude", model: "claude-opus-5-5", effort: "high", remoteControl: true },
+      completeWhen: { checks: ["pr_open", "ci_passed"], own: "Docs updated." },
+    });
   });
 
   it("omits completeWhen when nothing is checked", async () => {
