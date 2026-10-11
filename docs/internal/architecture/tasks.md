@@ -22,7 +22,9 @@ implemented; see [Open questions and unassigned work](#open-questions-and-unassi
 Pomegr is an observer plus an opt-in dispatcher. Observation is unchanged: it
 reads provider data and never writes it. Tasks and dispatch are a separate control
 plane that lets the user queue work for a repository and have Pomegr start a new
-Claude Code or Codex session for it, in the desktop app only.
+Claude Code or Codex session for it, in the desktop app only. A paired device may read
+the board and send the fixed task actions (see [Paired devices](#paired-devices)); it
+never starts a session.
 
 ## Ownership
 
@@ -1256,7 +1258,7 @@ so it reads nothing and says that issues are read in the desktop app.
   with no chip, border, icon, or link, so the ID stays the one prominent identifier. The
   number is the nullable `issue` field of the row's task reference. The monitor joins it at
   serving time from the task store's `task_source` row through `readTaskSource`, under the
-  same gate as the rest of `task`: a same-computer client gets it, and any other client
+  same gate as the rest of `task`: a same-computer client or a paired device gets it, and any other client
   gets no `task` key at all. It is not written to the session catalog, a checkpoint, or the
   shell feed, and it is never an issue title or body.
 - **Settings → GitHub.** The pane shows the fixed connection (`connected`, `not_signed_in`,
@@ -1341,13 +1343,59 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
 - Not built: images on a card, an image from an agent (`add_task` is text only), and
   a per-repository total. The store's worst case is 500 tasks of four 5 MiB images.
 
+## Paired devices
+
+Decided by the product owner's request of 2026-10-10 (task T-30): a paired device, such
+as a phone, reads the board and manages tasks. A paired device is a browser that redeemed
+a pairing code made in the desktop app; the LAN gateway (`desktop/runtime/lan-gateway.mjs`)
+serves no other client.
+
+- **Read.** The gateway forwards `GET /api/tasks`, so the device gets the board a
+  same-computer browser gets, and its `/api/sessions` directory reads get the task
+  reference.
+- **Write.** One route, `POST /api/tasks/action`, with the body
+  `{ repositoryId, action, payload }`. Three layers gate it, and each refuses on its own:
+  1. The gateway takes the POST only with the session cookie, its own `Origin`, a JSON
+     content type, no query, and a declared body of at most 17 KiB. It forwards the body
+     with the desktop token and the `x-pomegr-lan-gateway` mark. Every other POST path
+     answers 405.
+  2. The desktop web gate (`installLocalRequestGate` in `server/web/server.mjs`) lets
+     through that one POST path, with the token and no `Origin`. Every other method and
+     path stays read-only.
+  3. The route (`app/api/tasks/action/route.ts`) refuses a request without the mark and
+     the token with 403, so a same-computer browser, the development server, and its
+     peers never write. It holds the closed list of the eleven `pomegr:task-action`
+     names, the repository ID pattern, and the 16 KiB payload cap, and posts to
+     `POST /internal/tasks/<action>` with the desktop token. The monitor validates the
+     record as it does for the desktop app.
+- **Answer.** `{ ok: true }`, with `taskId` after a `create`, or `{ ok: false, error }`
+  with one of `invalid`, `not_found`, `limit`, `conflict`, `unsupported`, and
+  `unavailable`. The board never crosses this route; the device reads it again through
+  the GET.
+- **The queue is turned on in the desktop app only.** `queue_settings` with `on` other
+  than `false` answers `unsupported` from the route. Turning the queue on is the consent
+  that lets Pomegr start sessions with no prompt, and it stays a desktop action. A paired
+  device may turn the queue off and set the threshold and the schedule. A task it queues
+  while the queue is on is started by the desktop queue runner like any other.
+- **Desktop only.** Starting a session by hand, Open folder, images, and GitHub issues
+  have no forwarded route. The device's Task field shows an image as its marker.
+- **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
+  `desktop`, `paired`, `absent`, or `pending` until the client knows which, so no control
+  or note is drawn and then taken back. `sendTaskAction` uses the bridge when there is
+  one and the route only when `/api/client-access` answered `lan`.
+- **Residual risk.** The gateway serves plain HTTP on the local network, so task content
+  and the session cookie cross it unencrypted, as session content already does. Whoever
+  holds a paired device's cookie can change the board and queue work while the queue is
+  on. Pairing, its four-device bound, the network checks, and revocation are unchanged.
+
 ## Boundaries
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
-| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`, with each linked session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
-| `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client; the LAN gateway forwards the path but marks its requests, and a marked request never gets the marker | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
+| `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
+| `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board. `queue_settings` that turns the queue on answers `unsupported` |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
@@ -1435,7 +1483,8 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
 - The `GET` is a committed-store read. It acquires no provider evidence and never
   triggers observation. Its session facts come from a lookup that reads memory only, and
   the `/internal/tasks/<action>` answers carry the same filled board.
-- Browser and LAN clients never mutate tasks or start sessions.
+- A browser that is not a paired device never mutates tasks, and no browser or LAN client
+  starts a session.
 - The seven MCP observation tools stay read-only, as in [MCP observation queries](mcp-queries.md).
   The task tools are a separate registration with the four write paths above.
 
@@ -1458,8 +1507,8 @@ class. Column names are five fixed values.
   carries a repository ID and a task ID; the answer carries the issue number or one fixed
   error, never the text, a title, a URL, or a `gh` message.
 
-- They live only in the task store, and are served only by `GET /api/tasks` and the
-  desktop IPC.
+- They live only in the task store, and are served only by `GET /api/tasks` (to a
+  same-computer client or a paired device) and the desktop IPC.
 - Which session added a task is monitor-private. The task store keeps the normalized
   session ID of an `add_task` call beside the task, and only the rule of
   [Agent task removal](#agent-task-removal) reads it. It is on no board, route, list,
@@ -1527,9 +1576,12 @@ class. Column names are five fixed values.
   feature, is in no group.
 - Task references follow the `GET /api/tasks` gate. The LAN gateway forwards
   `/api/sessions` with a loopback host, so it marks every forwarded request with
-  `x-pomegr-lan-gateway`, and the same-origin proxy never sets `tasks=1` on a marked
-  request. The development server marks a peer that is not local the same way, because
-  it listens on the LAN and a peer can send any Host header. A client without the marker gets `taskReadiness: "desktop_only"`: the list
+  `x-pomegr-lan-gateway`, and the same-origin proxy sets `tasks=1` on a marked
+  request only when it also carries the desktop token, which the gateway alone adds
+  and only for a paired device (`isPairedGatewayRequest` in `app/api/paired-gateway.ts`).
+  The development server marks a peer that is not local the same way, because
+  it listens on the LAN and a peer can send any Host header; that peer has no token and
+  never gets the marker. A client without the marker gets `taskReadiness: "desktop_only"`: the list
   has no Task column, and Group by Feature says where features are shown.
 - Task state shown beside a session is a projection of the task store, never an
   observation of the session.
@@ -1576,11 +1628,10 @@ Each item is owned by the product owner; none is implemented until they answer.
    request being merged, complete a task when the agent never reported? Do not
    implement it; a session that ended without a report is Stalled, and a task whose
    session has not reported waits for the user.
-2. **Browser read.** Should the same-computer browser keep reading `GET /api/tasks`, or
-   should the board be desktop only? Until answered, the read follows the
-   `GET /api/provider-folders` gate and exposes nothing to the LAN. The same answer
-   decides whether a paired LAN client may ever see task references on the Sessions
-   list and in the session view.
+2. **Same-computer browser writes.** The owner answered the browser-read question on
+   2026-10-10: a paired device reads the board and sends task actions (see
+   [Paired devices](#paired-devices)). A same-computer browser still only reads; whether
+   it should write too is not decided.
 3. **Product wording.** The root README, `PRODUCT.md`, the package description, the
    plugin readmes, the landing pages, the public settings guide, the tray tooltip and
    its test, and the

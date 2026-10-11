@@ -15,11 +15,14 @@ tasks.
 
 ## Before you start
 
-- **Use the desktop app to change anything.** You create, edit, move, queue,
-  schedule, and start tasks only in the Pomegr desktop app. A browser on the same
-  computer shows the board read-only and says "Tasks are created and edited in
-  the Pomegr desktop app." A phone or another device on your network sees
-  **Desktop only** and no task content (see [Phone access](phone-access.md)).
+- **Use the desktop app or a paired device to change tasks.** You create, edit,
+  move, queue, and schedule tasks in the Pomegr desktop app or on a phone you
+  paired with it (see [Phone access](phone-access.md)). Only the desktop app
+  starts a session, turns the queue on, attaches images, and works with GitHub
+  issues; a paired device says "Sessions are started and the queue is turned on
+  in the Pomegr desktop app." A browser on the same computer shows the board
+  read-only and says "Tasks are created and edited in the Pomegr desktop app or
+  on a paired device."
 - **Starting sessions works on Windows only for now.** Elsewhere a start answers
   "Starting sessions is available on Windows only."
 - **Install the Pomegr plugin in the repository.** A started session links to its

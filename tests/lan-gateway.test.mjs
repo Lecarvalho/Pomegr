@@ -56,7 +56,9 @@ async function pair(gateway) {
 test("LAN gateway pairs a same-subnet browser once and forwards only bounded read routes", async () => {
   const observed = [];
   const upstream = http.createServer((request, response) => {
-    observed.push({ url: request.url, headers: request.headers });
+    const seen = { url: request.url, method: request.method, headers: request.headers, body: "" };
+    request.on("data", (chunk) => { seen.body += chunk; });
+    observed.push(seen);
     if (request.url === "/api/events") {
       response.writeHead(200, { "Content-Type": "text/event-stream", Vary: "RSC" });
       response.write("data: ready\n\n");
@@ -203,12 +205,33 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
       assert.equal(await requestStatus(gateway.origin, { path: route, headers: { Cookie: cookie } }), 200);
       assert.equal(observed.at(-1).url, route);
     }
-    // The Tasks page is a nav item, so it loads for a paired browser; its board data stays desktop-only (`/api/tasks` is no LAN route).
-    for (const route of ["/tasks?repository=repo-0123456789abcdef01234567", "/tasks.rsc?repository=repo-0123456789abcdef01234567"]) {
+    // A paired browser reads the Tasks page and its board, and sends task actions through one POST route.
+    for (const route of ["/tasks?repository=repo-0123456789abcdef01234567", "/tasks.rsc?repository=repo-0123456789abcdef01234567", "/api/tasks?repositoryId=repo-0123456789abcdef01234567"]) {
       assert.equal(await requestStatus(gateway.origin, { path: route, headers: { Cookie: cookie } }), 200);
       assert.equal(observed.at(-1).url, route);
+      assert.equal(observed.at(-1).headers["x-pomegr-lan-gateway"], "1");
     }
-    assert.equal(await requestStatus(gateway.origin, { path: "/api/tasks?repositoryId=repo-0123456789abcdef01234567", headers: { Cookie: cookie } }), 404);
+    const action = JSON.stringify({ repositoryId: "repo-0123456789abcdef01234567", action: "create", payload: { text: "From a phone" } });
+    const actionHeaders = { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" };
+    const sent = await fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers: { ...actionHeaders, "x-pomegr-desktop-authorization": "client-value" }, body: action });
+    assert.equal(sent.status, 200);
+    assert.deepEqual(
+      [observed.at(-1).method, observed.at(-1).url, observed.at(-1).body, observed.at(-1).headers["x-pomegr-desktop-authorization"], observed.at(-1).headers["x-pomegr-lan-gateway"], observed.at(-1).headers.origin, observed.at(-1).headers.cookie],
+      ["POST", "/api/tasks/action", action, AUTHORIZATION, "1", undefined, undefined],
+    );
+    const beforeRefused = observed.length;
+    // Not paired, another origin or none, another content type, a query, an oversize body, and every other POST path are refused unforwarded.
+    assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers: { Origin: gateway.origin, "Content-Type": "application/json" }, body: action })).status, 401);
+    assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers: { ...actionHeaders, Origin: "http://127.0.0.1:1" }, body: action })).status, 403);
+    assert.equal(await requestStatus(gateway.origin, { path: "/api/tasks/action", method: "POST", headers: { Cookie: cookie, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(action) }, body: action }), 403);
+    assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers: { ...actionHeaders, "Content-Type": "text/plain" }, body: action })).status, 403);
+    assert.equal((await fetch(`${gateway.origin}/api/tasks/action?x=1`, { method: "POST", headers: actionHeaders, body: action })).status, 403);
+    assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers: actionHeaders, body: JSON.stringify({ payload: "x".repeat(18 * 1024) }) })).status, 403);
+    for (const route of ["/api/tasks", "/api/tasks/action/", "/api/tasks/start", "/internal/tasks/create"]) {
+      assert.equal((await fetch(`${gateway.origin}${route}`, { method: "POST", headers: actionHeaders, body: action })).status, 405);
+    }
+    assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { headers: { Cookie: cookie } })).status, 404);
+    assert.equal(observed.length, beforeRefused);
     const beforeDenied = observed.length;
     assert.equal(await requestStatus(gateway.origin, { path: "/repositories/../settings", headers: { Cookie: cookie } }), 400);
     assert.equal(await requestStatus(gateway.origin, { path: "/repositories/%2e%2e/settings", headers: { Cookie: cookie } }), 400);

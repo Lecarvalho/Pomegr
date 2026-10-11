@@ -1,4 +1,5 @@
 import { proxyMonitorJson } from "../monitor-proxy";
+import { isPairedGatewayRequest } from "../paired-gateway";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,9 @@ function isLoopbackHost(value: string | null) {
   } catch { return false; }
 }
 
-// The same-computer test of app/api/tasks/route.ts (its helpers are route-private). Unlike /api/tasks, this path is
-// forwarded by the LAN gateway, which rewrites the host to loopback: the gateway marks every request it forwards, and
-// a marked request is never a same-computer one.
+// The same-computer test of app/api/tasks/route.ts (its helpers are route-private). The LAN gateway and the development
+// server both rewrite or accept a loopback host, so each marks a request that is not from this computer, and a marked
+// request is never a same-computer one. A paired device is recognized separately (`isPairedGatewayRequest`).
 function isSameComputerRequest(request: Request, url: URL) {
   const host = request.headers.get("host");
   const origin = request.headers.get("origin");
@@ -32,9 +33,9 @@ export async function GET(request: Request) {
     if (value !== null && value !== "") monitorParams.set(key, value);
   }
   // A session's task reference and the feature scope are task-board content, served like GET /api/tasks: to a
-  // same-computer client only. The marker is set here and never copied from the request, so a LAN client gets the
-  // list without task references and its feature scope answers `taskReadiness: "desktop_only"` with no session.
-  if (monitorParams.get("mode") === "directory" && isSameComputerRequest(request, requestUrl)) monitorParams.set("tasks", "1");
+  // same-computer client or a paired device. The marker is set here and never copied from the request, so any other
+  // client gets the list without task references and its feature scope answers `taskReadiness: "desktop_only"` with no session.
+  if (monitorParams.get("mode") === "directory" && (isSameComputerRequest(request, requestUrl) || isPairedGatewayRequest(request))) monitorParams.set("tasks", "1");
   return proxyMonitorJson({
     ifNoneMatch: request.headers.get("if-none-match"),
     acceptEncoding: request.headers.get("accept-encoding"),

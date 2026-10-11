@@ -2,10 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThreshold, type TaskQueueSchedule, type TaskRun } from "../../../shared/task-contract";
+import { clientAccessMode, useClientAccess } from "../../hooks/ClientAccessContext";
 import type { FeatureInput } from "./task-features";
+import { postPairedTaskAction } from "./task-paired";
 
-// The only way the renderer changes a task: the desktop preload's `taskAction` bridge (fixed IPC channel
-// `pomegr:task-action`). A plain browser has no bridge, so it never mutates tasks and never POSTs.
+// The two ways a client changes a task. The desktop app uses the preload's `taskAction` bridge (fixed IPC channel
+// `pomegr:task-action`). A paired device has no bridge and sends the same fixed action through `task-paired.ts`,
+// which only the desktop's LAN gateway forwards. Any other browser never mutates tasks and never POSTs.
 
 /** Fixed result of one desktop task action. `unavailable` means the desktop could not reach the monitor. */
 export type TaskActionResult = { ok: true; /** Only a create answers it: the new task's ID. */ taskId?: string } | { ok: false; error: TaskActionError | "unavailable" };
@@ -46,15 +49,29 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
   return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => taskDesktopBridge() ? "available" : "absent", () => "pending");
 }
 
+/**
+ * Who may change the board from here: the desktop app, a paired device, or nobody. `pending` lasts until the client
+ * knows which, so no control or note is drawn and then taken back.
+ */
+export type TaskEditAvailability = "pending" | "desktop" | "paired" | "absent";
+
+export function useTaskEditAvailability(): TaskEditAvailability {
+  const desktop = useTaskDesktopAvailability();
+  const { mode } = useClientAccess();
+  if (desktop === "available") return "desktop";
+  if (desktop === "pending" || mode === "unknown") return "pending";
+  return mode === "lan" ? "paired" : "absent";
+}
+
 /** The fixed actions this surface sends; the monitor validates each record. */
 type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
 
-/** Sends one fixed task action through the bridge. Never throws: an IPC failure is `unavailable`. */
+/** Sends one fixed task action through the bridge, or from a paired device through its route. Never throws: a failure is `unavailable`. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
   const bridge = taskDesktopBridge();
-  if (!bridge) return { ok: false, error: "unavailable" };
+  if (!bridge && clientAccessMode() !== "lan") return { ok: false, error: "unavailable" };
   try {
-    const result: unknown = await bridge.taskAction(repositoryId, action, payload);
+    const result: unknown = bridge ? await bridge.taskAction(repositoryId, action, payload) : await postPairedTaskAction(repositoryId, action, payload);
     if (typeof result === "object" && result !== null) {
       if ((result as { ok?: unknown }).ok === true) {
         const taskId = (result as { taskId?: unknown }).taskId;
