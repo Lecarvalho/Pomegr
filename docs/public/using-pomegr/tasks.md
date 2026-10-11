@@ -107,8 +107,9 @@ server, keeps **Tree clean** from passing until it ends.
 
 ### Move cards
 
-- **Move a card.** Drag it to another column, or onto a card to place it before
-  that card. Dragging is off while a feature filter is on.
+- **Move a card.** Drag it to another column, or between two cards. A line
+  shows where the card will land, and a long column scrolls while you hold the
+  card near its top or bottom. Dragging is off while a feature filter is on.
 - **Move a card from the keyboard.** Focus the card to reveal four buttons, such
   as **Move T-3 up** and **Move T-3 to the next column** (T-3 is an example).
   Arrow keys move between the buttons.

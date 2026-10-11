@@ -13,12 +13,12 @@ import { TaskColumnHeader } from "./TaskColumnHeader";
 import { cardMove, type CardMoveKind } from "./task-board-model";
 import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue } from "./task-features";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
-import { useCardDrag, type ColumnDropHandlers } from "./use-card-drag";
+import { useCardDrag, type CardDropLine, type ColumnDropHandlers } from "./use-card-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
 type OpenTask = (task: Task, opener: HTMLElement) => void;
 
-const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to another column, or between cards: a line shows where it will land. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
 
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 
@@ -96,7 +96,7 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
         {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.order[0] ?? null}
-          dropTarget={drag.overColumn === column.id} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} newTask={index === 0 ? newTask : undefined} />)}
+          dropTarget={drag.overColumn === column.id} dropLine={drag.dropLine?.columnId === column.id ? drag.dropLine : undefined} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} newTask={index === 0 ? newTask : undefined} />)}
       </div>
     </div>}
     {edits && <p className="taskBoardFootnote">{FOOTNOTE}</p>}
@@ -104,12 +104,14 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   </>;
 }
 
-export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, drop, cardMoveFor, newTask }: {
+export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine, drop, cardMoveFor, newTask }: {
   column: TaskColumnView;
   lines: ReadonlyMap<string, string>;
   nextId: string | null;
   onOpen?: OpenTask;
   dropTarget: boolean;
+  /** Where the dragged card would land in this lane: before a card, or after the last one when `beforeId` is null. */
+  dropLine?: Pick<CardDropLine, "beforeId">;
   drop?: ColumnDropHandlers;
   cardMoveFor(task: Task): TaskCardMove | undefined;
   newTask?: NewTaskEntry;
@@ -117,7 +119,7 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, drop, ca
   const headingId = useId();
   return <section className={`taskColumn${dropTarget ? " isDropTarget" : ""}`} data-column-id={column.id} aria-labelledby={headingId} {...drop}>
     <TaskColumnHeader column={column} headingId={headingId} taskCount={column.tasks.length} />
-    {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
+    {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task, index) => <TaskCard key={task.id} task={task} dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && index === column.tasks.length - 1 ? "after" : undefined} featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
     {newTask && <NewTaskAction {...newTask} />}
   </section>;
 }
