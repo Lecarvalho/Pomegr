@@ -10,6 +10,7 @@ import {
   TASK_START_STATUSES,
   TASK_WORKTREE_OPEN_CHANNEL,
   TASK_WORKTREE_OPEN_STATUSES,
+  taskStartConfirmation,
   windowsArgument,
 } from "../desktop/runtime/task-dispatch.mjs";
 
@@ -550,6 +551,13 @@ test("a start asked for a separate worktree says so in the confirmation and the 
   assert.deepEqual(h.calls[0].body, { repositoryId, payload: { id: "T-3", worktree: true } });
   assert.equal(h.spawns[0][2].cwd, worktreeDirectory);
   assert.deepEqual(worktrees.calls[0], ["ensure", { repositoryRoot: root, repositoryId, taskId: "T-3" }]);
+});
+
+test("the confirmation of a separate-worktree start says the uncommitted changes are left out", () => {
+  assert.equal(taskStartConfirmation({ taskId: "T-3", separateWorktree: false }).message, "Start task T-3?");
+  const separate = taskStartConfirmation({ taskId: "T-3", separateWorktree: true });
+  assert.equal(separate.message, "Start task T-3 in a separate worktree?");
+  assert.match(separate.detail, /uncommitted changes in this repository are not part of it and are left untouched/u);
 });
 
 test("a separate-worktree start never runs in the repository root, and takes only the fixed mark", async () => {

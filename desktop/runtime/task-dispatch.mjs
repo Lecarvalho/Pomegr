@@ -40,6 +40,19 @@ export const TASK_START_LAUNCH_ARGUMENTS = Object.freeze([
     + "Start-Process -FilePath $f -ArgumentList $a -WorkingDirectory $d",
 ]);
 
+/** The words of the native confirmation of a manual start: only the task ID enters them. */
+export function taskStartConfirmation({ taskId, separateWorktree } = {}) {
+  return separateWorktree === true
+    ? {
+      message: `Start task ${taskId} in a separate worktree?`,
+      detail: "A session will open in a new terminal window in a worktree of the task's own, on the task's branch at this repository's current commit, on the provider set in the task's Run on (Claude Code when none is set). The uncommitted changes in this repository are not part of it and are left untouched.",
+    }
+    : {
+      message: `Start task ${taskId}?`,
+      detail: "A session will open in a new terminal window in this repository, or in the task's own worktree when its step runs in parallel, on the provider set in the task's Run on (Claude Code when none is set).",
+    };
+}
+
 /** Quotes one argument the way the Windows C runtime parses a command line, so it arrives unchanged. */
 export function windowsArgument(value) {
   if (value !== "" && !/[\s"]/u.test(value)) return value;
