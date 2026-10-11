@@ -9,7 +9,7 @@ import { createCodexIncrementalObserver } from "./observation.mjs";
 import { canonicalCodexSourcePath, codexSourcePathKey } from "./source-path.mjs";
 import { createCodexCatalogCache } from "./catalog-cache.mjs";
 import { createCodexRolloutDiscovery, noticeCodexRolloutSource } from "./rollout-discovery.mjs";
-import { bindCodexFileChanges, mergeCodexActivityEvents, mergeCodexToolCalls } from "./activity-events.mjs";
+import { bindCodexFileChanges, mergeCodexActivityEvents, mergeCodexToolCalls, sealCodexTaskActions } from "./activity-events.mjs";
 import { mergeCodexExecutionTasks, parseCodexExecutionTaskStateRecords } from "./execution-tasks.mjs";
 import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./approval-plan.mjs";
 import { parseCodexRequestActivityEvidence, stampCodexActivityRequestIds } from "./activity-correlation.mjs";
@@ -550,11 +550,11 @@ export function createCodexProvider(options = {}) {
     )));
     const pendingToolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
     const provenRepositories = new Map();
-    const toolCalls = await bindCodexFileChanges(pendingToolCalls, {
+    const toolCalls = sealCodexTaskActions(await bindCodexFileChanges(pendingToolCalls, {
       resolveRepository: repositoryResolver,
       forbiddenRoots: [codexHome],
       onRepositoryBinding(binding) { provenRepositories.set(binding.repositoryId, binding); },
-    });
+    }), rolloutCalls);
     publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls });
     const identity = await repositoryAttributionTracker.resolveIdentity(metadata.localId, {
       launchCwd: metadata.cwd, recordedBranch: metadata.recordedGitBranch, resolveRepository: repositoryResolver, bindings: provenRepositories,

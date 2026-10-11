@@ -47,6 +47,36 @@ test("a persisted event record is validated as a whole and holds only times, age
   for (const value of invalid) assert.equal(normalizeSessionEventRecord(value), null, JSON.stringify(value)?.slice(0, 120));
 });
 
+test("recorded task actions accumulate, count the calls of one turn, and keep the earlier record shape when there are none", () => {
+  const agents = [{ id: "primary", label: "Primary agent", status: "active" }];
+  const call = (timestamp, taskAction) => ({ id: `call-${timestamp}`, timestamp, actor: { id: "primary", label: "Primary agent" }, tool: "MCP", detail: "pomegr / add_task", status: "completed", taskAction });
+  const early = derivedSessionEventRecord({ toolCalls: [call(at(1), "added"), call(at(1), "added"), call(at(2), "completed")] });
+  assert.deepEqual(early.taskActions, [{ at: at(1), agentId: "primary", action: "added", count: 2 }, { at: at(2), agentId: "primary", action: "completed", count: 1 }]);
+  assert.deepEqual(normalizeSessionEventRecord(JSON.parse(JSON.stringify(early))), early, "the record round-trips through the sidecar");
+  // The tool-call window slid past one of the two adds and the report; nothing is withdrawn, and a new call is added.
+  const later = mergeSessionEventRecord(early, derivedSessionEventRecord({ toolCalls: [call(at(1), "added"), call(at(5), "blocked")] }));
+  assert.deepEqual(later.taskActions.map((item) => [item.at, item.action, item.count]), [[at(1), "added", 2], [at(2), "completed", 1], [at(5), "blocked", 1]]);
+  assert.deepEqual(sessionEvents({ readiness: READY, agents, eventRecord: later }).items.map((item) => [item.kind, item.at]),
+    [["task_blocked", at(5)], ["task_completed", at(2)], ["task_added", at(1)], ["task_added", at(1)]]);
+  assert.equal(mergeSessionEventRecord(later, derivedSessionEventRecord({ toolCalls: [] })), later, "an unchanged union is the same object");
+  assert.equal(mergeSessionEventRecord(later, { version: 1, refills: [], compactions: [] }), later, "a record from before the list merges as one without it");
+  // A record with no task action is written exactly as before the list existed.
+  assert.deepEqual(Object.keys(derivedSessionEventRecord({ toolCalls: [] })), ["version", "refills", "compactions"]);
+  const valid = { version: 1, refills: [], compactions: [], taskActions: [{ at: at(1), agentId: "primary", action: "added", count: 1 }] };
+  assert.deepEqual(normalizeSessionEventRecord(valid), valid);
+  const invalid = [
+    { ...valid, taskActions: "none" },
+    { ...valid, taskActions: [{ at: at(1), agentId: "primary", action: "updated", count: 1 }] },
+    { ...valid, taskActions: [{ at: at(1), agentId: "primary", action: "added", count: 0 }] },
+    { ...valid, taskActions: [{ at: at(1), agentId: "primary", action: "added", count: 65 }] },
+    { ...valid, taskActions: [{ at: at(1), agentId: "primary", action: "added" }] },
+    { ...valid, taskActions: [{ at: at(1), agentId: "primary", action: "added", count: 1, taskId: "T-1" }] },
+    { ...valid, taskActions: [{ at: "soon", agentId: "primary", action: "added", count: 1 }] },
+    { ...valid, taskActions: Array.from({ length: SESSION_EVENT_RECORD_LIMIT + 1 }, (_, index) => ({ at: new Date(Date.UTC(2026, 8, 30, 11, 0, index)).toISOString(), agentId: "primary", action: "added", count: 1 })) },
+  ];
+  for (const value of invalid) assert.equal(normalizeSessionEventRecord(value), null, JSON.stringify(value)?.slice(0, 120));
+});
+
 test("the recorder merges into the sidecar on disk, never over it", async () => {
   const disk = new Map([["claude:kept", { version: 1, refills: [{ at: at(1), agentId: "primary", kind: "possible_full" }], compactions: [] }]]);
   let writes = 0;

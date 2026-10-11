@@ -8,6 +8,8 @@ const PRIVATE_RANGES = Object.freeze([
 const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/session-domain", "/api/session-history", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/notifications", "/api/storage", "/api/provider-folders", "/api/repositories", "/api/repository-files", "/api/events", "/api/tasks"]);
 // The one write a paired device has: a fixed task-board action. The web route behind it holds the closed action list.
 const TASK_ACTION_PATH = "/api/tasks/action";
+// The Pomegr agent chat of a paired device: answered here by desktop main, never forwarded upstream.
+const AGENT_CHAT_PATH = "/api/agent-chat";
 // The 16 KiB action payload plus its fixed envelope, as the monitor bounds it.
 const MAX_TASK_ACTION_BODY_BYTES = 17 * 1024;
 const APP_PATHS = new Set(["/", "/sessions", "/tasks", "/agents", "/usage-limits", "/repositories", "/dashboards", "/settings"]);
@@ -337,8 +339,9 @@ export async function startLanGateway(options = {}) {
       response.setHeader("Set-Cookie", `${cookieName}=${session}; HttpOnly; SameSite=Strict; Path=/`);
       response.writeHead(204); response.end(); return;
     }
+    const agentChat = method === "POST" && pathname === AGENT_CHAT_PATH;
     const taskAction = method === "POST" && pathname === TASK_ACTION_PATH;
-    if (method !== "GET" && method !== "HEAD" && !taskAction) { fixed(response, 405); return; }
+    if (method !== "GET" && method !== "HEAD" && !taskAction && !agentChat) { fixed(response, 405); return; }
     if (!authenticated(request)) {
       if (pathname.startsWith("/api/")) { fixed(response, 401, "Unauthorized"); return; }
       if (acceptsHtml(request)) { noStore(response); response.writeHead(302, { Location: "/__pomegr/pair" }); response.end(); return; }
@@ -357,7 +360,7 @@ export async function startLanGateway(options = {}) {
       if (url.search || hasBody) { fixed(response, 403); return; }
     }
     let actionBody = null;
-    if (taskAction) {
+    if (taskAction || agentChat) {
       // A paired device's own page only: the gateway's origin, a JSON body within the bound, and no query.
       const declared = request.headers["content-length"];
       if (url.search || request.headers.origin !== origin || !String(request.headers["content-type"] || "").startsWith("application/json")
@@ -366,6 +369,21 @@ export async function startLanGateway(options = {}) {
       if (actionBody === null) { fixed(response, 400); return; }
       if (!active || suspended || !authenticated(request)) { fixed(response, 403); return; }
     } else if (!routeIsAllowed(pathname)) { fixed(response, 404); return; }
+    if (agentChat) {
+      // One fixed operation and its payload in; the chat's own bounded answer out. Nothing of it reaches the web host.
+      let answer = { ok: false, error: "invalid" };
+      let body = null;
+      try { body = JSON.parse(actionBody.toString("utf8")); } catch { body = null; }
+      if (body !== null && typeof body === "object" && !Array.isArray(body) && Object.keys(body).every((key) => key === "operation" || key === "payload")) {
+        try { answer = typeof options.agentChat === "function" ? await options.agentChat(body.operation, body.payload) : { ok: false, error: "unavailable" }; }
+        catch { answer = { ok: false, error: "unavailable" }; }
+      }
+      if (!active || suspended || !authenticated(request)) { fixed(response, 403); return; }
+      noStore(response);
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify(answer));
+      return;
+    }
     // The upstream sees a loopback host, so every forwarded request is marked: a route can tell a paired device from a
     // same-computer client, and the one write route takes only a marked request. Client headers pass only by allowlist.
     const headers = { host: upstream.host, "x-pomegr-desktop-authorization": options.authorizationToken, "x-pomegr-lan-gateway": "1" };

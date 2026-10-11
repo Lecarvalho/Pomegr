@@ -125,13 +125,13 @@ test("a queued task is startable and keeps its state", async (context) => {
 test("the prompt is fixed: opening sentence, id, text, labels, own condition, tool names", () => {
   const task = {
     id: "T-7", text: "--rm -rf the world",
-    completeWhen: { checks: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"], own: "docs updated" },
+    completeWhen: { checks: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"], own: "docs updated" },
   };
   const prompt = buildTaskPrompt(task);
   assert.ok(prompt.startsWith(TASK_PROMPT_OPENING));
   assert.ok(!prompt.startsWith("-"));
   for (const part of ["T-7", "--rm -rf the world", "Pull request open", "Working tree clean", "Commit on task branch",
-    "Pull request merged", "CI passed", "docs updated", "complete_task", "block_task"]) {
+    "Pull request merged", "CI passed", "Validated with the user", "docs updated", "complete_task", "block_task"]) {
     assert.ok(prompt.includes(part), part);
   }
   const empty = buildTaskPrompt({ id: "T-8", text: "x", completeWhen: { checks: [], own: null } });

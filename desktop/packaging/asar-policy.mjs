@@ -3,6 +3,7 @@ export const WORKER_BUNDLE_DIRECTORY = "desktop/workers";
 export const WORKER_BUNDLE_FILES = Object.freeze([
   `${WORKER_BUNDLE_DIRECTORY}/monitor-host.cjs`,
   `${WORKER_BUNDLE_DIRECTORY}/claude-statusline-bridge.cjs`,
+  `${WORKER_BUNDLE_DIRECTORY}/agent-chat-mcp.cjs`,
 ]);
 export const SHARP_UNPACKED_FILES = Object.freeze([
   `${SHARP_UNPACK_DIRECTORY}/libvips-42.dll`,

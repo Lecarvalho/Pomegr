@@ -8,6 +8,9 @@ const COMPACTION_TRIGGERS = new Set(["automatic", "manual"]);
 const OCCURRENCE_KINDS = new Map([[undefined, "possible_full"], ["provider_diagnosed", "provider_diagnosed"], ["lifetime_elapsed", "lifetime_elapsed"]]);
 // A snapshot drop is an unexplained context reduction, not a recorded compaction, so it is never recorded.
 const BOUNDARY_TRIGGERS = new Map([["automatic_compaction", "automatic"], ["manual_compaction", "manual"]]);
+const TASK_ACTIONS = new Set(["added", "removed", "completed", "blocked"]);
+// Tool calls of one assistant turn share its recorded time, so an entry counts the calls it stands for.
+const TASK_ACTION_COUNT_LIMIT = 64;
 const EMPTY = Object.freeze({ version: SESSION_EVENT_RECORD_VERSION, refills: Object.freeze([]), compactions: Object.freeze([]) });
 
 function isPlainObject(value) {
@@ -36,11 +39,33 @@ function bounded(entries) {
     .slice(-SESSION_EVENT_RECORD_LIMIT);
 }
 
-function frozen(refills, compactions) {
+function taskActionEntry(at, agentId, action, count) {
+  const item = entry(at, agentId, "action", action, TASK_ACTIONS);
+  return item && Number.isSafeInteger(count) && count >= 1 && count <= TASK_ACTION_COUNT_LIMIT ? { ...item, count } : null;
+}
+
+// One entry per agent, time, and action; the larger count wins, so a window that slid past some calls withdraws none.
+function boundedTaskActions(entries) {
+  const unique = new Map();
+  for (const item of entries) {
+    if (!item) continue;
+    const key = `${item.agentId}\u0000${item.at}\u0000${item.action}`;
+    const held = unique.get(key);
+    if (!held || item.count > held.count) unique.set(key, item);
+  }
+  return [...unique.values()]
+    .sort((left, right) => (left.at < right.at ? -1 : left.at > right.at ? 1 : left.agentId < right.agentId ? -1 : left.agentId > right.agentId ? 1
+      : left.action < right.action ? -1 : left.action > right.action ? 1 : 0))
+    .slice(-SESSION_EVENT_RECORD_LIMIT);
+}
+
+// The task-action list is written only when it holds an entry, so a record without one keeps its earlier shape.
+function frozen(refills, compactions, taskActions = []) {
   return Object.freeze({
     version: SESSION_EVENT_RECORD_VERSION,
     refills: Object.freeze(refills.map((item) => Object.freeze(item))),
     compactions: Object.freeze(compactions.map((item) => Object.freeze(item))),
+    ...(taskActions.length ? { taskActions: Object.freeze(taskActions.map((item) => Object.freeze(item))) } : {}),
   });
 }
 
@@ -50,9 +75,20 @@ function exactKeys(value, keys) {
 }
 
 export function normalizeSessionEventRecord(value) {
-  if (!isPlainObject(value) || value.version !== SESSION_EVENT_RECORD_VERSION || !exactKeys(value, ["version", "refills", "compactions"])) return null;
+  if (!isPlainObject(value) || value.version !== SESSION_EVENT_RECORD_VERSION) return null;
+  const hasTaskActions = Object.hasOwn(value, "taskActions");
+  if (!exactKeys(value, hasTaskActions ? ["version", "refills", "compactions", "taskActions"] : ["version", "refills", "compactions"])) return null;
   if (!Array.isArray(value.refills) || !Array.isArray(value.compactions)) return null;
   if (value.refills.length > SESSION_EVENT_RECORD_LIMIT || value.compactions.length > SESSION_EVENT_RECORD_LIMIT) return null;
+  const taskActions = [];
+  if (hasTaskActions) {
+    if (!Array.isArray(value.taskActions) || value.taskActions.length > SESSION_EVENT_RECORD_LIMIT) return null;
+    for (const item of value.taskActions) {
+      const normalized = isPlainObject(item) && exactKeys(item, ["at", "agentId", "action", "count"]) ? taskActionEntry(item.at, item.agentId, item.action, item.count) : null;
+      if (!normalized || normalized.at !== item.at) return null;
+      taskActions.push(normalized);
+    }
+  }
   const refills = [];
   for (const item of value.refills) {
     const normalized = isPlainObject(item) && exactKeys(item, ["at", "agentId", "kind"]) ? entry(item.at, item.agentId, "kind", item.kind, REFILL_KINDS) : null;
@@ -65,10 +101,25 @@ export function normalizeSessionEventRecord(value) {
     if (!normalized || normalized.at !== item.at) return null;
     compactions.push(normalized);
   }
-  return frozen(bounded(refills), bounded(compactions));
+  return frozen(bounded(refills), bounded(compactions), boundedTaskActions(taskActions));
 }
 
-export function derivedSessionEventRecord({ cacheEvents, contextBoundaries } = {}) {
+// A tool call names a task action only when its adapter recorded a result that is not an error.
+function derivedTaskActions(toolCalls) {
+  const counts = new Map();
+  for (const call of Array.isArray(toolCalls) ? toolCalls : []) {
+    if (call?.wrapper === true) continue;
+    const item = taskActionEntry(call?.timestamp, call?.actor?.id, call?.taskAction, 1);
+    if (!item) continue;
+    const key = `${item.agentId}\u0000${item.at}\u0000${item.action}`;
+    const held = counts.get(key);
+    if (held) held.count = Math.min(TASK_ACTION_COUNT_LIMIT, held.count + 1);
+    else counts.set(key, item);
+  }
+  return [...counts.values()];
+}
+
+export function derivedSessionEventRecord({ cacheEvents, contextBoundaries, toolCalls } = {}) {
   const refills = [];
   if (cacheEvents?.status === "ready" && Array.isArray(cacheEvents.possibleFullRefills)) {
     for (const refill of cacheEvents.possibleFullRefills) {
@@ -82,18 +133,19 @@ export function derivedSessionEventRecord({ cacheEvents, contextBoundaries } = {
   for (const boundary of Array.isArray(contextBoundaries) ? contextBoundaries : []) {
     compactions.push(entry(boundary?.timestamp, boundary?.agentId, "trigger", BOUNDARY_TRIGGERS.get(boundary?.kind), COMPACTION_TRIGGERS));
   }
-  return frozen(bounded(refills), bounded(compactions));
+  return frozen(bounded(refills), bounded(compactions), boundedTaskActions(derivedTaskActions(toolCalls)));
 }
 
 export function mergeSessionEventRecord(prior, next) {
   const left = prior || EMPTY;
   const right = next || EMPTY;
-  const merged = frozen(bounded([...left.refills, ...right.refills]), bounded([...left.compactions, ...right.compactions]));
+  const merged = frozen(bounded([...left.refills, ...right.refills]), bounded([...left.compactions, ...right.compactions]),
+    boundedTaskActions([...(left.taskActions || []), ...(right.taskActions || [])]));
   return prior && JSON.stringify(merged) === JSON.stringify(prior) ? prior : merged;
 }
 
 export function sessionEventRecordIsEmpty(record) {
-  return !record || (record.refills.length === 0 && record.compactions.length === 0);
+  return !record || (record.refills.length === 0 && record.compactions.length === 0 && !record.taskActions?.length);
 }
 
 function parseQualifiedSessionId(value) {

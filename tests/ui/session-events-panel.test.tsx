@@ -75,6 +75,10 @@ const KIND_CASES: KindCase[] = [
   ["cache_refill", { agentId: "primary", agentLabel: "Primary agent", refill: "lifetime_elapsed" }, "Cache refill", "Partial refill · inference · Primary agent", { tab: "agents", agent: "primary" }],
   ["context_compacted", { agentId: "primary", agentLabel: "Primary agent", compaction: "automatic" }, "Context compacted", "Automatic · Primary agent", { tab: "agents", agent: "primary" }],
   ["context_compacted", { agentId: "primary", agentLabel: "Primary agent", compaction: "manual" }, "Context compacted", "Manual · Primary agent", { tab: "agents", agent: "primary" }],
+  ["task_added", { agentId: "primary", agentLabel: "Primary agent" }, "Task added", "Primary agent", { tab: "agents", agent: "primary" }],
+  ["task_removed", { agentId: "primary", agentLabel: "Primary agent" }, "Task removed", "Primary agent", { tab: "agents", agent: "primary" }],
+  ["task_completed", { agentId: "primary", agentLabel: "Primary agent" }, "Task reported complete", "Primary agent", { tab: "agents", agent: "primary" }],
+  ["task_blocked", { agentId: "explore-1", agentLabel: "Explore" }, "Task reported blocked", "Explore", { tab: "agents", agent: "explore-1" }],
 ];
 
 describe("SessionEventsPanel", () => {

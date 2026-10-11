@@ -46,13 +46,14 @@ Guide: [MCP queries](mcp-queries.md).
 
 ## Task tools
 
-These eight tools work on the task board of the repository. Seven of them write to
+These nine tools work on the task board of the repository. Eight of them write to
 it; they are the only tools that change something you made or that Pomegr manages.
 `get_feature` only reads. Guide: [Tasks](tasks.md#what-agents-report).
 
 | Tool | What it does |
 | --- | --- |
 | `add_task` | Adds a task to the first column of the board. It does not queue or start the task. |
+| `update_task` | Changes the text, **Run on**, **Effort**, or **Complete when** of a task that has not started. |
 | `remove_task` | Deletes a task that the same session added, if the task has not started. |
 | `complete_task` | Reports that the task of the session is complete. The task goes to **Review**. |
 | `block_task` | Reports that the agent cannot continue, with a short reason. |

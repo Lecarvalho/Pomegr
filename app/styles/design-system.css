@@ -50,3 +50,5 @@
   .designSystemType > div { grid-template-columns: minmax(0, 1fr); }
   .designSystemSpacing li { grid-template-columns: 120px minmax(0, 1fr); }
 }
+/* The Aril chat panels and proposal cards are drawn at their real width, so a column is never narrower than the panel. */
+.designSystemChatGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }

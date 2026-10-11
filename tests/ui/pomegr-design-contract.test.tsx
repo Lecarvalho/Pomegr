@@ -434,7 +434,7 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/native modal `<dialog>`/);
     expect(designContract).toMatch(/`--color-text` mixed to 40%/);
     expect(designContract).toMatch(/A click on the scrim closes the dialog only while the form holds nothing to save/);
-    expect(designContract).toMatch(/“PR open”, “Tree clean”, “Commit on branch”, “PR merged”, and “CI passed”/);
+    expect(designContract).toMatch(/“PR open”, “Tree clean”, “Commit on branch”, “PR merged”, “CI passed”, and “Validated with the user”/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, new/);
     expect(sample).toMatch(/TaskModalChrome/);
@@ -597,5 +597,82 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandTable th\[aria-sort\]\s*\{\s*color:\s*var\(--command-ink\)/);
     expect(styles).toMatch(/\.commandSettingsNav button:hover, \.commandSettingsNav button\.active\s*\{\s*background:\s*var\(--command-panel-2\)/);
     expect(styles).toMatch(/\.rosterRow\.rosterSelected\s*\{[^}]*box-shadow:\s*inset 2px 0 0 var\(--command-brand-text\)/);
+  });
+
+  it("draws the Aril chat with tokens only and the shared roles, mounts it once, and documents it", () => {
+    const chatStyles = readFileSync(join(process.cwd(), "app", "styles", "agent-chat.css"), "utf8");
+    const chatComponents = join(process.cwd(), "app", "components", "agent-chat");
+    const read = (name: string) => readFileSync(join(chatComponents, name), "utf8");
+    // The stylesheet is registered with the others and uses tokens only: no literal color, off-ramp font size, or off-scale radius.
+    expect(styleEntry).toMatch(/@import "\.\/styles\/agent-chat\.css";/);
+    expect(chatStyles).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
+    expect(chatStyles).not.toMatch(/font(?:-size)?:[^;}]*\b\d+px/);
+    for (const [, radius] of chatStyles.matchAll(/border-radius:\s*([^;}]+)/g)) expect(radius.trim()).toMatch(/^(?:var\(--(?:control|panel)-radius\)|50%|0)$/);
+    // The launcher: shell chrome fixed to the corner, the panel fill, the strong line, the control radius, and the overlay shadow, above the header and below the inspector sheet.
+    expect(chatStyles).toMatch(/\.agentChatLauncher \{[^}]*position: fixed; z-index: 85;[^}]*min-height: var\(--control-height\);[^}]*border: 1px solid var\(--command-line-strong\); border-radius: var\(--control-radius\); background: var\(--command-panel\); box-shadow: var\(--command-overlay-shadow\)/);
+    expect(chatStyles).toMatch(/\.agentChatLauncherDot \{[^}]*background: var\(--command-brand\)/);
+    // The panel: 420px by min(640px, 100dvh - 92px), the panel radius, a sheet at 760px and narrower, 44px targets there and on coarse pointers, and a fade that reduced motion removes.
+    expect(chatStyles).toMatch(/\.agentChatPanel \{[^}]*position: fixed; z-index: 85;[^}]*width: min\(420px, calc\(100vw - 2 \* var\(--space-4\)\)\); height: min\(640px, calc\(100dvh - 92px\)\);[^}]*border: 1px solid var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); box-shadow: var\(--command-overlay-shadow\); animation: agentChatIn \.14s ease-out/);
+    expect(chatStyles).toMatch(/\.agentChatPanel\[hidden\] \{ display: none; \}/);
+    expect(chatStyles).toMatch(/@media \(max-width: 760px\) \{\s*\.agentChatPanel \{ inset: 0; width: auto; height: auto;[^}]*border: 0; border-radius: 0; box-shadow: none; \}/);
+    expect(chatStyles).toMatch(/@media \(max-width: 760px\), \(pointer: coarse\) \{\s*\.agentChatLauncher, \.agentChatField[^{]*\{ min-height: 44px; \}/);
+    expect(chatStyles).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.agentChatPanel \{ animation: none; \}/);
+    // Only the two floating surfaces take the overlay shadow.
+    const shadowed = [...chatStyles.replace(/\/\*[^]*?\*\//g, "").matchAll(/([^{}]+)\{[^{}]*box-shadow: var\(--command-overlay-shadow\)/g)].map(([, selector]) => selector.trim());
+    expect(shadowed.filter((selector) => !/^\.agentChat(?:Launcher|Panel)\b/.test(selector))).toEqual([]);
+    // Messages: the owner's is a raised block at the right; Aril's has no fill. The field has the strong line and the shared focus ring.
+    expect(chatStyles).toMatch(/\.agentChatMessage\.isOwner \{[^}]*align-self: flex-end; max-width: 85%;[^}]*border-radius: var\(--control-radius\); background: var\(--command-panel-2\)/);
+    expect(chatStyles).not.toMatch(/\.agentChatMessage\.isAgent[^{]*\{[^}]*background/);
+    expect(chatStyles).toMatch(/\.agentChatField \{[^}]*border: 1px solid var\(--command-line-strong\); border-radius: var\(--control-radius\); background: var\(--command-panel\);[^}]*font: 400 var\(--text-sm\)\/1\.4 var\(--font-ui\)/);
+    expect(chatStyles).toMatch(/\.agentChatField:focus-visible \{ outline: 2px solid var\(--focus-ring\); outline-offset: 2px; \}/);
+    expect(chatStyles).toMatch(/\.agentChatCounter \{[^}]*var\(--font-data\)/);
+    expect(chatStyles).toMatch(/\.agentChatCounter\.isOver \{ color: var\(--command-error\); \}/);
+    // The proposal card: a one-pixel line, the panel radius, 12px padding; a task ID in the data font; an error is text, never a fill.
+    expect(chatStyles).toMatch(/\.agentChatProposal \{[^}]*gap: var\(--space-2\); padding: var\(--space-3\); border: 1px solid var\(--command-line\); border-radius: var\(--panel-radius\)/);
+    expect(chatStyles).toMatch(/\.agentChatTaskId \{[^}]*var\(--font-data\)/);
+    expect(chatStyles).toMatch(/\.agentChatOpWarning \{ color: var\(--command-error\);/);
+    expect(chatStyles).toMatch(/\.agentChatOpResult\.is-error \{ color: var\(--command-error\); \}/);
+    expect(chatStyles).not.toMatch(/\.agentChatOp[A-Za-z.-]*[^{]*\{[^}]*(?:background|border)/);
+    // Answer text: the data font at 12px for code, and a heading line that is not a heading element.
+    expect(chatStyles).toMatch(/\.agentChatCode \{[^}]*font: 400 var\(--text-xs\)\/1\.5 var\(--font-data\)/);
+    expect(chatStyles).toMatch(/\.agentChatMdHeading \{ font: 650 var\(--text-sm\)\/1\.4 var\(--font-ui\); \}/);
+
+    // Every button is one of the six roles, but for the launcher (shell chrome) and the conversation row, as documented. No native select, and no markup from a string.
+    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatHistory.tsx", "AgentChatMarkdown.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx"].map(read).join("\n");
+    expect(sources).not.toMatch(/<select|dangerouslySetInnerHTML|innerHTML/);
+    const tags = [...sources.matchAll(/<button\b[^>]*>/g)].map(([tag]) => tag);
+    expect(tags.length).toBeGreaterThanOrEqual(12);
+    for (const tag of tags) expect(tag).toMatch(/className=\{?[`"](?:commandPrimaryAction|commandSecondaryAction|commandQuietAction|commandIconAction|agentChatLauncher|agentChatHistoryOpen)/);
+    expect(read("AgentChatProposalCard.tsx")).toMatch(/className="commandPrimaryAction"[^]*?>Apply changes<\/button>/);
+    expect(read("AgentChatProposalCard.tsx")).toMatch(/className="commandQuietAction"[^]*?>Dismiss<\/button>/);
+    expect(read("AgentChatProposalCard.tsx").match(/commandPrimaryAction/g)).toHaveLength(1);
+    expect(read("AgentChatComposer.tsx")).toMatch(/className="commandSecondaryAction"[^]*?>Stop<\/button>/);
+    expect(read("AgentChatComposer.tsx")).toMatch(/type="submit" className="commandSecondaryAction"[^]*?>Send<\/button>/);
+    expect(read("AgentChatFrame.tsx")).toMatch(/className="commandIconAction" aria-label="Minimize" title="Minimize"/);
+    expect(read("AgentChatComposer.tsx")).toMatch(/<CommandSelect className="agentChatRun" aria-label="Run on"/);
+
+    // AppShell mounts the dock once, after the shell, and the design-system reference draws every part from static data.
+    expect(readFileSync(join(process.cwd(), "app", "components", "AppShell.tsx"), "utf8")).toMatch(/<\/CommandCenterShell>\s*<AgentChatDock \/>/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemAgentChatSample.tsx"), "utf8");
+    for (const label of ["Launcher", "Launcher, answering", "Launcher, new answer", "Panel, empty", "Panel, proposal", "Panel, answer being written", "Panel, conversations", "Panel, no repository", "Proposal, pending", "Proposal, applied", "Proposal, partly applied", "Proposal, every result word", "Composer, error", "Composer, over the limit", "Answer text"]) {
+      expect(sample).toContain(`label="${label}"`);
+    }
+    expect(designSystemStyles).toMatch(/\.designSystemChatGrid \{ grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 420px\), 1fr\)\); \}/);
+
+    // The Agent chat design page documents the launcher, the panel, the proposal card, the composer, and the conversation list, and DESIGN.md routes to it.
+    expect(designContract).toMatch(/^# Agent chat design$/m);
+    expect(designContract).toMatch(/\[Agent chat design\]\(docs\/internal\/design\/agent-chat\.md\)/);
+    expect(designContract).toMatch(/`\.agentChatLauncher` is shell chrome like the header icon buttons \(`\.commandIconButton`\), not a seventh role/);
+    expect(designContract).toMatch(/The z-index of the launcher and of the panel is 85: above the sidebar and the header, below the agent inspector sheet \(90\) and the select list \(120\)/);
+    expect(designContract).toMatch(/420px wide and `min\(640px, calc\(100dvh - 92px\)\)` tall/);
+    expect(designContract).toMatch(/At 760px and narrower, the panel is a full-screen sheet \(`inset: 0`, no radius, border, or shadow/);
+    expect(designContract).toMatch(/The only thing the chat writes to browser storage is the last repository ID \(`pomegr\.agentChat\.repository`\), never a message/);
+    expect(designContract).toMatch(/Escape first belongs to a layer inside the panel/);
+    expect(designContract).toMatch(/`AgentChatMarkdown` builds React elements from the answer and sets no HTML/);
+    expect(designContract).toMatch(/Only a pending proposal has a footer: the Primary \*\*Apply changes\*\* and the Quiet \*\*Dismiss\*\*/);
+    expect(designContract).toMatch(/“Cannot be undone” in the error color \(text only, never a fill\)/);
+    expect(designContract).toMatch(/Each pending card has its own Primary/);
+    expect(designContract).toMatch(/A message that was refused stays in the field/);
+    expect(designContract).toMatch(/an inline question, a Secondary \*\*Delete\*\* and a Quiet \*\*Keep\*\*[^.]*and no native dialog/);
   });
 });

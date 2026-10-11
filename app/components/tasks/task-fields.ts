@@ -1,7 +1,7 @@
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import type { FeatureInput } from "./task-features";
 import type { ProviderSource } from "../../../shared/monitor-contract";
-import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
+import { AGENT_JUDGED_CHECKS, TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
 
 export const PROVIDER_LABELS: Record<TaskProvider, ProviderSource> = { claude: "Claude Code", codex: "Codex" };
 export const EFFORT_LABELS: Record<TaskEffort, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Xhigh" };
@@ -11,6 +11,7 @@ export const CHECK_LABELS: Record<TaskCheck, string> = {
   commit_on_branch: "Commit on task branch",
   pr_merged: "Pull request merged",
   ci_passed: "CI passed",
+  user_validated: "Validated with the user",
 };
 export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
   pr_open: "PR open",
@@ -18,7 +19,9 @@ export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
   commit_on_branch: "Commit on branch",
   pr_merged: "PR merged",
   ci_passed: "CI passed",
+  user_validated: "Validated with the user",
 };
+export const AGENT_REPORTED_LABEL = "Agent-reported";
 
 export const REMOTE_CONTROL_LABEL = "Remote Control";
 
@@ -163,6 +166,10 @@ export function withCheck(draft: CompleteWhenDraft, check: TaskCheck, on: boolea
 export function createPayload(text: string, run: TaskRun, draft: CompleteWhenDraft, feature?: FeatureInput) {
   const completeWhen = toCompleteWhen(draft);
   return { text, ...(isRunSet(run) && { run }), ...((completeWhen.checks.length > 0 || completeWhen.own) && { completeWhen }), ...feature };
+}
+
+export function isAgentJudged(check: TaskCheck): boolean {
+  return AGENT_JUDGED_CHECKS.includes(check);
 }
 
 export function completeWhenSummary(completeWhen: Task["completeWhen"]): string | null {

@@ -155,6 +155,30 @@ test("the GitHub issues bridge is one trusted-frame channel with a closed surfac
   assert.doesNotMatch(bridge, /console\.|shell\.openExternal|process\.env\.(?:GH|GITHUB)_TOKEN/u);
 });
 
+test("the agent chat bridge is one trusted-frame channel and its provider run is read-only with a closed surface", async () => {
+  const [preload, main, bridge, runner, store] = await Promise.all([
+    "../desktop/runtime/preload.cjs", "../desktop/runtime/shell-main.mjs", "../desktop/runtime/agent-chat.mjs",
+    "../desktop/runtime/agent-chat-runner.mjs", "../desktop/runtime/agent-chat-store.mjs",
+  ].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat", operation, payload\)/u);
+  assert.match(preload, /new Set\(\["list", "read", "send", "stop", "apply", "dismiss", "delete"\]\)/u);
+  assert.match(main, /installAgentChatIpc\(\{ \.\.\.taskBridge, chat: agentChat \}\)/u);
+  assert.match(main, /isTrustedEvent: trustedDesktopEvent/u);
+  assert.match(bridge, /export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat"/u);
+  assert.match(bridge, /if \(!isTrustedEvent\(event\)\) return INVALID;/u);
+  assert.match(bridge, /const isTrustedEvent = options\.isTrustedEvent \|\| \(\(\) => false\);/u);
+  assert.match(bridge, /redirect: "error"/u);
+  assert.match(runner, /shell: false/u);
+  assert.match(runner, /"--sandbox", "read-only"/u);
+  assert.match(runner, /"--permission-mode", "dontAsk"/u);
+  assert.match(runner, /"--strict-mcp-config"/u);
+  assert.doesNotMatch(runner, /dangerously|bypassPermissions|danger-full-access|--yolo|--full-auto/iu);
+  for (const source of [bridge, runner, store]) assert.doesNotMatch(source, /server\/|console\.|shell\.openExternal|shell:\s*true/u);
+  // A conversation is kept as one private file per conversation, never sent anywhere.
+  assert.match(store, /flag: "wx", mode: 0o600/u);
+  assert.doesNotMatch(store, /fetch\(|https?:\/\//u);
+});
+
 test("artifact privacy scans extracted payloads and the exact final publish allowlist", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-artifact-security-"));
   const extracted = path.join(root, "extracted");

@@ -241,6 +241,9 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - A row prints only what its kind owns.
 - The printed values are an agent label, a wall time, a signal label marked agent-reported, a progress percent and phase, a resource name, or a pull-request number.
 - A row never prints prompt, command, file, or tool content.
+- A task row is the agent's own Pomegr task tool call.
+- A task row prints the agent label and never the task.
+- The two reports of a task row read **Task reported complete** and **Task reported blocked**, because only the owner marks a task done.
 - The event fields are in [Session evidence](../architecture/privacy/session-evidence.md#session-events).
 
 ### Destinations

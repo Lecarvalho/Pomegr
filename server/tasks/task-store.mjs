@@ -312,7 +312,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   return { ok: true };
 }
 
-// The agent's `add_task` and `remove_task` (task-adder.mjs).
+// The agent's `add_task`, `remove_task` (task-adder.mjs), and `update_task`.
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 function agentCreateTask(context, payload) {
@@ -346,6 +346,57 @@ function agentRemoveTask(context, payload) {
     && (task.session_id ?? null) === null && (task.report_at ?? null) === null && dispatchStanding(task.dispatch_token, now()) !== "live";
   if (!waits || readTaskAdder(database, repositoryId, input.number) !== payload.sessionId) return { ok: false, error: "not_found" };
   return deleteTask(context, { id: payload.id });
+}
+
+const AGENT_UPDATE_KEYS = Object.freeze({ payload: ["id", "text", "run", "completeWhen"], run: ["provider", "model", "effort"], completeWhen: ["checks", "own"] });
+// A part an agent may set field by field: a record with at least one of its keys and no other.
+const agentUpdatePart = (value, keys) => value === undefined
+  || (isRecord(value) && Object.keys(value).length > 0 && Object.keys(value).every((key) => keys.includes(key)));
+
+function storedChecks(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// The agent's `update_task`: any task of the board that has not started. A field that is absent stays as stored, and
+// the rules of each field are the ones of the desktop `update`.
+function agentUpdateTask(context, payload) {
+  if (!isRecord(payload) || Object.keys(payload).some((key) => !AGENT_UPDATE_KEYS.payload.includes(key))
+    || !agentUpdatePart(payload.run, AGENT_UPDATE_KEYS.run) || !agentUpdatePart(payload.completeWhen, AGENT_UPDATE_KEYS.completeWhen)
+    || (payload.run && Object.values(payload.run).some((value) => value === null || value === undefined))
+    || (payload.completeWhen && payload.completeWhen.checks === null)) return { ok: false, error: "invalid" };
+  const input = normalizeDeletePayload({ id: payload.id });
+  if (!input) return { ok: false, error: "invalid" };
+  const { database, repositoryId, now } = context;
+  const stored = preparedStatement(database, "SELECT run_provider, run_model, run_effort, checks, own_condition, state, session_id, dispatch_token FROM tasks WHERE repository_id = ? AND number = ?")
+    .get(repositoryId, input.number);
+  // One refusal for a task that is not there and a task that started, so the answer tells nothing about a task.
+  if (!stored || rowStarted(stored, now())) return { ok: false, error: "not_found" };
+  const update = { id: payload.id };
+  if (payload.text !== undefined) update.text = payload.text;
+  if (payload.run) {
+    const provider = payload.run.provider ?? stored.run_provider;
+    update.run = {
+      provider,
+      // A model belongs to its provider, so another provider without a model takes that provider's default.
+      model: payload.run.model ?? (provider === stored.run_provider ? stored.run_model : null),
+      effort: payload.run.effort ?? stored.run_effort,
+      remoteControl: provider !== "codex" && readTaskRemoteControl(database, repositoryId, input.number),
+      keepWorktree: readTaskKeepWorktree(database, repositoryId, input.number),
+    };
+  }
+  if (payload.completeWhen) {
+    update.completeWhen = {
+      checks: payload.completeWhen.checks ?? storedChecks(stored.checks),
+      own: payload.completeWhen.own === undefined ? stored.own_condition : payload.completeWhen.own,
+    };
+  }
+  const result = updateTask(context, update);
+  return result.ok || result.error === "invalid" ? result : { ok: false, error: "not_found" };
 }
 
 const columnExists = (database, repositoryId, id) =>
@@ -489,7 +540,7 @@ const ACTIONS = Object.freeze({
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
   promote_issue: promoteIssue, record_issue: recordIssue,
-  agent_create: agentCreateTask, agent_remove: agentRemoveTask,
+  agent_create: agentCreateTask, agent_remove: agentRemoveTask, agent_update: agentUpdateTask,
   agent_feature_create: agentCreateFeature, agent_feature_update: agentUpdateFeature, agent_feature_delete: agentDeleteFeature,
 });
 

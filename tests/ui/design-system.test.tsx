@@ -17,10 +17,10 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Task queue", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Task queue", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
 const SAMPLE_SOURCES = [
   "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample",
-  "DesignSystemTaskBoardSample", "DesignSystemTaskQueueSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample",
+  "DesignSystemTaskBoardSample", "DesignSystemTaskQueueSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAgentChatSample",
 ].map((name) => `app/components/design-system/${name}.tsx`).concat("app/components/design-system/DesignSystemTaskSampleData.ts");
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 
@@ -148,14 +148,14 @@ describe("Design-system reference page", () => {
     expect(full.querySelectorAll(".sessionEventRow.isStatic")).toHaveLength(1);
     expect(within(full).getAllByRole("button", { name: rowName })).toHaveLength(8);
     expect(within(full).getAllByRole("button", { name: rowName })[0]).toHaveClass("commandQuietAction", "sessionEventRow");
-    await user.click(within(full).getByRole("button", { name: "Show 4 earlier" }));
-    expect(full.querySelectorAll(".sessionEventRow")).toHaveLength(13);
+    await user.click(within(full).getByRole("button", { name: "Show 8 earlier" }));
+    expect(full.querySelectorAll(".sessionEventRow")).toHaveLength(17);
     expect(within(full).getByRole("button", { name: "Show fewer" })).toHaveClass("commandTextLink");
-    for (const label of ["Agent started", "Agent finished", "Agent stopped", "Signal reported", "Agent estimate updated", "User message", "Resource peak", "Commit observed", "Pull request opened", "Cache refill", "Context compacted"]) {
+    for (const label of ["Agent started", "Agent finished", "Agent stopped", "Signal reported", "Agent estimate updated", "User message", "Resource peak", "Commit observed", "Pull request opened", "Cache refill", "Context compacted", "Task added", "Task removed", "Task reported complete", "Task reported blocked"]) {
       expect(within(full).getAllByText(label, { selector: ".sessionEventLabel" }).length).toBeGreaterThan(0);
     }
     expect(within(full).getByText("×2")).toBeInTheDocument();
-    expect(within(full).getByText("14 events")).toBeInTheDocument();
+    expect(within(full).getByText("18 events")).toBeInTheDocument();
     expect(within(empty).getByText("No events recorded.")).toBeInTheDocument();
     expect(within(loading).getByText("Loading Event evidence…")).toBeInTheDocument();
     expect(within(unavailable).getByText("Event evidence unavailable.")).toBeInTheDocument();
@@ -529,6 +529,70 @@ describe("Design-system reference page", () => {
     expect(within(created).getByRole("textbox", { name: "Feature name" })).toHaveValue("Retry telemetry!");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("renders the Aril chat from invented conversations: the launcher states, the panel, every proposal state and the composer", () => {
+    render(<DesignSystemView />);
+    const chat = sectionOf("Agent chat");
+    const launcherOf = (label: string, name: string) => within(sample(chat, label)).getByRole("button", { name });
+    expect(launcherOf("Launcher", "Open Aril, the Pomegr agent")).toHaveClass("agentChatLauncher", "isStatic");
+    expect(launcherOf("Launcher, answering", "Open Aril, the Pomegr agent, answering")).toHaveTextContent("Aril · answering…");
+    const fresh = launcherOf("Launcher, new answer", "Open Aril, the Pomegr agent, new answer");
+    expect(fresh.querySelector(".agentChatLauncherDot")).not.toBeNull();
+
+    const empty = sample(chat, "Panel, empty");
+    expect(within(empty).getByRole("region", { name: "Aril, the Pomegr agent" })).toHaveClass("agentChatPanel", "isStatic");
+    expect(within(empty).getByRole("heading", { level: 3, name: "Ask Aril about this board" })).toBeInTheDocument();
+    expect(within(empty).getAllByRole("button").filter((button) => button.classList.contains("agentChatSuggestion"))).toHaveLength(4);
+    expect(within(empty).getByRole("combobox", { name: "Repository" })).toHaveTextContent("pomegr");
+    expect(within(empty).getByRole("textbox", { name: "Message Aril" })).toBeEnabled();
+
+    const proposed = sample(chat, "Panel, proposal");
+    const rows = within(within(proposed).getByRole("region", { name: "Proposed board changes" })).getAllByRole("listitem");
+    expect(rows).toHaveLength(8);
+    expect(rows[3]).toHaveTextContent("Delete T-14");
+    expect(within(proposed).getByRole("button", { name: "Apply changes" })).toHaveClass("commandPrimaryAction");
+    expect(within(proposed).getByRole("button", { name: "Dismiss" })).toHaveClass("commandQuietAction");
+
+    const writing = sample(chat, "Panel, answer being written");
+    expect(within(writing).getByRole("status")).toHaveTextContent("Reading repository files…");
+    expect(within(writing).getByRole("button", { name: "Stop" })).toHaveClass("commandSecondaryAction");
+    expect(within(writing).queryByRole("button", { name: "Send" })).toBeNull();
+
+    const history = sample(chat, "Panel, conversations");
+    expect(within(history).getByRole("heading", { level: 3, name: "Conversations" })).toBeInTheDocument();
+    expect(history.querySelectorAll(".agentChatHistoryItem")).toHaveLength(3);
+    expect(history.querySelectorAll(".agentChatHistoryOpen[aria-current='true']")).toHaveLength(1);
+    expect(within(history).getByRole("button", { name: "Conversations", pressed: true })).toHaveClass("commandIconAction");
+
+    const notes = sample(chat, "Panel, notes under an answer");
+    expect(within(notes).getByText("This answer took too long and was stopped.")).toBeInTheDocument();
+    expect(within(notes).getByText(/^Aril wrote a proposal that Pomegr could not read/)).toHaveClass("taskNotice", "warning");
+    expect(within(sample(chat, "Panel, no repository")).getByRole("textbox", { name: "Message Aril" })).toBeDisabled();
+
+    const chipOf = (label: string) => sample(chat, label).querySelector(".commandChip");
+    expect(sample(chat, "Proposal, pending").querySelector(".commandChip")).toBeNull();
+    expect(within(sample(chat, "Proposal, pending")).getByText("Nothing changes until you apply.")).toBeInTheDocument();
+    expect(within(sample(chat, "Proposal, pending, with a delete")).getByText("Nothing changes until you apply. Deleting cannot be undone.")).toBeInTheDocument();
+    expect(within(sample(chat, "Proposal, applying")).getByRole("region", { name: "Proposed board changes" })).toHaveAttribute("aria-busy", "true");
+    expect(within(sample(chat, "Proposal, applying")).getByRole("button", { name: "Apply changes" })).toBeDisabled();
+    expect(chipOf("Proposal, applied")).toHaveTextContent("Applied");
+    expect(chipOf("Proposal, partly applied")).toHaveTextContent("Partly applied");
+    expect(chipOf("Proposal, dismissed")).toHaveTextContent("Dismissed");
+    expect([...sample(chat, "Proposal, every result word").querySelectorAll(".agentChatOpResult")].map((result) => result.textContent)).toEqual([
+      "Done", "Created T-19", "Not valid", "Not found", "Board is full", "No longer possible", "Not supported", "Pomegr did not answer",
+    ]);
+    expect(sample(chat, "Proposal, partly applied")).toHaveTextContent("Created T-19, but it could not be queued");
+    expect(sample(chat, "Proposal, partly applied")).toHaveTextContent("Not run");
+
+    expect(within(sample(chat, "Composer, error")).getByRole("alert")).toHaveTextContent("Aril is already answering. Wait for it to finish.");
+    expect(within(sample(chat, "Composer, over the limit")).getByText("4,012 / 4,000")).toHaveClass("isOver");
+    expect(within(sample(chat, "Composer, over the limit")).getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(within(sample(chat, "Composer, answering elsewhere")).getByText("Aril is answering in another conversation.")).toBeInTheDocument();
+    const text = sample(chat, "Answer text");
+    expect(text.querySelector("img, a, script")).toBeNull();
+    expect(text).toHaveTextContent("<img src=x onerror=alert(1)> [a link](javascript:alert(1))");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  }, 20_000);
 
   it("hydrates the server-rendered page, including SVG titles, without a mismatch", async () => {
     const html = renderToString(<DesignSystemPage />);

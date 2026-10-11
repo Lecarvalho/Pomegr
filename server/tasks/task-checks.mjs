@@ -27,10 +27,11 @@ function readAfterWork(facts, { read, work }) {
   return Number.isFinite(workAt) && readAt >= workAt;
 }
 
+// A check with no rule (`user_validated`) is judged by the agent, like the own condition: it gets no result.
 export function verifyChecks(checks, facts) {
   const requested = new Set(Array.isArray(checks) ? checks : []);
   const known = isRecord(facts) ? facts : {};
-  return TASK_CHECKS.filter((check) => requested.has(check)).map((check) => {
+  return TASK_CHECKS.filter((check) => requested.has(check) && Object.hasOwn(RULES, check)).map((check) => {
     const rule = RULES[check];
     return { check, passed: rule.value(known) === true && readAfterWork(known, rule) };
   });

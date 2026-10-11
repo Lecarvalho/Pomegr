@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { executionWorkKind, normalizedWorkKind, toolWorkKind, WORK_KINDS } from "../../../server/normalize/work-kind.mjs";
+import { executionWorkKind, normalizedWorkKind, pomegrTaskAction, TASK_ACTIONS, toolWorkKind, WORK_KINDS } from "../../../server/normalize/work-kind.mjs";
 
 test("classifies only recognized monitor-private shell structures", () => {
   const cases = [
@@ -131,4 +131,26 @@ test("a carried MCP or dynamic tool is an integration unless its exact identity 
     ["MCP", "fs / write_file"], ["MCP", "cua_repl / js"], ["Dynamic tool", "exec"], ["Dynamic tool", "codex_app / list_threads"],
   ];
   for (const [tool, detail] of integrations) assert.equal(toolWorkKind(tool, { detail }), "integration", `${tool} ${detail}`);
+});
+
+test("a Pomegr task tool call names its fixed action by exact server and tool identity", () => {
+  assert.deepEqual([...TASK_ACTIONS], ["added", "removed", "completed", "blocked"]);
+  for (const [tool, detail, action] of [
+    ["mcp__plugin_pomegr_pomegr__add_task", "", "added"],
+    ["mcp__pomegr__remove_task", "", "removed"],
+    ["mcp__plugin_pomegr_pomegr__complete_task", "PRIVATE_DETAIL", "completed"],
+    ["MCP", "pomegr / block_task", "blocked"],
+    ["Dynamic tool", "pomegr / add_task", "added"],
+    // Reads, reports, feature tools, and other servers are not task actions.
+    ["mcp__plugin_pomegr_pomegr__get_feature", "", null],
+    ["mcp__plugin_pomegr_pomegr__update_feature", "", null],
+    ["mcp__pomegr__report_session_signal", "", null],
+    ["mcp__notpomegr__add_task", "", null],
+    ["mcp__pomegr_mirror__add_task", "", null],
+    ["MCP", "synthetic / add_task", null],
+    ["MCP", "add_task", null],
+    ["add_task", "", null],
+    ["Bash", "pomegr / add_task", null],
+    [null, undefined, null],
+  ]) assert.equal(pomegrTaskAction(tool, detail), action, `${tool} ${detail}`);
 });

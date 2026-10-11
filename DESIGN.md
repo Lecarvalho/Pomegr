@@ -153,6 +153,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | Repositories index and detail, file tree, file history | [Repositories design](docs/internal/design/repositories.md) |
 | Tasks page, board, cards, queue, session task surfaces | [Task board design](docs/internal/design/task-board.md) |
 | Task modal, task fields, Promote issues page | [Task modal design](docs/internal/design/task-modal.md) |
+| Aril chat launcher, panel, messages, proposal card, composer, conversations | [Agent chat design](docs/internal/design/agent-chat.md) |
 | `CommandTable` integration | [Command table](docs/internal/development/command-table.md) |
 
 ### Visual reference

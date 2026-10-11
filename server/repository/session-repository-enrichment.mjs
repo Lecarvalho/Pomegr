@@ -8,11 +8,14 @@ function bindingFor(sessionId, evidence, attribution) {
   const root = attribution?.root;
   const branch = attribution?.recordedBranch;
   const repositoryId = attribution?.repositoryId;
+  const validBranch = typeof branch === "string" && branch.length > 0 && branch.length <= 512 && !/[\u0000-\u001f\u007f]/.test(branch);
+  // A checkout the session reached with no recorded branch is read on the branch it has.
+  const anyBranch = !validBranch && attribution?.anyBranch === true;
   if (attribution?.state === "single" && typeof root === "string" && root.length > 0 && root.length <= 32_768
     && path.isAbsolute(root) && !/[\u0000-\u001f\u007f]/.test(root) && REPOSITORY_ID.test(repositoryId || "")
-    && typeof branch === "string" && branch.length > 0 && branch.length <= 512 && !/[\u0000-\u001f\u007f]/.test(branch)) {
+    && (validBranch || anyBranch)) {
     const normalizedRoot = path.normalize(root);
-    return { root: normalizedRoot, repositoryId, branch, fingerprint: attribution.fingerprint || `${normalizedRoot}:${branch}`, exactRoot: true };
+    return { root: normalizedRoot, repositoryId, branch: validBranch ? branch : null, anyBranch, fingerprint: attribution.fingerprint || `${normalizedRoot}:${branch}`, exactRoot: true };
   }
   const cwd = evidence?.session?.cwd;
   const recordedBranch = evidence?.session?.recordedGitBranch;
@@ -82,7 +85,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
       if (fresh && Number.isFinite(acquired?._readStartedAt) && acquired._readStartedAt < readStartedAt) acquired = await gitReader(input.root, { forbiddenRoots });
       const { _repositoryRoot: root = null, _readStartedAt: inspectionStartedAt, _statusUnknown: statusUnknown = false, ...publicRepository } = acquired;
       if ((!input.exactRoot && (!root || !path.isAbsolute(root))) || (input.exactRoot && !sameRoot(root, input.root))
-        || !publicRepository.available || publicRepository.branch !== input.branch) {
+        || !publicRepository.available || (input.anyBranch ? !publicRepository.branch : publicRepository.branch !== input.branch)) {
         if (entry.generation === input.generation) {
           entry.checked = true;
           // Git answered for the bound root on another branch: the working tree left the session's recorded branch.
@@ -133,7 +136,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     const clock = entry.refreshedAt === null && entry.retryAfter === null ? null : now();
     const expired = (entry.refreshedAt === null || clock - entry.refreshedAt >= cacheMs) && (entry.retryAfter === null || clock >= entry.retryAfter);
     let enqueue = null;
-    const readInput = () => ({ generation: entry.generation, root: binding?.root || null, exactRoot: Boolean(binding?.exactRoot), repositoryId: binding?.repositoryId || null, branch: binding?.branch || null, sessionCreations: entry.sessionCreations, startedAt: evidence.session.startedAt,
+    const readInput = () => ({ generation: entry.generation, root: binding?.root || null, exactRoot: Boolean(binding?.exactRoot), repositoryId: binding?.repositoryId || null, branch: binding?.branch || null, anyBranch: binding?.anyBranch === true, sessionCreations: entry.sessionCreations, startedAt: evidence.session.startedAt,
       // Only commits made while one of this session's own Git commands ran list their paths.
       gitCommandIntervals: sessionGitCommandIntervals(evidence.executionTasks) });
     entry.readInput = readInput;

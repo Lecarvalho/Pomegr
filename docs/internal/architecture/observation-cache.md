@@ -212,12 +212,13 @@ is retained separately from its bounded items; missing evidence is never a measu
 `session-summary` also carries `events`, a bounded feed of high-level transitions: agent
 starts, finishes and stops, the latest reported signals and progress estimate, user-message
 times, one retained peak per resource field, Git-observed commits in the session window,
-and pull-request creations. D derives it in the same commit as the other summary fields,
+pull-request creations, cache refills, compactions, and the agent's own Pomegr task tool
+calls. D derives it in the same commit as the other summary fields,
 from committed normalized evidence only: the public agents, session signal and progress,
 the recorded user-message times and pull-request-creation evidence, the public pull
 requests, the recorded in-window commit times from the repository snapshot sidecar, and
-the committed retained-resource block, and the session's recorded refill and compaction
-times. D itself adds no acquisition or provider parsing, and a GET serves the committed
+the committed retained-resource block, and the session's recorded refill, compaction,
+and task-action entries. D itself adds no acquisition or provider parsing, and a GET serves the committed
 value. Its only persistence is the session-event sidecar described below, written by P
 after a commit. Its two recorded lists are written
 upstream: both adapters produce the same optional `userMessageTimes` evidence field (the
@@ -233,7 +234,10 @@ the derived-domain cache is rebuilt without them until that read recommits; no G
 projection reads the sidecar synchronously to close that gap. Refill and compaction times
 follow the same pattern through `eventRecordForSession`, with one difference: the
 projection also derives the current entries from committed cache-event and context-boundary
-state, so only entries older than the retained evidence wait for that read. See
+state, so only entries older than the retained evidence wait for that read. Task actions
+follow it too: the projection derives the current ones from the committed tool-call
+evidence (the optional `taskAction` field an adapter sets on a Pomegr task tool call whose
+recorded result is not an error), and reads nothing from the task store. See
 [Session-event sidecar](#session-event-sidecar). The feed reads
 neither the windowed activity evidence nor the live repository commit list. Items are the
 50 newest by the time recorded with their evidence, never the observation time, and
@@ -3267,7 +3271,10 @@ validation: a target under the session working directory's `.claude/worktrees/<n
 where Claude Code checks out an isolated agent's worktree, is validated as the remaining
 path under the session working directory, so the change is recorded at the same
 repository-relative path as an edit in the main checkout. The remainder passes the same
-validator, so a provider folder inside the worktree stays rejected. Repository roots, native target values, commands, tool
+validator, so a provider folder inside the worktree stays rejected. A target inside another
+checkout of the launch repository that the session's own Git commands ran in (see
+[the working checkout](#the-working-checkout-of-a-claude-session)) is rebased the same
+way, onto the same path under the launch checkout. Repository roots, native target values, commands, tool
 arguments, provider records, and validation failures remain monitor-private.
 
 Codex binds successful structured mutations during U2 through the inventory's private
@@ -3600,25 +3607,34 @@ recorded list, never the current tree.
 
 Cache-refill and compaction events are derived from usage evidence that slides: a live read
 keeps the newest 1,000 usage snapshots, and after a restart the evidence holds only what the
-transcript tail and the checkpoint still carry. To keep an event from being shown and then
+transcript tail and the checkpoint still carry. Task events are derived from tool-call
+evidence, which is a window of the transcript too. To keep an event from being shown and then
 withdrawn, the monitor records them in a second sidecar, `events-<identity hash>.json`, next
 to the session checkpoint and its repository sidecar.
 
 - **Content.** `{ version: 1, refills: [{ at, agentId, kind }], compactions: [{ at, agentId, trigger }] }`:
   canonical UTC times, normalized agent IDs, `kind` one of `possible_full`,
   `provider_diagnosed`, `lifetime_elapsed`, and `trigger` one of `automatic`, `manual`. Each
-  list keeps its newest 256 entries, oldest first. Nothing else is stored: no reason,
+  list keeps its newest 256 entries, oldest first. A record that holds a task action has a
+  third list, `taskActions: [{ at, agentId, action, count }]`, with `action` one of `added`,
+  `removed`, `completed`, `blocked` and `count` an integer from 1 to 64 (the tool calls of
+  one assistant turn share its recorded time). The key is absent while the list is empty,
+  so a record without a task action is written as it was before task T-57, and the version
+  stays 1. A build from before that task treats a record that has the key as invalid: it
+  does not load it and prunes it. Nothing else is stored: no reason,
   provider status, inference detail, token count, percentage, prior context total, request
-  number, or provider ID. `normalizeSessionEventRecord` validates the record as a whole, with
+  number, provider ID, tool-call ID, task ID, task text, or tool argument. `normalizeSessionEventRecord` validates the record as a whole, with
   exact key sets; an invalid record is neither written nor loaded. The file is at most
   128 KiB and passes the checkpoint privacy sentinels.
 - **Derivation (D).** `projectSessionDomains` derives the current entries from the public
-  cache-event feed (only while its status is `ready`) and the public context boundaries, and
+  cache-event feed (only while its status is `ready`), the public context boundaries, and
+  the committed tool calls that carry `taskAction`, and
   merges them with the record it is given. The feed reads the merged record, and the
   projection returns it beside the domains. It is never placed in a domain response or on
   `/api/state`.
 - **Merge rule.** Entries only accumulate. One entry per agent and time; for the same agent
-  and time the later kind wins. An entry the current evidence no longer derives stays.
+  and time the later kind wins. A task action has one entry per agent, time, and action, and
+  the larger count wins. An entry the current evidence no longer derives stays.
 - **Persistence (P).** After a commit whose merged record changed, the domain store hands it
   to `createSessionEventRecorder`. The recorder first reads the session's sidecar when it
   holds no answer for it, merges into what the disk holds, and writes atomically only when
@@ -3728,6 +3744,46 @@ working tree, branch, and pull request are never read from the main checkout. A 
 launch branch is kept only for the launch checkout itself, because one repository ID can
 now hold several checkouts on different branches. Git rename continuity keeps one head for
 each repository ID and reads it in the main root.
+
+### The working checkout of a Claude session
+
+A Claude session can leave its launch checkout without a new working directory in its
+transcript: it makes a worktree with `git worktree add` and opens each later command with
+a directory change. The Claude adapter (`server/providers/claude/working-checkout.mjs`)
+therefore reads where the session's own Git commands ran. This is a heuristic, recorded in
+[Metrics](metrics.md#git-observed-files).
+
+- Only a shell tool call of the primary transcript whose work kind is `git`, `git_push`,
+  or `pull_request` counts.
+- Its directory is the one a directory change that opens the command names (`cd`, `pushd`,
+  or `Set-Location`, followed by `&&`, `;`, or a new line), else the one `git -C` names,
+  else the working directory the transcript recorded for that record.
+- A relative directory resolves against that recorded working directory. A directory that
+  holds a variable, a substitution, `~`, a wildcard, or a control character names nothing;
+  Pomegr never expands shell text.
+- The adapter keeps the eight directories used last. The directory of the latest Git
+  command decides the working checkout.
+- That directory must exist. The inventory's `resolveRepository` must recognize it as Git
+  and answer the repository ID of the launch directory with another checkout root. Then
+  the provider's `repositoryAttributionForSession` answers that root, and the session's
+  association, live Git check, branch, pull request, uncommitted files, and commits in the
+  session are read there.
+- The transcript keeps recording the launch checkout's branch after the session moves, so
+  this binding carries no recorded branch (`anyBranch`): the live check takes the branch
+  the working checkout has. Each other binding still requires its recorded branch.
+- When the latest Git command ran in the launch checkout, in another repository, or in a
+  directory that no longer gives a Git answer, the provider answers nothing and the
+  session is read in its launch directory, as before. The registry passes that `null`
+  through; it is not the `unknown` state.
+- The bounded record tail can slide past the last Git command. A tail with no Git command
+  decides nothing new, and the checkout already found in this run stays. A monitor that
+  starts after the tail slid reads the launch directory until the next Git command.
+- A session whose working checkout changes keeps one repository snapshot: the repository
+  ID is the same, so its commit paths and commit times accumulate across both checkouts,
+  and the branch and uncommitted files are those of the last live check.
+
+The working checkout is monitor-private. It is not in session evidence, a checkpoint, a
+response, or a log; `session.cwd` stays the launch directory.
 
 Records stored under a former worktree ID are not migrated or remapped: repository
 sidecars, context-inventory bindings, and file-history rows keyed by that ID stop matching

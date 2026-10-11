@@ -14,6 +14,9 @@ copying it here.
 - In the desktop app only, Pomegr is also an opt-in dispatcher that starts sessions for
   repository tasks. Tasks and dispatch are a separate control plane. Observation does not
   depend on it.
+- In the desktop app and on a paired device, Pomegr also has an agent chat. The owner
+  talks to Aril, an agent that reads the task board and Pomegr's observations and
+  proposes board changes. Aril changes nothing: the owner applies a proposal.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -44,6 +47,7 @@ copying it here.
 | Observation phases, caches, checkpoints, serving, readiness, polling | [Observation cache](docs/internal/architecture/observation-cache.md) |
 | Metric definitions and heuristics | [Metrics](docs/internal/architecture/metrics.md) |
 | Task board, queue, dispatch, agent task tools, and their privacy rules | [Tasks](docs/internal/architecture/tasks.md) |
+| Agent chat: its provider run, proposals, saved conversations, and privacy rules | [Agent chat](docs/internal/architecture/agent-chat.md) |
 | Provider adapter conformance | `server/providers/provider-contract.mjs` |
 | Controls, tokens, and styles | [DESIGN.md](DESIGN.md) |
 | How one surface looks and how the user operates it | Its page in `docs/internal/design/`, listed in [DESIGN.md](DESIGN.md#find-the-page) |
@@ -76,13 +80,17 @@ the maintenance workflow, and do not make an archive copy.
 These rules always apply:
 
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or
-  credential-file contents to the browser.
+  credential-file contents to the browser. The one exception is the agent chat's own
+  conversation, which its owner page lists. It is never a session's.
 - A value may cross a boundary only when the owner page lists it. A value that no page
   lists is private.
 - Keep the monitor bound to loopback.
 - Keep observation read-only. Task dispatch is the only control surface. It starts new
   sessions and never stops, attaches to, answers, or approves work in a running session.
   Each other control action needs an explicit confirmation boundary.
+- The agent chat starts only its own read-only provider run, which Pomegr may stop. It
+  changes the board only through the fixed task actions, after the owner applies a
+  proposal.
 - Start processes with `execFile` or `spawn` and an argument array. Never put
   session-derived text into a command line or a path.
 - Never commit `.env`, transcripts, credentials, build output, or Wrangler state.
@@ -98,6 +106,7 @@ same pull request.
 | Credentials, account usage, provider processes, plugins | [Providers and accounts](docs/internal/architecture/privacy/providers-and-accounts.md) |
 | Desktop settings, native actions, diagnostics, context inventories | [Desktop and diagnostics](docs/internal/architecture/privacy/desktop-and-diagnostics.md) |
 | Task board, dispatch, GitHub issues, task images, paired devices | [Tasks: Privacy](docs/internal/architecture/tasks.md#privacy) |
+| Agent chat conversations, and what a chat run sends to a provider | [Agent chat: Privacy](docs/internal/architecture/agent-chat.md#privacy) |
 
 ## User interface
 

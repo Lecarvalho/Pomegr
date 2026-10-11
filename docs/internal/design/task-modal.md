@@ -17,8 +17,11 @@ One task modal serves three modes. The board and the cards are in [task-board.md
 - The frame is a native modal `<dialog>` that fills the viewport and is itself the scrim.
 - The scrim is `--color-text` mixed to 40% over the page with `color-mix`, and uses no literal color.
 - The scrim has no token of its own and is distinct from the Home dialog's `#0008`.
-- The dialog scrolls when the panel is taller.
-- The panel sits top-aligned in the dialog, 32px from the top, and is at most 640px wide.
+- The dialog's padding (32px above, 24px below, 16px at the sides) is the margin the panel keeps from the window.
+- The panel sits in the dialog and is at most 640px wide.
+- The panel is never taller than the window less that margin.
+- The Task field gives up height first.
+- The body scrolls only when the window is too short for the rest.
 - The panel has the panel fill, a one-pixel `--command-line` border, the panel radius, and the overlay shadow.
 - The panel has no entrance or exit motion.
 - The panel is centred in the window.
@@ -68,6 +71,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 ### Task
 
 - **Task** is a label and a `textarea` at least 150px tall in 13px type.
+- The textarea grows with its text and has no resize handle.
 - The placeholder is “What should the session do?”.
 - A right-aligned muted data-font counter reads “n / 4,000” under the field.
 
@@ -76,7 +80,9 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - In the desktop app, the Task field of the New task and Task forms is rich text (`TaskRichText`, `.taskRichText`).
 - Rich text holds the task's images in the text itself.
 - An editable region replaces the textarea. It has the same type, padding, 150px minimum height, and placeholder.
-- The region scrolls past 480px.
+- In the task modal, the textarea and the editable region grow until the panel is as tall as the window allows.
+- Then the text scrolls inside the field.
+- Outside the modal, the editable region scrolls past 480px.
 - The region sits in one frame (`.taskComposer`) with a one-pixel `--command-line-strong` border, the control radius, and the panel fill.
 - The frame shows the focus ring while the editor has keyboard focus.
 - Text is typed as plain text.
@@ -151,14 +157,16 @@ The New task and Task forms share these fields. The Promote form shares all but 
 ### Complete when
 
 - **Complete when** is a fieldset with a legend.
-- The fieldset holds a wrapping row of five native checkboxes.
-- The checkbox labels are “PR open”, “Tree clean”, “Commit on branch”, “PR merged”, and “CI passed”.
+- The fieldset holds a wrapping row of six native checkboxes.
+- The checkbox labels are “PR open”, “Tree clean”, “Commit on branch”, “PR merged”, “CI passed”, and “Validated with the user”.
 - A checkbox row is 28px high, and 44px at 760px and narrower and on coarse pointers.
 - Below the checkboxes sits one 36px text input named Own condition.
 - The placeholder is “Own condition, judged by the agent (optional)”.
 - A non-blank own condition is the agent-judged condition.
 - A blank own condition means no agent-judged condition.
 - The own condition has no checkbox.
+- “Validated with the user” is agent-judged too.
+- After a report, the row of “Validated with the user” shows the muted “Agent-reported” in place of a result.
 
 ## Mode new
 

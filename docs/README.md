@@ -15,6 +15,7 @@ source.
 | Browse repositories and the files their sessions changed | [Repositories](public/using-pomegr/repositories.md) |
 | Plan a repository's work on a task board and have the desktop app start sessions for it | [Tasks](public/using-pomegr/tasks.md) |
 | Connect GitHub, promote an open issue into a task, or create an issue from a task | [GitHub issues](public/using-pomegr/github-issues.md) |
+| Ask Aril, the built-in agent, to cut work into tasks, order the board, and advise on models | [Agent chat](public/using-pomegr/agent-chat.md) |
 | Install the reporting plugin and set up a repository's reporting policy | [Reporting plugins](public/using-pomegr/reporting-plugins.md) |
 | Share Pomegr read-only with a paired phone on your private network | [Phone access](public/using-pomegr/phone-access.md) |
 | See each tool that the plugin gives a coding agent | [MCP tools](public/using-pomegr/mcp-tools.md) |
