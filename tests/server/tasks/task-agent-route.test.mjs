@@ -6,13 +6,15 @@ import path from "node:path";
 import test from "node:test";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
-import { REPOSITORY, createTask, openTemporaryStore, startedTask } from "./queue-test-support.mjs";
+import { REPOSITORY, START_TIME, createTask, metaValue, openTemporaryStore, queueRow, queueTask, setQueueRow, startedTask, updateTask } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "a".repeat(40);
 const SECRET_TEXT = "AGENT-TASK-TEXT-do-not-leak";
 const SESSIONS = {
   "claude:known": REPOSITORY_ID, "claude:norepo": null,
+  // Two sessions of the queue-test repository, for the remove rule.
+  "claude:mine": REPOSITORY, "claude:theirs": REPOSITORY,
   // Committed under another identity (a task worktree whose folder is gone, for example) or none, but started for a task of REPOSITORY.
   "claude:worktree": "repo-ffffffffffffffffffffffff", "claude:worktree-norepo": null,
 };
@@ -210,7 +212,7 @@ test("no other agent write path exists", async (context) => {
   const store = await realStore(context);
   const { port } = await start(context, store);
   const body = JSON.stringify({ sessionRef: "claude:known", text: "x" });
-  for (const requestPath of ["/api/agent/v1/tasks/complete/", "/api/agent/v1/tasks/block/x", "/api/agent/v1/tasks/resolve", "/api/agent/v1/tasks", "/api/agent/v1/tasks/add/", "/api/agent/v1/sessions", "/api/agent/v1/provider-health"]) {
+  for (const requestPath of ["/api/agent/v1/tasks/complete/", "/api/agent/v1/tasks/block/x", "/api/agent/v1/tasks/resolve", "/api/agent/v1/tasks", "/api/agent/v1/tasks/add/", "/api/agent/v1/tasks/remove/", "/api/agent/v1/tasks/delete", "/api/agent/v1/sessions", "/api/agent/v1/provider-health"]) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       const response = await send(port, { method, path: requestPath, body });
       assert.equal(response.status, 405, `${method} ${requestPath}`);
@@ -296,4 +298,135 @@ test("the runtime session lookup reads only committed store and catalog facts", 
   assert.deepEqual(lookup("codex:bare"), { found: true, repositoryId: null });
   assert.equal(lookup("codex:none"), null);
   assert.equal(lookup("not a ref"), null);
+});
+
+const REMOVE = "/api/agent/v1/tasks/remove";
+const addAs = async (port, sessionRef, text = SECRET_TEXT) => (await send(port, { body: JSON.stringify({ sessionRef, text }) })).json.taskId;
+const remove = (port, taskId, sessionRef = "claude:mine", extra = {}) => send(port, { path: REMOVE, body: JSON.stringify({ sessionRef, taskId, ...extra }) });
+const adderKey = (number) => `task_added_by:${REPOSITORY}:T-${number}`;
+const taskIds = (store) => store.readBoard(REPOSITORY).tasks.map((task) => task.id).sort();
+const refused = (response) => {
+  reason(response, 404, "not_found");
+  assert.doesNotMatch(response.text, /AGENT-TASK|T-\d|claude:|repo-|state|queued/u);
+};
+
+test("a session removes a task it added: the number stays retired and the answer names nothing", async (context) => {
+  const { store, directory } = await openTemporaryStore(context, "pomegr-agent-remove-");
+  const { port } = await start(context, store);
+  assert.equal(await addAs(port, "claude:mine"), "T-1");
+  assert.equal(await addAs(port, "claude:mine"), "T-2");
+  assert.equal(metaValue(directory, adderKey(2)), "claude:mine");
+  // The record of who added a task is never on the served board.
+  assert.doesNotMatch(JSON.stringify(store.readBoard(REPOSITORY)), /claude:mine|added_by|addedBy/u);
+  const response = await remove(port, "T-2");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true });
+  assert.deepEqual(taskIds(store), ["T-1"]);
+  assert.equal(metaValue(directory, adderKey(2)), null);
+  // Gone is gone: a second call is the same refusal as a task that never existed, and the number is not reused.
+  refused(await remove(port, "T-2"));
+  assert.equal(await addAs(port, "claude:mine"), "T-3");
+});
+
+test("a task the user or another session added, or one that does not exist, is the one fixed refusal", async (context) => {
+  const { store } = await openTemporaryStore(context, "pomegr-agent-remove-");
+  const { port } = await start(context, store);
+  createTask(store, REPOSITORY, { text: SECRET_TEXT });
+  assert.equal(await addAs(port, "claude:theirs"), "T-2");
+  assert.equal(await addAs(port, "claude:mine"), "T-3");
+  const answers = [await remove(port, "T-1"), await remove(port, "T-2"), await remove(port, "T-99")];
+  for (const response of answers) refused(response);
+  assert.equal(new Set(answers.map((response) => response.text)).size, 1);
+  // A session Pomegr does not know, one with no repository, and one on another board find nothing either.
+  for (const sessionRef of ["codex:missing", "claude:norepo", "claude:known"]) refused(await remove(port, "T-3", sessionRef));
+  assert.deepEqual(taskIds(store), ["T-1", "T-2", "T-3"]);
+});
+
+test("a task that waits in the queue is removed, and one that started, linked, or reported is refused", async (context) => {
+  const { store, directory, clock } = await openTemporaryStore(context, "pomegr-agent-remove-");
+  const { port } = await start(context, store);
+  for (let number = 1; number <= 7; number += 1) assert.equal(await addAs(port, "claude:mine"), `T-${number}`);
+  // T-1 queued and T-2 scheduled still wait.
+  queueTask(store, "T-1");
+  assert.equal(store.apply(REPOSITORY, "queue_add", { id: "T-2", at: new Date(START_TIME + 3_600_000).toISOString() }).ok, true);
+  // T-3 has a start in flight, T-4 a linked session, T-5 a report, T-6 is done, and T-7's start ran out.
+  startedTask(directory, 3, { mintedAt: clock.now, state: "queued" });
+  startedTask(directory, 4, { session: "claude:run-4", state: "queued" });
+  updateTask(directory, 5, { state: "blocked", session_id: "claude:run-5", report_at: clock.now, report_results: "[]", report_block_reason: "stuck" });
+  updateTask(directory, 6, { state: "done", session_id: "claude:run-6" });
+  startedTask(directory, 7, { mintedAt: clock.now - 60 * 60_000 });
+  for (const id of ["T-3", "T-4", "T-5", "T-6"]) refused(await remove(port, id));
+  for (const id of ["T-1", "T-2", "T-7"]) assert.deepEqual((await remove(port, id)).json, { schemaVersion: 1, ok: true }, id);
+  assert.deepEqual(taskIds(store), ["T-3", "T-4", "T-5", "T-6"]);
+});
+
+test("the user's edits and moves do not end the session's right, and a queue blocked at the task is released", async (context) => {
+  const { store, directory } = await openTemporaryStore(context, "pomegr-agent-remove-");
+  const { port } = await start(context, store);
+  assert.equal(await addAs(port, "claude:mine"), "T-1");
+  const board = store.readBoard(REPOSITORY);
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", text: "edited by the user" }).ok, true);
+  assert.equal(store.apply(REPOSITORY, "move", { id: "T-1", columnId: board.columns[1].id, position: 0 }).ok, true);
+  setQueueRow(directory, "blocked", "T-1");
+  assert.equal((await remove(port, "T-1")).status, 200);
+  assert.deepEqual(taskIds(store), []);
+  assert.deepEqual(queueRow(directory), { queue_status: "running", queue_blocked_by: null });
+});
+
+test("a session started for a task removes what it added on the linked task's board", async (context) => {
+  const { store } = await linkedStore(context, "claude:worktree");
+  const { port } = await start(context, store);
+  assert.equal(await addAs(port, "claude:worktree"), "T-2");
+  // Its own task, the one it was started for, is not one it added.
+  refused(await remove(port, "T-1", "claude:worktree"));
+  assert.equal((await remove(port, "T-2", "claude:worktree")).status, 200);
+  assert.deepEqual(taskIds(store), ["T-1"]);
+});
+
+test("remove takes a session and one task ID and nothing else", async (context) => {
+  const { store } = await openTemporaryStore(context, "pomegr-agent-remove-");
+  const { port } = await start(context, store);
+  assert.equal(await addAs(port, "claude:mine"), "T-1");
+  for (const extra of [{ repositoryId: REPOSITORY }, { path: "C:\\x" }, { text: "x" }, { id: "T-1" }]) reason(await remove(port, "T-1", "claude:mine", extra), 400, "invalid");
+  for (const taskId of ["1", "T-0", "T-01", "t-1", "T-1 ", "T-1234567890", "", null, 1, ["T-1"]]) reason(await remove(port, taskId), 400, "invalid");
+  for (const sessionRef of ["", "mine", "claude:", "claude:a b", null]) reason(await remove(port, "T-1", sessionRef), 400, "invalid");
+  reason(await send(port, { path: REMOVE, body: JSON.stringify({ taskId: "T-1" }) }), 400, "invalid");
+  reason(await send(port, { path: REMOVE, body: "{" }), 400, "invalid");
+  reason(await send(port, { path: `${REMOVE}?repositoryId=${REPOSITORY}`, body: JSON.stringify({ sessionRef: "claude:mine", taskId: "T-1" }) }), 400, "invalid");
+  reason(await send(port, { path: REMOVE, headers: { ...headers, "content-type": "text/plain" }, body: JSON.stringify({ sessionRef: "claude:mine", taskId: "T-1" }) }), 400, "invalid");
+  // Without the agent capability, or from a page, the call is refused before the store is read.
+  assert.equal((await send(port, { path: REMOVE, headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionRef: "claude:mine", taskId: "T-1" }) })).status, 401);
+  assert.equal((await send(port, { path: REMOVE, headers: { ...headers, origin: "http://127.0.0.1" }, body: JSON.stringify({ sessionRef: "claude:mine", taskId: "T-1" }) })).status, 401);
+  const wrong = await send(port, { method: "GET", path: REMOVE, headers: { "x-pomegr-agent-authorization": TOKEN } });
+  assert.equal(wrong.status, 405);
+  assert.equal(wrong.headers.allow, "POST");
+  assert.deepEqual(taskIds(store), ["T-1"]);
+});
+
+test("remove answers unavailable when the store or the session lookup cannot be used", async (context) => {
+  const { store } = await openTemporaryStore(context, "pomegr-agent-remove-");
+  const working = await start(context, store);
+  assert.equal(await addAs(working.port, "claude:mine"), "T-1");
+  reason(await remove((await start(context, null)).port, "T-1"), 503, "unavailable");
+  reason(await remove((await start(context, store, { resolve: false })).port, "T-1"), 503, "unavailable");
+  const failing = await start(context, { ...store, apply() { throw new Error("SECRET-STORE-FAILURE"); } });
+  const response = await remove(failing.port, "T-1");
+  reason(response, 503, "unavailable");
+  assert.doesNotMatch(response.text, /SECRET/u);
+  assert.deepEqual(taskIds(store), ["T-1"]);
+});
+
+test("the desktop route never accepts the agent store actions", async (context) => {
+  const { TASK_ACTIONS } = await import("../../../server/tasks/task-record.mjs");
+  assert.equal(TASK_ACTIONS.includes("agent_create"), false);
+  assert.equal(TASK_ACTIONS.includes("agent_remove"), false);
+  const { store } = await openTemporaryStore(context, "pomegr-agent-remove-");
+  // A stored session that is not a session ID, and a payload with another key, change nothing.
+  assert.deepEqual(store.apply(REPOSITORY, "agent_create", { sessionId: "not a session", task: { text: "x" } }), { ok: false, error: "invalid" });
+  assert.deepEqual(store.apply(REPOSITORY, "agent_create", { sessionId: "claude:mine", task: { text: "x" }, repositoryId: REPOSITORY }), { ok: false, error: "invalid" });
+  assert.equal(store.apply(REPOSITORY, "agent_create", { sessionId: "claude:mine", task: { text: "x" } }).taskId, "T-1");
+  assert.deepEqual(store.apply(REPOSITORY, "agent_remove", { sessionId: "claude:mine", id: "T-1", force: true }), { ok: false, error: "invalid" });
+  assert.deepEqual(store.apply(REPOSITORY, "agent_remove", { sessionId: "claude:theirs", id: "T-1" }), { ok: false, error: "not_found" });
+  assert.deepEqual(taskIds(store), ["T-1"]);
 });

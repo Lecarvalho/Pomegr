@@ -2,7 +2,7 @@
 
 Pomegr is a local-first, read-only observer for coding-agent sessions. This plugin loads a repository-owned reporting policy, lets Codex report bounded project-specific signals, and exposes read-only queries over normalized observations already committed by the local Pomegr monitor.
 
-`add_task` adds a task to the current repository's Pomegr board, in the first column, not queued; it does not start anything.
+`add_task` adds a task to the current repository's Pomegr board, in the first column, not queued; it does not start anything. `remove_task` deletes a task the same session added, such as a duplicate, while that task has not started; it cannot be undone, and it never removes a task the user or another session added.
 
 In a session that Pomegr started for a task, `complete_task` reports the task complete, optionally with one line that names what needs the user's attention, and Pomegr then verifies the conditions the user checked; `block_task` reports that the agent cannot continue, with a one-line reason. Each session reports once, and only on its own task.
 

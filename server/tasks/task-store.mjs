@@ -25,11 +25,13 @@ import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseRe
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
+import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
+import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import {
-  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, normalizeCreatePayload, normalizeDeletePayload,
+  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
   composePromotedText, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
@@ -318,6 +320,7 @@ function deleteTask({ database, repositoryId }, payload) {
   deleteTaskSource(database, repositoryId, input.number);
   deleteTaskAttention(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
+  deleteTaskAdder(database, repositoryId, input.number);
   // The deleted number stays retired even when it was newer than the stored counter.
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
@@ -326,6 +329,37 @@ function deleteTask({ database, repositoryId }, payload) {
   // A blocked queue must not keep naming a task that is gone.
   releaseQueue(database, repositoryId);
   return { ok: true };
+}
+
+// The agent's `add_task` and `remove_task` (task-adder.mjs). Store actions only: absent from TASK_ACTIONS, so the
+// desktop route never accepts them, and the agent routes are their only callers. `{ sessionId, task }` creates the task
+// like `create` and records the session that added it in the same transaction.
+const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+function agentCreateTask(context, payload) {
+  if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "task") || !isTaskSessionId(payload.sessionId)) {
+    return { ok: false, error: "invalid" };
+  }
+  const created = createTask(context, payload.task);
+  if (created.ok) writeTaskAdder(context.database, context.repositoryId, created.number, payload.sessionId);
+  return created;
+}
+
+// `{ sessionId, id }` deletes a task with the effects of `delete`, and only a task this session added that still waits:
+// Not queued, Queued, or Scheduled, with no linked session, no start in flight, and no report. Every other case, a task
+// that does not exist included, is the one `not_found`, so the answer tells nothing about a task the session did not add.
+function agentRemoveTask(context, payload) {
+  if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "id") || !isTaskSessionId(payload.sessionId)) {
+    return { ok: false, error: "invalid" };
+  }
+  const input = normalizeDeletePayload({ id: payload.id });
+  if (!input) return { ok: false, error: "invalid" };
+  const { database, repositoryId, now } = context;
+  const task = preparedStatement(database, "SELECT state, session_id, dispatch_token, report_at FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const waits = task && (task.state === "not_queued" || task.state === "queued" || task.state === "scheduled")
+    && (task.session_id ?? null) === null && (task.report_at ?? null) === null && dispatchStanding(task.dispatch_token, now()) !== "live";
+  if (!waits || readTaskAdder(database, repositoryId, input.number) !== payload.sessionId) return { ok: false, error: "not_found" };
+  return deleteTask(context, { id: payload.id });
 }
 
 // Positions stay dense (0..n-1) in every column (task-columns.mjs). Each write below reads the affected order, changes it
@@ -450,6 +484,7 @@ const ACTIONS = Object.freeze({
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
   promote_issue: promoteIssue, record_issue: recordIssue,
+  agent_create: agentCreateTask, agent_remove: agentRemoveTask,
 });
 
 /** Raised inside a transaction to roll it back with a fixed error code. */
@@ -566,15 +601,15 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (!result.ok) throw new ActionRejected(result.error);
         // Whatever the action changed, the waiting queue cards are in Ready and in start order when it commits.
         settleReadyColumn(database, repositoryId);
-        // Only `create` and `promote_issue` answer the task they made.
-        taskId = action === "promote_issue" || action === "create" ? taskIdFromNumber(result.number) ?? null : null;
+        // Only `create`, `agent_create`, and `promote_issue` answer the task they made.
+        taskId = action === "promote_issue" || action === "create" || action === "agent_create" ? taskIdFromNumber(result.number) ?? null : null;
         // The write stands only if the whole board, the new row included, still projects.
         const projected = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
         if (!projected) throw new ActionRejected("conflict");
         return projected;
       });
       // A deleted task's image files go once the delete has committed.
-      if (action === "delete") removeTaskImageFiles(directory, repositoryId, payload?.id);
+      if (action === "delete" || action === "agent_remove") removeTaskImageFiles(directory, repositoryId, payload?.id);
       return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };

@@ -3,7 +3,8 @@ import { z } from "zod";
 export const TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 export const TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
-export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task.";
+export const TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
+export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
 
@@ -71,6 +72,13 @@ const REPORT_REASON_TEXT = {
 };
 export const TASK_REPORT_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so nothing was reported.";
 
+export const TASK_REMOVE_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was removed.";
+const REMOVE_REASON_TEXT = {
+  invalid: "Pomegr rejected the request as invalid, so no task was removed.",
+  not_found: "No task was removed. This session can remove only a task it added itself that has not started.",
+  unavailable: "Pomegr is unavailable, so no task was removed.",
+};
+
 const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u;
 const SAFE_THREAD_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
@@ -114,6 +122,29 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     }
     const text = answer && answer.ok === false && typeof answer.reason === "string" && Object.hasOwn(REASON_TEXT, answer.reason)
       ? REASON_TEXT[answer.reason] : TASK_UNAVAILABLE_TEXT;
+    return result(text, true);
+  });
+
+  server.registerTool("remove_task", {
+    title: "Remove a Pomegr task",
+    description: "Delete a task this session added itself with add_task, such as a duplicate. It works only while the task has not started: not queued, queued, or scheduled, with no session and no report. It cannot be undone, and the task number is not used again. A task the user or another session added is never removed. The repository and session are bound by the host; the only input is the task ID.",
+    inputSchema: z.object({
+      task_id: z.string().regex(/^T-[1-9][0-9]{0,8}$/u, "Use a task ID such as T-12.").describe("ID of the task to remove, such as T-12, as add_task returned it."),
+      ...hookFields(hookBound),
+    }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  }, async (input, extra) => {
+    const ref = await resolveSession(input, extra, "remove_task");
+    if (typeof ref !== "string" || !ref) return result(TASK_REMOVE_UNBOUND_TEXT, true);
+    let answer;
+    try {
+      answer = await post(TASK_REMOVE_PATH, { sessionRef: ref, taskId: input.task_id });
+    } catch {
+      return result(REMOVE_REASON_TEXT.unavailable, true);
+    }
+    if (answer && answer.ok === true) return result(`Task ${input.task_id} removed from the board.`, false);
+    const text = answer && answer.ok === false && typeof answer.reason === "string" && Object.hasOwn(REMOVE_REASON_TEXT, answer.reason)
+      ? REMOVE_REASON_TEXT[answer.reason] : REMOVE_REASON_TEXT.unavailable;
     return result(text, true);
   });
 
