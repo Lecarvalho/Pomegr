@@ -7,7 +7,7 @@ import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
 import { CompleteWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
 import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
-import { DEFAULT_COMPLETE_WHEN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
+import { DEFAULT_COMPLETE_WHEN, DEFAULT_RUN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
 import type { TaskIssue } from "../tasks/task-issues-desktop";
 import type { TaskRun } from "../../../shared/task-contract";
@@ -36,17 +36,17 @@ export function TaskFieldsSection() {
   const [inlineText, setInlineText] = useState(TEXT_WITH_IMAGE);
   const [fullText, setFullText] = useState(TEXT_FULL);
   const [issueChecked, setIssueChecked] = useState(true);
-  const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
-  const [remote, setRemote] = useState<TaskRun>({ ...EMPTY_RUN, remoteControl: true });
-  const [codexRun, setCodexRun] = useState<TaskRun>({ ...EMPTY_RUN, provider: "codex" });
+  const [modalRun, setModalRun] = useState<TaskRun>(DEFAULT_RUN);
+  const [remote, setRemote] = useState<TaskRun>({ ...DEFAULT_RUN, remoteControl: true });
+  const [codexRun, setCodexRun] = useState<TaskRun>({ ...DEFAULT_RUN, provider: "codex" });
   const [modalCompleteWhen, setModalCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." });
-  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Remote Control is one checkbox under both, for a Claude Code session only. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
+  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider. Remote Control is one checkbox under both, for a Claude Code session only. Effort is a four-way segmented control. Run on and Effort are required: a new task opens with both chosen, and neither can be cleared. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
         <RunFields run={run} models={MODELS} onChange={setRun} />
       </Sample>
-      <Sample label="Nothing chosen, no model list" note="Nothing selected is valid. A provider with no observed model offers only its Default model.">
+      <Sample label="Stored task with nothing chosen, no model list" note="Only a task stored without them shows Not set and no pressed Effort. Once chosen, neither can be cleared. A provider with no observed model offers only its Default model.">
         <RunFields run={unset} models={NO_MODELS} onChange={setUnset} />
       </Sample>
       <Sample label="Remote Control, on" note="Checked for a task that starts Claude Code, named or by default. The started session can also be opened on a phone.">
@@ -116,7 +116,7 @@ function TaskModalEditSamples() {
   const draftId = useId();
   const reviewId = useId();
   const [text, setText] = useState(STORED_TEXT);
-  const [run, setRun] = useState<TaskRun>({ provider: "claude", model: null, effort: null });
+  const [run, setRun] = useState<TaskRun>(DEFAULT_RUN);
   const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const dirty = text.trim() !== STORED_TEXT;
   const reviewed: CompleteWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." };
@@ -190,9 +190,9 @@ function TaskModalPromoteSamples() {
   const normalId = useId();
   const changedId = useId();
   const unsavedId = useId();
-  const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
+  const [run, setRun] = useState<TaskRun>(DEFAULT_RUN);
   const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
-  const [changedRun, setChangedRun] = useState<TaskRun>(EMPTY_RUN);
+  const [changedRun, setChangedRun] = useState<TaskRun>(DEFAULT_RUN);
   const [changedCompleteWhen, setChangedCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const closes = (number: number) => <span className="taskModalNote taskModalCloses">The pull request will say Closes <span className="taskModalCloseRef">#{number}</span>.</span>;
   return <>

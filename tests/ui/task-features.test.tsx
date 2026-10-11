@@ -133,7 +133,7 @@ describe("New task modal: Feature", () => {
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(lastCall("create")).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f1" });
+    expect(lastCall("create")).toEqual({ text: "Write the guide", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f1" });
     expect(lastCall("create")).not.toHaveProperty("step");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
 
@@ -142,7 +142,7 @@ describe("New task modal: Feature", () => {
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
     await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(lastCall("create")).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN });
+    expect(lastCall("create")).toEqual({ text: "Write the guide", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN });
     expect(lastCall("create")).not.toHaveProperty("featureId");
   });
 
@@ -161,7 +161,7 @@ describe("New task modal: Feature", () => {
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
     expect(taskAction.mock.calls.map((call) => call[1])).toEqual(["feature_create", "create"]);
     expect(taskAction.mock.calls[0]).toEqual([repositoryId, "feature_create", { name: "Brand new" }]);
-    expect(taskAction.mock.calls[1][2]).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f-new" });
+    expect(taskAction.mock.calls[1][2]).toEqual({ text: "Write the guide", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f-new" });
     expect(refresh).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
   });

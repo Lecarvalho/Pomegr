@@ -78,7 +78,7 @@ export function RunFields({ run, models, disabled, onChange }: { run: TaskRun; m
       <span id={effortId} className="newTaskEffortLabel">Effort</span>
       <div className="commandSegmented taskEffort" role="group" aria-labelledby={effortId}>
         {TASK_EFFORTS.map((effort) => <button key={effort} type="button" aria-pressed={run.effort === effort} disabled={disabled}
-          onClick={() => onChange({ ...run, effort: run.effort === effort ? null : effort })}>{EFFORT_LABELS[effort]}</button>)}
+          onClick={() => { if (run.effort !== effort) onChange({ ...run, effort }); }}>{EFFORT_LABELS[effort]}</button>)}
       </div>
     </div>
     <div className="newTaskField taskRemoteControl">

@@ -166,7 +166,7 @@ describe("with the desktop bridge", () => {
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
     expect(taskAction).toHaveBeenCalledTimes(1);
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN });
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(newTaskButton()).toHaveFocus();
   });
@@ -176,7 +176,7 @@ describe("with the desktop bridge", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "  Write the guide  ");
     await user.click(createButton());
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN }));
   });
 
   it("keeps the panel and the text when the board is full, with the fixed message", async () => {
@@ -301,7 +301,7 @@ describe("on a paired device", () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe("/api/tasks/action");
     expect(init).toMatchObject({ method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" } });
-    expect(JSON.parse(String(init?.body))).toEqual({ repositoryId, action: "create", payload: { text: "From a phone", completeWhen: DEFAULT_COMPLETE_WHEN } });
+    expect(JSON.parse(String(init?.body))).toEqual({ repositoryId, action: "create", payload: { text: "From a phone", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN } });
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -348,12 +348,12 @@ describe("Run on, Effort and Complete when", () => {
     return labels;
   };
 
-  it("starts with nothing in Run on and Effort and the two default checks", async () => {
+  it("starts with Run on and Effort chosen and the two default checks", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
-    expect(runOn()).toHaveTextContent("Not set");
-    for (const name of ["Low", "Medium", "High", "Xhigh"]) expect(effort(name)).toHaveAttribute("aria-pressed", "false");
+    expect(runOn()).toHaveTextContent("Claude Code · Default model");
+    for (const name of ["Low", "Medium", "High", "Xhigh"]) expect(effort(name)).toHaveAttribute("aria-pressed", String(name === "Medium"));
     expect(checkbox("PR open")).toBeChecked();
     expect(checkbox("Tree clean")).toBeChecked();
     for (const name of ["Commit on branch", "PR merged", "CI passed"]) expect(checkbox(name)).not.toBeChecked();
@@ -374,7 +374,7 @@ describe("Run on, Effort and Complete when", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
     expect(optionLabels()).toEqual([
-      "Not set", "model-a, Claude Code", "model-b, Claude Code", "Default model, Claude Code", "model-c, Codex", "Default model, Codex",
+      "model-a, Claude Code", "model-b, Claude Code", "Default model, Claude Code", "model-c, Codex", "Default model, Codex",
     ]);
   });
 
@@ -382,7 +382,7 @@ describe("Run on, Effort and Complete when", () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
-    expect(optionLabels()).toEqual(["Not set", "Default model, Claude Code", "Default model, Codex"]);
+    expect(optionLabels()).toEqual(["Default model, Claude Code", "Default model, Codex"]);
   });
 
   it("sends the chosen run, effort, checks and own condition", async () => {
@@ -415,7 +415,7 @@ describe("Run on, Effort and Complete when", () => {
     expect(runOn()).toHaveTextContent("Claude Code · Default model");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Use the default", run: { provider: "claude", model: null, effort: null }, completeWhen: DEFAULT_COMPLETE_WHEN });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Use the default", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
   it("sends Remote Control only when checked, and clears and disables it for Codex", async () => {
@@ -437,7 +437,7 @@ describe("Run on, Effort and Complete when", () => {
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", {
-      text: "On my phone", run: { provider: "claude", model: null, effort: null, remoteControl: true }, completeWhen: DEFAULT_COMPLETE_WHEN,
+      text: "On my phone", run: { provider: "claude", model: null, effort: "medium", remoteControl: true }, completeWhen: DEFAULT_COMPLETE_WHEN,
     });
   });
 
@@ -458,34 +458,46 @@ describe("Run on, Effort and Complete when", () => {
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", {
-      text: "Keep my worktree", run: { provider: "claude", model: null, effort: null, keepWorktree: true }, completeWhen: DEFAULT_COMPLETE_WHEN,
+      text: "Keep my worktree", run: { provider: "claude", model: null, effort: "medium", keepWorktree: true }, completeWhen: DEFAULT_COMPLETE_WHEN,
     });
   });
 
-  it("clears Effort by pressing the pressed segment and Run on by choosing Not set", async () => {
+  it("keeps Effort when the pressed segment is pressed again and offers no Not set in Run on", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    await user.type(await openPanel(user), "Optional fields");
+    await user.type(await openPanel(user), "Required fields");
     await user.click(effort("High"));
     expect(effort("High")).toHaveAttribute("aria-pressed", "true");
     await user.click(effort("High"));
-    expect(effort("High")).toHaveAttribute("aria-pressed", "false");
+    expect(effort("High")).toHaveAttribute("aria-pressed", "true");
     chooseCommandOption(runOn(), "codex:default");
-    chooseCommandOption(runOn(), "");
-    expect(runOn()).toHaveTextContent("Not set");
+    expect(optionLabels()).not.toContain("Not set");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Optional fields", completeWhen: DEFAULT_COMPLETE_WHEN });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Required fields", run: { provider: "codex", model: null, effort: "high" }, completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
-  it("keeps Effort alone as a valid run, without a provider or model", async () => {
+  it("fills the Run on and Effort that the newest task on the board lacks", async () => {
+    const stored = (run: Task["run"]): Task => ({
+      id: "T-4", text: "Added by an agent", columnId: "col-1", position: 0, featureId: null,
+      run, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
+      session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z",
+    });
+    const board = (run: Task["run"]) => ({ board: { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }], tasks: [stored(run)] }, refresh });
+    useTasks.mockReturnValue(board({ provider: null, model: null, effort: "low" }));
     const user = userEvent.setup();
+    const { unmount } = render(<TaskBoardPane repositoryId={repositoryId} />);
+    await openPanel(user);
+    expect(runOn()).toHaveTextContent("Claude Code · Default model");
+    expect(effort("Low")).toHaveAttribute("aria-pressed", "true");
+    expect(optionLabels()).not.toContain("Not set");
+    unmount();
+
+    useTasks.mockReturnValue(board({ provider: "codex", model: null, effort: null }));
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    await user.type(await openPanel(user), "Effort only");
-    await user.click(effort("Low"));
-    await user.click(createButton());
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Effort only", run: { provider: null, model: null, effort: "low" }, completeWhen: DEFAULT_COMPLETE_WHEN });
+    await openPanel(user);
+    expect(runOn()).toHaveTextContent("Codex · Default model");
+    expect(effort("Medium")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("starts from the Run on, Effort and Complete when of the newest task on the board", async () => {
@@ -531,7 +543,7 @@ describe("Run on, Effort and Complete when", () => {
     await user.click(checkbox("Tree clean"));
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "No conditions" });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "No conditions", run: { provider: "claude", model: null, effort: "medium" } });
   });
 
   it("sends no own condition while the input is blank", async () => {
@@ -541,7 +553,7 @@ describe("Run on, Effort and Complete when", () => {
     await user.type(own(), "   ");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Blank own condition", completeWhen: DEFAULT_COMPLETE_WHEN });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Blank own condition", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
   it("sends the own condition alone when no check is ticked", async () => {
@@ -553,7 +565,7 @@ describe("Run on, Effort and Complete when", () => {
     await user.type(own(), "Reads well");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Own only", completeWhen: { checks: [], own: "Reads well" } });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Own only", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: [], own: "Reads well" } });
   });
 });
 
