@@ -60,7 +60,7 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
   </div>;
 }
 
-export function RunFields({ run, models, onChange }: { run: TaskRun; models: TaskModelOptions; onChange(run: TaskRun): void }) {
+export function RunFields({ run, models, disabled, onChange }: { run: TaskRun; models: TaskModelOptions; disabled?: boolean; onChange(run: TaskRun): void }) {
   const selectId = useId();
   const effortId = useId();
   const remoteId = useId();
@@ -69,19 +69,19 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
   return <div className="taskRunRow">
     <div className="newTaskField taskRunOn">
       <label htmlFor={selectId}>Run on</label>
-      <CommandSelect id={selectId} aria-label="Run on" options={runSelectOptions(models, run)} value={runSelectValue(run)}
+      <CommandSelect id={selectId} aria-label="Run on" options={runSelectOptions(models, run)} value={runSelectValue(run)} disabled={disabled}
         onChange={(value) => onChange(withRemoteControl(runFromSelectValue(value, run.effort), run.remoteControl === true))} />
     </div>
     <div className="newTaskField">
       <span id={effortId} className="newTaskEffortLabel">Effort</span>
       <div className="commandSegmented taskEffort" role="group" aria-labelledby={effortId}>
-        {TASK_EFFORTS.map((effort) => <button key={effort} type="button" aria-pressed={run.effort === effort}
+        {TASK_EFFORTS.map((effort) => <button key={effort} type="button" aria-pressed={run.effort === effort} disabled={disabled}
           onClick={() => onChange({ ...run, effort: run.effort === effort ? null : effort })}>{EFFORT_LABELS[effort]}</button>)}
       </div>
     </div>
     <div className="newTaskField taskRemoteControl">
       <div className="taskCheckRow">
-        <input id={remoteId} type="checkbox" checked={remote && run.remoteControl === true} disabled={!remote} aria-describedby={remoteHelperId}
+        <input id={remoteId} type="checkbox" checked={remote && run.remoteControl === true} disabled={disabled || !remote} aria-describedby={remoteHelperId}
           onChange={(event) => onChange(withRemoteControl(run, event.currentTarget.checked))} />
         <label htmlFor={remoteId}>{REMOTE_CONTROL_LABEL}</label>
       </div>
@@ -90,11 +90,12 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
   </div>;
 }
 
-export function CompleteWhenField({ draft, results, ownNote, footnote, onDraftChange, onCommit }: {
+export function CompleteWhenField({ draft, results, ownNote, footnote, disabled, onDraftChange, onCommit }: {
   draft: CompleteWhenDraft;
   results?: ReadonlyMap<TaskCheck, boolean>;
   ownNote?: string | null;
   footnote?: ReactNode;
+  disabled?: boolean;
   onDraftChange(next: CompleteWhenDraft): void;
   onCommit?(next: CompleteWhenDraft): void;
 }) {
@@ -107,7 +108,7 @@ export function CompleteWhenField({ draft, results, ownNote, footnote, onDraftCh
         const id = `${prefix}-${check}`;
         const result = draft.checks.includes(check) ? results?.get(check) : undefined;
         return <div className="taskCheckRow" key={check}>
-          <input id={id} type="checkbox" checked={draft.checks.includes(check)} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
+          <input id={id} type="checkbox" checked={draft.checks.includes(check)} disabled={disabled} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
           <label htmlFor={id}>{CHECK_SHORT_LABELS[check]}</label>
           {result !== undefined && <span className={`taskCheckResult ${result ? "isPassed" : "isFailed"}`}>{result ? "Passed" : "Not passed"}</span>}
         </div>;
@@ -115,7 +116,7 @@ export function CompleteWhenField({ draft, results, ownNote, footnote, onDraftCh
     </div>
     <div className="taskOwnRow">
       <input type="text" className="taskOwnInput" aria-label="Own condition" maxLength={TASK_BOUNDS.ownConditionLength} placeholder="Own condition, judged by the agent (optional)"
-        value={draft.ownText} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
+        value={draft.ownText} readOnly={disabled} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
       {ownNote && <span className="taskCheckResult">{ownNote}</span>}
     </div>
     {footnote ?? <span className="newTaskHelper taskCompleteWhenNote">Pomegr verifies the listed conditions. Your own condition is judged by the agent.</span>}

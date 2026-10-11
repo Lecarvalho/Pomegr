@@ -230,6 +230,23 @@ test("a task without images has no image lines and an empty list in its plan", a
     .includes("The task has 1 attached image. The task text shows where it belongs as [Image #1]. Read it before you start:\n- [Image #1] C:\\data\\img-000000000001.png"));
 });
 
+test("a started task takes no new image and gives none up", async (context) => {
+  const env = await setup(context);
+  const held = (await add(env, PNG)).json.imageId;
+  const planned = await send(env.port, { path: "/internal/tasks/start-plan", headers: JSON_BODY, body: JSON.stringify({ repositoryId: REPOSITORY, payload: { id: env.taskId } }) });
+  assert.equal(planned.json.ok, true);
+  const added = await add(env, JPEG);
+  assert.equal(added.status, 409);
+  assert.deepEqual(added.json, { ok: false, error: "conflict" });
+  const removed = await withImage(env, "remove", { taskId: env.taskId, imageId: held });
+  assert.equal(removed.status, 409);
+  assert.deepEqual(removed.json, { ok: false, error: "conflict" });
+  assert.deepEqual(imagesOf(env).map((image) => image.id), [held]);
+  assert.deepEqual(filesOf(env), [`${held}.png`]);
+  // The image is still read, for the task window.
+  assert.equal((await withImage(env, "read", { taskId: env.taskId, imageId: held })).status, 200);
+});
+
 test("a marker in the task text reads as its image's number in the prompt, and as the plain word everywhere else", async (context) => {
   const env = await setup(context);
   const first = "img-00000000000a";

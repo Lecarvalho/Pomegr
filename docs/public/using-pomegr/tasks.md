@@ -66,6 +66,14 @@ is available once something differs from the stored task, and **Close** or
 to queue**, **Remove from queue**, **Mark done**, and **Requeue task** are
 unavailable. **Delete task** asks you to confirm; a task number is never reused.
 
+Once a task has started, you cannot change it. The session works from the task as
+it was when it started, so a later change would not reach it. The task window then
+shows the fields read-only, without **Save**, and says "This task has started, so
+it cannot be changed." This applies from the start of the session on, and to a task
+that is in review, blocked, stalled, or done. **Requeue task** makes the task
+editable again until its next session starts. You can still move, delete, mark
+done, and requeue a started task.
+
 | Field | What it sets |
 | --- | --- |
 | **Run on** | The provider and model of the started session's main agent: **Not set**, or under **Claude Code** or **Codex** a model or **Default model**. Subagents are not set. A task with no provider starts on Claude Code. |
@@ -203,8 +211,8 @@ this", then the image. To remove an image, delete it like a character, with
 - In a task window an image is part of the draft, like the text. **Save** stores
   it, and **Close** or **Escape** discards it.
 - A session gets the images the task holds when it starts, and is told which image
-  the text means at each place. An image you add after that reaches the next
-  session, for example after **Requeue task**.
+  the text means at each place. After that you cannot add or remove an image until
+  you select **Requeue task**.
 - Deleting a task deletes its images.
 - A card, the Search bar, and a session's Task tab show `[image]` where the text
   holds an image.

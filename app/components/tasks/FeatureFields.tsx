@@ -40,11 +40,12 @@ function FeatureSiblings({ board, featureId, selfId, onOpenTask }: { board: Boar
   </details>;
 }
 
-export function FeatureFields({ draft, board, selfId, error, onChange, onCommitName, onCancelName, onOpenTask }: {
+export function FeatureFields({ draft, board, selfId, error, disabled, onChange, onCommitName, onCancelName, onOpenTask }: {
   draft: FeatureDraft;
   board: BoardShape;
   selfId?: string;
   error?: string | null;
+  disabled?: boolean;
   onChange(next: FeatureDraft): void;
   onCommitName?(): void;
   onCancelName?(): void;
@@ -65,7 +66,7 @@ export function FeatureFields({ draft, board, selfId, error, onChange, onCommitN
     <div className="taskFeatureRow">
       <div className="newTaskField">
         <label htmlFor={featureId}>Feature</label>
-        <CommandSelect id={featureId} aria-label="Feature" options={featureSelectOptions(board.features, draft.featureId)} value={featureSelectValue(draft)}
+        <CommandSelect id={featureId} aria-label="Feature" options={featureSelectOptions(board.features, draft.featureId)} value={featureSelectValue(draft)} disabled={disabled}
           onChange={(value) => onChange(featureDraftFromSelect(value, draft))} />
         {draft.creating && <input className="taskOwnInput taskFeatureName" type="text" aria-label="Feature name" placeholder="Feature name" maxLength={TASK_BOUNDS.featureNameLength}
           value={draft.name} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange({ ...draft, name: event.currentTarget.value })}
@@ -74,7 +75,7 @@ export function FeatureFields({ draft, board, selfId, error, onChange, onCommitN
       </div>
       <div className="newTaskField">
         <label htmlFor={stepId}>Step</label>
-        <CommandSelect id={stepId} aria-label="Step" options={steps.options} value={stepSelectValue(draft)} disabled={steps.disabled}
+        <CommandSelect id={stepId} aria-label="Step" options={steps.options} value={stepSelectValue(draft)} disabled={disabled || steps.disabled}
           onChange={(value) => onChange(stepFromSelect(value, draft))} />
       </div>
     </div>

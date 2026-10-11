@@ -256,6 +256,39 @@ Pomegr never marks it Done or Stalled by itself, and the queue never advances pa
 itself, because the task can matter to the whole feature; Mark done and Requeue work on
 it (see [Stop on trouble](#queue)).
 
+### A started task is read-only
+
+Decided for GitHub issue #137 (2026-10-11). It replaces the earlier rule that a task
+could be changed in any state.
+
+A session works from the task as it was when the session started: the prompt holds the
+text and the Complete when list, and the run settings and the images were used once. A
+later change would never reach that session, so the board would describe work the agent
+was not given. A task has **started** when one of these holds (`rowStarted` in
+`server/tasks/task-record.mjs`):
+
+- a session is linked to it;
+- a dispatch for it is live, because the prompt is already built;
+- its state is Needs review, Blocked by agent, Stalled, or Done.
+
+For a started task:
+
+- **`update` answers `conflict`**, whatever field it carries: text, `run`,
+  `completeWhen`, `featureId`, or `step`. Nothing is written.
+- **An image is neither added nor removed.** `image-add` and `image-remove` answer
+  `conflict`. `image-read` still answers, so the task window shows the images.
+- **Requeue opens it again.** `resolve_requeue` clears the link and the report and sets
+  Queued, so the task takes changes until its next session starts. A dispatch that
+  expired without a link no longer counts, so that task takes changes too. A done task
+  has no requeue and stays as it is.
+- **Everything else still works.** `move`, `delete`, `queue_reorder`, `resolve_done`,
+  `resolve_requeue`, `record_issue`, and the agent's report are not changes to the task.
+- **The task window shows it.** The Task modal draws a task with a session or an outcome
+  read-only, with no Save and one fixed line: "This task has started, so it cannot be
+  changed.", followed by "Requeue it to change it." when Requeue is offered. The board
+  carries no dispatch, so in the minutes between a start and its link the window is
+  still editable and Save answers the fixed failure line.
+
 ## Columns and card moves
 
 Decided by the product owner on 2026-10-09. It replaces the earlier rule that a card
@@ -1472,7 +1505,8 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   `removeImage(repositoryId, { taskId, imageId })`, and
   `readImage(repositoryId, { taskId, imageId })`. Each answers a fixed error:
   `invalid`, `not_found`, `limit` (a fifth image), or `conflict` (the store cannot be
-  used).
+  used, the task already holds that image ID, or, for an add or a remove, the task has
+  started; see [A started task is read-only](#a-started-task-is-read-only)).
 - The renderer reaches them through the fixed IPC channel `pomegr:task-image`
   (`desktop/runtime/task-image.mjs`), which posts to
   `POST /internal/tasks/image-add | image-remove | image-read`
@@ -1510,9 +1544,9 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   [Starting a session](#starting-a-session). In the prompt a marker reads as its
   image's number, `[Image #n]`, and the list of files names each image by the same
   number, so the agent knows which image the text means where. A marker that names no
-  listed image reads `[image]`. An image attached later is not sent to
-  that session. A requeued task starts its next session with the images it holds
-  then.
+  listed image reads `[image]`. A started task takes no new image, so the
+  session has every image its task holds. A requeued task starts its next session with
+  the images it holds then.
 - Creating a GitHub issue from a task sends its text only, with `[image]` where the
   text holds a marker; no image and no image ID is sent. A promote makes a task
   with no image.
@@ -1598,7 +1632,8 @@ serves no other client.
   `{ id, text?, run?, completeWhen? }`, and `delete` with `{ id }`; a payload with any other
   key is `invalid`. In `update` at least one of the three fields is required, a field
   that is present replaces the stored one whole (a null `run` or `completeWhen` clears it),
-  and an absent field is left as stored. `move` takes `{ id, columnId, position }`:
+  and an absent field is left as stored. An `update` of a task that has started answers
+  `conflict` (see [A started task is read-only](#a-started-task-is-read-only)). `move` takes `{ id, columnId, position }`:
   `position` is the zero-based index in the destination column counted after the task
   leaves its place, and a value past the end appends. A
   `columnId` that is not one of the board's five columns answers `not_found`, and a card

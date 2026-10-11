@@ -254,8 +254,9 @@ describe("Task modal: Feature and Step", () => {
     expect(dialog.getByRole("combobox", { name: "Step" })).not.toHaveTextContent("parallel");
     await closeModal(user);
     const old = await openTask(user, "Old work", "T-5");
+    // A done task has started, so its feature only shows.
     expect(old.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Finished work");
-    expect(optionLabels(old.getByRole("combobox", { name: "Feature" }))).toEqual(["Task board v1", "Finished work", "Docs", "No feature", "New feature…"]);
+    expect(old.getByRole("combobox", { name: "Feature" })).toBeDisabled();
   });
 
   it("folds the other tasks, ordered by step then board order, with this task counted but not listed", async () => {
