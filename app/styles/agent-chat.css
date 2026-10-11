@@ -1,0 +1,138 @@
+/* Agent chat: Aril, the Pomegr task-board agent (DESIGN.md "Agent chat"). Tokens only. The launcher and the panel float over the
+   page, so they alone take the overlay shadow; everything inside is flat. Buttons are the six roles; nothing here is a seventh. */
+.agentChatDock { display: contents; }
+.agentChatLauncher, .agentChatPanel { color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
+
+/* Launcher: shell chrome, drawn only while the panel is minimized. */
+.agentChatLauncher { position: fixed; z-index: 85; right: max(var(--space-4), env(safe-area-inset-right)); bottom: max(var(--space-4), env(safe-area-inset-bottom)); min-height: var(--control-height); padding: 0 var(--space-3); display: inline-flex; align-items: center; gap: var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); cursor: pointer; font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatLauncher:hover { background: var(--command-panel-2); }
+.agentChatLauncher:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.agentChatLauncher > .commandIcon { width: 16px; height: 16px; color: var(--command-brand-text); }
+.agentChatLauncherDot { width: 7px; height: 7px; flex: 0 0 auto; display: inline-block; border-radius: 50%; background: var(--command-brand); }
+.agentChatLauncher.isStatic { position: static; z-index: auto; }
+
+/* Panel: a non-modal region at the bottom right; at 760px and narrower a full-screen sheet. */
+.agentChatPanel { position: fixed; z-index: 85; right: max(var(--space-4), env(safe-area-inset-right)); bottom: max(var(--space-4), env(safe-area-inset-bottom)); width: min(420px, calc(100vw - 2 * var(--space-4))); height: min(640px, calc(100dvh - 92px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); animation: agentChatIn .14s ease-out; }
+.agentChatPanel[hidden] { display: none; }
+.agentChatPanel.isStatic { position: relative; inset: auto; z-index: auto; width: min(420px, 100%); height: 560px; padding-top: 0; border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius); box-shadow: var(--command-overlay-shadow); animation: none; }
+@keyframes agentChatIn { from { opacity: 0; } to { opacity: 1; } }
+.agentChatSpacer { flex: 1 1 0; min-width: 0; }
+
+/* Header and repository row. */
+.agentChatHeader { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border-bottom: 1px solid var(--command-line); }
+.agentChatGlyph { display: inline-grid; flex: 0 0 auto; color: var(--command-brand-text); }
+.agentChatGlyph > .commandIcon { width: 16px; height: 16px; }
+.agentChatTitle { margin: 0; font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.agentChatCaption { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
+.agentChatHeader .commandIconAction { flex: 0 0 auto; }
+.agentChatHeader .commandIconAction[aria-pressed="true"] { background: var(--command-panel-2); color: var(--command-ink); }
+.agentChatRepository { flex: 0 0 auto; padding: var(--space-2) var(--space-4) 0; }
+.agentChatRepository .commandSelect { display: grid; }
+.agentChatRepository .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
+
+/* Body: the conversation, or the saved conversations in its place. */
+.agentChatBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.agentChatLogFrame { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.agentChatLog { flex: 1 1 auto; min-height: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
+.agentChatLog:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.agentChatLoading { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+.agentChatJump { position: absolute; right: var(--space-4); bottom: var(--space-2); width: auto; border: 1px solid var(--command-line); background: var(--command-panel); }
+
+/* Messages. The owner's is a raised block at the right; Aril's is full width with no fill. */
+.agentChatMessage { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.agentChatMessage.isOwner { align-self: flex-end; max-width: 85%; padding: var(--space-2) var(--space-3); border-radius: var(--control-radius); background: var(--command-panel-2); font: 400 var(--text-sm)/1.5 var(--font-ui); }
+.agentChatMessage.isOwner > p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.agentChatMessageHead { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.agentChatMessageName { font: 600 var(--text-xs)/1.4 var(--font-ui); }
+.agentChatMessageCaption { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.agentChatMessageNote, .agentChatActivity { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+
+/* The text of an answer. Preflight removes list markers and the code face, so both are set here. */
+.agentChatMarkdown { min-width: 0; overflow-wrap: anywhere; font: 400 var(--text-sm)/1.55 var(--font-ui); }
+.agentChatMarkdown > * { margin: 0; }
+.agentChatMarkdown > * + * { margin-top: var(--space-2); }
+.agentChatMarkdown p { white-space: pre-wrap; }
+.agentChatMarkdown ul, .agentChatMarkdown ol { padding-inline-start: var(--space-6); }
+.agentChatMarkdown ul { list-style: disc; }
+.agentChatMarkdown ol { list-style: decimal; }
+.agentChatMarkdown li + li { margin-top: var(--space-1); }
+.agentChatMdHeading { font: 650 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatInlineCode { padding: 0 var(--space-1); border-radius: var(--control-radius); background: var(--command-panel-2); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.agentChatCode { padding: var(--space-2) var(--space-3); overflow-x: auto; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); font: 400 var(--text-xs)/1.5 var(--font-data); white-space: pre; }
+.agentChatCode > code { font: inherit; }
+
+/* Proposal card: what Aril offers, one row for each operation, and the owner's answer. */
+.agentChatProposal { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--command-line); border-radius: var(--panel-radius); }
+.agentChatProposalHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.agentChatProposalSummary { min-width: 0; margin: 0; overflow-wrap: anywhere; font: 600 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatProposalHead .commandChip { flex: 0 0 auto; }
+.agentChatOps { margin: 0; padding: 0 0 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); list-style: decimal; }
+.agentChatOps > li::marker { color: var(--command-muted); font: 400 var(--text-xs) var(--font-data); }
+.agentChatOp { min-width: 0; padding-inline-start: var(--space-1); }
+.agentChatOp > p { margin: 0; }
+.agentChatOp > p + p { margin-top: var(--space-1); }
+.agentChatOpTitle { font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatTaskId { font: 500 var(--text-xs)/1.4 var(--font-data); }
+.agentChatOpText { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatOpText.isMuted, .agentChatOpDetail { color: var(--command-muted); }
+.agentChatOpDetail { overflow-wrap: anywhere; font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.agentChatOpWarning { color: var(--command-error); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.agentChatOpResult { font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.agentChatOpResult.is-ok { color: var(--command-green); }
+.agentChatOpResult.is-error { color: var(--command-error); }
+.agentChatOpResult.is-muted { color: var(--command-muted); }
+.agentChatProposalFoot { display: flex; flex-direction: column; gap: var(--space-2); }
+.agentChatProposalActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.agentChatProposalActions > button { width: auto; }
+.agentChatProposalNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+/* Empty state. */
+.agentChatEmpty { display: flex; flex-direction: column; gap: var(--space-2); }
+.agentChatEmptyTitle { margin: 0; font: 650 var(--text-base)/1.4 var(--font-ui); }
+.agentChatEmptyText, .agentChatEmptyNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+.agentChatSuggestions { margin-top: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
+.agentChatSuggestion { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; }
+
+/* Composer. */
+.agentChatComposer { flex: 0 0 auto; padding: var(--space-3) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--command-line); }
+.agentChatField { box-sizing: border-box; width: 100%; min-height: var(--control-height); max-height: calc(1.4em * 6 + var(--space-4) + 2px); padding: var(--space-2) var(--space-3); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); resize: none; overflow-y: auto; }
+.agentChatField::placeholder { color: var(--command-muted); opacity: 1; }
+.agentChatField:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.agentChatField:disabled { cursor: not-allowed; opacity: .55; }
+.agentChatComposerRow { display: flex; align-items: center; gap: var(--space-2); }
+.agentChatRun { flex: 0 1 220px; min-width: 0; }
+.agentChatRun .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
+.agentChatCounter { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.agentChatCounter.isOver { color: var(--command-error); }
+.agentChatError, .agentChatNote { margin: 0; font: 400 var(--text-xs)/1.5 var(--font-ui); }
+.agentChatError { color: var(--command-error); }
+.agentChatNote { color: var(--command-muted); }
+
+/* Saved conversations. A row opens one; its Icon action asks inline before deleting. */
+.agentChatHistory { flex: 1 1 auto; min-height: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
+.agentChatEyebrow { margin: 0; color: var(--command-faint); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+.agentChatHistoryEmpty, .agentChatHistoryNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+.agentChatHistoryNote { margin-top: auto; padding-top: var(--space-2); }
+.agentChatHistoryList { margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); list-style: none; }
+.agentChatHistoryItem { display: flex; align-items: center; gap: var(--space-1); border-radius: var(--control-radius); }
+.agentChatHistoryItem.isCurrent { background: var(--command-panel-2); }
+.agentChatHistoryOpen { flex: 1 1 auto; min-width: 0; min-height: var(--control-height); padding: var(--space-1) var(--space-2); display: flex; flex-direction: column; align-items: flex-start; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.agentChatHistoryOpen:hover { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+.agentChatHistoryOpen:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.agentChatHistoryTitle { max-width: 100%; overflow: hidden; font: 500 var(--text-sm)/1.4 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
+.agentChatHistoryMeta { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.agentChatHistoryDelete { flex: 0 0 auto; }
+.agentChatHistoryConfirm { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-1); padding-inline-end: var(--space-1); }
+.agentChatHistoryConfirm > button { width: auto; }
+
+@media (max-width: 760px) {
+  .agentChatPanel { inset: 0; width: auto; height: auto; padding-top: env(safe-area-inset-top); border: 0; border-radius: 0; box-shadow: none; }
+  .agentChatComposer { padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)); }
+  .agentChatMessage.isOwner { max-width: 92%; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .agentChatLauncher, .agentChatField, .agentChatHistoryOpen, .agentChatRepository .commandSelectTrigger, .agentChatRun .commandSelectTrigger { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agentChatPanel { animation: none; }
+}

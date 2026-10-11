@@ -10,6 +10,10 @@ the seven query tools. The [MCP queries guide](../../public/using-pomegr/mcp-que
 explains when to use each one, what its result contains, and how to read it. This page
 owns session resolution, evidence semantics, transport, and privacy.
 
+The desktop app's agent chat registers the same seven tools on its own MCP server. That
+server binds no session, so each session tool needs an explicit session reference.
+[Agent chat](agent-chat.md#tools) owns it.
+
 Session-specific MCP tools automatically select the calling session. Codex supplies
 its validated thread/session ID to the MCP subprocess. Claude's `PreToolUse` hook
 supplies the current session on every call, including after `/clear` or a session

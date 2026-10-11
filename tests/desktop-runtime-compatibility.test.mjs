@@ -15,6 +15,7 @@ import {
   unpackedFilesFromHeader,
 } from "../desktop/packaging/asar-policy.mjs";
 import { buildDesktopServiceBundles } from "../desktop/packaging/service-bundles.mjs";
+import { POMEGR_READ_TOOLS } from "../desktop/runtime/agent-chat-runner.mjs";
 import { startMonitorAfterEnvironment } from "../desktop/runtime/monitor-startup-policy.mjs";
 import {
   assertNoSystemNodeInPath,
@@ -111,6 +112,7 @@ test("ASAR policy unpacks the monitor bundle, complete production build, and Sha
     ];
     const expected = [...DESKTOP_UNPACKED_FILES, ...distFiles].sort();
     assert.deepEqual(unpackedFilesFromHeader(getRawHeader(archivePath).header), expected);
+    assert.ok(expected.includes("desktop/workers/agent-chat-mcp.cjs"), "the chat's MCP server is a real file that the desktop executable can run as Node");
     for (const relativePath of expected) {
       await access(path.join(`${archivePath}.unpacked`, ...relativePath.split("/")));
     }
@@ -194,12 +196,13 @@ test("forced utility cleanup waits for the child exit and leaves no pid", async 
   assert.equal(child.listenerCount("exit"), 0);
 });
 
-test("desktop service bundling emits self-contained monitor and status-line workers", async () => {
+test("desktop service bundling emits self-contained monitor, status-line, and agent chat workers", async () => {
   const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-worker-bundle-"));
   try {
     await buildDesktopServiceBundles(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), fixtureRoot);
     const outputRoot = path.join(fixtureRoot, "desktop", "workers");
-    assert.deepEqual(await readdir(outputRoot), ["claude-statusline-bridge.cjs", "monitor-host.cjs"]);
+    assert.deepEqual(await readdir(outputRoot), ["agent-chat-mcp.cjs", "claude-statusline-bridge.cjs", "monitor-host.cjs"]);
+    assert.deepEqual(WORKER_BUNDLE_FILES.map((file) => path.posix.basename(file)).sort(), await readdir(outputRoot), "the packaged worker list names exactly the bundles that are built");
     const bundle = await readFile(path.join(outputRoot, "monitor-host.cjs"), "utf8");
     assert.match(bundle, /DESKTOP_MONITOR_START_FAILED/);
     assert.doesNotMatch(bundle, /from\s+["'](?:\.\/|\.\.\/)/);
@@ -213,6 +216,14 @@ test("desktop service bundling emits self-contained monitor and status-line work
     const bridge = await readFile(path.join(outputRoot, "claude-statusline-bridge.cjs"), "utf8");
     assert.match(bridge, /captureClaudeStatuslineCost/);
     assert.doesNotMatch(bridge, /from\s+["'](?:\.\/|\.\.\/)/);
+    const chat = await readFile(path.join(outputRoot, "agent-chat-mcp.cjs"), "utf8");
+    assert.doesNotMatch(chat, /from\s+["'](?:\.\/|\.\.\/)/);
+    assert.doesNotMatch(chat, /require\(["'](?:\.\/|\.\.\/)/);
+    assert.match(chat, /list_sessions/);
+    for (const tool of POMEGR_READ_TOOLS) assert.ok(chat.includes(tool), `the chat bundle serves ${tool}`);
+    for (const writing of ["add_task", "remove_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature", "registerTaskTools"]) {
+      assert.equal(chat.includes(writing), false, `the chat bundle has no ${writing}`);
+    }
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }

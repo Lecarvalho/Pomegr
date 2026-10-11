@@ -12,6 +12,7 @@ const TASK_ACTIONS = new Set([
   "resolve_done", "resolve_requeue",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
+const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
 const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
 const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const TASK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
@@ -148,6 +149,14 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     }
     if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-image", repositoryId, operation, payload);
+  },
+  agentChat(operation, payload) {
+    const plain = payload && typeof payload === "object" && !Array.isArray(payload)
+      && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);
+    if (!AGENT_CHAT_OPERATIONS.has(operation) || !plain || typeof payload.repositoryId !== "string" || !REPOSITORY_ID.test(payload.repositoryId)) {
+      return Promise.resolve({ ok: false, error: "invalid" });
+    }
+    return ipcRenderer.invoke("pomegr:agent-chat", operation, payload);
   },
   taskStart(repositoryId, taskId, separateWorktree) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)

@@ -45,6 +45,7 @@ When two pages differ, the owner in this section is correct. Repair the other pa
 | Cache timestamps and lifetime inference | [Cache timing](architecture/cache-timing.md) |
 | Tool identities observed for each harness version | [Provider tool inventory](architecture/tool-inventory.md) |
 | Task board, queue, start gates, dispatch, agent task tools, task privacy | [Tasks](architecture/tasks.md) |
+| The chat with Aril: its provider run, proposals and their approval, saved conversations, and the paired-device route | [Agent chat](architecture/agent-chat.md) |
 | MCP query session resolution, evidence semantics, transport | [MCP observation queries](architecture/mcp-queries.md) |
 | The list of all Pomegr MCP tools | [MCP tools](../public/using-pomegr/mcp-tools.md) |
 
@@ -57,6 +58,7 @@ When two pages differ, the owner in this section is correct. Repair the other pa
 | Credentials, account usage, provider processes, plugins | [Provider and account privacy](architecture/privacy/providers-and-accounts.md) |
 | Desktop settings, native actions, diagnostics, context inventories | [Desktop settings and diagnostics privacy](architecture/privacy/desktop-and-diagnostics.md) |
 | Task board, dispatch, GitHub issues, task images, paired devices | [Tasks: Privacy](architecture/tasks.md#privacy) |
+| Agent chat conversations, and what a chat run sends to a provider | [Agent chat: Privacy](architecture/agent-chat.md#privacy) |
 
 ### Interface
 

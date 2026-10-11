@@ -58,6 +58,7 @@ import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-act
 import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
 import { installTaskActionIpc, installTaskImageIpc } from "./task-action.mjs";
+import { createAgentChat, installAgentChatIpc } from "./agent-chat.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { installTaskStartIpc, taskStartConfirmation } from "./task-dispatch.mjs";
 import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
@@ -671,8 +672,9 @@ async function startDesktop() {
             update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null, lastCheckedAt: null }),
           }),
         });
+        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot });
         phoneAccess = createLanSharingController({
-          upstreamOrigin: web.origin,
+          upstreamOrigin: web.origin, agentChat: agentChat.handle,
           authorizationToken,
           autoStart: desktopSettings.lanSharingAutoStart,
           canPersist: settingsLoad.canPersist,
@@ -706,7 +708,7 @@ async function startDesktop() {
           }),
         });
         const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
-        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc(taskBridge)];
+        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc(taskBridge), installAgentChatIpc({ ...taskBridge, chat: agentChat })];
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain,
