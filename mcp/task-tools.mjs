@@ -6,7 +6,11 @@ export const TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 export const TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
 export const TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
-export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task.";
+export const FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
+export const FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
+export const FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
+export const FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
+export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
 export const TASK_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.";
@@ -89,6 +93,56 @@ const REMOVE_REASON_TEXT = {
 };
 
 const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u;
+const TEXT_LINES = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]*$/u;
+
+export const FEATURE_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no feature was read or changed.";
+export const FEATURE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the feature was changed. It may have been: do not assume it failed. Call get_feature to see how the feature stands before you try again.";
+const FEATURE_REASON_TEXT = {
+  invalid: "Pomegr rejected the request as invalid, so no feature was read or changed.",
+  session_not_found: "Pomegr does not know the current session yet, so no feature was read or changed.",
+  repository_unavailable: "Pomegr could not resolve the current session's repository, so no feature was read or changed.",
+  limit: "The board holds as many features as it can, so no feature was created.",
+  unavailable: "Pomegr is unavailable, so no feature was read or changed.",
+};
+const FEATURE_NOT_FOUND_TEXT = {
+  get_feature: "No such feature on the board. Without an input, get_feature reads the feature of the task this session was started for, and this session has none.",
+  update_feature: "No such feature on the board, so nothing was changed.",
+  delete_feature: "No such feature on the board, so nothing was deleted.",
+};
+const FEATURE_CONFLICT_TEXT = {
+  create_feature: "A feature with that title already exists on the board, so no feature was created.",
+  update_feature: "Another feature already has that title, so nothing was changed.",
+  delete_feature: "The feature still has tasks, so it was not deleted. Only a feature with no task can be deleted.",
+};
+
+const featureReference = (optional) => {
+  const schema = z.string().trim().min(1).max(80).regex(ONE_LINE, "Use one line of plain text.");
+  return optional
+    ? schema.optional().describe("Optional. The feature's ID, such as feat-0123456789ab, or its exact title. Leave it out to read the feature of the task this session was started for.")
+    : schema.describe("The feature's ID, such as feat-0123456789ab, or its exact title.");
+};
+const featureTitle = z.string().trim().min(1).max(80).regex(ONE_LINE, "Use one line of plain text.");
+const featureDescription = z.string().trim().max(2000).regex(TEXT_LINES, "Use plain text.");
+const featureAppVersion = z.string().trim().max(40).regex(/^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]*$/u, "Use one line of plain text.");
+
+// An empty string clears a description or an app version; an absent one is left as it is.
+const clearable = (value) => (value === undefined ? undefined : value === "" ? null : value);
+
+export function formatFeature(feature) {
+  return [
+    `Feature ${feature.id}`,
+    `Title: ${feature.title}`,
+    `App version: ${feature.appVersion ?? "not set"}`,
+    ...(feature.description ? ["Description:", feature.description] : ["Description: not set"]),
+  ].join("\n");
+}
+
+function servedFeature(feature) {
+  return feature !== null && typeof feature === "object" && typeof feature.id === "string" && /^feat-[0-9a-f]{12}$/u.test(feature.id)
+    && typeof feature.title === "string" && feature.title.length > 0
+    && (feature.description === null || typeof feature.description === "string")
+    && (feature.appVersion === null || typeof feature.appVersion === "string");
+}
 const SAFE_THREAD_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
 export function resolveCodexCallSession(meta) {
@@ -189,6 +243,75 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
       : "Task reported complete. Pomegr put it in Review; the user marks it done. Do not report again.";
     return `Task reported complete, but Pomegr could not confirm: ${failed.length > 0 ? failed.join(", ") : "a checked condition"}. The task now needs the user's review; do not report again.`;
   }));
+
+  const feature = async (tool, path, input, extra, body, done) => {
+    const ref = await resolveSession(input, extra, tool);
+    if (typeof ref !== "string" || !ref) return result(FEATURE_UNBOUND_TEXT, true);
+    let answer;
+    try {
+      answer = await post(path, { sessionRef: ref, ...body });
+    } catch (error) {
+      return result(noAnswer(error) && tool !== "get_feature" ? FEATURE_NO_ANSWER_TEXT : FEATURE_REASON_TEXT.unavailable, true);
+    }
+    if (answer && answer.ok === true) {
+      const text = done(answer);
+      if (text) return result(text, false);
+    }
+    const reason = answer && answer.ok === false && typeof answer.reason === "string" ? answer.reason : "unavailable";
+    const text = reason === "not_found" ? FEATURE_NOT_FOUND_TEXT[tool] : reason === "conflict" ? FEATURE_CONFLICT_TEXT[tool]
+      : Object.hasOwn(FEATURE_REASON_TEXT, reason) ? FEATURE_REASON_TEXT[reason] : undefined;
+    return result(text ?? FEATURE_REASON_TEXT.unavailable, true);
+  };
+  const featureId = (answer) => (typeof answer.featureId === "string" && /^feat-[0-9a-f]{12}$/u.test(answer.featureId) ? answer.featureId : null);
+
+  server.registerTool("get_feature", {
+    title: "Read a Pomegr feature",
+    description: "Read one feature of the current repository's Pomegr board: its ID, title, description, and app version. The description holds the context the feature's tasks share. With no input it reads the feature of the task Pomegr started this session for. It changes nothing. The repository and session are bound by the host.",
+    inputSchema: z.object({ feature: featureReference(true), ...hookFields(hookBound) }).strict(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (input, extra) => feature("get_feature", FEATURE_GET_PATH, input, extra, input.feature === undefined ? {} : { feature: input.feature },
+    (answer) => (servedFeature(answer.feature) ? formatFeature(answer.feature) : null)));
+
+  server.registerTool("create_feature", {
+    title: "Create a Pomegr feature",
+    description: "Create a feature on the current repository's Pomegr board, with a title and optionally a description and an app version. Put in the description the context every task of the feature shares, so each task's own text stays short. It adds no task and starts nothing; attach a task with add_task and the feature's title. A title that already exists is refused. The repository and session are bound by the host.",
+    inputSchema: z.object({
+      title: featureTitle.describe("The feature's title, in one line of at most 80 characters. It must be unique on the board."),
+      description: featureDescription.min(1).optional().describe("Optional. The context the feature's tasks share, at most 2000 characters. No secrets."),
+      app_version: featureAppVersion.min(1).optional().describe("Optional. The app version the feature is planned for, such as 1.4.0, in one line of at most 40 characters."),
+      ...hookFields(hookBound),
+    }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async (input, extra) => feature("create_feature", FEATURE_CREATE_PATH, input, extra, {
+    title: input.title,
+    ...(input.description === undefined ? {} : { description: input.description }),
+    ...(input.app_version === undefined ? {} : { appVersion: input.app_version }),
+  }, (answer) => (featureId(answer) ? `Feature ${featureId(answer)} created.` : null)));
+
+  server.registerTool("update_feature", {
+    title: "Update a Pomegr feature",
+    description: "Change the title, description, or app version of one feature on the current repository's Pomegr board. A field you leave out stays as it is, and a field you set replaces the stored one whole; an empty description or app version clears it. It changes no task. The repository and session are bound by the host.",
+    inputSchema: z.object({
+      feature: featureReference(false),
+      title: featureTitle.optional().describe("Optional new title, in one line of at most 80 characters. It must be unique on the board."),
+      description: featureDescription.optional().describe("Optional new description, at most 2000 characters; an empty string clears it. No secrets."),
+      app_version: featureAppVersion.optional().describe("Optional new app version, in one line of at most 40 characters; an empty string clears it."),
+      ...hookFields(hookBound),
+    }).strict().refine((value) => value.title !== undefined || value.description !== undefined || value.app_version !== undefined, "Set at least one of title, description, and app_version."),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (input, extra) => feature("update_feature", FEATURE_UPDATE_PATH, input, extra, {
+    feature: input.feature,
+    ...(input.title === undefined ? {} : { title: input.title }),
+    ...(input.description === undefined ? {} : { description: clearable(input.description) }),
+    ...(input.app_version === undefined ? {} : { appVersion: clearable(input.app_version) }),
+  }, (answer) => (featureId(answer) ? `Feature ${featureId(answer)} updated.` : null)));
+
+  server.registerTool("delete_feature", {
+    title: "Delete a Pomegr feature",
+    description: "Delete one feature of the current repository's Pomegr board. It works only for a feature that has no task, so no task loses its feature or its step. It cannot be undone. The repository and session are bound by the host.",
+    inputSchema: z.object({ feature: featureReference(false), ...hookFields(hookBound) }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  }, async (input, extra) => feature("delete_feature", FEATURE_DELETE_PATH, input, extra, { feature: input.feature }, () => "Feature deleted."));
 
   server.registerTool("block_task", {
     title: "Report the Pomegr task blocked",

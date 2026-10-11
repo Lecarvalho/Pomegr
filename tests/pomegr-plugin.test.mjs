@@ -615,7 +615,7 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     } });
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["add_task", "block_task", "clear_agent_signal", "clear_session_progress", "clear_session_signal", "complete_task", "get_agent_context", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions", "remove_task", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"]);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["add_task", "block_task", "clear_agent_signal", "clear_session_progress", "clear_session_signal", "complete_task", "create_feature", "delete_feature", "get_agent_context", "get_feature", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions", "remove_task", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal", "update_feature"]);
 
     const renameHook = spawnSync(process.execPath, [path.join(isolatedPlugin, "scripts", "rename-session.bundle.mjs")], {
       cwd: clientRepository,
@@ -645,17 +645,20 @@ test("plugin MCP inventory contains bounded reporting, clearing, and native titl
   const tools = Object.keys(server._registeredTools).sort();
   const reads = ["get_agent_context", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions"];
 
-  const writes = ["add_task", "remove_task", "complete_task", "block_task"];
-  assert.deepEqual(tools, [...writes, "clear_agent_signal", "clear_session_progress", "clear_session_signal", ...reads, "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"].sort());
+  const writes = ["add_task", "remove_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature"];
+  // The one task tool that only reads.
+  const boardReads = ["get_feature"];
+  assert.deepEqual(tools, [...writes, ...boardReads, "clear_agent_signal", "clear_session_progress", "clear_session_signal", ...reads, "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"].sort());
   assert.equal(tools.includes("report_session_title"), false);
   assert.equal(tools.includes("ask_pomegr"), false);
-  assert.ok(tools.filter((name) => !reads.includes(name) && !writes.includes(name)).every((name) => server._registeredTools[name]._meta["anthropic/alwaysLoad"] === true));
-  assert.ok([...reads, ...writes].every((name) => server._registeredTools[name]._meta === undefined));
+  assert.ok(tools.filter((name) => !reads.includes(name) && !writes.includes(name) && !boardReads.includes(name)).every((name) => server._registeredTools[name]._meta["anthropic/alwaysLoad"] === true));
+  assert.ok([...reads, ...writes, ...boardReads].every((name) => server._registeredTools[name]._meta === undefined));
   for (const name of writes) {
     assert.equal(server._registeredTools[name].annotations.readOnlyHint, false);
-    assert.equal(server._registeredTools[name].annotations.idempotentHint, false);
-    // Only the tool that deletes is marked destructive.
-    assert.equal(server._registeredTools[name].annotations.destructiveHint, name === "remove_task");
+    // Setting a feature's fields again leaves it as it is.
+    assert.equal(server._registeredTools[name].annotations.idempotentHint, name === "update_feature");
+    // Only the tools that delete are marked destructive.
+    assert.equal(server._registeredTools[name].annotations.destructiveHint, name === "remove_task" || name === "delete_feature");
   }
   assert.equal(server._registeredTools.rename_session.annotations.readOnlyHint, false);
   assert.equal(server._registeredTools.rename_session.annotations.destructiveHint, false);

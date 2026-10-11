@@ -10,7 +10,7 @@ import test from "node:test";
 import { buildPomegrMcpServer as buildCodexServer } from "../mcp/server.mjs";
 import { buildPomegrMcpServer as buildClaudeServer } from "../plugins/claude-code/mcp/server.mjs";
 import {
-  buildAddTaskBody, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REMOVE_PATH, TASK_REMOVE_UNBOUND_TEXT, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
+  buildAddTaskBody, FEATURE_CREATE_PATH, FEATURE_DELETE_PATH, FEATURE_GET_PATH, FEATURE_UPDATE_PATH, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REMOVE_PATH, TASK_REMOVE_UNBOUND_TEXT, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
   TASK_NO_ANSWER_TEXT, TASK_REMOVE_NO_ANSWER_TEXT, TASK_REPORT_NO_ANSWER_TEXT, TASK_UNAVAILABLE_TEXT,
 } from "../mcp/task-tools.mjs";
 import {
@@ -199,7 +199,8 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   assert.equal(requests[0].init.body, JSON.stringify({ text: "x" }));
 
   // Add, bind, complete, block, and remove are the only write paths; nothing else is reachable.
-  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, TASK_REMOVE_PATH]);
+  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, TASK_REMOVE_PATH,
+    FEATURE_GET_PATH, FEATURE_CREATE_PATH, FEATURE_UPDATE_PATH, FEATURE_DELETE_PATH]);
   assert.equal(AGENT_TASK_COMPLETE_PATH, TASK_COMPLETE_PATH);
   assert.equal(AGENT_TASK_BLOCK_PATH, TASK_BLOCK_PATH);
   const bind = createAgentTaskWriter({ ...base, fetchFn: respond(200, { schemaVersion: 1, ok: true }) });
