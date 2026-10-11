@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const ACTIONS = new Set([
   "create", "update", "delete", "move",
   "feature_create",
-  "queue_add", "queue_remove", "queue_reorder", "queue_settings",
+  "queue_add", "queue_remove", "queue_settings",
   "resolve_done", "resolve_requeue",
 ]);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);

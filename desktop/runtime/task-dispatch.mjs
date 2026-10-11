@@ -46,7 +46,7 @@ export function taskStartConfirmation({ taskId, separateWorktree } = {}) {
     }
     : {
       message: `Start task ${taskId}?`,
-      detail: "A session will open in a new terminal window in this repository, or in the task's own worktree when its step runs in parallel, on the provider set in the task's Run on (Claude Code when none is set).",
+      detail: "A session will open in a new terminal window in this repository, on the provider set in the task's Run on (Claude Code when none is set).",
     };
 }
 

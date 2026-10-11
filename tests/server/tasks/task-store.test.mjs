@@ -53,10 +53,12 @@ function insertRow(database, table, row) {
   database.prepare(`INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`).run(...names.map((name) => row[name]));
 }
 
+// The schema keeps the unused `step` column: it is 1 with a feature and NULL without, and nothing reads it.
 function insertTask(database, repositoryId, columnId, overrides = {}) {
   insertRow(database, "tasks", {
+    step: overrides.feature_id === undefined || overrides.feature_id === null ? null : 1,
     repository_id: repositoryId, number: 1, text: "Write the release notes", column_id: columnId, position: 0,
-    feature_id: null, step: null, run_provider: null, run_model: null, run_effort: null, checks: "[]",
+    feature_id: null, run_provider: null, run_model: null, run_effort: null, checks: "[]",
     own_condition: null, state: "not_queued", scheduled_at: null, queue_position: null, session_id: null,
     dispatch_token: null, report_at: null, report_results: null, report_block_reason: null,
     created_at: 1_700_000_000_000, updated_at: 1_700_000_001_000, ...overrides,
@@ -66,14 +68,14 @@ function insertTask(database, repositoryId, columnId, overrides = {}) {
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
 const COLUMN_KEYS = ["id", "name", "position", "role"];
 const FEATURE_KEYS = ["done", "id", "name"];
-const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
 
 function keysOf(value) {
   return Object.keys(value).toSorted();
 }
 
 const ACTIONS = ["create", "update", "delete", "move", "feature_create",
-  "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  "queue_add", "queue_remove", "queue_settings", "resolve_done", "resolve_requeue"];
 
 test("the first read seeds the five default columns in order and a ready, idle board", async (t) => {
   const temp = await temporaryDirectory(t);
@@ -134,7 +136,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
   withRawDatabase(databasePath, (database) => {
     insertRow(database, "features", { id: FEATURE, repository_id: REPOSITORY, name: "Billing rewrite", created_at: 1_700_000_000_000 });
     insertTask(database, REPOSITORY, backlog.id, {
-      number: 1, text: "Add the invoice export\nwith totals", position: 0, feature_id: FEATURE, step: 1,
+      number: 1, text: "Add the invoice export\nwith totals", position: 0, feature_id: FEATURE,
       run_provider: "codex", run_model: "gpt-5.2-codex", run_effort: "xhigh",
       checks: JSON.stringify(["tree_clean", "pr_open"]), own_condition: "the export is documented",
       state: "needs_review", scheduled_at: 1_700_000_002_000, queue_position: 4, session_id: "session-abc",
@@ -142,7 +144,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
       report_at: 1_700_000_003_000, report_results: JSON.stringify([{ check: "pr_open", passed: true }, { check: "tree_clean", passed: false }]),
       report_block_reason: null,
     });
-    insertTask(database, REPOSITORY, done.id, { number: 2, text: "Archive the old exports", feature_id: FEATURE, step: 2, state: "done" });
+    insertTask(database, REPOSITORY, done.id, { number: 2, text: "Archive the old exports", feature_id: FEATURE, state: "done" });
     insertTask(database, REPOSITORY, backlog.id, { number: 3, text: "Unrelated chore", position: 1 });
     database.prepare("UPDATE repositories SET queue_status = 'paused', queue_blocked_by = 'T-1' WHERE repository_id = ?").run(REPOSITORY);
   });
@@ -154,7 +156,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
   assert.deepEqual(board.features, [{ id: FEATURE, name: "Billing rewrite", done: false }]);
   assert.deepEqual(board.tasks.map((task) => task.id), ["T-1", "T-3", "T-2"]);
   assert.deepEqual(board.tasks[0], {
-    id: "T-1", text: "Add the invoice export\nwith totals", columnId: backlog.id, position: 0, featureId: FEATURE, step: 1,
+    id: "T-1", text: "Add the invoice export\nwith totals", columnId: backlog.id, position: 0, featureId: FEATURE,
     run: { provider: "codex", model: "gpt-5.2-codex", effort: "xhigh", remoteControl: false },
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "the export is documented" },
     state: "needs_review",
@@ -186,7 +188,7 @@ test("the served board holds only the contract keys and never private store fiel
   withRawDatabase(databasePath, (database) => {
     insertRow(database, "features", { id: FEATURE, repository_id: REPOSITORY, name: "Billing rewrite", created_at: 1_700_000_000_000 });
     insertTask(database, REPOSITORY, backlog.id, {
-      feature_id: FEATURE, step: 1, run_provider: "claude", run_model: "claude-sonnet-4-5", run_effort: "low", queue_position: 7,
+      feature_id: FEATURE, run_provider: "claude", run_model: "claude-sonnet-4-5", run_effort: "low", queue_position: 7,
       session_id: "session-abc", dispatch_token: "secret-dispatch-token", state: "blocked",
       report_at: 1_700_000_003_000, report_results: "[]", report_block_reason: "needs a decision",
     });
@@ -223,8 +225,8 @@ test("a stored board's features are done only when every attached task is done",
   withRawDatabase(databasePath, (database) => {
     insertRow(database, "features", { id: FEATURE, repository_id: REPOSITORY, name: "Finished", created_at: 1 });
     insertRow(database, "features", { id: empty, repository_id: REPOSITORY, name: "Nothing yet", created_at: 2 });
-    insertTask(database, REPOSITORY, backlog.id, { number: 1, feature_id: FEATURE, step: 1, state: "done" });
-    insertTask(database, REPOSITORY, backlog.id, { number: 2, feature_id: FEATURE, step: 2, state: "done", position: 1 });
+    insertTask(database, REPOSITORY, backlog.id, { number: 1, feature_id: FEATURE, state: "done" });
+    insertTask(database, REPOSITORY, backlog.id, { number: 2, feature_id: FEATURE, state: "done", position: 1 });
   });
   const store = openStore(temp);
   assert.deepEqual(store.readBoard(REPOSITORY).features, [
@@ -267,9 +269,9 @@ test("unknown action names answer unsupported and change nothing", async (t) => 
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  const implemented = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_settings", "resolve_done", "resolve_requeue"];
   assert.deepEqual(ACTIONS.filter((name) => !implemented.includes(name)), [], "every listed action has a handler");
-  for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "__proto__", "constructor", "", null, 7]) {
+  for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "queue_reorder", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
   }
   assert.deepEqual(store.readBoard(REPOSITORY), before);

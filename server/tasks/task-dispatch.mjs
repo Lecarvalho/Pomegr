@@ -78,13 +78,6 @@ function taskNumber(payload, keys) {
 const loadRow = (database, repositoryId, number) =>
   withTaskRemoteControl(database, withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number)));
 
-function worktreeRequired(database, row) {
-  if ((row.feature_id ?? null) === null || (row.step ?? null) === null) return false;
-  const inStep = preparedStatement(database, "SELECT COUNT(*) AS count FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
-    .get(row.repository_id, row.feature_id, row.step);
-  return Number(inStep?.count) > 1;
-}
-
 const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_id ?? null) === null
   && !isLive(parseStoredDispatch(row.dispatch_token), now);
 
@@ -115,7 +108,7 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
     if (!fresh || !startable(fresh, at)) return null;
     preparedStatement(database, "UPDATE tasks SET dispatch_token = ? WHERE repository_id = ? AND number = ?")
       .run(`${digestOf(token)}:${at}`, repositoryId, number);
-    return { worktree: separate || worktreeRequired(database, fresh) };
+    return { worktree: separate };
   });
   if (!minted) return { ok: false, error: "not_startable" };
   // The images the task holds now are the ones the session gets; one attached later is not sent to it.

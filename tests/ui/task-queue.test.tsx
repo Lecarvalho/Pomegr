@@ -13,17 +13,17 @@ const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready"
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
-import { moveChoices, queueFeatures, reorderTarget, singleQueueTasks } from "../../app/components/tasks/task-queue-model";
+import { moveChoices, isMovableQueueTask, queueFeatures, reorderMove, singleQueueTasks } from "../../app/components/tasks/task-queue-model";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
 const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown) => Promise<Result>>();
 const refresh = vi.fn(async () => {});
-const columns = ["Backlog", "Ready"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
+const columns = ["Backlog", "Ready", "In progress", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -31,24 +31,25 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
 }
 
 /**
- * Task board v1 (unfinished): step 1 T-1 (done), step 2 T-2 and T-3 (queued), step 3 T-4 (queued) and T-5 (not queued),
- * step 4 T-6 (queued, alone in the last step). Docs (unfinished): step 1 T-7 (queued). Old (done): T-8.
- * Empty (unfinished, no task). Without a feature: T-9 and T-13 queued, T-10 scheduled, T-11 not queued, T-12 done.
+ * Task board v1 (unfinished) runs in the order of its cards, one task per step: T-1 (done, step 1), T-3 (started, In
+ * progress, step 2), then the waiting T-2, T-4 and T-6 in Ready (steps 3 to 5), then T-5 (not queued, Backlog, step 6).
+ * Docs (unfinished): T-7 (queued, step 1). Old (done): T-8. Empty (unfinished, no task). Without a feature: T-9 and T-13
+ * queued, T-10 scheduled, T-11 not queued, T-12 done.
  */
 const tasks = () => [
-  task(1, "Route", { featureId: "f1", step: 1, state: "done" }),
-  task(2, "Store", { featureId: "f1", step: 2, state: "queued", run: { provider: "claude", model: "sonnet", effort: "medium" } }),
-  task(3, "Columns", { featureId: "f1", step: 2, state: "queued", session: { id: "claude:abc", title: "Column session", state: "working", observedModel: null } }),
-  task(4, "Queue", { featureId: "f1", step: 3, state: "queued" }),
-  task(5, "Gates", { featureId: "f1", step: 3 }),
-  task(6, "Schedule", { featureId: "f1", step: 4, state: "queued", run: { provider: "codex", model: null, effort: "high" } }),
-  task(7, "Guide", { featureId: "f2", step: 1, state: "queued" }),
-  task(8, "Old work", { featureId: "f3", step: 1, state: "done" }),
-  task(9, "Loose end", { state: "queued" }),
-  task(10, "Nightly", { state: "scheduled", scheduledAt: "2026-10-09T02:00:00" }),
-  task(11, "Idea"),
-  task(12, "Shipped", { state: "done" }),
-  task(13, "First loose", { state: "queued" }),
+  task(1, "Route", { featureId: "f1", state: "done", columnId: "col-4", position: 0 }),
+  task(2, "Store", { featureId: "f1", state: "queued", columnId: "col-2", position: 0, run: { provider: "claude", model: "sonnet", effort: "medium" } }),
+  task(3, "Columns", { featureId: "f1", state: "queued", columnId: "col-3", position: 0, session: { id: "claude:abc", title: "Column session", state: "working", observedModel: null } }),
+  task(4, "Queue", { featureId: "f1", state: "queued", columnId: "col-2", position: 1 }),
+  task(5, "Gates", { featureId: "f1", position: 0 }),
+  task(6, "Schedule", { featureId: "f1", state: "queued", columnId: "col-2", position: 2, run: { provider: "codex", model: null, effort: "high" } }),
+  task(7, "Guide", { featureId: "f2", state: "queued", columnId: "col-2", position: 3 }),
+  task(8, "Old work", { featureId: "f3", state: "done", columnId: "col-4", position: 1 }),
+  task(9, "Loose end", { state: "queued", columnId: "col-2", position: 5 }),
+  task(10, "Nightly", { state: "scheduled", scheduledAt: "2026-10-09T02:00:00", columnId: "col-2", position: 6 }),
+  task(11, "Idea", { position: 1 }),
+  task(12, "Shipped", { state: "done", columnId: "col-4", position: 2 }),
+  task(13, "First loose", { state: "queued", columnId: "col-2", position: 4 }),
 ];
 const features = [
   { id: "f1", name: "Task board v1", done: false },
@@ -84,9 +85,8 @@ afterEach(() => {
 
 const card = (id: string) => document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement;
 const step = (feature: string, number: number) => document.querySelector(`[data-feature-id="${feature}"] li[data-step="${number}"]`) as HTMLElement;
-const zone = (feature: string) => within(document.querySelector(`[data-feature-id="${feature}"]`) as HTMLElement).getByRole("group", { name: "New last step" }).closest("li") as HTMLElement;
 const chipText = (id: string) => card(id).querySelector(".commandChip")?.textContent;
-const reorders = () => taskAction.mock.calls.filter((call) => call[1] === "queue_reorder");
+const moves = () => taskAction.mock.calls.filter((call) => call[1] === "move");
 
 async function showQueue() {
   render(<TaskBoardPane repositoryId={repositoryId} />);
@@ -161,14 +161,15 @@ describe("the Queue view", () => {
     expect(screen.queryByText("Empty")).not.toBeInTheDocument();
   });
 
-  it("names each step, its mode and the worktree note only for a parallel step", async () => {
+  it("numbers each step by the order of the cards, one task per step, with no parallel or worktree labels", async () => {
     await showQueue();
-    const board = within(screen.getByRole("list", { name: "Steps of Task board v1" }));
-    const labels = [1, 2, 3, 4].map((n) => step("f1", n).querySelector(".taskQueueStepLabel")?.textContent);
-    expect(labels).toEqual(["Step 1One task", "Step 2Parallel · 2One worktree each", "Step 3Parallel · 2One worktree each", "Step 4One task"]);
-    expect(board.getAllByText("One worktree each")).toHaveLength(2);
-    expect(within(step("f2", 1)).queryByText("One worktree each")).not.toBeInTheDocument();
-    expect([...step("f1", 2).querySelectorAll("li[data-task-id]")].map((li) => li.getAttribute("data-task-id"))).toEqual(["T-2", "T-3"]);
+    const steps = within(screen.getByRole("list", { name: "Steps of Task board v1" }));
+    const labels = [1, 2, 3, 4, 5, 6].map((n) => step("f1", n).querySelector(".taskQueueStepLabel")?.textContent);
+    expect(labels).toEqual(["Step 1", "Step 2", "Step 3", "Step 4", "Step 5", "Step 6"]);
+    expect([1, 2, 3, 4, 5, 6].map((n) => [...step("f1", n).querySelectorAll("li[data-task-id]")].map((li) => li.getAttribute("data-task-id")))).toEqual([["T-1"], ["T-3"], ["T-2"], ["T-4"], ["T-6"], ["T-5"]]);
+    expect(steps.getByRole("list", { name: "Step 3 task" })).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/Parallel|One worktree each|One task|New last step/);
+    expect(within(step("f2", 1)).getByText("Guide")).toBeInTheDocument();
   });
 
   it("draws ID, chip, title and run line on a step card, with the session title once it has one", async () => {
@@ -229,9 +230,9 @@ describe("the Queue view", () => {
 
   it("explains the steps, with the exact note on the desktop", async () => {
     await showQueue();
-    const notes = screen.getAllByText("Steps run in order. Tasks inside one step run at the same time. Drag a task that has not started to another step to change when it runs. Tasks that started or finished stay where they are.");
+    const notes = screen.getAllByText("Steps run in order, one task at a time. A task's step is the place of its card on the board. Drag a task that waits in the queue onto another step to change when it runs. Tasks that started or finished stay where they are.");
     expect(notes).toHaveLength(2);
-    expect(screen.getAllByText("Drop a task here to add a step at the end")).toHaveLength(2);
+    expect(screen.queryByText(/Drop a task here/)).not.toBeInTheDocument();
   });
 
   it("renders on the server without the desktop bridge", () => {
@@ -240,103 +241,96 @@ describe("the Queue view", () => {
 });
 
 describe("pure queue rules", () => {
-  it("groups features and accepts only steps the monitor would", () => {
+  it("groups features in step order and accepts only moves the board would make", () => {
     const board = setBoard();
     const [first] = queueFeatures(board);
-    expect(first.highest).toBe(4);
-    expect(first.steps.map((entry) => [entry.step, entry.allDone])).toEqual([[1, true], [2, false], [3, false], [4, false]]);
-    const t4 = board.tasks.find((entry) => entry.id === "T-4")!;
-    expect(reorderTarget(first, t4, 1)).toBeNull();
-    expect(reorderTarget(first, t4, 3)).toBeNull();
-    expect(reorderTarget(first, t4, 2)).toBe(2);
-    expect(reorderTarget(first, t4, null)).toBe(5);
-    expect(reorderTarget(first, t4, 9)).toBeNull();
-    const t6 = board.tasks.find((entry) => entry.id === "T-6")!;
-    expect(reorderTarget(first, t6, null)).toBeNull();
-    // Not queued and not started: it moves like a queued task. T-3 started, so it does not.
-    expect(reorderTarget(first, board.tasks.find((entry) => entry.id === "T-5")!, 2)).toBe(2);
-    expect(reorderTarget(first, board.tasks.find((entry) => entry.id === "T-3")!, 3)).toBeNull();
-    expect(moveChoices(first, t4).map((choice) => choice.label)).toEqual(["Step 2", "Step 4", "New last step"]);
-    expect(moveChoices(first, t6).map((choice) => choice.label)).toEqual(["Step 2", "Step 3"]);
+    expect(first.total).toBe(6);
+    expect(first.done).toBe(1);
+    expect(first.steps.map((entry) => [entry.step, entry.task.id])).toEqual([[1, "T-1"], [2, "T-3"], [3, "T-2"], [4, "T-4"], [5, "T-6"], [6, "T-5"]]);
+    const byId = (id: string) => board.tasks.find((entry) => entry.id === id)!;
+    expect(reorderMove(board, byId("T-4"), byId("T-2"))).toEqual({ id: "T-4", columnId: "col-2", position: 0 });
+    expect(reorderMove(board, byId("T-2"), byId("T-6"))).toEqual({ id: "T-2", columnId: "col-2", position: 2 });
+    expect(reorderMove(board, byId("T-4"), byId("T-4"))).toBeNull();
+    // Another feature, a task that is not waiting, one that started and one that is finished never take part.
+    expect(reorderMove(board, byId("T-4"), byId("T-7"))).toBeNull();
+    expect(reorderMove(board, byId("T-4"), byId("T-5"))).toBeNull();
+    expect(reorderMove(board, byId("T-4"), byId("T-3"))).toBeNull();
+    expect(reorderMove(board, byId("T-4"), byId("T-1"))).toBeNull();
+    expect(reorderMove(board, byId("T-5"), byId("T-2"))).toBeNull();
+    expect(reorderMove(board, byId("T-3"), byId("T-2"))).toBeNull();
+    expect(reorderMove({ ...board, columns: [] }, byId("T-4"), byId("T-2"))).toBeNull();
+    expect(isMovableQueueTask(byId("T-4"))).toBe(true);
+    expect([5, 3, 1, 9].map((n) => isMovableQueueTask(byId(`T-${n}`)))).toEqual([false, false, false, false]);
+    expect(moveChoices(board, first, byId("T-4"))).toEqual([{ step: 3, label: "Step 3" }, { step: 5, label: "Step 5" }]);
+    expect(moveChoices(board, first, byId("T-6")).map((choice) => choice.label)).toEqual(["Step 3", "Step 4"]);
+    expect(moveChoices(board, first, byId("T-5"))).toEqual([]);
     expect(singleQueueTasks(board).map((entry) => entry.id)).toEqual(["T-13", "T-9", "T-10"]);
   });
 });
 
 describe("dragging a queued task", () => {
-  it("moves it to another step with queue_reorder", async () => {
+  it("moves it to another step with the move action of its card", async () => {
     await showQueue();
     const dataTransfer = transfer();
     fireEvent.dragStart(card("T-4"), { dataTransfer });
     expect(dataTransfer.setData).toHaveBeenCalledWith("text/plain", "T-4");
-    expect(fireEvent.dragOver(step("f1", 2), { dataTransfer })).toBe(false);
-    expect(step("f1", 2)).toHaveClass("isDragOver");
-    fireEvent.drop(step("f1", 2), { dataTransfer });
-    expect(step("f1", 2)).not.toHaveClass("isDragOver");
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_reorder", { id: "T-4", step: 2 }));
+    expect(fireEvent.dragOver(step("f1", 3), { dataTransfer })).toBe(false);
+    expect(step("f1", 3)).toHaveClass("isDragOver");
+    fireEvent.drop(step("f1", 3), { dataTransfer });
+    expect(step("f1", 3)).not.toHaveClass("isDragOver");
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "move", { id: "T-4", columnId: "col-2", position: 0 }));
+    expect(taskAction.mock.calls.some((call) => call[1] === "queue_reorder")).toBe(false);
     await waitFor(() => expect(refresh).toHaveBeenCalled());
-  });
-
-  it("appends a new last step when dropped on the dashed zone", async () => {
-    await showQueue();
-    const dataTransfer = transfer();
-    fireEvent.dragStart(card("T-4"), { dataTransfer });
-    expect(fireEvent.dragOver(zone("f1"), { dataTransfer })).toBe(false);
-    expect(zone("f1")).toHaveClass("isDragOver");
-    fireEvent.drop(zone("f1"), { dataTransfer });
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_reorder", { id: "T-4", step: 5 }));
+    // The card order decides the step, so the board already reads T-4 first among the waiting tasks.
+    expect(step("f1", 3).querySelector("li[data-task-id]")).toHaveAttribute("data-task-id", "T-4");
+    expect(step("f1", 4).querySelector("li[data-task-id]")).toHaveAttribute("data-task-id", "T-2");
   });
 
   it("clears the fill when the pointer leaves or the drag ends", async () => {
     await showQueue();
     const dataTransfer = transfer();
     fireEvent.dragStart(card("T-4"), { dataTransfer });
-    fireEvent.dragOver(step("f1", 2), { dataTransfer });
-    const leave = createEvent.dragLeave(step("f1", 2));
+    fireEvent.dragOver(step("f1", 3), { dataTransfer });
+    const leave = createEvent.dragLeave(step("f1", 3));
     Object.defineProperty(leave, "relatedTarget", { value: null });
-    fireEvent(step("f1", 2), leave);
-    expect(step("f1", 2)).not.toHaveClass("isDragOver");
-    fireEvent.dragOver(zone("f1"), { dataTransfer });
+    fireEvent(step("f1", 3), leave);
+    expect(step("f1", 3)).not.toHaveClass("isDragOver");
+    fireEvent.dragOver(step("f1", 5), { dataTransfer });
+    expect(step("f1", 5)).toHaveClass("isDragOver");
     fireEvent.dragEnd(card("T-4"), { dataTransfer });
-    expect(zone("f1")).not.toHaveClass("isDragOver");
-    expect(reorders()).toHaveLength(0);
+    expect(step("f1", 5)).not.toHaveClass("isDragOver");
+    expect(moves()).toHaveLength(0);
   });
 
-  it("starts a drag only on cards that have not started and shows the grab cursor only there", async () => {
+  it("starts a drag only on cards that wait in the queue and shows the grab cursor only there", async () => {
     await showQueue();
-    for (const id of ["T-2", "T-4", "T-5", "T-6", "T-7"]) {
+    for (const id of ["T-2", "T-4", "T-6", "T-7"]) {
       expect(card(id)).toHaveAttribute("draggable", "true");
       expect(card(id)).toHaveClass("isMovable");
     }
-    // T-3 started (queued state, linked session, not in the order): it cannot be moved either.
-    for (const id of ["T-1", "T-3"]) {
+    // T-3 started (queued state, linked session), T-5 is not queued and T-1 is done: none of them can be moved.
+    for (const id of ["T-1", "T-3", "T-5"]) {
       expect(card(id)).not.toHaveAttribute("draggable");
       expect(card(id)).not.toHaveClass("isMovable");
     }
     // A drag that never started from a movable card offers no drop target, even for a foreign payload.
     const foreign = transfer();
     fireEvent.dragStart(card("T-3"), { dataTransfer: foreign });
-    expect(fireEvent.dragOver(step("f1", 3), { dataTransfer: foreign })).toBe(true);
-    fireEvent.drop(step("f1", 3), { dataTransfer: foreign });
-    expect(reorders()).toHaveLength(0);
+    expect(fireEvent.dragOver(step("f1", 5), { dataTransfer: foreign })).toBe(true);
+    fireEvent.drop(step("f1", 5), { dataTransfer: foreign });
+    expect(moves()).toHaveLength(0);
   });
 
-  it("moves a task that is not queued to a new last step", async () => {
-    await showQueue();
-    const dataTransfer = transfer();
-    fireEvent.dragStart(card("T-5"), { dataTransfer });
-    expect(fireEvent.dragOver(zone("f1"), { dataTransfer })).toBe(false);
-    fireEvent.drop(zone("f1"), { dataTransfer });
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_reorder", { id: "T-5", step: 5 }));
-  });
-
-  it("ignores drag-over and drop on a step whose tasks are all done", async () => {
+  it("ignores drag-over and drop on a step whose task is finished, started or not queued", async () => {
     await showQueue();
     const dataTransfer = transfer();
     fireEvent.dragStart(card("T-4"), { dataTransfer });
-    expect(fireEvent.dragOver(step("f1", 1), { dataTransfer })).toBe(true);
-    expect(step("f1", 1)).not.toHaveClass("isDragOver");
-    fireEvent.drop(step("f1", 1), { dataTransfer });
-    expect(reorders()).toHaveLength(0);
+    for (const number of [1, 2, 6]) {
+      expect(fireEvent.dragOver(step("f1", number), { dataTransfer })).toBe(true);
+      expect(step("f1", number)).not.toHaveClass("isDragOver");
+      fireEvent.drop(step("f1", number), { dataTransfer });
+    }
+    expect(moves()).toHaveLength(0);
   });
 
   it("ignores a drop on another feature's step and a drop that would change nothing", async () => {
@@ -348,11 +342,8 @@ describe("dragging a queued task", () => {
     fireEvent.dragEnd(card("T-4"), { dataTransfer });
     dataTransfer = transfer();
     fireEvent.dragStart(card("T-4"), { dataTransfer });
-    fireEvent.drop(step("f1", 3), { dataTransfer });
-    dataTransfer = transfer();
-    fireEvent.dragStart(card("T-6"), { dataTransfer });
-    fireEvent.drop(zone("f1"), { dataTransfer });
-    expect(reorders()).toHaveLength(0);
+    fireEvent.drop(step("f1", 4), { dataTransfer });
+    expect(moves()).toHaveLength(0);
   });
 
   it("shows one fixed message when the monitor refuses the move", async () => {
@@ -360,49 +351,46 @@ describe("dragging a queued task", () => {
     await showQueue();
     const dataTransfer = transfer();
     fireEvent.dragStart(card("T-4"), { dataTransfer });
-    fireEvent.drop(step("f1", 2), { dataTransfer });
-    expect(await screen.findByRole("alert")).toHaveTextContent("The task could not be moved to that step.");
+    fireEvent.drop(step("f1", 3), { dataTransfer });
+    expect(await screen.findByRole("alert")).toHaveTextContent("The card could not be moved.");
   });
 });
 
 describe("moving a queued task from the keyboard", () => {
-  it("offers the steps that accept it and a new last step, and sends the same action", async () => {
+  it("offers the steps that accept it and sends the move of its card", async () => {
     await showQueue();
     const trigger = within(card("T-4")).getByRole("combobox", { name: "Move T-4 to step" });
     fireEvent.click(trigger);
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Step 2", "Step 4", "New last step"]);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Step 3", "Step 5"]);
     fireEvent.click(trigger);
-    chooseCommandOption(trigger, "Step 2");
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_reorder", { id: "T-4", step: 2 }));
-    chooseCommandOption(within(card("T-4")).getByRole("combobox", { name: "Move T-4 to step" }), "New last step");
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_reorder", { id: "T-4", step: 5 }));
-    expect(screen.getByRole("status")).toHaveTextContent("T-4 moved to step 5.");
+    chooseCommandOption(trigger, "Step 3");
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "move", { id: "T-4", columnId: "col-2", position: 0 }));
+    expect(screen.getByRole("status")).toHaveTextContent("T-4 moved to step 3.");
+    expect(taskAction.mock.calls.some((call) => call[1] === "queue_reorder")).toBe(false);
   });
 
-  it("is offered only on cards that have not started", async () => {
+  it("is offered only on cards that wait in the queue", async () => {
     await showQueue();
-    expect(within(card("T-5")).getByRole("combobox", { name: "Move T-5 to step" })).toBeInTheDocument();
-    expect(within(card("T-3")).queryByRole("combobox")).not.toBeInTheDocument();
-    expect(within(card("T-1")).queryByRole("combobox")).not.toBeInTheDocument();
-    // A queued task alone in the last step can still go earlier but has no new last step.
+    expect(within(card("T-2")).getByRole("combobox", { name: "Move T-2 to step" })).toBeInTheDocument();
+    for (const id of ["T-1", "T-3", "T-5"]) expect(within(card(id)).queryByRole("combobox")).not.toBeInTheDocument();
+    // The last waiting task of the feature can go earlier but not onto a task that started.
     const trigger = within(card("T-6")).getByRole("combobox", { name: "Move T-6 to step" });
     fireEvent.click(trigger);
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Step 2", "Step 3"]);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Step 3", "Step 4"]);
   });
 });
 
 describe("without the desktop bridge", () => {
   beforeEach(() => setBridge(undefined));
 
-  it("is read-only: nothing is draggable and there is no move control, drop zone or New feature", async () => {
+  it("is read-only: nothing is draggable and there is no move control or New feature", async () => {
     await showQueue();
     expect(card("T-4")).toBeInTheDocument();
     expect(document.querySelectorAll("[draggable]")).toHaveLength(0);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.queryByText("Drop a task here to add a step at the end")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "+ New feature" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Drag a task that has not started/)).not.toBeInTheDocument();
-    expect(screen.getAllByText(/^Steps run in order\./)).toHaveLength(2);
+    expect(screen.queryByText(/Drag a task that waits/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("Steps run in order, one task at a time. A task's step is the place of its card on the board. Tasks that started or finished stay where they are.")).toHaveLength(2);
     expect(chipText("T-2")).toBe("Queued · next");
     expect(taskAction).not.toHaveBeenCalled();
   });

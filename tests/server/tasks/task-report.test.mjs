@@ -149,13 +149,13 @@ test("a note is cleared with its report on requeue and removed with its task", a
   assert.equal(noteRows(other), 0);
 });
 
-test("a task in review does not hold the queue: the next task starts, and a later step of its feature too", async (context) => {
+test("a task in review does not hold the queue: the next task starts, and the next task of its feature too", async (context) => {
   const env = await setup(context);
   const feature = apply(env, "feature_create", { name: "Uploads" }).board.features[0].id;
   startedTask(env);
-  apply(env, "update", { id: "T-1", featureId: feature, step: 1 });
-  apply(env, "create", { text: "Second step" });
-  apply(env, "update", { id: "T-2", featureId: feature, step: 2 });
+  apply(env, "update", { id: "T-1", featureId: feature });
+  apply(env, "create", { text: "Second task" });
+  apply(env, "update", { id: "T-2", featureId: feature });
   apply(env, "queue_add", { id: "T-2" });
   setQueue(env, "running");
   assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });

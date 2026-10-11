@@ -7,24 +7,24 @@ const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
 
 import { SessionTaskMeta, SessionTaskSummary } from "../../app/components/dashboard/SessionTaskSummary";
-import { sessionTaskModel, stepLabel, stepTotal, summaryCompleteWhen } from "../../app/components/tasks/session-task-model";
+import { sessionTaskModel, stepLabel, summaryCompleteWhen } from "../../app/components/tasks/session-task-model";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const taskHref = "/sessions/claude%3Aabc?tab=task";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text: `Secret task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text: `Secret task text ${id}`, columnId: "col-1", position: id, featureId: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
 
-const reference: SessionTaskReference = { id: "T-14", repositoryId, state: null, featureId: "feat-1", feature: "Task board v1", step: 2 };
+const reference: SessionTaskReference = { id: "T-14", repositoryId, state: null, featureId: "feat-1", feature: "Task board v1" };
 
 const mine = task(14, {
-  featureId: "feat-1", step: 2, state: "queued",
+  featureId: "feat-1", state: "queued",
   run: { provider: "claude", model: "opus", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
   session: { id: "claude:abc", title: "Wire the tools", state: "working", observedModel: "opus" },
@@ -34,7 +34,7 @@ function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
   return {
     version: 1, readiness: "ready", repositoryId, columns: [{ id: "col-1", name: "Backlog", position: 0 }],
     features: [{ id: "feat-1", name: "Task board v1", done: false }],
-    tasks: [task(12, { featureId: "feat-1", step: 1, state: "done" }), mine, task(15, { featureId: "feat-1", step: 3, state: "queued" }), task(16, { featureId: "feat-1", step: 4 })],
+    tasks: [task(12, { featureId: "feat-1", state: "done" }), mine, task(15, { featureId: "feat-1", state: "queued" }), task(16, { featureId: "feat-1" })],
     queue: { status: "running", blockedBy: null, pauseReason: null, order: [] }, ...overrides,
   };
 }
@@ -49,12 +49,11 @@ beforeEach(() => {
 });
 
 describe("session task model", () => {
-  it("takes the step total from the highest step of the same feature on a ready board only", () => {
-    expect(stepTotal(board(), "feat-1")).toBe(4);
-    expect(stepTotal(board(), null)).toBeNull();
-    expect(stepTotal(board({ readiness: "loading", tasks: [] }), "feat-1")).toBeNull();
-    expect(stepLabel(2, 4)).toBe("step 2 of 4");
-    expect(stepLabel(2, null)).toBe("step 2");
+  it("reads the step from the order of the feature's cards on a ready board only", () => {
+    expect(sessionTaskModel(board(), reference)).toMatchObject({ kind: "full", step: { step: 2, total: 4 } });
+    expect(sessionTaskModel(board({ tasks: [task(14, { state: "queued" })] }), reference)).toMatchObject({ kind: "full", step: null });
+    expect(sessionTaskModel(board({ readiness: "loading", tasks: [] }), reference)).toMatchObject({ kind: "reduced", step: null });
+    expect(stepLabel({ step: 2, total: 4 })).toBe("step 2 of 4");
   });
 
   it("words Complete when without a Running state", () => {
@@ -96,12 +95,13 @@ describe("SessionTaskMeta", () => {
     expect(screen.getByText("T-14")).toBeInTheDocument();
   });
 
-  it("shows step N alone while the board is not ready, and nothing about a feature a task lacks", () => {
+  it("shows no step while the board is not ready, and nothing about a feature a task lacks", () => {
     setBoard(board({ readiness: "loading", tasks: [] }));
     const { unmount } = render(<SessionTaskMeta task={reference} taskHref={taskHref} />);
-    expect(screen.getByText("step 2")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Task board v1" })).toBeInTheDocument();
+    expect(document.querySelector(".sessionTaskMetaStep")).toBeNull();
     unmount();
-    render(<SessionTaskMeta task={{ ...reference, featureId: null, feature: null, step: null }} taskHref={taskHref} />);
+    render(<SessionTaskMeta task={{ ...reference, featureId: null, feature: null }} taskHref={taskHref} />);
     expect(screen.queryByText("Feature")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "T-14" })).toBeInTheDocument();
   });
@@ -181,7 +181,8 @@ describe("SessionTaskSummary", () => {
     const panel = screen.getByRole("region", { name: "Task T-14" });
     expect(panel).toHaveTextContent(sentence);
     expect(panel).toHaveTextContent("Stalled");
-    expect(panel).toHaveTextContent("Task board v1 · step 2");
+    expect(panel).toHaveTextContent("Task board v1");
+    expect(panel).not.toHaveTextContent("step");
     expect(panel).not.toHaveTextContent("Complete when");
     expect(panel).not.toHaveTextContent("Secret task text");
   });

@@ -268,7 +268,7 @@ describe("Design-system reference page", () => {
     expect(card("Not queued")).not.toHaveClass("isLive", "isAttention");
     expect(chip("Queued · next")).toHaveTextContent("Queued · next");
     expect(chip("Queued · next")).toHaveClass("commandChip", "isInk");
-    expect(card("Queued · next").querySelector(".taskCardFeature")).toHaveTextContent("Upload reliability · step 2 of 3 · parallel");
+    expect(card("Queued · next").querySelector(".taskCardFeature")).toHaveTextContent("Upload reliability · step 3 of 4");
     expect(chip("Scheduled")).toHaveClass("info");
     expect(card("Scheduled").querySelector(".taskCardStarts")?.textContent).toMatch(/^Starts /);
     // A bound session's state is borrowed; a differing planned model is the one amber line.
@@ -414,14 +414,14 @@ describe("Design-system reference page", () => {
 
     const browserPanel = within(sample(queue, "Feature panel, browser")).getByRole("region", { name: "Upload reliability" });
     expect(browserPanel.querySelector(".taskQueueCaption")).toHaveTextContent("1 of 4 tasks done");
-    expect(within(browserPanel).getByText("Parallel · 2")).toBeInTheDocument();
-    expect(within(browserPanel).getByText("One worktree each")).toBeInTheDocument();
+    expect(browserPanel.querySelectorAll(".taskQueueStep")).toHaveLength(4);
+    expect(browserPanel.querySelector(".taskQueueStepLabel")).toHaveTextContent("Step 1");
+    expect(browserPanel.textContent).not.toMatch(/Parallel|One worktree each|One task/);
     expect(browserPanel.querySelector(".taskQueueStep.isAllDone")).not.toBeNull();
     expect(browserPanel.querySelector(".taskQueueNote")?.textContent).not.toMatch(/Drag/);
-    expect(browserPanel.querySelector(".taskQueueNewStep")).toBeNull();
     const desktopPanel = within(sample(queue, "Feature panel, desktop app")).getByRole("region", { name: "Upload reliability" });
-    expect(desktopPanel.querySelector(".taskQueueNote")?.textContent).toMatch(/^Steps run in order\..*Drag a task that has not started/);
-    expect(within(desktopPanel).getByRole("group", { name: "New last step" })).toHaveTextContent("Drop a task here to add a step at the end");
+    expect(desktopPanel.querySelector(".taskQueueNote")?.textContent).toMatch(/^Steps run in order, one task at a time\..*Drag a task that waits in the queue/);
+    expect(desktopPanel.textContent).not.toMatch(/New last step|Drop a task here/);
     expect(desktopPanel.querySelectorAll(".taskQueueCard[draggable='true']")).toHaveLength(3);
 
     const singles = within(sample(queue, "Single tasks")).getByRole("region", { name: "Single tasks" });
@@ -500,27 +500,28 @@ describe("Design-system reference page", () => {
     expect(within(working).getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/tasks?repository=${REPOSITORY_ID}`);
     expect(within(working).getByRole("link", { name: "Open task T-14 on its board" })).toHaveClass("commandTextLink", "commandSessionTaskId");
     expect(working.querySelector(".commandChip")).toBeNull();
-    expect(working.querySelector(".commandSessionTaskFeature")).toHaveTextContent("Upload reliability · step 2");
+    expect(working.querySelector(".commandSessionTaskFeature")).toHaveTextContent("Upload reliability");
+    expect(working.querySelector(".commandSessionTaskFeature")?.textContent).not.toMatch(/step/);
     expect(sample(cells, "Needs review").querySelector(".commandChip")).toHaveClass("warning");
     expect(sample(cells, "Stalled").querySelector(".commandChip")).toHaveTextContent("Stalled");
     expect(sample(cells, "Stalled").querySelector(".commandChip")).toHaveClass("warning");
     expect(sample(cells, "Done").querySelector(".commandChip")).toHaveClass("neutral");
-    expect(sample(cells, "Under a Feature group").querySelector(".commandSessionTaskFeature")?.textContent).toBe("Step 2");
+    expect(sample(cells, "Under a Feature group").querySelector(".commandSessionTaskFeature")).toBeNull();
     expect(sample(cells, "No feature").querySelector(".commandSessionTaskFeature")).toBeNull();
     expect(within(sample(cells, "Started by you")).getByTitle("Not started from a task")).toHaveTextContent("—");
     expect(within(sample(cells, "Table footnote")).getByText(/^Task shows the task a session was started for\./)).toHaveClass("commandUnavailableNote");
 
     const fields = sectionOf("Task fields");
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(3);
-    expect(within(fields).getAllByRole("combobox", { name: "Step" })).toHaveLength(3);
+    expect(within(fields).queryAllByRole("combobox", { name: "Step" })).toHaveLength(0);
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })[0]).toHaveTextContent("Upload reliability");
     const created = sample(fields, "New feature");
     expect(within(created).getByRole("textbox", { name: "Feature name" })).toHaveValue("Retry telemetry");
-    const placed = sample(fields, "Feature and Step");
+    const placed = sample(fields, "Feature");
     expect(placed.querySelector(".taskFeatureDetails > summary")).toHaveTextContent("In this feature4 tasks · 1 done");
     expect(placed.querySelectorAll(".taskFeatureItem")).toHaveLength(4);
     expect(placed.querySelector(".taskFeatureItem.hasStep")).toBeNull();
-    const inPanel = sample(fields, "Feature and Step, in the Task modal");
+    const inPanel = sample(fields, "Feature, in the Task modal");
     expect(inPanel.querySelectorAll(".taskFeatureItem")).toHaveLength(3);
     expect(inPanel.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(3);
     await user.type(within(created).getByRole("textbox", { name: "Feature name" }), "!");

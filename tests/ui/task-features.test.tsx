@@ -27,12 +27,12 @@ import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
 const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown) => Promise<Result>>();
-const columns = ["Backlog", "Ready"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
+const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
 const DEFAULT_COMPLETE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -40,18 +40,18 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
 }
 
 /**
- * Task board v1 (unfinished): step 1 T-1 (done), step 2 T-2 and T-3, step 3 T-4 (queued), step 4 T-7 to T-10.
- * Finished work (done): T-5. Docs (unfinished, empty). T-6 has no feature.
+ * Task board v1 (unfinished) runs in the order of its cards, one task per step: T-1 (done), T-4 (queued), T-7 to T-10 in
+ * Ready, then T-2 and T-3 in Backlog. Finished work (done): T-5. Docs (unfinished, empty). T-6 has no feature.
  */
 const tasks = () => [
-  task(1, "Route", { featureId: "f1", step: 1, state: "done" }),
-  task(2, "Store", { featureId: "f1", step: 2 }),
-  task(3, "Columns", { featureId: "f1", step: 2 }),
-  task(4, "Queue", { featureId: "f1", step: 3, state: "queued", columnId: "col-2", position: 0 }),
-  task(5, "Old work", { featureId: "f2", step: 1, state: "done" }),
+  task(1, "Route", { featureId: "f1", state: "done", columnId: "col-3", position: 0 }),
+  task(2, "Store", { featureId: "f1" }),
+  task(3, "Columns", { featureId: "f1" }),
+  task(4, "Queue", { featureId: "f1", state: "queued", columnId: "col-2", position: 0 }),
+  task(5, "Old work", { featureId: "f2", state: "done", columnId: "col-3", position: 1 }),
   task(6, "Loose end"),
   // T-10 is the newest task, so a new task opens with its Complete when.
-  ...[7, 8, 9, 10].map((id) => task(id, `Gate ${id}`, { featureId: "f1", step: 4, columnId: "col-2", position: id, completeWhen: { checks: ["pr_open", "tree_clean"], own: null } })),
+  ...[7, 8, 9, 10].map((id) => task(id, `Gate ${id}`, { featureId: "f1", columnId: "col-2", position: id, completeWhen: { checks: ["pr_open", "tree_clean"], own: null } })),
 ];
 const features = [
   { id: "f1", name: "Task board v1", done: false },
@@ -113,7 +113,7 @@ const save = () => screen.getByRole("button", { name: "Save" });
 const closeModal = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: "Close" }));
 const lastCall = (action: string) => taskAction.mock.calls.filter((call) => call[1] === action).at(-1)?.[2];
 
-describe("New task modal: Feature and Step", () => {
+describe("New task modal: Feature", () => {
   it("offers only unfinished features, then No feature and New feature…, defaulting to No feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
@@ -121,29 +121,12 @@ describe("New task modal: Feature and Step", () => {
     const feature = dialog.getByRole("combobox", { name: "Feature" });
     expect(feature).toHaveTextContent("No feature");
     expect(optionLabels(feature)).toEqual(["Task board v1", "Docs", "No feature", "New feature…"]);
-    const step = dialog.getByRole("combobox", { name: "Step" });
-    expect(step).toBeDisabled();
-    expect(step).toHaveTextContent("None");
+    // A task has no Step: its place on the board is its step.
+    expect(dialog.queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
     expect(dialog.queryByText("In this feature")).not.toBeInTheDocument();
   });
 
-  it("defaults Step to Last and lists each step from the highest with the other tasks in it", async () => {
-    const user = userEvent.setup();
-    render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openNew(user);
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
-    const step = dialog.getByRole("combobox", { name: "Step" });
-    expect(step).toBeEnabled();
-    expect(step).toHaveTextContent("Last · new step 5");
-    expect(optionLabels(step)).toEqual([
-      "Last · new step 5", "Step 4 · parallel with T-7, T-8, T-9 +1", "Step 3 · parallel with T-4", "Step 2 · parallel with T-2, T-3", "Step 1 · parallel with T-1",
-    ]);
-    // A feature without tasks offers only its first step.
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f3");
-    expect(optionLabels(dialog.getByRole("combobox", { name: "Step" }))).toEqual(["Last · new step 1"]);
-  });
-
-  it("creates a task in a feature at the last step, at a chosen step, and with no feature keys for No feature", async () => {
+  it("creates a task in a feature with no step key, and with no feature keys for No feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     let dialog = await openNew(user);
@@ -156,17 +139,9 @@ describe("New task modal: Feature and Step", () => {
 
     dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:3");
-    await user.click(dialog.getByRole("button", { name: "Create task" }));
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(lastCall("create")).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f1", step: 3 });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
-
-    dialog = await openNew(user);
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
     await user.click(dialog.getByRole("button", { name: "Create task" }));
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
     expect(lastCall("create")).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN });
     expect(lastCall("create")).not.toHaveProperty("featureId");
   });
@@ -179,7 +154,6 @@ describe("New task modal: Feature and Step", () => {
     const name = dialog.getByRole("textbox", { name: "Feature name" });
     expect(name).toHaveAttribute("maxlength", "80");
     expect(dialog.getByRole("button", { name: "Create task" })).toBeDisabled();
-    expect(dialog.getByRole("combobox", { name: "Step" })).toHaveTextContent("Last · new step 1");
     // Nothing exists yet, so there is no list to show.
     expect(dialog.queryByText("In this feature")).not.toBeInTheDocument();
     await user.type(name, "  Brand new  ");
@@ -219,10 +193,10 @@ describe("New task modal: Feature and Step", () => {
     expect(details.open).toBe(false);
     expect(details.querySelector("summary")).toHaveTextContent("In this feature8 tasks · 1 done");
     const rows = [...details.querySelectorAll("li")];
-    expect(rows.map((row) => row.getAttribute("data-task-id"))).toEqual(["T-1", "T-2", "T-3", "T-4", "T-7", "T-8", "T-9", "T-10"]);
+    expect(rows.map((row) => row.getAttribute("data-task-id"))).toEqual(["T-1", "T-4", "T-7", "T-8", "T-9", "T-10", "T-2", "T-3"]);
     expect(rows[0]).toHaveTextContent("T-1Route");
     expect(within(rows[0] as HTMLElement).getByText("Done")).toHaveClass("commandChip");
-    expect(within(rows[3] as HTMLElement).getByText("Queued")).toHaveClass("commandChip");
+    expect(within(rows[1] as HTMLElement).getByText("Queued")).toHaveClass("commandChip");
     expect(rows[0].querySelector(".taskFeatureStep")).toBeNull();
     // Titles are plain text in this panel.
     expect(within(details).queryByRole("button")).not.toBeInTheDocument();
@@ -231,34 +205,29 @@ describe("New task modal: Feature and Step", () => {
   });
 });
 
-describe("Task modal: Feature and Step", () => {
-  it("shows the stored feature and step without the task itself in the parallel list", async () => {
+describe("Task modal: Feature", () => {
+  it("shows the stored feature and no Step select, and no feature for a loose task", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Task board v1");
-    expect(dialog.getByRole("combobox", { name: "Step" })).toHaveTextContent("Step 2 · parallel with T-3");
-    expect(optionLabels(dialog.getByRole("combobox", { name: "Step" }))[0]).toBe("Last · new step 5");
+    expect(dialog.queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
     expect(save()).toBeDisabled();
     await closeModal(user);
     const loose = await openTask(user, "Loose end", "T-6");
     expect(loose.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-    expect(loose.getByRole("combobox", { name: "Step" })).toBeDisabled();
+    expect(loose.queryByText("In this feature")).not.toBeInTheDocument();
   });
 
-  it("lists a step with no other task as the step alone, and keeps a finished feature for its own task", async () => {
+  it("keeps a finished feature for its own task", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openTask(user, "Queue", "T-4");
-    expect(dialog.getByRole("combobox", { name: "Step" })).toHaveTextContent("Step 3");
-    expect(dialog.getByRole("combobox", { name: "Step" })).not.toHaveTextContent("parallel");
-    await closeModal(user);
     const old = await openTask(user, "Old work", "T-5");
     expect(old.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Finished work");
     expect(optionLabels(old.getByRole("combobox", { name: "Feature" }))).toEqual(["Task board v1", "Finished work", "Docs", "No feature", "New feature…"]);
   });
 
-  it("folds the other tasks, ordered by step then board order, with this task counted but not listed", async () => {
+  it("folds the other tasks in step order, each leading with its step, with this task counted but not listed", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
@@ -266,8 +235,10 @@ describe("Task modal: Feature and Step", () => {
     expect(details.open).toBe(false);
     expect(details.querySelector("summary")).toHaveTextContent("8 tasks · 1 done");
     const rows = [...details.querySelectorAll("li")];
-    expect(rows.map((row) => row.getAttribute("data-task-id"))).toEqual(["T-1", "T-3", "T-4", "T-7", "T-8", "T-9", "T-10"]);
-    expect(rows.map((row) => row.querySelector(".taskFeatureStep")?.textContent)).toEqual(["1", "2", "3", "4", "4", "4", "4"]);
+    expect(rows.map((row) => row.getAttribute("data-task-id"))).toEqual(["T-1", "T-4", "T-7", "T-8", "T-9", "T-10", "T-3"]);
+    // T-2 is step 7 of 8, so its own row is left out and the step numbers skip it.
+    expect(rows.map((row) => row.querySelector(".taskFeatureStep")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "8"]);
+    expect(rows[0]).toHaveClass("hasStep");
     expect(rows[0]).toHaveTextContent("1T-1RouteDone");
     expect(rows[0]).toHaveClass("isDone");
     expect(rows[1]).not.toHaveClass("isDone");
@@ -283,49 +254,35 @@ describe("Task modal: Feature and Step", () => {
     expect(screen.getByRole("dialog", { name: "Task" })).toHaveTextContent("Columns");
   });
 
-  it("sends nothing on a change, then one update with the feature keys on Save: a step, Last, another feature, No feature", async () => {
+  it("sends nothing on a change, then one update with the feature keys on Save: another feature, No feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     let dialog = await openTask(user, "Store", "T-2");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:3");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f3");
     expect(taskAction).not.toHaveBeenCalled();
     expect(save()).toBeEnabled();
     await user.click(save());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-2", featureId: "f1", step: 3 });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-2", featureId: "f3" });
+    expect(lastCall("update")).not.toHaveProperty("step");
     expect(refresh).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
 
     dialog = await openTask(user, "Store", "T-2");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "last");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
     await user.click(save());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(lastCall("update")).toEqual({ id: "T-2", featureId: "f1" });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
-
-    dialog = await openTask(user, "Store", "T-2");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f3");
-    await user.click(save());
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
-    expect(lastCall("update")).toEqual({ id: "T-2", featureId: "f3" });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
-
-    dialog = await openTask(user, "Store", "T-2");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
-    expect(dialog.getByRole("combobox", { name: "Step" })).toBeDisabled();
-    await user.click(save());
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(4));
     expect(lastCall("update")).toEqual({ id: "T-2", featureId: null });
-    expect(refresh).toHaveBeenCalledTimes(4);
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps Save disabled when the feature and step are chosen back to the stored values", async () => {
+  it("keeps Save disabled when the feature is chosen back to the stored values", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:3");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f3");
     expect(save()).toBeEnabled();
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:2");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     expect(save()).toBeDisabled();
     expect(taskAction).not.toHaveBeenCalled();
   });
@@ -451,9 +408,10 @@ describe("Feature filter and card feature line", () => {
 
     chooseCommandOption(select, "Task board v1 (8)");
     expect(select).toHaveTextContent("Task board v1 (8)");
-    expect(cardIds()).toEqual(["T-1", "T-2", "T-3", "T-4", "T-7", "T-8", "T-9", "T-10"]);
-    expect(within(column("Backlog")).getAllByRole("listitem")).toHaveLength(3);
+    expect(cardIds()).toEqual(["T-2", "T-3", "T-4", "T-7", "T-8", "T-9", "T-10", "T-1"]);
+    expect(within(column("Backlog")).getAllByRole("listitem")).toHaveLength(2);
     expect(within(column("Ready")).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(column("Done")).getAllByRole("listitem")).toHaveLength(1);
 
     chooseCommandOption(select, "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
@@ -497,14 +455,16 @@ describe("Feature filter and card feature line", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("A feature with this name already exists.");
   });
 
-  it("shows '<feature> · step K of N' on a card, with ' · parallel' only when another task shares the step", () => {
+  it("shows '<feature> · step K of N' on a card from the order of the feature's cards, never parallel", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(within(card("T-1")).getByText("Task board v1 · step 1 of 4")).toHaveClass("taskCardDetail");
-    expect(within(card("T-2")).getByText("Task board v1 · step 2 of 4 · parallel")).toBeInTheDocument();
-    expect(within(card("T-4")).getByText("Task board v1 · step 3 of 4")).toBeInTheDocument();
-    expect(within(card("T-9")).getByText("Task board v1 · step 4 of 4 · parallel")).toBeInTheDocument();
+    expect(within(card("T-1")).getByText("Task board v1 · step 1 of 8")).toHaveClass("taskCardDetail");
+    expect(within(card("T-4")).getByText("Task board v1 · step 2 of 8")).toBeInTheDocument();
+    expect(within(card("T-9")).getByText("Task board v1 · step 5 of 8")).toBeInTheDocument();
+    expect(within(card("T-2")).getByText("Task board v1 · step 7 of 8")).toBeInTheDocument();
+    expect(within(card("T-3")).getByText("Task board v1 · step 8 of 8")).toBeInTheDocument();
     expect(within(card("T-5")).getByText("Finished work · step 1 of 1")).toBeInTheDocument();
     expect(card("T-6")).not.toHaveTextContent("step");
+    expect(document.body).not.toHaveTextContent("parallel");
     // It is the card's last line; only the keyboard move toolbar follows it.
     expect(card("T-2").querySelector(".taskCardFeature")?.nextElementSibling).toHaveClass("taskCardMoves");
   });
@@ -520,7 +480,7 @@ describe("without the desktop bridge", () => {
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
     // The filter is the only Feature select: no Task modal field is drawn outside it.
     expect(screen.getAllByRole("combobox", { name: "Feature" })).toEqual([within(group).getByRole("combobox", { name: "Feature" })]);
-    expect(within(card("T-2")).getByText("Task board v1 · step 2 of 4 · parallel")).toBeInTheDocument();
+    expect(within(card("T-2")).getByText("Task board v1 · step 7 of 8")).toBeInTheDocument();
     chooseCommandOption(within(group).getByRole("combobox", { name: "Feature" }), "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
     expect(card("T-6")).not.toHaveAttribute("draggable");
@@ -545,7 +505,7 @@ describe("feature styles", () => {
   };
 
   it("maps the Feature row, disclosure and filter contract lines to tokens", () => {
-    expect(rule(".taskFeatureRow")).toMatch(/repeat\(2, minmax\(0, 1fr\)\); gap: var\(--space-4\)/);
+    expect(rule(".taskFeatureRow")).toMatch(/minmax\(0, 1fr\); gap: var\(--space-4\)/);
     expect(rule(".taskFeatureDetails")).toMatch(/border-top: 1px solid var\(--command-line\); border-bottom: 1px solid var\(--command-line\)/);
     expect(rule(".taskFeatureDetails > summary")).toMatch(/min-height: 44px[^}]*500 var\(--text-sm\)/);
     expect(rule(".taskFeatureItem")).toMatch(/gap: var\(--space-2\); min-height: var\(--control-compact\)/);

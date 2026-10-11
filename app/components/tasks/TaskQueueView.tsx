@@ -7,7 +7,7 @@ import { QueueFeaturePanel } from "./QueueFeaturePanel";
 import { QueueSingleTasks } from "./QueueSingleTasks";
 import { SchedulePanel } from "./SchedulePanel";
 import { StartGatesPanel } from "./StartGatesPanel";
-import { queueFeatures, singleQueueTasks } from "./task-queue-model";
+import { queueFeatures, reorderMove, singleQueueTasks } from "./task-queue-model";
 import { useQueueDrag } from "./use-queue-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
@@ -18,17 +18,20 @@ export function TaskQueueView({ board, onOpenTask, edits }: { board: TaskBoard; 
   const singles = useMemo(() => singleQueueTasks(board), [board]);
   const nextId = board.queue.order[0] ?? null;
   const [announcement, setAnnouncement] = useState("");
-  const reorder = (id: string, step: number) => {
-    setAnnouncement(`${id} moved to step ${step}.`);
-    void edits?.reorderQueueTask(id, step);
+  const reorder = (task: Task, target: Task) => {
+    const move = reorderMove(board, task, target);
+    if (!move) return;
+    const step = panels.flatMap((panel) => panel.steps).find((candidate) => candidate.task.id === target.id)?.step;
+    setAnnouncement(`${task.id} moved to step ${step}.`);
+    void edits?.moveTask(move);
   };
-  const drag = useQueueDrag(board.tasks, reorder);
+  const drag = useQueueDrag(board, reorder);
   const empty = panels.length === 0 && singles.length === 0;
   return <div className="taskQueueRow">
     <div className="taskQueueView">
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
     {empty && <p className="taskBoardEmpty">{EMPTY_TEXT}</p>}
-    {panels.map((panel) => <QueueFeaturePanel key={panel.feature.id} panel={panel} nextId={nextId} queue={board.queue} onOpenTask={onOpenTask} drag={edits ? drag : undefined} onMove={edits ? reorder : undefined} />)}
+    {panels.map((panel) => <QueueFeaturePanel key={panel.feature.id} panel={panel} board={board} nextId={nextId} queue={board.queue} onOpenTask={onOpenTask} drag={edits ? drag : undefined} onMove={edits ? reorder : undefined} />)}
     {!empty && <QueueSingleTasks tasks={singles} nextId={nextId} queue={board.queue} onOpenTask={onOpenTask} />}
     <QueueBlockRules />
     <span className="visuallyHidden" role="status">{announcement}</span>

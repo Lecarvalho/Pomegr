@@ -57,7 +57,6 @@ export type Task = {
   columnId: string;
   position: number;
   featureId: string | null;
-  step: number | null; // step >= 1
   run: TaskRun;
   completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;

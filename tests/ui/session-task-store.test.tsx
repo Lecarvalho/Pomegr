@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseSessionTaskAnswer, parseSessionTaskReference, useSessionTaskReference } from "../../app/session-task-store";
 
 const SESSION = "claude:session-2";
-const REFERENCE = { id: "T-14", repositoryId: `repo-${"a".repeat(24)}`, state: null, featureId: "feat-0123456789ab", feature: "Task board v1", step: 2 };
+const REFERENCE = { id: "T-14", repositoryId: `repo-${"a".repeat(24)}`, state: null, featureId: "feat-0123456789ab", feature: "Task board v1" };
 const page = (task: unknown, taskReadiness = "ready") => ({ sessions: [{ id: SESSION, ...(task === undefined ? {} : { task }) }], taskReadiness });
 
 function Probe() {
@@ -16,7 +16,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe("session task reference", () => {
   it("keeps only a reference that matches the contract", () => {
     expect(parseSessionTaskReference({ ...REFERENCE, text: "SECRET" })).toEqual(REFERENCE);
-    for (const invalid of [{ ...REFERENCE, id: "14" }, { ...REFERENCE, repositoryId: "C:\repo" }, { ...REFERENCE, state: "running" }, { ...REFERENCE, step: 0 }, { ...REFERENCE, feature: "a\nb" }, null, []]) {
+    for (const invalid of [{ ...REFERENCE, id: "14" }, { ...REFERENCE, repositoryId: "C:\repo" }, { ...REFERENCE, state: "running" }, { ...REFERENCE, feature: "a\nb" }, null, []]) {
       expect(parseSessionTaskReference(invalid)).toBeNull();
     }
   });

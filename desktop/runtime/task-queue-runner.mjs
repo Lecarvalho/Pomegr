@@ -78,7 +78,7 @@ export function createTaskQueueRunner(options = {}) {
     if (disposed) return;
     let answer;
     try { answer = await post("queue-next", {}); } catch { return; }
-    // The tasks of one step arrive together. A queue paused by one of them starts nothing more in this tick.
+    // A queue paused by one start starts nothing more in this tick.
     const paused = new Set();
     for (const { repositoryId, taskId } of startsFrom(answer)) {
       if (disposed) return;

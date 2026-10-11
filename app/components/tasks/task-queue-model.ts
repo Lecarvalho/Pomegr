@@ -1,7 +1,11 @@
 import type { Task, TaskBoard, TaskFeature } from "../../../shared/task-contract";
+import { placementOf, readyColumnId, waitsInQueue } from "./task-board-model";
+import type { TaskMove } from "./task-desktop";
+import { featureSteps } from "./task-features";
 
-export type QueueStep = { step: number; tasks: Task[]; allDone: boolean };
-export type QueueFeature = { feature: TaskFeature; steps: QueueStep[]; total: number; done: number; highest: number };
+/** One step is one task: a feature's tasks run one at a time, in the order of their cards. */
+export type QueueStep = { step: number; task: Task };
+export type QueueFeature = { feature: TaskFeature; steps: QueueStep[]; total: number; done: number };
 
 function idNumber(id: string) {
   return Number(id.slice(2));
@@ -9,20 +13,13 @@ function idNumber(id: string) {
 
 const byTaskNumber = (left: Task, right: Task) => idNumber(left.id) - idNumber(right.id);
 
-export function queueFeatures(board: Pick<TaskBoard, "features" | "tasks">): QueueFeature[] {
+export function queueFeatures(board: Pick<TaskBoard, "columns" | "features" | "tasks">): QueueFeature[] {
   const panels: QueueFeature[] = [];
   for (const feature of board.features) {
     if (feature.done) continue;
-    const own = board.tasks.filter((task) => task.featureId === feature.id);
+    const own = featureSteps(board, feature.id);
     if (own.length === 0) continue;
-    const byStep = new Map<number, Task[]>();
-    for (const task of own) {
-      if (task.step === null) continue;
-      byStep.set(task.step, [...(byStep.get(task.step) ?? []), task]);
-    }
-    const steps = [...byStep.entries()].sort((left, right) => left[0] - right[0])
-      .map(([step, tasks]) => ({ step, tasks: tasks.sort(byTaskNumber), allDone: tasks.every((task) => task.state === "done") }));
-    panels.push({ feature, steps, total: own.length, done: own.filter((task) => task.state === "done").length, highest: steps.at(-1)?.step ?? 0 });
+    panels.push({ feature, steps: own.map((task, index) => ({ step: index + 1, task })), total: own.length, done: own.filter((task) => task.state === "done").length });
   }
   return panels;
 }
@@ -36,27 +33,20 @@ export function singleQueueTasks(board: Pick<TaskBoard, "tasks" | "queue">): Tas
   return [...queued, ...listed.filter((task) => !waits(task)).sort(byTaskNumber)];
 }
 
+/** A feature task that waits in the queue: its card is in Ready, and its place there is its step. */
 export function isMovableQueueTask(task: Task) {
-  return (task.state === "not_queued" || task.state === "queued" || task.state === "scheduled") && task.session === null && task.featureId !== null && task.step !== null;
+  return waitsInQueue(task) && task.featureId !== null;
 }
 
-/** The step a drop would send, or null when nothing should be sent. */
-export function reorderTarget(panel: QueueFeature, task: Task, step: number | null): number | null {
-  if (!isMovableQueueTask(task) || task.featureId !== panel.feature.id) return null;
-  if (step === null) {
-    const last = panel.steps.at(-1);
-    return last && last.step === task.step && last.tasks.length === 1 ? null : panel.highest + 1;
-  }
-  const target = panel.steps.find((candidate) => candidate.step === step);
-  return !target || target.allDone || task.step === step ? null : step;
+/** The card move that gives `task` the step of `target`, or null when nothing should be sent. */
+export function reorderMove(board: Pick<TaskBoard, "columns" | "tasks">, task: Task, target: Task): TaskMove | null {
+  const readyId = readyColumnId(board);
+  if (readyId === null || task.id === target.id || task.featureId !== target.featureId || !isMovableQueueTask(task) || !isMovableQueueTask(target)) return null;
+  const place = placementOf(board, target.id);
+  if (place?.columnId !== readyId || placementOf(board, task.id)?.columnId !== readyId) return null;
+  return { id: task.id, columnId: readyId, position: place.index };
 }
 
-export function moveChoices(panel: QueueFeature, task: Task): { step: number; label: string }[] {
-  const choices = panel.steps.filter((candidate) => reorderTarget(panel, task, candidate.step) !== null).map((candidate) => ({ step: candidate.step, label: `Step ${candidate.step}` }));
-  const fresh = reorderTarget(panel, task, null);
-  return fresh === null ? choices : [...choices, { step: fresh, label: "New last step" }];
-}
-
-export function stepModeLabel(step: QueueStep) {
-  return step.tasks.length > 1 ? `Parallel · ${step.tasks.length}` : "One task";
+export function moveChoices(board: Pick<TaskBoard, "columns" | "tasks">, panel: QueueFeature, task: Task): { step: number; label: string }[] {
+  return panel.steps.filter((candidate) => reorderMove(board, task, candidate.task) !== null).map((candidate) => ({ step: candidate.step, label: `Step ${candidate.step}` }));
 }

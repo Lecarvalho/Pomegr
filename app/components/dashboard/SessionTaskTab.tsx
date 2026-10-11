@@ -6,7 +6,7 @@ import type { SessionTaskReference } from "../../../shared/session-catalog-contr
 import { plainTaskText, type Task } from "../../../shared/task-contract";
 import { sessionTaskHref } from "../tasks/SessionTaskCell";
 import {
-  checkRows, definitionStatus, modelSummary, plannedParts, queueBlockedNote, referenceChip, startedLine, stepLabel,
+  checkRows, definitionStatus, modelSummary, plannedParts, queueBlockedNote, referenceChip, startedLine,
   type SessionTaskFull, type TextPart,
 } from "../tasks/session-task-model";
 import { TaskIssueChip } from "../tasks/TaskIssueChip";
@@ -46,10 +46,6 @@ function FeaturePanel({ task, model, sessionId, boardHref }: { task: SessionTask
         </h2>
         <span className="sessionTaskProgress"><code>{model.progress.done}</code> of <code>{model.progress.total}</code> done</span>
       </div>
-      {model.sameStep.length > 0 && <>
-        <span className="sessionTaskSideLabel">Same step as this session</span>
-        <ul className="sessionTaskRows">{model.sameStep.map((entry) => <RelatedRow key={entry.id} task={entry} sessionId={sessionId} boardHref={boardHref} />)}</ul>
-      </>}
       {model.nextStep.length > 0 && <>
         <span className="sessionTaskSideLabel isNext">Next</span>
         <ul className="sessionTaskRows">{model.nextStep.map((entry) => <RelatedRow key={entry.id} task={entry} sessionId={sessionId} boardHref={boardHref} />)}</ul>
@@ -131,7 +127,7 @@ export function SessionTaskTab({ task, sessionId }: { task: SessionTaskReference
         <BoardAction href={boardHref} />
       </div>
       {task.feature !== null && <p className="sessionTaskFeatureLine">
-        <span className="sessionTaskEyebrow">Feature</span> {task.feature}{task.step !== null && <> · <code>{stepLabel(task.step, model.stepTotal)}</code></>}
+        <span className="sessionTaskEyebrow">Feature</span> {task.feature}
       </p>}
       {model.note && <p className="sessionTaskNote">{model.note}</p>}
     </section>

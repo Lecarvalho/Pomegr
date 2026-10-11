@@ -31,7 +31,6 @@ export type SessionTaskReference = {
   state: "needs_review" | "stalled" | "blocked" | "done" | null;
   featureId: string | null;
   feature: string | null;
-  step: number | null;
   issue?: number | null;
 };
 

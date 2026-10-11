@@ -52,7 +52,7 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "queue_add" | "queue_remove" | "queue_settings" | "resolve_done" | "resolve_requeue";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -140,9 +140,6 @@ export function removeDesktopQueueTask(repositoryId: string, id: string): Promis
   return sendTaskAction(repositoryId, "queue_remove", { id });
 }
 
-export function reorderDesktopQueueTask(repositoryId: string, id: string, step: number): Promise<TaskActionResult> {
-  return sendTaskAction(repositoryId, "queue_reorder", { id, step });
-}
 
 export function setDesktopQueue(repositoryId: string, on: boolean): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_settings", { on });
@@ -175,7 +172,6 @@ export function createFailureMessage(error: TaskActionError | "unavailable"): st
 export const UPDATE_FAILURE_MESSAGE = "The change could not be saved.";
 export const DELETE_FAILURE_MESSAGE = "The task could not be deleted.";
 export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
-export const QUEUE_REORDER_FAILURE_MESSAGE = "The task could not be moved to that step.";
 export const QUEUE_SETTINGS_FAILURE_MESSAGE = "The queue setting could not be changed.";
 export const GATE_THRESHOLD_FAILURE_MESSAGE = "The start threshold could not be changed.";
 export const QUEUE_SCHEDULE_FAILURE_MESSAGE = "The schedule could not be changed.";
