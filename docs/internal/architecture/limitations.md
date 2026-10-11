@@ -126,6 +126,15 @@ session agent or request attribution and do not count as recorded edits. Files t
 session wrote through a shell command and never committed itself are absent.
 Pomegr cannot currently provide a complete list of files changed by this session.
 
+A Claude session that makes its own worktree and works there is read in that worktree
+only while its latest Git command ran there. Pomegr infers the directory from the text of
+that command: a directory change that opens the command, `git -C`, or the recorded working
+directory. It does not follow a directory change later in a command, a shell variable, or
+a substitution. When the session returns to its launch checkout, or removes the worktree,
+the branch bar and the uncommitted files are those of the launch checkout again; the files
+of the commits it made in the worktree stay under **Touched here**. This is a heuristic,
+not a provider record of the session's checkout.
+
 The adjacent **Uncommitted** and **Changed elsewhere** segments split the
 repository's working-tree changes so that no path appears in both. A live view
 reads the current working tree; a historical view uses its recorded snapshot.

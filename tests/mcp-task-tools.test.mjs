@@ -86,7 +86,7 @@ test("add_task schema is strict and bounded with no repository or path input", (
   for (const value of ["true", 1, "name", null]) assert.equal(parse(tool, { text: "x", remote_control: value }).success, false, String(value));
   assert.equal(parse(tool, { text: "x", complete_when: ["pr_open", "pr_open"] }).success, false);
   assert.equal(parse(tool, { text: "x", complete_when: ["nope"] }).success, false);
-  assert.equal(parse(tool, { text: "x", complete_when: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"] }).success, true);
+  assert.equal(parse(tool, { text: "x", complete_when: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"] }).success, true);
   assert.equal(parse(tool, { text: "x", own_condition: "a".repeat(501) }).success, false);
   assert.equal(parse(tool, { text: "x", feature: "a".repeat(81) }).success, false);
   assert.equal(parse(tool, { text: "x", feature: "" }).success, false);

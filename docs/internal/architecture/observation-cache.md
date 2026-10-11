@@ -3267,7 +3267,10 @@ validation: a target under the session working directory's `.claude/worktrees/<n
 where Claude Code checks out an isolated agent's worktree, is validated as the remaining
 path under the session working directory, so the change is recorded at the same
 repository-relative path as an edit in the main checkout. The remainder passes the same
-validator, so a provider folder inside the worktree stays rejected. Repository roots, native target values, commands, tool
+validator, so a provider folder inside the worktree stays rejected. A target inside another
+checkout of the launch repository that the session's own Git commands ran in (see
+[the working checkout](#the-working-checkout-of-a-claude-session)) is rebased the same
+way, onto the same path under the launch checkout. Repository roots, native target values, commands, tool
 arguments, provider records, and validation failures remain monitor-private.
 
 Codex binds successful structured mutations during U2 through the inventory's private
@@ -3728,6 +3731,46 @@ working tree, branch, and pull request are never read from the main checkout. A 
 launch branch is kept only for the launch checkout itself, because one repository ID can
 now hold several checkouts on different branches. Git rename continuity keeps one head for
 each repository ID and reads it in the main root.
+
+### The working checkout of a Claude session
+
+A Claude session can leave its launch checkout without a new working directory in its
+transcript: it makes a worktree with `git worktree add` and opens each later command with
+a directory change. The Claude adapter (`server/providers/claude/working-checkout.mjs`)
+therefore reads where the session's own Git commands ran. This is a heuristic, recorded in
+[Metrics](metrics.md#git-observed-files).
+
+- Only a shell tool call of the primary transcript whose work kind is `git`, `git_push`,
+  or `pull_request` counts.
+- Its directory is the one a directory change that opens the command names (`cd`, `pushd`,
+  or `Set-Location`, followed by `&&`, `;`, or a new line), else the one `git -C` names,
+  else the working directory the transcript recorded for that record.
+- A relative directory resolves against that recorded working directory. A directory that
+  holds a variable, a substitution, `~`, a wildcard, or a control character names nothing;
+  Pomegr never expands shell text.
+- The adapter keeps the eight directories used last. The directory of the latest Git
+  command decides the working checkout.
+- That directory must exist. The inventory's `resolveRepository` must recognize it as Git
+  and answer the repository ID of the launch directory with another checkout root. Then
+  the provider's `repositoryAttributionForSession` answers that root, and the session's
+  association, live Git check, branch, pull request, uncommitted files, and commits in the
+  session are read there.
+- The transcript keeps recording the launch checkout's branch after the session moves, so
+  this binding carries no recorded branch (`anyBranch`): the live check takes the branch
+  the working checkout has. Each other binding still requires its recorded branch.
+- When the latest Git command ran in the launch checkout, in another repository, or in a
+  directory that no longer gives a Git answer, the provider answers nothing and the
+  session is read in its launch directory, as before. The registry passes that `null`
+  through; it is not the `unknown` state.
+- The bounded record tail can slide past the last Git command. A tail with no Git command
+  decides nothing new, and the checkout already found in this run stays. A monitor that
+  starts after the tail slid reads the launch directory until the next Git command.
+- A session whose working checkout changes keeps one repository snapshot: the repository
+  ID is the same, so its commit paths and commit times accumulate across both checkouts,
+  and the branch and uncommitted files are those of the last live check.
+
+The working checkout is monitor-private. It is not in session evidence, a checkpoint, a
+response, or a log; `session.cwd` stays the launch directory.
 
 Records stored under a former worktree ID are not migrated or remapped: repository
 sidecars, context-inventory bindings, and file-history rows keyed by that ID stop matching

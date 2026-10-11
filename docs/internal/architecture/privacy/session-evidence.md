@@ -149,6 +149,13 @@ Behavior: [Observation cache](../observation-cache.md).
   - The files a command writes cannot be known reliably from its text.
   - Do not parse command text for file writes unless a reliable source is found
     (product-owner decision, 2026-09-24).
+  - The directory of a session's own Git command is a separate read (product need of
+    T-52, 2026-10-11): the Claude adapter may read the directory that a Git command names
+    to find the checkout the session works in. It reads no file path from the command.
+  - That directory and the checkout it resolves to are monitor-private. They are used
+    only as the working directory of read-only Git and GitHub reads, after the directory
+    exists and the repository resolver recognizes it as a checkout of the session's
+    launch repository. They never enter evidence, a checkpoint, a response, or a log.
 - A move observed only through Git may establish repository-scoped path continuity.
 - Such a move must not manufacture session, agent, or request attribution.
 - Such a move must not contribute to session edit counts.

@@ -108,7 +108,7 @@ The browser-visible shape follows. `shared/task-contract.ts` owns the
 executable version.
 
 ```ts
-type TaskCheck = "pr_open" | "tree_clean" | "commit_on_branch" | "pr_merged" | "ci_passed";
+type TaskCheck = "pr_open" | "tree_clean" | "commit_on_branch" | "pr_merged" | "ci_passed" | "user_validated";
 type TaskState = "not_queued" | "queued" | "scheduled" | "needs_review" | "stalled" | "blocked" | "done";
 type Task = {
   id: string;                 // "T-<n>", monotonic per repository
@@ -899,6 +899,7 @@ installed plugin from before the rename sends; a body with both names is `invali
 | Commit on task branch | Committed Git facts of the task branch |
 | Pull request merged | Committed pull-request state |
 | CI passed | Check status of the task branch's pull request, as last read by the monitor |
+| Validated with the user | Not verified; the agent validates the work with the user before it reports |
 | Own condition | Not verified; the agent judges it in its report |
 
 - **A report always sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
@@ -918,6 +919,11 @@ installed plugin from before the rename sends; a body with both names is `invali
   `GET /api/tasks`, shown in the Task modal as the agent's words, and never part of
   the report's answer. A session that ends without a report is
   Stalled once a second reading confirms its end (see [States](#states)).
+- **Validated with the user** (`user_validated`, task T-44, 2026-10-11) is a check
+  Pomegr cannot observe. The session prompt lists it with the other conditions, and the
+  agent judges it like the own condition. `verifyChecks` has no rule for it, so it gets
+  no `{ check, passed }` result and no reading on a waiting task. The forms and the
+  Task tab label it Agent-reported after a report.
 - With no condition checked, the agent's `complete_task` report alone completes the
   task: it has no result to show, and the task still goes to Review.
 - The report keeps only `{ check, passed }` results, the time, the bounded block

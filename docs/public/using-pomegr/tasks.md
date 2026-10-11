@@ -104,7 +104,11 @@ with **PR open** and **Tree clean** checked.
 | **PR merged** | That pull request is merged. |
 | **CI passed** | Every check on the branch's pull request passed. Pending, failed, and missing checks do not pass. |
 
-The **Own condition** field under the five checks is free text up to 500 characters; an empty field means none. The
+A sixth checkbox, **Validated with the user**, asks the agent to validate the work
+with you before it reports. Pomegr cannot observe that, so the agent judges it and
+the task shows it as **Agent-reported**, with no pass or fail.
+
+The **Own condition** field under the checks is free text up to 500 characters; an empty field means none. The
 agent judges it, and Pomegr does not evaluate it. A fact Pomegr has not observed
 is unknown, and unknown never passes.
 
