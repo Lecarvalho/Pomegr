@@ -42,11 +42,13 @@ jobs:
           npm ci
           npm run desktop:runtime
 
-      - name: Run Node tests
+      # The desktop and production-web suites read the built output.
+      - name: Build and run Node tests
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
+          npm run build
           npm run test:node
 
   ui-tests:

@@ -98,7 +98,7 @@ exactly before bundling services; it never regenerates legal files after the web
 | Workflow | Job | Runner | Runs |
 | --- | --- | --- | --- |
 | [Checks](../../../.github/workflows/checks.yml) | Checks and landing | `ubuntu-24.04` | `npm run check`, then the landing `test` and `build:audit` |
-| [Windows verification](../../../.github/workflows/verify.yml) | Node tests | `windows-2022` | `npm run test:node` |
+| [Windows verification](../../../.github/workflows/verify.yml) | Node tests | `windows-2022` | `npm run build`, whose output the desktop and production-web suites read, then `npm run test:node` |
 | [Windows verification](../../../.github/workflows/verify.yml) | UI tests | `ubuntu-24.04` | `npm run test:ui` |
 | [Windows verification](../../../.github/workflows/verify.yml) | Build and desktop smoke | `windows-2022` | `npm run check:release-source -- --ref HEAD`, `npm run build`, `npm run check:generated`, `npm run desktop:smoke:ci` |
 
