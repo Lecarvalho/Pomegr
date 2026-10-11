@@ -5,10 +5,10 @@ already-observed operational state. These tools are passive clients of Pomegr's
 committed monitor caches. They never start the monitor, acquire provider data,
 hydrate a session, parse a transcript, or control a coding-agent process.
 
-The server registers seven tools: `get_provider_health`, `get_usage_limits`,
-`list_sessions`, `list_session_agents`, `get_agent_context`, `get_recent_failures`,
-and `get_session_report`. The [MCP queries guide](../../public/using-pomegr/mcp-queries.md)
-explains when to use each one, what its result contains, and how to read it.
+[MCP tools](../../public/using-pomegr/mcp-tools.md#query-tools) is the canonical list of
+the seven query tools. The [MCP queries guide](../../public/using-pomegr/mcp-queries.md)
+explains when to use each one, what its result contains, and how to read it. This page
+owns session resolution, evidence semantics, transport, and privacy.
 
 Session-specific MCP tools automatically select the calling session. Codex supplies
 its validated thread/session ID to the MCP subprocess. Claude's `PreToolUse` hook

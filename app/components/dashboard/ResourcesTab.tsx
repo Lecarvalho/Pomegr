@@ -22,14 +22,12 @@ export type ResourcesTabProps = {
   sessionId: string;
   historical: boolean;
   paused?: boolean;
-  /** Deep link from an Overview event: open the Session window on this field's session-high peak. */
   peakField?: string | null;
   onClearPeakField?: () => void;
 };
 
 const RESOURCE_FIELDS: readonly ResourceField[] = ["cpu_cores", "memory_bytes", "read_bps", "write_bps"];
 
-/** The retained session high for a field; with equal highs the earlier observation wins, as in the events feed. */
 function sessionHighPeak(peaks: ResourcePeak[], field: ResourceField | null) {
   let high: ResourcePeak | null = null;
   for (const peak of peaks) {
@@ -96,7 +94,6 @@ function liveWindowsEnabled(live: ResourcesDomain["live"]) {
   return (live?.samples.length ?? 0) > 0;
 }
 
-/** The three CPU / Memory / Disk I/O sparkline cards for the selected window. */
 function buildCards(options: {
   window: WindowKind;
   live: ResourcesDomain["live"];
@@ -192,7 +189,6 @@ function peaksInWindow(peaks: ResourcePeak[], window: WindowKind, live: Resource
   return peaks.filter((peak) => { const at = Date.parse(peak.observedAt); return Number.isFinite(at) && at >= start && at <= latest; });
 }
 
-/** The Resources tab: sparkline cards, a window selector, a peak zoom panel, and a peaks table. */
 export function ResourcesTab({ sessionId, historical, paused = false, peakField = null, onClearPeakField }: ResourcesTabProps) {
   const result = useSessionDomain({ sessionId, domain: "resources" }, { historical, enabled: !paused });
   const resources = result.data;
@@ -208,7 +204,6 @@ export function ResourcesTab({ sessionId, historical, paused = false, peakField 
     setAppliedLink(linkKey);
     if (linkKey) setWindowState({ sessionId, window: "session" });
   }
-  // Stored evidence may arrive after the initial render, without any live samples.
   if (windowState.sessionId === sessionId && windowState.window !== "session"
     && resources?.readiness === "ready" && !liveWindowsEnabled(resources.live)
     && resources.retained.readiness === "ready"

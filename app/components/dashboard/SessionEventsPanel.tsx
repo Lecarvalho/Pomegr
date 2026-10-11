@@ -12,10 +12,8 @@ import { Unavailable } from "./SessionOverviewUnavailable";
 const DESKTOP_VISIBLE_EVENTS = 9;
 const PHONE_VISIBLE_EVENTS = 5;
 
-// Disk fields read as bare "Read" and "Write" elsewhere; an event row has no column to say what they measure.
 const RESOURCE_EVENT_LABEL: Record<ResourceField, string> = { ...RESOURCE_FIELD_LABEL, read_bps: "Disk read", write_bps: "Disk write" };
 
-// 16px stroke glyphs, one per kind. They stay neutral: the kind is named by the label, never by color.
 const GLYPH_SHAPES: Record<SessionEventKind, ReactNode> = {
   agent_started: <><circle cx="8" cy="8" r="6" /><path d="M7 5.5l3.5 2.5L7 10.5z" /></>,
   agent_finished: <><circle cx="8" cy="8" r="6" /><path d="M5 8l2 2 4-4" /></>,
@@ -45,29 +43,23 @@ const estimateDetail = (event: SessionEvent) => {
   return phase && typeof percent === "number" && Number.isFinite(percent) ? `${percent}% · ${phase.replaceAll("_", " ")}` : null;
 };
 const resourceDetail = (event: SessionEvent) => typeof event.resource === "string" && Object.hasOwn(RESOURCE_EVENT_LABEL, event.resource) ? `${RESOURCE_EVENT_LABEL[event.resource]} · session high` : null;
-// Opens the Resources tab on that resource's session-high peak; an unknown field opens the tab alone.
 const resourceDestination = (event: SessionEvent): Partial<SessionRouteQuery> => resourceDetail(event) ? { tab: "resources", peak: event.resource as string } : { tab: "resources" };
 const pullRequestDetail = (event: SessionEvent) => typeof event.pullRequestNumber === "number" && Number.isSafeInteger(event.pullRequestNumber) && event.pullRequestNumber > 0 ? `#${event.pullRequestNumber}` : null;
-// A partial refill behind an elapsed lifetime is an inference and says so.
 const REFILL_EVENT_LABEL: Record<NonNullable<SessionEvent["refill"]>, string> = { possible_full: "Possible full refill", provider_diagnosed: "Provider-diagnosed", lifetime_elapsed: "Partial refill · inference" };
 const COMPACTION_EVENT_LABEL: Record<NonNullable<SessionEvent["compaction"]>, string> = { automatic: "Automatic", manual: "Manual" };
 const refillDetail = (event: SessionEvent) => joinDetail(typeof event.refill === "string" && Object.hasOwn(REFILL_EVENT_LABEL, event.refill) ? REFILL_EVENT_LABEL[event.refill] : null, plainText(event.agentLabel));
 const compactionDetail = (event: SessionEvent) => joinDetail(typeof event.compaction === "string" && Object.hasOwn(COMPACTION_EVENT_LABEL, event.compaction) ? COMPACTION_EVENT_LABEL[event.compaction] : null, plainText(event.agentLabel));
 
-// Label, detail, and destination read only fields each kind owns, so an event never prints anything it was not defined to carry.
 const PRESENTATION: Record<SessionEventKind, EventPresentation> = {
   agent_started: { label: "Agent started", detail: (event) => plainText(event.agentLabel), destination: agentDestination },
   agent_finished: { label: "Agent finished", detail: agentEnded, destination: agentDestination },
   agent_stopped: { label: "Agent stopped", detail: agentEnded, destination: agentDestination },
   signal_reported: { label: "Signal reported", detail: signalDetail, destination: () => ({ tab: "signals" }) },
-  // No tab owns the progress estimate, so this row is plain text rather than a button.
   estimate_updated: { label: "Agent estimate updated", detail: estimateDetail, destination: null },
-  // Opens Activities on the request recorded as answering this message; an unparseable time opens the tab alone.
   user_message: { label: "User message", detail: () => null, destination: (event) => { const request = userMessageRoute(event.at); return request ? { tab: "activities", request } : { tab: "activities" }; } },
   resource_peak: { label: "Resource peak", detail: resourceDetail, destination: resourceDestination },
   commit_observed: { label: "Commit observed", detail: () => "Git-observed", destination: () => ({ tab: "repository" }) },
   pull_request_opened: { label: "Pull request opened", detail: pullRequestDetail, destination: () => ({ tab: "repository" }) },
-  // Both open the agent whose history marks carry the full refill or compaction evidence.
   cache_refill: { label: "Cache refill", detail: refillDetail, destination: agentDestination },
   context_compacted: { label: "Context compacted", detail: compactionDetail, destination: agentDestination },
 };
@@ -130,7 +122,6 @@ function SessionEventRow({ event, count, onNavigate }: { event: SessionEvent; co
   </button>;
 }
 
-/** Overview rail of high-level session transitions. Renders only the feed it is given; the monitor decides what an event is. */
 export function SessionEventsPanel({ events, onNavigate, headingId = "session-events" }: {
   events: SessionEventFeed;
   onNavigate: (changes: Partial<SessionRouteQuery>) => void;
@@ -148,11 +139,11 @@ export function SessionEventsPanel({ events, onNavigate, headingId = "session-ev
     {events.readiness !== "ready" ? <Unavailable readiness={events.readiness} label="Event evidence" /> : items.length === 0
       ? <p className="sessionOverviewEmpty">No events recorded.</p>
       : <>
-        {/* data-expanded lets the stylesheet scroll the list inside the collapsed height on desktop instead of growing the panel. */}
+        {/* data-expanded lets the stylesheet scroll the list inside the collapsed height on desktop. */}
         <ul id={listId} className="sessionEventList" data-expanded={expanded ? "true" : undefined}>{visible.map(({ event, count }) => <li key={event.id}><SessionEventRow event={event} count={count} onNavigate={onNavigate} /></li>)}</ul>
         <div className="sessionEventsFooter">
           {earlier > 0 && <button type="button" className="commandTextLink" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded((open) => !open)}>{expanded ? "Show fewer" : `Show ${earlier} earlier`}</button>}
-          {/* The total counts events derivable from retained evidence, so it claims no complete session history. */}
+          {/* The total counts events derivable from retained evidence, not a complete history. */}
           <span className="sessionEventsTotal">{`${events.total.toLocaleString("en-US")} ${events.total === 1 ? "event" : "events"}`}</span>
         </div>
       </>}

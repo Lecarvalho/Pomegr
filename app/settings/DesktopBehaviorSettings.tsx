@@ -21,7 +21,6 @@ function behaviorBridge() {
     : (window as Window & { pomegrDesktop?: BehaviorBridge }).pomegrDesktop;
 }
 
-/** Runs one desktop mutation at a time and adopts the bounded snapshot it returns. */
 function useBehaviorMutation(updates: Updates) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);

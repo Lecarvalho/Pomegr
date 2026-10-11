@@ -17,8 +17,6 @@ export function catalogSourceScopeKey(registry) {
   const sourceScopes = (registry?.providers || []).map((provider) => [provider.id,
     typeof provider.catalogSourceScope === "string" ? provider.catalogSourceScope : ""])
     .filter(([providerId]) => providerId).sort(([left], [right]) => left.localeCompare(right));
-  // Adapter scope values are already opaque hashes. This second private hash
-  // binds them to the configured folders without persisting raw source paths.
   return createHash("sha256").update(JSON.stringify({ providers, folders: Object.keys(folders).sort().map((key) => [key, folders[key] || ""]), sourceScopes })).digest("hex");
 }
 

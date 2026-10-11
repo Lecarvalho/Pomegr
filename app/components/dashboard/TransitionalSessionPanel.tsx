@@ -9,9 +9,7 @@ type TransitionalSessionPanelProps = {
   children: (state: MonitorState) => ReactNode;
 };
 
-// Keying the panel on sessionId makes React unmount and remount it on a session change instead of
-// reusing the instance, so the polled state, its refs and everything rendered from them reset for
-// free (see useTransitionalSessionState).
+// Keyed on sessionId so a session change remounts the panel and resets its polled state.
 export function TransitionalSessionPanel(props: TransitionalSessionPanelProps) {
   return <PolledSessionPanel key={props.sessionId} {...props} />;
 }

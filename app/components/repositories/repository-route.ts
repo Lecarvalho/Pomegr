@@ -1,7 +1,5 @@
 export const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 
-// Order follows the design contract (F19): Overview, Files, Git, then the setup tabs Plugin, Context
-// inventory, Reporting. Tasks sits between Git and Plugin so Home/End keep landing on Overview and Reporting.
 export const repositoryTabs = [
   ["overview", "Overview"],
   ["files", "Files"],
@@ -15,9 +13,6 @@ export const repositoryTabs = [
 export type RepositoryTab = typeof repositoryTabs[number][0];
 export type RepositorySearchParams = { tab?: string | string[]; provider?: string | string[]; revision?: string | string[]; path?: string | string[] };
 
-/** Upper bound shared with shared/repository-files-contract.ts's MAX_REPOSITORY_PATH_LENGTH,
- * duplicated here (a plain literal) so this client route module never imports the file-history
- * contract just for one constant. Both slices are the same shape by convention (F17-22 contract). */
 const MAX_ROUTE_FILE_PATH_LENGTH = 512;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 
@@ -30,10 +25,7 @@ export function repositoryTab(value: unknown): RepositoryTab | undefined {
   return repositoryTabs.find(([id]) => id === value)?.[0];
 }
 
-/** Shared by the repository page and the session Repository tab: a bounded repository-relative
- * path safe to carry in a URL query and hand to useFileHistory. Rejects anything that could read
- * as absolute, a Windows path, or a traversal segment; the monitor independently revalidates the
- * value server-side (see shared/repository-files-contract.ts, server/repository/repository-snapshot.mjs). */
+/** Shared by the repository page and the session Repository tab. */
 export function repositoryFilePath(value: unknown): string | undefined {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_ROUTE_FILE_PATH_LENGTH) return undefined;

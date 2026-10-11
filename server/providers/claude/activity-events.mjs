@@ -79,7 +79,7 @@ function hasLocalCommandWrapper(content) {
   return values.some((value) => /<local-command-(?:stdout|stderr|caveat)>/i.test(value));
 }
 
-/** Direct user input: not a slash-command echo and not a local-command output wrapper. */
+// Direct user input: not a slash-command echo and not a local-command output wrapper.
 export function isClaudeDirectUserInput(record) {
   const content = record?.message?.content;
   return !commandName(record)
@@ -95,7 +95,7 @@ export function createClaudeSessionWorkStartState() {
   return { startedAt: null, pendingCommand: null };
 }
 
-/** Adapter-private reducer; it retains only an initiating timestamp and opaque command linkage. */
+// Adapter-private reducer; it retains only an initiating timestamp and opaque command linkage.
 export function reduceClaudeSessionWorkStart(state, record) {
   const timestamp = recordTimestamp(record);
   let startedAt = state.startedAt;
@@ -119,11 +119,7 @@ export function reduceClaudeSessionWorkStart(state, record) {
   return { startedAt, pendingCommand };
 }
 
-/**
- * Finds the first recorded main-session action that initiated model work.
- * Command text stays private: command records qualify only through Claude's
- * prompt/turn-companion linkage, never by command-name heuristics.
- */
+// Finds the first recorded main-session action that initiated model work.
 export function claudeSessionWorkStartedAt(records) {
   let state = createClaudeSessionWorkStartState();
   for (const record of records) state = reduceClaudeSessionWorkStart(state, record);
@@ -144,7 +140,7 @@ export function claudeReplyActivityId(actorId, identity) {
   return `claude-reply-${crypto.createHash("sha256").update(`${actorId}:${identity}`).digest("hex").slice(0, 20)}`;
 }
 
-/** Presence metadata only: never retain message or summary content. */
+// Presence metadata only: never retain message or summary content.
 export function claudeConversationActivity(records, actor = { id: "primary", label: "Primary agent" }, events = new Map(), maximum = MAX_ENTRIES) {
   for (const record of records) {
     if (!record || record.isMeta || record.isCompactSummary || record.isApiErrorMessage) continue;
@@ -172,7 +168,7 @@ export function claudeConversationActivity(records, actor = { id: "primary", lab
   return [...events.values()];
 }
 
-/** U2: delivery is activity; queue operations alone are not a delivered notification. */
+// U2: delivery is activity; queue operations alone are not a delivered notification.
 function emptyActivityState() {
   return { calls: new Map(), launches: new Map(), events: new Map() };
 }
@@ -219,7 +215,6 @@ function priorSuffixMatches(file, source) {
   } finally { fs.closeSync(descriptor); }
 }
 
-/** Complete, yielding replay retains normalized deliveries independently of acquisition tails. */
 export function createClaudeActivityReader() {
   const files = new Map();
   return async function read(file, actor = { id: "primary", label: "Primary agent" }, precomputedDescriptor) {

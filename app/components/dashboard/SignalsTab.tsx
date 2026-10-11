@@ -13,7 +13,6 @@ export type SignalsTabProps = {
   onNavigateAgent: (agentId: string) => void;
 };
 
-/** The sole Signals-domain subscription. Historical store entries do not poll. */
 export function SignalsTab({ sessionId, historical, paused, onNavigateAgent }: SignalsTabProps) {
   const result = useSessionDomain({ sessionId, domain: "signals" }, { historical, enabled: !paused });
   const signals = result.data;

@@ -1,8 +1,5 @@
 const OPAQUE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-// Route parsing is deliberately syntactic. Provider registration remains the
-// authority that decides whether a parsed provider is supported; keeping that
-// allowlist out of this browser-safe helper means a new first-party provider
-// does not require another routing branch.
+// Route parsing is deliberately syntactic.
 const ROUTE_PROVIDER_ID = /^[a-z][a-z0-9]{0,31}$/;
 
 /** @param {string} internalId */

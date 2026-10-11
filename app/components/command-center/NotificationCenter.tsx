@@ -31,7 +31,6 @@ export type NotificationPresentationRule = {
 
 const PROVIDER_LABEL = { claude: "Claude Code", codex: "Codex" } as const;
 
-/** Fixed destinations. A malformed session identity falls back to the Sessions page. */
 export function notificationDestination(action: NotificationAction, record: NotificationRecord): { href: string; label: string } {
   switch (action) {
     case "open_session": {
@@ -88,8 +87,6 @@ export const NOTIFICATION_PRESENTATION: readonly NotificationPresentationRule[] 
   } : null },
 ];
 
-/** Presentation registration is separate from tray rendering. Tests can add a producer here.
- * Entries are ordered newest first; priority only breaks a tie between equal times. */
 export function adaptNotificationRecords(records: readonly NotificationRecord[], rules: readonly NotificationPresentationRule[] = NOTIFICATION_PRESENTATION): NotificationView[] {
   const byKind = new Map(rules.map((rule) => [rule.kind, rule]));
   return records.flatMap((record) => {

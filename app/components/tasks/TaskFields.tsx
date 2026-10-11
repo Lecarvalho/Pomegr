@@ -10,21 +10,10 @@ import {
   type CompleteWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
-// The Task field, Run on, Effort and Complete when, shared by the New task and Task modal forms (design contract G124-G128
-// and G138-G152). Controls only report changes; each form decides when a change is saved.
-
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 
-/** The Task field's handle: a textarea, or the rich-text editor of a form that holds images. Both can take focus. */
 export type TaskTextHandle = { focus(options?: FocusOptions): void };
 
-/**
- * The Task field with its `{n} / 4,000` counter under it, right-aligned. `helper` and `error` are optional lines
- * under the counter (the error is an alert); the field is described by the counter and by whichever of them show.
- * Without `images` it is a textarea. With `images` it is rich text in one frame: the text is typed as before, an image
- * shows inline where it was pasted, dropped or attached, and Attach image sits at the foot of the frame. The value is
- * one string either way; an image is a marker in it.
- */
 export function TaskTextField({ value, onChange, onBlur, images, readOnly, helper, error, ref }: {
   value: string;
   onChange(value: string): void;
@@ -71,10 +60,6 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
   </div>;
 }
 
-/**
- * Run on (one select naming provider and model) and the optional four-way Effort, in one two-column row, then the
- * Remote Control checkbox under both. All are optional. Remote Control is Claude Code's: choosing Codex clears and disables it.
- */
 export function RunFields({ run, models, onChange }: { run: TaskRun; models: TaskModelOptions; onChange(run: TaskRun): void }) {
   const selectId = useId();
   const effortId = useId();
@@ -91,7 +76,6 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
       <span id={effortId} className="newTaskEffortLabel">Effort</span>
       <div className="commandSegmented taskEffort" role="group" aria-labelledby={effortId}>
         {TASK_EFFORTS.map((effort) => <button key={effort} type="button" aria-pressed={run.effort === effort}
-          // Pressing the pressed segment clears the optional choice.
           onClick={() => onChange({ ...run, effort: run.effort === effort ? null : effort })}>{EFFORT_LABELS[effort]}</button>)}
       </div>
     </div>
@@ -106,14 +90,8 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
   </div>;
 }
 
-/**
- * The five checks in a wrapping row, then one input for the agent-judged own condition: a non-blank input is the own
- * condition, a blank one is none. `onDraftChange` fires on every edit; `onCommit` fires when a checkbox changes and
- * when the own-condition input loses focus.
- */
 export function CompleteWhenField({ draft, results, ownNote, footnote, onDraftChange, onCommit }: {
   draft: CompleteWhenDraft;
-  /** Per-check outcome from the agent's report; a check without an entry shows no result. */
   results?: ReadonlyMap<TaskCheck, boolean>;
   ownNote?: string | null;
   footnote?: ReactNode;

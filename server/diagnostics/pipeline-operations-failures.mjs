@@ -34,7 +34,7 @@ function failureReason(error) {
   return "unknown";
 }
 
-/** At most one latest observation per fixed counter; this is not an event log. */
+// At most one latest observation per fixed counter; this is not an event log.
 export function normalizePipelineFailureDetails(value) {
   const result = {};
   for (const [category, stages] of Object.entries(FAILURE_STAGES)) {

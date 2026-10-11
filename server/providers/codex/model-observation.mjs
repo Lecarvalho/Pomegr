@@ -14,7 +14,6 @@ export const CODEX_MODEL_SOURCE_CAPABILITIES = Object.freeze({
 
 const OPENAI_NEWS_RSS = "https://openai.com/news/rss.xml";
 const OPENAI_NEWS_SCOPE = createHash("sha256").update(OPENAI_NEWS_RSS).digest("hex");
-// The official feed carried 1,245 items / 760 KiB when checked on 2026-10-03.
 const MAX_RSS_BYTES = 1024 * 1024;
 const MAX_RSS_ITEMS = 1_500;
 const RSS_TITLE = /^(Introducing|Retiring) (GPT-[1-9][0-9]?(?:\.[1-9][0-9]?)?(?: (?:Sol|Astra|Luna|Pro|Mini))?)$/u;
@@ -50,7 +49,7 @@ function xmlField(item, name) {
   return value;
 }
 
-/** Only first-party RSS title/date/link fields; never inspect article bodies. */
+// Only first-party RSS title/date/link fields; never inspect article bodies.
 export function parseOpenAIModelNews(xml, observedAt) {
   if (typeof xml !== "string" || Buffer.byteLength(xml) > MAX_RSS_BYTES
     || !Number.isFinite(Date.parse(observedAt)) || /<!DOCTYPE|<!ENTITY/iu.test(xml)
@@ -86,7 +85,7 @@ export function parseOpenAIModelNews(xml, observedAt) {
   return announcements;
 }
 
-/** Fixed official RSS only; no redirects, article fetches, account tokens or raw copy retention. */
+// Fixed official RSS only; no redirects, article fetches, account tokens or raw copy retention.
 export function createOpenAIModelAnnouncementReader({ fetch: fetchImpl = fetch, now = Date.now,
   timeoutMs = 8_000 } = {}) {
   const deadlineMs = Number.isSafeInteger(timeoutMs) ? Math.max(1, Math.min(8_000, timeoutMs)) : 8_000;
@@ -151,7 +150,7 @@ export function createOpenAIModelAnnouncementReader({ fetch: fetchImpl = fetch, 
   return { read, stop() { stopped = true; for (const controller of controllers) controller.abort(); } };
 }
 
-/** Strictly validate the entire snapshot before accepting any visible row. */
+// Strictly validate the entire snapshot before accepting any visible row.
 export function normalizeCodexModelCatalog(value) {
   if (!value || !Array.isArray(value.pages) || value.pages.length < 1 || value.pages.length > 4) return null;
   const models = [];
@@ -182,7 +181,7 @@ export function normalizeCodexModelCatalog(value) {
   return { models, knownIds: [...knownIds] };
 }
 
-/** A complete client listing only. The source scope is monitor-private and opaque. */
+// A complete client listing only. The source scope is monitor-private and opaque.
 export function createCodexModelObservation({ catalogReader = createCodexAppServerModelCatalogReader(),
   now = Date.now, sourceScope = () => null } = {}) {
   let committed = null;
@@ -221,7 +220,7 @@ export function createCodexModelObservation({ catalogReader = createCodexAppServ
   return { read, stop() { stopped = true; }, capabilities: CODEX_MODEL_SOURCE_CAPABILITIES };
 }
 
-/** Optional helper for integration: never expose a raw auth/config path as source scope. */
+// Optional helper for integration: never expose a raw auth/config path as source scope.
 export function codexModelSourceScope(value) {
   if (typeof value !== "string" || !value) return null;
   return createHash("sha256").update(value).digest("hex");

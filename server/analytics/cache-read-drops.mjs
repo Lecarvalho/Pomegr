@@ -30,12 +30,7 @@ function eligible(snapshot) {
     && timestampMs(snapshot.timestamp) !== null && parts(snapshot) !== null;
 }
 
-/**
- * Read-only evidence of lost reuse, NOT a provider-recorded cache write.
- * Adapters must explicitly establish both numeric provenance and adjacency.
- * Missing legacy metadata fails closed; capability flags for write-backed
- * classification, report totals and expiry inference remain untouched.
- */
+// Read-only evidence of lost reuse, NOT a provider-recorded cache write.
 export function buildCacheReadDrops({
   sessionId = "session", agents = [], usageSnapshots = [], compactions = [], boundaries = [],
 } = {}) {

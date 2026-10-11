@@ -6,14 +6,12 @@ import {
   type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskState,
 } from "../shared/task-contract";
 
-// Client for the committed task board (GET /api/tasks). Task text is user-authored content, so it
-// lives only in this module's memory: never in browser storage, a URL, or the notification layer.
+// Client for the committed task board (GET /api/tasks).
 
 const LOADING_DELAY_MS = 1_500;
 const RETRY_DELAY_MS = 5_000;
 const READY_DELAY_MS = 10_000;
 
-// Documented per-repository bounds (AGENTS.md "Task board and dispatch"). A body past them is malformed.
 const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64, issueNumber: 999_999_999 };
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const SINGLE_LINE = /^[^\u0000-\u001f]*$/u;
@@ -52,7 +50,6 @@ function listOf<T>(value: unknown, max: number, valid: (entry: unknown) => entry
   return Array.isArray(value) && value.length <= max && value.every(valid) ? value : null;
 }
 
-/** Where a task came from: nothing, or the number of the GitHub issue it was promoted from. An older monitor sends no key, which reads as null. */
 function validSource(value: unknown): boolean {
   if (value === undefined || value === null) return true;
   const source = record(value);
@@ -66,14 +63,12 @@ function validTask(value: unknown): value is Task {
   const completeWhen = record(task.completeWhen);
   const session = task.session === null ? null : record(task.session);
   const report = task.report === null ? null : record(task.report);
-  // A null session or report is valid; a present value that is not an object is not.
   if (!run || !completeWhen || (task.session !== null && !session) || (task.report !== null && !report)) return false;
   const validResult = (entry: unknown): entry is Json => {
     const result = record(entry);
     return Boolean(result) && CHECKS.has(result!.check as TaskCheck) && typeof result!.passed === "boolean";
   };
   const results = report ? listOf(report.results, CHECKS.size, validResult) : [];
-  // The reading of a waiting task's checks; an older monitor serves none.
   const reading = session && session.checks !== undefined ? listOf(session.checks, CHECKS.size, validResult) : [];
   const checks = listOf(completeWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
   return typeof task.id === "string" && /^T-[1-9]\d*$/u.test(task.id)
@@ -81,13 +76,11 @@ function validTask(value: unknown): value is Task {
     && (task.featureId === null || text(task.featureId, LIMITS.label)) && (task.step === null || count(task.step, 1))
     && (run.provider === null || PROVIDERS.has(run.provider as string)) && nullableText(run.model, LIMITS.model)
     && (run.effort === null || EFFORTS.has(run.effort as string))
-    // An older monitor serves no Remote Control flag, which reads as off.
     && (run.remoteControl === undefined || typeof run.remoteControl === "boolean")
     && checks !== null && nullableText(completeWhen.own, LIMITS.own)
     && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt)) && validSource(task.source)
     && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))
     && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)
-      // An older monitor serves no attention note, which reads as none.
       && (report.attention === undefined || nullableText(report.attention, LIMITS.blockReason))))
     && timestamp(task.createdAt) && timestamp(task.updatedAt);
 }
@@ -95,7 +88,6 @@ function validTask(value: unknown): value is Task {
 const COLUMN_ROLES = new Set<string>(TASK_COLUMN_ROLES);
 function validColumn(value: unknown): value is TaskBoard["columns"][number] {
   const column = record(value);
-  // An older monitor serves no role, which reads as none.
   return Boolean(column) && text(column!.id, LIMITS.label) && text(column!.name, LIMITS.columnName) && count(column!.position, 0)
     && (column!.role === undefined || column!.role === null || COLUMN_ROLES.has(column!.role as string));
 }
@@ -108,7 +100,6 @@ function percent(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100);
 }
 
-/** The start gates, kept whole or not at all: one value outside the contract and the board carries no gates. */
 function parseGates(value: unknown): TaskGates | undefined {
   const gates = record(value);
   const usage = record(gates?.usage);
@@ -134,7 +125,6 @@ function parseGates(value: unknown): TaskGates | undefined {
   return { threshold: gates.threshold as TaskGateThreshold, usage: readings, providerStatus: statuses, workingTree: gates.workingTree as TaskGates["workingTree"], next };
 }
 
-/** The queue's own start and stop times; anything that is not two times or nulls reads as no schedule. */
 function parseSchedule(value: unknown): TaskQueueSchedule | undefined {
   const schedule = record(value);
   if (!schedule) return undefined;
@@ -147,10 +137,7 @@ function contentFreeBoard(repositoryId: string, readiness: TaskBoard["readiness"
   return createEmptyTaskBoard(repositoryId, readiness);
 }
 
-/**
- * Validates a monitor answer for one repository. Anything not "ready" is reduced to its readiness:
- * task content is never kept from a board that is loading, unavailable, or denied.
- */
+/** Validates a monitor answer for one repository. */
 export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard | null {
   const body = record(value);
   if (!body || body.version !== 1 || !READINESS.has(body.readiness as TaskBoard["readiness"]) || body.repositoryId !== repositoryId) return null;
@@ -159,14 +146,12 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   const columns = listOf(body.columns, LIMITS.columns, validColumn);
   const features = listOf(body.features, LIMITS.features, validFeature);
   const validated = listOf(body.tasks, LIMITS.tasks, validTask);
-  // A task from an older monitor has no `source` key; it reads as no source.
   const tasks = validated && validated.map((task) => (task.source === undefined ? { ...task, source: null } : task));
   const queue = record(body.queue);
   if (!columns || !features || !tasks || !queue || !QUEUE_STATUSES.has(queue.status as string) || !nullableText(queue.blockedBy, LIMITS.label)) return null;
-  // The start order is IDs only: at most one entry per task, each a task ID.
   const order = listOf(queue.order, LIMITS.tasks, (entry): entry is string => typeof entry === "string" && TASK_ID_PATTERN.test(entry));
   if (!order) return null;
-  // A pause reason is one fixed value, and only a paused queue has one; anything else reads as none.
+  // A pause reason is one fixed value, and only a paused queue has one.
   const pauseReason = queue.status === "paused" && typeof queue.pauseReason === "string" && PAUSE_REASONS.has(queue.pauseReason) ? queue.pauseReason as TaskQueuePauseReason : null;
   const gates = parseGates(queue.gates);
   const schedule = parseSchedule(queue.schedule);
@@ -177,7 +162,6 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   };
 }
 
-/** The Codex client catalog; an older monitor omits it, and an invalid row is dropped rather than offered. */
 function parseRunModels(value: unknown): NonNullable<TaskBoard["runModels"]> {
   const rows = record(value)?.codex;
   const codex: NonNullable<TaskBoard["runModels"]>["codex"] = [];
@@ -196,12 +180,7 @@ function isVisible() {
   return typeof document === "undefined" || document.visibilityState === "visible";
 }
 
-/**
- * One reference-counted store per repository. It reads the monitor's committed task store (never
- * triggers acquisition) and polls while visible: quickly while loading or unavailable, slowly once
- * ready, never once the answer is desktop_only. A failed read keeps the last resolved board; only a
- * still-loading placeholder downgrades to unavailable, so a resolved board is never retracted.
- */
+/** One reference-counted store per repository. */
 class TasksStore {
   private data: TaskBoard;
   private readonly listeners = new Set<() => void>();
@@ -267,7 +246,6 @@ class TasksStore {
     this.schedule();
   }
 
-  /** Refetches now. A call made while a read is in flight triggers one more read after it settles. */
   refresh = async (): Promise<void> => {
     if (this.request) { this.again = true; return this.request; }
     if (!this.consumers) return;
@@ -277,7 +255,6 @@ class TasksStore {
       try {
         const response = await fetch(`/api/tasks?${new URLSearchParams({ repositoryId: this.repositoryId })}`, { cache: "no-store", signal: controller.signal });
         if (controller.signal.aborted) return;
-        // The proxy answers 403 (and a LAN gateway 404) to a client that is not on this computer.
         if (response.status === 403 || response.status === 404) { this.publish(contentFreeBoard(this.repositoryId, "desktop_only")); return; }
         if (!response.ok) throw new Error("task board request failed");
         const next = parseTaskBoard(await response.json().catch(() => null), this.repositoryId);
@@ -321,7 +298,6 @@ function getStore(repositoryId: string) {
   return store;
 }
 
-/** Committed task board for one repository; `board.readiness` is "loading" until the first answer. */
 export function useTasks(repositoryId: string): { board: TaskBoard; refresh: () => Promise<void> } {
   const store = useMemo(() => getStore(repositoryId), [repositoryId]);
   const board = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);

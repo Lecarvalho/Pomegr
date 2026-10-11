@@ -18,15 +18,9 @@ const LABELS: Record<SessionTab, string> = {
   task: "Task",
 };
 
-// Session panel content lives in app/Dashboard.tsx, which owns the single
-// rendered tabpanel. That panel must carry id="session-tab-panel" and
-// aria-labelledby={`session-tab-${activeTab}`} to match the ids below.
+// The tabpanel in app/Dashboard.tsx must carry id="session-tab-panel" and aria-labelledby matching the tab ids below.
 const PANEL_ID = "session-tab-panel";
 
-/**
- * Whether this session was started for a task: only then is the Task tab listed. `loading` is the monitor not having
- * said yet, so a deep link to the tab is neither rewritten nor shown and then withdrawn.
- */
 export type SessionTaskTabState = "present" | "absent" | "loading";
 
 export function SessionTabs({ active, summary, task, onSelect }: {
@@ -41,12 +35,6 @@ export function SessionTabs({ active, summary, task, onSelect }: {
   const moreButton = useRef<HTMLButtonElement | null>(null);
   const moreMenu = useRef<HTMLDivElement | null>(null);
   const menuItems = useRef<Array<HTMLButtonElement | null>>([]);
-  // Historical sessions report resourceAvailability.hasData as null (readiness
-  // never reaches "ready" because resource metrics are live-only), so only
-  // show the Resources tab when there is confirmed data to show. A live
-  // session's resource readiness can still be "loading": that is not yet
-  // known to be hidden, so it must not be treated the same as a resolved
-  // "no data" or "unavailable" outcome.
   const resourcesReadiness = summary.resourceAvailability.readiness;
   const resourcesHasData = summary.resourceAvailability.hasData;
   const showResources = resourcesHasData === true;
@@ -55,17 +43,12 @@ export function SessionTabs({ active, summary, task, onSelect }: {
   const available = ALL_TABS.filter((tab) => (tab !== "resources" || showResources) && (tab !== "task" || showTask));
   const menuTabs = SECONDARY_TABS.filter((tab) => available.includes(tab));
 
-  // If the active tab (e.g. from ?tab=resources) is hidden, such as on a
-  // historical session with no resource data, fall back to Overview. Redirect
-  // only once readiness has resolved (ready-with-no-data or unavailable);
-  // while a live session's resource readiness is still loading, stay put so
-  // a `?tab=resources` deep link is not rewritten out from under it.
+  // A deep link to ?tab=task on a session with no task falls back to Overview, but only once the monitor has said so.
   useEffect(() => {
     if (active !== "resources") return;
     if (resourcesDefinitivelyHidden) onSelect("overview");
   }, [active, resourcesDefinitivelyHidden, onSelect]);
 
-  // A deep link to ?tab=task on a session with no task falls back to Overview, but only once the monitor has said so.
   useEffect(() => {
     if (active === "task" && task === "absent") onSelect("overview");
   }, [active, task, onSelect]);
@@ -110,8 +93,6 @@ export function SessionTabs({ active, summary, task, onSelect }: {
   const count = (tab: SessionTab) => {
     if (tab === "agents" && summary.sectionReadiness.agentEvidence === "ready") return summary.metrics.agents;
     if (tab === "activities" && summary.sectionReadiness.activityEvidence === "ready") return summary.activity.total;
-    // Repository counts the files this session affected (its Touched here list) and omits the
-    // chip for a zero or unknown value rather than showing "0".
     if (tab === "repository" && summary.repository.touchedFiles) return summary.repository.touchedFiles;
     return null;
   };

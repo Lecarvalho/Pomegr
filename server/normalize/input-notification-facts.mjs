@@ -1,5 +1,4 @@
 // The question clock is a private catalog fact, separate from last activity.
-// It cannot enter JSON, disk catalogs, provider schemas or browser responses.
 const questionTimes = new WeakMap();
 /** @template T @param {T} value @param {unknown} observedAt @returns {T} */
 export function withInputNotificationTime(value, observedAt) {

@@ -16,20 +16,6 @@ import { useTaskModelOptions } from "./task-panel-hooks";
 import { useFeatureCreation } from "./use-feature-creation";
 import { useDraftImages } from "./use-task-images";
 
-// Task modal, mode new (design contract G115-G158): Task, Feature and Step, Run on and Effort, Complete when. Nothing is
-// preselected in Run on and Effort; PR open and Tree clean start checked, and the feature is No feature. A new task
-// always lands in the first column, which the subtitle names. On the desktop a checkbox under the Task counter also creates
-// a GitHub issue from the saved task (G129-G131); the task is created first and an issue failure never costs it.
-// An image pasted, dropped or attached into the Task field shows inline in the text, waits in the form, and is stored once the task exists.
-
-/**
- * The only mutations here go through the desktop bridge (`createDesktopTask`, and `feature_create` for a new
- * feature, which comes first). Success calls `onCreated` so the board is re-read; the monitor's committed
- * answer is what the board then shows. When the ticked issue create fails, the task stays as created and the modal does
- * not close silently: after `onCreated` it calls `onIssueFailed` with the new task's ID so the page can open that task,
- * where the fixed reason is shown (without the prop it closes as on success). An image that could not be attached to
- * the new task is handled the same way: the task stays, and its own modal says so.
- */
 export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onCreated, onIssueFailed, onClose }: {
   repositoryId: string;
   repositoryName: string | null;
@@ -79,17 +65,15 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
         if (mounted.current) { setBusy(false); setFeatureError(created.message); }
         return;
       }
-      // The feature exists now: a retry after a failed task must attach to it, not create it again.
+      // The feature exists now.
       draft = { ...feature, creating: false, featureId: created.id, name: "" };
       if (mounted.current) setFeature(draft);
     }
     const result = await createDesktopTask(repositoryId, createPayload(trimmed, run, completeWhen, featureCreateInput(draft, null)));
-    // The task exists once the monitor says so, even if the modal was closed in the meantime. The issue comes second and
-    // its failure is remembered for the task's own modal, which opens in place of this one: it never undoes or blocks the task.
+    // The task exists once the monitor says so, even if the modal was closed in the meantime.
     let issueFailedFor: string | null = null;
     if (result.ok) {
-      // The images the text names come first, so an issue failure never leaves them behind. One that fails is not
-      // retried here: the task's own modal drops its marker and says so.
+      // The images the text names come first, so an issue failure never leaves them behind.
       if (result.taskId !== null && await images.store(result.taskId, trimmed) !== null) {
         rememberImageCreateFailure(repositoryId, result.taskId);
         issueFailedFor = result.taskId;

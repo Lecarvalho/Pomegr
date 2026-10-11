@@ -8,7 +8,6 @@ function event(id: string, kind: SessionEvent["kind"], at: string, fields: Parti
   return { id, kind, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null, ...fields };
 }
 
-// Newest first, one row per kind plus a few repeats, so the 9-row desktop cap leaves an expander.
 const ITEMS: SessionEvent[] = [
   event("e11", "estimate_updated", "2026-08-09T11:29:00.000Z", { progress: { percent: 45, phase: "implementing" } }),
   event("e10", "commit_observed", "2026-08-09T11:26:00.000Z"),

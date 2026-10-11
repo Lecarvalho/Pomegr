@@ -2,9 +2,7 @@
 
 import { TASK_BOUNDS, TASK_IMAGE_TYPES, type TaskImageType } from "../../../shared/task-contract";
 
-// The renderer's only way to a task's images: the desktop preload's `taskImage` bridge (fixed IPC channel
-// `pomegr:task-image`). Image bytes are user-authored content: they are held in renderer memory only while a modal
-// shows them, and never in browser storage, a URL that leaves the page, or a request. A plain browser has no bridge.
+// The renderer's only way to a task's images.
 
 export type TaskImageError = "invalid" | "not_found" | "limit" | "conflict" | "unavailable";
 export type TaskImageResult<Value> = ({ ok: true } & Value) | { ok: false; error: TaskImageError };
@@ -14,7 +12,6 @@ type Bridge = { taskImage(repositoryId: string, operation: Operation, payload: R
 
 const ERRORS = new Set<string>(["invalid", "not_found", "limit", "conflict", "unavailable"]);
 const MEDIA_TYPES: Record<TaskImageType, string> = { png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
-/** The file types the Attach image picker offers; the monitor still decides the type from the bytes. */
 export const TASK_IMAGE_ACCEPT = TASK_IMAGE_TYPES.map((type) => MEDIA_TYPES[type]).join(",");
 
 function imageBridge(): Bridge | undefined {
@@ -23,12 +20,11 @@ function imageBridge(): Bridge | undefined {
   return typeof bridge?.taskImage === "function" ? bridge as Bridge : undefined;
 }
 
-/** False in a browser and on a desktop build from before the bridge: images are then not offered. */
 export function taskImagesAvailable(): boolean {
   return imageBridge() !== undefined;
 }
 
-/** One bridge call. Never throws: a missing bridge, an IPC failure and an unreadable answer are all `unavailable`. */
+/** One bridge call. */
 async function call<Value>(repositoryId: string, operation: Operation, payload: Record<string, unknown>, parse: (answer: Record<string, unknown>) => Value | null): Promise<TaskImageResult<Value>> {
   const bridge = imageBridge();
   if (!bridge) return { ok: false, error: "unavailable" };
@@ -42,20 +38,14 @@ async function call<Value>(repositoryId: string, operation: Operation, payload: 
       } else if (typeof record.error === "string" && ERRORS.has(record.error)) return { ok: false, error: record.error as TaskImageError };
     }
   } catch {
-    // Falls through to the fixed unavailable result.
   }
   return { ok: false, error: "unavailable" };
 }
 
-/** A new image ID, made here so the task text can name the image before it is stored. */
 export function newTaskImageId(): string {
   return `img-${[...crypto.getRandomValues(new Uint8Array(6))].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/**
- * Stores one image on an existing task under `imageId`, the ID its marker in the task text carries. The monitor
- * refuses anything that is not one of the four formats, and answers `conflict` for an ID the task already holds.
- */
 export function addDesktopTaskImage(repositoryId: string, taskId: string, imageId: string, bytes: Uint8Array): Promise<TaskImageResult<{ imageId: string }>> {
   return call(repositoryId, "add", { taskId, imageId, bytes }, (answer) => (answer.imageId === imageId ? { imageId } : null));
 }
@@ -64,7 +54,6 @@ export function removeDesktopTaskImage(repositoryId: string, taskId: string, ima
   return call(repositoryId, "remove", { taskId, imageId }, () => ({}));
 }
 
-/** One image as a Blob of its fixed media type, to draw from an object URL. */
 export function readDesktopTaskImage(repositoryId: string, taskId: string, imageId: string): Promise<TaskImageResult<{ blob: Blob }>> {
   return call(repositoryId, "read", { taskId, imageId }, (answer) => {
     const type = TASK_IMAGE_TYPES.find((candidate) => candidate === answer.type);
@@ -83,15 +72,11 @@ export const TASK_IMAGE_ADD_FAILURE_MESSAGE = "The image could not be attached."
 export const TASK_IMAGE_REMOVE_FAILURE_MESSAGE = "The image could not be removed.";
 export const TASK_IMAGE_CREATE_FAILURE_MESSAGE = "The task was created, but an image could not be stored. Put it in again here.";
 
-/** One short fixed message per failed attach; the monitor's own wording never reaches the modal. */
+/** One short fixed message per failed attach. */
 export function imageAddFailureMessage(error: TaskImageError): string {
   return error === "invalid" ? TASK_IMAGE_TYPE_MESSAGE : error === "limit" ? TASK_IMAGE_LIMIT_MESSAGE : TASK_IMAGE_ADD_FAILURE_MESSAGE;
 }
 
-/**
- * The files of one paste or pick that may be attached, given how many images the task already holds: an image of an
- * offered type, within the size bound, up to the per-task bound. `message` names the first reason a file was left out.
- */
 export function acceptImageFiles(files: readonly File[], held: number): { accepted: File[]; message: string | null } {
   const accepted: File[] = [];
   let message: string | null = null;
@@ -105,15 +90,12 @@ export function acceptImageFiles(files: readonly File[], held: number): { accept
   return { accepted, message };
 }
 
-// The tasks whose New task form could not attach every image, so the task's own modal can say so once. Renderer memory
-// only, and it holds no image and no task text.
 const createFailures = new Set<string>();
 
 export function rememberImageCreateFailure(repositoryId: string, taskId: string): void {
   createFailures.add(`${repositoryId}:${taskId}`);
 }
 
-/** True once for a task whose New task form left an image behind. */
 export function takeImageCreateFailure(repositoryId: string, taskId: string): boolean {
   return createFailures.delete(`${repositoryId}:${taskId}`);
 }

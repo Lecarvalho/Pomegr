@@ -1,7 +1,4 @@
-/**
- * Bounded desktop-only session-source settings. Folder paths and credential
- * details stay inside the native runtime.
- */
+// Bounded desktop-only session-source settings.
 export const PROVIDER_FOLDER_KEYS = ["claudeConfigDir", "claudeProjectsDir", "codexHome"] as const;
 
 export type ProviderFolderKey = (typeof PROVIDER_FOLDER_KEYS)[number];

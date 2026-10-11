@@ -1,6 +1,5 @@
 "use client";
 
-/** One tab-scoped event stream. Consumers filter bounded revision publications locally. */
 export type LiveEventDomain = "sessions" | "notifications" | "repositories" | "history" | "session-summary" | "agents" | "agent" | "signals" | "repository" | "resources" | "details";
 export type LiveRevisionEvent = Readonly<{ type: "revision"; domain: LiveEventDomain; sessionId?: string; revision: number; total?: number; epoch: number }>;
 export type LiveConnectionEvent = Readonly<{ type: "connection"; state: "connected" | "reconnecting"; epoch: number }>;
@@ -14,8 +13,7 @@ const EVENT_NAMES: ReadonlyArray<[string, LiveEventDomain]> = [
 ];
 const SESSION_DOMAINS = new Set<LiveEventDomain>(["history", "session-summary", "agents", "agent", "signals", "repository", "resources", "details"]);
 const SESSION_ID = /^[a-z][a-z0-9_-]{0,31}:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-// One tab has a small, bounded number of active/recent session domains. Retain
-// their latest revision for the connection epoch instead of every publication.
+// One tab has a small, bounded number of active/recent session domains.
 const MAX_REVISION_KEYS = 256;
 type Listener = (event: LiveEvent) => void;
 
@@ -38,9 +36,6 @@ function validRevision(value: unknown): value is number { return Number.isSafeIn
 function rememberRevision(key: string, revision: number) {
   const previous = latestRevisions.get(key);
   if (previous !== undefined && revision <= previous) return false;
-  // Refresh insertion order for active keys, then evict the least-recently
-  // published key. This keeps the map bounded without retaining a session's
-  // complete revision history.
   if (previous !== undefined) latestRevisions.delete(key);
   latestRevisions.set(key, revision);
   if (latestRevisions.size > MAX_REVISION_KEYS) {
@@ -101,8 +96,6 @@ export function subscribeLiveEvents(listener: Listener): () => void {
   if (typeof listener !== "function") throw new TypeError("Live event listener must be a function");
   listeners.add(listener);
   connect();
-  // A new consumer needs the actual current state for its fallback cadence.
-  // Only the EventSource open event may transition that state to connected.
   notify(listener, Object.freeze({ type: "connection" as const, state, epoch }));
   return () => {
     listeners.delete(listener);

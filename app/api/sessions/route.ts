@@ -10,9 +10,7 @@ function isLoopbackHost(value: string | null) {
   } catch { return false; }
 }
 
-// The same-computer test of app/api/tasks/route.ts (its helpers are route-private). The LAN gateway and the development
-// server both rewrite or accept a loopback host, so each marks a request that is not from this computer, and a marked
-// request is never a same-computer one. A paired device is recognized separately (`isPairedGatewayRequest`).
+// The same-computer test of app/api/tasks/route.ts (its helpers are route-private).
 function isSameComputerRequest(request: Request, url: URL) {
   const host = request.headers.get("host");
   const origin = request.headers.get("origin");
@@ -25,16 +23,11 @@ function isSameComputerRequest(request: Request, url: URL) {
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const monitorParams = new URLSearchParams();
-  // This route intentionally forwards only the bounded catalog query vocabulary.  The
-  // monitor owns validation and cursor binding, but preserving this small allowlist
-  // prevents the browser proxy from becoming a generic loopback query relay.
   for (const key of ["mode", "query", "filter", "project", "repositoryId", "provider", "group", "feature", "session", "pageSize", "cursor", "revision", "selected", "pinned"]) {
     const value = requestUrl.searchParams.get(key);
     if (value !== null && value !== "") monitorParams.set(key, value);
   }
-  // A session's task reference and the feature scope are task-board content, served like GET /api/tasks: to a
-  // same-computer client or a paired device. The marker is set here and never copied from the request, so any other
-  // client gets the list without task references and its feature scope answers `taskReadiness: "desktop_only"` with no session.
+  // A session's task reference and the feature scope are task-board content, served like GET /api/tasks.
   if (monitorParams.get("mode") === "directory" && (isSameComputerRequest(request, requestUrl) || isPairedGatewayRequest(request))) monitorParams.set("tasks", "1");
   return proxyMonitorJson({
     ifNoneMatch: request.headers.get("if-none-match"),

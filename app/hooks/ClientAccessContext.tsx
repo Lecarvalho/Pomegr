@@ -40,7 +40,6 @@ async function refreshClientAccess() {
     const next = normalizeAccess(await response.json());
     publishAccess({ ...next, accessExpired: false });
   } catch {
-    // Network failures do not prove a paired browser's access expired.
     if (accessSnapshot.mode === "lan") publishAccess({ ...accessSnapshot, canCopyTranscriptPath: false });
     else publishAccess(unknownAccess);
   }
@@ -55,7 +54,6 @@ function subscribeClientAccess(listener: () => void) {
   return () => accessListeners.delete(listener);
 }
 
-/** The access mode last read, for code outside a component; `unknown` until the first answer. */
 export function clientAccessMode(): ClientAccessMode {
   return accessSnapshot.mode;
 }

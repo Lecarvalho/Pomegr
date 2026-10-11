@@ -12,8 +12,8 @@ function safeIdentity(value) {
   return typeof value === "string" && value.length > 0 && value.length <= MAX_IDENTITY_LENGTH ? value : null;
 }
 
-/** Translate an adapter-supplied header into the ledger's bounded neutral shape. Anything
- * the adapter did not provide, or provided in an unsafe shape, degrades to null/false. */
+// Translate an adapter-supplied header into the ledger's bounded neutral shape. Anything
+// the adapter did not provide, or provided in an unsafe shape, degrades to null/false.
 function normalizeHeader(raw) {
   if (!raw || typeof raw !== "object") return null;
   const localId = safeIdentity(raw.localId);
@@ -38,17 +38,6 @@ function statGeneration(file, operations) {
   return { identity: `${stat.dev ?? ""}:${stat.ino ?? ""}`, size: stat.size };
 }
 
-/**
- * The same underlying file can reach the ledger under two different literal path strings:
- * an adapter's configured-root path from a directory listing, and a realpath-resolved path
- * from a notification filter (a junction or symlinked provider home makes these genuinely
- * different strings). Every map key derived from a file path goes through this one
- * resolution so both forms converge on one identity instead of shadowing each other.
- * Resolution is memoized per input string (bounded, LRU-ish) so a file that only appends
- * pays the `realpathSync` cost once, not on every event. A path that cannot be resolved
- * (not yet created, a transient error) keys on its own literal string instead of throwing,
- * and is not memoized, so a later successful resolution converges on the canonical key.
- */
 function canonicalPathKey(file, operations, cache, limit) {
   if (typeof file !== "string" || !file) return file;
   const cached = cache.get(file);
@@ -70,14 +59,6 @@ function preferred(candidate, existing) {
   return !candidate.archived && existing.archived;
 }
 
-/**
- * Close a root and its descendants (children, forks, and shared-group siblings) over the
- * given `{ file, header }` items, breadth first, so the result does not depend on item
- * order. When several items carry one identity, the preferred copy is used. Returns null
- * when the root is not among the items. More than 500 identities throws
- * `selected_family_limit`, so acquisition is rejected and the last committed evidence
- * stays.
- */
 export function closeSourceFamily(rootId, items) {
   const id = safeIdentity(rootId);
   const entries = new Map();
@@ -120,24 +101,6 @@ export function closeSourceFamily(rootId, items) {
   });
 }
 
-/**
- * Provider-neutral index of session-to-file topology (root, child, fork), one
- * generation per known file, and record-time recency. The ledger parses no provider
- * record itself: `parseHeader(file)` is the adapter's own bounded header reader, and
- * `ingestHeaders` batches are pre-translated into this module's neutral header shape
- * ({ localId, parentId?, forkedFromId?, groupId?, archived, createdAt, lastRecordAt?,
- * preference? }) before they reach the ledger.
- *
- * The index can lag the disk and is bounded, so it is a header cache and topology index,
- * not proof that a family is complete: adapters close a family over the headers of the
- * files they list from disk, using the ledger only to locate the root and to skip
- * re-parsing files whose filesystem identity is unchanged.
- *
- * File paths and headers held here are monitor-private working state used only by
- * provider adapter code in this process. They must never be forwarded into evidence,
- * checkpoints, diagnostics, logs, or browser responses; `stats()` reports bounded counts
- * only, never paths or identities.
- */
 export function createSourceLedger(options = {}) {
   const parseHeader = typeof options.parseHeader === "function" ? options.parseHeader : null;
   const maxEntries = Number.isInteger(options.maxEntries) && options.maxEntries > 0
@@ -188,12 +151,8 @@ export function createSourceLedger(options = {}) {
     }
   }
 
-  /** The cached header of a file whose filesystem identity is unchanged and which has only
-   * grown since it was parsed (an append-only transcript keeps its header), else null.
-   * Cached per canonical path, so an alias path or a non-preferred copy is not parsed again
-   * either. The single stat this performs also refreshes the owning identity's growth
-   * observation, so a caller that only ever reaches a file through this method (rather than
-   * `noticeSource`) still keeps `recency()` current. */
+  // The cached header of a file whose filesystem identity is unchanged and which has only
+  // grown since it was parsed (an append-only transcript keeps its header), else null.
   function cachedHeader(file) {
     const key = canon(file);
     const cached = typeof key === "string" ? fileHeaders.get(key) : null;
@@ -248,8 +207,6 @@ export function createSourceLedger(options = {}) {
   }
 
   return {
-    /** Ingest a batch of `{ file, header }` pairs from the adapter's own header
-     * enumeration, discovery loads, listings or cold walks. */
     ingestHeaders(batch) {
       if (!Array.isArray(batch)) return;
       for (const item of batch) {
@@ -260,9 +217,6 @@ export function createSourceLedger(options = {}) {
 
     cachedHeader,
 
-    /** Index one file: a file already indexed with the same filesystem identity is not
-     * parsed again (one stat, via `cachedHeader`, which also refreshes growth); otherwise
-     * one bounded header parse runs. Returns null when the file yields no safe header. */
     noticeSource(file) {
       if (typeof file !== "string" || !file || !parseHeader) return null;
       const known = cachedHeader(file);
@@ -276,20 +230,17 @@ export function createSourceLedger(options = {}) {
       return ingestedId ? { localId: ingestedId, isNew } : null;
     },
 
-    /** The indexed header and file of one identity, or null. */
     locate(localId) {
       const entry = bySourceId.get(safeIdentity(localId));
       return entry ? { header: entry.header, file: entry.file } : null;
     },
 
-    /** The root plus its descendants over the index only (see `closeSourceFamily`). The
-     * index may lag the disk; adapters verify completeness against a listing. */
+    // The root plus its descendants over the index only (see `closeSourceFamily`). The
+    // index may lag the disk; adapters verify completeness against a listing.
     family(localId) {
       return closeSourceFamily(localId, [...bySourceId.values()]);
     },
 
-    /** Remember that a cold resolution found nothing for this identity, until the
-     * miss expires or the identity is ingested. */
     rememberMiss(localId) {
       const id = safeIdentity(localId);
       if (!id) return;
@@ -307,10 +258,6 @@ export function createSourceLedger(options = {}) {
       return false;
     },
 
-    /** Newest known record-time evidence for an identity: the adapter-reported
-     * `lastRecordAt`, or, absent one, the local time this ledger last observed the
-     * file appear, grow or change identity. File modification time is never
-     * consulted. */
     recency(localId) {
       const entry = bySourceId.get(safeIdentity(localId));
       if (!entry) return null;
@@ -318,8 +265,8 @@ export function createSourceLedger(options = {}) {
       return entry.observedGrowthAt ? new Date(entry.observedGrowthAt).toISOString() : null;
     },
 
-    /** Mark the identities that must never be evicted under memory pressure,
-     * replacing any previously marked set. */
+    // Mark the identities that must never be evicted under memory pressure,
+    // replacing any previously marked set.
     markLive(ids) {
       liveIds.clear();
       for (const value of Array.isArray(ids) ? ids : []) {
@@ -328,7 +275,7 @@ export function createSourceLedger(options = {}) {
       }
     },
 
-    /** Bounded counts only. Never a path, header, or identity. */
+    // Bounded counts only. Never a path, header, or identity.
     stats() {
       return { entries: bySourceId.size, files: fileToId.size, headers: fileHeaders.size, live: liveIds.size, misses: misses.size };
     },

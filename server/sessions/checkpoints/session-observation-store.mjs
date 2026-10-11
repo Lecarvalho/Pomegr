@@ -55,10 +55,6 @@ function qualifiedId(providerId, localSessionId) {
   return `${providerId}:${localSessionId}`;
 }
 
-/**
- * Runtime-authoritative L1 cache for provider-normalized observations. This module
- * deliberately has no knowledge of provider source formats or browser contracts.
- */
 export class SessionObservationStore {
   #entries = new Map();
   #touches = new Map();
@@ -68,8 +64,6 @@ export class SessionObservationStore {
 
   constructor({
     validateCandidate = () => true,
-    // The served form drops the repository and pull-request blocks' monitor-private read times; the committed
-    // public state keeps them for the task complete-when rule.
     serialize = serializeServedSessionState,
     maxEntries = DEFAULT_MAX_ENTRIES,
     maxBytes = DEFAULT_MAX_BYTES,
@@ -88,15 +82,10 @@ export class SessionObservationStore {
     this.now = now;
   }
 
-  /**
-   * Atomically publish a complete normalized candidate. Validation failure leaves
-   * the current revision (the last known-good value) completely untouched.
-   */
   publish(candidate) {
     return this.#commit(candidate);
   }
 
-  /** Restore a validated L2 checkpoint while preserving its committed revision. */
   restore(candidate) {
     return this.#commit(candidate, { preserveRevision: true });
   }
@@ -182,7 +171,6 @@ export class SessionObservationStore {
     if (snapshot.sizeBytes > this.maxBytes) return Object.freeze({ accepted: false, snapshot: null, reason: "rejected" });
     this.#revision = Math.max(this.#revision, revision);
 
-    // Copy-on-write makes one complete revision visible at a time to all readers.
     const entries = new Map(this.#entries);
     const touches = new Map(this.#touches);
     entries.set(snapshot.qualifiedId, snapshot);

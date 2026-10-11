@@ -33,7 +33,6 @@ const SETUP_MESSAGES: Record<IntegrationResult, string> = {
   busy: "Local usage setup is already in progress.",
 };
 
-/** Desktop actions have no corresponding HTTP endpoint in the LAN dashboard. */
 export function ClaudeUsageControls({ usageLimits, showObservationNote = true }: { usageLimits: UsageLimits; showObservationNote?: boolean }) {
   const [bridge, setBridge] = useState<ClaudeDesktopBridge | null>(null);
   const [integration, setIntegration] = useState<IntegrationStatus>("unavailable");

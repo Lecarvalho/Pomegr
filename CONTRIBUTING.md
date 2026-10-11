@@ -12,19 +12,12 @@ This temporary restriction does not affect anyone's rights to use, modify, or re
 
 ## Engineering expectations
 
-Use the [maintainer documentation](docs/internal/README.md) to find the current
-contracts and the [agent workflow](docs/internal/development/agent-workflow.md) for behavior owners,
-focused checks, and canonical verification. User-facing guides are listed in the
-[documentation index](docs/README.md).
-
-Contributions considered in the future must:
-
-- preserve the normalized browser API and keep provider transcript schemas out of React components;
-- never expose prompts, responses, commands, tool results, transcripts, credentials, or unsafe MCP arguments;
-- keep the monitor read-only and bound to loopback;
-- describe deterministic metrics as heuristics rather than AI judgments;
-- update documentation when API contracts, metrics, or provider behavior change; and
-- pass `npm run build`, `npm test`, and `npm run lint` as applicable.
+- [AGENTS.md](AGENTS.md) holds the rules for each change, for people and for coding agents.
+- The [agent workflow](docs/internal/development/agent-workflow.md) gives the behavior
+  owner and the checks for each area.
+- The [maintainer index](docs/internal/README.md) gives the contract for each subject.
+- Update the documentation in the change that changes an API contract, a metric, or
+  provider behavior.
 
 ## Security reports
 

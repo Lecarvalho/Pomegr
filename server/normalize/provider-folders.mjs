@@ -10,7 +10,7 @@ export function safeProviderFolder(value) {
   return path.normalize(value);
 }
 
-/** Capture provider-owned roots once; serving reads must never acquire providers. */
+// Capture provider-owned roots once; serving reads must never acquire providers.
 export function createProviderFoldersSnapshot(providers) {
   const folders = { ...EMPTY_PROVIDER_FOLDERS.folders };
   for (const provider of Array.isArray(providers) ? providers : []) {

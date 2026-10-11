@@ -1,16 +1,3 @@
-// The session Repository tab's Touched here list and its session-tab count, built in one place
-// from two already-recorded inputs: the committed file-history block (recorded tool changes) and
-// the recorder's Git-observed block (files this session's own commits changed). Pure: no I/O, no
-// Git, no clock, so a historical session can never pick up current working-tree state here.
-//
-// Privacy: every entry carries only fields the two inputs already allowed. A recorded entry is a
-// bounded safe repository-relative path, the opaque file identity, a fixed change kind, a bounded
-// count, an observation time, and at most 12 agents (normalized ID, label, assignment, latest
-// reported model). A committed entry is a safe path and a fixed net change, never an agent,
-// request, or edit count: it is a time match with one of the session's Git commands, not proof of
-// authorship. Either input that fails validation contributes nothing rather than a partial shape.
-// See AGENTS.md ("File-change history") and docs/internal/architecture/observation-cache.md.
-
 import { fileChangeAgentIdentity, SAFE_FILE_CHANGE_AGENT_ID } from "./file-change-agents.mjs";
 import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 
@@ -23,9 +10,6 @@ const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
 const MAX_SESSION_FILE_HISTORY_FILES = 200;
 const MAX_SESSION_FILE_HISTORY_AGENTS = 12;
 
-// Recorded agents for one file: the normalized agent ID from the index, its change count, and
-// its label, assignment, and latest reported model. The matching visible agent in this same
-// session supplies each field when it has one; otherwise the index's recorded identity does.
 function recordedAgents(value, agentById) {
   if (!Array.isArray(value)) return [];
   const seen = new Set();
@@ -64,8 +48,6 @@ function committedFile(value) {
   return { path: value.path, source: value.source, change: GIT_OBSERVED_CHANGES.has(value.change) ? value.change : null };
 }
 
-// Re-validates the committed file-history-domain block: an invalid or missing block degrades to
-// unavailable rather than ever letting an unvalidated path or count reach the browser.
 function recordedFiles(value, agents) {
   const agentById = new Map(agents.map((agent) => [agent?.id, agent]));
   const files = Array.isArray(value?.files) ? value.files.map((entry) => recordedFile(entry, agentById)).filter(Boolean) : [];
@@ -76,9 +58,6 @@ function recordedFiles(value, agents) {
   };
 }
 
-// Re-validates the already recorded Git-observed block (the recorder's persisted snapshot for this
-// session, live or historical). One malformed entry rejects the whole block, so a partially valid
-// shape never leaks; null means no committed entries.
 function committedFiles(value) {
   if (!value || !Array.isArray(value.files) || value.files.length > MAX_GIT_OBSERVED_FILES || typeof value.truncated !== "boolean") return null;
   const files = [];
@@ -90,14 +69,6 @@ function committedFiles(value) {
   return { files, truncated: value.truncated };
 }
 
-/**
- * The finished Touched here list. `fileHistory` is the committed recorded file-history block,
- * `gitObserved` the recorded Git-observed block, and `agents` the session's visible normalized
- * agents. Entries are sorted by path and a path appears once: a path both recorded and committed
- * is its recorded entry only, because only a path no tool touched is listed as committed.
- * Committed entries are listed whatever the recorded history's readiness. `readiness` is the
- * recorded history's, and `truncated` is true when either source was cut at its cap.
- */
 export function sessionTouchedFiles({ fileHistory, gitObserved, agents } = {}) {
   const recorded = recordedFiles(fileHistory, Array.isArray(agents) ? agents : []);
   const committed = committedFiles(gitObserved);
@@ -111,11 +82,6 @@ export function sessionTouchedFiles({ fileHistory, gitObserved, agents } = {}) {
   };
 }
 
-/**
- * The session tab chip's count of the Touched here list. Only a count leaves the monitor for the
- * summary; it is null until the recorded history is ready so the chip never shows a partial or
- * unknown figure.
- */
 export function touchedFileCount(touchedFiles) {
   return touchedFiles?.readiness === "ready" && Array.isArray(touchedFiles.files) ? touchedFiles.files.length : null;
 }

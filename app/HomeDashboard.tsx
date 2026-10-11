@@ -14,10 +14,7 @@ import { HomeUpdateIllustration } from "./components/home/HomeUpdateIllustration
 import { HOME_PIN_LIMIT, normalizeHomePin, useHomePreferences, type HomePin } from "./hooks/useHomePreferences";
 import styles from "./HomeDashboard.module.css";
 
-/* Approved Home direction: personal navigation within the existing Command Center.
-   First viewport: grouped session navigation at left; concrete session guides at right.
-   A prominent dismissible update precedes session navigation; the roadmap follows.
-   Pins are local identities, never live metric cards; no Home or usage polling. */
+/** Approved Home direction. */
 
 type Destination = HomePin & { title: string; detail: string; href: string; icon: CommandIconName };
 const VIEWS: Destination[] = [

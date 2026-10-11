@@ -4,22 +4,11 @@ import { isObservationWorkingSetEntry } from "../../normalize/observation-workin
 import { createDurationSeries } from "../../diagnostics/pipeline-operations.mjs";
 import { createPipelineFailureRecorder } from "../../diagnostics/pipeline-operations-failures.mjs";
 
-/**
- * Transitional adapter-local observer.  It intentionally knows nothing about
- * a provider's transcript format: an adapter supplies acquisition and
- * normalization closures, while this worker only schedules publication of
- * their already-normalized results.  Native incremental cursors and partial
- * record fragments remain adapter-private and can replace `read` without
- * changing the observer lifecycle.
- */
 export { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs";
 
 const URGENT = 0;
 const SOURCE_UPDATE = 1;
 const BACKGROUND = 2;
-// A session first published within this long of its own creation is treated
-// like a first live publication even if it has already finished, so a short
-// session is not queued behind the whole historical working set.
 const NEW_SESSION_PRIORITY_WINDOW_MS = 10 * 60_000;
 const SOURCE_CATALOG_INTERVAL_MS = 1_000;
 
@@ -46,9 +35,6 @@ export function createNormalizedPollingObserver(options) {
     ingest,
     prepare,
     intervalMs = 10_000,
-    // Minimum spacing between catalog passes a source notification can cause. A burst of
-    // notifications inside this window shares one trailing pass; 0 restores one pass per
-    // idle notification.
     sourceCatalogIntervalMs = SOURCE_CATALOG_INTERVAL_MS,
     concurrency = 2,
     interactiveConcurrency = options?.interactiveConcurrency ?? Math.max(1, concurrency),
@@ -61,9 +47,6 @@ export function createNormalizedPollingObserver(options) {
     now = Date.now,
     monotonicNow = () => performance.now(),
     shouldEagerHydrate = (entry) => isObservationWorkingSetEntry(entry, now()),
-    // The fixed provider id this observer instance was constructed for (e.g. "claude" or
-    // "codex"). Attached only to trace records at acquisition call sites below; an
-    // unrecognized or missing value simply leaves those records unattributed.
     providerId = null,
   } = options || {};
   const observerProviderId = typeof providerId === "string" && providerId ? providerId : null;
@@ -128,24 +111,12 @@ export function createNormalizedPollingObserver(options) {
   const catalogHydrations = new Map();
   const sourceWrites = createSourceWriteClassifier({ ...(statSource ? { stat: statSource } : {}), now });
   const hydratedSessions = new Set();
-  // The first catalog this observer ever reads (its "startup catalog"). Any
-  // session already present in it is excluded from the new-session priority
-  // rule below, so a restart with many recently created sessions cannot flood
-  // the interactive lanes; only a session that genuinely appears later is new.
   let startupCatalogIds = null;
-  // Hydrations that arrived for a session this observer's catalog does not list, before any
-  // catalog pass completed. Whether such a session is live is unknown until a pass has run;
-  // each waiter resolves true once one has, and false when none can (a failed pass or a stop).
   let catalogWaiters = [];
   const failures = createPipelineFailureRecorder({ now });
   const timings = Object.freeze({
     catalogDiscovery: createDurationSeries(),
-    // The aggregate across every priority. Mixing urgent, source-update, and
-    // background waits here hid which lane was actually starved; the three
-    // per-priority series below answer that without removing this one.
     queueWait: createDurationSeries(),
-    // Urgent work a viewer explicitly requested (a selection), recorded apart from
-    // first live publication. Scheduling is unchanged: both share the urgent priority.
     queueWaitSelected: createDurationSeries(),
     queueWaitUrgent: createDurationSeries(),
     queueWaitSourceUpdate: createDurationSeries(),
@@ -159,7 +130,6 @@ export function createNormalizedPollingObserver(options) {
     if (priority === SOURCE_UPDATE) return timings.queueWaitSourceUpdate;
     return timings.queueWaitBackground;
   }
-  // The bounded trace priority-lane name for the same priority values above.
   function priorityLaneName(priority, requested = false) {
     if (priority === URGENT && requested) return "selected";
     if (priority === URGENT) return "urgent";
@@ -199,17 +169,11 @@ export function createNormalizedPollingObserver(options) {
     for (const resolve of waiters) resolve(known);
   }
 
-  /**
-   * Resolves true once a catalog pass has completed, so a session absent from the catalog is
-   * known to be absent. It never waits on a hydration slot: catalog passes do not use one, so
-   * the wait ends with the pass whether that succeeds (true) or fails or is stopped (false).
-   */
   function awaitCatalogPass() {
     if (startupCatalogIds !== null) return Promise.resolve(true);
     if (stopped || signal?.aborted) return Promise.resolve(false);
     return new Promise((resolve) => {
       catalogWaiters.push(resolve);
-      // With no pass in flight the previous one failed: ask for the next pass now.
       if (!refreshPending) void refresh();
     });
   }
@@ -226,9 +190,6 @@ export function createNormalizedPollingObserver(options) {
       let context = prepared;
       if (prepared === undefined && prepare) {
         failureStage = "source_preparation";
-        // The catalog lists live sessions first and is bounded, so a session it does not list is
-        // not live. That conclusion needs a completed pass: before one, liveness is unknown and
-        // neither answer may be published, because a state is decided at first observation.
         let entry = latestEntries.get(localSessionId);
         if (!entry) {
           if (!await awaitCatalogPass()) {
@@ -271,8 +232,6 @@ export function createNormalizedPollingObserver(options) {
       trace?.finishFlow?.(flow, { outcome: candidate ? "completed" : "rejected" });
       return Boolean(candidate);
     } catch (error) {
-      // Acquisition failures are isolated and sanitized. The previous
-      // committed revision remains visible and reconciliation can retry.
       qa.acquisitionFailures += 1;
       failures.record("acquisitionFailures", error, failureStage);
       trace?.finishFlow?.(flow, { outcome: "failed" });
@@ -285,7 +244,7 @@ export function createNormalizedPollingObserver(options) {
     return Boolean(entry?.isLive || entry?.needsInput) && !hydratedSessions.has(localSessionId);
   }
 
-  /** A session that first appears (outside the startup catalog) soon after it was created is not left behind the historical background queue, even if it already finished. */
+  // A session that first appears (outside the startup catalog) soon after it was created is not left behind the historical background queue, even if it already finished.
   function isNewSessionPriorityEligible(entry) {
     if (!entry?.localId || hydratedSessions.has(entry.localId)) return false;
     if (!startupCatalogIds || startupCatalogIds.has(entry.localId)) return false;
@@ -321,18 +280,10 @@ export function createNormalizedPollingObserver(options) {
       const allowInteractive = activeInteractive < interactiveConcurrency;
       const allowBackground = activeBackground < backgroundConcurrency;
       if (!allowInteractive && !allowBackground) break;
-      // Keep one interactive slot available for first live publication or
-      // selection, even during a continuous source-update burst.
       const item = nextPendingHydration(allowInteractive,
         activeSourceUpdates < sourceUpdateConcurrency, allowBackground);
       if (!item) break;
       pendingHydrations.delete(item.localSessionId);
-      // Every dequeued item — urgent selection, an ordinary source update, or a
-      // background hydration with no source event at all — gets a per-priority
-      // sample from the time it entered its current lane (its enqueue, or its
-      // promotion to a higher priority). The aggregate queueWait series, the
-      // qa counters, and the source_queue trace stay source-event-only, exactly
-      // as before.
       const dequeuedAt = monotonicNow();
       queueWaitSeriesForPriority(item.priority, item.requested)
         .record(Math.max(0, dequeuedAt - item.laneSince));
@@ -425,7 +376,6 @@ export function createNormalizedPollingObserver(options) {
         try {
           if (prepare && batch.length) {
             const preparationStartedAt = monotonicNow();
-            // Every entry queued here is background priority; see scheduleEagerHydration.
             const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", provider: observerProviderId, priorityLane: "background" });
             try {
               prepared = await prepare(batch.map(({ entry }) => entry));
@@ -522,8 +472,6 @@ export function createNormalizedPollingObserver(options) {
       // Queue initial live loads before broad catalog notifications can consume
       // acquisition capacity. Routine eager preparation remains independent.
       scheduleEagerHydration(entries);
-      // Lifecycle/index notifications hydrate against the catalog just read,
-      // including sessions that left the eager working set on this revision.
       for (const [localSessionId, eventAt] of rehydrate) {
         preparationGeneration += 1;
         if (latestEntries.has(localSessionId) && latestEntries.get(localSessionId).detailReadiness !== "unavailable") enqueueHydration(localSessionId, {
@@ -552,14 +500,6 @@ export function createNormalizedPollingObserver(options) {
     }
   }
 
-  /**
-   * Source notifications mark the catalog dirty instead of each starting a full discovery
-   * pass. An idle observer whose last pass began at least `sourceCatalogSpacingMs` ago starts
-   * one immediately; otherwise one trailing pass runs when the spacing elapses (or when an
-   * in-flight pass finishes, whichever is later). A burst of N notifications therefore costs
-   * at most one pass per spacing window, and the last notification is always followed by a
-   * pass that starts after it.
-   */
   function requestSourceCatalog(sessionIds, sourceEventAt) {
     for (const id of sessionIds) {
       if (!catalogHydrations.has(id)) catalogHydrations.set(id, sourceEventAt);
@@ -603,11 +543,6 @@ export function createNormalizedPollingObserver(options) {
     }
     if (routed.sessionIds.length) qa.routedSourceEvents += 1;
     else qa.unresolvedSourceEvents += 1;
-    // Unknown/new sources require a cache-bypassing catalog pass. Known
-    // sources skip discovery and enter acquisition immediately. A write to a
-    // source its sessions already read is answered by that immediate read: the
-    // catalog is still marked dirty, but the sessions are not retained for a
-    // second read after the pass, which would find nothing new.
     if (routed.catalog) {
       const answeredNow = routed.sourceKnown && !routed.afterCatalog && change?.eventType === "change";
       requestSourceCatalog(answeredNow ? [] : routed.sessionIds, sourceEventAt);
@@ -615,9 +550,6 @@ export function createNormalizedPollingObserver(options) {
     }
     for (const localSessionId of routed.sessionIds) {
       preparationGeneration += 1;
-      // The live-update lane is for a confirmed write, a live session, or a session the
-      // catalog does not list yet. Any other notification for a settled session waits with
-      // background work, so a burst of them cannot delay live sessions.
       const entry = latestEntries.get(localSessionId);
       const liveLane = written === "written" || !entry || entry.isLive || entry.needsInput;
       enqueueHydration(localSessionId, {

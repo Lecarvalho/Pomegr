@@ -6,26 +6,20 @@ import { clientAccessMode, useClientAccess } from "../../hooks/ClientAccessConte
 import type { FeatureInput } from "./task-features";
 import { postPairedTaskAction } from "./task-paired";
 
-// The two ways a client changes a task. The desktop app uses the preload's `taskAction` bridge (fixed IPC channel
-// `pomegr:task-action`). A paired device has no bridge and sends the same fixed action through `task-paired.ts`,
-// which only the desktop's LAN gateway forwards. Any other browser never mutates tasks and never POSTs.
+// The two ways a client changes a task.
 
-/** Fixed result of one desktop task action. `unavailable` means the desktop could not reach the monitor. */
 export type TaskActionResult = { ok: true; /** Only a create answers it: the new task's ID. */ taskId?: string } | { ok: false; error: TaskActionError | "unavailable" };
 
 export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
-  /** Absent on an older desktop build; `startDesktopTask` then answers `unavailable`. */
   taskStart?: (repositoryId: string, taskId: string, separateWorktree?: true) => Promise<{ status: TaskStartStatus }>;
-  /** Absent on an older desktop build; `openDesktopTaskWorktree` then answers `unavailable`. */
   taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
 };
 
-/** Fixed outcome of opening a task's worktree folder; the folder path never reaches the renderer. */
+/** Fixed outcome of opening a task's worktree folder. */
 export type TaskWorktreeOpenStatus = "opened" | "not_found" | "invalid" | "unavailable";
 const OPEN_STATUSES = new Set<string>(["opened", "not_found", "invalid", "unavailable"]);
 
-/** Fixed outcome of one desktop session start. */
 export type TaskStartStatus = "started" | "cancelled" | "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable"
   | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held" | "worktree_dirty" | "tree_dirty";
 const START_STATUSES = new Set<string>(["started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
@@ -40,7 +34,6 @@ export function taskDesktopBridge(): TaskDesktopBridge | undefined {
   return typeof bridge?.taskAction === "function" ? bridge as TaskDesktopBridge : undefined;
 }
 
-/** `pending` is only the server and hydration pass: the first client render already knows which of the other two applies. */
 export type TaskDesktopAvailability = "pending" | "available" | "absent";
 
 const subscribeBridge = () => () => {};
@@ -49,10 +42,6 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
   return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => taskDesktopBridge() ? "available" : "absent", () => "pending");
 }
 
-/**
- * Who may change the board from here: the desktop app, a paired device, or nobody. `pending` lasts until the client
- * knows which, so no control or note is drawn and then taken back.
- */
 export type TaskEditAvailability = "pending" | "desktop" | "paired" | "absent";
 
 export function useTaskEditAvailability(): TaskEditAvailability {
@@ -63,10 +52,9 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-/** The fixed actions this surface sends; the monitor validates each record. */
 type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
 
-/** Sends one fixed task action through the bridge, or from a paired device through its route. Never throws: a failure is `unavailable`. */
+/** Sends one fixed task action through the bridge, or from a paired device through its route. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
   const bridge = taskDesktopBridge();
   if (!bridge && clientAccessMode() !== "lan") return { ok: false, error: "unavailable" };
@@ -81,18 +69,12 @@ async function sendTaskAction(repositoryId: string, action: TaskActionName, payl
       if (typeof error === "string" && FAILURES.has(error)) return { ok: false, error: error as TaskActionError | "unavailable" };
     }
   } catch {
-    // Falls through to the fixed unavailable result.
   }
   return { ok: false, error: "unavailable" };
 }
 
-/**
- * A `run` or `completeWhen` key that is present replaces the whole stored field; an absent key leaves it unchanged.
- * `featureId` with no `step` is a new last step, and `featureId: null` detaches the task.
- */
 export type TaskFieldsInput = { run?: TaskRun; completeWhen?: { checks: TaskCheck[]; own: string | null } } & FeatureInput;
 
-/** Creates a task in the repository's first column. Omitted `run` or `completeWhen` means nothing set. */
 export type CreateTaskResult = { ok: true; taskId: string | null } | { ok: false; error: TaskActionError | "unavailable" };
 
 /** `taskId` is the new task's ID when the monitor answered one, else null. */
@@ -101,7 +83,6 @@ export async function createDesktopTask(repositoryId: string, input: { text: str
   return result.ok ? { ok: true, taskId: result.taskId ?? null } : result;
 }
 
-/** Updates the given fields of one task; at least one of text, run and completeWhen is present. */
 export function updateDesktopTask(repositoryId: string, id: string, patch: { text?: string } & TaskFieldsInput): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "update", { id, ...patch });
 }
@@ -110,10 +91,7 @@ export function deleteDesktopTask(repositoryId: string, id: string): Promise<Tas
   return sendTaskAction(repositoryId, "delete", { id });
 }
 
-/**
- * Asks the desktop to confirm and start a session for one task. Never throws; sends only the two IDs and, when the
- * owner chose it after a `tree_dirty` answer, the fixed mark that asks for a worktree of the task's own.
- */
+/** Asks the desktop to confirm and start a session for one task. */
 export async function startDesktopTask(repositoryId: string, id: string, separateWorktree = false): Promise<TaskStartStatus> {
   const bridge = typeof window === "undefined" ? undefined : (window as Window & { pomegrDesktop?: Partial<TaskDesktopBridge> }).pomegrDesktop;
   if (typeof bridge?.taskStart !== "function") return "unavailable";
@@ -127,7 +105,7 @@ export async function startDesktopTask(repositoryId: string, id: string, separat
   }
 }
 
-/** Asks the desktop to open the folder of a task's worktree. Never throws; sends only the two IDs and gets a fixed status. */
+/** Asks the desktop to open the folder of a task's worktree. */
 export async function openDesktopTaskWorktree(repositoryId: string, id: string): Promise<TaskWorktreeOpenStatus> {
   const bridge = typeof window === "undefined" ? undefined : (window as Window & { pomegrDesktop?: Partial<TaskDesktopBridge> }).pomegrDesktop;
   if (typeof bridge?.taskWorktreeOpen !== "function") return "unavailable";
@@ -140,73 +118,54 @@ export async function openDesktopTaskWorktree(repositoryId: string, id: string):
   }
 }
 
-/** `position` is the 0-based index in the destination column counted after the task leaves its place; past the end appends. */
 export type TaskMove = { id: string; columnId: string; position: number };
 
 export function moveDesktopTask(repositoryId: string, move: TaskMove): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "move", { id: move.id, columnId: move.columnId, position: move.position });
 }
 
-/** Creates a feature named `name` (one line, at most 80 characters). The new feature is read from the committed board. */
 export function createDesktopFeature(repositoryId: string, name: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "feature_create", { name });
 }
 
-/** A `not_queued` task becomes `queued`; any other state answers `conflict`. */
 export function addDesktopQueueTask(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_add", { id });
 }
 
-/**
- * Gives a task its own start time (`at`, an instant): it becomes `scheduled`, in the queue. `null` takes the time off a
- * scheduled task, which stays `queued`. The monitor answers `invalid` for a time behind the clock or over a year ahead.
- */
 export function scheduleDesktopTask(repositoryId: string, id: string, at: string | null): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_add", at === null ? { id } : { id, at });
 }
 
-/** A `queued` or `scheduled` task becomes `not_queued` and loses its start time. */
 export function removeDesktopQueueTask(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_remove", { id });
 }
 
-/**
- * Moves a queued task of a feature to `step`, from 1 to the feature's highest step + 1 (a new last step). The
- * monitor renumbers steps densely and answers `conflict` for a step whose tasks are all done.
- */
 export function reorderDesktopQueueTask(repositoryId: string, id: string, step: number): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_reorder", { id, step });
 }
 
-/**
- * Turns the repository's queue on or off. Turning it on again while it is paused retries the start that failed; the
- * monitor holds the status, so the board only shows it once it has committed.
- */
 export function setDesktopQueue(repositoryId: string, on: boolean): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_settings", { on });
 }
 
-/** Sets the usage, in percent of the five-hour window, above which no new session starts. The monitor holds the value. */
 export function setDesktopGateThreshold(repositoryId: string, threshold: TaskGateThreshold): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_settings", { threshold });
 }
 
-/** Sets the queue's own start and stop times, each an instant or null. It never turns the queue on or off. */
+/** Sets the queue's own start and stop times, each an instant or null. */
 export function setDesktopQueueSchedule(repositoryId: string, schedule: TaskQueueSchedule): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_settings", { schedule: { startAt: schedule.startAt, stopAfter: schedule.stopAfter } });
 }
 
-/** Accepts a task that needs review, is blocked, or stalled as done; a queue it was holding runs again. */
 export function resolveDesktopTaskDone(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "resolve_done", { id });
 }
 
-/** Sends such a task back to the queue for a new session, its card last in Ready; its report and session link are cleared. */
 export function requeueDesktopTask(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "resolve_requeue", { id });
 }
 
-/** One short fixed message per failure; the monitor's own wording and any text never reach the modal. */
+/** One short fixed message per failure. */
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
     ? `The board is full: it holds ${TASK_BOUNDS.tasksPerRepository} tasks.`
@@ -228,7 +187,7 @@ export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done."
 export const REQUEUE_FAILURE_MESSAGE = "The task could not be requeued.";
 export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 
-/** One fixed message per feature failure; the monitor's own wording never reaches the modal. */
+/** One fixed message per feature failure. */
 export function featureFailureMessage(error: TaskActionError | "unavailable"): string {
   if (error === "conflict") return "A feature with this name already exists.";
   if (error === "limit") return `The board holds ${TASK_BOUNDS.featuresPerRepository} features, the most it allows.`;

@@ -143,9 +143,6 @@ async function capturedLine(runCommand, args, cwd) {
   return (await execute(runCommand, "git", args, cwd, { capture: true })).trim();
 }
 
-// Creates the release point for a tag GitHub does not have yet: the annotated tag on the
-// already-pushed version commit, and its push. The version itself is bumped and pushed by
-// hand beforehand; this never edits package.json. An existing remote tag is never touched.
 async function prepareReleasePoint({ runCommand, readText, tag, cwd, report }) {
   if (typeof tag !== "string" || !tag.startsWith("v")) throw new Error("DESKTOP_RELEASE_TAG_VERSION_MISMATCH");
   const version = tag.slice(1);

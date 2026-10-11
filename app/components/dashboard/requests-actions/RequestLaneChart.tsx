@@ -6,12 +6,8 @@ import type { ChartMode, RequestRow } from "./model";
 import { labeledEvidenceRow, placeAxisLabels, placeBandLabels, RequestBandLabels, RequestBar } from "./RequestBarsChart";
 import { RequestEvidencePopover } from "./RequestEvidencePopover";
 
-// Every lane and the shared axis use one horizontal geometry, so a request sits at the same x
-// in whichever lane owns it and other lanes leave a gap there. The viewBox width follows the
-// measured plot width, so one unit is one pixel and SVG text keeps its size at every width.
 const FALLBACK_WIDTH = 1112;
 export const LANE_LEFT = 8;
-/** Right-hand space reserved for the lane maximum, so no bar or evidence icon can reach it. */
 export const MAXIMUM_GUTTER = 72;
 const GAP = 3;
 const MARKER = 14;
@@ -39,11 +35,6 @@ function LabelText({ name, meta, chevron }: { name: string; meta: string; chevro
   </>;
 }
 
-/**
- * Desktop lanes. A lane name focuses its agent through the shared agent scope, so the feed and
- * request detail never outlive a hidden bar; a group label expands or collapses a workflow group.
- * The expanded group ids belong to the caller, so they survive a switch to the single chart.
- */
 export function RequestLaneChart({ lanes, agents, workflows, expanded, onToggleGroup, focusedAgentId, onFocusAgent, rows, start, end, size, mode, selectedId, cacheWriteAvailable, onSelect, onStep, windowStart, total }: {
   lanes: RequestLane[]; agents: Agent[]; workflows: Workflow[];
   expanded: ReadonlySet<string>; onToggleGroup: (groupId: string) => void;
@@ -125,7 +116,6 @@ export function RequestLaneChart({ lanes, agents, workflows, expanded, onToggleG
       }
       const entries = visibleByLane.get(row.id) ?? [];
       const labeled = labeledEvidenceRow(entries.map(({ row: request }) => request), [hoveredId, focusedId, selectedId]);
-      // Band text sits above the maximum's row, so it may use the full plot width.
       const bandLabels = placeBandLabels(entries, { barX, width, left: 0, right: plotWidth, gap: GAP, marker: MARKER }, selectedId, labeled);
       const className = `requestLane${lane?.primary ? " isPrimary" : ""}${row.kind === "lane" && row.member ? " isGroupMember" : ""}`;
       return <div key={row.id} className={className} data-lane-kind={lane ? lane.kind : "group"} role="group" aria-label={fullLabel}>

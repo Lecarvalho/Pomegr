@@ -1,0 +1,148 @@
+# Desktop settings and diagnostics privacy
+
+> Scope: what desktop settings, native actions, the provider-folder read, pipeline diagnostics, and repository context inventories may hold or expose.
+> Authority: canonical privacy invariants for this subject. Behavior detail is in [Observation cache](../observation-cache.md) and [Pipeline operations](../../operations/pipeline-diagnostics.md).
+> A change that widens exposure changes this page in the same pull request.
+
+## Provider-folder settings
+
+- Desktop provider-folder settings are explicit native actions.
+- Persist only three bounded absolute folder overrides in private desktop settings:
+  Claude configuration, Claude session projects, and Codex home.
+- Renderer IPC accepts only fixed folder keys.
+- Renderer IPC returns bounded selection/availability/action states, never paths.
+- Native folder selection and save/restart confirmation own the actual paths.
+- Browser/LAN APIs cannot configure sources.
+- Apply one coherent profile to discovery, presence, tasks, account usage, and native
+  provider setup.
+- Preserve checkpoint source validation.
+- Isolate default local usage/cost snapshots for custom Claude profiles.
+
+Behavior: [Observation cache](../observation-cache.md)
+
+## Storage settings
+
+- Desktop storage settings may persist only `retentionDays` (30/90/180/365/keep-all) and
+  `storeMaxMb` (250/500/1024/2048).
+- Each setting is null or a fixed choice.
+- The settings change only through trusted-main-frame fixed-key IPC and a native
+  save/restart confirmation.
+- The monitor applies them only at its next start and prune cycle, never from IPC or a GET.
+- Browser and LAN clients read storage readiness only.
+
+Behavior: [Observation cache](../observation-cache.md)
+
+## Home announcement markers
+
+- Desktop Home announcement markers may persist only `homeUpdate.seenId` and
+  `homeUpdate.dismissedId`.
+- They live in private desktop settings.
+- Each marker is null or one bounded announcement identifier: lowercase letters, digits,
+  and hyphens, at most 64 characters.
+- They change only through a trusted-main-frame fixed-key IPC channel.
+- They record only that the What's new dialog opened once and that the card was dismissed.
+- They never hold a path, session identifier, or user content.
+
+Behavior: [Observation cache](../observation-cache.md)
+
+## Provider-folder read
+
+**Access** (as explicitly approved by the user):
+
+- Read-only **Settings → Providers** may display the three effective provider folder roots.
+- It can do this in a same-computer browser or in an authenticated paired LAN browser.
+- It uses the dedicated no-store `GET /api/provider-folders`.
+
+**Return only:** bounded absolute Claude configuration, Claude session projects, and
+Codex home roots, or null.
+
+**This exception excludes:** transcript-file paths, credentials, ordinary normalized state,
+reports, logs, checkpoints, and browser persistence.
+
+**Access rules:**
+
+- Local development access requires an actual local socket peer and a recognized machine
+  hostname or interface address.
+- Forwarded headers cannot authorize it.
+- LAN gateway forwarding requires current pairing and network authorization.
+- Deny unpaired remote access, cross-origin requests, writes, and path inputs.
+- Serve startup configuration without provider acquisition.
+- Folder changes remain native actions.
+
+## Claude Code reconnection and local usage setup
+
+- Desktop Claude Code reconnection and local usage setup are explicit user-confirmed native
+  actions, outside monitor GETs.
+- Reconnection invokes only the installed native CLI's sign-in flow.
+- Reconnection never reads, refreshes, collects, or forwards credentials.
+- Local usage setup changes only the user's status-line configuration, after native
+  confirmation.
+- Local usage setup preserves the existing configured command.
+- Neither action is exposed through HTTP.
+- Neither action accepts commands, paths, or URLs from the renderer.
+
+## Pipeline diagnostics
+
+**Scope:** internal pipeline-operations diagnostics remain read-only, bounded, and outside
+browser API state.
+
+**Writer:**
+
+- In normal development, startup creates one anonymous continuous JSONL writer before
+  observation begins.
+- The writer owns only `outputs/pipeline-logs/` files.
+- It retains at most ten 25 MiB files (250 MiB default).
+- It has a 1 MiB queued-record limit.
+- It has a separately bounded in-flight batch of at most 1 MiB.
+- It assumes one development writer.
+
+**Records use only:**
+
+- the fixed normalized operations vocabulary;
+- a fresh per-run UUID;
+- timestamps;
+- synthetic lanes;
+- opaque numeric handles.
+
+**Records must never contain:** session IDs, source paths or fingerprints, prompts,
+responses, transcript/tool content, credentials, or raw errors.
+
+**Coverage:**
+
+- Explicit gap, loss, lifecycle, health, incomplete-span, and observed-coverage semantics
+  prevent retention or absence from being presented as complete session history.
+
+**Analyzers:**
+
+- `npm run diagnostics:logs -- ...` and the compatibility alias
+  `npm run diagnostics:analyze -- ...` are passive file-first analyzers/followers.
+- They never connect to the monitor.
+- They never trigger pipeline work.
+
+**Sole path:**
+
+- Continuous JSONL is the sole diagnostics path.
+- No capture IPC, renderer instrumentation, export, viewer, or optional trace mode remains.
+- GETs and production/desktop artifacts exclude continuous logging.
+
+Behavior: [Pipeline operations](../../operations/pipeline-diagnostics.md)
+
+## Repository context inventories
+
+**Capture:**
+
+- Repository context inventories are repository/provider-scoped diagnostics.
+- They are captured only through an explicit trusted desktop action.
+- No browser route may trigger capture.
+- Browser and LAN GETs serve committed normalized revisions only.
+
+**Monitor-private:** repository roots, commands, executables, raw output, stderr, errors,
+credentials, and private fingerprints. They must not enter renderer IPC, browser state,
+logs, or persistence.
+
+**Session references:**
+
+- A session reference binds once, only for future sessions.
+- It binds to a revision already committed when the session started.
+- In-session provider evidence takes precedence.
+- Absent evidence renders no `/context` instruction.

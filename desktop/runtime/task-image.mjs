@@ -30,7 +30,6 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** The validated payload of one operation, or null: a task ID, an image ID and, for `add` only, the image bytes. */
 function validPayload(operation, payload) {
   const adding = operation === "add";
   if (!isPlainObject(payload) || Object.keys(payload).length !== (adding ? 3 : 2) || typeof payload.taskId !== "string" || !TASK_ID.test(payload.taskId)
@@ -47,11 +46,7 @@ function refusal(body) {
     : UNAVAILABLE;
 }
 
-/**
- * Native-only bridge for the images of a task. It validates the fixed operation, the identifiers, and the size of
- * the bytes; the monitor decides the image type from the bytes and validates the rest. Image bytes cross only between
- * the trusted renderer and the monitor: this bridge never writes them to disk, logs them, or names a file.
- */
+/** Native-only bridge for task images; image bytes are never written to disk, logged, or named here. */
 export function createTaskImage(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
   const fetchImpl = options.fetch || fetch;

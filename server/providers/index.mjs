@@ -12,12 +12,11 @@ import { CLAUDE_MODEL_SOURCE_CAPABILITIES } from "./claude/model-observation.mjs
 import { CODEX_MODEL_SOURCE_CAPABILITIES } from "./codex/model-observation.mjs";
 import path from "node:path";
 
-/** Public adapter seam for bounded official release publication reads. */
 export function createOfficialProviderReleaseReaders(options = {}) {
   return Object.freeze([createClaudeCodeReleaseReader(options), createCodexCliReleaseReader(options)]);
 }
 
-/** Read-only model sources use the effective profile; stat identities never leave the adapter seam. */
+// Read-only model sources use the effective profile; stat identities never leave the adapter seam.
 export function createProviderModelReaders(options = {}) {
   const codexHome = options.codexHome || resolveCodexHome(options);
   const environment = { ...(options.env || process.env), CODEX_HOME: codexHome };

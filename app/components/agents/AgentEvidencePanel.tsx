@@ -35,8 +35,6 @@ export function AgentEvidencePanel({ selection, onClose }: { selection: { title:
   const closing = !selection;
   useEffect(() => {
     if (!closing || !retainedSelection) return;
-    // Transition completion normally removes the panel. Keep a bounded fallback
-    // for reduced motion, interrupted transitions, and browsers without events.
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
     const timer = window.setTimeout(() => setRetainedSelection(null), reducedMotion ? 0 : 240);
     return () => window.clearTimeout(timer);
@@ -45,7 +43,6 @@ export function AgentEvidencePanel({ selection, onClose }: { selection: { title:
     if (!selection) return;
     closeRef.current?.focus({ preventScroll: true });
     const closeOnEscape = (event: KeyboardEvent) => {
-      // Let the shared disclosure dismiss first, keeping its parent panel open.
       if (event.key === "Escape" && !explanationRef.current?.querySelector('[aria-expanded="true"]')) onClose();
     };
     document.addEventListener("keydown", closeOnEscape);

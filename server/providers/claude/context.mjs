@@ -40,7 +40,7 @@ function validTimestamp(value) {
   return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
-/** Provider-owned records written before a request is sent: tool results, user input, attachments. */
+// Provider-owned records written before a request is sent: tool results, user input, attachments.
 function requestInputRecord(record) {
   return record?.type === "user" || record?.type === "attachment";
 }
@@ -131,11 +131,6 @@ function directlyParentedTo(record, notificationId) {
   return !notificationId || !parentId || parentId === notificationId;
 }
 
-/**
- * Recognize a bounded transcript sequence around a provider-owned task
- * notification. This records observed structure, not the notification as the
- * authoritative cause of the provider's cache divergence.
- */
 function inferredMessageChangeSequences(records, completeHistory) {
   const sequences = new Map();
   if (!completeHistory || !Array.isArray(records)) return sequences;
@@ -189,7 +184,6 @@ function inferredMessageChangeSequences(records, completeHistory) {
       continue;
     }
 
-    // Any other user message interrupts the structural chain.
     candidate = null;
     toolUseIds.clear();
     matchedToolResult = false;
@@ -197,10 +191,8 @@ function inferredMessageChangeSequences(records, completeHistory) {
   return sequences;
 }
 
-/**
- * The user-input records a request answers: every one on the request's recorded parent chain back
- * to the previous assistant record. Recorded linkage only; transcript order and timing never link.
- */
+// The user-input records a request answers: every one on the request's recorded parent chain back
+// to the previous assistant record. Recorded linkage only; transcript order and timing never link.
 function precedingUserInputIds(inputChain, parentUuid) {
   const ids = [];
   let cursor = parentUuid;
@@ -242,16 +234,12 @@ export function parseClaudeContextRecords(records, options = {}) {
     if (inputChain.size > MAX_INPUT_CHAIN_RECORDS) inputChain.delete(inputChain.keys().next().value);
   };
 
-  // Recorded time of the latest record since the previous assistant record, once an input record is
-  // seen. An input record with no valid timestamp clears it rather than leaving an older time.
   let inputRecordedAt = null;
   let sawAssistantRecord = false;
 
   for (const record of Array.isArray(records) ? records : []) {
     if (!assistantRecord(record)) chainRecord(record, Boolean(userInputContentType(record, requestedInputIds)));
     if (requestInputRecord(record)) inputRecordedAt = validTimestamp(record.timestamp ?? record.message?.timestamp);
-    // A later timestamped record (a recorded retry, say) means the request was sent no earlier than
-    // that; keeping the older input time would lengthen the gap. Alone it establishes no send time.
     else if (inputRecordedAt && !assistantRecord(record)) inputRecordedAt = validTimestamp(record?.timestamp) || inputRecordedAt;
     if (record?.type === "user") {
       for (const block of structuredContent(record)) {
@@ -261,7 +249,6 @@ export function parseClaudeContextRecords(records, options = {}) {
       }
     }
     if (!assistantRecord(record)) continue;
-    // Every assistant record, including a provider error that is retried, consumes the input time.
     const recordedInputAt = inputRecordedAt;
     inputRecordedAt = null;
     // A bounded window can open on a later fragment of a request, after the mid-answer record that

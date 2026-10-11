@@ -1,11 +1,3 @@
-// Per-session resource history: minute aggregates with exact max timestamps, the
-// top-ten peaks per field, raw sample windows around each peak, and deterministic
-// peak-to-task/request matching. See docs/internal/architecture/metrics.md ("Resource history") and
-// docs/internal/architecture/observation-cache.md for the persisted contract and checkpoint cadence.
-//
-// Privacy: rows persisted here carry only a normalized session ID, execution-task
-// IDs, request numbers, timestamps, and numeric measurements. No PIDs, process
-// identities, paths, command text, labels, or raw provider evidence.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { matchResourcePeak } from "./resource-peak-matching.mjs";
@@ -14,9 +6,6 @@ const MINUTE_MS = 60_000;
 const TOP_PEAKS_PER_FIELD = 10;
 const PEAK_WINDOW_MS = 120_000; // two minutes each side of the peak sample
 
-// Ordered pairing of a resource_minutes/resource_peaks column prefix (snake_case,
-// matches the fixed DDL in server/persistence/monitor-store.mjs) to the sampler's camelCase
-// measurement field.
 const FIELDS = Object.freeze([
   { column: "cpu_cores", field: "cpu_cores", sampleKey: "cpuCores" },
   { column: "cpu_machine_percent", field: "cpu_machine_percent", sampleKey: "cpuMachinePercent" },
@@ -38,11 +27,7 @@ function minuteStartOf(timeMs) {
   return Math.floor(timeMs / MINUTE_MS) * MINUTE_MS;
 }
 
-/**
- * Aggregates one minute's samples into { field -> { min, avg, max, maxAtMs } }.
- * Non-null values only; a field with no non-null sample in the minute is entirely
- * null. Ties on max value are won by the earliest sample timestamp.
- */
+// Aggregates one minute's samples into { field -> { min, avg, max, maxAtMs } }.
 function aggregateMinute(samples) {
   const aggregates = {};
   let anyField = false;
@@ -89,7 +74,6 @@ function upsertMinuteRow(store, sessionId, minuteStart, aggregates) {
   ).run(...values);
 }
 
-/** Finds (or creates) the single peak row for this session/field/minute and writes its value. */
 function upsertPeakCandidate(store, sessionId, field, minuteStart, observedAtMs, value) {
   const existing = preparedStatement(store.database, 
     "SELECT id FROM resource_peaks WHERE session_id = ? AND field = ? AND observed_at >= ? AND observed_at < ?",
@@ -104,7 +88,6 @@ function upsertPeakCandidate(store, sessionId, field, minuteStart, observedAtMs,
   ).run(sessionId, field, observedAtMs, value);
 }
 
-/** Evicts every peak past the top ten (by value desc, earlier observed_at wins ties) per field. */
 function evictExcessPeaks(store, sessionId) {
   for (const { field } of FIELDS) {
     const rows = preparedStatement(store.database, 
@@ -124,7 +107,7 @@ function retainedPeaks(store, sessionId) {
   ).all(sessionId);
 }
 
-/** The latest in-memory sample strictly before `beforeMs`, or null when none is retained. */
+// The latest in-memory sample strictly before `beforeMs`, or null when none is retained.
 function precedingSampleMs(sortedSamples, beforeMs) {
   let preceding = null;
   for (const sample of sortedSamples) {
@@ -208,11 +191,7 @@ function processSession(store, sessionId, allSamples, cursorMs, tasks, latestObs
   return minuteStarts[minuteStarts.length - 1];
 }
 
-/**
- * Returns a monitor-store contributor that persists resource history on the
- * checkpoint cadence. Resource history cannot be rebuilt from anything else, so a
- * rebuilt (empty) database is immediately ready.
- */
+// Returns a monitor-store contributor that persists resource history on the checkpoint cadence.
 export function createResourceHistoryContributor({ sampler, sessionInputs } = {}) {
   if (!sampler || typeof sampler.samplesSince !== "function" || typeof sessionInputs !== "function") {
     throw new TypeError("Resource history contributor requires a sampler and sessionInputs()");
@@ -239,8 +218,7 @@ export function createResourceHistoryContributor({ sampler, sessionInputs } = {}
         const nextCursor = processSession(store, sessionId, samples, cursor, tasks, latestObservationMs);
         if (nextCursor !== null && nextCursor !== undefined) minuteCursors.set(sessionId, nextCursor);
       } catch {
-        // A failure for one session skips that session only; other sessions and
-        // the checkpoint cycle itself continue.
+        // A failure for one session skips that session only; other sessions and the checkpoint cycle itself continue.
       }
     }
   }
@@ -273,10 +251,7 @@ function parseMatchedTaskIds(value) {
   }
 }
 
-/**
- * Pure, synchronous read interface over the committed resource-history tables.
- * Never acquires provider evidence; safe to call from a serving-side GET.
- */
+// Pure, synchronous read interface over the committed resource-history tables.
 export function createResourceHistoryQueries(store) {
   return Object.freeze({
     sessionResourceCurves(sessionId, { fromMs, toMs } = {}) {
@@ -290,12 +265,6 @@ export function createResourceHistoryQueries(store) {
       return rows.map(camelizeMinuteRow);
     },
 
-    /**
-     * Newest-first bounded read of a session's minute curve, reversed back to ascending
-     * order, plus whether older minutes exist beyond `limit`. Used by the resources domain
-     * source so it never has to load an unbounded curve (up to the full retention window)
-     * into memory on every store cycle.
-     */
     sessionResourceCurvesRecent(sessionId, { limit } = {}) {
       const boundedLimit = Number.isSafeInteger(limit) && limit > 0 ? limit : 1440;
       const rows = preparedStatement(store.database, 
@@ -305,7 +274,6 @@ export function createResourceHistoryQueries(store) {
       return { rows: rows.slice(0, boundedLimit).reverse().map(camelizeMinuteRow), truncated };
     },
 
-    /** Bounded removal record for a session's minute curve; null when none was recorded. */
     sessionCurveRemoval(sessionId) {
       const row = preparedStatement(store.database, 
         "SELECT reason, removed_at AS removedAtMs FROM resource_curve_removals WHERE session_id = ?",
@@ -340,12 +308,6 @@ export function createResourceHistoryQueries(store) {
   });
 }
 
-/**
- * Input adapter for the contributor: live sessions the sampler currently tracks, with
- * normalized execution-task intervals and the latest recorded observation instant from
- * committed L1 evidence. Request numbers live only in the async, disk-backed session-history
- * store, so every task carries requestNumber null and peaks get no request link yet.
- */
 export function createResourceHistorySessionInputs({ observationStore, sampler }) {
   return function sessionInputs() {
     const inputs = [];
@@ -371,14 +333,6 @@ export function createResourceHistorySessionInputs({ observationStore, sampler }
 
 const STORE_NUDGE_MS = 60_000;
 
-/**
- * Registers the contributor on the monitor store runtime and returns `sampleAndSchedule`,
- * which the resource observation uses in place of `sampler.sample`. Checkpoints fire only
- * on evidence changes, so a quiet live session (a long build) could outlive the sampler's
- * 30-minute raw window unpersisted; after sampling at least one session it schedules the
- * coalesced store cycle at most once per minute. With persistence disabled, or a sampler
- * that cannot be drained, it only samples.
- */
 export function attachResourceHistory({ enabled = true, monitorStoreRuntime, sampler, observationStore, now = Date.now }) {
   const attached = enabled && typeof monitorStoreRuntime?.registerContributor === "function"
     && typeof sampler?.samplesSince === "function";

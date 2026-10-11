@@ -5,7 +5,6 @@ import { PROVIDER_NAMES, usageReading } from "./task-gates-model";
 
 const PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 
-/** Provider capacity above the Board (design contract D35-D39): the same readings the Start gates panel shows. Omitted without gates. */
 export function CapacityStrip({ queue }: { queue: TaskBoard["queue"] }) {
   const gates = queue.gates;
   if (!gates) return null;

@@ -25,7 +25,6 @@ export function isAllowedNotificationTarget(value) {
   return typeof value === "string" && ALLOWED_NOTIFICATION_TARGET.test(value);
 }
 
-/** One bounded read of the existing committed same-origin cache. */
 export async function loadCommittedNotificationSnapshot({ origin, authorizationToken, signal, fetchImpl = fetch } = {}) {
   let parsedOrigin;
   try { parsedOrigin = new URL(origin); } catch { return null; }
@@ -73,7 +72,6 @@ function iso(value) {
     && new Date(value).toISOString() === value;
 }
 
-/** Rebuilds only fields native delivery needs; unknown future kinds are consumed silently. */
 export function normalizeNativeNotificationSnapshot(input) {
   if (!input || typeof input !== "object" || Array.isArray(input) || input.version !== 1
     || !Number.isSafeInteger(input.revision) || input.revision < 0
@@ -168,7 +166,6 @@ function preferences(value) {
   return { enabled: value?.enabled === true, quietUntil: value?.quietUntil ?? null, categories };
 }
 
-/** One Electron-owned consumer. Claims every new ID before selecting any native toast. */
 export function createNativeNotificationController({ store, notify, openTarget, getPreferences,
   present = nativeNotificationPayload, now = Date.now } = {}) {
   if (!store || typeof notify !== "function" || typeof openTarget !== "function" || typeof getPreferences !== "function") throw new TypeError("Invalid notification controller");
@@ -233,7 +230,6 @@ export function createNativeNotificationController({ store, notify, openTarget, 
   return Object.freeze({ start, observe });
 }
 
-/** Polls only the already-committed same-origin response. No tab owns this loop. */
 export function createNotificationPoller({ controller, loadSnapshot, intervalMs = NOTIFICATION_POLL_INTERVAL_MS,
   schedule = (callback, delay) => setTimeout(callback, delay), cancel = clearTimeout } = {}) {
   let running = false;

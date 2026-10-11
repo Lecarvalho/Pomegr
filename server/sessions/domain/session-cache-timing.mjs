@@ -1,12 +1,5 @@
 const CACHE_LIFETIMES = new Set(["5m", "1h", "mixed", "30m+"]);
 
-/**
- * Bounded catalog evidence for the sessions page cache indication: the primary
- * agent's newest retained request with cache activity and its allowlisted
- * lifetime. The browser derives nearing/elapsed states from its live clock.
- * Historical rows keep their recorded evidence because a resumed session
- * still depends on that cache; rows without a primary agent carry none.
- */
 export function projectSessionCacheTiming(agents, requestSnapshots) {
   if (requestSnapshots?.status !== "ready" || !Array.isArray(requestSnapshots.items)) return null;
   if (!Array.isArray(agents) || !agents.some((agent) => agent?.id === "primary")) return null;

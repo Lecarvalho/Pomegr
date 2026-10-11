@@ -350,7 +350,7 @@ reading is unknown, and unknown holds a start exactly like a failed gate.
 
 | Gate | A start proceeds only when |
 | --- | --- |
-| **Previous step done** | Every task of the step before it is done. |
+| **Previous step done** | Every task of the step before it is done. Holds only the queue: **Start session** starts a task whatever its step. |
 | **Claude Code capacity** and **Codex capacity** | The task's provider is below the **Do not start above** threshold of its five-hour window. |
 | **Provider status** | The provider's public status shows no incident. |
 | **Working tree** | The repository's working tree has no uncommitted changes. |
@@ -362,8 +362,8 @@ shows, so they cover your whole account. Public status does not prove that an
 incident affects you. The working tree gate reads the repository itself, even
 for a task that will start in its own worktree. A held queued task changes
 nothing: it waits, the queue stays on, and Pomegr judges again at the next check.
-A held manual start answers "A start gate holds this task. See Start gates in the
-Queue view."
+A held manual start says which gates hold it, for example "This task is held:
+Claude Code usage is not known."
 
 ## Schedule starts
 
@@ -386,8 +386,9 @@ clear it. A schedule never stops, pauses, or touches a running session.
 
 ## What agents report
 
-The plugin gives agents four tools. Each call is tied to the calling session by
-the coding tool, not by anything the model supplies.
+The plugin gives agents four task tools. Each call is tied to the calling session by
+the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md) lists
+these tools with the plugin's reporting and query tools.
 
 | Tool | What it does |
 | --- | --- |

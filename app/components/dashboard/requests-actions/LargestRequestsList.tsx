@@ -8,7 +8,6 @@ const SORT_LABELS = { uncachedInput: "uncached input", cacheWrite: "cache write"
 const SORT_KEYS = { uncachedInput: "uncachedInputTokens", cacheWrite: "cacheWriteTokens", total: "totalTokens", output: "outputTokens" } as const;
 const LIMIT = 3;
 
-/** One wrapping line under the minimap: the metric cycles in place, and each item selects its request. */
 export function LargestRequestsList({ rows, agents, selectedId, cacheWriteAvailable, onSelect }: {
   rows: RequestRow[]; agents: Agent[]; selectedId: string | null; cacheWriteAvailable: boolean; onSelect: (row: RequestRow) => void;
 }) {
@@ -16,7 +15,6 @@ export function LargestRequestsList({ rows, agents, selectedId, cacheWriteAvaila
   const resolvedSort = !cacheWriteAvailable && sort === "cacheWrite" ? "total" : sort;
   const sorts = SORTS.filter((value) => cacheWriteAvailable || value !== "cacheWrite");
   const valueKey = SORT_KEYS[resolvedSort];
-  // A request with none of the metric is not among the largest, so a sparse metric lists fewer items.
   const largest = largestRequests(rows, resolvedSort, LIMIT).filter((row) => row[valueKey] > 0);
   const sortLabel = SORT_LABELS[resolvedSort];
   return <section className="requestsActionsLargest" aria-label="Largest requests">

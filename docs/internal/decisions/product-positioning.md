@@ -3,7 +3,7 @@
 > Status: accepted.
 > Decided: 2026-08-11, in the commit that adopted AGPL-3.0-only and introduced the commercial strategy working document. The boundary against authoritative evaluation has been in [PRODUCT.md](../../../PRODUCT.md) since 2026-08-10.
 > Scope and owner: how Pomegr is positioned against the open-source core and any future commercial offering; the product owner.
-> Authority: rationale only. [PRODUCT.md](../../../PRODUCT.md) owns the current positioning, [AGENTS.md](../../../AGENTS.md) owns the privacy and product invariants, and [license history](license-history.md) owns the licensing rationale. The [commercial strategy plan](../plans/commercial-strategy.md) holds every unvalidated hypothesis.
+> Authority: rationale only. [PRODUCT.md](../../../PRODUCT.md) owns the current positioning, [AGENTS.md](../../../AGENTS.md) and the privacy pages it lists own the privacy and product invariants, and [license history](license-history.md) owns the licensing rationale. The [commercial strategy plan](../plans/commercial-strategy.md) holds every unvalidated hypothesis.
 
 ## Decision and context
 

@@ -6,7 +6,6 @@ import { Sample, Section } from "./DesignSystemKit";
 
 const noop = () => undefined;
 
-// Invented repositories; every state a repository row can draw.
 const REPOSITORIES: GitHubRepositoryReading[] = [
   { id: "repo-000000000000000000000001", name: "pomegr", access: { visibility: "private", capabilities: ["read_issues", "create_issues"] } },
   { id: "repo-000000000000000000000002", name: "catalogus", access: { visibility: "public", capabilities: ["read_issues", "create_issues"] } },
@@ -15,7 +14,6 @@ const REPOSITORIES: GitHubRepositoryReading[] = [
   { id: "repo-000000000000000000000005", name: "scratch", access: null },
 ];
 
-// The sixteen repositories a read stops at.
 const LIMIT_REPOSITORIES: GitHubRepositoryReading[] = Array.from({ length: 16 }, (_, index) => ({
   id: `repo-${String(index + 1).padStart(24, "0")}`,
   name: `project-${index + 1}`,

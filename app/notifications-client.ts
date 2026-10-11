@@ -94,11 +94,9 @@ function normalizeRecord(value: unknown): NotificationRecord | null {
   if (row.kind === "provider_recovery" && (row.provider === "claude" || row.provider === "codex") && data.status === "operational") {
     return { ...base, kind: "provider_recovery", provider: row.provider, data: { status: "operational" } };
   }
-  // The monitor cannot publish its own transport failure. This kind is client-local only.
   return null;
 }
 
-/** Rebuild the public allowlist; no unknown upstream field enters React state. */
 export function normalizeNotificationSnapshot(input: unknown): NotificationSnapshot | null {
   const source = object(input);
   const readiness = object(source?.readiness);
@@ -117,7 +115,7 @@ export function normalizeNotificationSnapshot(input: unknown): NotificationSnaps
   };
 }
 
-/** One tab-scoped cache consumer; GETs never derive provider/session conditions. */
+/** One tab-scoped cache consumer. */
 export class NotificationStore {
   private state: NotificationClientState = EMPTY_STATE;
   private listeners = new Set<() => void>();

@@ -7,16 +7,9 @@ import { contextAllocationFromCategories, contextCategoryKind } from "../normali
 import { checkoutRoots, readGitCheckout, taskWorktreeRepositoryId } from "./git-checkout.mjs";
 import { createRepositoryPluginRuntime } from "./repository-plugin-runtime.mjs";
 
-// A Git checkout answer (top level, and the common directory of a linked worktree) is reused for the same freshness the providers'
-// memoized repository resolver already applies (session-identity.mjs, 300 s).
 const GIT_ROOT_TTL_MS = 300_000;
 const GIT_ROOT_MAX_ENTRIES = 256;
 
-/**
- * One Git root lookup per normalized directory: concurrent callers share the in-flight
- * Git read, and its answer (a top level, a `{ root, commonDir }` checkout, or null) is
- * reused for `ttlMs` from when that lookup started. A rejected lookup is not retained.
- */
 export function createGitRootLookup(readGitRoot, { now = Date.now, ttlMs = GIT_ROOT_TTL_MS, maxEntries = GIT_ROOT_MAX_ENTRIES } = {}) {
   const entries = new Map();
   return function gitRoot(cwd) {
@@ -173,7 +166,6 @@ export function createRepositoryInventoryRuntime(options = {}) {
   const persistence = options.persistence !== false;
   const storeFile = options.storeFile;
   if (typeof storeFile !== "string" || !path.isAbsolute(storeFile)) throw new TypeError("Repository inventory store requires an absolute file path");
-  // `options.gitRoot` may answer a top-level string, or `{ root, commonDir }` for a linked worktree.
   const readGitRoot = options.gitRoot || readGitCheckout;
   const gitRoot = createGitRootLookup(readGitRoot, { now, ttlMs: GIT_ROOT_TTL_MS, maxEntries: GIT_ROOT_MAX_ENTRIES });
   const cache = createCommittedResponseCache({ includeRevision: true, now });
@@ -213,12 +205,8 @@ export function createRepositoryInventoryRuntime(options = {}) {
   const ready = (async () => {
     const loaded = persistence ? await load() : null;
     state = loaded || freshState(now);
-    // File evidence can use opaque IDs before any single-session association
-    // exists (for example a multi-repository session). Save their salt first.
     if (!persistence || loaded) return;
     try { await persist(state); } catch {
-      // A concurrent first-run writer (Windows rejects the contended rename) may
-      // have committed its own salt; adopt it. Otherwise the next commit retries.
       state = await load() || state;
     }
   })();
@@ -273,12 +261,6 @@ export function createRepositoryInventoryRuntime(options = {}) {
     };
   }
 
-  /**
-   * The one place repository identity is derived. A linked Git worktree belongs to its main
-   * repository (product-owner decision, 2026-10-10): the ID hashes the main root, the name is
-   * the main root's basename, and `targets` holds the main root, whichever checkout was seen
-   * last. `root` stays the directory's own checkout (a worktree's own top level).
-   */
   async function locate(cwd, recognized = null) {
     await ready;
     const normalizedCwd = path.resolve(cwd);
@@ -288,9 +270,6 @@ export function createRepositoryInventoryRuntime(options = {}) {
       roots.set(normalizedCwd, checkout);
     }
     const { root, mainRoot } = checkout;
-    // Git gave no answer (a removed folder, or no repository). A Pomegr-made task worktree path names
-    // its repository ID; it is accepted only for an ID already known this run, with that repository's
-    // name. `targets` is not written: the missing folder never becomes a repository root.
     const owner = checkout.unanswered ? targets.get(taskWorktreeRepositoryId(normalizedCwd)) : null;
     if (owner) return { repositoryId: taskWorktreeRepositoryId(normalizedCwd), name: owner.name, root, mainRoot: owner.root };
     const identityRoot = process.platform === "win32" ? mainRoot.toLowerCase() : mainRoot;
@@ -305,11 +284,6 @@ export function createRepositoryInventoryRuntime(options = {}) {
     return { repositoryId, name };
   }
 
-  /**
-   * Whether a directory already looked up is a task worktree path Git gave no answer for: "known" when
-   * its repository ID is known this run (the directory resolves to it), "unknown" while it is not (the
-   * directory keeps the folder-named fallback, which a caller may derive again later), else null.
-   */
   function taskWorktreeOwner(cwd) {
     if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
     const normalizedCwd = path.resolve(cwd);
@@ -318,12 +292,6 @@ export function createRepositoryInventoryRuntime(options = {}) {
     return ownerId ? targets.has(ownerId) ? "known" : "unknown" : null;
   }
 
-  /**
-   * Monitor-private repository resolution: the opaque repository ID, `root` (the Git top
-   * level of the checkout `cwd` is in, or the fallback directory), and `mainRoot` (the
-   * repository that ID names; another folder than `root` only inside a linked worktree).
-   * Neither root leaves this function's callers.
-   */
   async function resolveRepository(cwd, { requireGit = false } = {}) {
     if (typeof cwd !== "string" || cwd.length === 0 || !path.isAbsolute(cwd)
       || /[\u0000-\u001f\u007f]/u.test(cwd)) return null;
@@ -507,7 +475,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
     stopPluginObservation: pluginSetup.stop,
     refreshPluginSetup: pluginSetup.refresh,
     readPluginSetup: pluginSetup.read,
-    // Monitor-private main root of a repository seen this run, never a linked worktree's path; null when unknown. Never served to a browser.
+    // Monitor-private main root of a repository seen this run, never a linked worktree's path; null when unknown.
     repositoryRoot: (repositoryId) => targets.get(repositoryId)?.root ?? null,
     preparePluginAction: pluginSetup.prepare,
     readRepositories: (revision) => cache.read(revision),

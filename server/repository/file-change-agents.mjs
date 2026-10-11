@@ -1,14 +1,3 @@
-// Recorded identity of the agents that changed files, kept beside the file-change index so
-// file history can name them after their session leaves the monitor's memory. One row per
-// (session, agent) that has a recorded `file_changes` row: the agent's display label, its
-// optional provider-recorded assignment, and its latest reported model identifier. The
-// model is the agent's latest value, never the model of the request that made a change.
-//
-// Privacy: only these three bounded one-line values, all already served to the browser as
-// normalized agent fields, are persisted. Never prompts, descriptions, provider-native agent
-// kinds, paths, or raw provider records. See AGENTS.md ("File-change history") and
-// docs/internal/architecture/observation-cache.md.
-
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { normalizedRequestModel } from "../normalize/request-snapshots.mjs";
 
@@ -24,7 +13,6 @@ function oneLine(value, maximum) {
   return text;
 }
 
-/** Validated display fields for one agent; every field is null when missing or unsafe. */
 export function fileChangeAgentIdentity(value) {
   const model = normalizedRequestModel(value?.model);
   return {
@@ -34,11 +22,6 @@ export function fileChangeAgentIdentity(value) {
   };
 }
 
-/**
- * Upserts the identity of each given agent from a committed snapshot's normalized agents.
- * An agent the snapshot no longer lists, or whose fields are all unavailable, keeps its
- * last recorded row; a field that becomes unavailable keeps its last recorded value.
- */
 export function recordFileChangeAgents(store, sessionId, agentIds, publicAgents, observedAt) {
   if (!agentIds.size || !Array.isArray(publicAgents) || !Number.isFinite(observedAt)) return;
   const statement = preparedStatement(store.database, `
@@ -58,7 +41,6 @@ export function recordFileChangeAgents(store, sessionId, agentIds, publicAgents,
   }
 }
 
-/** Recorded identities for one session's agents, keyed by agent ID; absent agents are omitted. */
 export function readFileChangeAgents(store, sessionId, agentIds) {
   const identities = new Map();
   const ids = [...agentIds].filter((agentId) => typeof agentId === "string" && SAFE_FILE_CHANGE_AGENT_ID.test(agentId));

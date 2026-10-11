@@ -1,16 +1,3 @@
-// The private task store: one monitor-owned SQLite file, separate from the observation
-// cache (monitor.sqlite) and from its retention and prune cycle, so pruning session history
-// never deletes a task. Task text, the own condition, and feature names are
-// user-authored content held only here; this module never logs them or throws them.
-//
-// Unlike monitor.sqlite this store is not a rebuildable index: a file that is malformed, or
-// written by a newer version, is left untouched. The store then reports `unavailable` and
-// refuses every write, so a routine write can never replace the user's tasks.
-//
-// The schema already holds full Task rows (queue, session link, report, dispatch token), so
-// later parts add actions to `ACTIONS` rather than migrate. Task rows are written only by
-// those actions. Every action runs in one transaction and commits only when the whole board
-// still projects within the contract, so a write can never leave a board the user cannot read.
 
 import crypto from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
@@ -120,7 +107,6 @@ function runTransaction(database, work) {
   }
 }
 
-/** Creates the schema and version in one transaction, so an interrupted creation leaves no half-built store. */
 function createFreshStore(database) {
   runTransaction(database, () => {
     createSchema(database);
@@ -130,7 +116,7 @@ function createFreshStore(database) {
   database.exec("PRAGMA journal_mode = WAL");
 }
 
-/** Throws unless the file is an intact store of exactly this version. Issues no write. */
+// Throws unless the file is an intact store of exactly this version.
 function verifyExistingStore(database) {
   const check = database.prepare("PRAGMA quick_check").get();
   if ((check ? Object.values(check)[0] : null) !== "ok") throw new Error("TASK_STORE_MALFORMED");
@@ -139,7 +125,7 @@ function verifyExistingStore(database) {
   for (const table of TABLES) database.prepare(`SELECT 1 FROM ${table} LIMIT 0`).all();
 }
 
-/** The open database, or null when the store cannot be used. Never throws. */
+// The open database, or null when the store cannot be used.
 function openDatabase(directory) {
   let database = null;
   try {
@@ -169,7 +155,6 @@ function newOpaqueId(prefix) {
   return `${prefix}-${crypto.randomBytes(6).toString("hex")}`;
 }
 
-/** Seeds the default columns for a repository seen for the first time. The caller owns the transaction. */
 function ensureRepository(database, repositoryId) {
   const inserted = preparedStatement(database, "INSERT OR IGNORE INTO repositories (repository_id, created_at) VALUES (?, ?)").run(repositoryId, Date.now());
   if (Number(inserted.changes) === 0) return;
@@ -179,8 +164,7 @@ function ensureRepository(database, repositoryId) {
   seedColumnRoles(database, repositoryId, ids);
 }
 
-// Task numbers are monotonic per repository and never reused. The next number is kept beside the
-// schema version in `meta`, so deleting the newest task cannot hand its number to the next one.
+// Task numbers are monotonic per repository and never reused.
 const nextNumberKey = (repositoryId) => `next_task_number:${repositoryId}`;
 
 function nextTaskNumber(database, repositoryId) {
@@ -194,8 +178,6 @@ function reserveTaskNumber(database, repositoryId, atLeast) {
     .run(nextNumberKey(repositoryId), String(atLeast));
 }
 
-// Features hold tasks at dense steps (1..n). A write that changes a task's feature or step reads the
-// affected feature's steps and closes any gap, leaving the other tasks' update times alone.
 const featureExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM features WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
@@ -209,7 +191,6 @@ function featureIsDone(database, repositoryId, featureId) {
   return Number(row.total) > 0 && Number(row.total) === Number(row.done);
 }
 
-// A step from 1 to the current highest step + 1 (a new last step); null asks for the new last step.
 const stepWithin = (requested, highest) =>
   requested === null ? highest + 1 : requested >= 1 && requested <= highest + 1 ? requested : undefined;
 
@@ -232,7 +213,6 @@ function createTask({ database, repositoryId }, payload) {
     step = stepWithin(input.step, highestStep(database, repositoryId, input.featureId));
     if (step === undefined) return { ok: false, error: "invalid" };
   }
-  // A new task always lands as the last card of the first column.
   const first = preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id LIMIT 1").get(repositoryId);
   if (!first) return { ok: false, error: "conflict" };
   const last = preparedStatement(database, "SELECT MAX(position) AS last FROM tasks WHERE repository_id = ? AND column_id = ?").get(repositoryId, first.id);
@@ -249,10 +229,6 @@ function createTask({ database, repositoryId }, payload) {
   return { ok: true, number };
 }
 
-// Promotes one GitHub issue: a snapshot of its title and stripped body becomes an ordinary task in the first column
-// with the default run and complete-when values, and the issue number is kept beside it (task-source.mjs). It is a store
-// action only: no route or desktop channel carries it, so no caller can supply issue text. An issue that already has a
-// task is `conflict`; text over the task bound is `limit`.
 function promoteIssue({ database, repositoryId }, payload) {
   const input = normalizePromotePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
@@ -265,9 +241,6 @@ function promoteIssue({ database, repositoryId }, payload) {
   return { ok: true, number: created.number };
 }
 
-// Records the issue GitHub created for an existing task as its source, the way a promote does. A store action only:
-// no route or desktop channel carries it. A task that already has a source, or an issue number another task holds, is
-// `conflict`; a missing task is `not_found`. The source is written in the same transaction as the check.
 function recordIssue({ database, repositoryId }, payload) {
   const input = normalizeRecordIssuePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
@@ -285,7 +258,6 @@ function updateTask({ database, repositoryId }, payload) {
   const stored = preparedStatement(database, "SELECT text, feature_id, step, run_provider, run_model, run_effort, checks, own_condition FROM tasks WHERE repository_id = ? AND number = ?")
     .get(repositoryId, input.number);
   if (!stored) return { ok: false, error: "not_found" };
-  // A field the payload left out keeps its stored value; one it carried is replaced whole.
   const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort, remoteControl: readTaskRemoteControl(database, repositoryId, input.number) };
   const completeWhen = input.completeWhen ? { checks: JSON.stringify(input.completeWhen.checks), own: input.completeWhen.own } : { checks: stored.checks, own: stored.own_condition };
   const placement = updatedPlacement(database, repositoryId, stored, input);
@@ -294,14 +266,11 @@ function updateTask({ database, repositoryId }, payload) {
     WHERE repository_id = ? AND number = ?`)
     .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, placement.featureId, placement.step, Date.now(), repositoryId, input.number);
   if (input.run) writeTaskRemoteControl(database, repositoryId, input.number, run.remoteControl);
-  // The feature the task left and the one it joined each close any gap in their steps.
   for (const featureId of new Set([stored.feature_id, placement.featureId])) if (featureId) renumberSteps(database, repositoryId, featureId);
   return { ok: true };
 }
 
-// Where an update leaves the task. An absent key keeps the stored value; a different feature follows
-// the rules of create; the task's own feature takes a step from 1 to the highest step + 1, measured
-// before the move, and never answers `conflict`, even when that feature is done.
+// Where an update leaves the task.
 function updatedPlacement(database, repositoryId, stored, input) {
   const current = { featureId: stored.feature_id ?? null, step: stored.step ?? null };
   if (input.featureId === undefined && input.step === undefined) return current;
@@ -326,7 +295,6 @@ function deleteTask({ database, repositoryId }, payload) {
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
   writeTaskRemoteControl(database, repositoryId, input.number, false);
-  // The deleted number stays retired even when it was newer than the stored counter.
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
     .run(repositoryId, task.column_id, task.position);
@@ -336,17 +304,13 @@ function deleteTask({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-// The agent's `add_task` and `remove_task` (task-adder.mjs). Store actions only: absent from TASK_ACTIONS, so the
-// desktop route never accepts them, and the agent routes are their only callers. `{ sessionId, task }` creates the task
-// like `create` and records the session that added it in the same transaction.
+// The agent's `add_task` and `remove_task` (task-adder.mjs).
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 function agentCreateTask(context, payload) {
   if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "task") || !isTaskSessionId(payload.sessionId)) {
     return { ok: false, error: "invalid" };
   }
-  // The same session adding the same text to the same feature again inside the window gets the task it already
-  // added (task-recent-adds.mjs), as long as that task still exists; nothing is written for it.
   const { database, repositoryId, recentAdds } = context;
   const input = normalizeCreatePayload(payload.task);
   const addKey = input && recentAdds ? recentAddKey(repositoryId, payload.sessionId, input.text, input.featureId) : null;
@@ -362,9 +326,6 @@ function agentCreateTask(context, payload) {
   return created.ok && addKey !== null ? { ...created, addKey } : created;
 }
 
-// `{ sessionId, id }` deletes a task with the effects of `delete`, and only a task this session added that still waits:
-// Not queued, Queued, or Scheduled, with no linked session, no start in flight, and no report. Every other case, a task
-// that does not exist included, is the one `not_found`, so the answer tells nothing about a task the session did not add.
 function agentRemoveTask(context, payload) {
   if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "id") || !isTaskSessionId(payload.sessionId)) {
     return { ok: false, error: "invalid" };
@@ -379,15 +340,10 @@ function agentRemoveTask(context, payload) {
   return deleteTask(context, { id: payload.id });
 }
 
-// Positions stay dense (0..n-1) in every column (task-columns.mjs). Each write below reads the affected order, changes it
-// as a list, and writes the whole list back, so a gap or a tie left by an earlier write is closed by the next action
-// that touches the same list.
 const columnExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
-// A move changes only the task's column, position, and update time. The tasks that shift to make room
-// or close a gap change position alone, as they do when a task is deleted. A card that waits in the queue stays in
-// Ready: a move to another column is refused, and a move inside Ready is how the user orders the single queued tasks.
+// A move changes only the task's column, position, and update time.
 function moveTask({ database, repositoryId }, payload) {
   const input = normalizeMovePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
@@ -399,7 +355,6 @@ function moveTask({ database, repositoryId }, payload) {
   const before = taskNumbersInOrder(database, repositoryId, input.columnId);
   const order = before.filter((number) => number !== input.number);
   order.splice(Math.min(input.position, order.length), 0, input.number);
-  // Dropping a card where it already is writes no update time; it still closes any stored gap.
   if (sourceColumnId !== input.columnId || before.join() !== order.join()) {
     preparedStatement(database, "UPDATE tasks SET column_id = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
       .run(input.columnId, Date.now(), repositoryId, input.number);
@@ -422,29 +377,17 @@ function createFeature({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-// The queue is the set of tasks in state `queued` or `scheduled`, ordered by the pure `orderQueue` rule when the
-// board is projected. A scheduled task is a queued task with a start time of its own: it keeps its place and is not
-// started before that time. These actions change a task's state, time, and step only; they start no session and
-// leave the queue status as stored. The card of a task that joins the queue goes to Ready, and the place of a single
-// task among the others is its card's place there (`settleReadyColumn`, run by `apply` after every action). The
-// `queue_position` column is what an older build ordered single tasks by: it is no longer written, and is read only
-// to bring that build's queued cards into Ready in the order they had.
-
 function stepCounts(database, repositoryId, featureId, step) {
   const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
     .get(repositoryId, featureId, step);
   return { total: Number(row.total), done: Number(row.done) };
 }
 
-// A step is done when it holds tasks and every one of them is done, the same rule `orderQueue` reports.
 function stepIsDone(database, repositoryId, featureId, step) {
   const { total, done } = stepCounts(database, repositoryId, featureId, step);
   return total > 0 && total === done;
 }
 
-// `{ id }` queues a task that is not queued, and takes the start time off a scheduled one, which stays in its place.
-// `{ id, at }` gives a task that is not queued, queued, or scheduled its own start time: it is Scheduled from then
-// on, in the place its card has in Ready or at the end of it. A task with a session already started and is not scheduled again.
 function addToQueue({ database, repositoryId, now }, payload) {
   const input = normalizeQueueAddPayload(payload, now());
   if (!input) return { ok: false, error: "invalid" };
@@ -468,9 +411,7 @@ function removeFromQueue({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-// Moves a queued task to another step of its own feature. A task without a feature has no step: it runs in
-// the order of its card in Ready. A step from 1 to the feature's highest + 1 (a new last step), measured before the
-// move, is valid, and a step that is already done refuses a task. The steps then close up around the move.
+// Moves a queued task to another step of its own feature.
 function reorderQueuedTask({ database, repositoryId }, payload) {
   const input = normalizeQueueReorderPayload(payload);
   if (!input) return { ok: false, error: "invalid" };
@@ -479,7 +420,6 @@ function reorderQueuedTask({ database, repositoryId }, payload) {
   if (task.state !== "queued" || task.feature_id === null || task.feature_id === undefined) return { ok: false, error: "conflict" };
   const highest = highestStep(database, repositoryId, task.feature_id);
   if (stepWithin(input.step, highest) === undefined) return { ok: false, error: "invalid" };
-  // Its own step, or a new last step for the lone task of the last step, leaves the task where it is.
   const current = Number(task.step);
   if (input.step === current || (input.step === highest + 1 && current === highest && stepCounts(database, repositoryId, task.feature_id, current).total === 1)) {
     return { ok: true };
@@ -491,9 +431,7 @@ function reorderQueuedTask({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-// Actions by name. Each takes `{ database, repositoryId }` and the payload inside the store's
-// transaction, and returns `{ ok: true }` or a fixed error code. It validates the payload before
-// its first write. A listed action absent from this table answers `unsupported` until its part lands.
+// Actions by name.
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   feature_create: createFeature,
@@ -504,7 +442,6 @@ const ACTIONS = Object.freeze({
   agent_create: agentCreateTask, agent_remove: agentRemoveTask,
 });
 
-/** Raised inside a transaction to roll it back with a fixed error code. */
 class ActionRejected extends Error {
   constructor(code) {
     super(code);
@@ -512,10 +449,7 @@ class ActionRejected extends Error {
   }
 }
 
-/**
- * Opens the task store in `directory`. Synchronous and never throws: a store that is missing
- * its directory, malformed, or newer than this build is `unavailable`, and is never rewritten.
- */
+// Opens the task store in `directory`.
 export function openTaskStore({ directory, now = Date.now } = {}) {
   let database = openDatabase(directory);
   // Memory only: what makes the agent's `add_task` safe to repeat for a few minutes (task-recent-adds.mjs).
@@ -523,8 +457,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
 
   const repositoryExists = (repositoryId) => preparedStatement(database, "SELECT 1 FROM repositories WHERE repository_id = ?").get(repositoryId) !== undefined;
 
-  // A board written before the columns were fixed is brought to the five (task-columns.mjs) in one transaction, and the
-  // write stands only if the whole board then projects. A board that already matches is not written.
   const reconcileColumns = (repositoryId) => reconcileFixedColumns(database, repositoryId, () => newOpaqueId("col"));
 
   function seedColumns(repositoryId) {
@@ -553,18 +485,13 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
 
   function loadRows(repositoryId) {
     const repository = preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId);
-    // A column's role is kept in `meta` like the pause reason (task-columns.mjs).
     const roles = readColumnRoles(database, repositoryId);
-    // A promoted task's issue number is kept in `meta` like the roles (task-source.mjs).
     const sources = readTaskSources(database, repositoryId);
-    // What an agent asked the owner to look at is kept there too (task-attention.mjs).
     const attentions = readTaskAttentions(database, repositoryId);
     // A task's image list is kept there as well; the bytes are files beside the database (task-images.mjs).
     const images = readTaskImages(database, repositoryId);
-    // Whether a task's session starts with Remote Control on is one more flag there (task-remote-control.mjs).
     const remoteControls = readTaskRemoteControls(database, repositoryId);
     return {
-      // The pause reason and the queue's own times are kept in `meta` (task-queue-advance.mjs); the projection validates them.
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
@@ -575,18 +502,11 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   }
 
   // `resolveSessionFacts(sessionId)` is supplied by the entry point from committed facts (see task-board.mjs).
-  // Without it a linked session keeps the stored unknown defaults. `resolveGateFacts(repositoryId)` supplies the
-  // committed start-gate facts the same way; without it every gate reads unknown. `resolveCheckFacts(sessionId)`
-  // supplies the facts the complete-when checks judge; without it a waiting task carries no reading of its checks.
-  // Every stored board is brought to the five when the store opens, so a write that never reads the board (a session
-  // link, a report) already finds the role columns. A board that cannot be brought there is left as it is.
   if (database) {
     try {
       for (const { repository_id: repositoryId } of preparedStatement(database, "SELECT repository_id FROM repositories").all()) {
         try { seedColumns(repositoryId); } catch { /* stays unavailable until it projects */ }
-        // A store an older build wrote may hold queued cards outside Ready, or in another order there.
         try { settleReady(repositoryId); } catch { /* settled by the next action instead */ }
-        // A store an older build wrote may hold a queue blocked at a task that needs review, which no longer holds it.
         try { runTransaction(database, () => releaseQueue(database, repositoryId)); } catch { /* released by the next resolution instead */ }
       }
     } catch { /* the store is read again on the first board read */ }
@@ -622,7 +542,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         const result = handler({ database, repositoryId, ensureRepository, now, recentAdds }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
         added = typeof result.addKey === "string" ? { key: result.addKey, number: result.number } : null;
-        // Whatever the action changed, the waiting queue cards are in Ready and in start order when it commits.
         settleReadyColumn(database, repositoryId);
         // Only `create`, `agent_create`, and `promote_issue` answer the task they made.
         taskId = action === "promote_issue" || action === "create" || action === "agent_create" ? taskIdFromNumber(result.number) ?? null : null;
@@ -633,7 +552,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       });
       // An agent's add is remembered only once it has committed, so a rolled-back add is never answered as made.
       if (added) recentAdds.remember(added.key, added.number);
-      // A deleted task's image files go once the delete has committed.
       if (action === "delete" || action === "agent_remove") removeTaskImageFiles(directory, repositoryId, payload?.id);
       return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }) };
     } catch (error) {
@@ -641,8 +559,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     }
   }
 
-  // The GitHub issues already promoted in one repository as `Map<issueNumber, taskId>`, from the stored sources of
-  // tasks that still exist. A plain committed read: an unusable store or an invalid ID answers an empty map.
   function promotedIssues(repositoryId) {
     const promoted = new Map();
     if (!database || !isRepositoryId(repositoryId)) return promoted;
@@ -656,8 +572,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     return promoted;
   }
 
-  // What the issue-create route needs about one task, from a plain committed read: its saved text and whether it already
-  // has a source. Null for a task that does not exist, an invalid ID, or a store that cannot be used.
   function issueDraft(repositoryId, taskId) {
     if (!database || !isRepositoryId(repositoryId) || !isTaskId(taskId)) return null;
     try {
@@ -669,8 +583,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     } catch { return null; }
   }
 
-  // Dispatch (task-dispatch.mjs): a plan mints a token and keeps only its digest; a bind links the session that
-  // reports the token once and discards the digest. Every call answers a fixed error.
   function dispatch(operation, input) {
     if (!database) return { ok: false, error: "unavailable" };
     try {
@@ -685,30 +597,25 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     database = null;
   }
 
-  // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs). A start that only
-  // the repository root's uncommitted changes hold is named, so the owner can be offered a worktree of the task's own.
+  // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
     imagePaths: (taskId) => taskImagePaths({ database, directory, repositoryId, taskId }),
     gatesHold: (taskId) => {
       const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
       if (!board) return true;
-      const gates = startGates({ database, repositoryId, board, taskId, resolveGateFacts, at: now() });
+      const gates = startGates({ database, repositoryId, board, taskId, resolveGateFacts, at: now(), manual: true });
       if (gates.ok) return false;
       return gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty" ? "tree_dirty" : true;
     },
   });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
   const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
-  // The agent's report (task-report.mjs): `resolveFacts()` supplies the repository facts for the checks.
   const completeTask = (payload, resolveFacts) => dispatch(reportComplete, { payload, resolveFacts, now });
   const blockTask = (payload) => dispatch(reportBlock, { payload, now });
-  // A session that ended without a report (task-stall.mjs): `resolveFacts(sessionId)` supplies committed session facts.
   const stallEnded = (resolveFacts) => dispatch(stallEndedTasks, { resolveFacts, now });
-  // The queue (task-queue-advance.mjs): which tasks the running queues start now, and the pause a failed start reports.
   const nextStarts = ({ resolveGateFacts = null } = {}) => dispatch(nextQueueStarts, { loadRows, resolveGateFacts, now });
   const pauseAt = (repositoryId, payload) => dispatch(pauseQueue, { repositoryId, payload });
-  // The Sessions list's task references (task-session-link.mjs): plain reads that answer null when the store cannot be used.
   const link = (read, input) => {
     if (!database) return null;
     try { return read({ database, ...input }); } catch { return null; }
@@ -717,8 +624,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const featureLink = (featureId) => link(featureSessions, { featureId });
   const featureLinks = () => link(featureSessionGroups, {});
   const reportChecks = (sessionId) => link(reportableChecks, { sessionId });
-  // A task's images (task-images.mjs): the bytes are files beside the database, the list is in `meta`. Each call
-  // answers a fixed error, and a store that cannot be used refuses the write like `apply` does.
+  // A task's images (task-images.mjs): the bytes are files beside the database, the list is in `meta`.
   const image = (operation, repositoryId, payload) => {
     if (!database) return { ok: false, error: "conflict" };
     try {

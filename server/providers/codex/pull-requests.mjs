@@ -159,7 +159,6 @@ export function readCodexPullRequestRollout(file, options = {}) {
       const record = JSON.parse(line);
       if (record && typeof record === "object" && !Array.isArray(record)) records.push(record);
     } catch {
-      // Malformed and truncated lines do not invalidate recognized PR evidence.
     }
   }
   return parseCodexPullRequestRecords(records, options);

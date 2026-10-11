@@ -9,7 +9,7 @@ function retryDelay(response, now, failures) {
   return Math.min(24 * HOUR, Math.max(60_000, seconds ?? date ?? Math.min(6 * HOUR, 60_000 * 2 ** Math.min(failures, 8))));
 }
 
-/** Fixed public endpoint; callers select only adapter-owned URLs and parsers. */
+// Fixed public endpoint; callers select only adapter-owned URLs and parsers.
 export function createOfficialReleaseReader({ url, parse, fetch: fetchImpl = fetch, now = Date.now, timeoutMs = 8_000 } = {}) {
   if (typeof url !== "string" || !["https://api.github.com/repos/anthropics/claude-code/releases?per_page=30",
     "https://releases.openai.com/codex/channels/latest"].includes(url)

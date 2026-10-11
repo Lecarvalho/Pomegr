@@ -1,7 +1,6 @@
 import { createNotificationLedger } from "../notifications/notification-ledger.mjs";
 import { comparePluginVersions, repositoryPluginSetupSchema } from "../../shared/repository-plugin-state.mjs";
 
-/** Joins committed observation callbacks to the bounded, durable ledger. */
 export function createNotificationObservation({ now = Date.now, persistence = null, sourceScope } = {}) {
   const listeners = new Set();
   const ledger = createNotificationLedger({ now, onUpdate: publish,
@@ -77,8 +76,7 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
     unsubscribeCatalog = subscribeRevisionEvents((event) => {
       if (event?.domain === "sessions") acceptLatest();
     });
-    // The subscription replays current revisions. This covers providers that do
-    // not replay and coalesces rapid catalog commits onto the newest committed fact.
+    // The subscription replays current revisions.
     acceptLatest();
   }
 

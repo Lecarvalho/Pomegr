@@ -30,7 +30,6 @@ function finalRequestObject(message) {
       const value = JSON.parse(tail.slice(start, end + 1));
       if (value && typeof value === "object" && !Array.isArray(value)) return value;
     } catch {
-      // Earlier braces may belong to the request's bounded string fields.
     }
   }
   return null;

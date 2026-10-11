@@ -31,10 +31,6 @@ function failureTooltip(task: ExecutionTask) {
   return `${FAILURE_CAUSE_COPY[cause]}.${exitCode}`;
 }
 
-/**
- * One shell task. `compact` is the inspector's two-line row; `dense` is the one-line rail variant,
- * which drops the kind word and carries the exit code beside the wall duration instead.
- */
 export function ExecutionTaskRow({ task, compact = false, dense = false }: { task: ExecutionTask; compact?: boolean; dense?: boolean }) {
   const running = task.status === "running";
   const failureDetails = task.status === "failed" ? failureTooltip(task) : null;

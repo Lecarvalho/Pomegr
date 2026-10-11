@@ -24,12 +24,7 @@ function persistLastPrunedAt(store, prunedAtMs) {
   } catch { /* best-effort persistence; in-memory readiness still reflects the latest prune */ }
 }
 
-/**
- * Wraps a checkpoint store so a successful write() also notifies the store runtime with
- * the written snapshot. Every other method (load, stats, and any future addition) stays
- * bound to the original instance so its private fields keep resolving correctly. A falsy
- * input passes through.
- */
+// Wraps a checkpoint store so a successful write() also notifies the store runtime with the written snapshot.
 export function wrapCheckpointStoreForStore(checkpointStore, notifyWrite) {
   if (!checkpointStore) return checkpointStore;
   return new Proxy(checkpointStore, {
@@ -47,11 +42,6 @@ export function wrapCheckpointStoreForStore(checkpointStore, notifyWrite) {
   });
 }
 
-/**
- * The single seam later parts (file-change indexing, resource-history writers) extend
- * through `registerContributor`. Owns the store's open/rebuild lifecycle, the committed
- * storage-readiness response, and the checkpoint-triggered retention cadence.
- */
 export function createMonitorStoreRuntime({
   directory,
   settings,
@@ -65,8 +55,6 @@ export function createMonitorStoreRuntime({
   }
   const cache = createCommittedResponseCache({ includeRevision: true, now });
   const contributors = new Map();
-  // Deduped (by providerId+localSessionId) checkpoint snapshots waiting for the next
-  // cycle; contributors (the file-change indexer) read them off `onCheckpoint`'s options.
   const pendingSnapshots = new Map();
   let openedStore = null;
   let openFailed = !directory;
@@ -103,9 +91,7 @@ export function createMonitorStoreRuntime({
     }), commitOptions);
   }
 
-  // "loading" (a directory is configured) or "unavailable" (persistence disabled). A fixed
-  // observedAt keeps this construction-time commit from invoking the shared `now` clock
-  // before any real lifecycle event (start, a cycle) runs.
+  // "loading" (a directory is configured) or "unavailable" (persistence disabled).
   commitReadiness({ observedAt: 0 });
 
   function queueSnapshot(snapshot) {
@@ -138,8 +124,6 @@ export function createMonitorStoreRuntime({
     } else {
       const read = await retention.readStorageFacts(openedStore);
       const atThreshold = Number.isFinite(read.databaseBytes) && read.databaseBytes >= settings.thresholdBytes;
-      // Only a prune can confirm protected-history excess; keep that confirmation between
-      // prunes while the store is still at or above the threshold.
       const cleanupStatus = !atThreshold ? "normal"
         : facts.cleanupStatus === "protected_excess" ? "protected_excess" : "cleanup_pending";
       facts = { databaseBytes: read.databaseBytes, oldestRetainedDay: read.oldestRetainedDay, cleanupStatus };
@@ -163,13 +147,10 @@ export function createMonitorStoreRuntime({
     if (cycleState === "running") { pendingAfterRunning = true; return; }
     if (cycleState === "idle") {
       cycleState = "scheduled";
-      // Assigned synchronously (not inside the setImmediate callback) so a stop() called
-      // during the "scheduled" window still finds and awaits the pending cycle.
       cyclePromise = new Promise((resolve) => {
         setImmediate(() => { runCycle().finally(() => { cyclePromise = null; resolve(); }); });
       });
     }
-    // cycleState === "scheduled": a cycle is already queued; this write coalesces into it.
   }
 
   async function start() {
@@ -186,8 +167,6 @@ export function createMonitorStoreRuntime({
         openFailed = true;
       }
       commitReadiness();
-      // A rebuilt store leaves readiness at "rebuilding" until a cycle lets contributors
-      // repopulate; schedule one so an idle start does not wait for the first checkpoint.
       if (openedStore?.rebuilt) afterCheckpointWrite(null);
     })();
     return startPromise;
@@ -218,11 +197,6 @@ export function createMonitorStoreRuntime({
   });
 }
 
-/**
- * The observation runtime's monitor store: retention comes from the environment (the
- * desktop maps its saved storage settings onto it before start), and an injected checkpoint store (a test or embedded runtime) or
- * `monitorStore: false` never opens the real data-root database.
- */
 export function createObservationMonitorStoreRuntime({ options = {}, dataRoot, now }) {
   const settings = resolveRetentionSettings({ environment: options.environment || process.env });
   const directory = options.checkpointStore !== undefined || options.monitorStore === false

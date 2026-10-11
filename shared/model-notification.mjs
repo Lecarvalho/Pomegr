@@ -2,7 +2,7 @@ const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/u;
 const LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,63}$/u;
 export const MODEL_NOTIFICATION_KINDS = Object.freeze(["model_announced", "model_deprecated", "model_client_listed"]);
 
-/** Dedicated model identity and display validators. Never accept paths or source copy. */
+// Dedicated model identity and display validators.
 export function validModelIdentifier(value) {
   return typeof value === "string" && IDENTIFIER.test(value) && !value.includes("..");
 }

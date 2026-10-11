@@ -7,22 +7,17 @@ import { waitingLine } from "./task-gates-model";
 import { isMovableQueueTask, moveChoices, stepModeLabel, type QueueFeature } from "./task-queue-model";
 import { dropKey, type QueueDropHandlers, type useQueueDrag } from "./use-queue-drag";
 
-/** Design contract D146 on the desktop, where tasks can be dragged; the read-only copy drops the drag sentence. */
 const NOTE = "Steps run in order. Tasks inside one step run at the same time. Drag a queued task to another step to change when it runs. Tasks that started or finished stay where they are.";
 const READ_ONLY_NOTE = "Steps run in order. Tasks inside one step run at the same time. Tasks that started or finished stay where they are.";
 const NEW_STEP_TEXT = "Drop a queued task here to add a step at the end";
 
 type Drag = ReturnType<typeof useQueueDrag>;
 
-/** One unfinished feature: its progress, its steps in order, the new-step drop zone and the note (D117-D146). */
 export function QueueFeaturePanel({ panel, nextId, queue, onOpenTask, drag, onMove }: {
   panel: QueueFeature;
-  /** The task listed first in `queue.order`: it reads "Queued · next". */
   nextId: string | null;
-  /** The committed queue: the next task shows why a start gate holds it. */
   queue: TaskBoard["queue"];
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
-  /** Present only in the desktop app; without it the panel is read-only. */
   drag?: Drag;
   onMove?(id: string, step: number): void;
 }) {

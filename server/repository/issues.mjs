@@ -1,10 +1,3 @@
-// The GitHub issue reader. It runs only on an explicit desktop action (never from a GET and never from the queue),
-// through the installed GitHub CLI with argument arrays, as the signed-in user. Pomegr reads, stores, and forwards
-// no token. Issue titles and bodies are text written by other people: this module bounds and normalizes them and
-// returns fixed enums for every failure. No path, command, stderr, token, login, or URL leaves it. Every call that
-// reads or writes issues names the repository the CLI resolved in that same call (`resolveRepository`); the owner and
-// name are validated, used only to build the request path, and never returned, logged, or put in an error.
-
 import crypto from "node:crypto";
 import { execFile as nodeExecFile } from "node:child_process";
 
@@ -19,13 +12,9 @@ export const ISSUE_CREATE_TITLE_LIMIT = 120;
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
-// Creating an issue is one write, so it gets a longer deadline than a read.
 const CREATE_TIMEOUT_MS = 20_000;
-// The one command that names and describes the repository. Every other call is addressed to the `owner/name` it answers.
 const REPOSITORY_FIELDS = "nameWithOwner,visibility,hasIssuesEnabled,viewerPermission";
-// One part of a GitHub `owner/name`: the characters GitHub allows in a login or a repository name, bounded.
 const REPOSITORY_PART = /^[A-Za-z0-9._-]{1,100}$/u;
-// Free text may span lines and tabs; every other control character is dropped from a promoted task's text.
 const TEXT_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]/gu;
 const TITLE_RUNS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\s]+/gu;
 const ASSOCIATIONS = Object.freeze({ OWNER: "owner", MEMBER: "member", COLLABORATOR: "collaborator" });
@@ -47,9 +36,6 @@ function wellFormed(value) {
 }
 
 /**
- * The issue title of a task's text: its first line, control characters and runs of white space made one space,
- * trimmed, and cut to 120 characters without splitting a surrogate pair. Pure; "" means no title.
- *
  * @param {unknown} text
  */
 export function issueTitleOf(text) {
@@ -57,12 +43,10 @@ export function issueTitleOf(text) {
   return cut(firstLine.replace(TITLE_RUNS, " ").trim(), ISSUE_CREATE_TITLE_LIMIT).trim();
 }
 
-/** One bounded line: control characters and runs of white space become one space. */
 function boundedTitle(value) {
   return cut(wellFormed(value).replace(TITLE_RUNS, " ").trim(), ISSUE_TITLE_LIMIT).trim();
 }
 
-/** Every `<!-- ... -->` range of the text; an unterminated one runs to the end. `end` is exclusive. */
 function hiddenCommentRanges(text) {
   const ranges = [];
   let position = 0;
@@ -78,9 +62,6 @@ function hiddenCommentRanges(text) {
 }
 
 /**
- * The body as a promoted task stores it: hidden HTML comments removed, characters a task cannot hold dropped, then
- * trimmed. Pure.
- *
  * @param {unknown} body
  */
 export function stripHiddenComments(body) {
@@ -101,9 +82,6 @@ function isoInstant(value) {
 }
 
 /**
- * One GitHub REST issue object as an `Issue`, or null for a pull request or anything outside the contract. Pure.
- * The author's login and every other field of the raw object are never read.
- *
  * @param {unknown} raw
  */
 export function normalizeIssue(raw) {
@@ -145,11 +123,6 @@ function parseJson(text) {
   try { return JSON.parse(text); } catch { return undefined; }
 }
 
-/**
- * The `owner/name` of a `nameWithOwner` answer, or null. Exactly two parts, each in the GitHub alphabet and at most 100
- * characters, neither `.` nor containing `..`, so the value can only ever be one path segment pair. It is used to build
- * the `repos/<owner>/<name>/...` path and never leaves this module.
- */
 function repositoryPathOf(value) {
   if (typeof value !== "string") return null;
   const parts = value.split("/");
@@ -160,8 +133,6 @@ function repositoryPathOf(value) {
   return `${parts[0]}/${parts[1]}`;
 }
 
-// Classifies a failed `gh` read from the CLI's own message. The message stays in this function. A GraphQL "could not
-// resolve to a Repository" (what `gh repo view` says for a repository the user cannot see) is the same answer as a 404.
 function failureStatus(failure, { single }) {
   if (failure.error?.code === "ENOENT") return "cli_missing";
   const text = `${failure.stderr}\n${failure.error?.message ?? ""}`;
@@ -177,7 +148,6 @@ function failureStatus(failure, { single }) {
  */
 export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DEFAULT_MAX_BYTES } = {}) {
   // Resolves `{ ok: true, stdout }` or `{ ok: false, error, stderr }`; never rejects and never throws.
-  // `input` (text for the child's standard input) is how a write passes text: it is never an argument.
   function runGh(root, args, { input, deadlineMs = timeoutMs } = {}) {
     return new Promise((resolve) => {
       const failed = (error, stderr = "") => resolve({ ok: false, error, stderr: typeof stderr === "string" ? stderr : "" });
@@ -213,13 +183,6 @@ export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT
     return result.error?.code === "ENOENT" ? "cli_missing" : "not_signed_in";
   }
 
-  // Names the repository once per exported call, with the same command that describes it (`gh repo view`), so every
-  // later `gh api` call is addressed to exactly the repository whose visibility and capabilities were read. The CLI is
-  // never left to fill `{owner}/{repo}` itself: it may resolve that placeholder by a different rule than `repo view` (in
-  // a fork clone with an `upstream` remote the two can differ), and a write must not go to another repository's tracker.
-  // `{ ok: true, path, view }` carries the validated `owner/name` and the parsed answer; both stay inside this module.
-  // `{ ok: false, status }` is one fixed status, classified like the `gh api` read that would have followed. A failed
-  // resolve is never a "not found" of an issue, so `single` is always false.
   async function resolveRepository(root) {
     const result = await runGh(root, ["repo", "view", "--json", REPOSITORY_FIELDS]);
     if (!result.ok) return { ok: false, status: failureStatus(result, { single: false }) };
@@ -270,11 +233,6 @@ export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT
     return issue === null || issue.number !== number ? none("unavailable") : { status: "ok", issue };
   }
 
-  /**
-   * Creates one issue with `gh api --method POST`, in the repository `gh repo view` names in the same call (an
-   * unresolvable repository sends nothing). The JSON `{ title, body }` goes to the child's standard input; no part of
-   * it is an argument. Answers `{ status: "ok", number }` only for a valid issue number, else one fixed failure.
-   */
   async function createIssue(root, { title, body }) {
     const none = (status) => ({ status, number: null });
     const failed = (status) => none(status === "unavailable" || status === "not_found" ? "failed" : status);

@@ -8,13 +8,10 @@ const AUTO_OPEN_DELAY_MS = 300;
 
 type HomeUpdateCardProps = {
   title: string;
-  /** One short line for the Home card. */
   summary: string;
   description: string;
   highlights: string[];
-  /** Decorative static artwork for the announcement; the card shows it scaled down. */
   illustration?: ReactNode;
-  /** Open the dialog by itself on mount; the owner records it through onAutoOpen so it happens once per announcement. */
   autoOpen?: boolean;
   onAutoOpen?(): void;
   onDismiss(): void;
@@ -24,7 +21,6 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
   const headingId = useId();
   const dialogTitleId = useId();
   const [open, setOpen] = useState(false);
-  // The automatic opening waits for Home's first paint to settle, so its entrance does not drop frames.
   const opensByItself = useRef(autoOpen);
   useEffect(() => {
     if (!opensByItself.current) return;
@@ -35,12 +31,10 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
   useEffect(() => { if (autoOpen) onAutoOpen?.(); }, [autoOpen, onAutoOpen]);
   const dialog = useRef<HTMLDialogElement | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  // The dialog mounts only while open, so the closed card carries one copy of the announcement.
   const showDialog = useCallback((node: HTMLDialogElement | null) => {
     dialog.current = node;
     if (!node || node.open) return;
     node.showModal();
-    // Focus rests on the dialog itself, so no control shows a focus ring until the keyboard is used.
     node.focus();
   }, []);
   return <aside className={styles.card} aria-labelledby={headingId}>

@@ -3,9 +3,6 @@ import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocsSearchIndex } from "../../scripts/docs-search.mjs";
 
-// The sitemap and robots.txt (WEB-03): application routes built from the same generated content
-// revision as the pages and the search index, listing exactly the public pages.
-
 const mocks = vi.hoisted(() => ({ handler: vi.fn() }));
 vi.mock("vinext/server/app-router-entry", () => ({ default: { fetch: mocks.handler } }));
 

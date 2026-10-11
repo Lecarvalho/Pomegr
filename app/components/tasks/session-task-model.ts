@@ -4,11 +4,8 @@ import { CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, obs
 import { highestStep, featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
 
-// Pure rules for the session view's task surfaces (the header meta, the Overview summary and the Task tab). They take the
-// session's task reference and the committed board and return plain values. Nothing here reads task text unless the board
-// is ready and holds the task, so a reduced form can never show a value that a later board would retract.
+// Pure rules for the session view's task surfaces (the header meta, the Overview summary and the Task tab).
 
-/** Why only the reference's own fields can be shown. `missing` is a ready board that does not hold the task. */
 export type ReducedReason = "loading" | "desktop_only" | "unavailable" | "missing";
 
 const REDUCED_NOTES: Record<ReducedReason, string | null> = {
@@ -22,12 +19,9 @@ export type SessionTaskFull = {
   kind: "full";
   task: Task;
   feature: TaskFeature | null;
-  /** Done and total over every task of the feature, or null for a task without one. */
   progress: { done: number; total: number } | null;
-  /** The other tasks in this task's step, then the tasks of the next step, each in task-number order. */
   sameStep: Task[];
   nextStep: Task[];
-  /** The queue holds everything while it is blocked; `by` is the task it names. */
   queue: { blocked: boolean; by: string | null };
 };
 
@@ -38,13 +32,11 @@ function idNumber(id: string) {
 }
 const byTaskNumber = (left: Task, right: Task) => idNumber(left.id) - idNumber(right.id);
 
-/** The highest step among the board's tasks of the same feature. Null while the board is not ready or has none. */
 export function stepTotal(board: Pick<TaskBoard, "readiness" | "tasks">, featureId: string | null): number | null {
   if (featureId === null || board.readiness !== "ready") return null;
   return highestStep(board.tasks, featureId) || null;
 }
 
-/** "step 2 of 4", or "step 2" while the total is not known. */
 export function stepLabel(step: number, total: number | null): string {
   return total === null ? `step ${step}` : `step ${step} of ${Math.max(step, total)}`;
 }
@@ -72,13 +64,11 @@ export function sessionTaskModel(board: TaskBoard, reference: SessionTaskReferen
   };
 }
 
-/** The chip of a reduced form: every outcome the reference can carry, since the board's own chip is not available. */
 export function referenceChip(state: SessionTaskReference["state"]): { label: string; tone: "warning" | "neutral" } | null {
   if (state === null) return null;
   return { label: taskStateLabels[state], tone: state === "done" ? "neutral" : "warning" };
 }
 
-/** "2 checks + agent report"; the agent's report always counts. */
 export function completeWhenParts(completeWhen: Task["completeWhen"]): string {
   const parts = [
     completeWhen.checks.length > 0 && `${completeWhen.checks.length} ${completeWhen.checks.length === 1 ? "check" : "checks"}`,
@@ -94,10 +84,6 @@ function failedCount(task: Task) {
   return (task.report?.results ?? []).filter((result) => !result.passed).length;
 }
 
-/**
- * Where the task stands against its Complete when, in words. A task has no Running state: until it has a report or an outcome
- * it is simply not yet reported.
- */
 export function reportOutcome(task: Task): string {
   if (task.state === "done") return "Done";
   if (task.state === "blocked") return "Blocked by agent";
@@ -111,12 +97,10 @@ export function reportOutcome(task: Task): string {
   return "not yet reported";
 }
 
-/** The Overview cell: "2 checks + agent report · not yet reported". */
 export function summaryCompleteWhen(task: Task): string {
   return `${completeWhenParts(task.completeWhen)} · ${reportOutcome(task)}`;
 }
 
-/** The line under the Definition of done: the condition is the agent's to judge, and the report is what settles it. */
 export function definitionStatus(task: Task): string {
   if (task.report) return task.report.blockReason !== null ? "Agent-reported. The agent reported it cannot continue." : "Agent-reported. The agent reported complete.";
   if (task.state === "stalled") return "Agent-reported. The session ended with no report.";
@@ -125,11 +109,7 @@ export function definitionStatus(task: Task): string {
 
 export type CheckRow = { check: TaskCheck; label: string; result: string; tone: "waiting" | "passed" | "failed" };
 
-/**
- * One row per checked condition: the result the report recorded, or, while the task waits for its report, the monitor's
- * reading of the condition (`session.checks`, the rule and the facts that will judge the report). The reading is worded
- * as of now, never as a result, because the report's verification decides.
- */
+/** One row per checked condition. */
 export function checkRows(task: Task): CheckRow[] {
   return task.completeWhen.checks.map((check) => {
     const label = CHECK_LABELS[check];
@@ -147,7 +127,6 @@ export function checkRows(task: Task): CheckRow[] {
 
 export type TextPart = { text: string; code: boolean };
 
-/** "Claude Code · opus · high · Remote Control": the provider plain, a named model and the effort as identifiers, then Remote Control when on. Empty when nothing is planned. */
 export function plannedParts(run: TaskRun): TextPart[] {
   const parts: TextPart[] = [];
   if (run.provider) parts.push({ text: PROVIDER_LABELS[run.provider], code: false }, run.model ? { text: run.model, code: true } : { text: "Default model", code: false });
@@ -156,7 +135,6 @@ export function plannedParts(run: TaskRun): TextPart[] {
   return parts;
 }
 
-/** The Overview Model cell, "Planned opus · observed opus". The observed model is the session's latest reported one. */
 export function modelSummary(task: Task): { planned: TextPart; observed: TextPart; differs: boolean } {
   const observed = task.session?.observedModel ?? null;
   return {
@@ -166,18 +144,15 @@ export function modelSummary(task: Task): { planned: TextPart; observed: TextPar
   };
 }
 
-/** The Next cell and the note under the Next rows: the task numbers of the following step. */
 export function nextIds(nextStep: readonly Task[]): string {
   const ids = nextStep.map((entry) => entry.id);
   return ids.length > 3 ? `${ids.slice(0, 3).join(", ")} +${ids.length - 3}` : ids.join(", ");
 }
 
-/** "Queue blocked by T-12", or just "Queue blocked" when the blocker is not named. */
 export function queueBlockedLine(by: string | null): string {
   return by === null ? "Queue blocked" : `Queue blocked by ${by}`;
 }
 
-/** The Task tab's note under the Next rows while the queue is blocked. */
 export function queueBlockedNote(model: Pick<SessionTaskFull, "task" | "nextStep" | "queue">): string {
   const lead = model.queue.by === model.task.id ? "This task blocks the queue." : `${queueBlockedLine(model.queue.by)}.`;
   if (model.nextStep.length === 0) return lead;
@@ -185,7 +160,6 @@ export function queueBlockedNote(model: Pick<SessionTaskFull, "task" | "nextStep
   return `${lead} ${nextIds(model.nextStep)} will not start ${tail}.`;
 }
 
-/** Where the session started for a task came from: Pomegr started it once a session is linked. No start time is stored. */
 export function startedLine(task: Task): string | null {
   return task.session ? "Started by Pomegr" : null;
 }

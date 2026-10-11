@@ -36,7 +36,6 @@ const CACHE_TOOL_CHANGE_CAUSES = new Map([
 ]);
 const MAX_ADDED_DEFINITIONS = 64;
 
-/** Fixed attribution for a recognized `tools_changed` reason, or null; a loaded-definitions cause needs a valid count. */
 function toolChangeAttributionFor(snapshot, recognizedReason) {
   const cause = snapshot.cacheToolChangeCause;
   if (recognizedReason !== "tools_changed" || typeof cause !== "string" || !CACHE_TOOL_CHANGE_CAUSES.has(cause)) return null;
@@ -53,12 +52,6 @@ function timestampMs(value) {
   return Number.isFinite(milliseconds) ? milliseconds : null;
 }
 
-/**
- * Time the cache entry went unused: the gap between the two requests' recorded send times when both
- * are recorded and neither follows its own answer, otherwise the gap between their response times.
- * A request can wait longer than the lifetime for its first fragment, so response times alone
- * would miss an expiry that elapsed while the earlier request was still being answered.
- */
 function unusedCacheGapMs(previous, snapshot, responseGapMs) {
   const sent = (item) => {
     const sentAt = timestampMs(item.requestSentAt);
@@ -117,10 +110,7 @@ function eventFrom(snapshot, kind, parts, extra = {}) {
   };
 }
 
-/**
- * Derive a bounded factual cache-event feed. Low cache reuse alone never
- * becomes a miss: miss_refill requires a simultaneously recorded large write.
- */
+// Derive a bounded factual cache-event feed.
 export function buildCacheEvidence({
   sessionId = "session",
   agents = [],
@@ -217,9 +207,6 @@ export function buildCacheEvidence({
         cacheLifetimeInference = { cause: "cache_lifetime_elapsed", cacheLifetime: previous.cacheLifetime, elapsedMs: unusedGapMs };
       }
     }
-    // An elapsed lifetime keeps a partial rewrite only when most cached tokens were lost: a shared
-    // prefix can stay cached while the rest expires, but a grown prompt that still reads its whole
-    // previous prefix is ordinary growth. It never joins the possible-full-refill counts.
     const lifetimeElapsedRefill = comparableLargeRewrite && !lowReadShare && cacheLifetimeInference !== null
       && parts.cacheRead <= previous.parts.cacheRead * CACHE_EVENT_RULES.maximumPartialReadRetention;
     if (lifetimeElapsedRefill) {
@@ -392,7 +379,7 @@ export function buildCacheEvidence({
   return { feed, events, refillRequests };
 }
 
-/** Public cache feed; private request links never cross this boundary. */
+// Public cache feed; private request links never cross this boundary.
 export function buildCacheEvents(options = {}) {
   return buildCacheEvidence(options).feed;
 }

@@ -39,7 +39,6 @@ export function normalizeNotificationDeliveryRecord(value, profileScope, now) {
       claims: value.claims.filter((claim) => now - claim.claimedAt <= RETENTION_MS) } };
 }
 
-/** One native owner's bounded, atomic claim ledger. A failed claim never changes memory. */
 export function createNotificationDeliveryStore({ file, profileScope, now = Date.now, filesystem = fs } = {}) {
   if (typeof file !== "string" || !path.isAbsolute(file) || typeof profileScope !== "string" || !HASH.test(profileScope)) throw new TypeError("Invalid delivery store configuration");
   let loaded = false;

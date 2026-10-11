@@ -1,4 +1,3 @@
-/** Reconcile a cached heading with the independently refreshed catalog lifecycle. */
 export function reconcileSessionCurrentActivity(entry, activity) {
   if (!activity || !entry.isLive || !["working", "needs_input"].includes(entry.activityStatus)
     || activity.state !== "current") return null;
@@ -23,8 +22,6 @@ export function projectSessionCurrentActivity(entry, primaryAgent) {
   });
 }
 
-// Fixed presentation vocabulary only: never copy a task description, tool name,
-// actor label, command, argument, or result into the session directory.
 const WORK_LABELS = Object.freeze({
   shell: ["Running shell task", "shell task"],
   search: ["Searching", "search"],
@@ -59,7 +56,6 @@ function activityTimestamp(value) {
 function currentExecutionAgent(agent) {
   if (!["active", "waiting", "needs_input"].includes(agent.status)) return false;
   // Adapters without a separate liveness object use normalized task/agent status.
-  // An explicit uncertain or stale liveness observation always wins.
   return !agent.liveness || (agent.liveness.evidence === "observed" && agent.liveness.freshness === "current");
 }
 
@@ -68,7 +64,6 @@ function callActorId(call) {
   return typeof call?.actor?.id === "string" ? call.actor.id : null;
 }
 
-/** Suppress an older running summary as soon as catalog lifecycle changes. */
 export function reconcileSessionActivityFallback(entry, activity, lastObserved = null) {
   const selected = activity?.state === "current"
     && (!entry.isLive || !["working", "needs_input"].includes(entry.activityStatus))
@@ -83,7 +78,6 @@ export function reconcileSessionActivityFallback(entry, activity, lastObserved =
   };
 }
 
-/** D projection from committed normalized evidence; no provider reads or parsing. */
 export function projectSessionActivityFallback(entry, agents = [], toolCalls = []) {
   const visibleAgents = new Map((Array.isArray(agents) ? agents : []).map((agent) => [agent.id, agent]));
   const actorScope = (id) => !visibleAgents.has(id) ? "unknown" : id === "primary" ? "primary" : "subagent";

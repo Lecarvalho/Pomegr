@@ -92,12 +92,24 @@ Preparation from an existing build checks that the built legal copies still matc
 exactly before bundling services; it never regenerates legal files after the web build.
 
 `npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
-`BrowserWindow`. Pull requests targeting `main` and pushes to `main` run
-[Windows verification](../../../.github/workflows/verify.yml) on `windows-2022` with Node
-22.13.0. It installs the locked root and landing dependencies plus Electron's on-demand
-runtime, checks the checked-out commit's release source archive with
-`npm run check:release-source -- --ref HEAD`, then runs the canonical `npm run verify` followed by
-`npm run desktop:smoke:ci`. The CI-safe smoke exercises the packaged Electron main
+`BrowserWindow`. Pull requests targeting `main` run the parts of the canonical
+`npm run verify` as parallel jobs with Node 22.13.0, in two workflows:
+
+| Workflow | Job | Runner | Runs |
+| --- | --- | --- | --- |
+| [Checks](../../../.github/workflows/checks.yml) | Checks and landing | `ubuntu-24.04` | `npm run check`, then the landing `test` and `build:audit` |
+| [Windows verification](../../../.github/workflows/verify.yml) | Node tests | `windows-2022` | `npm run build`, whose output the desktop and production-web suites read, then `npm run test:node` |
+| [Windows verification](../../../.github/workflows/verify.yml) | UI tests | `ubuntu-24.04` | `npm run test:ui` |
+| [Windows verification](../../../.github/workflows/verify.yml) | Build and desktop smoke | `windows-2022` | `npm run check:release-source -- --ref HEAD`, `npm run build`, `npm run check:generated`, `npm run desktop:smoke:ci` |
+
+Checks runs for every pull request. Windows verification is skipped for a pull request
+that changes only files under `docs/`: no test reads them, and Checks still runs
+`npm run check:docs` and builds the landing site from them. Neither workflow runs on a
+push to `main`. `main` has no rule that a branch must be up to date before it merges,
+so two pull requests that pass alone can still break `main` together; the release
+workflow runs the whole `npm run verify` on the tagged commit before it packages
+anything. Run `npm run verify` locally for the same coverage in one command; a change to
+its steps must be mirrored in the two workflows. The CI-safe smoke exercises the packaged Electron main
 process, ASAR/native runtime, loopback services, provider discovery, APIs, privacy
 checks, and shutdown without constructing an Electron renderer. The canonical verifier
 owns the UI, landing, repository-inventory, and desktop-security suites without repeating
@@ -105,8 +117,8 @@ them in a second desktop wrapper. `npm run verify:desktop:ci` remains available 
 focused local use. The full sandboxed preload, renderer, and `BrowserWindow` smoke
 remains a local or interactive-VM release acceptance requirement.
 
-Windows verification can also be dispatched manually from Actions without creating a
-release tag. Keep this workflow enabled in GitHub so PR and main events can start it.
+Both workflows can also be dispatched manually from Actions without creating a
+release tag. Keep them enabled in GitHub so pull-request events can start them.
 
 Creating or pushing a tag does not start the Windows release workflow; dispatch it
 manually with the existing release tag only after the candidate is ready to package and

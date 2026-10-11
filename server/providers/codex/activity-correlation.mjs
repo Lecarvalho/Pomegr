@@ -30,7 +30,7 @@ function boundary(record) {
     || (outer === "responseitem" && type === "message" && record.payload.role !== "assistant");
 }
 
-/** Correlation stays private and follows source order, never timestamp proximity. */
+// Correlation stays private and follows source order, never timestamp proximity.
 export function parseCodexRequestActivityEvidence(records, options = {}) {
   const usages = new Map();
   const outputs = new Map();
@@ -111,9 +111,6 @@ export function parseCodexRequestActivityEvidence(records, options = {}) {
     if (output && !invalid) pending.add(output);
     if (pending.size > MAX_OUTPUTS_PER_REQUEST) { pending.clear(); invalid = true; }
   }
-  // A command or MCP call recorded inside one open code-mode wrapper is listed under the request
-  // that issued the wrapper. It never gains a link the wrapper does not have, and a nested file
-  // change is never linked this way.
   for (const [id, wrapperId] of nested) {
     const key = links.get(wrapperId);
     if (key && !links.has(id)) links.set(id, key);
@@ -121,7 +118,7 @@ export function parseCodexRequestActivityEvidence(records, options = {}) {
   return { ...context, toolCalls, replies, inputs, links };
 }
 
-/** Merge canonical/rollout rows first, then stamp only proven opaque request IDs. */
+// Merge canonical/rollout rows first, then stamp only proven opaque request IDs.
 export function stampCodexActivityRequestIds({ sessionId, agents, usageSnapshots, toolCalls, activity, linkGroups, unlimited = false }) {
   const requestIds = requestSnapshotIdsByEvidence({ sessionId: `codex:${sessionId}`, agents, usageSnapshots, unlimited });
   const links = new Map();

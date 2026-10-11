@@ -48,7 +48,6 @@ function safeRequest(value) {
     cacheReadTokens: value.cacheReadTokens, outputTokens: value.outputTokens, totalTokens: value.totalTokens,
     precedingWork, precedingAssociation: precedingWork.length ? "transcript_adjacency" : null,
     issuedWork, issuedAssociation: issuedWork.length ? "recorded_link" : null,
-    // Records committed before per-request models were retained stay valid as unreported.
     model: normalizedRequestModel(value.model),
   };
 }
@@ -61,7 +60,6 @@ function safeActivity(value, requests) {
   if (durationMs !== null && durationMs > 86_400_000) return null;
   const requestId = REQUEST_ID.test(value.requestId || "") ? value.requestId : null;
   return { id: value.id, timestamp: safeTime(value.timestamp), actor: value.actor, tool: value.tool,
-    // Reply and summary rows committed as `report`, before the `reply` kind existed, are upgraded on read.
     workKind: ["Assistant replied", "Summary updated"].includes(value.tool) ? "reply"
       : normalizedWorkKind(value.workKind, toolWorkKind(value.tool, { detail: value.detail })), detail: value.detail,
     status: value.status === "failed" ? "failed" : null, durationMs, requestId, agentId,
@@ -112,7 +110,7 @@ function sameServedHistory(left, right) {
       requestsReady: right?.requestsReady === true, nextNumber: right?.nextNumber || 1, requests: right?.requests || [], activity: right?.activity || [] });
 }
 
-/** Persisted, browser-safe history only. Provider IDs, paths, and raw records never enter this store. */
+/** Persisted, browser-safe history only. */
 export class SessionHistoryStore {
   #records = new Map(); #touch = new Map(); #indexCache = new Map(); #indexBytes = 0; #writes = new Map();
   #historyRevision = 0; #revisionSubscribers = new Set(); #historyEvents = new Map(); #activityAdmissions = new Map(); #requestAdmissions = new Map(); #generationLeases = new Map();
@@ -146,8 +144,7 @@ export class SessionHistoryStore {
     maxIndexResident = MAX_INDEX_RESIDENT, maxIndexBytes = MAX_INDEX_BYTES, beforeHistoryCommit = null, connections = {} } = {}) {
     this.directory = directory;
     if (directory) this.#blocks = new SessionHistoryBlockStore(directory, { request: safeRequest, activity: safeActivity }, { beforeCommit: beforeHistoryCommit, connections });
-    // This bounds private source-admission bookkeeping only. Normalized history
-    // remains available through its durable manifest and page generations.
+    // This bounds private source-admission bookkeeping only.
     this.maxSessions = Number.isSafeInteger(maxSessions) ? Math.max(1, Math.min(MAX_SESSIONS, maxSessions)) : MAX_SESSIONS;
     if (directory) this.#maintenance = new SessionHistoryMaintenance(directory, {
       busy: () => this.persistenceBusy(), leased: (generation) => (this.#generationLeases.get(generation) || 0) > 0,
@@ -310,9 +307,6 @@ export class SessionHistoryStore {
         if (this.directory) this.#markCommitted(sessionId);
         return outcome(current, true, "accepted");
       }
-      // A legacy generation is immutable. Publish the migrated index under a
-      // fresh revision so readers holding the old manifest never race a block
-      // rewrite at the same generation path.
       await this.#write(record);
       this.#forgetIndex(sessionId);
       this.#remember(sessionId, record);
@@ -323,11 +317,7 @@ export class SessionHistoryStore {
     this.#notifyHistoryRevision(sessionId, record); return outcome(record, true, "accepted");
   }
   hasCommitted(sessionId) { return this.directory ? this.#committedHistory.has(sessionId) : this.#records.has(sessionId); }
-  /**
-   * Commit a source-complete Activity contribution without waiting for request
-   * correlation. Epoch/sequence are monitor-private, monotonic source-domain
-   * tokens; a late or replaced source can never regress the served rows.
-   */
+  /** Commit a source-complete Activity contribution without waiting for request correlation. */
   async publishActivityContribution(sessionId, contribution) {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return null;
     if (!validActivityContribution(contribution)) return this.#serialized(sessionId, () => this.#load(sessionId));
@@ -374,8 +364,7 @@ export class SessionHistoryStore {
   }
   async activityFence(sessionId) {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return 0;
-    // An observer can publish Activity without awaiting the durable commit. A
-    // subsequent replay waits for that queued write before capturing its fence.
+    // An observer can publish Activity without awaiting the durable commit.
     await Promise.allSettled([this.#pendingContributions.get(sessionId)?.promise, this.#pendingRequests.get(sessionId)?.promise].filter(Boolean));
     await (this.#writes.get(sessionId) || Promise.resolve()).catch(() => {});
     const record = this.#blocks?.meta(sessionId) || await this.#load(sessionId);
@@ -431,8 +420,6 @@ export class SessionHistoryStore {
       requests: sortRequests(current?.requests || []), activity: sortRows([...activities.values()], "timestamp"),
     };
     if (current && sameServedHistory(current, record)) {
-      // Watermarks are runtime admission state. Advancing an identical source
-      // record must not rewrite a page generation or churn browser revisions.
       const retained = { ...current, activityEpoch: effectiveEpoch, activitySequence: contribution.sequence, activityVersions };
       await this.#writeAdmissions(sessionId, { activity: nextAdmission });
       this.#remember(sessionId, retained);
@@ -501,9 +488,7 @@ export class SessionHistoryStore {
     this.#notifyHistoryRevision(sessionId, record); return record;
   }
   async read(sessionId, query = {}) {
-    // Serving deliberately consumes only a compact committed index and the
-    // selected data blocks. Full normalized arrays are materialized only by
-    // background publication/replacement, never a GET.
+    // Serving deliberately consumes only a compact committed index and the selected data blocks.
     if (this.directory) return (await this.#readIndexed(sessionId, query)) || { status: "unavailable", kind: query.kind === "requests" ? "requests" : "activity", revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(query.kind === "requests" ? { overview: null } : emptyActivityGroups()) };
     const record = await this.#load(sessionId); const kind = query.kind === "requests" ? "requests" : "activity";
     if (!record) return { status: "unavailable", kind, revision: "0", total: 0, offset: 0, items: [], linkedCount: 0, ...(kind === "requests" ? { overview: null } : emptyActivityGroups()) };
@@ -630,14 +615,10 @@ export class SessionHistoryStore {
       }
     }
     await writeFile(path.join(generationDir, "snapshot.json"), JSON.stringify(record), "utf8");
-    // The manifest is the serving commit point. Never replace the legacy
-    // recovery snapshot before a new generation is visible through it.
     const temp = `${destination}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(temp, JSON.stringify(index), "utf8"); await rename(temp, destination); this.#markCommitted(record.sessionId);
     const legacy = path.join(this.directory, fileName(record.sessionId)); const legacyTemp = `${legacy}.${process.pid}.${Date.now()}.tmp`;
     try { await writeFile(legacyTemp, JSON.stringify(record), "utf8"); await rename(legacyTemp, legacy); } catch { try { await rm(legacyTemp, { force: true }); } catch {} }
-    // Cleanup is deliberately owned by maintenanceStep().  A write must not
-    // scan a retained-history directory, even after a rapid suffix update.
   }
   #forgetIndex(sessionId) {
     const cached = this.#indexCache.get(sessionId);

@@ -115,7 +115,7 @@ function boundedReplyEvents(events, maximum = MAX_ASSISTANT_REPLIES) {
     .slice(maximum === Infinity ? 0 : -maximum);
 }
 
-/** Normalize canonical app-server agent-message thread items without retaining text. */
+// Normalize canonical app-server agent-message thread items without retaining text.
 export function parseCodexCanonicalActivityEvents(turns, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
   const events = new Map();
@@ -162,7 +162,7 @@ function mcpDetail(server, tool) {
 
 const PATCH_FILE_HEADER = /^\*\*\* (Add File|Update File|Delete File|Move to):\s*(.+?)\s*$/gm;
 
-/** Structured candidates from an apply_patch body: headers only, never the diff body. */
+// Structured candidates from an apply_patch body: headers only, never the diff body.
 function patchFileChangeCandidates(patch) {
   if (typeof patch !== "string") return [];
   const candidates = [];
@@ -197,7 +197,6 @@ function canonicalFileChangeKind(kind) {
   return null;
 }
 
-/** Structured candidates from canonical fileChange items: add/update/delete, plus update moves. */
 function canonicalFileChangeCandidates(changes) {
   return (Array.isArray(changes) ? changes : []).flatMap((change) => {
     const target = typeof change?.path === "string" ? change.path : null;
@@ -211,14 +210,12 @@ function canonicalFileChangeCandidates(changes) {
   });
 }
 
-/** Rollout FileChange items key changes by path; reshape them into canonical change entries. */
 function rolloutFileChangeList(changes) {
   if (Array.isArray(changes)) return changes;
   if (!changes || typeof changes !== "object") return [];
   return Object.entries(changes).map(([changePath, change]) => ({ path: changePath, kind: change }));
 }
 
-/** A recognized extension item reduced to its canonical item; an unrecognized one records nothing. */
 function extensionDescriptor(item) {
   const kind = String(item.kind || "").toLowerCase();
   if (kind === "web.search") return canonicalDescriptor({ type: "webSearch", action: item.action, query: item.query });
@@ -287,7 +284,6 @@ function functionDescriptor(name, input, namespace = "") {
   if (normalized === "writestdin") {
     return { tool: "Shell input", detail: "", repetitionInput: input, mutationInput: null };
   }
-  // A namespaced MCP function call is the same call its completed McpToolCall item records.
   if (String(namespace || "").startsWith("mcp__")) {
     return { tool: "MCP", detail: mcpDetail(String(namespace).slice(5), name), repetitionInput: input, mutationInput: null };
   }
@@ -299,9 +295,6 @@ function functionDescriptor(name, input, namespace = "") {
     return { tool: "Tool search", detail: "Discover tools", repetitionInput: input, mutationInput: null };
   }
   const detail = mcpDetail(namespace, name) || "Tool call";
-  // An exec wrapper's completion cannot prove that a nested literal patch call
-  // ran (or succeeded). Only provider-native apply_patch/fileChange records
-  // supply structured mutation evidence.
   return { tool: "Dynamic tool", detail, repetitionInput: input, mutationInput: null, fileChangeCandidates: [] };
 }
 
@@ -462,7 +455,6 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     timestamp,
     actor: { id: actor.id, label: actor.label },
     tool: descriptor.tool,
-    // A file change's detail is a file name, which says nothing about the kind of work.
     workKind: toolWorkKind(descriptor.tool, { detail: descriptor.tool === "File change" ? "" : descriptor.detail, input: descriptor.repetitionInput }),
     detail: collapsedText(descriptor.detail, MAX_DETAIL_LENGTH),
     status,
@@ -470,10 +462,6 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     requestId: null,
     repetitionSignature: repetitionSignature(descriptor.tool, descriptor.repetitionInput),
     mutation: mutationEvidence(descriptor),
-    // Private working field: raw candidates from a structured file-change item
-    // awaiting the finalized status that decides fileChanges. Sealed away by
-    // sealCodexFileChanges before any call crosses this module's boundary.
-    // Shell commands never contribute: their written files cannot be known reliably.
     fileChangeCandidates: descriptor.fileChangeCandidates || null,
     fileChangeCwd: descriptor.fileChangeCandidates?.length ? fileChangeCwd : undefined,
   };
@@ -521,11 +509,6 @@ export function mergeCodexToolCalls(callGroups) {
   ));
 }
 
-/**
- * Convert a call's raw fileChangeCandidates into checkpointed fileChanges
- * once its status is truly final, and strip the private working field so it
- * never reaches evidence.toolCalls (the schema is strict).
- */
 /** @param {{ cwd?: string, forbiddenRoots?: string[], deferFileChanges?: boolean }} [options] */
 function sealCodexFileChanges(call, status, options = {}) {
   const { cwd, forbiddenRoots = [], deferFileChanges = false } = options;
@@ -568,7 +551,6 @@ export function parseCodexCanonicalTurns(turns, options = {}) {
   return mergeCodexToolCalls([calls]).map((call) => sealCodexFileChanges(call, call.status, { cwd, forbiddenRoots, deferFileChanges }));
 }
 
-/** Normalize delivered assistant text from legacy and streamed rollout records. */
 export function parseCodexAssistantReplyRecords(records, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
   const sourceKey = collapsedText(options.sourceKey, 160) || actor.id;
@@ -605,7 +587,6 @@ export function parseCodexAssistantReplyRecords(records, options = {}) {
   return boundedReplyEvents(events.values(), options.unlimited === true ? Infinity : MAX_ASSISTANT_REPLIES);
 }
 
-/** Later groups have stronger source timestamps (rollout follows canonical). */
 export function mergeCodexActivityEvents(eventGroups, maximum = 4_096) {
   const merged = new Map();
   for (const group of eventGroups || []) {
@@ -732,10 +713,6 @@ export function parseCodexActivityRecords(records, options = {}) {
   return mergeCodexToolCalls([calls]).map((call) => {
     const update = updates.get(call.id);
     const sealed = sealCodexFileChanges(call, update ? update.status : call.status, { cwd, forbiddenRoots, deferFileChanges });
-    // A code-mode wrapper is a container, not an action, once a nested item was recorded inside
-    // it. One still awaiting its output is undecided and stays uncounted, so a count never
-    // includes a wrapper and then drops it. One that completed with no nested item (older Codex
-    // recorded none) remains the only evidence of its work and counts as before.
     const wrapper = wrappers.has(call.id) ? { wrapper: wrappers.get(call.id) || !update } : {};
     return update ? { ...sealed, ...wrapper, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : { ...sealed, ...wrapper };
   });

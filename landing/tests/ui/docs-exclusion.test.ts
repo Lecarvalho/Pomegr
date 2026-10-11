@@ -19,18 +19,12 @@ import {
 } from "./docs-fixtures";
 import type { Repo } from "./docs-fixtures";
 
-// Non-public content cannot enter the pages, assets, search index or sitemap (WEB-05), even through
-// a mistaken manifest entry. Every case runs against a fixture repository, never the real
-// documentation: a valid publication beside internal pages, a plan, a mockup, an unselected public
-// page and images, each carrying a canary word that must not appear in anything the site ships.
-// The boundary and loader tests cover each rule; this file proves the outcome end to end. The
-// companion docs-artifact.test.ts builds the fixture site for real.
+// Non-public content cannot enter pages, assets, search index or sitemap, even through a mistaken manifest entry; each case runs against a fixture repository.
 
 afterEach(cleanupScratch);
 
 const manifestWith = (...pages: string[]) => ({ version: 1, groups: [{ id: "get-started", title: "Get started", pages }] });
 
-/** A fixture whose manifest names `entry(repo)`, computed after the repository exists so absolute paths are real. */
 function repoSelecting(entry: (repo: Repo) => string): Repo {
   const repo = canaryRepo();
   put(join(repo.docs, "site.json"), JSON.stringify(manifestWith(entry(repo))));
@@ -40,8 +34,6 @@ function repoSelecting(entry: (repo: Repo) => string): Repo {
 const slashes = (path: string) => path.split("\\").join("/");
 const planFile = (repo: Repo) => join(repo.docs, "internal", "plans", "canary-plan.md");
 
-// Entries an author could plausibly write by mistake, or an attacker on purpose, to publish
-// something that is not a public page. Each is named for what it tries to reach.
 const mistakes: Array<[string, (repo: Repo) => string]> = [
   ["a plan as a sibling of docs/public", () => "../internal/plans/canary-plan.md"],
   ["a plan without the parent segment", () => "internal/plans/canary-plan.md"],
@@ -87,8 +79,7 @@ describe("a mistaken manifest entry", () => {
   });
 });
 
-// The prepare step is what `predev`, `pretest`, `pretypecheck` and `prebuild` run, so a failure
-// there stops the build before anything is generated. A copy of the real script runs here.
+// The prepare step runs before dev, test, typecheck and build, so a failure there stops the build.
 describe("the prepare step on a mistaken manifest", () => {
   const outputs = (repo: Repo) => [join(repo.landingRoot, "generated"), join(repo.landingRoot, "public")];
 
@@ -114,7 +105,6 @@ describe("the prepare step on a mistaken manifest", () => {
 
   it("fails when a public directory is a junction into the plans, and copies nothing from them", () => {
     const repo = canaryRepo(manifestWith("get-started/canary-plan.md"));
-    // docs/public/get-started becomes a link to docs/internal/plans, which holds canary-plan.md.
     const group = join(repo.publicRoot, "get-started");
     rmSync(group, { recursive: true });
     try {
@@ -138,8 +128,6 @@ describe("the prepare step on a mistaken manifest", () => {
   });
 });
 
-// A correct manifest beside every kind of non-public content: the pages, assets, search index and
-// sitemap carry only what the manifest selects.
 describe("a valid publication beside non-public content", () => {
   function prepared() {
     const repo = canaryRepo();

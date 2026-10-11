@@ -7,16 +7,7 @@ import type { DocsSearchIndex } from "../../scripts/docs-search.mjs";
 import { MAX_QUERY_LENGTH, MIN_PREFIX_LENGTH, isSearchable, searchDocs } from "./search";
 import styles from "./search.module.css";
 
-// Documentation search (WEB-03), drawn at the top of the sidebar panel, so it is also inside the
-// phone menu. While a query has results they replace `children` (the page list); with no results,
-// or once the query is cleared, the list is back. The index is a separate generated file, built
-// from the same content revision as the pages, and loaded on first focus so that visitors who
-// never search never download it. It is never read from the content module, which the browser
-// must not bundle.
-//
-// Keyboard: Tab walks the field and then every result link in order. ArrowDown and ArrowUp move
-// between the field and the results, Enter opens the first result, and Escape clears the query
-// (leaving the phone menu open, because the first Escape only clears).
+// Docs search at the top of the sidebar panel (also in the phone menu). Results replace `children`; the index loads on first focus and is never read from the content module, which the browser must not bundle.
 
 const INPUT_ID = "docs-search-input";
 const STATUS_ID = "docs-search-status";
@@ -36,9 +27,7 @@ function loadIndex(): Promise<DocsSearchIndex> {
 }
 
 interface DocsSearchProps {
-  /** The page list; shown whenever there are no search results to show. */
   children: ReactNode;
-  /** Called when a result is chosen, so the surrounding menu can close and move focus to the page. */
   onNavigate?: () => void;
 }
 

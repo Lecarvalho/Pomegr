@@ -18,7 +18,6 @@ export function repositoryInventoryDesktopBridge() {
   return (window as Window & { pomegrDesktop?: RepositoryInventoryDesktopBridge }).pomegrDesktop;
 }
 
-/** One tab-scoped repository cache. A shared read avoids duplicate shell/detail polling. */
 export class RepositoryInventoryStore {
   private snapshot: RepositoryInventorySnapshot = EMPTY;
   private loading = true;
@@ -121,8 +120,6 @@ export class RepositoryInventoryStore {
     });
     document.addEventListener("visibilitychange", this.wake);
     window.addEventListener("focus", this.wake);
-    // Start before a synchronous connection-state notification can replace the
-    // initial request with the reconnect fallback timer.
     void this.poll();
   }
   private stop() {

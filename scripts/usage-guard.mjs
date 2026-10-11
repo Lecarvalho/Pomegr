@@ -12,15 +12,13 @@ export const USAGE_GUARD_MAX_CONTEXT_BYTES = 1600;
 const EVENTS = new Set(["SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolBatch"]);
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 
-/** Advisory only: no provider control, transcript reads, or model calls. */
+// Advisory only: no provider control, transcript reads, or model calls.
 export async function handleUsageGuard(payload, options = {}) {
   const provider = options.provider;
   if (!["claude", "codex"].includes(provider) || !payload || typeof payload !== "object"
     || !EVENTS.has(payload.hook_event_name)
     || typeof payload.session_id !== "string" || !SAFE_ID.test(payload.session_id)
     || typeof payload.cwd !== "string") return null;
-  // Native agent identity keeps parallel workers' reminders separate; it is hashed
-  // before storage and never included in a notice or monitor request.
   const actor = payload.agent_id;
   if (actor !== undefined && actor !== null && actor !== "" && (typeof actor !== "string" || !SAFE_ID.test(actor))) return null;
   const policy = readUsageGuardConfig(payload.cwd);
@@ -41,12 +39,9 @@ export async function handleUsageGuard(payload, options = {}) {
       const query = options.query || createAgentQueryReader({ dataRoot });
       snapshot = await query("/api/agent/v1/usage-limits", { provider });
     } catch { snapshot = null; }
-    // A background monitor publication may occur while the local GET is in
-    // flight. Judge its age at receipt, not against the earlier request time.
+    // A background monitor publication may occur while the local GET is in flight.
     const receivedAt = options.now ?? Date.now();
     const decision = evaluateUsageGuard(snapshot, provider, policy.config, receivedAt);
-    // Commit the check even when nothing changed: low usage remains silent and
-    // unavailable observations cannot create an MCP/tool recursion loop.
     if (!state.save({ stage: decision.stage, configHash, lastCheckAt: receivedAt })) return null;
     if (!starting && previous?.stage === decision.stage) return null;
     let notice = usageGuardNotice(decision, provider);
@@ -58,7 +53,7 @@ export async function handleUsageGuard(payload, options = {}) {
   } finally { state.close(); }
 }
 
-/** Discard all unneeded hook fields; never retain or emit raw hook/tool content. */
+// Discard all unneeded hook fields; never retain or emit raw hook/tool content.
 async function readPayload(stream) {
   const chunks = [];
   let bytes = 0;

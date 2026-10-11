@@ -33,7 +33,7 @@ async function removeUnixSocket(endpoint, platform) {
   }
 }
 
-/** Start a local, read-only NDJSON feed for the manually launched operations CLI. */
+// Start a local, read-only NDJSON feed for the manually launched operations CLI.
 export async function startPipelineOperationsTransport({
   port,
   snapshot,

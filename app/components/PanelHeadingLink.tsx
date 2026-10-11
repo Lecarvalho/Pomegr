@@ -1,6 +1,5 @@
 "use client";
 
-/** Panel heading that opens the fuller view of the same evidence. Composes the quiet action role. */
 export function PanelHeadingLink({ id, children, onOpen }: { id: string; children: string; onOpen: () => void }) {
   return <h2 id={id} className="panelHeading">
     <button type="button" className="commandQuietAction panelHeadingLink" onClick={onOpen}>

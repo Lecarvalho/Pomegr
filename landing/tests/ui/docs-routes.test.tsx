@@ -8,9 +8,6 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocsContent, DocsPage } from "../../scripts/docs-content.mjs";
 
-// Every route, the layout, and the Worker allowlist for the public documentation (WEB-02). The
-// pages come from the real generated content, so a new published page is covered automatically.
-
 const mocks = vi.hoisted(() => ({ pathname: "/docs/get-started/introduction", handler: vi.fn() }));
 
 vi.mock("next/navigation", async (importOriginal) => {

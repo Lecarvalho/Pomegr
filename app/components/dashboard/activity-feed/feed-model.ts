@@ -1,7 +1,6 @@
 import type { ActivityFeed } from "../../../../shared/monitor-contract";
 import type { ActivityRequestGroup, HistoryActivity } from "../../../../shared/session-history-contract";
 
-/** The grouped request-range fields of one `kind=activity` history response. */
 export type ActivityFeedPage = {
   status: "ready" | "loading" | "unavailable";
   revision: string;
@@ -9,19 +8,15 @@ export type ActivityFeedPage = {
   range: { from: number; to: number };
   requestTotal: number;
   callTotal: number;
-  /** Scoped tool calls with no recorded request; 0 when the monitor does not report it. */
   unassociatedTotal: number;
   byKind: ActivityFeed["byKind"];
   shellTasks: { total: number; failed: number };
 };
 
-/** One flat `unassociated=1` page: the scoped calls with no recorded request, oldest first. */
 export type UnassociatedPage = {
   status: "ready" | "loading" | "unavailable";
   revision: string;
-  /** Size of the whole filtered set, not of this page. */
   total: number;
-  /** Position of this page's first call in the filtered set. */
   offset: number;
   calls: HistoryActivity[];
 };
@@ -54,7 +49,6 @@ function empty(status: ActivityFeedPage["status"], revision: string): ActivityFe
   return { status, revision, groups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0, unassociatedTotal: 0, byKind: [], shellTasks: EMPTY_SHELL };
 }
 
-/** Validate the grouped fields; a ready body without them is an unavailable (older) index. */
 export function parseActivityFeedPage(value: unknown): ActivityFeedPage | null {
   if (!record(value) || value.kind !== "activity") return null;
   const status = value.status;
@@ -74,7 +68,6 @@ export function parseActivityFeedPage(value: unknown): ActivityFeedPage | null {
   };
 }
 
-/** Validate one flat unassociated page; a ready body with malformed rows or counts is unavailable. */
 export function parseUnassociatedPage(value: unknown): UnassociatedPage | null {
   if (!record(value) || value.kind !== "activity") return null;
   const status = value.status;
@@ -87,23 +80,14 @@ export function parseUnassociatedPage(value: unknown): UnassociatedPage | null {
   return { status, revision, total, offset, calls: items };
 }
 
-/** Merge continuation calls into a group: deduped by call id, chronological. */
 export function mergeCalls(current: HistoryActivity[], next: HistoryActivity[]): HistoryActivity[] {
   const byId = new Map(current.map((call) => [call.id, call]));
   for (const call of next) byId.set(call.id, call);
   return [...byId.values()].sort((left, right) => (Date.parse(left.timestamp) - Date.parse(right.timestamp)) || left.id.localeCompare(right.id));
 }
 
-/** A final path segment that names a file: an extension after a non-space character. */
 const FILE_TOKEN = /^[^\\/]*[^\s\\/.]\.[A-Za-z][A-Za-z0-9]{0,9}$/u;
 
-/**
- * Targets show basenames only. A detail with a path separator is shortened when it reads as one
- * path: its first segment carries no whitespace, and it either has no whitespace at all, starts
- * like an absolute or relative path, or ends in a file-like segment (which may contain spaces).
- * Prose that only mentions a path keeps the whitespace in its first segment and stays as recorded,
- * so a Bash description is never cut down to the file it names.
- */
 export function targetBasename(detail: string): string {
   const trimmed = detail.trim();
   if (!/[\\/]/u.test(trimmed)) return trimmed;

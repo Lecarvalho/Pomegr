@@ -12,9 +12,6 @@ function fingerprint(providerId, localSessionId, identity) {
  * @param {string | null | undefined} file
  * @param {boolean} [historical]
  * @param {{ stat: import("node:fs").Stats, suffix: { bytes: number, digest: string } } | undefined} [precomputed]
- *   Reuse a stat and 256-byte suffix a caller already has this call (e.g. from the per-readSession
- *   read-generations helper) instead of statting and opening the file again. Behavior is unchanged
- *   when omitted: every other caller still stats and reads the file itself.
  */
 export function incrementalSourceDescriptor(file, historical = false, precomputed) {
   if (typeof file !== "string" || !file) return null;
@@ -40,11 +37,8 @@ export function incrementalSourceDescriptor(file, historical = false, precompute
   } catch { return null; }
 }
 
-/**
- * Use one readable primary source for the byte cursor while fingerprinting all
- * provider-owned transcript files that can affect the normalized session.
- * Paths are hashed locally and never cross the adapter boundary.
- */
+// Use one readable primary source for the byte cursor while fingerprinting all
+// provider-owned transcript files that can affect the normalized session.
 export function incrementalSourceSetDescriptor(files, primaryFile, historical = false) {
   const primary = incrementalSourceDescriptor(primaryFile, historical);
   if (!primary || !Array.isArray(files)) return primary;
@@ -64,13 +58,6 @@ export function incrementalSourceSetDescriptor(files, primaryFile, historical = 
   };
 }
 
-/**
- * Adapter-private U1/U2 bridge.  It frames every primary JSONL source before
- * invoking the adapter's existing evidence reducer, so unchanged polling and
- * GET compatibility reads do not repeatedly parse a source.  The only source
- * data exported with a candidate is a hashed identity and complete-record
- * offset suitable for monitor-private checkpoint matching.
- */
 export function createIncrementalProviderObserver(options = {}) {
   const {
     providerId,

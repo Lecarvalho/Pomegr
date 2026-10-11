@@ -20,12 +20,6 @@ import {
 import { useTaskModelOptions } from "./task-panel-hooks";
 import { useFeatureCreation } from "./use-feature-creation";
 
-// Task modal, mode issue (design contract G159-G233): one GitHub issue becomes a task. The issue text is shown read-only
-// and is never sent back; a promote sends the issue number and the digest of the version shown, and the monitor reads
-// the issue again. Feature and Step, Run on and Effort and Complete when are a local draft that one update sends after the
-// task exists, holding only what differs from the task the monitor made.
-
-/** `Source`, the issue chip and an optional caption (G178-G179, G253-G257); `status` follows the chip, `children` fill the group under the row. */
 export function TaskModalSource({ number, caption, status, children }: { number: number; caption?: string; status?: ReactNode; children?: ReactNode }) {
   return <div className="taskIssueSource">
     <div className="taskSourceRow">
@@ -38,7 +32,6 @@ export function TaskModalSource({ number, caption, status, children }: { number:
   </div>;
 }
 
-/** The issue as the modal shows it: the Source group with its title, the notices, and the read-only raw body with its count. */
 export function PromoteIssueSummary({ issue, notices }: { issue: TaskIssue; notices?: ReactNode }) {
   return <div className="taskIssueContent">
     <TaskModalSource number={issue.number} status={<IssueStatusChip issue={issue} />}>
@@ -52,7 +45,6 @@ export function PromoteIssueSummary({ issue, notices }: { issue: TaskIssue; noti
   </div>;
 }
 
-/** The notice for a promote that did not complete. A conflict carries `Show new version`; the rest are fixed words. */
 export function PromoteOutcomeNotice({ outcome, reloading, onShowNewVersion }: { outcome: PromoteOutcome; reloading?: boolean; onShowNewVersion?(): void }) {
   if (outcome.kind === "conflict") {
     return <div className="taskNotice warning">
@@ -64,7 +56,6 @@ export function PromoteOutcomeNotice({ outcome, reloading, onShowNewVersion }: {
   return <p className={`taskNotice ${outcome.kind === "not_found" ? "warning" : "negative"}`} role="alert">{PROMOTE_MESSAGES[outcome.kind]}</p>;
 }
 
-/** The issue is already a task: the page's own wording, and a way to the board. */
 export function PromotedNotice({ taskId, repositoryId }: { taskId: string; repositoryId: string }) {
   return <div className="taskNotice positive">
     <span>Already on the board as {taskId}.</span>
@@ -72,18 +63,13 @@ export function PromotedNotice({ taskId, repositoryId }: { taskId: string; repos
   </div>;
 }
 
-/**
- * The only mutations here go through the desktop bridge: `feature_create` for a new feature (first), `promoteTaskIssue`,
- * and one `update`. Success calls `refresh` and `onPromoted`, then closes; a promote whose update fails has made the task
- * already, so the modal says so and offers only Close and never promotes twice.
- */
+/** The only mutations here go through the desktop bridge. */
 export function TaskModalPromote({ repositoryId, repositoryName, issue, board, refresh, onReload, onPromoted, onClose }: {
   repositoryId: string;
   repositoryName: string | null;
   issue: TaskIssue;
   board: TaskModalBoard;
   refresh(): Promise<void>;
-  /** Reads the issues again (one explicit read); the page then passes the new version of this issue, or closes the modal. */
   onReload(): Promise<void>;
   onPromoted(taskId: string): void;
   onClose(): void;
@@ -123,7 +109,7 @@ export function TaskModalPromote({ repositoryId, repositoryName, issue, board, r
         if (mounted.current) { setBusy(false); setFeatureError(created.message); }
         return;
       }
-      // The feature exists now: a retry after a failed promote must attach to it, not create it again.
+      // The feature exists now.
       draft = { ...feature, creating: false, featureId: created.id, name: "" };
       if (mounted.current) setFeature(draft);
     }
@@ -134,7 +120,6 @@ export function TaskModalPromote({ repositoryId, repositoryName, issue, board, r
       return;
     }
     const { taskId } = promoted.value;
-    // The task exists once the monitor says so, even if the modal was closed in the meantime: the settings still follow.
     const patch = promotePatch(run, completeWhen, draft);
     const saved = patch ? await updateDesktopTask(repositoryId, taskId, patch) : { ok: true as const };
     inFlight.current = false;

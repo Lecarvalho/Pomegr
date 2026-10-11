@@ -13,17 +13,14 @@ import {
 } from "../components/tasks/task-issues-desktop";
 import { SettingRow } from "./SettingRow";
 
-/** At most this many repositories of the inventory are read, one after another. */
 export const GITHUB_SETTINGS_REPOSITORY_LIMIT = 16;
 
-/** What the pane draws for the connection. `unreadable`: the first call failed, so no connection is known. */
 export type GitHubConnectionReading =
   | { kind: "pending" }
   | { kind: "no_repository" }
   | { kind: "unreadable" }
   | { kind: "read"; connection: GitHubConnection };
 
-/** `access` is null when this repository's call failed or the monitor did not recognize its root. */
 export type GitHubRepositoryReading = { id: string; name: string; access: GitHubRepositoryAccess | null };
 
 export type GitHubSignInState = { busy: boolean; status: GitHubSignInStatus | null };
@@ -97,15 +94,10 @@ function ConnectionRow({ connection, reading, signIn, onCheckAgain, onSignIn }: 
   </div>;
 }
 
-/**
- * The GitHub section, drawn from already-read facts only. It owns no bridge call and no state, so `/design-system`
- * renders it from static data. `desktop` false is the browser or LAN form: one row, nothing read.
- */
 export function GitHubSettingsPane({ desktop, connection, repositories, omitted = 0, reading = false, signIn = { busy: false, status: null }, headingId = "github-settings-heading", onCheckAgain, onSignIn }: {
   desktop: boolean;
   connection: GitHubConnectionReading;
   repositories: GitHubRepositoryReading[];
-  /** How many known repositories lie beyond the limit and were not read. */
   omitted?: number;
   reading?: boolean;
   signIn?: GitHubSignInState;
@@ -142,10 +134,6 @@ export function GitHubSettingsPane({ desktop, connection, repositories, omitted 
 
 type Reading = { connection: GitHubConnectionReading; repositories: GitHubRepositoryReading[]; omitted: number };
 
-/**
- * One read: `readGitHubStatus` for each repository, one after another. The connection is the first answer's, and
- * anything but `connected` stops the read there; a later failed call only marks its own repository.
- */
 async function readGitHub(repositories: Array<{ id: string; name: string }>, omitted: number): Promise<Reading> {
   const [first, ...rest] = repositories;
   const answer = await readGitHubStatus(first.id);
@@ -170,7 +158,7 @@ function GitHubSettingsDesktop() {
   const inFlight = useRef(false);
   const autoRead = useRef(false);
 
-  // Set on mount, not at creation: a development double-mount must not leave a read's answer discarded.
+  // Set on mount, not at creation.
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
@@ -191,7 +179,7 @@ function GitHubSettingsDesktop() {
     }
   }, [known]);
 
-  // Opening the section reads once, as soon as the inventory names a repository; nothing else reads but Check again.
+  // Opening the section reads once, as soon as the inventory names a repository.
   useEffect(() => {
     if (autoRead.current || loading || known.length === 0) return;
     autoRead.current = true;
@@ -221,9 +209,7 @@ function GitHubSettingsDesktop() {
 
 function subscribeAvailability() { return () => {}; }
 
-/** Settings → GitHub. The bridge is the desktop app's: a browser or LAN client sees one row and reads nothing. */
 export function GitHubSettings() {
-  // Server render and the first client paint both report no bridge, so hydration matches.
   const desktop = useSyncExternalStore(subscribeAvailability, taskIssuesAvailable, () => false);
   return desktop ? <GitHubSettingsDesktop /> : <GitHubSettingsPane desktop={false} connection={{ kind: "pending" }} repositories={[]} />;
 }

@@ -10,13 +10,11 @@ import { advanceOnGrowth, modeFor, selectionAfterCommit, stepTarget, transferOnV
 import { useRequestSelection } from "./useRequestSelection";
 import { useRequestPageCache } from "./useRequestPageCache";
 
-/** The Activities deep-link scope: `agent` is a normalized agent id; `request` a number or opaque request id. */
 export type RequestSelectionRoute = { agent: string | null; request: string | null };
 
 export type SessionRequestInputs = {
   agents: Agent[]; requestSnapshots: RequestSnapshotFeed; contextBoundaries: ContextHistoryBoundary[];
   historical: boolean; cacheEvents?: CacheEventFeed; cacheReadDrops?: CacheReadDropFeed; sessionId?: string;
-  /** Opt-in only while the monitor exposes the paged session-history endpoint. */
   historyEnabled?: boolean;
   route?: RequestSelectionRoute;
   onRouteChange?: (next: RequestSelectionRoute) => void;
@@ -25,23 +23,14 @@ export type SessionRequestInputs = {
 type HistoryState = { key: string; page: RequestHistoryPage | null; loading: boolean; unavailable: boolean; retryable: boolean; requestedOffset?: number };
 type HistoryQuery = {
   offset?: number | "latest"; requestId?: string; scope?: string; refresh?: boolean;
-  /** A refresh must keep this selected bar; a page without it is never committed silently. */
   keep?: SelectedRequest;
-  /** Track mode: anchor at the selected bar before committing growth that would push it out. */
   track?: boolean;
-  /** A route lookup whose absence resolves to the latest request and clears the URL request. */
   route?: boolean;
-  /** A user or route lookup; pinned lookups never follow appends. */
   pin?: boolean;
-  /** The explicit transfer, step or jump target this page commits. */
   select?: number | "latest";
 };
 type PendingLocate = { id: string; scope: string; pin: boolean } | null;
 type PendingPageSelection = { key: string; offset: number | "latest"; index: number | "latest" | null } | null;
-/**
- * Refresh inputs, written synchronously when a page commits or the user selects (never by a
- * post-render effect), so a queued publication always refreshes the selection that is current.
- */
 type Publication = {
   committedKey: string; revision: string; mode: SelectionMode; keep: SelectedRequest | null; offset: number;
   loading: boolean; unavailable: boolean; overviewPending: boolean;
@@ -50,7 +39,6 @@ type RouteRetry = { route: RequestSelectionRoute; revision: string; connected: n
 
 const REQUEST_NUMBER = /^[1-9]\d{0,15}$/u;
 const RECENT_WRITES = 8;
-/** URL write-back waits for a drag or repeated key steps to settle, so one gesture writes once. */
 const ROUTE_WRITE_SETTLE_MS = 300;
 
 function historyScope(scope: string, agents: Agent[]): string {
@@ -67,7 +55,6 @@ function routeKey(route: RequestSelectionRoute) {
   return JSON.stringify([route.agent, route.request]);
 }
 
-/** The refreshed page still holds the selected request at its recorded absolute position. */
 function keepsSelection(page: RequestHistoryPage, keep: SelectedRequest) {
   return page.items[keep.index - page.offset]?.id === keep.id;
 }
@@ -78,7 +65,6 @@ function isRequestPage(value: unknown): value is RequestHistoryPage {
   return page.kind === "requests" && (page.status === "ready" || page.status === "loading" || page.status === "unavailable") && Array.isArray(page.items);
 }
 
-/** One selection for the chart, its evidence links, and the activity feed. */
 export function useSessionRequestSelection({ agents, requestSnapshots, contextBoundaries, historical, cacheEvents, cacheReadDrops, sessionId = "", historyEnabled = false, route, onRouteChange }: SessionRequestInputs) {
   const phone = usePhoneLayout();
   const size = phone ? 20 : 60;
@@ -104,7 +90,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const reconnecting = useRef(true);
   const connectedCount = useRef(0);
   const [transportVersion, setTransportVersion] = useState(0);
-  // URL write-back happens only after user actions (and explicit unresolved/absent corrections).
   const [writeRequest, setWriteRequest] = useState(0);
   const handledWrite = useRef(0);
   const recentWrites = useRef<string[]>([]);
@@ -116,7 +101,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const routeRetry = useRef<RouteRetry | null>(null);
   const applyRouteRef = useRef<(next: RequestSelectionRoute) => void>(() => {});
   const routeActions = useRef<{ locateIn: (id: string, targetScope: string | null, options: { pin: boolean; route: boolean }) => void; jumpToLatestIn: (targetScope: string) => void }>({ locateIn: () => {}, jumpToLatestIn: () => {} });
-  /** A user action (or a proven route correction) supersedes any deep-link retry and writes back once settled. */
   const requestWrite = () => {
     routeRetry.current = null;
     setWriteRequest((value) => value + 1);
@@ -168,9 +152,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     if (options.requestId) params.set("requestId", options.requestId);
     return fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        // Navigation and range queries cannot carry a page-level revision: the
-        // monitor's revision is domain-wide, not a proof this exact query is
-        // resident. Cached exact windows return before fetch above.
         if (response.status === 204) return null;
         if (!response.ok) return null;
         return response.json();
@@ -197,13 +178,11 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
           }
         }
         if (keep && !options.requestId && !keepsSelection(value, keep)) {
-          // Never keep a detail at a false position: verify the bar by position, else locate it by identity.
           return loadHistoryRef.current({ scope: nextScope, requestId: keep.id, keep, refresh: true });
         }
         if (options.requestId && !value.items.some((item) => item.id === options.requestId)) {
           setPendingLocate(null);
           if (keep || options.route) {
-            // Absent from this scope: follow the latest request and clear the URL request.
             setPendingPageSelection({ key: nextKey, offset: "latest", index: "latest" });
             requestWrite();
           }
@@ -248,9 +227,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   }, [historyEnabled, key, retry]);
 
   useEffect(() => {
-    // Unmounting aborts in-flight reads. A remount of the same instance (StrictMode replay or an
-    // offscreen boundary) resumes the interrupted history read and replays an interrupted route
-    // lookup through the route effect, so no deep link or navigation is stranded.
     const resume = interrupted.current;
     interrupted.current = null;
     if (resume) void loadHistoryRef.current(resume);
@@ -283,27 +259,21 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const preview = historyEnabled && !page;
   const historyFeed = useMemo<RequestSnapshotFeed>(() => page ? { status: "ready", items: page.items } : requestSnapshots, [page, requestSnapshots]);
   const allRows = useMemo(() => scopedRows(historyFeed, contextBoundaries, "all", cacheEvents, cacheReadDrops), [historyFeed, contextBoundaries, cacheEvents, cacheReadDrops]);
-  // History pages are already scoped server-side. Summary previews still need
-  // local scoping, and do not have stable history numbers until the page arrives.
   const rows = useMemo(() => {
     const scoped = page || resolvedScope === "all" ? allRows
       : scopedRows(requestSnapshots, contextBoundaries, resolvedScope, cacheEvents, cacheReadDrops);
-    // Preview only the latest chart window. History owns stable numbering and
-    // full-session navigation; summary positions must never impersonate it.
     return preview ? scoped.slice(-size).map((row, index) => ({ ...row, ordinal: index + 1, number: undefined, numberPending: true })) : scoped;
   }, [allRows, cacheEvents, cacheReadDrops, contextBoundaries, page, preview, requestSnapshots, resolvedScope, size]);
   const scopeKey = (value: string) => `${sessionId}:${value}`;
   const locateTarget = pendingLocate?.scope === resolvedScope ? pendingLocate : null;
   const atLatest = !page || page.offset + page.items.length >= page.total;
   const selection = useRequestSelection(rows, scopeKey(resolvedScope), size, historical, atLatest);
-  // A summary preview cannot establish whether the linked request is newest.
   const locatedRow = locateTarget && page ? rows.find((row) => row.id === locateTarget.id) : null;
   if (locateTarget && locatedRow) {
     selection.select(locatedRow, true, locateTarget.pin);
     setPendingLocate(null);
   }
   if (pendingPageSelection?.key === key && page && (pendingPageSelection.offset === "latest" ? atLatest : page.offset === pendingPageSelection.offset)) {
-    // Window navigation transfers to an explicit visible index; keyboard and range steps have explicit targets.
     const index = pendingPageSelection.index;
     const target = index === null ? selection.selected : index === "latest" ? rows.at(-1) : rows[index - page.offset];
     if (target) selection.select(target, true);
@@ -321,7 +291,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   });
   const pending = historyEnabled && (routeResolving || (history.loading && (pendingPageSelection?.key === key || pendingLocate !== null)));
 
-  /** Live refresh by mode: follow reads latest; track reads latest and anchors before commit; anchored rereads its window. */
   function refreshQuery(): HistoryQuery {
     const current = publication.current;
     if (current.mode === "anchored" && current.keep) return { offset: current.offset, refresh: true, keep: current.keep };
@@ -346,8 +315,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       }
       const { revision } = event;
       const current = publication.current;
-      // Recorded sessions do not follow settled revisions, but their first
-      // history page may still be waiting for an asynchronous commit.
       if (historical) {
         if (!hydrating(current) && !current.unavailable) return;
         if (request.current) {
@@ -361,8 +328,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
         if (!queuedPublication.current || revision >= queuedPublication.current.revision) queuedPublication.current = { revision };
         return;
       }
-      // An anchored window retains its selection while its committed revision and
-      // minimap overview advance; it must not suppress new history evidence.
       void loadHistoryRef.current(refreshQuery());
     });
   }, [historical, historyEnabled, sessionId]);
@@ -410,7 +375,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     setPendingPageSelection(null);
     setHistory((current) => ({ ...current, loading: false, retryable: false, unavailable: false, requestedOffset: undefined }));
   };
-  /** A user selection updates refresh inputs at once and supersedes an in-flight or queued refresh. */
   const selectRow = (row: RequestRow, center: boolean, pin = false) => {
     selection.select(row, center, pin);
     if (!page) return;
@@ -424,7 +388,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     queuedPublication.current = null;
     void loadHistory(refreshQuery());
   };
-  /** A null target scope keeps a visible row in the current scope and otherwise looks it up across all agents. */
   const locateIn = (id: string, targetScope: string | null, options: { pin: boolean; route: boolean }) => {
     cancelHistoryNavigation();
     const row = targetScope === null || targetScope === resolvedScope ? rows.find((item) => item.id === id) : null;
@@ -447,7 +410,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     cancelHistoryNavigation();
     selectRow(row, center);
   };
-  /** Select a request by opaque id, within the target scope when given (a feed header), else across all agents. */
   const locate = (id: string, targetScope?: string) => {
     requestWrite();
     locateIn(id, targetScope ?? null, { pin: false, route: false });
@@ -467,7 +429,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     routeLookup.current = null;
     if (routeResolving) setRouteResolving(false);
     setPendingLocate(null);
-    // Dragging away transfers the selection to the nearest visible bar of the new window.
     const index = selectedIndex === null ? null : transferOnViewportMove({ selectedIndex, offset, size });
     setPendingPageSelection({ key, offset, index });
     void loadHistory(index === null ? { offset } : { offset, select: index });
@@ -507,7 +468,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     requestWrite();
     const current = selection.selected;
     if (historyEnabled && page && current && mode !== "follow" && (value === "all" || current.agentId === value)) {
-      // The selected request belongs to the new scope: locate it there and keep its mode.
       return locateIn(current.id, value, { pin: true, route: false });
     }
     cancelHistoryNavigation();
@@ -545,7 +505,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       })
       .catch(() => { if (!controller.signal.aborted) retryLater(); });
   };
-  /** A user-message link names a recorded time; history resolves it to the request that answered it. */
   const resolveUserMessage = (next: RequestSelectionRoute, time: number, targetScope: string) => {
     routeLookup.current?.abort();
     const controller = new AbortController();
@@ -568,7 +527,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       .then((number) => {
         if (controller.signal.aborted) return;
         if (number === undefined) {
-          // Hydration, HTTP and network failures keep the link and retry like a numbered one.
           settle();
           routeRetry.current = { route: next, revision: publication.current.revision, connected: connectedCount.current };
           return;
@@ -638,7 +596,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     applyRouteRef.current(next);
   }, [hasRoute, routeAgent, routeRequest]);
 
-  // An unresolved route request retries once per newly committed request-page revision or reconnect.
   const pageRevision = page?.revision ?? "";
   useEffect(() => {
     const pendingRetry = routeRetry.current;
@@ -661,7 +618,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     return () => window.clearTimeout(timer);
   }, [canWrite, desiredAgent, desiredRequest, pending, pendingLocate, preview, writeRequest]);
 
-  // Legacy paging transfers the selection like any other viewport move.
   const older = () => { if (page && !history.loading && page.offset > 0) moveHistoryWindow(Math.max(0, page.offset - size) + 1); };
   const newer = () => { if (page && !history.loading && page.offset + page.items.length < page.total) moveHistoryWindow(page.offset + size + 1); };
   const first = () => moveHistoryWindow(1);
@@ -670,7 +626,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     ...selection, select, step: stepBy, selectScope, rows, allRows, agents, scope: resolvedScope, setScope, phone, size, locate,
     moveWindow,
     mode, selectedNumber, selectedIndex,
-    /** The value to send as the history `scope` parameter. */
     historyScope: historyScope(resolvedScope, agents),
     pending,
     previousRange: () => stepBy(-5),
@@ -680,7 +635,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       enabled: historyEnabled,
       preview,
       status: history.loading ? "loading" : history.unavailable ? "unavailable" : page ? "ready" : "loading",
-      // Activity row links load chart details without replacing the Activity page.
       navigating: history.loading && pendingPageSelection?.key === key,
       revision: page?.revision ?? "",
       overview: page?.overview ?? null,

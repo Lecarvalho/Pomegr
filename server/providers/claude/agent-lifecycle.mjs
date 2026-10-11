@@ -75,12 +75,7 @@ function priorSuffixMatches(file, source) {
   } finally { fs.closeSync(descriptor); }
 }
 
-/** Detail-only, complete parent lifecycle replay. No process ownership is inferred.
- * The reader retains bounded, private launch and receipt identities so the
- * session reducer can join a provider-delivered receipt from another lane.
- * The committed normalized agent persists independently of these acquisition
- * cursors.
- */
+// Detail-only, complete parent lifecycle replay. No process ownership is inferred.
 export function createClaudeAgentLifecycleReader() {
   const files = new Map();
   return async function read(file, precomputedDescriptor) {
@@ -154,7 +149,6 @@ export async function applyClaudeAgentTerminals(agents, recordsByFile, fileByAge
     sessionEntries += entries;
     observationsByFile.set(file, observation);
     for (const [id, terminal] of observation.terminals) {
-      // Duplicate native identities across parents are ambiguous.
       terminals.set(id, terminals.has(id) ? null : terminal);
     }
     for (const [id, launch] of observation.launches) {

@@ -72,10 +72,7 @@ function reduceLifecycle(state, record, ownerStartedAt) {
   return state;
 }
 
-/** Complete, owner-scoped provider lifecycle, independent of transcript recency.
- * A successful background launch remains open until matched provider terminal evidence.
- * Raw records/fragments stay in U1/U2; only a tri-state observation leaves this reader.
- */
+// Complete, owner-scoped provider lifecycle, independent of transcript recency.
 export function createClaudeBackgroundLifecycleReader() {
   const sessions = new Map();
   const listeners = new Set();

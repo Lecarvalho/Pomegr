@@ -1,0 +1,49 @@
+name: Checks
+
+# The static checks and the landing suite of `npm run verify`. This workflow runs for every pull request, docs-only
+# ones included; verify.yml runs the tests, the build, and the desktop smoke for everything else.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks and landing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            landing/package-lock.json
+
+      - name: Install locked dependencies
+        run: |
+          npm ci
+          npm ci --prefix landing
+
+      - name: Run static checks
+        run: npm run check
+
+      - name: Test and build the landing site
+        run: |
+          npm --prefix landing run test
+          npm --prefix landing run build:audit

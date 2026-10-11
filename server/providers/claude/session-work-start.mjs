@@ -9,13 +9,10 @@ import { createIncrementalJsonlIngestor } from "../kernel/incremental-jsonl-inge
 import { incrementalSourceDescriptor } from "../kernel/incremental-provider-observer.mjs";
 
 const CHUNK_BYTES = 256 * 1024;
-// A user record can embed an attachment; this is the ingestor's largest complete-line budget.
 const MAX_FRAGMENT_BYTES = 8 * 1024 * 1024;
 
-/**
- * Running per-work-kind tool-use counts; the same blocks and classification as the tail's tool_use
- * loop. Only the bounded kind and a count are kept, never a tool name, input, or detail.
- */
+// Running per-work-kind tool-use counts; the same blocks and classification as the tail's tool_use
+// loop. Only the bounded kind and a count are kept, never a tool name, input, or detail.
 export function reduceClaudeToolUseKinds(state, record) {
   if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return state;
   const uses = record.message.content.filter((content) => content?.type === "tool_use");
@@ -32,15 +29,6 @@ function toolUseTotal(kinds) {
   return Object.values(kinds).reduce((total, count) => total + count, 0);
 }
 
-/**
- * Complete-source session facts with bounded private state, independent of the display tail: one
- * replay of the whole main transcript, then appended bytes only, feeds both the work-start time
- * and the recorded user-message times, so the transcript is read and parsed once for both. The same
- * pass counts recorded tool uses per work kind and skill invocations, so an agent's call, work-kind
- * and skill counts never shrink when its transcript outgrows the display tail. It also decides the
- * tool-change attributions from the whole transcript, so an attribution neither depends on nor is
- * withdrawn by the display tail, a historical read, or a restart (the pass replays from byte zero).
- */
 export function createClaudeSessionWorkStartReader(options = {}) {
   const maximumEntries = Number.isInteger(options.maximumEntries)
     ? Math.max(1, Math.min(options.maximumEntries, 256)) : 64;
@@ -76,7 +64,6 @@ export function createClaudeSessionWorkStartReader(options = {}) {
           skills: reduceSkillUsage(state.skills, record),
           toolChanges: reduceToolChange(state.toolChanges, record),
         }),
-        // An unreadable or oversized complete record may have been a definition or bridge record.
         reduceGap: (state) => ({ ...state, toolChanges: markToolChangeGap(state.toolChanges) }),
         chunkBytes: CHUNK_BYTES,
         maximumFragmentBytes: MAX_FRAGMENT_BYTES,
@@ -85,9 +72,6 @@ export function createClaudeSessionWorkStartReader(options = {}) {
     };
   }
 
-  // The state covers bytes up to `source.size`. A live transcript that only grew during the
-  // observation still holds that exact prefix, so the state stays valid and the next read
-  // continues from it; only a replaced, truncated, or rewritten prefix is rejected.
   function assertSourceStillHolds(file, source) {
     const confirmed = incrementalSourceDescriptor(file);
     const unchanged = confirmed && confirmed.size === source.size && confirmed.mtimeMs === source.mtimeMs
@@ -114,10 +98,6 @@ export function createClaudeSessionWorkStartReader(options = {}) {
       confirmed = true;
       entry.startedAt = state.workStart.startedAt;
     });
-    // User-message times come from the committed state, not only a published one: every complete
-    // record counts even while the final line is still being written, and an incomplete
-    // replacement keeps the prior generation's answer. A failed observation never reaches here,
-    // so the next read resumes from the last committed offset instead of serving a stale list.
     if (!confirmed) assertSourceStillHolds(file, source);
     const committed = /** @type {{ candidate: { userMessages: { times: number[] }, toolKinds: Record<string, number>, skills: Record<string, { calls: number, lastUsed: string | null }>, toolChanges: ReturnType<typeof createToolChangeState> } } | null} */ (entry.ingestor.snapshot());
     entry.userMessageTimes = committed ? claudeUserMessageTimesFromState(committed.candidate.userMessages) : [];
@@ -137,29 +117,20 @@ export function createClaudeSessionWorkStartReader(options = {}) {
     return result;
   }
 
-  /** The first recorded main-session action that initiated model work, or null. */
   function read(file) {
     return observed(file).then((entry) => entry.startedAt);
   }
 
-  /** One pass for both facts: `{ startedAt, userMessageTimes }` (ISO times, oldest to newest). */
   function readSessionFacts(file) {
     return observed(file).then((entry) => ({ startedAt: entry.startedAt, userMessageTimes: entry.userMessageTimes }));
   }
 
-  /**
-   * `readSessionFacts` plus the whole-transcript tool-use total, its per-work-kind counts, the
-   * skill usage list, and the tool-change attributions (request identity -> cause and count), from
-   * the same single observation. `context` binds a new file's attribution rules: the session ID its
-   * bridge records name, and whether it is a primary transcript that can carry inline sidechain records.
-   */
   function readTranscriptFacts(file, context) {
     return observed(file, context).then((entry) => ({ startedAt: entry.startedAt, userMessageTimes: entry.userMessageTimes,
       toolUses: toolUseTotal(entry.toolKinds), toolKinds: { ...entry.toolKinds }, skills: entry.skills.map((skill) => ({ ...skill })),
       toolChangeCauses: entry.toolChangeCauses }));
   }
 
-  /** Recorded tool uses in the whole transcript, counted like the tail's tool_use loop. */
   function readToolUseCount(file) {
     return observed(file).then((entry) => toolUseTotal(entry.toolKinds));
   }

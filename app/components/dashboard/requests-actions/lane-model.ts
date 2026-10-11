@@ -6,24 +6,14 @@ import { scaleMax, type ChartMode, type RequestRow } from "./model";
 export const COMPACTION_LANE_ID = "compaction";
 
 export type RequestLane = {
-  /** `agent:<agentId>`, or `COMPACTION_LANE_ID` for the shared compaction lane. */
   id: string;
   kind: "agent" | "compaction";
-  /** Null for the compaction lane, which can hold requests from several compaction agents. */
   agentId: string | null;
-  /** The taller main lane: the primary agent, or the first lane when it is absent. */
   primary: boolean;
-  /** Loaded rows owned by this lane, in request order. */
   rows: RequestRow[];
-  /** Readable per-lane scale over the lane's loaded rows; always at least 1. */
   maximum: number;
 };
 
-/**
- * Assigns every loaded request to exactly one lane. Requests issued by compaction agents share
- * one compaction lane; every other request stays in its agent's lane, including agents absent
- * from the roster. Lanes appear only for agents with loaded requests.
- */
 export function buildRequestLanes(rows: RequestRow[], agents: Agent[], mode: ChartMode, cacheWriteAvailable: boolean): {
   lanes: RequestLane[];
   laneByRequest: Map<string, string>;
@@ -61,19 +51,14 @@ export function buildRequestLanes(rows: RequestRow[], agents: Agent[], mode: Cha
   return { lanes, laneByRequest };
 }
 
-/** More lanes than this collapse by workflow group. */
 export const LANE_COLLAPSE_THRESHOLD = 8;
 
 export type RequestLaneGroup = {
-  /** The Agents tab roster group id: `direct`, `workflow:<id>` or `workflow:unknown`. */
   id: string;
   title: string;
   kind: "direct" | "workflow";
-  /** Non-compaction roster members, so the count does not change while paging. */
   members: number;
-  /** Loaded member lanes, in lane order. */
   lanes: RequestLane[];
-  /** Loaded rows of every member lane, in request order. */
   rows: RequestRow[];
   maximum: number;
 };
@@ -83,13 +68,6 @@ export type RequestLaneRow =
   | { kind: "group"; id: string; group: RequestLaneGroup }
   | { kind: "groupHeader"; id: string; group: RequestLaneGroup };
 
-/**
- * Orders lanes into display rows. With more than eight roster lanes and no agent scope, every
- * non-primary roster group with two or more members becomes one collapsed row drawing all its
- * members' requests, or a header followed by its member lanes when expanded. The primary lane,
- * the compaction lane and agents missing from the roster never collapse. `rowByRequest` names the
- * one row that draws each request.
- */
 export function layoutRequestLanes(lanes: RequestLane[], agents: Agent[], workflows: Workflow[], expanded: ReadonlySet<string>, { scoped, mode, cacheWriteAvailable }: {
   scoped: boolean; mode: ChartMode; cacheWriteAvailable: boolean;
 }): { rows: RequestLaneRow[]; rowByRequest: Map<string, string> } {

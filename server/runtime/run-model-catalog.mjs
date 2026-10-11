@@ -1,8 +1,5 @@
 // The last committed Codex client catalog, kept in memory for the task panel's Run on list.
-// It taps the observations the release scheduler already reads for model notifications; it never reads
-// a catalog itself, so serving it acquires nothing. Labels come with the committed rows.
 
-/** `accept` receives the scheduler's model observations; `codex()` returns `{ id, label }` rows or []. */
 export function createRunModelCatalog() {
   let codex = [];
   return Object.freeze({

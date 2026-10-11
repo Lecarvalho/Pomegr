@@ -200,8 +200,7 @@ export function buildPomegrMcpServer(options = {}) {
     ? options.currentSessionRef
     : resolveCurrentSessionRef(options.environment ?? process.env);
   registerAgentQueryTools(server, { query, currentSessionRef });
-  // Codex names the calling thread in each tool call's `_meta`; the model cannot supply it. The launch environment is
-  // the fallback for a host that forwards a thread identity to the server instead.
+  // Codex names the calling thread in each tool call's `_meta`; the model cannot supply it.
   const taskRef = typeof currentSessionRef === "string" && currentSessionRef.startsWith("codex:") ? currentSessionRef : null;
   registerTaskTools(server, {
     resolveSession: (_input, extra) => resolveCodexCallSession(extra?._meta) ?? taskRef,

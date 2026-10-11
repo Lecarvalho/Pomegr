@@ -24,11 +24,6 @@ function appendCompatible(previous, current) {
     && current.size > previous.size && current.mtimeMs >= previous.mtimeMs);
 }
 
-/**
- * Catalog titles are an enrichment, rather than a prerequisite for a live
- * catalog. A bounded tail can publish immediately; one serialized complete
- * scan later replaces it only when the same source snapshot still exists.
- */
 export function createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState = scanSessionTitleState }) {
   if (typeof statSafe !== "function") throw new TypeError("Claude title enrichment requires statSafe");
   if (typeof scanTitleState !== "function") throw new TypeError("Claude title enrichment requires a title scanner");
@@ -86,7 +81,6 @@ export function createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState = 
           fallbacks.delete(job.file);
           if (changed) notify(job.file);
         } catch {
-          // The fast fallback remains usable. A later source observation may retry.
         } finally {
           if (pending.get(job.file)?.generation === job.generation) pending.delete(job.file);
           job.resolve();
@@ -139,7 +133,6 @@ export function createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState = 
         return { title: displayTitle(value), createdAt: value.createdAt || null };
       }
     } catch {
-      // Direct compatibility reads retain their bounded tail fallback.
     }
     const state = sessionTitleState(tailRecords, appendOnly ? previous : {});
     return { title: displayTitle(state), createdAt: state.createdAt || null };

@@ -23,11 +23,7 @@ type MonitorProxyOptions = {
   unavailableBody: object;
   acceptEncoding?: string | null;
   ifNoneMatch?: string | null;
-  /**
-   * Pass a monitor 404 through as a 404 carrying `unavailableBody`, instead of the transient 503.
-   * Only for routes whose monitor 404 is a definitive answer (the session-domain route answers 404
-   * only once hydration proved the session absent). The monitor's own 404 body is never forwarded.
-   */
+  /** Pass a monitor 404 through as a 404 carrying `unavailableBody`, instead of the transient 503. */
   passThroughNotFound?: boolean;
 };
 

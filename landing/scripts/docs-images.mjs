@@ -1,18 +1,5 @@
-// Image metadata policy for the public documentation (pure: no filesystem access).
-//
-// Screenshots are copied to the site byte for byte, and the text checks never read binary data,
-// so a metadata block (EXIF, XMP, PNG text chunks, comments) could carry a private path or user
-// name into the published artifact unseen. The loader therefore refuses images that carry such
-// blocks, and the artifact audit additionally scans every image's bytes as text.
-//
-// Allowed: the structure every encoder needs, plus the tiny resolution-only EXIF record some
-// screenshot tools write (two current images carry a 58-byte one). Refused:
-//   JPEG  XMP, any comment, and any APPn segment larger than MAX_JPEG_APP_SEGMENT_BYTES
-//         (ICC profiles, Photoshop and EXIF records with free text all exceed it)
-//   PNG   tEXt, iTXt, zTXt and eXIf chunks
-//   WebP  EXIF and XMP chunks
-// GIF is not parsed; its bytes are covered by the audit's text scan. A structure that cannot be
-// walked to its end (truncated or malformed) is refused, so nothing can hide behind a bad length.
+// Image metadata policy (pure). Screenshots ship byte for byte, so images carrying metadata blocks (EXIF, XMP, PNG text chunks, comments) are refused,
+// as is a structure that cannot be walked to its end. GIF is covered by the audit's text scan.
 
 /** Largest APPn segment (its two length bytes included) a JPEG may carry. JFIF is 16 bytes. */
 export const MAX_JPEG_APP_SEGMENT_BYTES = 64;
@@ -76,10 +63,6 @@ function webpProblem(bytes) {
   return null;
 }
 
-/**
- * Why an image must not be published, phrased to follow the image's path in a message, or null
- * when its structure and metadata are acceptable. `extension` is png, jpg, jpeg, webp or gif.
- */
 export function imageMetadataProblem(extension, bytes) {
   const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (extension === "jpg" || extension === "jpeg") return jpegProblem(data);
@@ -88,8 +71,7 @@ export function imageMetadataProblem(extension, bytes) {
   return null;
 }
 
-// Pixel dimensions, read from the header each format requires. The page reserves the image's box
-// from them, so the text below does not move when a screenshot arrives.
+// Pixel dimensions; the page reserves the image's box from them.
 
 const JPEG_FRAME_MARKERS = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
 
@@ -142,10 +124,6 @@ function webpDimensions(bytes) {
   return null;
 }
 
-/**
- * The image's pixel `{ width, height }`, or null when its header does not state a usable size.
- * `extension` is png, jpg, jpeg, webp or gif.
- */
 export function imageDimensions(extension, bytes) {
   const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let size = null;

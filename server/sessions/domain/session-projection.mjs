@@ -55,11 +55,6 @@ function groupToolEvidence(toolCalls) {
   };
 }
 
-/**
- * Session work-kind counts when at least one agent carries whole-source counts: that agent's own
- * counts, plus the retained calls of every agent without them (their bounded read already covers
- * the whole source). Null when no agent carries them, so the retained calls are counted as before.
- */
 function sessionWorkKindCounts(evidence) {
   const whole = new Map(evidence.agents.filter((agent) => Array.isArray(agent.workKindCounts)).map((agent) => [agent.id, agent.workKindCounts]));
   if (!whole.size) return null;
@@ -144,11 +139,6 @@ export function buildProviderTokenUsage(agents, usageSnapshots, startedAt, updat
   };
 }
 
-/**
- * Project already-sanitized provider evidence into the browser-safe MonitorState.
- * All environment-dependent values are explicit inputs so fixtures and runtime
- * reads exercise the same deterministic transformation.
- */
 export function projectProviderSessionEvidence({
   evidence,
   sessionId,
@@ -161,8 +151,7 @@ export function projectProviderSessionEvidence({
   resources = null,
 }) {
   const historical = evidence.historical;
-  // Whole-source work-kind counts are evidence for the session aggregate only; they never ride on
-  // the public agent shape.
+  // Whole-source work-kind counts are evidence for the session aggregate only; they never ride on the public agent shape.
   const agents = evidence.agents.map(({ kind, ...evidenceAgent }) => {
     const agent = { ...evidenceAgent };
     delete agent.workKindCounts;
@@ -247,8 +236,6 @@ export function projectProviderSessionEvidence({
     repeats: loop.count - 1,
   }));
   const allEvents = [
-    // Projection narrows request links below; it must never mutate immutable
-    // provider evidence retained for checkpointing or a later derivation.
     ...evidence.activity.map((event) => ({ ...event })),
     ...evidence.toolCalls.map((call) => ({
       id: call.id,
@@ -282,8 +269,6 @@ export function projectProviderSessionEvidence({
     session: {
       id: sessionId,
       title: evidence.session.title,
-      // Every provider names the project the same way (see server/normalize/session-identity.mjs):
-      // provider evidence already carries the resolved project string.
       project: evidence.session.project,
       // Compatibility field only; recognized roots and provider cwd are private.
       cwd: "",

@@ -9,20 +9,12 @@ import { completeWhenSummary } from "./task-fields";
 import { taskCardTitle, taskChip } from "./task-presentation";
 import { startsLine } from "./task-schedule";
 
-/** What makes a card movable in the desktop app: the drag handlers for the `li` and the keyboard move actions. */
 export type TaskCardMove = {
   drag: Pick<HTMLAttributes<HTMLLIElement>, "onDragStart" | "onDragEnd">;
   available: CardMoves;
   onMove(kind: CardMoveKind): void;
 };
 
-/**
- * One task: its ID (with the #N issue chip after it for a task promoted from a GitHub issue), its state chip, its text
- * (or its session's title once it has one), the planned run with the observed model, the Complete when summary, for a task
- * in a feature the feature line, and, for a task with a session, Open session, each only when set. With `onOpen` the
- * card opens the Task modal; with `move` it can be dragged and moved from the keyboard. Without either the card is
- * read-only. `dropLine` draws the line that shows where a dragged card would land: before this card, or after it.
- */
 export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine }: { task: Task; featureLine?: string | null; nextQueued?: boolean; onOpen?: (task: Task, opener: HTMLElement) => void; move?: TaskCardMove; dropLine?: "before" | "after" }) {
   const chip = taskChip(task, nextQueued);
   const title = taskCardTitle(task);

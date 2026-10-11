@@ -1,14 +1,4 @@
-// Build-time loader for the public documentation website (WEB-01).
-//
-// This is the only landing module that reads outside `landing/`, and it reads exactly
-// two inputs: the publication manifest and the Markdown/images that manifest selects
-// beneath the public documentation root. `assert-artifact-boundary.mjs` audits that no
-// other landing source names a path outside the package. The publication contract is the
-// documentation manifest page in the maintainer documentation (documentation-manifest.md).
-//
-// Markdown handling lives in docs-markdown.mjs (pure, no filesystem). This module adds the
-// explicit filesystem readers (`inspectDocsContent`) and writers (`writePreparedDocs`). The
-// Worker never imports either module: it bundles only the generated JSON they emit.
+// Build-time loader for the public documentation website; the only landing module that reads outside landing/.
 
 import {
   lstatSync,
@@ -38,9 +28,6 @@ import { GENERATED_SEARCH_FILE, buildSearchIndex, serializeSearchIndex } from ".
 export { IMAGE_ROUTE_PREFIX, createSlugger, decodeCharacterReferences, parseFrontMatter, slugifyHeading } from "./docs-markdown.mjs";
 export { GENERATED_SEARCH_FILE } from "./docs-search.mjs";
 
-// ---------------------------------------------------------------------------
-// Contract constants
-
 export const CONTENT_SCHEMA_VERSION = 1;
 
 /** The only paths outside `landing/` this package may read, relative to the landing root. */
@@ -49,7 +36,6 @@ export const CONTENT_INPUTS = Object.freeze({
   publicRoot: "../docs/public",
 });
 
-/** Generated outputs, relative to the landing root (all are gitignored; the search index is in docs-search.mjs). */
 export const GENERATED_CONTENT_FILE = "generated/docs-content.json";
 export const GENERATED_IMAGES_DIR = "public/docs/images";
 
@@ -81,9 +67,6 @@ function isInside(root, path) {
   return rel !== "" && !/^\.\.(?:[\\/]|$)/.test(rel) && !isAbsolute(rel);
 }
 
-// ---------------------------------------------------------------------------
-// Manifest
-
 function checkPageSource(source, groupId) {
   if (typeof source !== "string" || source === "") return "must be a non-empty string";
   const match = SOURCE_PATTERN.exec(source);
@@ -94,10 +77,6 @@ function checkPageSource(source, groupId) {
   return null;
 }
 
-/**
- * Validate a parsed `docs/site.json` (version 1). Returns the ordered groups with derived
- * routes, plus every problem found. Unknown fields and unsupported versions are errors.
- */
 export function validateManifest(raw) {
   const issues = [];
   const problem = (message) => issues.push(`${MANIFEST_LABEL}: ${message}`);
@@ -174,9 +153,6 @@ export function validateManifest(raw) {
   return { groups, issues };
 }
 
-// ---------------------------------------------------------------------------
-// Filesystem access (the only reads this module performs)
-
 function defaultLandingRoot() {
   return resolve(fileURLToPath(new URL("..", import.meta.url)));
 }
@@ -207,7 +183,6 @@ function createReader(landingRoot) {
     return realpathSync(publicRoot);
   }
 
-  /** Read one regular file beneath the public root; every component must be a real, exact-case entry. */
   function readPublicFile(publicReal, sourcePath, maxBytes) {
     const segments = sourcePath.split("/");
     let current = publicReal;
@@ -250,14 +225,6 @@ function decodeText(bytes, label) {
   return text;
 }
 
-// ---------------------------------------------------------------------------
-// Loading
-
-/**
- * Read the manifest and the pages and images it selects, validate everything, and build
- * the generated content. Returns `{ content, assets, issues }`; `content` is null and
- * `assets` empty whenever `issues` is non-empty, so invalid input never reaches a build.
- */
 export function inspectDocsContent({ landingRoot = defaultLandingRoot() } = {}) {
   const issues = [];
   const reader = createReader(landingRoot);
@@ -277,7 +244,6 @@ export function inspectDocsContent({ landingRoot = defaultLandingRoot() } = {}) 
   issues.push(...manifest.issues);
   if (issues.length) return empty();
 
-  // First pass: read and lex every selected page so anchors exist before links resolve.
   const pages = [];
   const pagesBySource = new Map();
   let unreadable = false;
@@ -296,10 +262,8 @@ export function inspectDocsContent({ landingRoot = defaultLandingRoot() } = {}) 
       pagesBySource.set(page.source, page);
     }
   }
-  // A selected page that cannot be read would make every link to it look unselected.
   if (unreadable) return empty();
 
-  // Second pass: resolve links and images and build the structured blocks.
   const imagesByRoute = new Map();
   const readImage = (sourcePath) => {
     try {
@@ -351,20 +315,15 @@ export function inspectDocsContent({ landingRoot = defaultLandingRoot() } = {}) 
   return { content, assets, issues };
 }
 
-/** Like `inspectDocsContent`, but throws one `DocsContentError` listing every problem. */
 export function loadDocsContent(options) {
   const result = inspectDocsContent(options);
   if (result.issues.length) throw new DocsContentError(result.issues);
   return { content: result.content, assets: result.assets };
 }
 
-/** Deterministic serialization: stable key and page order, LF, no timestamps. */
 export function serializeDocsContent(content) {
   return `${JSON.stringify(content)}\n`;
 }
-
-// ---------------------------------------------------------------------------
-// Generated output (inside landing/ only)
 
 function ensureOwnedDirectory(landingRoot, directory) {
   const relativePath = relative(landingRoot, directory);
@@ -387,7 +346,6 @@ function writeIfChanged(path, data) {
   try {
     if (Buffer.compare(readFileSync(path), Buffer.from(data)) === 0) return;
   } catch {
-    // Missing or unreadable output is simply rewritten.
   }
   const temporary = `${path}.${process.pid}.tmp`;
   writeFileSync(temporary, data);
@@ -407,11 +365,6 @@ function pruneImages(root, wanted, directory = root) {
   }
 }
 
-/**
- * Write `generated/docs-content.json`, the search index built from that same content, and mirror
- * exactly the referenced images into `public/docs/images/`, deleting anything else there. All
- * locations are gitignored.
- */
 export function writePreparedDocs({ landingRoot = defaultLandingRoot(), content, assets }) {
   const contentFile = resolve(landingRoot, GENERATED_CONTENT_FILE);
   const imagesRoot = resolve(landingRoot, GENERATED_IMAGES_DIR);

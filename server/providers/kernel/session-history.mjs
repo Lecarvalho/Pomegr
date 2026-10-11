@@ -6,7 +6,7 @@ function opaque(prefix, sessionId, agentId, nativeId) {
   return `${prefix}-${crypto.createHash("sha256").update(`${sessionId}|${agentId || ""}|${nativeId}`).digest("hex").slice(0, 16)}`;
 }
 
-/** Keep private actor ownership with history projections, never evidence candidates. */
+// Keep private actor ownership with history projections, never evidence candidates.
 export function createHistoryOwnershipProjection() {
   const actorIds = new Map();
   return Object.freeze({
@@ -23,19 +23,13 @@ export function createHistoryOwnershipProjection() {
   });
 }
 
-/** Replay complete history through the normalized callback after adapter enrichment. */
+// Replay complete history through the normalized callback after adapter enrichment.
 export async function readCompleteSessionHistory(readSession) {
   let history = null;
   await readSession({ historical: true, completeStory: true, onHistoryRequests(value) { history = value; } });
   return history || { requests: [], activity: [], complete: false };
 }
 
-/**
- * Convert complete provider-owned activity acquisition into rows that can be
- * served before request evidence has settled.  The row identity deliberately
- * does not include request correlation or a terminal result, so later
- * enrichment replaces the same row instead of making a second activity item.
- */
 export function normalizedSessionActivity(providerId, sessionId, evidence) {
   const labels = new Map(); for (const agent of evidence?.agents || []) labels.set(agent.label, [...(labels.get(agent.label) || []), agent.id]);
   const failures = (evidence?.agents || []).flatMap((agent) => shellFailureActivityEvents(agent.executionTasks, agent.label).map((item) => ({ ...item, _historyAgentId: agent.id })));
@@ -58,7 +52,7 @@ export function normalizedSessionActivity(providerId, sessionId, evidence) {
   return [...byId.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp) || a.id.localeCompare(b.id));
 }
 
-/** Convert a complete adapter-private evidence replay into history-safe rows. */
+// Convert a complete adapter-private evidence replay into history-safe rows.
 export function normalizedSessionHistory(providerId, sessionId, evidence) {
   if (!evidence) return { requests: [], activity: [], complete: false };
   const requestIdByOldId = new Map();
@@ -69,13 +63,11 @@ export function normalizedSessionHistory(providerId, sessionId, evidence) {
   return { requests, activity, complete: true };
 }
 
-/** Keep adapter callback failures isolated from complete source normalization. */
 export function publishNormalizedHistoryActivity(callback, providerId, sessionId, evidence) {
   if (typeof callback !== "function") return false;
   try { callback(normalizedSessionActivity(providerId, sessionId, evidence)); return true; } catch { return false; }
 }
 
-/** Publish strict request correlation and Activity enrichment from shared U1 evidence. */
 export function publishNormalizedHistoryRequests(callback, providerId, sessionId, evidence) {
   if (typeof callback !== "function") return false;
   try { callback(normalizedSessionHistory(providerId, sessionId, evidence)); return true; } catch { return false; }

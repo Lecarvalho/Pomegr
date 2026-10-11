@@ -7,8 +7,9 @@ description: "Let a coding agent read Pomegr's already-observed provider health,
 
 With the [Pomegr plugin](reporting-plugins.md) installed, your coding agent can
 read a few facts Pomegr has already observed, then decide whether to continue,
-wait, or change plan. The seven tools are read-only. They read only what Pomegr
-has committed locally: they never start Pomegr, read a transcript, or control an
+wait, or change plan. The seven query tools are read-only. The plugin also has tools
+that write: reporting tools and task tools. [MCP tools](mcp-tools.md) lists them all.
+The query tools read only what Pomegr has committed locally: they never start Pomegr, read a transcript, or control an
 agent. You do not call them yourself: the agent decides when a result could
 help, and you can ask it to check.
 

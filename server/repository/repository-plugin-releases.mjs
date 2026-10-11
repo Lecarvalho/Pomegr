@@ -4,7 +4,6 @@ const MANIFESTS = Object.freeze({ claude: "plugins/claude-code/.claude-plugin/pl
 const SAFE_REF = /^(?:main|v\d{1,4}\.\d{1,4}\.\d{1,4}|[a-f0-9]{40})$/u;
 const MAX_BYTES = 32 * 1024;
 
-/** Fixed official public source, no credentials, redirects, or provider API requests. */
 export function createRepositoryPluginReleaseReader({ fetch: fetchImpl = fetch, now = Date.now } = {}) {
   const entries = new Map();
   const pending = new Map();

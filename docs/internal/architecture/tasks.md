@@ -1,19 +1,21 @@
 # Task board and session dispatch
 
 > Scope: the per-repository task board, the queue that starts sessions for its tasks,
-> and the agent tools that add, complete, and block tasks. It does not cover
+> and the agent tools that add, remove, complete, and block tasks. It does not cover
 > observation, which stays read-only and is owned by the
 > [observation cache](observation-cache.md).
 > Authority: canonical design contract for tasks and dispatch, decided by the product
-> owner on 2026-10-08. [AGENTS.md](../../../AGENTS.md) holds the privacy invariants and
-> wins on conflict; the executable contract `shared/task-contract.ts` wins on exact
-> field shapes.
+> owner on 2026-10-08. This page is the canonical owner of the task privacy invariants
+> (its [Privacy](#privacy) section). A change that widens exposure changes the Privacy
+> section in the same pull request. The executable contract `shared/task-contract.ts`
+> wins on exact field shapes. Repository-wide rules are in
+> [AGENTS.md](../../../AGENTS.md).
 > Related code and checks: the owners and focused commands are routed in the
 > [agent workflow](../development/agent-workflow.md).
 
 **Status: built.** Every capability on this page has shipped: the board, features and
 steps, the queue with its start gates and schedule, session start for Claude Code and
-Codex on Windows, session binding, the three agent tools, verified conditions, and the
+Codex on Windows, session binding, the four agent tools, verified conditions, and the
 task reference on the Sessions list and in the session view. The user guide is
 [Tasks](../../public/using-pomegr/tasks.md). Report-less completion (a task finishing
 from a deterministic condition with no agent report) is deliberately not designed or
@@ -154,7 +156,9 @@ type TaskBoard = {
   Control on, so its owner can also reach it from another device (see
   [Starting a session](#starting-a-session)). It is one boolean, off when absent, and
   valid alone. Codex has no Remote Control, so `true` on a Codex task is invalid, in
-  the desktop actions and in `add_task` alike.
+  the desktop actions and in `add_task` alike. Only the `create` and `update` actions
+  and `add_task` set it. The `add_task` tool takes it as the optional input
+  `remote_control`, a boolean and nothing else.
 - `completeWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
 - `queue.order` holds task IDs only: the queued tasks that have not started, in the order
@@ -419,7 +423,7 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   queue turned off. `queue_settings` with `{ on: true }` sets it to `running`, or to
   `blocked` with the lowest-numbered task that is stalled or blocked in
   `blockedBy` when one exists; `{ on: false }` sets it back to `idle`. Turning the queue
-  off never touches a running session.
+  off never touches a running session. No other action turns the queue on or off.
 - **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
   repository. Nothing starts unless the status is `running`. The queue runs one step at
   a time, and a task without a feature is a step of its own. A task is in flight when it
@@ -541,7 +545,10 @@ proceed. A start needs all of the following.
 
 1. The previous step of the task's feature is settled: each of its tasks is done or
    needs review (`previous_step` otherwise). The board names the lowest-numbered task
-   that is neither, in the earliest step before it that is not settled.
+   that is neither, in the earliest step before it that is not settled. This gate holds
+   only the queue's starts. As decided by the product owner on 2026-10-10, a manual start
+   is an override of step order: `start-plan` does not judge this gate, and the other
+   three still hold the start.
 2. The task's provider has usage capacity: its five-hour window, as a whole percentage,
    is below the threshold (`usage_over` otherwise). The threshold is 70, 85, or 95
    percent per repository, 85 by default, set with `queue_settings` `{ threshold }` and
@@ -618,8 +625,10 @@ What a held gate does:
   waits and no state is shown and later retracted; `queue.gates.next.reasons` says why.
 - **Manual start.** `start-plan` answers the fixed `gate_held` before a token is minted,
   after the refusals that precede it (`not_startable`, `unsupported_provider`,
-  `unavailable`, `plugin_missing`). The renderer shows one fixed line that points at the
-  Queue view. A start held only by the root's uncommitted changes answers the fixed
+  `unavailable`, `plugin_missing`). The answer names no gate. The renderer names the
+  gates that hold the task's provider from the readings `queue.gates` already carries
+  ("This task is held: ..."), and falls back to one fixed line that points at the Queue
+  view when those readings show no hold. A start held only by the root's uncommitted changes answers the fixed
   `tree_dirty` instead, and the renderer offers
   [a separate worktree](#separate-worktree-for-a-dirty-repository). The queue runner
   treats `gate_held` and `tree_dirty` like a task that moved: no pause, and the next poll
@@ -679,7 +688,7 @@ installed plugin from before the rename sends; a body with both names is `invali
     `server/repository/session-repository-enrichment.mjs`): the root and branch the
     monitor already bound to the session, the same Git reader and pull-request reader,
     `execFile` with argument arrays, and their own deadlines. Nothing in the request
-    names a path, a branch, or a repository.
+    names a path, a branch, or a repository. The read reads no provider.
   - The read does not reuse an older answer. The pull-request reader skips its 60-second
     cache (`fresh`), and a Git read that joined an inspection begun before the report is
     made once more.
@@ -884,7 +893,8 @@ supplies.
   (404), `repository_unavailable` (409), `feature_not_found` (404), `limit` (409), and
   `unavailable` (503). Any other path under `/api/agent/v1/tasks/` is not served, and no
   other agent route accepts a write.
-- **`add_task` is safe to repeat for five minutes.** An agent whose first answer was
+- **`add_task` is safe to repeat for five minutes.** Decided for task T-14
+  (2026-10-10). An agent whose first answer was
   lost asks again, and that second call must not make a second task (seen on a device on
   2026-10-09: one task was added twice). When the same bound session adds the same task
   text to the same feature again within five minutes of the add, the store answers the
@@ -980,7 +990,12 @@ so the product owner settled the rules below on 2026-10-10 (task T-15).
   issue, a task another session added, and a task that started, was reported on, or has
   an outcome (Needs review, Stalled, Blocked by agent, Done). A linked session may be
   working, so a started task is left to the owner. The task a session was started for is
-  not one it added, so a session cannot remove its own task.
+  not one it added, so a session cannot remove its own task. No confirmation lets an
+  agent remove one of these tasks. The desktop **Delete task** is the only other way to
+  delete a task.
+- **Who else removes a task.** No GET, queue step, session start, or hook removes a
+  task. A browser never removes a task. A paired device removes a task only through the
+  owner's `delete` action (see [Paired devices](#paired-devices)).
 - **How "added by this session" is known.** The task store records the session:
   `task_added_by:<repositoryId>:<taskId>` in the `meta` table, with the normalized
   session ID as the value, written by the store action `agent_create` in the same
@@ -1364,7 +1379,8 @@ serves no other client.
      path stays read-only.
   3. The route (`app/api/tasks/action/route.ts`) refuses a request without the mark and
      the token with 403, so a same-computer browser, the development server, and its
-     peers never write. It holds the closed list of the eleven `pomegr:task-action`
+     peers never write. A request that lacks the mark is refused, and a request that
+     lacks the token is refused. It holds the closed list of the eleven `pomegr:task-action`
      names, the repository ID pattern, and the 16 KiB payload cap, and posts to
      `POST /internal/tasks/<action>` with the desktop token. The monitor validates the
      record as it does for the desktop app.
@@ -1387,6 +1403,8 @@ serves no other client.
   and the session cookie cross it unencrypted, as session content already does. Whoever
   holds a paired device's cookie can change the board and queue work while the queue is
   on. Pairing, its four-device bound, the network checks, and revocation are unchanged.
+  The product owner accepts this risk as part of phone access.
+- **Revocation.** Revoking phone access ends the device's reads and writes at once.
 
 ## Boundaries
 
@@ -1401,13 +1419,13 @@ serves no other client.
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
-| `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
+| `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. The payload cap is the 16 KiB cap of `pomegr:task-action`. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
 | `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
 | `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
-| `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
+| `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`,
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
@@ -1505,7 +1523,10 @@ class. Column names are five fixed values.
   only on the owner's explicit desktop action. Anyone who can see the repository can then
   read it. This is the one place user-authored task content leaves Pomegr. The request
   carries a repository ID and a task ID; the answer carries the issue number or one fixed
-  error, never the text, a title, a URL, or a `gh` message.
+  error, never the text, a title, a URL, or a `gh` message. The fixed errors are
+  `invalid`, `not_found`, `conflict`, `cli_missing`, `not_signed_in`, `no_access`,
+  `issues_disabled`, `failed`, and `unavailable`.
+- Nothing from an issue is interpolated into a command line or a path.
 
 - They live only in the task store, and are served only by `GET /api/tasks` (to a
   same-computer client or a paired device) and the desktop IPC.
@@ -1513,7 +1534,9 @@ class. Column names are five fixed values.
   session ID of an `add_task` call beside the task, and only the rule of
   [Agent task removal](#agent-task-removal) reads it. It is on no board, route, list,
   log, report, or checkpoint, and `remove_task` answers the same `not_found` for a task
-  the session did not add as for one that does not exist.
+  the session did not add as for one that does not exist. It never appears on
+  `GET /api/tasks`, the Sessions list's task reference, `/api/state`, a session domain,
+  a catalog, a notification, or diagnostics.
 - What makes `add_task` safe to repeat is memory only: a digest that covers the task
   text, never the text, held in the monitor for five minutes (see
   [Session binding](#session-binding)). It is on no board, route, list, log, report,
@@ -1526,6 +1549,13 @@ class. Column names are five fixed values.
   the files of its task's images, so the images and the path of the private folder
   that holds them reach the provider through that session, as the task text does.
   Nothing else reads the files: no pipeline stage, report, log, or notification.
+  - `Task.images` never carries dimensions or anything read from inside an image.
+  - The answers of the three routes carry only the image's ID, the bytes with one of
+    four fixed media types, or one fixed error. The fixed errors are `invalid`,
+    `not_found`, `limit`, `conflict`, and `unavailable`. No answer carries error text.
+  - A browser or LAN client never sends image bytes. Agents get no image tool.
+  - Images never enter `/api/state`, a session domain, the Sessions list's task
+    reference, a catalog, a checkpoint, a report, a log, a notification, or diagnostics.
 - The Search bar (the Ctrl K palette) searches the tasks of the board in view. This is a
   presentation of the board the client already holds, not a new read or route:
   `TaskBoardPane` registers the ready board's tasks as the palette's scope
@@ -1545,8 +1575,10 @@ class. Column names are five fixed values.
 - The Sessions list and session view receive only the task ID, task state, feature name,
   step, and the number of the GitHub issue the task was promoted from. That is a
   deliberate widening of exposure (the issue number was added on 2026-10-09): the part
-  that builds it updates the AGENTS.md rule in the same pull request, and it must not
-  carry task text, the own condition, a column name, or an issue title or body.
+  that builds it updates this section in the same pull request, and it must not
+  carry task text, the own condition, a column name, or an issue title or body. It
+  also never carries a report, a block reason, or an attention line. The reference is
+  never written to the session catalog, a checkpoint, or the shell feed.
 - The Sessions list part has shipped. `server/tasks/task-session-link.mjs` reads the
   reference, and `server/serving/session-directory-tasks.mjs` joins it onto a directory
   page when the page is served. It adds the ID of the repository whose board holds the
@@ -1583,6 +1615,12 @@ class. Column names are five fixed values.
   it listens on the LAN and a peer can send any Host header; that peer has no token and
   never gets the marker. A client without the marker gets `taskReadiness: "desktop_only"`: the list
   has no Task column, and Group by Feature says where features are shown.
+  - The same-origin proxy sets the `tasks=1` marker itself. It never copies the marker
+    from the request.
+  - The monitor also requires its same-computer read gate.
+  - A client without the marker gets no `task` key and no feature name.
+  - A feature scope that cannot be answered matches no session. It never matches every
+    session.
 - Task state shown beside a session is a projection of the task store, never an
   observation of the session.
 - Provider and model names, effort, check results, and times are normalized enums or
@@ -1601,6 +1639,23 @@ class. Column names are five fixed values.
   they never appear on `/api/state`, a session domain, a repository snapshot or sidecar, a
   checkpoint, a report, a log, or `GET /api/tasks`. The ownership note is in the
   [observation cache](observation-cache.md).
+- The attention line is agent-authored text. `GET /api/tasks` serves it only as the
+  nullable `report.attention`, under that route's gate. It never enters the report's
+  answer, `/api/state`, a session domain, the Sessions list's task reference, a
+  catalog, a checkpoint, a log, a notification, or diagnostics.
+- The Remote Control flag is one boolean (task T-31, 2026-10-10).
+  - `GET /api/tasks` serves it only as `Task.run.remoteControl`, under that route's
+    gate.
+  - It never enters `/api/state`, a session domain, the Sessions list's task reference,
+    a catalog, a checkpoint, a report, a log, a notification, or diagnostics.
+  - Desktop main passes only the fixed argument `--remote-control`. It passes no name,
+    URL, or other value, and nothing from task text reaches that argument.
+  - The started session registers itself with the owner's Claude account. The session,
+    with the task text in its prompt, is then reachable from the owner's other devices,
+    as any Remote Control session is.
+- `runModels` never carries entitlement, a hidden ID, an alias ID, or a raw catalog row.
+- A worktree path stays in desktop main. It never enters the monitor, the task store,
+  browser state, a log, or a report.
 
 ## Invariants and failure behavior
 
@@ -1649,7 +1704,7 @@ Each item is owned by the product owner; none is implemented until they answer.
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
 rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
 above now describe the fixed behavior. The first run on a device, on 2026-10-09, found
-three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. Two items remain open, and the maintainer owns each. The stated limits of the age rule for complete-when conditions are listed under
+three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. One item remains open, and the maintainer owns it. A sixth (a held manual start did not say which gate holds) closed on 2026-10-10: the modal names the holding gates from the board's readings, and step order no longer holds a manual start. The stated limits of the age rule for complete-when conditions are listed under
 [Completion](#completion).
 
 1. **A started task without a feature holds every start, but `queue.gates.next` does not
@@ -1657,11 +1712,8 @@ three more, one of which (a start with a plugin too old for tasks) is fixed. A f
    yet `queue.gates.next` still names the next queued single task with no hold reason, so
    the Queue view shows **Queued · next** on a task that does not start. A pinned test
    keeps this behavior. A fixed reason such as `task_running` would widen the
-   [AGENTS.md](../../../AGENTS.md) rule, so it is not added until the product owner
+   [Privacy](#privacy) section, so it is not added until the product owner
    decides.
-2. **A held manual start does not say which gate holds.** The modal reads "A start gate
-   holds this task. See Start gates in the Queue view." although the fixed hold reasons
-   are already served on `GET /api/tasks`.
 
 Proven on a device on 2026-10-09 (Windows, Claude Code, plugin 0.9.0): a started session
 opens as the user's own Claude Code, in the repository root and in a new task worktree;
@@ -1682,7 +1734,7 @@ condition, and a tool call that waits at a permission prompt inside the proof wi
 
 Route the change with the [agent workflow](../development/agent-workflow.md), then run
 the focused commands of the owning row. A change that adds a field, route, tool, or
-surface to the task data class updates the AGENTS.md rule, this page, and the
+surface to the task data class updates the [Privacy](#privacy) section of this page and the
 [user guide](../../public/using-pomegr/tasks.md) together. `server/tasks/` has its own
 layer rule (`server-tasks-layer`) in `.dependency-cruiser.cjs`. Run
 `npm run check:boundaries` for import direction and `npm run check:docs` for this

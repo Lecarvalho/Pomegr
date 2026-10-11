@@ -1,9 +1,8 @@
-import type { TaskBoard, TaskGateReason, TaskGates, TaskGateUsage, TaskProvider } from "../../../shared/task-contract";
+import type { Task, TaskBoard, TaskGateReason, TaskGates, TaskGateUsage, TaskProvider } from "../../../shared/task-contract";
 import { scheduleLabel } from "./task-schedule";
 
 export const PROVIDER_NAMES: Record<TaskProvider, string> = { claude: "Claude Code", codex: "Codex" };
 
-/** "5h 62% · 7d 31%", with "–" for a window the board did not send, or null when it sent neither. */
 export function usageReading(usage: TaskGateUsage): string | null {
   if (usage.fiveHourPercent === null && usage.sevenDayPercent === null) return null;
   const part = (label: string, value: number | null) => `${label} ${value === null ? "–" : `${value}%`}`;
@@ -12,14 +11,12 @@ export function usageReading(usage: TaskGateUsage): string | null {
 
 export type GateTone = "ok" | "error" | "muted";
 
-/** The Previous step done row: what the next queued task waits on. */
 export function previousStepRow(gates: TaskGates): { text: string; tone: GateTone } {
   if (!gates.next) return { text: "No task queued", tone: "muted" };
   if (gates.next.blockedBy) return { text: `Blocked by ${gates.next.blockedBy}`, tone: "error" };
   return { text: "Done", tone: "ok" };
 }
 
-/** The Provider status row. */
 export function providerStatusRow(gates: TaskGates): { text: string; tone: GateTone } {
   const incidents = (Object.keys(PROVIDER_NAMES) as TaskProvider[]).filter((provider) => gates.providerStatus[provider] === "incident");
   if (incidents.length > 0) return { text: `Incident: ${incidents.map((provider) => PROVIDER_NAMES[provider]).join(", ")}`, tone: "error" };
@@ -27,7 +24,6 @@ export function providerStatusRow(gates: TaskGates): { text: string; tone: GateT
   return { text: "Unknown", tone: "muted" };
 }
 
-/** The Working tree row. */
 export function workingTreeRow(gates: TaskGates): { text: string; tone: GateTone } {
   if (gates.workingTree === "clean") return { text: "Clean", tone: "ok" };
   if (gates.workingTree === "dirty") return { text: "Uncommitted changes", tone: "error" };
@@ -50,7 +46,22 @@ function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<
   }
 }
 
-/** The one muted line on the held next task, or null when nothing holds it or the queue is not running. */
+/** The line for a manual start the monitor held (`gate_held`). */
+export function heldStartLine(task: Task, queue: Pick<TaskBoard["queue"], "gates" | "schedule"> | undefined): string | null {
+  const gates = queue?.gates;
+  if (!gates) return null;
+  const provider = task.run.provider ?? "claude";
+  const usage = gates.usage[provider].status;
+  const status = gates.providerStatus[provider];
+  const reasons: TaskGateReason[] = [];
+  if (usage !== "ok") reasons.push(usage === "over" ? "usage_over" : "usage_unknown");
+  if (status !== "ok") reasons.push(status === "incident" ? "provider_incident" : "provider_status_unknown");
+  if (gates.workingTree !== "clean") reasons.push(gates.workingTree === "dirty" ? "tree_dirty" : "tree_unknown");
+  if (reasons.length === 0) return null;
+  const next = { taskId: task.id, provider, blockedBy: null, reasons };
+  return `This task is held: ${reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}.`;
+}
+
 export function waitingLine(queue: TaskBoard["queue"], taskId: string): string | null {
   const gates = queue.gates;
   if (queue.status !== "running" || !gates?.next || gates.next.taskId !== taskId || gates.next.reasons.length === 0) return null;

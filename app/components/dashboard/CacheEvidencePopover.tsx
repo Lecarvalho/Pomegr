@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { PopoverFrame } from "../PopoverFrame";
 
-/** Keep cache evidence next to its mark, outside clipped or zoomed tree rows. */
 export function CacheEvidencePopover({ anchorRef, onClose, ...props }: ComponentProps<typeof PopoverFrame> & {
   anchorRef: RefObject<Element | null>;
 }) {

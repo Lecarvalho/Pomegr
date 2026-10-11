@@ -2,11 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
-/**
- * A deliberately small, account-only Codex app-server client.  It does not
- * share the provider's app-server seam: a short-lived process is used only to
- * read the authenticated account rate-limit snapshot.
- */
 export const CODEX_APP_SERVER_TIMEOUT_MS = 8_000;
 export const CODEX_APP_SERVER_MAX_LINE_BYTES = 64 * 1024;
 export const CODEX_APP_SERVER_MAX_OUTPUT_BYTES = 256 * 1024;
@@ -85,10 +80,8 @@ function packageRoots({ environment, cwd, platform, moduleRoots }) {
   return [...new Set(roots)];
 }
 
-/**
- * Locate a native Codex CLI without invoking a shell.  Resolution intentionally
- * excludes command wrappers and Microsoft Store application aliases.
- */
+// Locate a native Codex CLI without invoking a shell.  Resolution intentionally
+// excludes command wrappers and Microsoft Store application aliases.
 export function resolveCodexAppServerExecutable(options = {}) {
   const environment = options.env || process.env;
   const platform = options.platform || process.platform;
@@ -110,8 +103,6 @@ export function resolveCodexAppServerExecutable(options = {}) {
   for (const root of packageRoots({ environment, cwd, platform, moduleRoots: options.moduleRoots })) {
     const vendor = nativeVendorPackage(platform, architecture);
     const vendorTail = ["vendor", vendor.target, "bin", name];
-    // npm may place the platform-specific optional dependency beside @openai/codex
-    // or nest it below that package. Codex 0.144.1 supports both layouts.
     candidates.push(path.join(root, "@openai", "codex", "node_modules", "@openai", vendor.packageName, ...vendorTail));
     candidates.push(path.join(root, "@openai", vendor.packageName, ...vendorTail));
   }
@@ -274,9 +265,6 @@ async function requestAccountRead(executable, {
         outputBytes += Buffer.byteLength(chunk);
         if (outputBytes > maximumOutputBytes) fail();
       });
-      // Writable stream failures (notably an asynchronous EPIPE after a JSONL
-      // write) do not necessarily surface through child.on("error"). Bind this
-      // before the first write and keep it safe after settlement/cleanup.
       child.stdin?.on("error", fail);
       child.on("error", fail);
       child.on("exit", () => { if (!settled) fail(); });
@@ -294,11 +282,6 @@ async function requestAccountRead(executable, {
   }
 }
 
-/**
- * Create an account-only reader.  Its sole public operation deliberately
- * cannot call thread/list or thread/read, preventing this transient client
- * from becoming a second live-session discovery transport.
- */
 export function createCodexAppServerRateLimitsReader(options = {}) {
   const spawnFn = options.spawnFn || spawn;
   const resolver = options.resolveExecutable || (() => resolveCodexAppServerExecutable(options));
@@ -340,7 +323,7 @@ export function createCodexAppServerRateLimitsReader(options = {}) {
   };
 }
 
-/** One bounded, short-lived model/list interaction; never an entitlement read. */
+// One bounded, short-lived model/list interaction; never an entitlement read.
 export function createCodexAppServerModelCatalogReader(options = {}) {
   const spawnFn = options.spawnFn || spawn;
   const resolver = options.resolveExecutable || (() => resolveCodexAppServerExecutable(options));

@@ -9,6 +9,19 @@ Current provider and Pomegr limitations affecting these rules are inventoried in
 [Limitations](limitations.md);
 this page owns the deterministic rules and their evidence gates.
 
+## Conventions
+
+These rules apply to every metric and to every surface that shows one.
+
+- “Context” means the latest non-zero usage snapshot, not historical throughput.
+- “All-agent context” is the sum of each visible agent's latest context snapshot.
+- Present context only as latest snapshots or sums derived from them. A bounded request-snapshot feed may present independent request-local observations, but must never bucket, carry forward, delta, or sum them across requests or agents. Never derive or present cumulative transcript throughput, token-spend totals, or recent token rates. A provider-reported cumulative session-cost estimate captured from Claude Code's status-line feed is the sole exception and must remain explicitly labeled as an estimate.
+- Context-history timelines must carry each visible agent's latest non-zero snapshot to each bucket boundary and plot the bounded actual context level for the selected agent or the explicit sum of agent snapshots. Repeated snapshots stay flat and context reductions remain visible; never reinterpret the series as throughput, unique shared memory, token spend, or cumulative usage.
+- Cache-event views must be built monitor-side from bounded, provider-comparable usage observations and expose only recognized refill, reuse, cautious miss-refill evidence, a cache-expiry inference supported by a preceding resolved request lifetime and matching provider-neutral unavailable-entry status, or a fixed tool-definition attribution supported by a documented structural lifecycle rule, which for newly recorded deferred definitions may add only a bounded count and never a tool name. Rules operate independently within each normalized agent, including subagents and forks after they have comparable prior evidence. Missing, malformed, incomplete, incomparable, ambiguous, or unsupported evidence must degrade to unavailable; never infer an unsupported cause, bill, charge, or savings amount.
+- Cache-read-drop evidence requires explicit numeric provenance and adjacent requests from the same normalized agent and comparison group, a high-to-low cache-read-share transition, and an actual cached-token collapse. Missing or malformed evidence, compactions, context reductions, and comparison-group changes break comparisons. A model change breaks the same-model possible-refill inference but may yield the bounded `model_change` observation when all other gates pass; that kind carries no refill, expiry, or causation inference. It must never relax the recorded-write requirement for refill classification or turn a minimum-only cache lifetime into an expiry threshold.
+- Label elapsed duration as wall time because it includes idle gaps.
+- Rule-generated recommendations must trace to concrete events.
+
 ## Session closure
 
 Session **Closed** reports confirmed native runtime departure from Claude's private
@@ -956,7 +969,7 @@ its evidence, and only the fields its kind needs; every other field is null. D d
 feed from committed normalized evidence, never from the observation time and never from new
 provider parsing. The feed selects recorded transitions. It is not a complete session
 history, and a missing event is not proof that nothing happened. The privacy limits are in
-`AGENTS.md`.
+[Session events](privacy/session-evidence.md#session-events).
 
 An event is never shown and then withdrawn while its evidence is retained. User-message and
 commit events come from recorded lists that only grow until their bound; an older time then

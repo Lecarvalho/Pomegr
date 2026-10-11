@@ -18,9 +18,7 @@ export type RosterGroup = {
 };
 
 export type RosterGroupingOptions = {
-  /** Historical snapshots never advance an agent's recorded duration. */
   historical?: boolean;
-  /** Injected clock for deterministic live wall-time rollups and tests. */
   now?: number;
 };
 
@@ -53,7 +51,6 @@ function compareAgentOrder(left: { agent: Agent; index: number }, right: { agent
     || left.index - right.index;
 }
 
-/** Sort sibling branches newest-first while keeping every descendant below its parent. */
 export function sortRosterAgentsByCreationHierarchy(agents: Agent[]): Agent[] {
   const members = agents.map((agent, index) => ({ agent, index }));
   const memberIds = new Set(agents.map((agent) => agent.id));
@@ -84,7 +81,6 @@ export function sortRosterAgentsByCreationHierarchy(agents: Agent[]): Agent[] {
   };
 
   for (const root of roots.sort(compareCreated)) visit(root);
-  // Malformed cycles have no root. Retain every bounded row without breaking the sort.
   for (const member of members.sort(compareCreated)) visit(member);
   return ordered;
 }
@@ -151,7 +147,6 @@ function createGroup(
   };
 }
 
-/** Build the bounded roster's stable primary, direct, and workflow groups. */
 export function buildRosterGroups(
   agents: Agent[],
   workflows: Workflow[],
@@ -184,8 +179,6 @@ export function buildRosterGroups(
       );
       return;
     }
-    // Null-workflow descendants of a direct child remain in Direct subagents.
-    // Orphaned null-workflow agents are retained there as a safe roster fallback.
     if (agent.parentId === "primary" || directDescendant(agent, byId) || !agent.parentId) {
       add("direct", "direct", "Direct subagents", null, agent, index);
       return;
@@ -220,7 +213,6 @@ export function statusTally(agents: Agent[]) {
 
 export type RosterLegendStatus = "active" | "idle" | "needs_input" | "finished" | "stopped" | "other";
 
-/** Distribution legend counts: unlike `statusTally`, needs-input agents are counted apart from idle ones. */
 export function legendTally(agents: Agent[]): Record<RosterLegendStatus, number> {
   const tally = { active: 0, idle: 0, needs_input: 0, finished: 0, stopped: 0, other: 0 };
   for (const agent of agents) {

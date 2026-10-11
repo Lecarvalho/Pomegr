@@ -1,7 +1,3 @@
-// Deterministic, pure matching of a persisted resource peak sample to the execution
-// tasks and session-history request that temporally overlap it. No I/O, no clocks:
-// every input is supplied by the caller. See docs/internal/architecture/metrics.md ("Resource history") for
-// the association rule in plain words and its stated limits.
 
 export const MAX_MATCHED_TASK_IDS = 20;
 
@@ -38,8 +34,7 @@ export function matchResourcePeak(input) {
 
     let endMs;
     if (finishedAtMs === null || finishedAtMs === undefined) {
-      // Unfinished: the interval extends only to the latest observation. Without one,
-      // or with one earlier than the start, the task has no evidenced end and does not match.
+      // Unfinished: the interval extends only to the latest observation.
       if (latestMs === null || latestMs < startedAtMs) continue;
       endMs = latestMs;
     } else {

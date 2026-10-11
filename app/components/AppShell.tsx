@@ -138,7 +138,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           setLoading(false);
         }
       } catch {
-        // Keep the most recent safe catalog visible while the monitor reconnects.
         if (!controller.signal.aborted) {
           setConnected(false);
           setLoading(false);

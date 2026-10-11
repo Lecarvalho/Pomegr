@@ -8,11 +8,6 @@ import { WORK_LABELS } from "../../agents/agent-presentation";
 import { activityDuration } from "./duration";
 import { targetBasename } from "./feed-model";
 
-/**
- * Bounded lifecycle label and tone from the call's own recorded evidence. Execution-task lifecycle
- * (exit code, background flag, running) is not reachable here: history call ids are re-keyed
- * monitor-side and provider tool-use ids stay monitor-private, so no honest association exists yet.
- */
 function callStatus(call: HistoryActivity) {
   if (call.status === "failed") return { label: "Failed", tone: "negative" };
   // A recorded call-to-result duration is the evidence that a result arrived at all.
@@ -20,26 +15,17 @@ function callStatus(call: HistoryActivity) {
   return { label: "Status unavailable", tone: "" };
 }
 
-/** Result time: the recorded call time plus its own call-to-result wall duration. */
 function resultTime(call: HistoryActivity) {
   if (call.durationMs === null) return "—";
   return shortTime(new Date(Date.parse(call.timestamp) + call.durationMs).toISOString());
 }
 
-/**
- * One phone call line: kind icon, ellipsized target and wall duration, with the detail block it
- * discloses in place beneath it. Only bounded activity metadata renders here; commands, output,
- * per-call tokens and cost never do.
- */
 export function ActivityCallLine({ call, agent, open, busy, onToggle, showTime = false }: {
   call: HistoryActivity; agent: Agent | undefined; open: boolean; busy: boolean; onToggle: () => void;
-  /** Prints the recorded call time first, for lists whose lines have no request header to carry it. */
   showTime?: boolean;
 }) {
   const status = callStatus(call);
   const kindLabel = WORK_LABELS[call.workKind];
-  // A call recorded without a detail (an assistant reply, a tool that reports no argument) would
-  // leave the line blank, so it falls back to the tool name desktop rows already print.
   const target = call.detail ? targetBasename(call.detail) : call.tool || "—";
   const duration = activityDuration(call.durationMs);
   const detailId = `call-detail-${call.id}`;
@@ -51,7 +37,7 @@ export function ActivityCallLine({ call, agent, open, busy, onToggle, showTime =
       {showTime && <time className="activityCallTime" dateTime={call.timestamp}>{shortTime(call.timestamp)}</time>}
       <WorkKindIcon kind={call.workKind} />
       <span className="activityCallTarget">{target}</span>
-      {/* A failed call tints its duration text alone; the line keeps the neutral feed tone. */}
+      {/* A failed call tints its duration text alone. */}
       <span className={`activityCallDuration${call.status === "failed" ? " attention" : ""}${call.durationMs === null ? " unavailable" : ""}`}>{duration}</span>
       <svg className="activityCallChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>
     </button>

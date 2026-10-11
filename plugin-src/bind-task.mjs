@@ -1,14 +1,5 @@
 #!/usr/bin/env node
 
-/*
- * SessionStart (startup) hook that links a session started by the Pomegr task
- * dispatcher to its task, shared by the Claude Code and Codex plugins (`--provider
- * codex` selects Codex). Both hosts add a SessionStart hook's stdout to the model's
- * context, so this script is silent in every outcome:
- * it never writes to stdout or stderr, never logs, and always exits 0. The
- * dispatch token is read only from the environment and sent only in the body of
- * one loopback POST; the session ID comes from the hook input, never from the model.
- */
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -20,7 +11,6 @@ import {
 } from "../shared/agent-query-transport.mjs";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
-// Below the 5 s hook timeout: one attempt, then the hook ends whatever the monitor does.
 const DEADLINE_MS = 3_000;
 const TOKEN_ENVIRONMENT_NAME = "POMEGR_TASK_TOKEN";
 const TOKEN = /^[A-Za-z0-9_-]{16,128}$/u;
@@ -44,7 +34,7 @@ async function readPayload(stream) {
   }
 }
 
-/** The hook's own session ID, or null when this input is not a root startup. */
+// The hook's own session ID, or null when this input is not a root startup.
 function startupSessionId(payload) {
   if (!payload) return null;
   if (typeof payload.agent_id === "string" && payload.agent_id) return null;
@@ -52,10 +42,6 @@ function startupSessionId(payload) {
   return typeof payload.session_id === "string" && SESSION_ID.test(payload.session_id) ? payload.session_id : null;
 }
 
-/**
- * Resolves to "skipped" (nothing sent), "bound", "refused" (the monitor answered
- * not ok) or "unavailable" (no answer). The token never appears in the result.
- */
 export async function runBindTaskHook({
   provider = "claude",
   stream = process.stdin,
@@ -79,7 +65,6 @@ export async function runBindTaskHook({
   }
 }
 
-/** `--provider codex` selects Codex; no flag is Claude Code; anything else binds nothing. */
 function providerArgument(argv) {
   const index = argv.indexOf("--provider");
   return index === -1 ? "claude" : argv[index + 1] ?? "";

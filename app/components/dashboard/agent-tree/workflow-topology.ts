@@ -53,11 +53,6 @@ function phaseMember(agent: Agent, workflow: Workflow, phaseId: string) {
   return !agent.workflowPhaseId || agent.workflowPhaseId === phase.id;
 }
 
-/**
- * Build workflow and phase groups from canonical sibling sets. Every group is a
- * presentation node whose `parentId` names the recorded parent; `visualParentId`
- * is the only edge used to draw the projected view.
- */
 export function buildWorkflowVisualForest(
   forest: AgentTreeForest,
   workflows: Workflow[],
@@ -91,7 +86,6 @@ export function buildWorkflowVisualForest(
     const group: AgentTreeCluster = {
       id,
       agent: null,
-      // This is the recorded parent for the grouped sibling set, not a new edge.
       parentId: parent.id,
       canonicalParentId: null,
       visualParentId: parent.id,
@@ -149,7 +143,6 @@ export function buildWorkflowVisualForest(
         const members = parent.children.filter((item) => workflowMember(item.agent, workflow));
         members.forEach((item) => consumed.add(item.id));
         const workflowChildren = makePhaseChildren(parent, workflow!, members);
-        // Replace temporary visual parents now that the group ID is known.
         const group = makeGroup("workflow", workflow!.name, parent, workflowChildren, workflow!);
         for (const item of workflowChildren) item.visualParentId = group.id;
         children.push(group);
@@ -170,8 +163,6 @@ export function buildWorkflowVisualForest(
     return children;
   };
 
-  // The closures above are mutually recursive; their declarations are hoisted
-  // by the function body before roots are rendered.
   const roots = forest.roots.map((root) => renderAgent(root, null));
   const full: AgentTreeVisualForest = { roots, nodes, byId };
   if (mode === "session" || !focusId || !byId.has(focusId)) return full;
@@ -231,12 +222,8 @@ function focusWorkflowForest(full: AgentTreeVisualForest, focusId: string): Agen
   const selectedChildren = (source: WorkflowVisualNode, sourceId: string): WorkflowVisualNode[] => {
     const children = source.children;
     if (!children.length) return [];
-    // Off-path groups are retained whole and start collapsed in the view. This
-    // lets expanding a workflow/phase group reveal its original evidence order.
     if (!pathIds.has(source.id)) return children.map((child) => clone(child, sourceId));
     if (source.id === focusId) {
-      // The focused agent's direct children are the detail surface. Unwrap a
-      // presentation-only direct group so every recorded child remains visible.
       return children.flatMap((child) => child.isCluster && child.groupKind === "direct"
         ? child.children.map((grandchild) => clone(grandchild, sourceId))
         : [clone(child, sourceId)]);
@@ -254,8 +241,6 @@ function focusWorkflowForest(full: AgentTreeVisualForest, focusId: string): Agen
       return children.map((child) => child.id === pathChild.id || child.id === keep.id ? clone(child, sourceId) : child.id === remainder[0].id ? cluster : null).filter(Boolean) as WorkflowVisualNode[];
     }
 
-    // Workflow and phase groups on the focus path stay as explicit topology;
-    // their off-path groups are shown as collapsed group cards.
     if (source.isCluster && source.groupKind) return children.map((child) => clone(child, sourceId));
     const offPath = children.filter((child) => child.id !== pathChild.id);
     if (!offPath.length) return [clone(pathChild, sourceId)];

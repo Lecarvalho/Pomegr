@@ -2,28 +2,20 @@ import { useEffect, useState } from "react";
 import type { HistoryActivity } from "../../../../shared/session-history-contract";
 import { mergeCalls, parseUnassociatedPage } from "./feed-model";
 
-/** The flat activity pager serves at most this many calls per read. */
 const PAGE = 8;
 const NO_CALLS: HistoryActivity[] = [];
 
 export type UnassociatedActivity = {
-  /** Scoped tool calls with no recorded request, from the feed page already fetched; 0 hides the section. */
   total: number;
-  /** `idle`: nothing is read (closed, disabled, or no calls). `loading`: a read is in flight. `unavailable`: the last read failed. */
   status: "idle" | "loading" | "ready" | "unavailable";
-  /** Loaded calls of the current session, scope and served revision, chronological, each once. */
   calls: HistoryActivity[];
-  /** Calls not loaded yet: all of `total` before the first read, then the count older than the loaded ones. */
   remaining: number;
   open: boolean;
   setOpen: (open: boolean) => void;
-  /** Reads the page of calls just older than the loaded ones. */
   loadMore: () => void;
-  /** Repeats the read that failed. */
   retry: () => void;
 };
 
-/** A closed, empty section: for stubs and for a feed that is disabled. */
 export const IDLE_UNASSOCIATED: UnassociatedActivity = {
   total: 0, status: "idle", calls: NO_CALLS, remaining: 0, open: false, setOpen: () => {}, loadMore: () => {}, retry: () => {},
 };
@@ -33,14 +25,6 @@ type Rows = Marker & { calls: HistoryActivity[]; lowest: number };
 type Failure = Marker & { offset: string; attempt: number };
 type Older = Marker & { from: number };
 
-/**
- * The calls of one session scope that have no recorded request, read on demand through the flat
- * pager (`unassociated=1`, oldest first). The newest page (`offset=latest`) loads first and each
- * further read is the page just before the loaded ones, so every call arrives exactly once.
- * Rows belong to one session, scope and served feed revision (or one committed after it, when the
- * feed has not followed yet): another value drops them, and the
- * selected request never enters the query. `total` and `revision` come from the feed page.
- */
 export function useUnassociatedActivity({ enabled, sessionId, scope, revision, total }: {
   enabled: boolean; sessionId: string; scope: string; revision: string; total: number;
 }): UnassociatedActivity {
@@ -56,7 +40,6 @@ export function useUnassociatedActivity({ enabled, sessionId, scope, revision, t
   const valid = rows && rows.scopeKey === scopeKey && rows.revision === revision ? rows : null;
   const lowest = valid?.lowest ?? null;
   const asked = valid !== null && valid.lowest > 0 && older?.scopeKey === scopeKey && older.revision === revision && older.from === valid.lowest;
-  // The read still owed: the newest page first, then the page before the loaded ones, else none.
   const offset = valid === null ? "latest" : asked ? String(Math.max(0, valid.lowest - PAGE)) : null;
   const failed = wanted && offset !== null && failure?.scopeKey === scopeKey && failure.revision === revision
     && failure.offset === offset && failure.attempt === attempt;
@@ -71,9 +54,6 @@ export function useUnassociatedActivity({ enabled, sessionId, scope, revision, t
       .then((page) => {
         if (controller.signal.aborted) return;
         if (!page || page.status !== "ready") return fail();
-        // A reply committed after the feed's page is shown: a recorded session's feed never follows
-        // later revisions, so waiting for one would load forever. When a live feed does move on,
-        // `revision` changes and the read starts again. An older reply cannot belong to this feed.
         if (page.revision !== revision && !(Number(page.revision) > Number(revision))) return fail();
         // An older page must start before the loaded ones, or reading again would never finish.
         if (lowest !== null && page.offset >= lowest) return fail();

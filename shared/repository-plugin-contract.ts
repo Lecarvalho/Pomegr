@@ -1,4 +1,4 @@
-/** Current local setup only. Never substitutes for session-observed plugin metadata. */
+// Current local setup only.
 export type RepositoryPluginSetup = {
   readiness: "loading" | "ready" | "unavailable";
   installation: "installed" | "not_installed" | "unknown";

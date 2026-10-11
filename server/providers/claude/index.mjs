@@ -72,7 +72,6 @@ import { createSourceLedger } from "../kernel/source-ledger.mjs";
 import { createClaudeSessionResolver, ingestClaudeDiscovery, parseClaudeSessionLedgerHeader } from "./session-ledger.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
-// A zero-byte transcript this recent may still be receiving its first record.
 const EMPTY_TRANSCRIPT_SETTLE_MS = 60_000;
 
 export function createClaudeProvider(options = {}) {
@@ -85,9 +84,6 @@ export function createClaudeProvider(options = {}) {
   const fileChangeForbiddenRoots = [configRoot, projectsRoot].filter(Boolean);
   const explicitSession = options.explicitSession ?? environment.CLAUDE_SESSION_FILE;
   const now = options.now || (() => Date.now());
-  // Injected once by observation-runtime.mjs (setRepositoryResolver), the same shared
-  // resolver Codex uses, so a Claude and a Codex session in the same repository share
-  // one repositoryId (see server/normalize/session-identity.mjs, server/providers/claude/session-identity.mjs).
   let repositoryResolver = null;
   const sessionSummaryCache = new Map();
   const titleEnrichment = createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState: options.scanTitleState });
@@ -95,9 +91,7 @@ export function createClaudeProvider(options = {}) {
   const contextCompactionsCache = new Map();
   // Parsed-tail cache for the 2 MiB readSession window only; the 256 KiB catalog-summary
   // tail below is already guarded by sessionSummaryCache and reads cold via readJsonlTailCold.
-  // Injectable so tests can pre-populate and freeze cached records before exercising readSession.
   const tailCache = options.tailCache || createClaudeTailCache({ maxBytes: MAX_BYTES_PER_FILE });
-  // One cached path validator per provider instance, shared by every boundedFileChanges call.
   const validateFileChangePath = createRepositoryPathValidator({ now });
   const liveUsageSnapshots = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: MAX_BYTES_PER_FILE });
   const toolCallEvidence = createClaudeToolCallEvidenceReader();
@@ -148,8 +142,6 @@ export function createClaudeProvider(options = {}) {
     return fast ? titleEnrichment.fast(file, stat, records) : titleEnrichment.exact(file, stat, records);
   }
 
-  // Catalog passes walk asynchronously and reuse unchanged directory listings; the rare
-  // synchronous resolver fallback shares the same listings.
   const sessionFileLister = createSessionFileLister();
   const discoveredSessions = () => discoveredFromFiles(sessionFileLister.list(projectsRoot));
   const discoveredSessionsAsync = async () => discoveredFromFiles(await sessionFileLister.listAsync(projectsRoot));
@@ -179,8 +171,6 @@ export function createClaudeProvider(options = {}) {
     const transcriptStatusIds = files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl"));
     nativeStatus.apply(registry, transcriptStatusIds);
     // Local provider evidence is sufficient for initial catalog publication.
-    // Remote Control lifecycle is optional enrichment; its reader wakes the
-    // observer after a changed normalized lifecycle arrives later.
     if (transcriptStatusIds.length) void nativeStatus.refresh(registry, transcriptStatusIds).catch(() => {});
     const visibleFiles = new Set(files.slice(0, 50).map(({ file }) => file));
     titleEnrichment.prune(visibleFiles);
@@ -223,8 +213,6 @@ export function createClaudeProvider(options = {}) {
     }
     let catalog = catalogPresence.merge(sessions, files, registry, { explicitSession });
     const deferredStatusIds = catalog.filter((entry) => entry.detailReadiness === "unavailable").map((entry) => entry.localId);
-    // A visible native identity publishes first; cached lifecycle can refine it
-    // now, while a new optional Remote Control read finishes in the background.
     nativeStatus.apply(registry, deferredStatusIds);
     catalog = catalogPresence.merge(sessions, files, registry, { explicitSession });
     if (deferredStatusIds.length) void nativeStatus.refresh(registry, deferredStatusIds).catch(() => {});
@@ -250,7 +238,6 @@ export function createClaudeProvider(options = {}) {
   });
 
   async function readSession(localSessionId = "", readOptions = {}) {
-    // One existence check per cached file per read, shared by every per-file cache.
     const existence = new Map();
     const exists = (file) => { if (!existence.has(file)) existence.set(file, Boolean(statSafe(file))); return existence.get(file); };
     for (const cache of [liveUsageSnapshots, tailCache, toolCallEvidence, executionTaskReader]) cache.pruneMissingFiles(exists);
@@ -356,10 +343,6 @@ export function createClaudeProvider(options = {}) {
       if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));
       contextCompactionsCache.set(file, observedCompactions);
-      // The 2 MiB tail slides, so a transcript that outgrew it would lose its earliest calls. Past
-      // that size the call, work-kind and skill counts come from the whole-transcript pass; the main
-      // transcript's pass already ran. The pass also decides the tool-change attributions, for the main
-      // transcript at any size so one source decides, and it is never behind the tail it follows.
       const facts = completeHistory ? null
         : file === mainFile ? mainFacts
           : stat.size > MAX_BYTES_PER_FILE ? await sessionWorkStartReader.readTranscriptFacts(file, { expectedSessionId: sessionId }) : null;
@@ -516,8 +499,6 @@ export function createClaudeProvider(options = {}) {
     };
   }
 
-  // One copy action needs one file location, so resolve it with readSession's discovery rules
-  // (primary excluded, workflow agents over ordinary files) instead of parsing every transcript.
   async function readTranscriptPath(localSessionId = "", agentId = "") {
     if (agentId === "primary") return null;
     const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
@@ -531,11 +512,6 @@ export function createClaudeProvider(options = {}) {
   }
   async function readSessionHistory(localSessionId = "") { const key = historyKey(localSessionId); const cached = key && historyCache.get(localSessionId); if (cached?.key === key) return cached.value; const value = normalizedSessionHistory("claude", localSessionId, await readSession(localSessionId, { completeHistory: true })); if (!key || historyKey(localSessionId) !== key) return { requests: [], activity: [], complete: false }; if (value.complete) historyCache.set(localSessionId, { key, value }); while (historyCache.size > 64) historyCache.delete(historyCache.keys().next().value); return value; }
 
-  /**
-   * Enumerate transcript identities only.  The inventory does not need titles
-   * inferred from a JSONL tail, and this must never contend with selected
-   * session hydration or retain an unbounded catalog in the provider.
-   */
   /** @param {{ onBatch?: (batch: unknown[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
   async function enumerateSessionHeaders(options = {}) {
     const { onBatch, signal } = options;
@@ -572,9 +548,6 @@ export function createClaudeProvider(options = {}) {
             stat = fs.statSync(file);
             if (!stat.isFile()) { partial = true; continue; }
             if (stat.size <= 0) {
-              // A settled empty file records no session, so it is an explicit
-              // non-candidate. Left incomplete, one stale file would stop every
-              // later scan from pruning rows whose source is gone.
               if (!(now() - stat.mtimeMs > EMPTY_TRANSCRIPT_SETTLE_MS)) partial = true;
               continue;
             }
@@ -595,8 +568,6 @@ export function createClaudeProvider(options = {}) {
             } catch { /* A complete malformed candidate is explicitly invalid below. */ }
           }
           // A complete, readable non-session JSONL is an explicit non-candidate.
-          // A larger source whose first bounded window cannot validate identity
-          // may be incomplete, so exact inventory coverage must degrade.
           if (!recognized) {
             if (stat.size > 64 * 1024) partial = true;
             continue;
@@ -616,8 +587,6 @@ export function createClaudeProvider(options = {}) {
     }
     const projectsComplete = await walk(projectsRoot, false, 0);
     if (!projectsComplete && !signal?.aborted) await emit();
-    // A configured one-off transcript can sit outside the projects root.
-    // Validate its bounded leading records under the same identity rule.
     const explicitRelative = explicitSession ? path.relative(projectsRoot, explicitSession) : "";
     const explicitOutsideProjects = explicitSession && fs.existsSync(explicitSession)
       && explicitRelative && !explicitRelative.startsWith("..") && !path.isAbsolute(explicitRelative) ? null : explicitSession;
@@ -644,9 +613,6 @@ export function createClaudeProvider(options = {}) {
         isLive: false, needsInput: false, activityStatus: sessionActivityStatus(false, null),
       });
     }
-    // Native registrations may legitimately precede transcript creation. They
-    // are complete provider identities with unavailable detail, so preserve
-    // their existing catalog semantics in the inventory stream as well.
     let registry, registryComplete = true;
     try { ({ registry, complete: registryComplete } = registryObservation.read()); }
     catch { registry = new Map(); registryComplete = false; }
@@ -676,7 +642,6 @@ export function createClaudeProvider(options = {}) {
       void nativeStatus.refresh(registry, [localSessionId]).catch(() => {});
     }
     const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : registry.get(localSessionId));
-    // Rebuild pre-fix checkpoints even when the native transcript is unchanged.
     const entry = historical ? null : registry.get(localSessionId);
     return source ? {
       ...source,

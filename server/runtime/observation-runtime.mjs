@@ -33,11 +33,7 @@ import { createPersistenceMaintenance } from "../persistence/persistence-mainten
 import { qualifiedSessionId } from "../normalize/primitives.mjs";
 import { committedUsageNotificationFacts } from "../normalize/usage-notification-facts.mjs";
 
-/**
- * Owns the monitor-side observation lifecycle, response caches, and
- * provider-neutral projection hooks. The HTTP server only consumes the
- * immutable serving methods returned by this factory.
- */
+// Owns the monitor-side observation lifecycle, response caches, and provider-neutral projection hooks.
 export function createObservationRuntime(options = {}) {
   const {
     registry,
@@ -81,8 +77,6 @@ export function createObservationRuntime(options = {}) {
   const usageByProvider = new Map();
   const homeResponseCache = createCommittedResponseCache({ includeRevision: true, now });
   // Registry-only sessions have catalog identity but no L1 transcript evidence.
-  // Keep their presentation response separate from the observation store and
-  // checkpoints: it is rebuilt solely from a committed catalog revision.
   const unavailableSessionResponses = new Map();
   let usageRefreshInFlight = null;
   let homeResponseRefreshScheduled = false;
@@ -113,15 +107,10 @@ export function createObservationRuntime(options = {}) {
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
-  // Bounded historical snapshots persist as sidecars next to checkpoints; disabled together,
-  // and also when an injected checkpoint store (a minimal test double) predates the sidecar.
   const repositorySnapshotRecorder = typeof checkpointStore?.writeRepositorySnapshot === "function" ? createRepositorySnapshotRecorder({ store: checkpointStore, now, adoptsUnboundSidecar }) : null;
-  // Recorded refill and compaction times, sidecars like the repository snapshots.
   const sessionEventRecording = createSessionEventRecording({ store: checkpointStore, isActive: () => observationServingActive, commit: (sessionId) => sessionDomainServing.commit(sessionId) });
   const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
   const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
-  // Registered after resource-history so its cycle contributor reads fresh writes; onChange
-  // commits directly (refreshProjection no-ops on byte-identical re-derivation).
   const resourceDomainSource = createResourceDomainSource({
     monitorStoreRuntime, demandedSessionIds: () => sessionDomains.sessionIds(), now, onChange: (sessionId) => sessionDomainServing.commit(sessionId),
   });
@@ -134,7 +123,6 @@ export function createObservationRuntime(options = {}) {
   for (const provider of registry.providers || []) {
     provider.setRepositoryResolver?.(repositoryInventory.resolveRepository);
   }
-  // Registers the file-change index contributor plus this committed cache; forward-references sessionDomains/observationCoordinator below, same pattern as resourceDomainSource above.
   const fileHistorySource = attachFileHistory(monitorStoreRuntime, {
     resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now, demandedSessionIds: () => sessionDomains.sessionIds(),
     catalog: () => observationCoordinator.catalog()?.snapshot?.value?.sessions || [], onSessionChange: (sessionId) => sessionDomainServing.commit(sessionId),
@@ -145,10 +133,7 @@ export function createObservationRuntime(options = {}) {
     maxSessions: options.historyMaxSessions, maxResident: options.historyMaxResident ?? 0,
   });
   let sessionDomainServing; // assigned once observationCoordinator exists below; the store only calls it later
-  // The session's own recorded sidecar, live or historical, gated by its repository identity.
   function recordedRepositorySnapshotForSession(sessionId) {
-    // The recorder holds fewer sidecars than the disk. One it has dropped is read back off
-    // the request path, and the session's domains recommit when it holds a snapshot.
     if (repositorySnapshotRecorder && !repositorySnapshotRecorder.has(sessionId)) {
       void repositorySnapshotRecorder.ensure(sessionId).then((found) => {
         if (found && observationServingActive) sessionDomainServing.commit(sessionId);
@@ -166,8 +151,7 @@ export function createObservationRuntime(options = {}) {
     repositoryRootForSession: options.repositoryRootForSession,
     repositoryUnavailableReasonForSession: options.repositoryUnavailableReasonForSession,
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
-    // One recorded-snapshot read per projection. The commit times are monitor-private and feed
-    // only the session-event derivation.
+    // One recorded-snapshot read per projection.
     repositoryRecordForSession: (sessionId) => sessionRepositoryRecord(recordedRepositorySnapshotForSession(sessionId)),
     ...sessionEventRecording,
     onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
@@ -263,10 +247,7 @@ export function createObservationRuntime(options = {}) {
       } catch {
         usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
       }
-      // A provider task is recorded only after its read completes. A completed
-      // empty value cannot remain loading: disabled/malformed reads settle to
-      // unavailable. An actually pending read has no provider entry
-      // yet and remains represented by the initial loading response.
+      // A provider task is recorded only after its read completes.
       const readiness = usageLimits.available || usageLimits.fetchedAt
         ? "ready"
         : "unavailable";
@@ -335,8 +316,6 @@ export function createObservationRuntime(options = {}) {
     });
   }
 
-  // Private per-projection live repository check state (none, pending or
-  // confirmed), keyed by the projected state object; never serialized.
   const liveRepositoryChecks = new WeakMap();
 
   async function projectSelection(selection, { useObservedUsage = false, trace = null, scope = null } = {}) {
@@ -362,10 +341,6 @@ export function createObservationRuntime(options = {}) {
       || registry.repositoryAttributionForSession?.(sessionId)
       || null;
     if (historical) {
-      // A live historical source can arrive while the private sidecar cache is
-      // still loading, or for a session whose sidecar that load did not cover.
-      // Wait only for that projection dependency so its saved repository state
-      // wins over the no-snapshot Git fallback.
       await repositoryStartup.checkpointRestoreReady(sessionId);
       // A recorded snapshot serves instantly; only the no-snapshot fallback calls Git/GitHub.
       ({ repository, pullRequests } = await resolveHistoricalRepositoryAndPullRequests({
@@ -374,8 +349,7 @@ export function createObservationRuntime(options = {}) {
         recordedGitState, pullRequestReader, unavailablePullRequests,
       }));
     } else {
-      // Root binding is private runtime state. It deliberately stays out of
-      // normalized evidence/checkpoints, where a filesystem root is forbidden.
+      // Root binding is private runtime state.
       const live = liveEnrichment(sessionId, evidence, repositoryAttribution);
       ({ repository, pullRequests } = live.value);
       enqueueLiveEnrichment = live.enqueue;
@@ -462,9 +436,7 @@ export function createObservationRuntime(options = {}) {
         options.pipelineTrace?.end?.(projectionSpan, { outcome: "failed" });
         throw error;
       }
-      // Repository inventory is optional local enrichment. Refresh its binding
-      // association after projection and rederive when it settles; it must
-      // never hold back the already-normalized session publication.
+      // Repository inventory is optional local enrichment.
       const sessionId = qualifiedSessionId(candidate.providerId, candidate.localSessionId);
       const association = repositoryAssociations.get(candidate);
       const publicState = basePublicState.session && association ? {
@@ -512,8 +484,7 @@ export function createObservationRuntime(options = {}) {
     cancel: cancelObservation,
     intervalMs: options.agentsDerivationIntervalMs,
   });
-  // Agent queries are a separate D-only projection. Every source below is a
-  // committed snapshot; refresh never calls a provider, parser, or hydrator.
+  // Agent queries are a separate D-only projection.
   const agentQueryProjection = createAgentQueryProjectionCache({
     now: options.agentQueryNow || Date.now,
     sources: {
@@ -558,7 +529,6 @@ export function createObservationRuntime(options = {}) {
     };
   }
 
-  // Session-domain commit/serve bookkeeping (indexing, hydration, probing, rebuilds) lives here now.
   sessionDomainServing = createSessionDomainServing({
     registry, sessionDomains, observationStore, coordinator: observationCoordinator,
     scheduleObservation, isServingActive: () => observationServingActive,
@@ -588,8 +558,7 @@ export function createObservationRuntime(options = {}) {
     observationServingActive = true;
     historyStore.start?.();
     sessionHistory.start();
-    // This D-only cache begins from the committed store and catalog. It never
-    // invokes observers, hydration, parsing, or any provider read.
+    // This D-only cache begins from the committed store and catalog.
     agentsObservation.start();
     providerStatus.start();
     void monitorStoreRuntime.start();
@@ -612,9 +581,7 @@ export function createObservationRuntime(options = {}) {
         const committed = observationStore.getByQualifiedId(event.qualifiedId);
         if (committed) { sessionDomainServing.forget(event.qualifiedId); sessionDomainServing.commit(event.qualifiedId, committed); }
         options.onSessionCommitted?.(event.qualifiedId);
-        // Complete history is intentionally demand-only. New evidence updates
-        // the committed cache, but neither observation nor state polling may
-        // replay an arbitrary historical transcript.
+        // Complete history is intentionally demand-only.
         if (event.freshObservation) {
           sessionHistory.observe(event.qualifiedId, event.revision);
         }
@@ -622,8 +589,7 @@ export function createObservationRuntime(options = {}) {
       if (event.type === "invalidation") sessionDomainServing.commit(event.qualifiedId);
       if (event.type === "catalog") {
         cacheUnavailableSessionResponses();
-        // Catalog rows only change lifecycle inputs of already retained projections. Unretained rows
-        // project on demand. The store projects a retained session only when one of its inputs changed.
+        // Catalog rows only change lifecycle inputs of already retained projections.
         for (const retainedId of sessionDomains.sessionIds()) sessionDomainServing.commit(retainedId);
       }
       if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
@@ -684,8 +650,7 @@ export function createObservationRuntime(options = {}) {
     await observationCoordinator.stop();
     await historyStore.stop?.();
     await checkpointStore?.closeMaintenance?.();
-    // The last checkpoint may still notify SQLite contributors. Close their
-    // store only after all accepted P work has drained.
+    // The last checkpoint may still notify SQLite contributors.
     await monitorStoreRuntime.stop();
     await Promise.allSettled([usageRefreshInFlight, resourceRefreshInFlight].filter(Boolean));
     observationStartPromise = null;
@@ -708,9 +673,6 @@ export function createObservationRuntime(options = {}) {
     if (Number.isSafeInteger(repositoryRevision) && repositoryRevision >= 0) {
       subscriber(Object.freeze({ domain: "repositories", revision: repositoryRevision }));
     }
-    // History publishes its current revision synchronously on subscription.
-    // Send the existing catalog envelope first so a newly opened SSE stream
-    // starts with the same catalog/repository baseline every client expects.
     const unsubscribeHistory = historyStore.subscribeRevisionEvents(subscriber);
     return () => { unsubscribe(); unsubscribeRepositories(); unsubscribeSessionDomains(); unsubscribeHistory(); };
   }
@@ -741,14 +703,11 @@ export function createObservationRuntime(options = {}) {
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
     async refreshUsageAfterClaudeSignIn() {
       // Native completion is a deliberate U1 trigger, never a browser GET.
-      // Wait out an older job so it cannot swallow the recovery request.
       if (usageRefreshInFlight) await usageRefreshInFlight;
       if (!observationServingActive) return;
       await refreshUsageResponses(true);
     },
     async serveSessionHistory(sessionId, query) {
-      // The Activity/Requests surface is the sole demand signal for a full
-      // replay. The scheduler coalesces duplicate requests by session id.
       const selection = observationCoordinator.session(sessionId);
       sessionHistory.refresh(sessionId, 0, false);
       const servedAt = performance.now();

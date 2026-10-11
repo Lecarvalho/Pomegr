@@ -1,11 +1,9 @@
 import type { AgentRole } from "../shared/monitor-contract";
 
-/** Fixed presentation families for agent tracks and their legends. */
 export type RoleFamily = "neutral" | "reading" | "planning" | "writing" | "reviewing" | "generic" | "system";
 
 export type RoleFamilyPresentation = {
   family: RoleFamily;
-  /** CSS custom property name; neutral deliberately has no role token. */
   token: `--role-${Exclude<RoleFamily, "neutral">}` | null;
   className: `roleFamily-${RoleFamily}`;
 };

@@ -17,11 +17,6 @@ export type SessionDomainSnapshot<D extends SessionDomain> = {
   fetching: boolean;
   connected: boolean;
   error: string | null;
-  /**
-   * True after the monitor definitively answered that this exact query has no recorded evidence
-   * (HTTP 404 once hydration proved the session absent). Unlike `error`, it is not retried on a
-   * timer: a matching revision event, a reconnect, focus, or an explicit `revalidate` re-checks it.
-   */
   unavailable: boolean;
 };
 
@@ -36,11 +31,8 @@ type Entry = {
   timer: number | null;
   refreshAfterFlight: boolean;
   invalidatedRevision: number | null;
-  /** True from render-time creation until this entry's own `subscribe` effect runs; see `getEntry`. */
   pendingSubscription: boolean;
-  /** True once a subscribe-time prune pass (`touchSession`) has seen this entry still pending; see `pruneUnretainedEntries`. */
   survivedPrune: boolean;
-  /** The live-event epoch active when `snapshot.data` was last accepted, or `null` before any data has been accepted. */
   dataEpoch: number | null;
 };
 
@@ -51,20 +43,12 @@ let releaseEvents: (() => void) | null = null;
 let connectionState: LiveConnectionEvent["state"] = "reconnecting";
 let focusListening = false;
 let establishingEvents = false;
-// The live-event stream's connection epoch (see `app/live-events.ts`). It advances whenever the
-// stream (re)connects, including after a monitor restart, so it proves a new monitor process
-// independently of the domain revision the restarted monitor happens to report first.
 let currentEpoch = 0;
 
 function queryKey(query: SessionDomainQuery) {
   return `${query.sessionId}|${query.domain}|${query.domain === "agent" ? query.agentId || "" : ""}`;
 }
 
-/**
- * A retained revision identifies its body only within the live-event epoch that accepted it: a
- * restarted monitor's revision clocks restart, so an equal number from a later epoch can name
- * different evidence.
- */
 function retainedRevision(entry: Entry) {
   return entry.snapshot.data && entry.dataEpoch === currentEpoch ? entry.snapshot.data.revision : null;
 }
@@ -109,11 +93,6 @@ async function refreshEntry(entry: Entry) {
   entry.controller = controller;
   if (!entry.snapshot.data) update(entry, { fetching: true });
   let succeeded = false;
-  // Set when a response is deliberately not committed because it would regress last-known-good
-  // evidence (see `regressesRetainedData` below) -- most notably a monitor-restart rebuild still
-  // in flight. `entry.snapshot.data` keeps showing the old, already-resolved body in that case,
-  // so the steady-state cadence below would otherwise mistake it for "nothing left to refresh"
-  // and fall back to the slow 30s poll instead of finishing the recovery quickly.
   let rebuildPending = false;
   let definitivelyUnavailable = false;
   try {
@@ -127,10 +106,6 @@ async function refreshEntry(entry: Entry) {
       return;
     }
     if (response.status === 404) {
-      // A definitive answer, not a transient failure: the monitor answers 404 only once its own
-      // hydration proved the session absent, and the proxy passes that through for this route
-      // only. A retained "loading" placeholder is not evidence and is dropped; resolved
-      // last-known-good data is kept. No retry timer is scheduled (see `finally`).
       entry.invalidatedRevision = null;
       const retained = entry.snapshot.data;
       update(entry, {
@@ -151,14 +126,6 @@ async function refreshEntry(entry: Entry) {
       || !Number.isSafeInteger(value.revision) || value.revision < 0) throw new Error("Invalid session evidence");
     if (entry.query.domain === "agent" && (value.domain !== "agent" || value.agentId !== entry.query.agentId)) throw new Error("Invalid agent evidence");
     const retained = entry.snapshot.data;
-    // A retained resolved (non-"loading") body is last-known-good evidence: AGENTS.md requires
-    // preserving it until a *complete* replacement validates. A "loading" response never
-    // replaces it (a rebuild in progress, for example after a monitor restart, is never a
-    // complete replacement), and within the same live-event epoch a lower-revision response is
-    // an incomplete or stale rebuild (for example a monitor eviction cycle) rather than a real
-    // update. Once the epoch has advanced -- proving a new monitor process, whose revision
-    // clocks restart at 0 -- a resolved body is accepted even if its revision regresses, so an
-    // open page does not freeze on stale data forever. See AGENTS.md and `app/live-events.ts`.
     const withinSameEpoch = entry.dataEpoch !== null && entry.dataEpoch === currentEpoch;
     const regressesRetainedData = retained && retained.readiness !== "loading"
       && (value.readiness === "loading" || (withinSameEpoch && value.revision < retained.revision));
@@ -192,12 +159,9 @@ async function refreshEntry(entry: Entry) {
       void refreshEntry(entry);
       return;
     }
-    // A definitive "unavailable" answer is re-checked only by a matching revision event, a
-    // reconnect, focus, or an explicit revalidate -- never by a polling loop against an absent session.
     if (definitivelyUnavailable) return;
     if (!hasLiveSubscriber(entry)) {
-      // Resolved historical entries have no periodic timer. A failed request, a rebuild still in
-      // flight, or an unresolved body must retry, because no later revision event is guaranteed.
+      // Resolved historical entries have no periodic timer.
       if (succeeded && !rebuildPending && entry.snapshot.data && entry.snapshot.data.readiness !== "loading") return;
       schedule(entry, typeof document !== "undefined" && document.hidden ? 30_000 : 5_000, { retry: true });
       return;
@@ -213,15 +177,6 @@ function pruneUnretainedEntries({ subscribing }: { subscribing: boolean }) {
   const retained = new Set(recentSessions);
   for (const [key, entry] of entries) {
     if (retained.has(entry.query.sessionId) || entry.listeners.size) continue;
-    // A just-created entry that has not yet reached its own subscribe effect has no listener and
-    // its session may not be registered in `recentSessions` yet, but it must survive every
-    // unmount cleanup of the commit that mounts it (see `getEntry`). A keyed navigation can
-    // unmount several consumers at once (for example leaving an Agents tab), and React runs all
-    // of those cleanups before any subscribe effect of the new tree, so a cleanup pass never ages
-    // a pending entry. Only a subscribe-time pass (`touchSession`) ages it: subscribe effects run
-    // after every cleanup of their commit, so an entry still pending once a pass has aged it was
-    // abandoned before it ever subscribed (for example a discarded render), and the next pass of
-    // either kind prunes it instead of letting it linger forever.
     if (entry.pendingSubscription && !entry.survivedPrune) {
       if (subscribing) entry.survivedPrune = true;
       continue;
@@ -241,9 +196,7 @@ function touchSession(sessionId: string) {
 }
 
 function onLiveEvent(event: LiveEvent) {
-  // Every live event (connection or revision) carries the stream's current epoch. Track it
-  // unconditionally so a restart or reconnect is recognized even before it changes the
-  // connection *state* (for example a fast reconnect that never visibly drops "connected").
+  // Every live event (connection or revision) carries the stream's current epoch.
   if (Number.isSafeInteger(event.epoch) && event.epoch >= 0) currentEpoch = event.epoch;
   if (event.type === "connection") {
     const recovered = connectionState !== "connected" && event.state === "connected";
@@ -313,15 +266,7 @@ function getEntry(query: SessionDomainQuery): Entry {
     timer: null,
     refreshAfterFlight: false,
     invalidatedRevision: null,
-    // Protects this entry from a concurrent unmount's pruning until its own subscribe effect
-    // runs; see the comment on `pendingSubscription` and in `pruneUnretainedEntries`. This is a
-    // local flag on the fresh object only — creating it here does not mutate `recentSessions` or
-    // scan/evict other entries, so getEntry stays free of module-wide side effects during render.
-    // On a keyed session navigation React tears down the previous consumer's effect (which calls
-    // pruneUnretainedEntries) before this new consumer's own subscribe effect runs, so without
-    // this flag the freshly created, still-unsubscribed entry above could be pruned out of
-    // `entries` between render and mount, leaving the mounted consumer holding a detached Entry
-    // that never receives live-event invalidation or reconnect refreshes.
+    // Protects this entry from a concurrent unmount's pruning until its own subscribe effect runs.
     pendingSubscription: true,
     survivedPrune: false,
     dataEpoch: null,
@@ -330,13 +275,7 @@ function getEntry(query: SessionDomainQuery): Entry {
   return entry;
 }
 
-// Runs from a consumer's own subscribe effect. Entry mutation lives in module functions rather than
-// inline in the hook, so the memoized render-time value stays immutable under React's hook rules.
-// It clears the render-time protection whether or not a listener attaches (enabled:false never
-// attaches one), so a disabled entry still becomes eligible for normal LRU pruning. When a listener
-// does attach to an entry that is no longer registered (for example one removed while a concurrent
-// render yielded), the entry is registered again, so a mounted consumer never holds a detached
-// entry that live events, reconnect recovery, and focus revalidation cannot reach.
+// Runs from a consumer's own subscribe effect.
 function attachSubscriber(entry: Entry, listener: Listener | null, subscription: Subscription) {
   entry.pendingSubscription = false;
   if (!listener) return false;

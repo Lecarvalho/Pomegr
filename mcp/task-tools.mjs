@@ -9,8 +9,6 @@ export const TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
 export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
-// The request was sent and no answer came back in time: the write may have happened, so each text says the outcome is
-// unknown and what to do instead of a blind retry. Fixed texts, never an error detail.
 export const TASK_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.";
 export const TASK_REPORT_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the report was recorded. It may have been: do not assume it failed. Calling the same tool once more is safe, because a task takes one report; if the answer is that this session already reported, the first report stands.";
 export const TASK_REMOVE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was removed. It may have been: do not assume it failed. Calling remove_task once more with the same task ID is safe; if the answer is that no task was removed, the first call removed it or it could not be removed.";
@@ -31,7 +29,6 @@ const modelSchema = z.string().max(120)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._+-]*(?:\[[A-Za-z0-9._-]{1,16}\])?$/u, "Use a model identifier without paths, spaces, or markup.")
   .describe("Optional model identifier for the session that will run the task.");
 
-/** Set by the Pomegr hook through `updatedInput`; the server refuses a reference that lacks the hook's proof. */
 function hookFields(hookBound) {
   return hookBound ? {
     session_ref: z.string().max(200).describe("Set by the Pomegr hook. Never supply this field.").optional(),
@@ -94,11 +91,6 @@ const REMOVE_REASON_TEXT = {
 const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u;
 const SAFE_THREAD_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
-/**
- * Codex names the calling thread in the `_meta` of every MCP tool call (`threadId`, and `thread_id` in its turn
- * metadata); the model cannot set either. Its launch environment does not reach a stdio MCP server. Returns
- * `codex:<thread>` or null when the metadata is missing, malformed, or disagrees with itself.
- */
 export function resolveCodexCallSession(meta) {
   if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return null;
   const thread = meta.threadId;
@@ -108,7 +100,6 @@ export function resolveCodexCallSession(meta) {
   if (turnThread !== undefined && turnThread !== thread) return null;
   return `codex:${thread}`;
 }
-
 
 function result(text, isError) {
   return { ...(isError ? { isError: true } : {}), content: [{ type: "text", text }] };

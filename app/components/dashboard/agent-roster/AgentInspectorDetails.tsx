@@ -37,11 +37,6 @@ function reviewDurationLabel(durationMs: number | null) {
   return `${Math.round(durationMs / 1_000)}s`;
 }
 
-/**
- * Retained, bounded agent evidence for the roster inspector. The wrapper owns
- * selection, lineage, facts, signals, and actions; these sections stay usable
- * by both the desktop inspector and the phone sheet.
- */
 export function AgentInspectorDetails({
   agent,
   planTasks = [],
@@ -53,7 +48,6 @@ export function AgentInspectorDetails({
   planTasks?: PlanTask[];
   historical?: boolean;
   presentation?: "inline" | "sheet";
-  /** Lets the inspector place skills in Facts while retaining shared detail markup. */
   section?: "all" | "skills" | "activity";
 }) {
   const [skillsExpanded, setSkillsExpanded] = useState(false);
@@ -66,7 +60,6 @@ export function AgentInspectorDetails({
   const visibleReviewDecisions = [...reviewDecisions.items].reverse();
   const currentActivity = historical ? null : agent.currentActivity;
   const currentActivityIsCurrent = currentActivity ? activityIsCurrent(agent) : false;
-  // The running task a current activity was reported for is already shown in that section.
   const shownActivityLabel = currentActivityIsCurrent ? currentActivity?.label : null;
   const tasks = useMemo(() => (agent.executionTasks || [])
     .filter((task) => !(shownActivityLabel && task.status === "running" && task.label === shownActivityLabel))

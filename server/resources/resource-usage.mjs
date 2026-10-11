@@ -248,10 +248,7 @@ function sameOwnerTargets(targets) {
   return new Set([...groups.values()].filter((ids) => ids.length > 1).flat());
 }
 
-/**
- * Creates a request-driven, process-wide sampler. Its returned state contains
- * measurements only; process identifiers and collector configuration remain private.
- */
+// Creates a request-driven, process-wide sampler.
 export function createResourceUsageSampler(options = {}) {
   const now = options.now || (() => Date.now());
   const platform = options.platform || process.platform;
@@ -428,12 +425,6 @@ export function createResourceUsageSampler(options = {}) {
       return activeSessionIds.has(sessionId) ? publicState(states.get(sessionId)) : null;
     },
 
-    /**
-     * Bounded, non-destructive read of retained samples for a currently tracked (active)
-     * session, strictly newer than `sinceMs`. Returns `[]` for an inactive/unknown session.
-     * Gap samples (all measurement fields null) are included; callers skip null fields
-     * during aggregation rather than treating a gap as a session with no samples.
-     */
     samplesSince(sessionId, sinceMs) {
       if (!activeSessionIds.has(sessionId)) return [];
       const state = states.get(sessionId);

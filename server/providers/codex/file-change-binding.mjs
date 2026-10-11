@@ -5,8 +5,6 @@ import { repositoryRelativePath } from "../../normalize/repository-path.mjs";
 function absoluteMutationTarget(target, cwd) {
   if (typeof target !== "string" || !target || /[\u0000-\u001f\u007f]/u.test(target)
     || typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
-  // `path.resolve` deliberately permits a tool cwd to point into a sibling
-  // checkout. The binding below proves the resulting target has its own Git root.
   if (/^[A-Za-z]:(?![\\/])/u.test(target) || /^[\\/]{2}/u.test(target)) return null;
   if (target.replace(/\\/gu, "/").split("/").includes("..")) return null;
   return path.resolve(path.isAbsolute(target) ? target : path.resolve(cwd, target));
@@ -26,8 +24,6 @@ async function bindMutationTarget(target, cwd, resolver, forbiddenRoots) {
   const absolute = absoluteMutationTarget(target, cwd);
   const directory = absolute && nearestExistingDirectory(absolute);
   if (!absolute || !directory) return null;
-  // Git can return a long root while the tool target uses an 8.3 alias.
-  // Resolve the existing parent and retain the uncreated target suffix.
   let canonicalDirectory;
   try { canonicalDirectory = fs.realpathSync.native(directory); } catch { return null; }
   const canonicalTarget = path.resolve(canonicalDirectory, path.relative(directory, absolute));
@@ -57,11 +53,6 @@ async function mapBounded(items, maximum, mapper) {
   return results;
 }
 
-/**
- * Resolve successful structured mutation candidates before provider evidence is
- * committed. The resolver is monitor-private and returns the inventory's HMAC
- * repository ID plus its real root; roots and source targets are discarded here.
- */
 /** @param {{ resolveRepository?: (directory: string, options?: { requireGit?: boolean }) => Promise<any> | any, forbiddenRoots?: string[], onRepositoryBinding?: (binding: any) => void }} [options] */
 export async function bindCodexFileChanges(calls, options = {}) {
   const { resolveRepository, forbiddenRoots = [], onRepositoryBinding } = options;

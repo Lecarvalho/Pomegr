@@ -20,13 +20,11 @@ export type AgentInspectorProps = {
   requestSnapshots?: RequestSnapshotFeed; cacheRefills?: CacheRefillCount[]; cacheReadDrops?: CacheReadDropCount[];
   contextBoundaries?: ContextHistoryBoundary[]; insights?: Insight[]; planTasks?: PlanTask[];
   onOpenTree: (agentId: string) => void; onOpenActivities?: (agentId: string) => void; presentation?: "inline" | "sheet"; onClose?: () => void;
-  /** The chosen agent's roster row and the line to show while its own evidence has not resolved. */
   pending?: { agent: Agent; text: string } | null;
 };
 
 export function AgentInspector({ agent, agents = [], workflows = [], sessionId = "agent-activity", historical = false, requestSnapshots = EMPTY_REQUESTS, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], insights = [], planTasks = [], onOpenTree, onOpenActivities, presentation = "inline", onClose = () => {}, pending = null }: AgentInspectorProps) {
   if (!agent && pending) {
-    // Only the name comes from the roster row; every fact waits for the agent's own evidence.
     const name = agentDisplayName(pending.agent);
     const waiting = <div className={`agentInspector agentInspector-${presentation}`} role="region" aria-label={`Agent inspector for ${agentDisplayLabel(pending.agent)}`}>
       {presentation === "inline" && <header className="inspectorHeader"><span className="sessionEyebrow">Selected agent</span><h3 dir="auto">{name}</h3></header>}
@@ -42,7 +40,6 @@ export function AgentInspector({ agent, agents = [], workflows = [], sessionId =
   const ownInsights = insights.filter((item) => item.agentId === agent.id);
   const hasHistory = summarizeCompactions(contextBoundaries, [agent.id]).total + summarizeCacheRefills(cacheRefills, [agent.id]) + summarizePartialRefills(cacheRefills, [agent.id]) + summarizeCacheReadDrops(cacheReadDrops, [agent.id]) > 0;
   const openTree = () => onOpenTree(agent.id);
-  // Both presentations stack their exits as full-width chevron rows; only the phone sheet grows them to 44px.
   const actionClass = "commandSecondaryAction inspectorActionRow";
   const rowChevron = <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>;
   const body = <div className={`agentInspector agentInspector-${presentation}`} key={agent.id} role="region" aria-label={`Agent inspector for ${label}`}>

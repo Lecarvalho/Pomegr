@@ -7,12 +7,6 @@ import { subscribeLiveEvents } from "../../live-events";
 // one composed-state poll instead of a poll per domain.
 const REVISION_BURST_SETTLE_MS = 100;
 
-/**
- * Composed `/api/state` polling for transitional session tabs. Callers key their component on
- * sessionId, so a session change remounts and resets `state`/`error`/refs instead of reusing them;
- * the previous instance's cleanup (abort controller, clear timer, unsubscribe) still runs before the
- * fresh one mounts and issues its own revision-less request.
- */
 export function useTransitionalSessionState({ sessionId, historical, paused }: { sessionId: string; historical: boolean; paused: boolean }) {
   const [state, setState] = useState<MonitorState | null>(null);
   const [error, setError] = useState(false);
@@ -46,16 +40,7 @@ export function useTransitionalSessionState({ sessionId, historical, paused }: {
         } else {
           const value = await response.json() as MonitorState;
           if (controller.signal.aborted) return;
-          // The monitor serves a well-formed "still loading" placeholder (no session yet,
-          // readiness.core: "loading") the first time this session's legacy full state is
-          // requested, for example on a cold hard navigation before hydration completes. That
-          // placeholder carries no session to check against and is not a failure, so it must not
-          // be treated the same as a genuinely wrong or stale response: only a body that claims a
-          // *different* session is invalid.
           if (value.session === null && value.readiness?.core === "loading") {
-            // A well-formed loading placeholder is only valid for the requested session: one
-            // whose catalogIdentity names a different session is a wrong-session response, not
-            // an unresolved cold start, and must be rejected the same as a session mismatch below.
             if (value.catalogIdentity && value.catalogIdentity.id !== sessionId) throw new Error();
             unresolved = true;
           } else {
@@ -74,9 +59,6 @@ export function useTransitionalSessionState({ sessionId, historical, paused }: {
         if (controller.signal.aborted) return;
         if (refreshAfterFlight) { refreshAfterFlight = false; void poll(); return; }
         if (historical) {
-          // A historical session has no live revision events to rely on, so an unresolved
-          // placeholder or a failed poll must retry itself; once a poll fully resolves, no
-          // further timer is scheduled. Mirrors the browser store's historical retry cadence.
           if (unresolved || !succeeded) schedule(document.hidden ? 30_000 : 5_000, { force: true });
           return;
         }

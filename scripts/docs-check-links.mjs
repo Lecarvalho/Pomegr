@@ -1,19 +1,7 @@
-// Relative-link, anchor, image, and alt-text validation for maintained Markdown (WEB-04).
-//
-// `scripts/check-docs.mjs` drives this module. It checks repository-relative targets only:
-// file links (exact case, as on GitHub), `#anchors` (GitHub heading slugs and explicit HTML
-// ids), image targets, and non-empty image alt text. `http(s)`, `mailto`, and other schemes
-// are never fetched. The heading slug functions are injected by the caller from the landing
-// documentation loader, so the repository has exactly one GitHub-style slug implementation.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
-/**
- * Directories under the repository root whose Markdown is not maintained documentation: an
- * exported design prototype, and gitignored local orchestration state that exists on one
- * machine only, so a checkout never disagrees with another about what was scanned.
- */
 export const SKIP_PREFIXES = Object.freeze(["docs/internal/plans/ia-redesign/prototype/", ".agents/skills/acos/runs/"]);
 
 const MARKDOWN_FILE = /\.md$/i;
@@ -21,10 +9,7 @@ const SCHEME = /^(?:[a-z][a-z0-9+.-]+:|\/\/)/i;
 
 export const toPosix = (path) => path.split(sep).join("/");
 
-/** Repository-relative POSIX path of an absolute path. */
 export const relativeTo = (root, absolute) => toPosix(relative(root, absolute));
-
-// ---------------------------------------------------------------- file discovery
 
 function walk(directory, found, recursive) {
   let entries;
@@ -44,10 +29,6 @@ function walk(directory, found, recursive) {
   }
 }
 
-/**
- * The maintained Markdown of a repository: `docs/**`, root `*.md`, `landing/*.md`, and
- * `.agents/skills/**`, minus `SKIP_PREFIXES`. Sorted, absolute paths.
- */
 export function discoverMarkdown(root) {
   const found = [];
   walk(join(root, "docs"), found, true);
@@ -57,11 +38,8 @@ export function discoverMarkdown(root) {
   return [...new Set(found)].filter((file) => !SKIP_PREFIXES.some((prefix) => relativeTo(root, file).startsWith(prefix))).sort();
 }
 
-// ---------------------------------------------------------------- Markdown handling
-
 const blank = (text) => text.replace(/[^\n]/g, " ");
 
-/** Blank out front matter, fenced code, HTML comments, and inline code, keeping line numbers stable. */
 function stripCode(source) {
   let text = source.replace(/\r\n?/g, "\n");
   text = text.replace(/^---\n[\s\S]*?\n---(?=\n|$)/, blank);
@@ -86,7 +64,6 @@ function stripCode(source) {
 
 const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 
-/** Inline links and images: `[label](dest "title")` and `![alt](dest)`. */
 function inlineLinks(text) {
   const found = [];
   for (let i = 0; i < text.length - 1; i += 1) {
@@ -148,7 +125,6 @@ function inlineLinks(text) {
   return found;
 }
 
-/** Reference definitions: `[id]: dest`. */
 function referenceDefinitions(text) {
   const found = [];
   const pattern = /^ {0,3}\[[^\]\n]+\]:[ \t]*(<[^>\n]+>|\S+)/gm;
@@ -158,7 +134,6 @@ function referenceDefinitions(text) {
   return found;
 }
 
-/** Raw HTML `<a href>` and `<img src alt>`: forbidden in public pages, allowed elsewhere. */
 function htmlLinks(text) {
   const found = [];
   for (const match of text.matchAll(/<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi)) {
@@ -172,13 +147,11 @@ function htmlLinks(text) {
   return found;
 }
 
-/** Every link and image of a Markdown source outside code: `{ label, image, target, line }`. */
 export function extractLinks(source) {
   const text = stripCode(source);
   return [...inlineLinks(text), ...referenceDefinitions(text), ...htmlLinks(text)];
 }
 
-/** Split a relative target into its decoded file path (no query) and fragment. */
 export function splitTarget(target) {
   const decode = (value) => {
     try {
@@ -192,12 +165,9 @@ export function splitTarget(target) {
   return { pathPart: decode(pathAndQuery.replace(/\?.*$/, "")), fragment: hash < 0 ? "" : decode(target.slice(hash + 1)) };
 }
 
-/** True for a target that is not a repository-relative path (a URL with a scheme, or protocol-relative). */
+// True for a target that is not a repository-relative path (a URL with a scheme, or protocol-relative).
 export const isExternalTarget = (target) => SCHEME.test(target);
 
-// ---------------------------------------------------------------- checker
-
-/** Plain rendered text of a raw heading line, ready for the loader's `slugifyHeading`. */
 function headingText(raw, decodeCharacterReferences) {
   let text = raw.trim().replace(/\s+#+\s*$/, "");
   text = text.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\[([^\]]*)\]\[[^\]]*\]/g, "$1");
@@ -206,10 +176,6 @@ function headingText(raw, decodeCharacterReferences) {
   return text.replace(/(^|[^\p{L}\p{N}])_+([^_]+?)_+(?=[^\p{L}\p{N}]|$)/gu, "$1$2");
 }
 
-/**
- * Create a link checker for one repository root. `createSlugger` (which applies the loader's `slugifyHeading`) and
- * `decodeCharacterReferences` come from the landing documentation loader.
- */
 export function createLinkChecker({ root, createSlugger, decodeCharacterReferences }) {
   const anchorCache = new Map();
   const directoryCache = new Map();
@@ -221,7 +187,6 @@ export function createLinkChecker({ root, createSlugger, decodeCharacterReferenc
     try {
       text = stripCode(readFileSync(file, "utf8"));
     } catch {
-      // A missing file is reported where it is linked.
     }
     const slug = createSlugger();
     const add = (raw) => anchors.add(slug(headingText(raw, decodeCharacterReferences)));
@@ -252,7 +217,6 @@ export function createLinkChecker({ root, createSlugger, decodeCharacterReferenc
     return directoryCache.get(directory);
   }
 
-  /** Existence with exact case at every path component, like GitHub (the Windows file system ignores case). */
   function existsExactCase(absolute) {
     if (!existsSync(absolute)) return false;
     const parts = relativeTo(root, absolute).split("/").filter((part) => part && part !== ".");
@@ -266,11 +230,6 @@ export function createLinkChecker({ root, createSlugger, decodeCharacterReferenc
     return true;
   }
 
-  /**
-   * Check one Markdown file. Adds to `stats` (`links`, `files`, `anchors`, `images`) and
-   * returns failures as `{ file, line, rule, message }` with rules `missing-file`,
-   * `missing-image`, `missing-anchor`, and `empty-alt`.
-   */
   function checkFile(file, stats) {
     const failures = [];
     const from = relativeTo(root, file);

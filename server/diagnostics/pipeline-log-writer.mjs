@@ -25,10 +25,7 @@ const makeRunToken = () => randomBytes(6).toString("hex");
 
 const asPromises = (value) => value?.promises ?? value ?? nodeFs;
 
-/**
- * Write already-sanitized, fixed-schema pipeline diagnostics to bounded JSONL files.
- * This module deliberately does not inspect or validate record domains.
- */
+// Write already-sanitized, fixed-schema pipeline diagnostics to bounded JSONL files.
 export function createPipelineLogWriter(options = {}) {
   let directory = options.directory;
   if (typeof directory !== "string" || directory.length === 0) {
@@ -71,8 +68,7 @@ export function createPipelineLogWriter(options = {}) {
   let failureKind = "none";
 
   const pathJoin = (name) => {
-    // The parent supplies a fixed directory. Keep filenames generated here and never
-    // concatenate record- or provider-derived values into a path.
+    // The parent supplies a fixed directory.
     return `${directory.replace(/[\\/]$/, "")}/${name}`;
   };
 
@@ -111,8 +107,7 @@ export function createPipelineLogWriter(options = {}) {
         counters.filesCreated += 1;
         return;
       } catch (error) {
-        // A collision is recoverable. Other errors stop the writer without exposing
-        // filesystem details to callers.
+        // A collision is recoverable.
         if (error?.code !== "EEXIST") throw error;
       }
     }
@@ -133,8 +128,6 @@ export function createPipelineLogWriter(options = {}) {
   };
 
   const validateDirectory = async () => {
-    // Check every component before canonicalizing: realpath also expands legitimate
-    // Windows short names, so a spelling difference alone cannot prove redirection.
     let component = directory;
     while (true) {
       try {

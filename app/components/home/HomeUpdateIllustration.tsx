@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 import styles from "./HomeUpdateIllustration.module.css";
 
-// Artwork for the current What's new announcement: a static miniature of the Overview Events
-// panel. Sample rows only; it never reads session state. Replace the rows (or the whole frame)
-// when the announcement changes, keeping the 408px authored width the card thumbnail scales from.
+// Artwork for the current What's new announcement.
 const ROWS: Array<{ time: string; glyph: ReactNode; label: string; detail?: string }> = [
   { time: "14:32", glyph: <><circle cx="4" cy="4" r="1.6" /><circle cx="4" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><path d="M4 5.6v4.8M12 10.4V7a2 2 0 0 0-2-2H8" /></>, label: "Pull request opened", detail: "#44" },
   { time: "14:29", glyph: <><circle cx="8" cy="8" r="2.5" /><path d="M2 8h3.5M10.5 8H14" /></>, label: "Commit observed", detail: "Git-observed" },

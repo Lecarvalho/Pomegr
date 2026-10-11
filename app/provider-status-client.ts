@@ -76,7 +76,6 @@ export function normalizeProviderStatusSnapshot(input: unknown): ProviderStatusS
   return withCurrentFreshness({ revision: body.revision, generatedAt: body.generatedAt, providers: normalized });
 }
 
-/** A single local-cache poller shared by every provider-status consumer. */
 export class ProviderStatusStore {
   private snapshot: ProviderStatusSnapshot = EMPTY_PROVIDER_STATUS;
   private receivedSnapshot: ProviderStatusSnapshot = EMPTY_PROVIDER_STATUS;

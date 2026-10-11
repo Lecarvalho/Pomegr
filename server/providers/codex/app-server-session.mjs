@@ -20,11 +20,6 @@ const ALL_SOURCE_KINDS = [
   "subAgentOther",
 ];
 
-/**
- * Catalog, session-tree, and canonical-turn evidence read from the owning Codex app server.
- * Rollout files remain the independent fallback source, so every read here degrades to a null
- * or unavailable result instead of failing the session: the adapter then keeps recorded evidence.
- */
 export function createCodexAppServerSessionReader({
   appServer, request, indexFile, includeArchived, scanLimit, rolloutRoots,
 }) {
@@ -155,7 +150,6 @@ export function createCodexAppServerSessionReader({
         }
       }
     } catch {
-      // Descendant filtering is experimental; rollout relationships remain the fallback.
     }
     return { metadata: mergeCodexMetadata(discovered), descendantIds, freshIds };
   }

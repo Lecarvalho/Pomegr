@@ -278,8 +278,6 @@ test("the plan asks for a worktree only for a task of a step that holds more tha
   assert.equal(second.json.plan.worktree, true);
   assert.equal(second.json.plan.repositoryRoot, ROOT, "the plan names the root, never a worktree path");
   assert.equal((await plan(env, { id: "T-4" })).json.plan.worktree, false, "no feature");
-  // T-3 waits on step 1 (T-2 is not done), so the gate holds it.
-  refused(await plan(env, { id: "T-3" }), 409, "gate_held");
-  withDatabase(env.directory, (database) => database.prepare("UPDATE tasks SET state = 'done', dispatch_token = NULL WHERE number = 2").run());
+  // Step 1 is not done (T-2 only started), and a start made by hand is not held by step order.
   assert.equal((await plan(env, { id: "T-3" })).json.plan.worktree, false, "alone in its step");
 });

@@ -142,7 +142,6 @@ function readPairingBody(request) {
   });
 }
 
-// The whole body within `limit` bytes, or null when it is larger or the request fails.
 function readBoundedBody(request, limit) {
   return new Promise((resolve) => {
     let size = 0;

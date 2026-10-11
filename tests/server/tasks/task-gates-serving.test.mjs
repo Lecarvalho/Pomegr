@@ -89,7 +89,19 @@ test("the next task names the earlier step it waits on", async (context) => {
     { taskId: "T-2", provider: "claude", blockedBy: "T-1", reasons: ["previous_step"] });
   assert.equal(queueSettings(store, true).ok, true);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
-  assert.deepEqual(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, passingGates), { ok: false, error: "gate_held" });
+});
+
+test("a manual start is not held by step order, which holds only the queue", async (context) => {
+  const { store } = await openTemporaryStore(context);
+  const feature = store.apply(REPOSITORY, "feature_create", { name: "Feature" }).board.features[0].id;
+  createTask(store, REPOSITORY, { featureId: feature, step: 1 });
+  createTask(store, REPOSITORY, { featureId: feature, step: 2 });
+  queueTask(store, "T-2");
+  assert.equal(queueSettings(store, true).ok, true);
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  // The other gates still hold a start made by hand.
+  assert.deepEqual(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, gatesWith({ providerStatus: { claude: "incident", codex: "operational" } })), { ok: false, error: "gate_held" });
+  assert.equal(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, passingGates).ok, true);
 });
 
 test("a held gate keeps the queue running and the task queued, and the start is answered once the gate opens", async (context) => {
