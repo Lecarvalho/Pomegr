@@ -36,11 +36,11 @@ function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<
   switch (reason) {
     case "previous_step": return next.blockedBy ? `the task before it in its feature is not done (${next.blockedBy})` : "the task before it in its feature is not done";
     case "usage_over": return `${provider} is above ${gates.threshold}% of the five-hour window`;
-    case "usage_unknown": return `${provider} usage is not known`;
+    case "usage_unknown": return `${provider} usage is not known yet`;
     case "provider_incident": return `${provider} reports an incident`;
-    case "provider_status_unknown": return `${provider} status is not known`;
+    case "provider_status_unknown": return `${provider} status is not known yet`;
     case "tree_dirty": return "the working tree has uncommitted changes";
-    case "tree_unknown": return "the working tree state is not known";
+    case "tree_unknown": return "the working tree state is not known yet";
     case "before_queue_start": return at(schedule?.startAt) ? `the queue starts ${at(schedule?.startAt)}` : "the queue's start time has not come";
     case "after_queue_stop": return at(schedule?.stopAfter) ? `the queue stopped starting tasks ${at(schedule?.stopAfter)}` : "the queue's stop time has passed";
   }

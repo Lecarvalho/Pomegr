@@ -3731,10 +3731,14 @@ under its main repository once it is associated again, which happens when the mo
 next starts.
 
 A removed worktree gets no Git answer. For that case only, the inventory reads the path
-shape of a Pomegr-made task worktree: a working directory that is, or is inside,
-`.../task-worktrees/<repository ID>/<task ID>` belongs to that repository ID, when the ID
-has the inventory's exact format, the task ID has the task store's format, and the ID is
-one the inventory already knows in this run. The path never creates an identity, a Git
+shape of a Pomegr-made task worktree. A working directory that is, or is inside,
+`<main root>/.pomegr/worktrees/<task ID>` belongs to the repository whose ID that main
+root hashes to, when the task ID has the task store's format and the ID is one the
+inventory already knows in this run. A worktree made before worktrees moved into the
+repository reads the same way from its own shape: a working directory that is, or is
+inside, `.../task-worktrees/<repository ID>/<task ID>` belongs to that repository ID, when
+the ID has the inventory's exact format, the task ID has the task store's format, and the
+ID is one the inventory already knows in this run. The path never creates an identity, a Git
 answer always wins, and the missing folder never becomes the root of the repository ID.
 Until the main repository is identified in a run, such a session keeps the folder-named
 fallback; its association is derived again as soon as the ID is known, and no context

@@ -21,7 +21,9 @@ import { taskIssuesAvailable } from "./task-issues-desktop";
 import { featureDraftFromTask, type FeatureDraft } from "./task-features";
 import { modalSubtitle, type TaskModalBoard } from "./task-modal-types";
 import { useTaskModelOptions } from "./task-panel-hooks";
-import { AWAITING_REPORT_NOTE, taskAwaitsReport, taskChip, taskIssueNumber, taskSessionHref, taskSessionTitle } from "./task-presentation";
+import {
+  AWAITING_REPORT_NOTE, STARTED_NOTE, STARTED_REQUEUE_NOTE, taskAwaitsReport, taskChip, taskIssueNumber, taskSessionHref, taskSessionTitle, taskStarted,
+} from "./task-presentation";
 import { SAVE_FIRST_LINE, taskDraftPatch, useTaskDraft } from "./use-task-draft";
 import { useFeatureCreation } from "./use-feature-creation";
 import { shownTaskText, useStoredImages } from "./use-task-images";
@@ -75,6 +77,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const schedulable = waiting && task.session === null;
   // A linked task with no report never resolves by itself, so the user can mark it done or requeue it.
   const awaitingReport = taskAwaitsReport(task);
+  // The session works from the task as it was when it started, so a started task is read-only until it is requeued.
+  const locked = taskStarted(task);
   const sessionTitle = taskSessionTitle(task);
   const issueNumber = taskIssueNumber(task);
   const issueOffered = issueNumber === null && taskIssuesAvailable();
@@ -82,7 +86,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const columnName = board.columns.find((column) => column.id === task.columnId)?.name ?? null;
   const blocked = saving || deleting;
   const startLine = showStart && start.line !== SAVE_FIRST_LINE ? start.line : null;
-  const saveLine = dirty && !confirming && startLine === null && (showStart || waiting || unresolved || awaitingReport || issueOffered);
+  // Only a task that has not started can hold a draft.
+  const saveLine = dirty && !confirming && startLine === null;
   const folderOffered = showStart && start.folder.offered;
   const folderLine = showStart ? start.folder.line : null;
   const separateOffered = showStart && start.separate.offered;
@@ -162,7 +167,6 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     setFailure(DELETE_FAILURE_MESSAGE);
   };
 
-  const resolveDisabled = resolving || dirty;
   return <TaskModalFrame title="Task" subtitle={modalSubtitle(repositoryName, columnName)} closeOnScrim={!dirty} onClose={onClose}
     titleExtra={<>
       <span className="taskModalId">{task.id}</span>
@@ -176,13 +180,13 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {folderOffered && <button type="button" className="commandSecondaryAction" disabled={start.folder.opening} onClick={() => void start.folder.open()}>Open folder</button>}
         {separateOffered && <button type="button" className="commandSecondaryAction" onClick={() => void start.separate.run()}>Start in separate worktree</button>}
         {unresolved && <>
-          <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(true)}>{task.state === "needs_review" ? "Mark done" : "Mark done and resume queue"}</button>
-          <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(false)}>Requeue task</button>
+          <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(true)}>{task.state === "needs_review" ? "Mark done" : "Mark done and resume queue"}</button>
+          <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>
         </>}
         {awaitingReport && <>
           <span className="taskModalNote">{AWAITING_REPORT_NOTE}</span>
-          <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(true)}>Mark done</button>
-          <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(false)}>Requeue task</button>
+          <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(true)}>Mark done</button>
+          <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>
         </>}
       </div>}
       {confirming
@@ -200,7 +204,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {showStart && <button type="button" className="commandSecondaryAction" disabled={start.disabled} onClick={() => void start.run()}>
           {start.pending ? "Starting…" : "Start session"}
         </button>}
-        <button type="button" className="commandPrimaryAction" disabled={!canSave || saving} onClick={() => void save()}>Save</button>
+        {!locked && <button type="button" className="commandPrimaryAction" disabled={!canSave || saving} onClick={() => void save()}>Save</button>}
       </>}
     </>}>
     {issueNumber !== null && <TaskModalSource number={issueNumber} caption="GitHub issue" />}
@@ -213,12 +217,13 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {task.session && <TaskSessionLink sessionId={task.session.id} />}
       </span>
     </div>}
-    <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure}
-      images={imagesOffered ? { urls: images.urls, disabled: blocked, error: images.error, onAttach: images.attach } : undefined} />
-    <FeatureFields draft={draft.feature} board={board} selfId={task.id} error={featureError} onChange={changeFeature}
+    <TaskTextField value={draft.text} onChange={setText} readOnly={saving || locked} error={failure}
+      helper={locked ? (unresolved || awaitingReport ? STARTED_REQUEUE_NOTE : STARTED_NOTE) : undefined}
+      images={imagesOffered ? { urls: images.urls, disabled: blocked || locked, error: images.error, onAttach: images.attach } : undefined} />
+    <FeatureFields draft={draft.feature} board={board} selfId={task.id} error={featureError} disabled={locked} onChange={changeFeature}
       onCancelName={cancelName} onOpenTask={onOpenTask} />
     <div className="taskRunGroup">
-      <RunFields run={draft.run} models={models} onChange={setRun} />
+      <RunFields run={draft.run} models={models} disabled={locked} onChange={setRun} />
       {observedModelDiffers(draft.run.model, task.session?.observedModel) && <div className="taskModelNotice" role="status">
         <span className="taskModelNoticeTitle">Observed model differs</span>{" "}
         <span>Planned <code>{draft.run.model}</code>, latest recorded request used <code>{task.session?.observedModel}</code>.</span>
@@ -226,7 +231,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     </div>
     <CompleteWhenField draft={draft.completeWhen} results={task.report ? results : undefined}
       ownNote={task.report && draft.completeWhen.ownText.trim() !== "" && task.completeWhen.own !== null ? "Agent-reported" : null}
-      footnote={outcomeNote ? <span className="newTaskHelper taskCompleteWhenNote">{outcomeNote}</span> : undefined}
+      footnote={outcomeNote ? <span className="newTaskHelper taskCompleteWhenNote">{outcomeNote}</span> : undefined} disabled={locked}
       onDraftChange={setCompleteWhen} />
     {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}
   </TaskModalFrame>;

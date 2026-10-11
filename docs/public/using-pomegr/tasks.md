@@ -66,11 +66,20 @@ is available once something differs from the stored task, and **Close** or
 to queue**, **Remove from queue**, **Mark done**, and **Requeue task** are
 unavailable. **Delete task** asks you to confirm; a task number is never reused.
 
+Once a task has started, you cannot change it. The session works from the task as
+it was when it started, so a later change would not reach it. The task window then
+shows the fields read-only, without **Save**, and says "This task has started, so
+it cannot be changed." This applies from the start of the session on, and to a task
+that is in review, blocked, stalled, or done. **Requeue task** makes the task
+editable again until its next session starts. You can still move, delete, mark
+done, and requeue a started task.
+
 | Field | What it sets |
 | --- | --- |
 | **Run on** | The provider and model of the started session's main agent: **Not set**, or under **Claude Code** or **Codex** a model or **Default model**. Subagents are not set. A task with no provider starts on Claude Code. |
 | **Effort** | **Low**, **Medium**, **High**, or **Xhigh**. Select the chosen button again to clear it. |
 | **Remote Control** | Starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
+| **Remove worktree and branch when done** | When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It is on by default. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 | **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |
 | **Feature** | The group of related tasks the task belongs to; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 
@@ -204,8 +213,8 @@ this", then the image. To remove an image, delete it like a character, with
 - In a task window an image is part of the draft, like the text. **Save** stores
   it, and **Close** or **Escape** discards it.
 - A session gets the images the task holds when it starts, and is told which image
-  the text means at each place. An image you add after that reaches the next
-  session, for example after **Requeue task**.
+  the text means at each place. After that you cannot add or remove an image until
+  you select **Requeue task**.
 - Deleting a task deletes its images.
 - A card, the Search bar, and a session's Task tab show `[image]` where the text
   holds an image.
@@ -265,13 +274,22 @@ worktree. When uncommitted changes in the repository hold a manual start, the ta
 window offers **Start in separate worktree**. That start uses a worktree of its own, on
 a branch named `tasks/<task ID>`. The worktree begins at the repository's current
 commit, so uncommitted changes in the repository are not part of it. Pomegr keeps its
-worktrees in a folder it owns under the desktop app's data folder.
+worktrees inside the repository, in `.pomegr/worktrees/<task ID>`. That folder ignores
+its own contents, so the worktrees do not show as changes in the repository.
 
+- When you mark a task done, Pomegr removes the task's worktree and its
+  `tasks/<task ID>` branch. To keep them, clear **Remove worktree and branch when
+  done** in the task. The box is checked for every new task.
 - Pomegr never removes a worktree that has uncommitted changes or a commit that
-  exists nowhere else, and never forces a removal.
-- The only worktree it removes itself is one made for a start that then failed.
-  Worktrees of finished tasks stay until you remove them.
-- A task started again reuses its worktree only if Git still lists it on the task
+  exists nowhere else, and never forces a removal. Such a worktree stays until you
+  commit, push, or remove it. A worktree whose folder is still in use, for example
+  by an open terminal, is removed about a minute after it is free.
+- The branch is deleted only with its worktree, so every commit on it is also on a
+  remote or on another local branch.
+- The other worktree Pomegr removes itself is one made for a start that then failed.
+- A worktree that an earlier version made under the desktop app's data folder keeps
+  working where it is.
+- A task started again in a separate worktree reuses its worktree only if Git still lists it on the task
   branch and it is clean. Otherwise the start fails and nothing is touched.
 - When a start is refused because the task's worktree has uncommitted changes, the
   task window says "This task's worktree has uncommitted changes. Pomegr never
@@ -381,7 +399,7 @@ shows, so they cover your whole account. Public status does not prove that an
 incident affects you. The working tree gate reads the repository itself. A held queued task changes
 nothing: it waits, the queue stays on, and Pomegr judges again at the next check.
 A held manual start says which gates hold it, for example "This task is held:
-Claude Code usage is not known."
+Claude Code usage is not known yet."
 
 ## Schedule starts
 

@@ -15,9 +15,12 @@ export type ColumnDropHandlers = {
 /** Where the dragged card would land: before `beforeId`, or at the end of the column when it is null. */
 export type CardDropLine = { columnId: string; beforeId: string | null };
 
-/** The band at each end of a lane's card list that scrolls it, and the most it scrolls in one frame. */
+/** The band at each end of a lane's card list, or of the page, that scrolls it, and the most it scrolls in one frame. */
 const SCROLL_EDGE = 56;
 const SCROLL_MAX = 16;
+/** The frame the steps are measured in. A browser may draw fewer frames during a drag, so a step grows with the time since the last one. */
+const FRAME_MS = 1000 / 60;
+const FRAME_CATCH_UP = 6;
 
 /**
  * The pixels to scroll a list in one frame for a pointer at `y`: negative near or above its top, positive near or
@@ -30,6 +33,21 @@ export function dragScrollStep(top: number, bottom: number, y: number) {
   if (y < top + edge) return -speed(top + edge - y);
   if (y > bottom - edge) return speed(y - (bottom - edge));
   return 0;
+}
+
+/**
+ * What a drag near an end scrolls, and the band it is measured in. Where a lane has a height its card list scrolls,
+ * between the list's own ends. Where lanes grow with their cards (a phone) the list does not scroll, so the page does,
+ * between the shell's sticky header and the bottom of the window.
+ */
+export function dragScrollPort(list: HTMLElement): { target: Element; top: number; bottom: number } {
+  const overflow = getComputedStyle(list).overflowY;
+  if (overflow === "auto" || overflow === "scroll") {
+    const rect = list.getBoundingClientRect();
+    return { target: list, top: rect.top, bottom: rect.bottom };
+  }
+  const header = document.querySelector(".commandHeader")?.getBoundingClientRect().bottom ?? 0;
+  return { target: document.scrollingElement ?? document.documentElement, top: Math.max(0, header), bottom: window.innerHeight };
 }
 
 /** The card the dragged card would land before, read from the cards drawn in the lane; null is the end of the lane. */
@@ -47,7 +65,7 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void) 
   const dragged = useRef<string | null>(null);
   const [overColumn, setOverColumn] = useState<string | null>(null);
   const [dropLine, setDropLine] = useState<CardDropLine | null>(null);
-  const scroll = useRef<{ list: HTMLElement; y: number; frame: number } | null>(null);
+  const scroll = useRef<{ list: HTMLElement; y: number; frame: number; at: number | null } | null>(null);
 
   const stopScroll = useCallback(() => {
     if (scroll.current) cancelAnimationFrame(scroll.current.frame);
@@ -55,19 +73,24 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void) 
   }, []);
   useEffect(() => stopScroll, [stopScroll]);
 
-  // The pointer can rest near an end while no event arrives, so the list scrolls on each frame until the drag moves on.
+  // The pointer can rest near an end while no event arrives, so the list, or the page, scrolls on each frame until the drag moves on.
   const scrollNear = (list: HTMLElement | null, y: number) => {
     if (!list) { stopScroll(); return; }
     if (scroll.current) { scroll.current.list = list; scroll.current.y = y; return; }
-    const tick = () => {
+    const tick = (now: number) => {
       const state = scroll.current;
       if (!state) return;
-      const rect = state.list.getBoundingClientRect();
-      const step = dragScrollStep(rect.top, rect.bottom, state.y);
-      if (step !== 0) state.list.scrollTop += step;
+      const frames = state.at === null ? 1 : Math.min((now - state.at) / FRAME_MS, FRAME_CATCH_UP);
+      state.at = now;
+      const port = dragScrollPort(state.list);
+      const step = Math.round(dragScrollStep(port.top, port.bottom, state.y) * frames);
+      // The page scrolls smoothly (`scroll-behavior: smooth` on the root), and a smooth scroll that is replaced on each
+      // frame never gets anywhere, so each step is an instant one.
+      if (step !== 0 && typeof port.target.scrollBy === "function") port.target.scrollBy({ top: step, behavior: "instant" });
+      else if (step !== 0) port.target.scrollTop += step;
       state.frame = requestAnimationFrame(tick);
     };
-    scroll.current = { list, y, frame: requestAnimationFrame(tick) };
+    scroll.current = { list, y, frame: requestAnimationFrame(tick), at: null };
   };
 
   const finish = useCallback(() => { dragged.current = null; setOverColumn(null); setDropLine(null); stopScroll(); }, [stopScroll]);

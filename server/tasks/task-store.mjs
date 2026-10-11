@@ -20,10 +20,11 @@ import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
 import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl } from "./task-remote-control.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
+import { deleteTaskWorktreeCleanup, pendingWorktreeCleanups, readTaskKeepWorktree, readTaskKeepWorktrees, settleWorktreeCleanup, writeTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
   composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
-  plainTaskText, projectBoard, taskIdFromNumber,
+  plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
@@ -215,6 +216,7 @@ function createTask({ database, repositoryId }, payload) {
     .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
       JSON.stringify(input.completeWhen.checks), input.completeWhen.own, now, now, input.featureId, storedStep(input.featureId));
   if (input.run.remoteControl) writeTaskRemoteControl(database, repositoryId, number, true);
+  if (input.run.keepWorktree) writeTaskKeepWorktree(database, repositoryId, number, true);
   reserveTaskNumber(database, repositoryId, number + 1);
   return { ok: true, number };
 }
@@ -242,13 +244,15 @@ function recordIssue({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-function updateTask({ database, repositoryId }, payload) {
+function updateTask({ database, repositoryId, now }, payload) {
   const input = normalizeUpdatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const stored = preparedStatement(database, "SELECT text, feature_id, run_provider, run_model, run_effort, checks, own_condition FROM tasks WHERE repository_id = ? AND number = ?")
+  const stored = preparedStatement(database, "SELECT text, feature_id, run_provider, run_model, run_effort, checks, own_condition, state, session_id, dispatch_token FROM tasks WHERE repository_id = ? AND number = ?")
     .get(repositoryId, input.number);
   if (!stored) return { ok: false, error: "not_found" };
-  const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort, remoteControl: readTaskRemoteControl(database, repositoryId, input.number) };
+  // The session was started from the stored task, so a later edit would never reach it.
+  if (rowStarted(stored, now())) return { ok: false, error: "conflict" };
+  const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort, remoteControl: readTaskRemoteControl(database, repositoryId, input.number), keepWorktree: readTaskKeepWorktree(database, repositoryId, input.number) };
   const completeWhen = input.completeWhen ? { checks: JSON.stringify(input.completeWhen.checks), own: input.completeWhen.own } : { checks: stored.checks, own: stored.own_condition };
   const featureId = input.featureId === undefined ? stored.feature_id ?? null : input.featureId;
   if (featureId !== null && featureId !== (stored.feature_id ?? null)) {
@@ -259,6 +263,7 @@ function updateTask({ database, repositoryId }, payload) {
     WHERE repository_id = ? AND number = ?`)
     .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, featureId, storedStep(featureId), Date.now(), repositoryId, input.number);
   if (input.run) writeTaskRemoteControl(database, repositoryId, input.number, run.remoteControl);
+  if (input.run) writeTaskKeepWorktree(database, repositoryId, input.number, run.keepWorktree === true);
   return { ok: true };
 }
 
@@ -274,6 +279,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
   writeTaskRemoteControl(database, repositoryId, input.number, false);
+  deleteTaskWorktreeCleanup(database, repositoryId, input.number);
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
     .run(repositoryId, task.column_id, task.position);
@@ -481,13 +487,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     // A task's image list is kept there as well; the bytes are files beside the database (task-images.mjs).
     const images = readTaskImages(database, repositoryId);
     const remoteControls = readTaskRemoteControls(database, repositoryId);
+    const keepWorktrees = readTaskKeepWorktrees(database, repositoryId);
     return {
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
-        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)) })),
+        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)) })),
     };
   }
 
@@ -610,6 +617,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const stallEnded = (resolveFacts) => dispatch(stallEndedTasks, { resolveFacts, now });
   const nextStarts = ({ resolveGateFacts = null } = {}) => dispatch(nextQueueStarts, { loadRows, resolveGateFacts, now });
   const pauseAt = (repositoryId, payload) => dispatch(pauseQueue, { repositoryId, payload });
+  const worktreeCleanups = () => dispatch(pendingWorktreeCleanups, {});
+  const worktreeCleaned = (repositoryId, payload) => dispatch(settleWorktreeCleanup, { repositoryId, payload });
   const link = (read, input) => {
     if (!database) return null;
     try { return read({ database, ...input }); } catch { return null; }
@@ -623,7 +632,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const image = (operation, repositoryId, payload) => {
     if (!database) return { ok: false, error: "conflict" };
     try {
-      return operation({ database, transaction: (work) => runTransaction(database, work), directory, repositoryId, payload });
+      return operation({ database, transaction: (work) => runTransaction(database, work), directory, repositoryId, payload, now });
     } catch {
       return { ok: false, error: "conflict" };
     }
@@ -631,6 +640,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const addImage = (repositoryId, payload) => image(addTaskImage, repositoryId, payload);
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
-  return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
+  return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, sessionTasks, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

@@ -6,6 +6,10 @@ const DEFAULT_INTERVAL_MS = 15_000;
 const MIN_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_STARTS = 16;
+const MAX_CLEANUPS = 64;
+// A worktree that could not go yet (a terminal still open in it, work not pushed) is asked about again, at this pace.
+const CLEANUP_EVERY_TICKS = 4;
+const CLEANED = new Set(["removed", "absent"]);
 // Other failures pause as `start_failed`; a manual start in flight, a moved task, or a closed gate never pause (the next tick asks again).
 const PAUSE_REASONS = new Set(["cli_missing", "plugin_missing", "unsupported_platform", "worktree_dirty"]);
 const SETTLED = new Set(["started", "busy", "not_startable", "gate_held", "tree_dirty", "not_found", "cancelled"]);
@@ -38,6 +42,19 @@ function startsFrom(answer) {
   return starts;
 }
 
+function cleanupsFrom(answer) {
+  const cleanups = [];
+  if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.cleanups)) return cleanups;
+  for (const entry of answer.cleanups) {
+    if (cleanups.length >= MAX_CLEANUPS) break;
+    if (!isPlainObject(entry)) continue;
+    const { repositoryId, taskId, repositoryRoot } = entry;
+    if (typeof repositoryId === "string" && REPOSITORY_ID.test(repositoryId) && typeof taskId === "string" && TASK_ID.test(taskId)
+      && typeof repositoryRoot === "string") cleanups.push({ repositoryId, taskId, repositoryRoot });
+  }
+  return cleanups;
+}
+
 function pauseReason(status) {
   if (typeof status === "string" && SETTLED.has(status)) return null;
   return typeof status === "string" && PAUSE_REASONS.has(status) ? status : "start_failed";
@@ -57,6 +74,7 @@ export function createTaskQueueRunner(options = {}) {
   let timer = null;
   let started = false;
   let disposed = false;
+  let ticks = 0;
 
   async function post(route, body) {
     const response = await fetchImpl(`${monitorOrigin}/internal/tasks/${route}`, {
@@ -95,11 +113,27 @@ export function createTaskQueueRunner(options = {}) {
     }
   }
 
+  // The worktrees of tasks marked done since the last pass. One the desktop could not remove stays listed.
+  async function cleanup() {
+    if (disposed || typeof starter.cleanWorktree !== "function") return;
+    let answer;
+    try { answer = await post("worktree-cleanups", {}); } catch { return; }
+    for (const { repositoryId, taskId, repositoryRoot } of cleanupsFrom(answer)) {
+      if (disposed) return;
+      let outcome;
+      try { outcome = await starter.cleanWorktree(repositoryId, taskId, repositoryRoot); } catch { outcome = undefined; }
+      if (disposed || !CLEANED.has(outcome)) continue;
+      try { await post("worktree-cleaned", { repositoryId, payload: { id: taskId } }); } catch { /* asked again on a later pass */ }
+    }
+  }
+
   function arm() {
     if (disposed) return;
     timer = setTimer(async () => {
       timer = null;
       try { await tick(); } catch { /* a failed tick never ends the chain */ }
+      ticks += 1;
+      if (ticks % CLEANUP_EVERY_TICKS === 1) { try { await cleanup(); } catch { /* a failed pass never ends the chain */ } }
       arm();
     }, intervalMs);
     timer?.unref?.();

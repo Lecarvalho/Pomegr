@@ -223,8 +223,9 @@ describe("Task modal: Feature", () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const old = await openTask(user, "Old work", "T-5");
+    // A done task has started, so its feature only shows.
     expect(old.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Finished work");
-    expect(optionLabels(old.getByRole("combobox", { name: "Feature" }))).toEqual(["Task board v1", "Finished work", "Docs", "No feature", "New feature…"]);
+    expect(old.getByRole("combobox", { name: "Feature" })).toBeDisabled();
   });
 
   it("folds the other tasks in step order, each leading with its step, with this task counted but not listed", async () => {
@@ -508,7 +509,7 @@ describe("feature styles", () => {
     expect(rule(".taskFeatureRow")).toMatch(/minmax\(0, 1fr\); gap: var\(--space-4\)/);
     expect(rule(".taskFeatureDetails")).toMatch(/border-top: 1px solid var\(--command-line\); border-bottom: 1px solid var\(--command-line\)/);
     expect(rule(".taskFeatureDetails > summary")).toMatch(/min-height: 44px[^}]*500 var\(--text-sm\)/);
-    expect(rule(".taskFeatureItem")).toMatch(/gap: var\(--space-2\); min-height: var\(--control-compact\)/);
+    expect(rule(".taskFeatureItem")).toMatch(/gap: var\(--space-2\); min-height: var\(--control-compact\); padding-block: var\(--space-2\)/);
     expect(rule(".taskFeatureTitle")).toMatch(/overflow: hidden; display: -webkit-box[^}]*-webkit-line-clamp: 2; line-clamp: 2/);
     expect(rule(".taskFeatureId")).toMatch(/flex: 0 0 40px[^}]*var\(--font-data\)/);
     expect(rule(".taskFeatureFilter")).toMatch(/gap: var\(--space-2\)/);

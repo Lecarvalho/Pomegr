@@ -274,6 +274,22 @@ export function createTaskStart(options = {}) {
     return result("started");
   }
 
+  // The monitor's root of the repository, for a worktree inside it; null when it has none.
+  async function repositoryRoot(repositoryId) {
+    if (!monitorOrigin || !authorizationToken) return null;
+    try {
+      const answer = await post("worktree-root", repositoryId, {});
+      return isPlainObject(answer) && answer.ok === true && typeof answer.root === "string" ? answer.root : null;
+    } catch { return null; }
+  }
+
+  /** Removes a done task's worktree and branch when nothing would be lost; answers the fixed outcome of the removal. */
+  async function cleanWorktree(repositoryId, taskId, root) {
+    if (disposed || !worktrees?.remove) return "failed";
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || typeof taskId !== "string" || !TASK_ID.test(taskId)) return "failed";
+    try { return await worktrees.remove({ repositoryRoot: root, repositoryId, taskId, deleteBranch: true }); } catch { return "failed"; }
+  }
+
   async function exclusive(mode, repositoryId, taskId) {
     if (active) return result("busy");
     active = true;
@@ -296,7 +312,7 @@ export function createTaskStart(options = {}) {
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || platform !== "win32" || !worktrees?.locate || typeof options.openPath !== "function") return result("unavailable");
     let directory = null;
-    try { directory = await worktrees.locate({ repositoryId, taskId }); } catch { directory = null; }
+    try { directory = await worktrees.locate({ repositoryRoot: await repositoryRoot(repositoryId), repositoryId, taskId }); } catch { directory = null; }
     if (typeof directory !== "string" || !path.isAbsolute(directory)) return result("not_found");
     try {
       const failure = await options.openPath(directory);
@@ -305,7 +321,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startQueued, openWorktree, dispose() { disposed = true; } });
+  return Object.freeze({ start, startQueued, openWorktree, cleanWorktree, dispose() { disposed = true; } });
 }
 
 export function installTaskStartIpc(options = {}) {

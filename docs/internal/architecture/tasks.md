@@ -83,6 +83,13 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   (`server/tasks/task-remote-control.mjs`). The row exists only while the flag is on:
   it is written in the write that creates or updates the task and removed when an
   update turns it off or the task is deleted. A row left on a Codex task reads as off.
+- Whether a done task keeps its worktree is kept there too
+  (`server/tasks/task-worktree-cleanup.mjs`). Removing it is the default, so
+  `task_keep_worktree:<repositoryId>:<taskId>` exists, with the fixed value `1`, only for a
+  task that keeps it. `task_worktree_cleanup:<repositoryId>:<taskId>`, also `1`, exists
+  from the write that marks such a task done until the desktop reports the worktree gone
+  (see [Features and steps](#features-and-steps)). Both go in the write that deletes the
+  task.
 - The session that added a task through `add_task` is kept there too, under
   `task_added_by:<repositoryId>:<taskId>` with the normalized session ID as the value
   (`server/tasks/task-adder.mjs`). It is written in the write that creates the task and
@@ -109,7 +116,8 @@ type Task = {
   columnId: string; position: number;
   featureId: string | null;
   run: { provider: "claude" | "codex" | null; model: string | null; effort: "low" | "medium" | "high" | "xhigh" | null;
-    remoteControl?: boolean };                         // Claude Code only; absent from an older monitor, which means off
+    remoteControl?: boolean;                           // Claude Code only; absent from an older monitor, which means off
+    keepWorktree?: boolean };                          // present only when on; absent means the worktree is removed when done
   completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
   scheduledAt: string | null;
@@ -171,6 +179,14 @@ type TaskBoard = {
   the desktop actions and in `add_task` alike. Only the `create` and `update` actions
   and `add_task` set it. The `add_task` tool takes it as the optional input
   `remote_control`, a boolean and nothing else.
+- `run.keepWorktree` says that the task's own worktree and branch stay when the task is
+  marked done. It is one boolean, on the run only when it is `true`: removing them is the
+  default (task T-27, product-owner decision of 2026-10-11), and the task forms show it as
+  the checked box **Remove worktree and branch when done**. It is valid alone and on
+  either provider. Only the `create` and `update` actions set it; `add_task` has no input
+  for it, so an agent's task removes its worktree. A new task never takes it from the
+  newest task on the board. It changes nothing for a task that runs in the repository
+  root (see [Features and steps](#features-and-steps)).
 - `completeWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
 - `queue.order` holds task IDs only: the queued tasks that have not started, in the order
@@ -255,6 +271,39 @@ of the computer or of Pomegr, or a cleared session, can leave it so) keeps its s
 Pomegr never marks it Done or Stalled by itself, and the queue never advances past it by
 itself, because the task can matter to the whole feature; Mark done and Requeue work on
 it (see [Stop on trouble](#queue)).
+
+### A started task is read-only
+
+Decided for GitHub issue #137 (2026-10-11). It replaces the earlier rule that a task
+could be changed in any state.
+
+A session works from the task as it was when the session started: the prompt holds the
+text and the Complete when list, and the run settings and the images were used once. A
+later change would never reach that session, so the board would describe work the agent
+was not given. A task has **started** when one of these holds (`rowStarted` in
+`server/tasks/task-record.mjs`):
+
+- a session is linked to it;
+- a dispatch for it is live, because the prompt is already built;
+- its state is Needs review, Blocked by agent, Stalled, or Done.
+
+For a started task:
+
+- **`update` answers `conflict`**, whatever field it carries: text, `run`,
+  `completeWhen`, or `featureId`. Nothing is written.
+- **An image is neither added nor removed.** `image-add` and `image-remove` answer
+  `conflict`. `image-read` still answers, so the task window shows the images.
+- **Requeue opens it again.** `resolve_requeue` clears the link and the report and sets
+  Queued, so the task takes changes until its next session starts. A dispatch that
+  expired without a link no longer counts, so that task takes changes too. A done task
+  has no requeue and stays as it is.
+- **Everything else still works.** `move`, `delete`, `resolve_done`,
+  `resolve_requeue`, `record_issue`, and the agent's report are not changes to the task.
+- **The task window shows it.** The Task modal draws a task with a session or an outcome
+  read-only, with no Save and one fixed line: "This task has started, so it cannot be
+  changed.", followed by "Requeue it to change it." when Requeue is offered. The board
+  carries no dispatch, so in the minutes between a start and its link the window is
+  still editable and Save answers the fixed failure line.
 
 ## Columns and card moves
 
@@ -402,11 +451,22 @@ paths stay desktop-private and never reach the monitor store or browser state.
   [Separate worktree](#separate-worktree-for-a-dirty-repository)). The start plan
   answers `worktree: true` only for that start. The queue never starts a task in a
   worktree. The monitor never learns where the worktree is.
-- **Where.** `<desktop data root>/task-worktrees/<repository ID>/<task ID>`. Both parts are
-  validated identifiers, so no task text and no repository path shapes the directory.
+- **Where.** `<repository root>/.pomegr/worktrees/<task ID>`, inside the repository (task
+  T-27, product-owner decision of 2026-10-11). The root is the one the monitor answers in
+  the start plan and the task ID is a validated identifier, so no task text shapes the
+  directory. Before the first worktree is added, the desktop writes
+  `.pomegr/worktrees/.gitignore` with the one line `*` when the file is not there. The
+  folder then ignores everything in it, itself included, so the repository's own working
+  tree stays clean for the [working-tree gate](#start-gates) and the Tree clean condition,
+  and nothing the repository tracks is changed. When that file cannot be written, the
+  start fails and no worktree is made.
+- **Worktrees made before the move.** Until T-27 a worktree was made at
+  `<desktop data root>/task-worktrees/<repository ID>/<task ID>`. One that is still there
+  is the task's worktree: another separate-worktree start of the task reuses it, Open folder opens it, and a removal removes
+  it, each where it is. Nothing is moved, and a new worktree is never made there.
 - **Branch.** `tasks/<task ID>`, created at the repository's current commit, or checked out
   when it already exists. Uncommitted changes of the repository root are not part of it.
-- **Reuse.** A worktree left by an earlier start of the task (a requeue) is used again only
+- **Reuse.** A worktree left by an earlier start of the task is used again by its next separate-worktree start only
   when Git still lists it on the task branch and its working tree is clean. Otherwise the
   start fails and nothing is touched. When Git lists it on the task branch and the tree has
   uncommitted changes, the start fails with the fixed `worktree_dirty` (the manual start's
@@ -416,14 +476,35 @@ paths stay desktop-private and never reach the monitor store or browser state.
 - **Open folder.** The user cleans a dirty worktree by hand, so the desktop can open it:
   the fixed channel `pomegr:task-worktree-open` (see [Boundaries](#boundaries)) opens the
   task's worktree folder in the file manager, only when the folder exists and Git, asked
-  from inside it, lists it on `tasks/<task ID>`. The path is resolved and opened in desktop
-  main and never reaches the renderer, the monitor, the task store, a log, or a report.
-  Pomegr removes nothing and still never removes a worktree that has uncommitted changes.
+  from inside it, lists it on `tasks/<task ID>`. Desktop main asks the monitor for the
+  repository root (`POST /internal/tasks/worktree-root`); without an answer only a
+  worktree made before the move is found. The path is resolved and opened in desktop
+  main and never reaches the renderer, the task store, a log, or a report.
+  Pomegr removes nothing here and never removes a worktree that has uncommitted changes.
 - **Removal.** The desktop removes a worktree only when Git lists it as a worktree of the
   repository, its working tree is clean, and its HEAD holds no commit that exists nowhere
   else (no remote and no other local branch). The removal is Git's own unforced
-  `worktree remove`. The only automatic removal is of a worktree made for a start that
-  then failed; the worktrees of finished tasks stay until the user removes them.
+  `worktree remove`. There are two automatic removals: of a worktree made for a start
+  that then failed, and of the worktree of a task marked done (below).
+- **Branch.** A removal that is asked to remove the branch deletes `tasks/<task ID>` only
+  after the worktree is gone and only when the worktree was on that branch, so the check
+  above has just found every commit of the branch on a remote or on another local branch.
+  It is therefore `git branch -D`: Git's own merged check compares with the root's
+  current branch, and would keep a branch whose pull request was merged as a squash. A
+  worktree on another branch, or on none, goes without a branch delete.
+- **When a task is done.** Mark done (`resolve_done`) on a task that does not keep its
+  worktree (`run.keepWorktree`) stores that the task waits for the removal. The desktop
+  queue runner asks `POST /internal/tasks/worktree-cleanups` on its first tick and on
+  every fourth after it (about once a minute), and gets at most 64
+  `{ repositoryId, taskId, repositoryRoot }` entries; a repository whose root the monitor
+  has not located in this run is left out. For each it runs the removal above with the
+  branch delete. When the worktree is removed, or there is none (the task ran in the
+  repository root), it posts `POST /internal/tasks/worktree-cleaned` with `{ id }` and the
+  task is not listed again. A worktree it could not remove stays listed and is tried on
+  a later pass: one with uncommitted changes or a commit that exists nowhere else is
+  kept until the user commits, pushes, or removes it, and one whose folder is still in
+  use (a terminal open in it) goes once it is free. Pomegr never forces either. A task
+  that was done before T-27 is never listed.
 - **Git.** `execFile` with argument arrays and no shell, with a 30-second limit per call.
 
 ### Feature context
@@ -552,7 +633,8 @@ and only one task at a time. Every start first passes the [start gates](#start-g
   manual start uses,
   without the native confirmation, because the user turned the queue on. When one start
   pauses a queue, the rest of that repository's answer is not started. A manual start and a queued start never overlap. The next start
-  is served only on this route, never on `GET /api/tasks`.
+  is served only on this route, never on `GET /api/tasks`. The same timer also removes the
+  worktrees of done tasks (see [Features and steps](#features-and-steps)).
 - **Pause.** A start that does not succeed pauses the queue and is not retried: the
   runner posts `POST /internal/tasks/queue-pause` with `{ id, reason }`, the monitor
   stores `paused` with the task in `blockedBy` and the fixed reason (`cli_missing`,
@@ -761,7 +843,9 @@ What a held gate does:
   `unavailable`, `plugin_missing`). The answer names no gate. The renderer names the
   gates that hold the task's provider from the readings `queue.gates` already carries
   ("This task is held: ..."), and falls back to one fixed line that points at the Queue
-  view when those readings show no hold. A start held only by the root's uncommitted changes answers the fixed
+  view when those readings show no hold. It asks for the board again after the answer, so
+  the line is drawn from the newest readings. A reading that is unknown reads "not known
+  yet", never as passed. A start held only by the root's uncommitted changes answers the fixed
   `tree_dirty` instead, and the renderer offers
   [a separate worktree](#separate-worktree-for-a-dirty-repository). The queue runner
   treats `gate_held` and `tree_dirty` like a task that moved: no pause, and the next poll
@@ -1496,7 +1580,8 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   `removeImage(repositoryId, { taskId, imageId })`, and
   `readImage(repositoryId, { taskId, imageId })`. Each answers a fixed error:
   `invalid`, `not_found`, `limit` (a fifth image), or `conflict` (the store cannot be
-  used).
+  used, the task already holds that image ID, or, for an add or a remove, the task has
+  started; see [A started task is read-only](#a-started-task-is-read-only)).
 - The renderer reaches them through the fixed IPC channel `pomegr:task-image`
   (`desktop/runtime/task-image.mjs`), which posts to
   `POST /internal/tasks/image-add | image-remove | image-read`
@@ -1534,9 +1619,9 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   [Starting a session](#starting-a-session). In the prompt a marker reads as its
   image's number, `[Image #n]`, and the list of files names each image by the same
   number, so the agent knows which image the text means where. A marker that names no
-  listed image reads `[image]`. An image attached later is not sent to
-  that session. A requeued task starts its next session with the images it holds
-  then.
+  listed image reads `[image]`. A started task takes no new image, so the
+  session has every image its task holds. A requeued task starts its next session with
+  the images it holds then.
 - Creating a GitHub issue from a task sends its text only, with `[image]` where the
   text holds a marker; no image and no image ID is sent. A promote makes a task
   with no image.
@@ -1604,6 +1689,7 @@ serves no other client.
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, one for each repository, and a fixed pause reason in; no task content either way |
+| `POST /internal/tasks/worktree-cleanups`, `worktree-root`, and `worktree-cleaned` | Desktop main and its queue runner, with the desktop token; not reachable through `pomegr:task-action` | `worktree-cleanups`: at most 64 `{ repositoryId, taskId, repositoryRoot }` done tasks whose worktree waits for removal. `worktree-root`: the root of one repository, or `not_found`. `worktree-cleaned`: a task ID in. The root reaches desktop main only, as in the start plan; no task content either way |
 | `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. The payload cap is the 16 KiB cap of `pomegr:task-action`. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
 | `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
@@ -1622,7 +1708,8 @@ serves no other client.
   `{ id, text?, run?, completeWhen? }`, and `delete` with `{ id }`; a payload with any other
   key is `invalid`. In `update` at least one of the three fields is required, a field
   that is present replaces the stored one whole (a null `run` or `completeWhen` clears it),
-  and an absent field is left as stored. `move` takes `{ id, columnId, position }`:
+  and an absent field is left as stored. An `update` of a task that has started answers
+  `conflict` (see [A started task is read-only](#a-started-task-is-read-only)). `move` takes `{ id, columnId, position }`:
   `position` is the zero-based index in the destination column counted after the task
   leaves its place, and a value past the end appends. A
   `columnId` that is not one of the board's five columns answers `not_found`, and a card
@@ -1854,7 +1941,10 @@ fixed values.
     as any Remote Control session is.
 - `runModels` never carries entitlement, a hidden ID, an alias ID, or a raw catalog row.
 - A worktree path stays in desktop main. It never enters the monitor, the task store,
-  browser state, a log, or a report.
+  browser state, a log, or a report. It is built there from the repository root the
+  monitor answers to desktop main and the task ID. The monitor reads the same path shape
+  only from a session's own working directory, to name the repository of a removed
+  worktree (see [Repository context inventory](observation-cache.md#repository-context-inventory)).
 
 ## Invariants and failure behavior
 

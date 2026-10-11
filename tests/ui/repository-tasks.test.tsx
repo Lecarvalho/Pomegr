@@ -560,6 +560,18 @@ describe("task board styles", () => {
     expect(styles).toMatch(/\.taskCardLink\s*\{[^}]*align-self:\s*flex-start/);
   });
 
+  it("keeps the page as wide as a phone and lets a swipe on a card scroll it", () => {
+    // The region clips the visually hidden text of its lanes, so the document is never as wide as the board.
+    expect(styles).toMatch(/\.taskBoardScroller\s*\{[^}]*position:\s*relative[^}]*overflow-x:\s*auto/);
+    const phone = styles.match(/@media \(max-width: 760px\) \{\s*\.taskBoardScroller, \.taskBoardSkeleton \{[^@]*/)?.[0] ?? "";
+    expect(phone).toMatch(/scroll-snap-type:\s*x mandatory/);
+    expect(phone).toMatch(/\.taskBoardGrid, \.taskBoardSkeleton\s*\{[^}]*min\(86%, 320px\)/);
+    expect(phone).toMatch(/\.taskColumn, \.taskBoardSkeletonColumn\s*\{[^}]*scroll-snap-align:\s*start/);
+    // A lane's list scrolls only where the lane has a height; everywhere else it must not trap the page's scroll.
+    expect(styles).not.toMatch(/^\.tasksPage \.taskColumnList\s*\{[^}]*overflow/m);
+    expect(styles).toMatch(/@media \(min-width: 761px\) \{[^@]*\.tasksPage \.taskColumnList\s*\{[^}]*overflow-y:\s*auto[^}]*overscroll-behavior-y:\s*contain/);
+  });
+
   it("draws the queue banner on the error-soft panel and the block rules in their state tones", () => {
     expect(styles).toMatch(/\.taskQueueBanner\s*\{[^}]*flex-wrap:\s*wrap[^}]*border:\s*1px solid var\(--command-error\)[^}]*border-radius:\s*var\(--panel-radius\)[^}]*background:\s*var\(--color-error-soft\)/);
     expect(styles).toMatch(/\.taskQueueBannerActions \.commandSecondaryAction\s*\{[^}]*var\(--command-line-strong\)[^}]*var\(--command-panel\)/);
