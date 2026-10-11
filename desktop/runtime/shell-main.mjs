@@ -717,13 +717,15 @@ async function startDesktop() {
           environment: taskSessionEnvironment,
           worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
           openPath: (directory) => shell.openPath(directory),
-          confirm: async ({ taskId }) => {
+          confirm: async ({ taskId, separateWorktree }) => {
             if (!mainWindow || mainWindow.isDestroyed()) return false;
             const answer = await dialog.showMessageBox(mainWindow, {
               type: "question",
               title: "Start a session",
-              message: `Start task ${taskId}?`,
-              detail: "A session will open in a new terminal window in this repository, or in the task's own worktree when its step runs in parallel, on the provider set in the task's Run on (Claude Code when none is set).",
+              message: separateWorktree ? `Start task ${taskId} in a separate worktree?` : `Start task ${taskId}?`,
+              detail: separateWorktree
+                ? "A session will open in a new terminal window in a worktree of the task's own, on the task's branch at this repository's current commit, on the provider set in the task's Run on (Claude Code when none is set). The uncommitted changes in this repository are not part of it and are left untouched."
+                : "A session will open in a new terminal window in this repository, or in the task's own worktree when its step runs in parallel, on the provider set in the task's Run on (Claude Code when none is set).",
               buttons: ["Start session", "Cancel"],
               defaultId: 1,
               cancelId: 1,

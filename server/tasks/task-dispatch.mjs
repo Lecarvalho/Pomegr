@@ -6,7 +6,9 @@
 // column as `<digest>:<mintMs>`, so no schema change is needed. The digest is never projected onto the
 // board. Task text is untrusted: it is concatenated only into the fixed prompt string, never into a
 // path or command line. The store judges the start gates (capacity, incident, clean tree, previous step) through
-// `gatesHold` before a token is minted, so a held start leaves nothing behind.
+// `gatesHold` before a token is minted, so a held start leaves nothing behind. A start held only by uncommitted
+// changes in the repository root answers `tree_dirty`, and the owner may ask for the same start in a worktree of the
+// task's own (`worktree: true`), which that one gate does not hold.
 //
 // The started session reports the token with its normalized session ID, and `bindDispatch` links the
 // two once and discards the digest. The token is the only authority: the session is not looked up,
@@ -21,7 +23,7 @@ import { TASK_IMAGE_MARKER, isRepositoryId, isTaskId, isTaskSessionId, normalize
 
 export { TASK_DISPATCH_UNBOUND_TTL_MS };
 
-export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "unavailable"]);
+export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "tree_dirty", "unavailable"]);
 
 const STARTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
 /** Providers a session can be started on. A task with no provider runs on Claude Code. */
@@ -107,14 +109,20 @@ const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_
 /**
  * `start-plan`. `resolveFacts(provider)` returns `{ root, pluginReady }` from committed facts, `pluginReady`
  * for the plugin of the provider the session runs on, and is called only after the task, provider, and state
- * refusals. `gatesHold(taskId)` is the store's start-gate judgement for this task from committed facts; a held
- * start answers `gate_held` and mints nothing. `transaction(work)` runs `work` in one write transaction. The plan's
- * `worktree` says whether the session must run in a worktree of its own; where that worktree is, only the desktop knows.
+ * refusals. `gatesHold(taskId)` is the store's start-gate judgement for this task from committed facts: false when
+ * nothing holds it, `"tree_dirty"` when only uncommitted changes in the repository root do, and anything else for
+ * every other hold. A held start answers `gate_held`, or `tree_dirty` for that one hold, and mints nothing. The
+ * payload is `{ id }`, or `{ id, worktree: true }` when the owner asked for a worktree of the task's own: that start
+ * is not held by `tree_dirty`, because the session does not run in the root. `transaction(work)` runs `work` in one
+ * write transaction. The plan's `worktree` says whether the session must run in a worktree of its own (the owner
+ * asked for it, or the task's step runs in parallel); where that worktree is, only the desktop knows.
  * `imagePaths(taskId)` supplies the files of the task's images from the store; the plan carries them in `images` and
  * names them in the prompt.
  */
 export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, imagePaths = null, now }) {
-  const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id"]) : undefined;
+  const separate = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.hasOwn(payload, "worktree");
+  if (separate && payload.worktree !== true) return { ok: false, error: "invalid" };
+  const number = isRepositoryId(repositoryId) ? taskNumber(payload, separate ? ["id", "worktree"] : ["id"]) : undefined;
   if (number === undefined) return { ok: false, error: "invalid" };
   const row = loadRow(database, repositoryId, number);
   if (!row) return { ok: false, error: "not_found" };
@@ -128,7 +136,8 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   try { facts = resolveFacts(provider); } catch { facts = null; }
   if (typeof facts?.root !== "string" || facts.root.length === 0) return { ok: false, error: "unavailable" };
   if (facts.pluginReady !== true) return { ok: false, error: "plugin_missing" };
-  if (gatesHold(task.id) !== false) return { ok: false, error: "gate_held" };
+  const held = gatesHold(task.id);
+  if (held === "tree_dirty" ? !separate : held !== false) return { ok: false, error: held === "tree_dirty" ? "tree_dirty" : "gate_held" };
   const token = crypto.randomBytes(32).toString("base64url");
   const minted = transaction(() => {
     // The state may have moved since the read above; the mint stands only if the task is still startable.
@@ -136,7 +145,7 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
     if (!fresh || !startable(fresh, at)) return null;
     preparedStatement(database, "UPDATE tasks SET dispatch_token = ? WHERE repository_id = ? AND number = ?")
       .run(`${digestOf(token)}:${at}`, repositoryId, number);
-    return { worktree: worktreeRequired(database, fresh) };
+    return { worktree: separate || worktreeRequired(database, fresh) };
   });
   if (!minted) return { ok: false, error: "not_startable" };
   // The images the task holds now are the ones the session gets; one attached later is not sent to it.

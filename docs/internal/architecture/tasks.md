@@ -341,8 +341,10 @@ paths stay desktop-private and never reach the monitor store or browser state.
 
 - **Which tasks get a worktree.** A task of a step that holds more than one task, counting
   tasks of any state. A task alone in its step, and a task without a feature, runs in the
-  repository root. The monitor decides this when it answers the start plan (`worktree`,
-  a boolean); it never learns where the worktree is.
+  repository root, unless the owner asked for a separate worktree for that one manual
+  start (see [Separate worktree](#separate-worktree-for-a-dirty-repository)). The monitor
+  decides this when it answers the start plan (`worktree`, a boolean); it never learns
+  where the worktree is.
 - **Where.** `<desktop data root>/task-worktrees/<repository ID>/<task ID>`. Both parts are
   validated identifiers, so no task text and no repository path shapes the directory.
 - **Branch.** `tasks/<task ID>`, created at the repository's current commit, or checked out
@@ -543,6 +545,36 @@ proceed. A start needs all of the following.
    is used again must be clean too; the desktop checks that itself and fails the start
    otherwise.
 
+### Separate worktree for a dirty repository
+
+Task T-46, 2026-10-10. Gate 4 holds a start in the root because the session would work on
+top of the owner's uncommitted changes, and it holds a parallel task because its new
+worktree would not hold them. When that gate is the only one that holds a manual start,
+the owner may accept the second case on purpose:
+
+- `start-plan` answers the fixed `tree_dirty` instead of `gate_held` when the start is
+  held by `tree_dirty` and by nothing else. Any other hold beside it, an unknown tree, and
+  a scheduled task before its own time stay `gate_held`. The working-tree reading is
+  already on `queue.gates.workingTree`, so the answer exposes no new fact.
+- After that answer the task modal shows **Start in separate worktree**. It calls
+  `pomegr:task-start` again with the fixed third argument `true` and nothing else. The
+  native confirmation names the separate worktree and says that the repository's
+  uncommitted changes are not part of it and are left untouched. Cancelling it leaves
+  the offer in place.
+- Desktop main then asks for the plan with `{ id, worktree: true }`. For that payload the
+  monitor does not hold the start on `tree_dirty` (every other gate still holds it) and
+  answers `worktree: true` in the plan, whatever the task's step. A `worktree` value
+  other than `true` is `invalid`. Desktop main refuses a plan without `worktree: true`
+  for such a start and aborts the dispatch, so a start confirmed for a separate worktree
+  never runs in the root.
+- The worktree is the task's ordinary one: the same directory, the `tasks/<task ID>`
+  branch at the root's current commit, and the same reuse and removal rules, so a
+  worktree left from an earlier start that has uncommitted changes answers
+  `worktree_dirty`. The root and its changes are never touched, stashed, or copied.
+- The choice is for that one start and is stored nowhere. The queue never makes it: a
+  queued start a dirty root holds keeps waiting, and the queue runner treats `tree_dirty`
+  like `gate_held`.
+
 A fact that is missing, stale, or partial is unknown (`usage_unknown`,
 `provider_status_unknown`, `tree_unknown`). Unknown holds a start exactly like a failed
 gate and never counts as passed. The other provider's usage and status never hold a
@@ -574,8 +606,11 @@ What a held gate does:
 - **Manual start.** `start-plan` answers the fixed `gate_held` before a token is minted,
   after the refusals that precede it (`not_startable`, `unsupported_provider`,
   `unavailable`, `plugin_missing`). The renderer shows one fixed line that points at the
-  Queue view. The queue runner treats `gate_held` like a task that moved: no pause, and
-  the next poll asks again.
+  Queue view. A start held only by the root's uncommitted changes answers the fixed
+  `tree_dirty` instead, and the renderer offers
+  [a separate worktree](#separate-worktree-for-a-dirty-repository). The queue runner
+  treats `gate_held` and `tree_dirty` like a task that moved: no pause, and the next poll
+  asks again.
 - **Running sessions.** Never touched.
 
 `GET /api/tasks` serves the readings as `queue.gates`. The route rebuilds the block
@@ -999,17 +1034,20 @@ Starting is desktop-only and explicit.
    that line, and no issue is read when a session starts.
 4. The start is refused with a fixed reason when the Pomegr plugin is not installed in
    the repository or is older than the first version with the task hook and tools
-   (fixed result `plugin_missing` for both), a gate holds (fixed result `gate_held`), a worktree reused for the
+   (fixed result `plugin_missing` for both), a gate holds (fixed result `gate_held`, or `tree_dirty` when only
+   the repository root's uncommitted changes hold it), a worktree reused for the
    task has uncommitted changes (fixed result `worktree_dirty`), or the platform is not
    Windows (fixed result `unsupported_platform`).
 
 Built so far: the manual and the queued start of a Claude Code or Codex session behind the start gates, and the link of the started session to its task.
 
 - The renderer calls the fixed IPC channel `pomegr:task-start` with a repository ID and a
-  task ID. It gets back one fixed status and nothing else: `started`, `cancelled`,
+  task ID, and for a [separate-worktree start](#separate-worktree-for-a-dirty-repository)
+  the fixed third argument `true`; any other third value answers `invalid`. It gets back
+  one fixed status and nothing else: `started`, `cancelled`,
   `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`, `gate_held`,
-  `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`, `failed`, or
-  `worktree_dirty`.
+  `tree_dirty`, `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`,
+  `failed`, or `worktree_dirty`.
 - Desktop main checks the platform and looks for the Claude Code and Codex executables,
   then shows the native confirmation, which names only the task ID. Only after the user
   confirms does it ask the monitor for the start plan, because the plan mints a
@@ -1031,7 +1069,8 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   alike. A version that is unknown or cannot be compared is unknown and holds the
   start like a missing plugin, never a pass. The monitor refuses with `unavailable` when it has not identified the
   repository's root in the current run. Last, it refuses with `gate_held` when a
-  [start gate](#start-gates) holds the task.
+  [start gate](#start-gates) holds the task, or with `tree_dirty` when the only hold is
+  the root's uncommitted changes and the payload does not ask for a worktree.
 - The monitor stores only the SHA-256 digest of the token and its mint time. An unbound
   dispatch is live for ten minutes; after that the task can be started again. The
   session's first report of the token binds it (see [Session binding](#session-binding)),
@@ -1290,7 +1329,7 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client; the LAN gateway forwards the path but marks its requests, and a marked request never gets the marker | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
-| `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
+| `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |

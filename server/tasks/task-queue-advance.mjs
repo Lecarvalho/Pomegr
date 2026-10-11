@@ -93,7 +93,7 @@ export function startGates({ database, repositoryId, board, taskId, resolveGateF
   const gates = evaluateGates({ provider: startProvider(task), blockedBy: previousStepBlocker(taskId, board.tasks, board.features) },
     gateFacts(resolveGateFacts, repositoryId), { threshold: readGateThreshold(database, repositoryId) });
   const early = task.state === "scheduled" && task.scheduledAt !== null && !taskIsDue(Date.parse(task.scheduledAt), at);
-  return early ? { ok: false, reasons: gates.reasons } : gates;
+  return early ? { ok: false, reasons: gates.reasons, early: true } : gates;
 }
 
 /**

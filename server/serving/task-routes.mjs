@@ -14,7 +14,7 @@ const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, 
 // Session-start actions answer through their own handler, not the renderer's `pomegr:task-action` list above.
 const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
 const START_STATUS = Object.freeze({
-  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, gate_held: 409, unsupported_provider: 422, unavailable: 503,
+  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, gate_held: 409, tree_dirty: 409, unsupported_provider: 422, unavailable: 503,
 });
 // Queue actions answer through their own handlers too. `queue-next` takes an empty body and answers the tasks the running
 // queues start now; `queue-pause` takes the usual envelope and records that a start did not succeed. Neither carries a board.
@@ -218,7 +218,8 @@ export function isPlainObject(value) {
 
 // `start-plan` answers `{ ok: true, plan }` and `start-abort` `{ ok: true }`; a refusal is a fixed code only.
 // `resolveStart(repositoryId, provider)` supplies committed facts `{ root, pluginReady }` and is never called for a refusal
-// that precedes it. A start the gates hold answers the fixed `gate_held`, never which gate or its facts.
+// that precedes it. A start the gates hold answers the fixed `gate_held`, never which gate or its facts; the one
+// exception is the fixed `tree_dirty`, for a start held only by uncommitted changes in the repository root.
 // Neither answer ever carries the stored digest or an echo of task content.
 function serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId, payload }) {
   try {

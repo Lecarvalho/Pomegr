@@ -116,7 +116,7 @@ test("a held gate keeps the queue running and the task queued, and the start is 
 test("a manual start the gates hold is gate_held and mints nothing", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   createTask(store);
-  for (const held of [gatesWith({ treeClean: false }), gatesWith({ usage: null }), () => { throw new Error("boom"); }, null, undefined]) {
+  for (const held of [gatesWith({ treeClean: null }), gatesWith({ usage: null }), () => { throw new Error("boom"); }, null, undefined]) {
     assert.deepEqual(store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS, held), { ok: false, error: "gate_held" });
     assert.equal(storedDispatch(directory, 1), null);
   }
@@ -124,6 +124,52 @@ test("a manual start the gates hold is gate_held and mints nothing", async (cont
   assert.equal(store.planStart(REPOSITORY, { id: "T-1" }, () => ({ root: SECRET_ROOT, pluginReady: false }), null).error, "plugin_missing");
   assert.equal(store.planStart(REPOSITORY, { id: "T-9" }, () => FACTS, null).error, "not_found");
   assert.equal(store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS, passingGates).ok, true);
+});
+
+test("a manual start held only by the repository's uncommitted changes is tree_dirty, and starts in a worktree of its own when asked", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  createTask(store);
+  const dirty = gatesWith({ treeClean: false });
+  assert.deepEqual(store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS, dirty), { ok: false, error: "tree_dirty" });
+  assert.equal(storedDispatch(directory, 1), null);
+  // Another hold beside the dirty tree, or a tree that is not known, stays the general answer, with or without the ask.
+  for (const held of [
+    gatesWith({ treeClean: false, usage: null }),
+    gatesWith({ treeClean: false, providerStatus: { claude: "incident", codex: "operational" } }),
+    gatesWith({ treeClean: null }),
+    null,
+  ]) {
+    for (const payload of [{ id: "T-1" }, { id: "T-1", worktree: true }]) {
+      assert.deepEqual(store.planStart(REPOSITORY, payload, () => FACTS, held), { ok: false, error: "gate_held" });
+    }
+    assert.equal(storedDispatch(directory, 1), null);
+  }
+  for (const payload of [{ id: "T-1", worktree: false }, { id: "T-1", worktree: "yes" }, { id: "T-1", worktree: null }, { id: "T-1", worktree: true, root: SECRET_ROOT }, { worktree: true }]) {
+    assert.deepEqual(store.planStart(REPOSITORY, payload, () => FACTS, dirty), { ok: false, error: "invalid" });
+  }
+  // The earlier refusals still answer first.
+  assert.equal(store.planStart(REPOSITORY, { id: "T-1", worktree: true }, () => ({ root: SECRET_ROOT, pluginReady: false }), dirty).error, "plugin_missing");
+  const started = store.planStart(REPOSITORY, { id: "T-1", worktree: true }, () => FACTS, dirty);
+  assert.equal(started.ok, true);
+  assert.equal(started.plan.worktree, true);
+  assert.notEqual(storedDispatch(directory, 1), null);
+});
+
+test("a start asked for a worktree of its own gets one on a clean repository too, and a plain start of a single task stays in the root", async (context) => {
+  const { store } = await openTemporaryStore(context);
+  createTask(store);
+  createTask(store);
+  assert.equal(store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS, passingGates).plan.worktree, false);
+  assert.equal(store.planStart(REPOSITORY, { id: "T-2", worktree: true }, () => FACTS, passingGates).plan.worktree, true);
+});
+
+test("a scheduled task before its own time is gate_held even when only the tree is dirty", async (context) => {
+  const { store, clock } = await openTemporaryStore(context);
+  createTask(store);
+  assert.equal(store.apply(REPOSITORY, "queue_add", { id: "T-1", at: new Date(clock.now + 3_600_000).toISOString() }).ok, true);
+  for (const payload of [{ id: "T-1" }, { id: "T-1", worktree: true }]) {
+    assert.deepEqual(store.planStart(REPOSITORY, payload, () => FACTS, gatesWith({ treeClean: false })), { ok: false, error: "gate_held" });
+  }
 });
 
 test("the threshold is one fixed choice per repository, kept in meta, and changes nothing else", async (context) => {
@@ -208,7 +254,8 @@ test("GET /api/tasks serves the gates from the runtime lookup, and queue-next an
   assert.deepEqual((await post("queue-next", {})).json, { ok: true, starts: [] });
   const refused = await post("start-plan", { repositoryId: REPOSITORY, payload: { id: "T-1" } });
   assert.equal(refused.status, 409);
-  assert.deepEqual(refused.json, { ok: false, error: "gate_held" });
+  assert.deepEqual(refused.json, { ok: false, error: "tree_dirty" });
+  assert.equal(refused.text.includes("SECRET-ROOT"), false);
   assert.equal(storedDispatch(directory, 1), null);
   assert.equal(queueRow(directory).queue_status, "running");
 
