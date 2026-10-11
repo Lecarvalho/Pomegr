@@ -100,6 +100,10 @@ export const SESSION_EVENT_KINDS = [
   "pull_request_opened",
   "cache_refill",
   "context_compacted",
+  "task_added",
+  "task_removed",
+  "task_completed",
+  "task_blocked",
 ] as const;
 
 export type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
@@ -107,11 +111,12 @@ export type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
 export const SESSION_EVENT_LIMIT = 50;
 
 // One high-level transition derived monitor-side from already-normalized evidence.
+// The four task kinds are the agent's own Pomegr task tool calls recorded in the session, never a reading of the task board.
 export type SessionEvent = {
   id: string; // opaque digest, stable while the underlying evidence is unchanged
   kind: SessionEventKind;
   at: string; // ISO timestamp recorded with the evidence, never the projection time
-  agentId: string | null; // agent_started, agent_finished, agent_stopped, agent-scoped signal_reported, cache_refill, context_compacted
+  agentId: string | null; // agent_started, agent_finished, agent_stopped, agent-scoped signal_reported, cache_refill, context_compacted, and the four task kinds
   agentLabel: string | null;
   durationMs: number | null; // agent_finished and agent_stopped wall time
   signal: Pick<Agent["signal"] & object, "label" | "tone"> | null; // signal_reported, agent-reported

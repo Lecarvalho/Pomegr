@@ -401,6 +401,8 @@ const evidenceToolCall = z.object({
   status: z.enum(["running", "completed", "failed"]).nullable(), repetitionSignature: evidenceOneLine(512), durationMs: evidenceActivityDuration, requestId: evidenceRequestId,
   mutation: z.object({ display: evidenceOneLine(512), scopes: z.array(evidenceOneLine(256)) }).strict().nullable(),
   fileChanges: z.array(evidenceFileChange).max(64).nullable().optional(), wrapper: z.boolean().optional(),
+  // Set only on a Pomegr task tool call whose recorded result is not an error: the fixed action, never a task ID or text.
+  taskAction: z.enum(["added", "removed", "completed", "blocked"]).optional(),
 }).strict();
 const evidenceActivity = z.object({ id: evidenceId, timestamp: evidenceTimestamp, actor: evidenceOneLine(512), tool: evidenceOneLine(128), workKind: evidenceWorkKind.optional(), detail: evidenceOneLine(1_024), status: z.literal("failed").nullable(), durationMs: evidenceActivityDuration, requestId: evidenceRequestId }).strict();
 const evidencePlanTask = z.object({ id: evidenceId, subject: evidenceOneLine(512), status: z.enum(["pending", "in_progress", "completed"]), blocks: z.array(evidenceId).max(128), blockedBy: z.array(evidenceId).max(128) }).strict();

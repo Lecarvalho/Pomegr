@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { mutationScopes, repetitionSignature } from "../../normalize/tool-efficiency.mjs";
 import { codexTimestamp } from "./session-metadata.mjs";
-import { toolWorkKind } from "../../normalize/work-kind.mjs";
+import { pomegrTaskAction, toolWorkKind } from "../../normalize/work-kind.mjs";
 import { boundedActivityDuration, boundedFileChanges } from "../../normalize/activity-events.mjs";
 import { collapsedText } from "../../normalize/primitives.mjs";
 import { isCodeModeWrapper, normalizedStatus, rolloutExecutionItemKind, rolloutExecutionStatus, rolloutExecutionTiming } from "./execution-items.mjs";
@@ -494,6 +494,7 @@ export function mergeCodexToolCalls(callGroups) {
       durationMs: call.durationMs ?? previous.durationMs ?? null,
       requestId: null,
       ...(typeof (call.wrapper ?? previous.wrapper) === "boolean" ? { wrapper: call.wrapper ?? previous.wrapper } : {}),
+      ...(call.mcpRefused || previous.mcpRefused ? { mcpRefused: true } : {}),
       // Already-sealed sources (a sealed call never carries fileChangeCandidates)
       // may still disagree on fileChanges; prefer whichever observation has it.
       ...(Object.hasOwn(call, "fileChanges") || Object.hasOwn(previous, "fileChanges")
@@ -507,6 +508,29 @@ export function mergeCodexToolCalls(callGroups) {
   return [...calls.values()].sort((left, right) => (
     Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id)
   ));
+}
+
+// An MCP call can end with a result that is itself an error while the call's own status reads completed.
+function mcpResultRefused(result, error) {
+  if (error !== null && error !== undefined) return true;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return false;
+  if (Object.hasOwn(result, "Err")) return true;
+  const answer = Object.hasOwn(result, "Ok") ? result.Ok : result;
+  return answer?.isError === true || answer?.is_error === true;
+}
+
+// Names the fixed task action of each completed Pomegr task tool call whose result was not an error, and drops the private marker.
+// The app server times a call by its turn, and that time moves when the turn ends. An action is recorded by its time, so it is
+// named only while the call carries the time its rollout recorded; a call the rollout does not hold is never named.
+export function sealCodexTaskActions(calls, rolloutCalls) {
+  const recordedTimes = new Map((Array.isArray(rolloutCalls) ? rolloutCalls : []).map((call) => [call?.id, call?.timestamp]));
+  return (Array.isArray(calls) ? calls : []).map((call) => {
+    const { mcpRefused, ...sealed } = call || {};
+    delete sealed.taskAction;
+    const taskAction = sealed.status === "completed" && mcpRefused !== true && recordedTimes.get(sealed.id) === sealed.timestamp
+      ? pomegrTaskAction(sealed.tool, sealed.detail) : null;
+    return taskAction ? { ...sealed, taskAction } : sealed;
+  });
 }
 
 /** @param {{ cwd?: string, forbiddenRoots?: string[], deferFileChanges?: boolean }} [options] */
@@ -537,7 +561,7 @@ export function parseCodexCanonicalTurns(turns, options = {}) {
       if (!descriptor) continue;
       const status = normalizedStatus(item.status, turn?.status === "completed" ? "completed" : "running");
       const timestamp = status === "running" ? turnStartedAt : turnCompletedAt;
-      calls.push(makeCall({
+      const call = makeCall({
         actor,
         providerCallId: item.id,
         fallbackIdentity: `canonical:${turn?.id || turnIndex}:${itemIndex}:${item.type}`,
@@ -545,7 +569,9 @@ export function parseCodexCanonicalTurns(turns, options = {}) {
         descriptor,
         status,
         fileChangeCwd: item?.cwd || cwd,
-      }));
+      });
+      if (call && item.type === "mcpToolCall" && mcpResultRefused(item.result, item.error)) call.mcpRefused = true;
+      calls.push(call);
     }
   }
   return mergeCodexToolCalls([calls]).map((call) => sealCodexFileChanges(call, call.status, { cwd, forbiddenRoots, deferFileChanges }));
@@ -621,6 +647,8 @@ export function parseCodexActivityRecords(records, options = {}) {
   // nested execution item was recorded while each was the only open call.
   const openCalls = new Set();
   const wrappers = new Map();
+  // MCP calls whose recorded result is an error; a later output record for the same call never clears one.
+  const refused = new Set();
   let recordedCwd = cwd;
   for (const [order, record] of (Array.isArray(records) ? records : []).entries()) {
     const observedTimestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp);
@@ -664,6 +692,7 @@ export function parseCodexActivityRecords(records, options = {}) {
     if (["execcommandend", "patchapplyend", "mcptoolcallend", "websearchend", "imagegenerationend"].includes(eventType)) {
       const id = eventCallId(payload);
       if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
+      if (id && eventType === "mcptoolcallend" && mcpResultRefused(payload.result, payload.error)) refused.add(stableCodexCallId(actor.id, id));
       continue;
     }
     // Patches, commands and MCP calls run inside a code-mode exec cell are recorded only as
@@ -713,7 +742,7 @@ export function parseCodexActivityRecords(records, options = {}) {
   return mergeCodexToolCalls([calls]).map((call) => {
     const update = updates.get(call.id);
     const sealed = sealCodexFileChanges(call, update ? update.status : call.status, { cwd, forbiddenRoots, deferFileChanges });
-    const wrapper = wrappers.has(call.id) ? { wrapper: wrappers.get(call.id) || !update } : {};
+    const wrapper = { ...(wrappers.has(call.id) ? { wrapper: wrappers.get(call.id) || !update } : {}), ...(refused.has(call.id) ? { mcpRefused: true } : {}) };
     return update ? { ...sealed, ...wrapper, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : { ...sealed, ...wrapper };
   });
 }

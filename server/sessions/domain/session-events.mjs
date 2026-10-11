@@ -4,6 +4,7 @@ export const SESSION_EVENT_KINDS = Object.freeze([
   "agent_started", "agent_finished", "agent_stopped", "signal_reported", "estimate_updated",
   "user_message", "resource_peak", "commit_observed", "pull_request_opened",
   "cache_refill", "context_compacted",
+  "task_added", "task_removed", "task_completed", "task_blocked",
 ]);
 export const SESSION_EVENT_LIMIT = 50;
 export const SESSION_EVENT_READINESS_SECTIONS = Object.freeze(["core", "agentEvidence", "activityEvidence"]);
@@ -21,6 +22,8 @@ const RESOURCE_PEAK_FLOORS = new Map([
 const PRIMARY_AGENT_ID = "primary";
 const REFILL_KINDS = new Set(["possible_full", "provider_diagnosed", "lifetime_elapsed"]);
 const COMPACTION_TRIGGERS = new Set(["automatic", "manual"]);
+const TASK_ACTION_KINDS = new Map([["added", "task_added"], ["removed", "task_removed"], ["completed", "task_completed"], ["blocked", "task_blocked"]]);
+const TASK_ACTION_COUNT_LIMIT = 64;
 
 function instant(value) {
   if (typeof value !== "string") return null;
@@ -175,6 +178,22 @@ function compactionEvents(eventRecord, agents) {
   return events;
 }
 
+// One event per recorded Pomegr task tool call: the fixed action, never a task ID, text, or reason.
+function taskActionEvents(eventRecord, agents) {
+  const labels = labelsById(agents);
+  const events = [];
+  for (const entry of Array.isArray(eventRecord?.taskActions) ? eventRecord.taskActions : []) {
+    const atMs = instant(entry?.at);
+    const kind = TASK_ACTION_KINDS.get(entry?.action);
+    if (atMs === null || !kind || !labels.has(entry.agentId)) continue;
+    const count = Number.isSafeInteger(entry.count) && entry.count >= 1 ? Math.min(entry.count, TASK_ACTION_COUNT_LIMIT) : 1;
+    for (let index = 0; index < count; index += 1) {
+      events.push(candidate(kind, atMs, `agent:${entry.agentId}`, { agentId: entry.agentId, agentLabel: labels.get(entry.agentId) }));
+    }
+  }
+  return events;
+}
+
 function feedReadiness(readiness) {
   if (SESSION_EVENT_READINESS_SECTIONS.some((section) => readiness?.[section] === "loading")) return "loading";
   return SESSION_EVENT_READINESS_SECTIONS.every((section) => readiness?.[section] === "ready") ? "ready" : "unavailable";
@@ -202,6 +221,7 @@ export function sessionEvents({
     ...pullRequestEvents(pullRequestCreations, pullRequests),
     ...cacheRefillEvents(eventRecord, agents),
     ...compactionEvents(eventRecord, agents),
+    ...taskActionEvents(eventRecord, agents),
   ].sort(compare);
   const ordinals = new Map();
   const items = [];
