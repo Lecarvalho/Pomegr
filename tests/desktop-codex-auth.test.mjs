@@ -7,7 +7,7 @@ import {
   CODEX_SIGN_IN_CHANNEL,
   createCodexSignInAction,
 } from "../desktop/runtime/codex-auth.mjs";
-import { installConfirmedTrustedActionIpcHandler } from "../desktop/runtime/claude-auth.mjs";
+import { confirmProviderSignIn, installConfirmedTrustedActionIpcHandler } from "../desktop/runtime/claude-auth.mjs";
 
 const executable = "C:\\Users\\Ada\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe";
 const env = {
@@ -138,4 +138,27 @@ test("Codex native IPC is one trusted no-argument channel with bounded statuses"
   assert.equal(calls, 1);
   remove();
   assert.equal(handlers.has(CODEX_SIGN_IN_CHANNEL), false);
+});
+
+test("Codex native confirmation defaults to cancel and rechecks desktop lifetime", async () => {
+  let running = true;
+  let calls = 0;
+  const window = { isDestroyed: () => false };
+  const dialog = { async showMessageBox(owner, options) {
+    calls += 1;
+    assert.equal(owner, window);
+    assert.equal(options.title, "Sign in to Codex");
+    assert.equal(options.defaultId, 1);
+    assert.equal(options.cancelId, 1);
+    assert.deepEqual(options.buttons, ["Open sign-in", "Cancel"]);
+    return { response: 0 };
+  } };
+  assert.equal(await confirmProviderSignIn(dialog, window, () => running, "Codex"), true);
+  assert.equal(await confirmProviderSignIn(dialog, null, () => running, "Codex"), false);
+  running = false;
+  assert.equal(await confirmProviderSignIn(dialog, window, () => running, "Codex"), false);
+  assert.equal(calls, 1);
+  running = true;
+  dialog.showMessageBox = async () => { running = false; return { response: 0 }; };
+  assert.equal(await confirmProviderSignIn(dialog, window, () => running, "Codex"), false);
 });

@@ -19,6 +19,7 @@ import {
 import {
   CLAUDE_SIGN_IN_CHANNEL,
   createClaudeSignInAction,
+  confirmProviderSignIn,
   installConfirmedTrustedActionIpcHandler,
 } from "./claude-auth.mjs";
 import {
@@ -343,36 +344,6 @@ function installClaudeSignInIpc() {
   });
 }
 
-async function confirmCodexSignIn() {
-  if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: "question",
-    title: "Sign in to Codex",
-    message: "Open Codex sign-in in your browser?",
-    detail: "Pomegr will launch the installed Codex CLI. Completing sign-in may change the Codex account on this computer. Usage is checked separately.",
-    buttons: ["Open sign-in", "Cancel"],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
-  });
-  return result.response === 0 && runtimeState === "running";
-}
-
-async function confirmClaudeSignIn() {
-  if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: "question",
-    title: "Sign in to Claude",
-    message: "Open Claude sign-in in your browser?",
-    detail: "Pomegr will launch installed Claude Code. Completing sign-in in the browser may change the Claude Code account on this computer.",
-    buttons: ["Open sign-in", "Cancel"],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
-  });
-  return result.response === 0 && runtimeState === "running";
-}
-
 async function confirmClaudeUsageSetup() {
   if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
   const result = await dialog.showMessageBox(mainWindow, {
@@ -545,13 +516,13 @@ async function startDesktop() {
   }
   codexSignIn = createCodexSignInAction({
     environment: providerEnvironment,
-    confirm: confirmCodexSignIn,
+    confirm: () => confirmProviderSignIn(dialog, mainWindow, () => runtimeState === "running", "Codex"),
     onCompleted: () => refreshCodexUsageAfterSignIn(monitorChild),
   });
   claudeSignIn = createClaudeSignInAction({
     environment: providerEnvironment,
     nativeEnvironment: nativeClaudeEnvironment(providerEnvironment),
-    confirm: confirmClaudeSignIn,
+    confirm: () => confirmProviderSignIn(dialog, mainWindow, () => runtimeState === "running", "Claude"),
     onCompleted: () => refreshClaudeUsageAfterSignIn(monitorChild),
   });
   repositoryPluginCli = createRepositoryPluginCli({ environment: providerEnvironment });

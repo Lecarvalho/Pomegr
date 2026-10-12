@@ -185,3 +185,20 @@ export function installConfirmedTrustedActionIpcHandler({ ipcMain, channel, isTr
   });
   return () => ipcMain.removeHandler(channel);
 }
+
+export async function confirmProviderSignIn(dialog, window, isRunning, provider) {
+  if (!window || window.isDestroyed() || !isRunning()) return false;
+  const result = await dialog.showMessageBox(window, {
+    type: "question",
+    title: `Sign in to ${provider}`,
+    message: `Open ${provider} sign-in in your browser?`,
+    detail: provider === "Codex"
+      ? "Pomegr will launch the installed Codex CLI. Completing sign-in may change the Codex account on this computer. Usage is checked separately."
+      : "Pomegr will launch installed Claude Code. Completing sign-in in the browser may change the Claude Code account on this computer.",
+    buttons: ["Open sign-in", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  return result.response === 0 && isRunning();
+}
