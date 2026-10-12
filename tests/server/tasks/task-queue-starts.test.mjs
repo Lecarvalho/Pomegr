@@ -112,7 +112,7 @@ test("a start that is not the first queued task does not pause the queue", async
   assert.equal(queueRow(directory).queue_status, "running");
 });
 
-test("the queue waits for earlier feature steps and never skips ahead", async (context) => {
+test("a step waits for the earlier steps of its feature, and holds no task outside that feature", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Search" });
   assert.equal(feature.ok, true);
@@ -123,10 +123,16 @@ test("the queue waits for earlier feature steps and never skips ahead", async (c
   queueTask(store, "T-2");
   queueTask(store, "T-3");
   queueSettings(store, true);
-  // T-1 is in step 1 and was never queued, so step 1 is not done: T-2 waits, and T-3 does not jump the line.
+  // T-1 is in step 1 and was never queued, so step 1 is not done: T-2 waits, and T-3, outside the feature, starts.
   assert.deepEqual(store.readBoard(REPOSITORY).tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 2], ["T-3", null]]);
+  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-3", "T-2"]);
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-3")] });
+  // With nothing else queued, the held step still never starts.
+  assert.equal(store.apply(REPOSITORY, "queue_remove", { id: "T-3" }).ok, true);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  queueTask(store, "T-3");
   updateTask(directory, 1, { state: "done" });
+  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-2", "T-3"]);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
 });
 

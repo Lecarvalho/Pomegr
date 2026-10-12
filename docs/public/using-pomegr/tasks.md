@@ -320,6 +320,12 @@ have to be in the queue. A step whose tasks are all done accepts none. Tasks wit
 - **One step at a time.** The queue starts every queued task of the current step
   in the same check, one after another. It starts nothing in a later step, or a
   later single task, until earlier work has reported and is done.
+- **A waiting feature holds only itself.** A step waits when an earlier step of its
+  feature has a task that is not done, not in review, and not running, for example
+  a task you did not add to the queue. The queue does not start that task, so it
+  goes on with the other features and the single tasks, and marks one of those
+  **Queued · next**. The waiting feature runs when you add the earlier task to the
+  queue or mark it done.
 - **Started tasks.** A task whose session has started is no longer shown as next or
   as waiting. It keeps its state and shows its session's state, and later steps
   wait for it. While a task with no feature is running, the queue starts nothing,

@@ -45,6 +45,7 @@ export function orderQueue(tasks, features) {
       queued: task.inFlight !== true && (task.state === "queued" || (task.state === "scheduled" && task.due === true)),
       done: task.state === "done",
       settled: SETTLED_STATES.has(task.state),
+      inFlight: task.inFlight === true,
       queuePosition: Number.isSafeInteger(task.queuePosition) ? task.queuePosition : null,
     });
   }
@@ -63,18 +64,29 @@ export function orderQueue(tasks, features) {
   }
 
   const order = [];
+  const held = [];
   const steps = [];
   for (const featureId of featureIds) {
     const stepsOfFeature = byFeature.get(featureId);
+    const queuedOfFeature = [];
+    // A feature is held when a step before its first queued one holds a task that is not settled and not running:
+    // the queue will not start that task, so the feature's queued tasks wait behind everything else.
+    let stuck = false;
+    let isHeld = false;
     for (const step of [...stepsOfFeature.keys()].sort((a, b) => a - b)) {
       const inStep = stepsOfFeature.get(step);
       steps.push({ featureId, step, taskIds: inStep.map((entry) => entry.id), done: inStep.every((entry) => entry.done), settled: inStep.every((entry) => entry.settled) });
-      for (const entry of inStep) if (entry.queued) order.push(entry.id);
+      const queuedInStep = inStep.filter((entry) => entry.queued);
+      if (queuedInStep.length > 0 && queuedOfFeature.length === 0) isHeld = stuck;
+      queuedOfFeature.push(...queuedInStep.map((entry) => entry.id));
+      if (inStep.some((entry) => !entry.settled && !entry.inFlight)) stuck = true;
     }
+    (isHeld ? held : order).push(...queuedOfFeature);
   }
   const position = (entry) => entry.queuePosition ?? Number.POSITIVE_INFINITY;
   singles.sort((a, b) => (position(a) === position(b) ? a.number - b.number : position(a) < position(b) ? -1 : 1));
   for (const entry of singles) order.push(entry.id);
+  order.push(...held);
 
   return { order, steps };
 }
