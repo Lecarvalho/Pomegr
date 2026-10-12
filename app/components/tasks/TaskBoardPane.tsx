@@ -9,7 +9,7 @@ import { setPaletteScope } from "../command-center/palette-scope";
 import { NewFeatureAction, type FeatureEntry } from "./FeatureActions";
 import { FeatureModal } from "./FeatureModal";
 import { QueueControl } from "./QueueControl";
-import { TaskBoardView, type TaskReveal } from "./TaskBoardView";
+import { TaskBoardView, type FeatureSelection, type TaskReveal } from "./TaskBoardView";
 import { TaskModal } from "./TaskModal";
 import { PromoteIssuesAction } from "./promote-issues-action";
 import { useTaskEditAvailability } from "./task-desktop";
@@ -20,7 +20,7 @@ import { useTaskIssuesAvailability } from "./use-promote-issues";
 
 type OpenModal = { kind: "new" } | { kind: "task"; id: string } | { kind: "newFeature" } | { kind: "feature"; id: string } | null;
 
-export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { repositoryId: string; switcher?: ReactNode; breadcrumb?: ReactNode }) {
+export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadcrumb }: { repositoryId: string; featureId?: string | null; switcher?: ReactNode; breadcrumb?: ReactNode }) {
   const headingId = useId();
   const { board: committed, refresh } = useTasks(repositoryId);
   const edits = useTaskBoardEdits(repositoryId, committed, refresh);
@@ -33,6 +33,8 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   const issuesBridge = useTaskIssuesAvailability();
   const [modal, setModal] = useState<OpenModal>(null);
   const [reveal, setReveal] = useState<TaskReveal | null>(null);
+  const [featureSelection, setFeatureSelection] = useState<FeatureSelection | null>(null);
+  const [answered, setAnswered] = useState<string | null>(null);
   const section = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -67,6 +69,19 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   // The feature's opener stays the opener, so closing the task returns to where the owner started.
   const openFromFeature = useCallback((task: Task) => setModal({ kind: "task", id: task.id }), []);
   const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setModal({ kind: "task", id: task.id }); }, []);
+  // A feature named by the address, such as by a session's feature link, is answered once, when the board and the client are known.
+  // The filter chooses it in any client, and the desktop app also opens its modal. A feature the board does not hold opens nothing.
+  if (featureId !== null && answered !== featureId && ready && access !== "pending") {
+    setAnswered(featureId);
+    if (board.features.some((feature) => feature.id === featureId)) {
+      setFeatureSelection({ id: featureId });
+      if (desktop) setModal({ kind: "feature", id: featureId });
+    }
+  }
+  // No control opened that modal, so closing it returns focus to the filter that shows the feature.
+  useEffect(() => {
+    if (answered !== null) opener.current = section.current?.querySelector<HTMLElement>(".taskFeatureFilter [role='combobox']") ?? null;
+  }, [answered]);
   const openFound = useCallback((id: string) => {
     if (!editable) { setReveal((last) => ({ id, turn: (last?.turn ?? 0) + 1 })); return; }
     const card = [...(section.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === id);
@@ -96,7 +111,7 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
         {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
-      <TaskBoardView board={board} reveal={reveal} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
+      <TaskBoardView board={board} reveal={reveal} featureSelection={featureSelection} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
         newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} features={desktop ? featureEntry : undefined} />
       {editable && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onIssueFailed={openCreated} onClose={close} />}
       {editable && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}

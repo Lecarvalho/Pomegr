@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
+import { featureRouteId } from "./task-features";
 import { taskStateLabels, validIssueNumber } from "./task-presentation";
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -11,6 +12,13 @@ export function sessionTaskChip(state: SessionTaskReference["state"]): { label: 
 
 export function sessionTaskHref(task: SessionTaskReference): string | null {
   return REPOSITORY_ID.test(task.repositoryId) ? `/tasks?repository=${task.repositoryId}` : null;
+}
+
+/** The board address that also names a feature: the board opens that feature. Without a usable feature ID it is the board's own address. */
+export function sessionFeatureHref(task: SessionTaskReference, featureId: string | null = task.featureId): string | null {
+  const boardHref = sessionTaskHref(task);
+  const feature = featureRouteId(featureId);
+  return boardHref && feature ? `${boardHref}&feature=${feature}` : boardHref;
 }
 
 export function SessionTaskCell({ task, omitFeature = false }: { task: SessionTaskReference | null | undefined; omitFeature?: boolean }) {
