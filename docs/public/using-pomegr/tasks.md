@@ -396,12 +396,13 @@ reading is unknown, and unknown holds a start exactly like a failed gate.
 | Gate | A start proceeds only when |
 | --- | --- |
 | **Previous step done** | Every task of the step before it is done. Holds only the queue: **Start session** starts a task whatever its step. |
-| **Claude Code capacity** and **Codex capacity** | The task's provider is below the **Do not start above** threshold of its five-hour window. |
+| **Claude Code capacity** and **Codex capacity** | The provider is below the threshold for its five-hour window, or its weekly window for weekly-only Codex accounts. |
 | **Provider status** | The provider's public status shows no incident. |
 | **Working tree** | The repository's working tree has no uncommitted changes. |
 
-The threshold is 70, 85, or 95 percent of the five-hour window, 85 by default,
-and applies to one repository. The seven-day window is shown but decides nothing.
+The threshold is 70, 85, or 95 percent, with 85 as the default, and applies to one repository.
+It uses the five-hour window. Codex accounts with only a weekly limit use their seven-day window instead.
+When both windows exist, the seven-day reading is informational.
 The readings are the [usage limits](../concepts/usage-limits.md) Pomegr already
 shows, so they cover your whole account. Public status does not prove that an
 incident affects you. The working tree gate reads the repository itself, even

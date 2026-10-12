@@ -4,8 +4,8 @@ import { readProviderServiceStatus } from "../../../../server/providers/kernel/p
 
 const OPENAI_SUMMARY = "https://status.openai.com/api/v2/summary.json";
 const CLAUDE_SUMMARY = "https://status.claude.com/api/v2/summary.json";
-const CODEX_API = "01KMP3KP5MGE23B80K1EK4S8PV";
-const CODEX_WEB = "01JVCV8YSWZFRSM1G5CVP253SK";
+const CODEX_DESKTOP = "01KMKFAMWKQ81YWSE1Z18R6VHR";
+const OPENAI_AGENTS = "01M3Q6W0264T1RJS1YEM47CAQJ";
 const CLAUDE_CODE = "yyzkbfz2thpt";
 const CLAUDE_COWORK = "bpp5gb3hpjcl";
 const CLAUDE_AI = "rwppv331jlwc";
@@ -43,9 +43,9 @@ function router(responses) {
   };
 }
 
-test("uses the verified Codex summary-only shape when it has no incident collection", async () => {
+test("uses the current Codex component when the summary has no incident collection", async () => {
   const r = router({
-    [OPENAI_SUMMARY]: json(summary([component(CODEX_API)])),
+    [OPENAI_SUMMARY]: json(summary([component(CODEX_DESKTOP)])),
   });
   const status = await readProviderServiceStatus("codex", { fetchImpl: r.fetch });
 
@@ -60,9 +60,27 @@ test("uses the verified Codex summary-only shape when it has no incident collect
   }
 });
 
+test("ignores page-wide OpenAI incidents that have no affected component list", async () => {
+  const pageIncident = {
+    id: "compliance-incident", name: "Compliance API delay", status: "monitoring", impact: "minor",
+    updated_at: "2026-10-09T22:03:59Z",
+  };
+  const operational = await readProviderServiceStatus("codex", { fetchImpl: async () => json(summary([component(CODEX_DESKTOP)], {
+    incidents: [pageIncident],
+  })) });
+  const degraded = await readProviderServiceStatus("codex", { fetchImpl: async () => json(summary([component(CODEX_DESKTOP, "degraded_performance")], {
+    incidents: [pageIncident],
+  })) });
+
+  assert.equal(operational.status, "operational");
+  assert.deepEqual(operational.incidents, []);
+  assert.equal(degraded.status, "degraded");
+  assert.deepEqual(degraded.incidents, []);
+});
+
 test("filters web-only and Cowork-only incidents while admitting Claude Code and authentication incidents", async () => {
   const r = router({
-    [OPENAI_SUMMARY]: json(summary([component(CODEX_API), component(CODEX_WEB, "major_outage")])),
+    [OPENAI_SUMMARY]: json(summary([component(CODEX_DESKTOP), component(OPENAI_AGENTS, "major_outage")])),
     [CLAUDE_SUMMARY]: json(summary([component(CLAUDE_CODE)], {
       incidents: [
         incident({ id: "cowork", name: "Cowork disruption", components: [component(CLAUDE_COWORK)], url: "https://status.claude.com/incidents/cowork" }),
@@ -114,7 +132,7 @@ test("omits future scheduled maintenance and recognizes active maintenance", asy
 
 test("requires primary component coverage before reporting clean health", async () => {
   const codex = await readProviderServiceStatus("codex", { fetchImpl: async () => json(summary([
-    component("01KMKFAMWKQ81YWSE1Z18R6VHR"),
+    component("01KMP3KP5MGE23B80K1EK4S8PV"), // Retired API component alone cannot establish current coverage.
   ])) });
   const claude = await readProviderServiceStatus("claude", { fetchImpl: async () => json(summary([
     component(CLAUDE_CODE),
@@ -129,8 +147,9 @@ test("fails closed for malformed, oversized, redirected, failed, and cancelled p
   const cases = [
     () => readProviderServiceStatus("unknown", { fetchImpl: async () => { throw Error("not reached"); } }),
     () => readProviderServiceStatus("codex", { fetchImpl: async () => json({ page: {}, components: "not-an-array" }) }),
-    () => readProviderServiceStatus("codex", { fetchImpl: async () => json(summary([component(CODEX_API), component(CODEX_API)])) }),
-    () => readProviderServiceStatus("codex", { fetchImpl: async () => json(summary([component(CODEX_API)], { incidents: [{ name: "Incomplete issue" }] })) }),
+    () => readProviderServiceStatus("codex", { fetchImpl: async () => json(summary([component(CODEX_DESKTOP), component(CODEX_DESKTOP)])) }),
+    () => readProviderServiceStatus("codex", { fetchImpl: async () => json(summary([component(CODEX_DESKTOP)], { incidents: [{ name: "Incomplete issue", components: "invalid" }] })) }),
+    () => readProviderServiceStatus("claude", { fetchImpl: async () => json(summary([component(CLAUDE_CODE)], { incidents: [{ name: "Unscoped Claude incident" }] })) }),
     () => readProviderServiceStatus("claude", { fetchImpl: async () => json(summary([component(CLAUDE_CODE)])) }),
     () => readProviderServiceStatus("codex", { fetchImpl: async () => new Response("private", { status: 302 }) }),
     () => readProviderServiceStatus("codex", { fetchImpl: async () => { throw Error("PRIVATE_NETWORK_DETAILS_MUST_NOT_LEAK"); } }),

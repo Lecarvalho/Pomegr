@@ -6,7 +6,7 @@ import { CommandSelect } from "../command-center/CommandSelect";
 import { PROVIDER_NAMES, previousStepRow, providerStatusRow, usageReading, workingTreeRow, type GateTone } from "./task-gates-model";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
-const thresholdLabel = (value: TaskGateThreshold) => `${value}% of the five-hour window`;
+const thresholdLabel = (value: TaskGateThreshold) => `${value}% of the usage window`;
 const THRESHOLD_OPTIONS = TASK_GATE_THRESHOLDS.map((value) => ({ value, label: thresholdLabel(value) }));
 
 function Row({ label, tone, children, mono }: { label: string; tone?: GateTone; children: string; mono?: boolean }) {
@@ -48,6 +48,7 @@ export function StartGatesPanel({ queue, edits }: { queue: TaskBoard["queue"]; e
             onChange={(value) => { if (value !== gates.threshold) void edits.setGateThreshold(value); }} />
           : <p className="taskGateReadOnly">{thresholdLabel(gates.threshold)}</p>}
       </div>
+      <p className="taskGatesCaption">Uses the five-hour window, or the seven-day window for Codex accounts with only a weekly limit.</p>
     </>}
   </section>;
 }

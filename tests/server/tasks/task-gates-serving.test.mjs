@@ -344,6 +344,48 @@ test("usage counts only when available, recent, and not failed since, by the fiv
   assert.equal(gateUsageFact({ available: true, fetchedAt: at, limits: [{ window: "5 hours", percent: 18 }, { window: "5 hours", percent: "40" }] }, NOW).fiveHourPercent, null);
 });
 
+test("weekly-only Codex capacity qualifies manual and queued starts without inventing a five-hour limit", async (context) => {
+  const { store } = await openTemporaryStore(context);
+  runningQueue(store, 1, { run: { provider: "codex", model: null, effort: null } });
+  const weekly = { window: "7 days", percent: 3, resetsAt: new Date(NOW + 60_000).toISOString() };
+  let usageLimits = { available: true, fetchedAt: new Date(NOW).toISOString(), limits: [weekly] };
+  const resolveGateFacts = createTaskGateFacts({
+    usageLimits: () => ({ providers: [{ provider: "codex", usageLimits }] }),
+    providerStatus: () => ({ providers: [{ provider: "codex", status: "operational", readiness: "ready", freshness: "fresh" }] }),
+    tree: { read: () => true }, now: () => NOW,
+  });
+  const { board, post } = await startHandler(context, { taskStore: store, runtime: { resolveTaskGateFacts: resolveGateFacts, resolveTaskStart: () => FACTS } });
+  const reading = (await board()).json.queue.gates.usage.codex;
+  assert.deepEqual(reading, { status: "ok", fiveHourPercent: null, sevenDayPercent: 3 });
+  assert.equal(Object.hasOwn(reading, "weeklyOnly"), false);
+  assert.equal((await post("queue-next", {})).json.starts.length, 1);
+  for (const [limits, status] of [
+    [[{ ...weekly, percent: 85 }], "over"],
+    [[weekly, { ...weekly, percent: 95 }], "over"],
+    [[{ ...weekly, percent: null }], "unknown"],
+    [[{ ...weekly, resetsAt: new Date(NOW).toISOString() }], "unknown"],
+    [[weekly, { window: "5 hours", percent: null }], "unknown"],
+    [[weekly, { window: "5 hours", percent: 3, resetsAt: new Date(NOW).toISOString() }], "unknown"],
+    [[weekly, { window: "Usage window", percent: 3 }], "unknown"],
+    [[], "unknown"],
+  ]) {
+    usageLimits = { ...usageLimits, limits };
+    assert.equal((await board()).json.queue.gates.usage.codex.status, status);
+    assert.equal((await post("start-plan", { repositoryId: REPOSITORY, payload: { id: "T-1" } })).json.error, "gate_held");
+    assert.deepEqual((await post("queue-next", {})).json.starts, []);
+  }
+  for (const changed of [
+    { available: false },
+    { fetchedAt: new Date(NOW - TASK_GATE_USAGE_MAX_AGE_MS - 1).toISOString() },
+    { failureKind: "unavailable", attemptedAt: new Date(NOW + 1).toISOString() },
+  ]) {
+    usageLimits = { available: true, fetchedAt: new Date(NOW).toISOString(), limits: [weekly], ...changed };
+    assert.equal((await board()).json.queue.gates.usage.codex.status, "unknown");
+  }
+  usageLimits = { available: true, fetchedAt: new Date(NOW).toISOString(), limits: [weekly] };
+  assert.equal((await post("start-plan", { repositoryId: REPOSITORY, payload: { id: "T-1" } })).json.ok, true);
+});
+
 // The monitor asks each reader once a minute and commits what it answers; the gate reads that row at any later moment.
 const USAGE_POLL_MS = 60_000;
 const TIMER_DRIFT_MS = 40;

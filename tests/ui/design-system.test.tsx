@@ -457,9 +457,9 @@ describe("Design-system reference page", () => {
     expect(reading(held, "Codex capacity")).toHaveTextContent("5h 38% · 7d 12%");
     expect(reading(held, "Provider status")).toHaveClass("is-ok");
     expect(reading(held, "Working tree")).toHaveTextContent("Clean");
-    expect(within(held).getByText("Do not start above").nextElementSibling).toHaveTextContent("85% of the five-hour window");
+    expect(within(held).getByText("Do not start above").nextElementSibling).toHaveTextContent("85% of the usage window");
     expect(within(held).queryByRole("combobox")).toBeNull();
-    expect(within(sample(gates, "Start gates, desktop app")).getByRole("combobox", { name: "Do not start above" })).toHaveTextContent("85% of the five-hour window");
+    expect(within(sample(gates, "Start gates, desktop app")).getByRole("combobox", { name: "Do not start above" })).toHaveTextContent("85% of the usage window");
 
     const stopped = sample(gates, "Start gates, stopped");
     expect(reading(stopped, "Previous step done")).toHaveTextContent("Blocked by T-2");

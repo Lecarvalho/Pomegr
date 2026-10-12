@@ -10,18 +10,20 @@ records the provider status interpretation boundary.
 
 | Provider | Source | Relevant scope |
 | --- | --- | --- |
-| Codex | `https://status.openai.com/api/v2/summary.json` | Codex API and published local-client components; Codex Web-only incidents are excluded. |
+| Codex | `https://status.openai.com/api/v2/summary.json` | Codex API, Codex in ChatGPT Desktop, and the published VS Code extension component; Codex Web-only incidents are excluded. |
 | Claude | `https://status.claude.com/api/v2/summary.json` | Claude Code and Claude API; explicitly authentication-related claude.ai incidents may also apply. Cowork-only incidents are excluded. |
 
-Claude documents its public API at `https://status.claude.com/api`. OpenAI's verified
-summary currently exposes component status without an incident collection. Pomegr uses
-that component evidence and links to the official status page when incident details
-are absent. It does not depend on the nonworking OpenAI Statuspage-style unresolved
-incident endpoint or infer an active incident from historical RSS entries. Recognized
-structured incident data in the summary, when supplied, is filtered by affected component.
+Claude documents its public API at `https://status.claude.com/api`. OpenAI's summary can
+include page-wide incidents without an affected-component list. Pomegr uses its Codex
+component evidence and ignores those unscoped incidents because their impact cannot be
+attributed to Codex. It links to the official status page when relevant incident details
+are absent. Pomegr does not depend on the nonworking OpenAI Statuspage-style unresolved
+incident endpoint or infer an active incident from historical RSS entries. Structured
+incident data with affected components is filtered by component.
 
 Mappings live inside `server/providers/kernel/provider-service-status.mjs`. New or missing
 component identities and unknown statuses cannot silently establish healthy service.
+Codex requires the current Codex in ChatGPT Desktop component; older API and extension components remain recognized when present.
 Only active maintenance affects current health. Public status may cover a broader scope
 than one account or model, so notices describe reported service issues and possible
 impact rather than claiming that the selected session is affected.
