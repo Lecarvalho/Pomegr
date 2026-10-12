@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
@@ -420,5 +422,31 @@ describe("Add to queue and Remove from queue", () => {
     const dialog = await openModal("Shipped");
     expect(dialog.queryByRole("button", { name: "Add to queue" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Remove from queue" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the Tasks page has one view", () => {
+  const app = join(process.cwd(), "app");
+  const removedFiles = [
+    "components/tasks/TaskQueueView.tsx", "components/tasks/QueueFeaturePanel.tsx", "components/tasks/QueueSingleTasks.tsx",
+    "components/tasks/QueueTaskCard.tsx", "components/tasks/use-queue-drag.ts", "components/design-system/DesignSystemTaskQueueSample.tsx",
+  ];
+  const removedClasses = [
+    "taskQueueView", "taskQueueRow", "taskQueueAside", "taskQueuePanel", "taskQueueHead", "taskQueueCaption", "taskQueueNum",
+    "taskQueueSteps", "taskQueueStep", "taskQueueCards", "taskQueueCard", "taskQueueNewStep", "taskQueueNote", "taskQueueMove", "taskQueueSingle",
+  ];
+
+  it.each(removedFiles)("has no %s", (file) => {
+    expect(existsSync(join(app, file))).toBe(false);
+  });
+
+  it("keeps no Queue view class in tasks.css and no view switch in the page header", () => {
+    const tasksCss = readFileSync(join(app, "styles", "tasks.css"), "utf8");
+    for (const name of removedClasses) expect(tasksCss, name).not.toMatch(new RegExp(`\.${name}(?![A-Za-z0-9])`));
+    expect(tasksCss).not.toMatch(/.taskQueueStep[A-Za-z]*/);
+    expect(tasksCss).not.toMatch(/.taskQueueSingle[A-Za-z]*/);
+    expect(tasksCss).not.toMatch(/data-view/);
+    const pane = readFileSync(join(app, "components", "tasks", "TaskBoardPane.tsx"), "utf8");
+    expect(pane).not.toMatch(/Tasks view/);
   });
 });

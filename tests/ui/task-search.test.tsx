@@ -107,8 +107,7 @@ describe("the task board in the Search bar", () => {
     expect(onScope).toHaveBeenLastCalledWith(null);
   });
 
-  it("shows a chosen task's card on the Board where tasks are read-only", async () => {
-    const user = userEvent.setup();
+  it("shows a chosen task's card on the Board where tasks are read-only", () => {
     const onScope = vi.fn();
     render(<><ScopeProbe onScope={onScope} /><TaskBoardPane repositoryId={repositoryId} /></>);
     expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
