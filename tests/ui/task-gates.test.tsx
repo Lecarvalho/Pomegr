@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
 import type { Task, TaskBoard, TaskGateReason, TaskGates, TaskQueue } from "../../shared/task-contract";
-import { waitingLine } from "../../app/components/tasks/task-gates-model";
+import { heldStartLine, waitingLine } from "../../app/components/tasks/task-gates-model";
 
 const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
@@ -57,6 +57,16 @@ const panel = () => screen.getByRole("region", { name: "Start gates" });
 const row = (label: string) => within(panel()).getByText(label).closest("div") as HTMLElement;
 
 describe("the Start gates panel", () => {
+  it("shows weekly-only Codex capacity and names that window when a start is held", async () => {
+    const weekly = gates({ usage: { ...gates().usage, codex: { status: "over", fiveHourPercent: null, sevenDayPercent: 90 } } });
+    setBoard({ gates: weekly });
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(screen.getByRole("region", { name: "Provider capacity" }).textContent).toContain("Codex 7d 90%");
+    await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
+    expect(row("Codex capacity").textContent).toBe("Codex capacity7d 90% · above threshold");
+    expect(heldStartLine(task(15, "Start", { run: { provider: "codex", model: null, effort: null } }), { gates: weekly }))
+      .toBe("This task is held: Codex is above 85% of the seven-day window.");
+  });
   it("lists the five gates with their readings", async () => {
     await showQueue();
     expect(within(panel()).getByRole("heading", { name: "Start gates" })).toBeTruthy();
@@ -111,7 +121,7 @@ describe("the Start gates panel", () => {
   it("changes the threshold through queue_settings in the desktop app", async () => {
     await showQueue();
     await userEvent.click(within(panel()).getByRole("combobox", { name: "Do not start above" }));
-    await userEvent.click(screen.getByRole("option", { name: "95% of the five-hour window" }));
+    await userEvent.click(screen.getByRole("option", { name: "95% of the usage window" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_settings", { threshold: 95 }));
   });
 
@@ -119,7 +129,7 @@ describe("the Start gates panel", () => {
     setBridge(undefined);
     await showQueue();
     expect(within(panel()).queryByRole("combobox")).toBeNull();
-    expect(within(panel()).getByText("85% of the five-hour window")).toBeTruthy();
+    expect(within(panel()).getByText("85% of the usage window")).toBeTruthy();
   });
 });
 

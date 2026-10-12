@@ -3,10 +3,11 @@ import { scheduleLabel } from "./task-schedule";
 
 export const PROVIDER_NAMES: Record<TaskProvider, string> = { claude: "Claude Code", codex: "Codex" };
 
-/** The percentages to show, or null when the gate reads the usage as unknown: a seven-day figure alone must not look like capacity. */
+/** Show capacity only when the monitor qualifies the reading, including weekly-only accounts. */
 export function usageReading(usage: TaskGateUsage): string | null {
   if (usage.status === "unknown" || (usage.fiveHourPercent === null && usage.sevenDayPercent === null)) return null;
   const part = (label: string, value: number | null) => `${label} ${value === null ? "–" : `${value}%`}`;
+  if (usage.fiveHourPercent === null) return part("7d", usage.sevenDayPercent);
   return `${part("5h", usage.fiveHourPercent)} · ${part("7d", usage.sevenDayPercent)}`;
 }
 
@@ -36,7 +37,7 @@ function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<
   const provider = PROVIDER_NAMES[next.provider];
   switch (reason) {
     case "previous_step": return next.blockedBy ? `step before it is not done (${next.blockedBy})` : "step before it is not done";
-    case "usage_over": return `${provider} is above ${gates.threshold}% of the five-hour window`;
+    case "usage_over": return `${provider} is above ${gates.threshold}% of the ${gates.usage[next.provider].fiveHourPercent === null ? "seven-day" : "five-hour"} window`;
     case "usage_unknown": return `${provider} usage is not known yet`;
     case "provider_incident": return `${provider} reports an incident`;
     case "provider_status_unknown": return `${provider} status is not known yet`;

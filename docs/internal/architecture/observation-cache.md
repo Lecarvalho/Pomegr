@@ -2637,6 +2637,10 @@ headers, request identifiers, credentials, and endpoint details remain monitor-p
 `rate_limited` means only that the usage request received a recognized throttle response;
 it is not evidence that an account or session exhausted its plan allowance.
 
+Task start gates read these committed values without acquiring account data.
+Weekly-only Codex accounts retain their seven-day window; no five-hour value is invented.
+The selection and freshness rules are owned by [Task usage reading](tasks.md#usage-reading).
+
 A missing or unsupported usage runtime publishes `runtime_unavailable` and unavailable
 readiness after the background capability check, with no fabricated account attempt or
 retry timestamp. Completed empty reads settle to unavailable; loading is reserved for

@@ -27,15 +27,22 @@ function failedSince(usageLimits, fetchedAt) {
   return !Number.isFinite(attemptedAt) || attemptedAt > fetchedAt;
 }
 
-// One provider's usage as the gates read it, `{ fiveHourPercent, sevenDayPercent }`, or null.
+// One provider's percentages and, for weekly-only Codex accounts, a private selection flag, or null.
 // The gate judges the reading by its own age and failure record, never by the provider's `freshness`
 // label: that label follows each reader's own display bound, which can be as short as one refresh interval.
-export function gateUsageFact(usageLimits, now) {
+export function gateUsageFact(usageLimits, now, provider = null) {
   if (!usageLimits || usageLimits.available !== true || !Array.isArray(usageLimits.limits)) return null;
   const fetchedAt = Date.parse(usageLimits.fetchedAt || "");
   if (!Number.isFinite(fetchedAt) || fetchedAt > now || now - fetchedAt > TASK_GATE_USAGE_MAX_AGE_MS) return null;
   if (failedSince(usageLimits, fetchedAt)) return null;
-  return { fiveHourPercent: windowPercent(usageLimits.limits, "5 hours", now), sevenDayPercent: windowPercent(usageLimits.limits, "7 days", now) };
+  const weeklyOnly = provider === "codex" && usageLimits.limits.length > 0
+    && usageLimits.limits.every((limit) => limit?.window === "7 days");
+  return {
+    fiveHourPercent: windowPercent(usageLimits.limits, "5 hours", now),
+    sevenDayPercent: windowPercent(usageLimits.limits, "7 days", now),
+    // Private evidence of a weekly-only account, never a fallback for a bad five-hour reading.
+    ...(weeklyOnly ? { weeklyOnly: true } : {}),
+  };
 }
 
 export function gateProviderStatusFact(row) {
@@ -96,7 +103,7 @@ export function createTaskGateFacts({ usageLimits, providerStatus, tree, now = D
     const usage = {};
     const status = {};
     for (const provider of PROVIDERS) {
-      usage[provider] = gateUsageFact(Array.isArray(usageRows) ? usageRows.find((row) => row?.provider === provider)?.usageLimits : null, at);
+      usage[provider] = gateUsageFact(Array.isArray(usageRows) ? usageRows.find((row) => row?.provider === provider)?.usageLimits : null, at, provider);
       status[provider] = gateProviderStatusFact(Array.isArray(statusRows) ? statusRows.find((row) => row?.provider === provider) : null);
     }
     return { usage, providerStatus: status, treeClean: tree?.read(repositoryId) ?? null };

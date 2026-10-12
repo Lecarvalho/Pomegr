@@ -823,7 +823,8 @@ proceed. A start needs all of the following.
    is below the threshold (`usage_over` otherwise). The threshold is 70, 85, or 95
    percent per repository, 85 by default, set with `queue_settings` `{ threshold }` and
    kept in the store's `meta` table under `queue_gate_threshold:<repositoryId>`. The
-   seven-day window is shown beside it and decides nothing. A task with no provider is
+   seven-day window is normally informational. Codex accounts that report only seven-day windows use their highest weekly percentage instead.
+   A missing, expired, or malformed five-hour reading never permits this substitution. A task with no provider is
    judged as Claude Code, the provider it starts on.
 3. The task's provider has no incident in the committed public provider status
    (`provider_incident`): any status but operational is an incident. Public status does
@@ -903,6 +904,12 @@ rules, and by nothing else:
 3. **Current window.** A window whose `resetsAt` has passed is unknown: its percentage
    describes a period that ended. A window with no reset time is judged by rules 1 and 2.
 
+For Codex, a nonempty reading containing only seven-day windows establishes a weekly-only account.
+The private `weeklyOnly` fact selects its weekly percentage for the same threshold.
+The board keeps `fiveHourPercent: null` and shows the seven-day percentage with the gate result.
+The private fact never enters a response, checkpoint, or log.
+An empty reading, an unsupported window, or an invalid weekly percentage remains unknown.
+
 The gate does not read the row's `freshness` label. That label follows each reader's own
 bound: the Claude reader marks a reading stale after five minutes, which is also the
 interval between provider refreshes (`USAGE_REFRESH_INTERVAL_MS`). A refresh answers the
@@ -915,8 +922,7 @@ reading that missed a whole refresh does.
 
 A reading that is missing, unavailable, older than ten minutes, or followed by a failed
 refresh stays unknown and holds a start. The Start gates panel and the capacity strip
-show **Unknown** whenever the status is `unknown`, also when a seven-day percentage is
-known: a percentage beside a held gate would look like capacity.
+show **Unknown** whenever the status is `unknown`, even when a retained seven-day percentage is known.
 
 What a held gate does:
 

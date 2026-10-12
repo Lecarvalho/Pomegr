@@ -18,7 +18,7 @@ const PROVIDERS = Object.freeze({
       "01KMKFAMWKQ81YWSE1Z18R6VHR", // Codex in ChatGPT Desktop
       "01KMP3KP5M8X0EBTVW6KN327EE", // VS Code extension
     ]),
-    requiredComponents: new Set(["01KMP3KP5MGE23B80K1EK4S8PV"]),
+    requiredComponents: new Set(["01KMKFAMWKQ81YWSE1Z18R6VHR"]),
     authComponents: new Set(),
     summaryEvents: false,
   }),
@@ -125,7 +125,11 @@ function incidentServiceStatus(status, impact, record) {
 }
 
 function normalizeIncident(providerId, record, provider) {
-  if (!isObject(record) || !componentIds(record)) throw unavailable();
+  if (!isObject(record)) throw unavailable();
+  // OpenAI's summary can include page-wide incidents without a components field.
+  // They cannot be attributed to Codex, so rely on the selected component statuses.
+  if (!provider.summaryEvents && record.components === undefined) return null;
+  if (!componentIds(record)) throw unavailable();
   if (!eventIsRelevant(record, provider)) return null;
   if (record.status === "resolved" || record.status === "completed") return null;
   const status = INCIDENT_STATUSES[record.status];

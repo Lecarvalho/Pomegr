@@ -359,6 +359,8 @@ Each row below the title shows only when it is set, in this order:
 - The two capacity readings are mono. They print only the percentages the board sent. They append “· above threshold” when they hold.
 - Below the rows, the **Do not start above** field is a `CommandSelect` with the three fixed thresholds in the desktop app. A browser reads plain text.
 - The Board's capacity strip shows the same two capacity readings.
+- A qualified weekly-only Codex reading shows only `7d`; its hold message names the seven-day window.
+- The threshold options say “of the usage window”; the caption explains the weekly-only Codex case.
 - The next queued task's card adds one muted **Waiting:** line while a gate holds it and the queue is on.
 - The gates panel, the capacity strip, and the Waiting line are local to the Tasks tab. They use the `taskGate*` classes in `app/styles/tasks.css`.
 

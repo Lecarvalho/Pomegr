@@ -2,7 +2,7 @@
 
 import { isTaskId, TASK_PROVIDERS } from "./task-record.mjs";
 
-// The usage a provider may have reached, in percent of its five-hour window, before no new session starts on it.
+// The usage threshold for the five-hour window, or the weekly limit of a weekly-only account.
 export const TASK_GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
 export const DEFAULT_TASK_GATE_THRESHOLD = 85;
 // Why a start is held, in the order they are reported.
@@ -23,7 +23,8 @@ const percent = (value) => (typeof value === "number" && Number.isFinite(value) 
 function usageReading(fact, threshold) {
   const fiveHourPercent = isRecord(fact) ? percent(fact.fiveHourPercent) : null;
   const sevenDayPercent = isRecord(fact) ? percent(fact.sevenDayPercent) : null;
-  const status = fiveHourPercent === null ? "unknown" : fiveHourPercent < threshold ? "ok" : "over";
+  const capacity = fiveHourPercent === null && fact?.weeklyOnly === true ? sevenDayPercent : fiveHourPercent;
+  const status = capacity === null ? "unknown" : capacity < threshold ? "ok" : "over";
   return { status, fiveHourPercent, sevenDayPercent };
 }
 
