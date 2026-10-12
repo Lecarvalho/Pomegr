@@ -64,6 +64,8 @@ function normalizedUsageLimits(body) {
  *   retryDelay?: (error: any, currentTime: number) => number,
  *   now?: () => number,
  *   initialState?: { value: any, nextAttemptAt: number } | null,
+ *   signInRetryFailures?: string[],
+ *   signInRetryEmpty?: boolean,
  *   onUpdate?: (value: any, nextAttemptAt: number) => void,
  * }} options
  */
