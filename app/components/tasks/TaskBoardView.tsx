@@ -7,12 +7,16 @@ import { CapacityStrip } from "./CapacityStrip";
 import { FeatureFilter } from "./FeatureFilter";
 import { QueueBanner } from "./QueueBanner";
 import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
+import { ReadyStepGroup } from "./ReadyStepGroup";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskQueueView } from "./TaskQueueView";
 import { TaskColumnHeader } from "./TaskColumnHeader";
-import { cardMove, type CardMoveKind } from "./task-board-model";
-import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue } from "./task-features";
+import { cardMove, readyColumnId, type CardMoveKind } from "./task-board-model";
+import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue, type FeatureLine } from "./task-features";
+import { waitingLine } from "./task-gates-model";
+import { useMinuteClock } from "./task-panel-hooks";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
+import { readySegments, type ReadySegment } from "./task-ready-groups";
 import { useCardDrag, type CardDropLine, type ColumnDropHandlers } from "./use-card-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
@@ -42,6 +46,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   const allColumns = taskColumns(board);
   const columns = filtered ? allColumns.map((column) => ({ ...column, tasks: column.tasks.filter((task) => matchesFeatureFilter(task, filter)) })) : allColumns;
   const lines = useMemo(() => featureLines(board), [board]);
+  const readyId = readyColumnId(board);
+  const now = useMinuteClock();
   const scroller = useRef<HTMLDivElement>(null);
   const restore = useRef<Restore | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -96,6 +102,7 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
         {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.order[0] ?? null}
+          ready={column.id === readyId ? { segments: readySegments(column.tasks, board), queue: board.queue, now } : undefined}
           dropTarget={drag.overColumn === column.id} dropLine={drag.dropLine?.columnId === column.id ? drag.dropLine : undefined} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} newTask={index === 0 ? newTask : undefined} />)}
       </div>
     </div>}
@@ -104,9 +111,12 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   </>;
 }
 
-export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine, drop, cardMoveFor, newTask }: {
+/** The Ready lane's step groups, the queue their Waiting line reads, and the clock of their Starts line. */
+export type ReadyLane = { segments: ReadySegment[]; queue: TaskBoard["queue"]; now?: number };
+
+export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine, drop, cardMoveFor, newTask, ready }: {
   column: TaskColumnView;
-  lines: ReadonlyMap<string, string>;
+  lines: ReadonlyMap<string, FeatureLine>;
   nextId: string | null;
   onOpen?: OpenTask;
   dropTarget: boolean;
@@ -115,11 +125,19 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
   drop?: ColumnDropHandlers;
   cardMoveFor(task: Task): TaskCardMove | undefined;
   newTask?: NewTaskEntry;
+  /** Set for the Ready lane only: no other lane groups its cards. */
+  ready?: ReadyLane;
 }) {
   const headingId = useId();
+  const lastId = column.tasks.at(-1)?.id;
+  const card = (task: Task, grouped = false) => <TaskCard key={task.id} task={task} grouped={grouped} now={ready?.now} waiting={grouped && ready ? waitingLine(ready.queue, task.id) : undefined}
+    dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && task.id === lastId ? "after" : undefined}
+    featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
   return <section className={`taskColumn${dropTarget ? " isDropTarget" : ""}`} data-column-id={column.id} aria-labelledby={headingId} {...drop}>
     <TaskColumnHeader column={column} headingId={headingId} taskCount={column.tasks.length} />
-    {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task, index) => <TaskCard key={task.id} task={task} dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && index === column.tasks.length - 1 ? "after" : undefined} featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
+    {column.tasks.length > 0 && <ul className="taskColumnList">{ready
+      ? ready.segments.map((segment) => segment.kind === "card" ? card(segment.task) : <ReadyStepGroup key={segment.key} group={segment} renderCard={(task) => card(task, true)} />)
+      : column.tasks.map((task) => card(task))}</ul>}
     {newTask && <NewTaskAction {...newTask} />}
   </section>;
 }

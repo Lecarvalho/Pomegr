@@ -121,7 +121,7 @@ describe("the Tasks page", () => {
     expect(useTasks).not.toHaveBeenCalledWith(repositoryId);
     expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
     expect(switcher()).toHaveTextContent("Another project");
-    expect(screen.getByText("Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.")).toBeInTheDocument();
+    expect(screen.getByText("Work for this repository. Ready is the queue: cards start from the top.")).toBeInTheDocument();
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 

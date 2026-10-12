@@ -270,7 +270,7 @@ describe("Design-system reference page", () => {
     expect(card("Not queued")).not.toHaveClass("isLive", "isAttention");
     expect(chip("Queued · next")).toHaveTextContent("Queued · next");
     expect(chip("Queued · next")).toHaveClass("commandChip", "isInk");
-    expect(card("Queued · next").querySelector(".taskCardFeature")).toHaveTextContent("Upload reliability · step 2 of 3 · parallel");
+    expect(card("Queued · next").querySelector(".taskCardFeature")?.textContent).toBe("Upload reliability · step 2 of 3 · parallel with T-2");
     expect(chip("Scheduled")).toHaveClass("info");
     expect(card("Scheduled").querySelector(".taskCardStarts")?.textContent).toMatch(/^Starts /);
     // A bound session's state is borrowed; a differing planned model is the one amber line.

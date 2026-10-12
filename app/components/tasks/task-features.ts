@@ -83,13 +83,17 @@ export function featureSiblings(board: BoardShape, featureId: string, selfId?: s
     .sort((left, right) => (left.step ?? Infinity) - (right.step ?? Infinity) || order(left, right));
 }
 
-export function featureLines(board: Pick<BoardShape, "features" | "tasks">): ReadonlyMap<string, string> {
-  const lines = new Map<string, string>();
+/** A card's feature line: "<feature> · step k of n", and the other tasks of its step, in any lane, when it has any. */
+export type FeatureLine = { text: string; parallelWith: string[] };
+
+export function featureLines(board: Pick<BoardShape, "features" | "tasks">): ReadonlyMap<string, FeatureLine> {
+  const lines = new Map<string, FeatureLine>();
   for (const feature of board.features) {
     const steps = stepsOf(board.tasks, feature.id);
     const last = Math.max(0, ...steps.keys());
     for (const [step, tasks] of steps) {
-      for (const task of tasks) lines.set(task.id, `${feature.name} · step ${step} of ${last}${tasks.length > 1 ? " · parallel" : ""}`);
+      const ids = [...tasks].sort(byIdNumber).map((task) => task.id);
+      for (const task of tasks) lines.set(task.id, { text: `${feature.name} · step ${step} of ${last}`, parallelWith: ids.filter((id) => id !== task.id) });
     }
   }
   return lines;

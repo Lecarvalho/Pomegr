@@ -292,7 +292,26 @@
 .taskFeatureSelect .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
 @media (max-width: 760px), (pointer: coarse) { .taskFeatureSelect .commandSelectTrigger { min-height: 44px; } }
 .taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
-.taskCardFeature { overflow-wrap: anywhere; }
+.taskCardFeature { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.taskCardFeature > span { min-width: 0; }
+.taskCardFeatureIds, .taskCardStartsTime { font-family: var(--font-data); }
+.taskParallelGlyph { flex: 0 0 auto; width: 12px; height: 12px; }
+
+/* Ready step groups: the waiting cards of the Ready lane under the caption of their feature step, or of Single tasks.
+   Only a step with two or more waiting cards draws the frame; the others keep its inset, so every card lines up. */
+.taskReadyGroup { display: flex; flex-direction: column; gap: 6px; padding: 0 6px; border: 1px solid transparent; }
+.taskReadyGroup.isParallel { padding: 6px; border-color: var(--command-line-strong); border-radius: var(--panel-radius); }
+.taskReadyCaption { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 2px var(--space-1); }
+.taskReadyStep { min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskReadyFeature { color: var(--command-muted); }
+.taskReadyStepName { font-weight: 650; }
+.taskReadyMode { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); white-space: nowrap; }
+.taskReadyMode.isParallel { color: var(--command-ink); font-weight: 500; }
+.taskReadyCount { font-family: var(--font-data); }
+.taskReadyCards { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; list-style: none; }
+.taskReadyCard { gap: 6px; padding: 10px var(--space-3); }
+.taskReadyCard .taskCardPlanned { font-size: var(--text-caption); }
+.taskReadyCard.isDropBefore::before { top: -5px; }
 
 /* Queue view (D101-D155): one panel per unfinished feature, steps as rows, the single tasks after them. A step card is
    the board card at the compact padding. Drag-over takes the raised fill; a step whose tasks are all done never does. */

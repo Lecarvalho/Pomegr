@@ -46,6 +46,15 @@ export function startsLine(task: Pick<Task, "state" | "scheduledAt" | "session">
   return label === null ? null : `Starts ${label}`;
 }
 
+/** The Starts line of a board card in two parts, so the time can take the data font. The day is "today" when `now` falls on it. */
+export function startsParts(task: Pick<Task, "state" | "scheduledAt" | "session">, now?: number): { day: string; time: string } | null {
+  if (task.state !== "scheduled" || task.scheduledAt === null || task.session !== null) return null;
+  const time = Date.parse(task.scheduledAt);
+  if (!Number.isFinite(time)) return null;
+  const today = now !== undefined && new Date(now).toDateString() === new Date(time).toDateString();
+  return { day: today ? "today" : `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(time)},`, time: timeOfDay(task.scheduledAt) };
+}
+
 export function waitsForOwnTime(task: Pick<Task, "state" | "scheduledAt">, now: number): boolean {
   if (task.state !== "scheduled" || task.scheduledAt === null) return false;
   const time = Date.parse(task.scheduledAt);

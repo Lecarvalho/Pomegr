@@ -396,6 +396,42 @@ describe("Pomegr visual contract", () => {
     expect(designSystemStyles).toMatch(/\.designSystemRevealAdd \.taskColumnAdd \{ opacity: 1; \}/);
   });
 
+  it("draws the Ready lane's step groups with tokens, frames only a parallel group, and keeps grouping to Ready", () => {
+    // D6-D9: the frame is the strong line at the panel radius with no fill; an unframed group keeps the same inset.
+    expect(styles).toMatch(/\.taskReadyGroup \{[^}]*gap: 6px[^}]*padding: 0 6px[^}]*border: 1px solid transparent/);
+    expect(styles).toMatch(/\.taskReadyGroup\.isParallel \{ padding: 6px; border-color: var\(--command-line-strong\); border-radius: var\(--panel-radius\); \}/);
+    expect(styles).not.toMatch(/\.taskReady[A-Za-z]*[^{]*\{[^}]*(?:background|transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
+    expect(styles).toMatch(/\.taskReadyCaption \{[^}]*justify-content: space-between[^}]*padding: 2px var\(--space-1\)/);
+    expect(styles).toMatch(/\.taskReadyStep \{[^}]*color: var\(--command-ink\); font: 400 var\(--text-xs\)/);
+    expect(styles).toMatch(/\.taskReadyFeature \{ color: var\(--command-muted\); \}/);
+    expect(styles).toMatch(/\.taskReadyStepName \{ font-weight: 650; \}/);
+    expect(styles).toMatch(/\.taskReadyMode \{[^}]*gap: var\(--space-1\); color: var\(--command-muted\); font: 400 var\(--text-caption\)/);
+    expect(styles).toMatch(/\.taskReadyMode\.isParallel \{ color: var\(--command-ink\); font-weight: 500; \}/);
+    expect(styles).toMatch(/\.taskReadyCount \{ font-family: var\(--font-data\); \}/);
+    // D10: the grouped card is the board card at compact padding, with the planned run at the caption size.
+    expect(styles).toMatch(/\.taskReadyCard \{ gap: 6px; padding: 10px var\(--space-3\); \}/);
+    expect(styles).toMatch(/\.taskReadyCard \.taskCardPlanned \{ font-size: var\(--text-caption\); \}/);
+    // D12-D13: the time and the task IDs take the data font; the glyph is 12px in the current color.
+    expect(styles).toMatch(/\.taskCardFeatureIds, \.taskCardStartsTime \{ font-family: var\(--font-data\); \}/);
+    expect(styles).toMatch(/\.taskCardFeature \{[^}]*gap: 6px/);
+    expect(styles).toMatch(/\.taskParallelGlyph \{[^}]*width: 12px; height: 12px; \}/);
+    const tasksComponents = join(process.cwd(), "app", "components", "tasks");
+    expect(readFileSync(join(tasksComponents, "ParallelGlyph.tsx"), "utf8")).toMatch(/stroke="currentColor" strokeWidth="1\.5"[^]*d="M4 2v8M8 2v8"/);
+    // Only the Ready lane is handed groups, and the Queue view does not use them.
+    const view = readFileSync(join(tasksComponents, "TaskBoardView.tsx"), "utf8");
+    expect(view).toMatch(/ready=\{column\.id === readyId \? \{ segments: readySegments\(column\.tasks, board\)/);
+    expect(readFileSync(join(tasksComponents, "TaskQueueView.tsx"), "utf8")).not.toMatch(/ReadyStepGroup|readySegments/);
+    // D17: the page description.
+    expect(readFileSync(join(tasksComponents, "TaskBoardPane.tsx"), "utf8")).toMatch(/<p>Work for this repository\. Ready is the queue: cards start from the top\.<\/p>/);
+    expect(designContract).toMatch(/### Ready step groups/);
+    expect(designContract).toMatch(/A \*\*parallel step group\*\* \(`\.taskReadyGroup\.isParallel`\) is a frame/);
+    expect(designContract).toMatch(/Groups are drawn in Ready only\./);
+    expect(designContract).toMatch(/The description reads “Work for this repository\. Ready is the queue: cards start from the top\.”/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
+    expect(sample).toMatch(/Ready lane, step groups/);
+    expect(sample).toMatch(/Card outside Ready, parallel step/);
+  });
+
   it("draws the task modal frame as a modal dialog scrim with tokens only and documents its fields", () => {
     const tasksStyles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
     const tasksComponents = join(process.cwd(), "app", "components", "tasks");
