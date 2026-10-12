@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRepositoryInventory } from "../../repository-inventory-client";
 import { useTasks } from "../../tasks-store";
-import { TASK_BOUNDS, type Task } from "../../../shared/task-contract";
+import type { Task } from "../../../shared/task-contract";
 import { CommandPageHeader } from "../command-center/CommandPage";
 import { setPaletteScope } from "../command-center/palette-scope";
-import { AddFeatureAction } from "./AddFeatureAction";
+import { NewFeatureAction, type FeatureEntry } from "./FeatureActions";
+import { FeatureModal } from "./FeatureModal";
 import { QueueControl } from "./QueueControl";
 import { TaskBoardView, type TaskReveal } from "./TaskBoardView";
 import { TaskModal } from "./TaskModal";
@@ -17,7 +18,7 @@ import { taskSearchItems } from "./task-search";
 import { useTaskBoardEdits } from "./use-task-board-edits";
 import { useTaskIssuesAvailability } from "./use-promote-issues";
 
-type OpenModal = { kind: "new" } | { kind: "task"; id: string } | null;
+type OpenModal = { kind: "new" } | { kind: "task"; id: string } | { kind: "newFeature" } | { kind: "feature"; id: string } | null;
 
 export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { repositoryId: string; switcher?: ReactNode; breadcrumb?: ReactNode }) {
   const headingId = useId();
@@ -27,6 +28,8 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   const { snapshot } = useRepositoryInventory();
   const access = useTaskEditAvailability();
   const editable = access === "desktop" || access === "paired";
+  // Only the desktop app makes and edits a feature from the Board; a paired device still names one in the task modal.
+  const desktop = access === "desktop";
   const issuesBridge = useTaskIssuesAvailability();
   const [modal, setModal] = useState<OpenModal>(null);
   const [reveal, setReveal] = useState<TaskReveal | null>(null);
@@ -36,7 +39,8 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   const wasOpen = useRef(false);
   const repositoryName = snapshot.repositories.find((repository) => repository.id === repositoryId)?.displayName ?? null;
   const openTask = modal?.kind === "task" ? board.tasks.find((task) => task.id === modal.id) : undefined;
-  const open = modal?.kind === "new" || openTask !== undefined;
+  const openFeature = modal?.kind === "feature" ? board.features.find((feature) => feature.id === modal.id) : undefined;
+  const open = modal?.kind === "new" || modal?.kind === "newFeature" || openTask !== undefined || openFeature !== undefined;
   useEffect(() => {
     if (wasOpen.current && !open) {
       const target = opener.current?.isConnected ? opener.current : trigger.current;
@@ -51,6 +55,12 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   const ready = board.readiness === "ready";
   const queueLine = queueStatusLine(board.queue.status);
   const openNew = useCallback(() => { opener.current = trigger.current; setModal({ kind: "new" }); }, []);
+  const featureEntry = useMemo<FeatureEntry>(() => ({
+    onNew: (element) => { opener.current = element; setModal({ kind: "newFeature" }); },
+    onEdit: (id, element) => { opener.current = element; setModal({ kind: "feature", id }); },
+  }), []);
+  // The feature's opener stays the opener, so closing the task returns to where the owner started.
+  const openFromFeature = useCallback((task: Task) => setModal({ kind: "task", id: task.id }), []);
   const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setModal({ kind: "task", id: task.id }); }, []);
   const openFound = useCallback((id: string) => {
     if (!editable) { setReveal((last) => ({ id, turn: (last?.turn ?? 0) + 1 })); return; }
@@ -76,15 +86,18 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
         {switcher}
         {editable && ready && <QueueControl status={board.queue.status} busy={edits.busy} onSet={(on) => { void edits.setQueue(on); }} />}
         {/* The filter row carries this action once a feature exists. */}
-        {editable && ready && board.features.length === 0 && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
+        {desktop && ready && board.features.length === 0 && <NewFeatureAction board={board} entry={featureEntry} />}
         {/* Opens the Promote issues page. */}
         {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
       <TaskBoardView board={board} reveal={reveal} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
-        newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} />
+        newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} features={desktop ? featureEntry : undefined} />
       {editable && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onIssueFailed={openCreated} onClose={close} />}
       {editable && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
+      {desktop && modal?.kind === "newFeature" && <FeatureModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} onCreated={changed} onClose={close} />}
+      {desktop && openFeature && <FeatureModal key={openFeature.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} board={board} feature={openFeature}
+        onOpenTask={openFromFeature} onChanged={changed} onClose={close} />}
     </div>
   </section>;
 }

@@ -14,6 +14,7 @@ export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
   taskStart?: (repositoryId: string, taskId: string, separateWorktree?: true) => Promise<{ status: TaskStartStatus }>;
   taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
+  taskFeature?: (repositoryId: string, featureId: string) => Promise<unknown>;
 };
 
 /** Fixed outcome of opening a task's worktree folder. */
@@ -52,12 +53,13 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
   const bridge = taskDesktopBridge();
-  if (!bridge && clientAccessMode() !== "lan") return { ok: false, error: "unavailable" };
+  // A paired device may create a feature from a name but never edits one: feature_update has no paired route.
+  if (!bridge && (action === "feature_update" || clientAccessMode() !== "lan")) return { ok: false, error: "unavailable" };
   try {
     const result: unknown = bridge ? await bridge.taskAction(repositoryId, action, payload) : await postPairedTaskAction(repositoryId, action, payload);
     if (typeof result === "object" && result !== null) {
@@ -128,8 +130,33 @@ export function moveDesktopTask(repositoryId: string, move: TaskMove): Promise<T
   return sendTaskAction(repositoryId, "move", { id: move.id, columnId: move.columnId, position: move.position });
 }
 
-export function createDesktopFeature(repositoryId: string, name: string): Promise<TaskActionResult> {
-  return sendTaskAction(repositoryId, "feature_create", { name });
+/** A name alone is the inline form's create; the Feature modal adds the two details it holds. */
+export function createDesktopFeature(repositoryId: string, name: string, details?: { description?: string; appVersion?: string }): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "feature_create", { name, ...details });
+}
+
+/** An absent field stays as stored; a null one clears it. */
+export type FeaturePatch = { name?: string; description?: string | null; appVersion?: string | null };
+
+export function updateDesktopFeature(repositoryId: string, id: string, patch: FeaturePatch): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "feature_update", { id, ...patch });
+}
+
+export type FeatureDetails = { description: string | null; appVersion: string | null };
+
+/** The desktop-only read of one feature's description and app version. Any answer but two strings or nulls is a failure. */
+export async function readDesktopFeature(repositoryId: string, id: string): Promise<({ ok: true } & FeatureDetails) | { ok: false }> {
+  const bridge = typeof window === "undefined" ? undefined : (window as Window & { pomegrDesktop?: Partial<TaskDesktopBridge> }).pomegrDesktop;
+  if (typeof bridge?.taskFeature !== "function") return { ok: false };
+  try {
+    const result = await bridge.taskFeature(repositoryId, id);
+    if (typeof result !== "object" || result === null || (result as { ok?: unknown }).ok !== true) return { ok: false };
+    const { description, appVersion } = result as { description?: unknown; appVersion?: unknown };
+    if ((typeof description !== "string" && description !== null) || (typeof appVersion !== "string" && appVersion !== null)) return { ok: false };
+    return { ok: true, description, appVersion };
+  } catch {
+    return { ok: false };
+  }
 }
 
 export function addDesktopQueueTask(repositoryId: string, id: string): Promise<TaskActionResult> {

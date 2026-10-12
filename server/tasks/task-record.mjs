@@ -39,7 +39,7 @@ export const TASK_COLUMN_ROLES = Object.freeze(["in_progress", "review", "done"]
 export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress", "review", "done"]);
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
-  "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+  "feature_create", "feature_update", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -235,11 +235,25 @@ export function normalizeUpdatePayload(value) {
   return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
 }
 
-// `feature_create` carries only the name.
+// `feature_create` carries a title and, optionally, a description and an app version.
 export function normalizeFeatureCreatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["name"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["name", "description", "appVersion"])) return undefined;
   const name = normalizeFeatureName(value.name);
-  return name === undefined ? undefined : { name };
+  const description = normalizeFeatureDescription(value.description);
+  const appVersion = normalizeFeatureAppVersion(value.appVersion);
+  return name === undefined || description === undefined || appVersion === undefined ? undefined : { name, description, appVersion };
+}
+
+// `feature_update`: an ID and at least one field; an absent field stays, and a null description or app version clears it.
+export function normalizeFeatureUpdatePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "name", "description", "appVersion"])) return undefined;
+  if (typeof value.id !== "string" || !FEATURE_ID.test(value.id)) return undefined;
+  const update = { feature: { id: value.id } };
+  if (value.name !== undefined) update.name = normalizeFeatureName(value.name);
+  if (value.description !== undefined) update.description = normalizeFeatureDescription(value.description);
+  if (value.appVersion !== undefined) update.appVersion = normalizeFeatureAppVersion(value.appVersion);
+  const fields = Object.keys(update).filter((key) => key !== "feature");
+  return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
 }
 
 // A feature named by its ID or by its exact title.

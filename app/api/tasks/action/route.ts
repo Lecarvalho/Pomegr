@@ -41,6 +41,8 @@ export async function POST(request: Request) {
     || typeof body.repositoryId !== "string" || !REPOSITORY_ID.test(body.repositoryId)
     || typeof body.action !== "string" || !ACTIONS.has(body.action) || !plainObject(body.payload)) return answer({ ok: false, error: "invalid" });
   const { repositoryId, action, payload } = body;
+  // A paired device makes a feature from a name alone; the description and app version are the desktop app's.
+  if (action === "feature_create" && Object.keys(payload).some((key) => key !== "name")) return answer({ ok: false, error: "invalid" });
   const serialized = JSON.stringify(payload);
   if (Buffer.byteLength(serialized, "utf8") > PAYLOAD_MAX_BYTES) return answer({ ok: false, error: "invalid" });
   try {

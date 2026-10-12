@@ -72,6 +72,24 @@ describe("POST /api/tasks/action", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("refuses feature_update: a paired device may make a feature from a name but never edits one", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const update = { repositoryId, action: "feature_update", payload: { id: "feat-0123456789ab", name: "Renamed", description: null } };
+    expect(await (await post(update)).json()).toEqual({ ok: false, error: "invalid" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a feature_create that carries a description or an app version, and passes a name alone", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => monitorAnswer({ ok: true }));
+    for (const extra of [{ description: "Shared context" }, { appVersion: "1.4.0" }, { description: null }]) {
+      const body = { repositoryId, action: "feature_create", payload: { name: "Uploads", ...extra } };
+      expect(await (await post(body)).json()).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await (await post({ repositoryId, action: "feature_create", payload: { name: "Uploads" } })).json()).toEqual({ ok: true });
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)![1]?.body))).toEqual({ repositoryId, payload: { name: "Uploads" } });
+  });
+
   it("passes queue on, off, and other settings through the authorized monitor route", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => monitorAnswer({ ok: true }));
     for (const payload of [{ on: true }, { on: false }, { threshold: 70 }, { schedule: { startAt: null, stopAfter: null } }]) {

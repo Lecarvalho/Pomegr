@@ -1,12 +1,12 @@
 # Task modal design
 
-> Scope: the task modal in modes new, edit, and promote, its frame, the shared task fields, and the Promote issues page.
+> Scope: the task modal in modes new, edit, and promote, its frame, the shared task fields, the Feature modal, and the Promote issues page.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/components/tasks/`, `app/styles/`, the `/design-system` samples,
 > and `tests/ui/pomegr-design-contract.test.tsx`.
 
-One task modal serves three modes. The board and the cards are in [task-board.md](task-board.md). Board data, queue, dispatch, and privacy are in [Tasks](../architecture/tasks.md).
+One task modal serves three modes, and the Feature modal uses its frame for a fourth form. The board and the cards are in [task-board.md](task-board.md). Board data, queue, dispatch, and privacy are in [Tasks](../architecture/tasks.md).
 
 ## Frame
 
@@ -51,7 +51,7 @@ One task modal serves three modes. The board and the cards are in [task-board.md
 - Escape and Close dismiss the dialog, unless a control inside handled the key first.
 - An open list and a feature name being edited handle the key first.
 - A click on the scrim closes the dialog only while the form holds nothing to save.
-- A form that holds nothing to save is an unchanged task or an empty New task. The promote form never closes on a scrim click.
+- A form that holds nothing to save is an unchanged task, an empty New task, an empty New feature, or an unchanged Feature. The promote form never closes on a scrim click.
 - This rule means a stray click never loses typed text.
 - The opener takes focus back.
 - A `CommandSelect` list opened inside renders inside the dialog.
@@ -63,6 +63,8 @@ One task modal serves three modes. The board and the cards are in [task-board.md
 | New | Quiet **Cancel**, primary **Create task** |
 | Edit | Quiet **Delete task**, Secondary **Add to queue** or **Remove from queue**, Secondary **Start session**, primary **Save** |
 | Promote | Quiet **Cancel**, primary **Promote issue** |
+| New feature | Quiet **Cancel**, primary **Create feature** |
+| Feature | Primary **Save** |
 
 ## Task fields
 
@@ -306,6 +308,69 @@ The Promote issues page's **Promote** opens the task modal for that one issue. T
 - The Secondary **Close** means an issue is never promoted twice.
 - Promotion rules and the reads that follow are in [Tasks](../architecture/tasks.md).
 
+## Feature modal
+
+`FeatureModal` (`app/components/tasks/FeatureModal.tsx`) is a form on the task modal's frame. It has the modes New feature and Feature. It is for the desktop app only.
+The [Feature filter](task-board.md#feature-filter) opens it. A paired device and a browser draw no action that opens it.
+
+### Fields
+
+- The body holds three fields in this order: **Title**, **Description**, and **App version**.
+- Each field is a `.newTaskField.featureField` with a label, the control, and a foot.
+- **Title** is a one-line input with `maxlength` 80 and the placeholder “What is this feature?”.
+- The **Title** foot holds the muted helper “One line. It names the feature on the board and in the session's prompt.” and a live counter on its right.
+- **Description** is a `textarea` at least 150px tall, with no `maxlength` and the placeholder “What should every task of this feature know?”.
+- The **Description** foot holds the muted helper “The context its tasks share, so each task's own text stays short. An agent reads it when its task needs it.” and a live counter.
+- **App version** is an input with `maxlength` 40, at most 240px wide, in the data font, with the placeholder “1.4.0”.
+- The **App version** helper reads “The version the feature is planned for. Optional, and it gates nothing.” and the field has no counter.
+- A counter (`.featureCounter`) reads “n / 80” or “n / 2,000” in the muted 12px data font, with a thousands separator.
+- Past 2,000, the **Description** counter takes the error color (`.isOver`) and the primary is disabled.
+- A text input is 36px high with a fine pointer at 761px and wider, and 44px otherwise.
+- The header and the footer are the [frame](#frame)'s. The subtitle is the repository name.
+- The close is the Icon-role **Close**.
+
+### New feature
+
+- The heading is **New feature**.
+- Focus starts in **Title**.
+- The footer is a spacer, a Quiet **Cancel**, and the one primary **Create feature**.
+- **Create feature** is disabled until the trimmed title holds text, while a description is over its bound, and while a create runs.
+- **Create feature** sends the title, and the description and the app version only when they hold text. Values are trimmed.
+- **Create feature** closes the modal and the board reads again. The filter keeps its choice.
+- **Cancel**, **Close**, and Escape discard the form without asking.
+- A click on the scrim closes the modal only while the three fields are empty.
+
+### Feature
+
+- The heading is **Feature**, followed by the chip `.commandChip.taskCardChip.neutral` “n of m done”.
+- A feature with no task has no chip and no **Tasks** list.
+- The fields hold a local draft of the stored feature. The title comes from the board.
+- The description and the app version come from the desktop read when the modal opens.
+- Until the read answers, the two fields are disabled and empty. The title stays editable.
+- If the read fails, the two fields stay disabled, and the line “The description and app version could not be read.” (`p.newTaskError`, `role="alert"`) follows them.
+- After the fields comes the folded **Tasks** list (`details.taskFeatureDetails`).
+- The summary is the chevron (`.taskFeatureChevron`), the label **Tasks** (`.taskFeatureLabel`), and the count “n tasks · d done” (`.taskFeatureCount`) with data-font numerals.
+- The list is the task modal's In this feature list. Each row leads with its step, its ID, its title button, and its state chip.
+- A row's title button opens that task's modal in place of this one. The draft is discarded.
+- The footer is a spacer and the one primary **Save**. It has no **Cancel**.
+- **Save** is disabled until the draft differs from the stored feature, the title holds text, and no field is over its bound.
+- **Save** sends one update that holds only the changed fields. A cleared description or app version is sent as `null`.
+- **Save** closes the modal and the board reads again.
+- **Close** and Escape discard the draft without asking.
+- A click on the scrim closes the modal only while the draft equals the stored feature.
+
+### Failures
+
+- A failure keeps the modal open and keeps what was typed.
+- Each failure is one fixed `p.newTaskError` with `role="alert"`.
+- The next attempt clears it. Typing in the title also clears the duplicate-title line.
+
+| Failure | Line | Where |
+| --- | --- | --- |
+| Title already used | “Another feature already has this title.” | Under the **Title** input, which names it with `aria-describedby` |
+| Board holds 50 features | “This board already holds 50 features. Delete one first.” | Under the fields |
+| Any other failure | “The feature could not be saved.” | Under the fields |
+
 ## Promote issues page
 
 `/tasks/issues?repository=<repositoryId>` is where the owner chooses a GitHub issue to promote into a task. It sits below the Tasks root item, so Tasks stays current.
@@ -420,6 +485,7 @@ The Promote issues page's **Promote** opens the task modal for that one issue. T
 
 - `/design-system` renders the task fields, including Feature.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
+- `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the details not read, and with each failure line.
 - The chrome is static markup over a static scrim, without the dialog behavior.
 - `/design-system` renders the Promote issues parts: the header action, row chips, page header, list and detail, and notices.
 - `/design-system` also renders the raw body with a hidden comment, the character count, and every state.

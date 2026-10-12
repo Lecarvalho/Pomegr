@@ -94,7 +94,7 @@ The head actions appear in this order:
 | --- | --- | --- |
 | 1 | **Repository** `CommandSelect` | Always. 32px high, 12px text, at most 240px wide. 44px high on phone and coarse pointers. |
 | 2 | The [queue switch](#queue-switch) | The desktop app or a paired device. |
-| 3 | **+ New feature** | The desktop app, while the board has no feature. Once the board has a feature, the filter row carries it. |
+| 3 | **+ New feature** | The desktop app, while the board has no feature. It opens the [Feature modal](task-modal.md#feature-modal). Once the board has a feature, the filter row carries it. |
 | 4 | The Secondary **Promote issues** link | The desktop issues bridge exists. |
 
 - The **Promote issues** link has a 14px circle-dot glyph and opens the Promote issues page.
@@ -200,7 +200,15 @@ The head actions appear in this order:
 - The select is 32px high, 12px text, at most 320px wide. It is 44px high on phone and coarse pointers.
 - The options carry the task count in parentheses. **All** is first and **No feature** is last.
 - The row stays one control however many features a board holds.
-- The desktop app adds the Quiet **+ New feature**, an inline name form. With no feature yet, it sits in the page header.
+- The desktop app adds a Quiet **Edit feature** and a Quiet **+ New feature** after the select.
+- **Edit feature** shows only while one feature is chosen. **All** and **No feature** show no **Edit feature**.
+- **Edit feature** opens the [Feature modal](task-modal.md#feature-modal) in mode Feature for the chosen feature.
+- **+ New feature** opens the Feature modal in mode New feature. The row draws no inline name form.
+- **+ New feature** is disabled while the board holds 50 features.
+- With no feature yet, **+ New feature** sits in the page header and opens the same modal.
+- A browser and a paired device draw neither action.
+- Both actions have `aria-haspopup="dialog"`. Focus returns to the one that opened the modal.
+- The order in the row is the eyebrow, the select, **Edit feature**, **+ New feature**, the progress line, and the helper line.
 - While a feature is selected, the row shows its progress (`.taskFeatureProgress`), in any client: muted 12px “0 of 7 tasks done · step 1 of 4 running”.
 - The counts of that line use the data font and ink.
 - The step clause names the lowest step with a task that has a session and is not done, and the feature's last step. With no such step, the line is the done count only.

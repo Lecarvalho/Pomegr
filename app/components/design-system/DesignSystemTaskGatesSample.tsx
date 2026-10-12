@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { TaskQueue } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
+import { NewFeatureAction } from "../tasks/FeatureActions";
 import { QueueBanner } from "../tasks/QueueBanner";
 import { QueueControl } from "../tasks/QueueControl";
 import { QueueSettings } from "../tasks/QueueSettingsPanel";
@@ -41,10 +42,11 @@ export function QueueControlsSection() {
       <Sample label="Queue switch, busy" note="Disabled while the monitor answers."><QueueControl status="running" busy onSet={noop} /></Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Page header actions, desktop app" note="The Tasks page header holds, in order, the Repository select, the Queue switch and Promote issues, 12px apart, wrapping. A browser has no Queue switch. While the board has no feature, + New feature sits before Promote issues.">
+      <Sample label="Page header actions, desktop app" note="The Tasks page header holds, in order, the Repository select, the Queue switch and Promote issues, 12px apart, wrapping. A browser has no Queue switch. While the board has no feature, the desktop app adds the Quiet + New feature before Promote issues; it opens the Feature modal.">
         <div className="taskHeadActions">
           <CommandSelect className="tasksRepositorySwitcher" aria-label="Repository" options={REPOSITORIES} value={SAMPLE_REPOSITORY_ID} onChange={noop} />
           <QueueControl status="running" busy={false} onSet={noop} />
+          <NewFeatureAction board={{ features: [] }} entry={{ onNew: noop, onEdit: noop }} />
           <PromoteIssuesAction repositoryId={SAMPLE_REPOSITORY_ID} />
         </div>
       </Sample>

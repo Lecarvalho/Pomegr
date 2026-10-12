@@ -398,9 +398,10 @@ describe("Feature filter and card feature line", () => {
     mock.board = boardOf({ features: [], tasks: [task(1, "Loose")] });
     const view = render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "+ New feature" }));
-    await user.type(screen.getByRole("textbox", { name: "Feature name" }), "First");
-    await user.click(screen.getByRole("button", { name: "Add" }));
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "First");
+    await user.click(screen.getByRole("button", { name: "Create feature" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "feature_create", { name: "First" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New feature" })).not.toBeInTheDocument());
     mock.board = boardOf();
     view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.getAllByRole("button", { name: "+ New feature" })).toHaveLength(1);
@@ -448,25 +449,30 @@ describe("Feature filter and card feature line", () => {
     expect(screen.queryByText("Moving cards is off while a feature filter is on.")).not.toBeInTheDocument();
   });
 
-  it("adds a feature from the filter row through the bridge", async () => {
+  it("adds a feature from the filter row through the bridge, and the board is read again", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "+ New feature" }));
-    await user.type(screen.getByRole("textbox", { name: "Feature name" }), "Fresh");
-    await user.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByRole("dialog", { name: "New feature" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Feature name" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Fresh");
+    await user.click(screen.getByRole("button", { name: "Create feature" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "feature_create", { name: "Fresh" }));
-    expect(refresh).toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByRole("button", { name: "+ New feature" })).toBeInTheDocument());
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New feature" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
   });
 
-  it("shows the fixed message when a feature name is already used", async () => {
+  it("shows the fixed line under the title when a feature title is already used, and keeps the modal and the text", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "+ New feature" }));
-    await user.type(screen.getByRole("textbox", { name: "Feature name" }), "Docs");
-    await user.click(screen.getByRole("button", { name: "Add" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("A feature with this name already exists.");
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Docs");
+    await user.click(screen.getByRole("button", { name: "Create feature" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Another feature already has this title.");
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Docs");
+    expect(screen.getByRole("dialog", { name: "New feature" })).toBeInTheDocument();
   });
 
   it("shows '<feature> · step K of N' on a card, and names the other tasks of its step only when another task shares it", () => {

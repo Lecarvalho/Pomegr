@@ -24,17 +24,25 @@ function SiblingRow({ task, step, nextQueued, onOpenTask }: { task: Task; step: 
   </li>;
 }
 
-function FeatureSiblings({ board, featureId, selfId, onOpenTask }: { board: BoardShape; featureId: string; selfId?: string; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
+/** The folded list of a feature's tasks. The task modal leaves its own task out and leads each row with its step; the Feature modal lists every task under "Tasks". */
+export function FeatureSiblings({ board, featureId, selfId, label = "In this feature", steps = selfId !== undefined, onOpenTask }: {
+  board: BoardShape;
+  featureId: string;
+  selfId?: string;
+  label?: string;
+  steps?: boolean;
+  onOpenTask?: (task: Task, opener: HTMLElement) => void;
+}) {
   const { total, done } = featureCounts(board, featureId);
   const rows = featureSiblings(board, featureId, selfId);
   return <details className="taskFeatureDetails">
     <summary>
       <svg className="taskFeatureChevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
-      <span className="taskFeatureLabel">In this feature</span>
+      <span className="taskFeatureLabel">{label}</span>
       <span className="taskFeatureCount"><span className="taskFeatureNum">{total}</span> {total === 1 ? "task" : "tasks"} · <span className="taskFeatureNum">{done}</span> done</span>
     </summary>
     {rows.length > 0 && <ul className="taskFeatureList">
-      {rows.map((task) => <SiblingRow key={task.id} task={task} step={selfId !== undefined} nextQueued={task.id === board.queue?.order[0]} onOpenTask={onOpenTask} />)}
+      {rows.map((task) => <SiblingRow key={task.id} task={task} step={steps} nextQueued={task.id === board.queue?.order[0]} onOpenTask={onOpenTask} />)}
     </ul>}
   </details>;
 }

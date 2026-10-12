@@ -7,13 +7,14 @@ const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const TASK_ACTIONS = new Set([
   "create", "update", "delete", "move",
-  "feature_create",
+  "feature_create", "feature_update",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings",
   "resolve_done", "resolve_requeue",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
 const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
 const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
+const TASK_FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
 const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const TASK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const ISSUE_DIGEST = /^[a-f0-9]{64}$/u;
@@ -121,6 +122,10 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || !TASK_ACTIONS.has(action)
       || !payload || typeof payload !== "object" || Array.isArray(payload)) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-action", repositoryId, action, payload);
+  },
+  taskFeature(repositoryId, featureId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || typeof featureId !== "string" || !TASK_FEATURE_ID.test(featureId)) return Promise.resolve({ ok: false, error: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-feature", repositoryId, featureId);
   },
   taskIssues(repositoryId, operation, payload) {
     const plain = payload && typeof payload === "object" && !Array.isArray(payload)

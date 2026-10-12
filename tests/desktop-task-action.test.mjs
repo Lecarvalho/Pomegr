@@ -39,7 +39,7 @@ test("task action channel and list are fixed", () => {
   assert.equal(TASK_ACTION_CHANNEL, "pomegr:task-action");
   assert.deepEqual([...TASK_ACTION_NAMES], [
     "create", "update", "delete", "move",
-    "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+    "feature_create", "feature_update", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
   ]);
 });
 
@@ -223,4 +223,16 @@ test("preload exposes taskAction on the fixed channel and refuses bad calls loca
   assert.equal(invokes.length, 0);
   assert.deepEqual(await exposed.taskAction(repositoryId, "create", { text: "x" }), { ok: true });
   assert.deepEqual(invokes, [["pomegr:task-action", repositoryId, "create", { text: "x" }]]);
+});
+
+test("feature_update is a fixed action and its answer carries nothing from the monitor beyond ok", async () => {
+  const { action, calls } = harness(() => json({ ok: true, board: { features: [] }, description: "secret", appVersion: "1.0" }));
+  const payload = { id: "feat-0123456789ab", name: "Renamed", description: "Context", appVersion: "1.2.0" };
+  assert.deepEqual(await action.run(trusted, repositoryId, "feature_update", payload), { ok: true });
+  assert.equal(calls[0].url, `${origin}/internal/tasks/feature_update`);
+  assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload });
+  for (const error of ["invalid", "not_found", "conflict"]) {
+    const refused = harness(() => json({ ok: false, error }, 409));
+    assert.deepEqual(await refused.action.run(trusted, repositoryId, "feature_update", payload), { ok: false, error });
+  }
 });
