@@ -97,6 +97,9 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   installUpdate() {
     return ipcRenderer.invoke("pomegr:install-update");
   },
+  startCodexSignIn() {
+    return ipcRenderer.invoke("pomegr:start-codex-sign-in");
+  },
   startClaudeSignIn() {
     return ipcRenderer.invoke("pomegr:start-claude-sign-in");
   },

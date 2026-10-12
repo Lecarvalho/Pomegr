@@ -181,3 +181,16 @@ Behavior: [Claude Code session status](../claude-session-status.md)
 
 - Cache external usage requests.
 - Sanitize failures.
+
+## Desktop account sign-in
+
+- Claude Code and Codex sign-in require trusted desktop IPC and explicit native confirmation.
+- Each action accepts no renderer arguments and launches its installed native CLI with fixed arguments and no shell.
+- Codex launches `codex login`; the CLI owns browser authentication and credential storage.
+- Child input and output are ignored; login output never enters browser state, API responses, or logs.
+- The renderer receives only `completed`, `cancelled`, `failed`, `unavailable`, `busy`, or `timed_out`.
+- Credentials, executable paths, environments, raw failures, and login URLs remain private.
+- Browser and paired-device clients cannot launch sign-in; no HTTP control route exists.
+- A successful CLI exit requests a separate asynchronous usage check and proves neither usage availability nor provider health.
+
+Behavior: [Observation cache](../observation-cache.md#local-claude-usage-observations-and-desktop-recovery)

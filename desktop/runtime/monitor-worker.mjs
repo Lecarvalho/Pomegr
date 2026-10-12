@@ -5,6 +5,14 @@ import { removeAgentQueryDescriptorIfTokenMatches } from "../../shared/agent-que
 import { stopChild } from "./utility-lifecycle.mjs";
 
 export function refreshClaudeUsageAfterSignIn(child, timeoutMs = 15_000) {
+  return refreshUsageAfterSignIn(child, "claude", timeoutMs);
+}
+
+export function refreshCodexUsageAfterSignIn(child, timeoutMs = 15_000) {
+  return refreshUsageAfterSignIn(child, "codex", timeoutMs);
+}
+
+function refreshUsageAfterSignIn(child, provider, timeoutMs) {
   if (!child) return Promise.resolve();
   return new Promise((resolve) => {
     const finish = () => {
@@ -15,13 +23,13 @@ export function refreshClaudeUsageAfterSignIn(child, timeoutMs = 15_000) {
       resolve();
     };
     const onMessage = (message) => {
-      if (message?.type === "claude-usage-rechecked") finish();
+      if (message?.type === `${provider}-usage-rechecked`) finish();
     };
     const timer = setTimeout(finish, timeoutMs);
     child.on("message", onMessage);
     child.once("exit", finish);
     child.once("error", finish);
-    try { child.postMessage({ type: "claude-sign-in-completed" }); } catch { finish(); }
+    try { child.postMessage({ type: `${provider}-sign-in-completed` }); } catch { finish(); }
   });
 }
 

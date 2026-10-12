@@ -74,6 +74,8 @@ export function createCoordinatedUsageLimitsReader({
   retryDelay = () => USAGE_REFRESH_INTERVAL_MS,
   now = () => Date.now(),
   initialState = null,
+  signInRetryFailures = ["authentication_required"],
+  signInRetryEmpty = false,
   onUpdate = () => {},
 }) {
   const cache = { value: initialState?.value ?? null, nextAttemptAt: initialState?.nextAttemptAt ?? 0, pending: null };
@@ -136,7 +138,8 @@ export function createCoordinatedUsageLimitsReader({
     // A local feed may have returned while an older account request was still pending.
     if (afterSignIn && cache.pending) await cache.pending;
     if (cache.pending) return afterSignIn ? cache.pending : cache.value || cache.pending;
-    if (afterSignIn && (cache.value?.failureKind === "authentication_required"
+    if (afterSignIn && (signInRetryFailures.includes(cache.value?.failureKind)
+      || (signInRetryEmpty && cache.value?.failureKind === null && cache.value?.available === false)
       || cache.value?.error === "Claude usage credentials are unavailable.")) {
       return startRefresh();
     }

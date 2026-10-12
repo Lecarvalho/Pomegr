@@ -99,6 +99,9 @@ connection help** automatically, even when older figures remain.
 - **Codex CLI required for usage limits:** install or update the native Codex CLI
   on the computer running Pomegr, run `codex login` and sign in with ChatGPT, then
   fully quit and reopen Pomegr.
+- **Usage unavailable (Codex):** select **Reconnect Codex** in the desktop app and confirm the browser sign-in.
+  Pomegr checks usage afterward without restarting. Browser and paired-device users run `codex login` on the monitor computer.
+  Completing sign-in does not confirm that usage is available.
 - **Usage access interrupted (Claude Code):** select **Reconnect Claude Code** in
   the desktop app, or run `claude auth login --claudeai` on the computer running
   Pomegr. Pomegr retries automatically afterward and never refreshes or copies the

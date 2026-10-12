@@ -110,10 +110,18 @@ function observeChild(child, { timeoutMs, shutdownTimeoutMs }) {
 }
 
 export function createClaudeSignInAction(options = {}) {
-  const sourceEnvironment = options.environment || process.env;
-  const discoveryEnvironment = Object.freeze(claudeDiscoveryEnvironment(sourceEnvironment));
-  const nativeEnvironment = Object.freeze({ ...(options.nativeEnvironment || nativeClaudeEnvironment(sourceEnvironment)) });
-  const fileExists = options.fileExists || existsSync;
+  const source = options.environment || process.env;
+  const discovery = Object.freeze(claudeDiscoveryEnvironment(source));
+  return createNativeSignInAction({
+    ...options,
+    resolveExecutable: () => resolveClaudeExecutable(discovery, options.fileExists || existsSync),
+    nativeEnvironment: options.nativeEnvironment || nativeClaudeEnvironment(source),
+    arguments: ["auth", "login", "--claudeai"],
+  });
+}
+
+export function createNativeSignInAction(options = {}) {
+  const nativeEnvironment = Object.freeze({ ...options.nativeEnvironment });
   const spawn = options.spawn || spawnChild;
   const confirm = options.confirm || (async () => false);
   const timeoutMs = options.timeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS;
@@ -124,7 +132,7 @@ export function createClaudeSignInAction(options = {}) {
   async function start() {
     if (disposed) return "unavailable";
     if (active) return "busy";
-    const executable = resolveClaudeExecutable(discoveryEnvironment, fileExists);
+    const executable = options.resolveExecutable();
     if (!executable) return "unavailable";
     active = Object.freeze({ child: null, observer: null });
     try {
@@ -132,7 +140,7 @@ export function createClaudeSignInAction(options = {}) {
       if (disposed) return "cancelled";
       let child;
       try {
-        child = spawn(executable, ["auth", "login", "--claudeai"], {
+        child = spawn(executable, options.arguments, {
           env: nativeEnvironment,
           shell: false,
           stdio: "ignore",

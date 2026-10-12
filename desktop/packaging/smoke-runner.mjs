@@ -24,6 +24,7 @@ const desktopFiles = [
   "runtime/artifact-privacy.mjs",
   "runtime/bounded-lifecycle.mjs",
   "runtime/claude-auth.mjs",
+  "runtime/codex-auth.mjs",
   "runtime/claude-usage-setup.mjs",
   "runtime/desktop-behavior.mjs",
   "runtime/environment-policy.mjs",

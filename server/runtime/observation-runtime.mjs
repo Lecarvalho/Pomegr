@@ -220,7 +220,7 @@ export function createObservationRuntime(options = {}) {
     }
   }
 
-  async function refreshUsageResponses(afterClaudeSignIn = false) {
+  async function refreshUsageResponses(signInProvider = null) {
     if (usageRefreshInFlight) return usageRefreshInFlight;
     const publish = () => {
       const committed = usageResponseCache.commit({
@@ -240,10 +240,10 @@ export function createObservationRuntime(options = {}) {
       agentQueryProjection?.refresh?.();
       return committed;
     };
-    const tasks = (registry.providers || []).filter((provider) => !afterClaudeSignIn || provider.id === "claude").map(async (provider) => {
+    const tasks = (registry.providers || []).filter((provider) => !signInProvider || provider.id === signInProvider).map(async (provider) => {
       let usageLimits = createEmptyUsageLimits();
       try {
-        usageLimits = await registry.readUsageLimits(provider, { afterSignIn: afterClaudeSignIn && provider.id === "claude" });
+        usageLimits = await registry.readUsageLimits(provider, { afterSignIn: Boolean(signInProvider) && provider.id === signInProvider });
       } catch {
         usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
       }
@@ -705,7 +705,13 @@ export function createObservationRuntime(options = {}) {
       // Native completion is a deliberate U1 trigger, never a browser GET.
       if (usageRefreshInFlight) await usageRefreshInFlight;
       if (!observationServingActive) return;
-      await refreshUsageResponses(true);
+      await refreshUsageResponses("claude");
+    },
+    async refreshUsageAfterCodexSignIn() {
+      // Native completion queues acquisition independently of cache-only GETs.
+      if (usageRefreshInFlight) await usageRefreshInFlight;
+      if (!observationServingActive) return;
+      await refreshUsageResponses("codex");
     },
     async serveSessionHistory(sessionId, query) {
       const selection = observationCoordinator.session(sessionId);

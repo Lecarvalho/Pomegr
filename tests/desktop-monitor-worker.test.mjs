@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createMonitorWorker, refreshClaudeUsageAfterSignIn } from "../desktop/runtime/monitor-worker.mjs";
+import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn } from "../desktop/runtime/monitor-worker.mjs";
 import { startShellRuntime } from "../desktop/runtime/shell-orchestrator.mjs";
 import { waitForMessage } from "../desktop/runtime/utility-lifecycle.mjs";
 import {
@@ -32,6 +32,24 @@ test("sign-in recovery waits for the fixed worker acknowledgement and releases l
   assert.equal(child.listenerCount("exit"), 0);
   assert.equal(child.listenerCount("error"), 0);
   await refreshClaudeUsageAfterSignIn(child, 1);
+  assert.equal(child.listenerCount("message"), 0);
+});
+
+test("Codex sign-in recovery waits for its fixed worker acknowledgement and releases listeners", async () => {
+  const child = new EventEmitter();
+  child.postMessage = (message) => assert.deepEqual(message, { type: "codex-sign-in-completed" });
+  let settled = false;
+  const pending = refreshCodexUsageAfterSignIn(child).then(() => { settled = true; });
+  child.emit("message", { type: "ready" });
+  child.emit("message", { type: "claude-usage-rechecked" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  child.emit("message", { type: "codex-usage-rechecked" });
+  await pending;
+  assert.equal(child.listenerCount("message"), 0);
+  assert.equal(child.listenerCount("exit"), 0);
+  assert.equal(child.listenerCount("error"), 0);
+  await refreshCodexUsageAfterSignIn(child, 1);
   assert.equal(child.listenerCount("message"), 0);
 });
 const workerSource = `

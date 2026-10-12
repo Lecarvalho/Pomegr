@@ -40,8 +40,8 @@ function delayedRepositoryInventory(ready) {
   };
 }
 
-test("native sign-in recovery follows an in-flight usage job and commits without GET acquisition", async (context) => {
-  const provider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities(),
+for (const providerId of ["claude", "codex"]) test(`${providerId} native sign-in recovery follows an in-flight usage job and commits without GET acquisition`, async (context) => {
+  const provider = { id: providerId, source: providerId, capabilities: createEmptyProviderCapabilities(),
     homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } } };
   const reads = [];
   let finish;
@@ -63,7 +63,7 @@ test("native sign-in recovery follows an in-flight usage job and commits without
   context.after(() => runtime.stopObservation());
   await runtime.startObservation();
   await waitFor(() => reads.length === 1, "startup usage read starts");
-  const recovery = runtime.refreshUsageAfterClaudeSignIn();
+  const recovery = runtime[providerId === "claude" ? "refreshUsageAfterClaudeSignIn" : "refreshUsageAfterCodexSignIn"]();
   runtime.serveUsageLimits();
   assert.deepEqual(reads, [false]);
   finish(createEmptyUsageLimits({ failureKind: "authentication_required" }));
