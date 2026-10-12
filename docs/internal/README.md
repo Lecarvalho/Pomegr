@@ -127,3 +127,4 @@ is no archive directory.
 | [Remote platform](plans/remote-platform-and-orgs.md) | Remote and organization features; nothing is built |
 | [Mobile pairing](plans/mobile-pairing-cloudflare.md) | Relay pairing; the only shipped phone feature is same-network [phone access](../public/using-pomegr/phone-access.md) |
 | [Design system gaps](plans/design-system-gaps.md) | Accepted patterns that have no `/design-system` sample |
+| [Feature management](plans/feature-management.md) | Create, edit, and delete a feature in the desktop app, with an approved prototype |
