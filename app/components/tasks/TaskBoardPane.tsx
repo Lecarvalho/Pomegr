@@ -51,6 +51,11 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   const close = useCallback(() => setModal(null), []);
   const changed = useCallback(() => { void refresh(); }, [refresh]);
   const deleted = useCallback(() => { opener.current = trigger.current; setModal(null); }, []);
+  // The feature and the Edit feature button that opened its modal are gone once the board is read again, so focus returns to the filter.
+  const featureDeleted = useCallback(async () => {
+    opener.current = section.current?.querySelector<HTMLElement>(".taskFeatureFilter [role='combobox']") ?? trigger.current;
+    await refresh();
+  }, [refresh]);
   const openCreated = useCallback((id: string) => { opener.current = trigger.current; setModal({ kind: "task", id }); }, []);
   const ready = board.readiness === "ready";
   const queueLine = queueStatusLine(board.queue.status);
@@ -97,7 +102,7 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
       {editable && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
       {desktop && modal?.kind === "newFeature" && <FeatureModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} onCreated={changed} onClose={close} />}
       {desktop && openFeature && <FeatureModal key={openFeature.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} board={board} feature={openFeature}
-        onOpenTask={openFromFeature} onChanged={changed} onClose={close} />}
+        onOpenTask={openFromFeature} onChanged={changed} onDeleted={featureDeleted} onClose={close} />}
     </div>
   </section>;
 }

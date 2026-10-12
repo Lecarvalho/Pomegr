@@ -39,7 +39,7 @@ test("task action channel and list are fixed", () => {
   assert.equal(TASK_ACTION_CHANNEL, "pomegr:task-action");
   assert.deepEqual([...TASK_ACTION_NAMES], [
     "create", "update", "delete", "move",
-    "feature_create", "feature_update", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+    "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
   ]);
 });
 
@@ -234,5 +234,17 @@ test("feature_update is a fixed action and its answer carries nothing from the m
   for (const error of ["invalid", "not_found", "conflict"]) {
     const refused = harness(() => json({ ok: false, error }, 409));
     assert.deepEqual(await refused.action.run(trusted, repositoryId, "feature_update", payload), { ok: false, error });
+  }
+});
+
+test("feature_delete is a fixed action and its answer carries nothing from the monitor beyond ok", async () => {
+  const { action, calls } = harness(() => json({ ok: true, board: { features: [] }, description: "secret", appVersion: "1.0" }));
+  const payload = { id: "feat-0123456789ab" };
+  assert.deepEqual(await action.run(trusted, repositoryId, "feature_delete", payload), { ok: true });
+  assert.equal(calls[0].url, `${origin}/internal/tasks/feature_delete`);
+  assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload });
+  for (const error of ["invalid", "not_found", "conflict"]) {
+    const refused = harness(() => json({ ok: false, error }, 409));
+    assert.deepEqual(await refused.action.run(trusted, repositoryId, "feature_delete", payload), { ok: false, error });
   }
 });

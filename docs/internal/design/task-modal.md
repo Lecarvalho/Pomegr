@@ -64,7 +64,7 @@ One task modal serves three modes, and the Feature modal uses its frame for a fo
 | Edit | Quiet **Delete task**, Secondary **Add to queue** or **Remove from queue**, Secondary **Start session**, primary **Save** |
 | Promote | Quiet **Cancel**, primary **Promote issue** |
 | New feature | Quiet **Cancel**, primary **Create feature** |
-| Feature | Primary **Save** |
+| Feature | Quiet **Delete feature**, primary **Save** |
 
 ## Task fields
 
@@ -352,12 +352,35 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - The summary is the chevron (`.taskFeatureChevron`), the label **Tasks** (`.taskFeatureLabel`), and the count “n tasks · d done” (`.taskFeatureCount`) with data-font numerals.
 - The list is the task modal's In this feature list. Each row leads with its step, its ID, its title button, and its state chip.
 - A row's title button opens that task's modal in place of this one. The draft is discarded.
-- The footer is a spacer and the one primary **Save**. It has no **Cancel**.
+- The footer is a Quiet **Delete feature**, a spacer, and the one primary **Save**. It has no **Cancel**.
 - **Save** is disabled until the draft differs from the stored feature, the title holds text, and no field is over its bound.
 - **Save** sends one update that holds only the changed fields. A cleared description or app version is sent as `null`.
 - **Save** closes the modal and the board reads again.
 - **Close** and Escape discard the draft without asking.
 - A click on the scrim closes the modal only while the draft equals the stored feature.
+
+### Delete feature
+
+- **Delete feature** is in the Feature mode only. The New feature mode has no such action.
+- **Delete feature** swaps the footer for an inline confirmation. No native dialog opens.
+- The confirmation is a `div.taskModalConfirm` with `role="group"` and `aria-label="Confirm delete"`.
+- The confirmation holds the note (`span.taskModalNote`), a spacer, a Secondary **Delete feature**, and a Quiet **Keep feature**, in that order.
+- The confirmation has no **Save**.
+- **Keep feature** takes focus when the confirmation opens. It returns to the idle footer and sends nothing.
+- A feature with no task: “Delete this feature? This cannot be undone.”
+- A feature with n tasks: “Delete this feature? Its n tasks stay on the board with no feature. This cannot be undone.”
+- A feature with one task: “Delete this feature? Its 1 task stays on the board with no feature. This cannot be undone.”
+- n counts every task of the feature, done tasks included.
+- A task that has started and is not done blocks the delete. The task modal's rule for a started task decides this.
+- While one blocks, a `div.taskModalResolve` holds a muted note above the footer actions: “T-n is running. Delete the feature after its tasks finish.”
+- T-n is the first such task, by ID.
+- While one blocks, **Delete feature** is disabled and opens no confirmation. **Save** keeps its own rule.
+- The Secondary **Delete feature** is disabled while the delete runs.
+- A successful delete closes the modal and the board reads again.
+- A filter that named the feature returns to All, and focus goes to the filter. With no feature left, the filter is gone, and focus goes to **New task**.
+- A failed delete, a `conflict` from a task that started in the meantime included, keeps the modal open and returns to the idle footer.
+- A failed delete shows one fixed line under the fields.
+- **Delete feature** is not available on a paired device or in a browser.
 
 ### Failures
 
@@ -370,6 +393,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 | Title already used | “Another feature already has this title.” | Under the **Title** input, which names it with `aria-describedby` |
 | Board holds 50 features | “This board already holds 50 features. Delete one first.” | Under the fields |
 | Any other failure | “The feature could not be saved.” | Under the fields |
+| Failed delete | “The feature could not be deleted.” | Under the fields |
 
 ## Promote issues page
 
@@ -485,7 +509,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 
 - `/design-system` renders the task fields, including Feature.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
-- `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the details not read, and with each failure line.
+- `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the delete confirmation, with Delete feature blocked by a started task, with the details not read, and with each failure line.
 - The chrome is static markup over a static scrim, without the dialog behavior.
 - `/design-system` renders the Promote issues parts: the header action, row chips, page header, list and detail, and notices.
 - `/design-system` also renders the raw body with a hidden comment, the character count, and every state.

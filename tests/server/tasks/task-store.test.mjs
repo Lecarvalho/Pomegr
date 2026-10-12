@@ -267,7 +267,7 @@ test("unknown action names answer unsupported and change nothing", async (t) => 
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "feature_create", "feature_update", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  const implemented = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
   assert.deepEqual(ACTIONS.filter((name) => !implemented.includes(name)), [], "every listed action has a handler");
   for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));

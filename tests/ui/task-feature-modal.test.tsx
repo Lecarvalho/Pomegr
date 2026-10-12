@@ -265,7 +265,7 @@ describe("the Feature modal, New feature", () => {
 });
 
 describe("the Feature modal, Feature", () => {
-  it("opens for the chosen feature with its progress chip, its stored values, and one primary Save, with no Delete", async () => {
+  it("opens for the chosen feature with its progress chip, its stored values, and one primary Save beside a Quiet Delete feature", async () => {
     const u = user();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openEdit(u);
@@ -279,7 +279,7 @@ describe("the Feature modal, Feature", () => {
     expect(dialog.getByRole("textbox", { name: "App version" })).toHaveValue("1.4.0");
     expect(taskFeature).toHaveBeenCalledTimes(1);
     expect(taskFeature).toHaveBeenCalledWith(repositoryId, "f1");
-    expect(dialog.queryByRole("button", { name: /Delete/ })).not.toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Delete feature" })).toHaveClass("commandQuietAction");
     expect(dialog.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction")).map((button) => button.textContent)).toEqual(["Save"]);
     expect([...document.querySelectorAll(".featureCounter")].map((counter) => counter.textContent)).toEqual(["15 / 80", "22 / 2,000"]);

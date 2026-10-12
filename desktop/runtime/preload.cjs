@@ -7,7 +7,7 @@ const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const TASK_ACTIONS = new Set([
   "create", "update", "delete", "move",
-  "feature_create", "feature_update",
+  "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings",
   "resolve_done", "resolve_requeue",
 ]);

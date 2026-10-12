@@ -39,7 +39,7 @@ export const TASK_COLUMN_ROLES = Object.freeze(["in_progress", "review", "done"]
 export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress", "review", "done"]);
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
-  "feature_create", "feature_update", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+  "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -254,6 +254,12 @@ export function normalizeFeatureUpdatePayload(value) {
   if (value.appVersion !== undefined) update.appVersion = normalizeFeatureAppVersion(value.appVersion);
   const fields = Object.keys(update).filter((key) => key !== "feature");
   return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
+}
+
+// `feature_delete`: the feature's ID alone.
+export function normalizeFeatureDeletePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id"])) return undefined;
+  return typeof value.id === "string" && FEATURE_ID.test(value.id) ? { feature: { id: value.id } } : undefined;
 }
 
 // A feature named by its ID or by its exact title.

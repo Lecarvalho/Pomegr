@@ -1,5 +1,6 @@
-import { TASK_BOUNDS, type TaskActionError } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type Task, type TaskActionError } from "../../../shared/task-contract";
 import type { FeatureDetails, FeaturePatch } from "./task-desktop";
+import { taskStarted } from "./task-presentation";
 
 // The Feature modal's draft, its bounds, and its fixed words.
 
@@ -12,8 +13,8 @@ export const FEATURE_SAVE_FAILURE_MESSAGE = "The feature could not be saved.";
 export const FEATURE_LIMIT_MESSAGE = `This board already holds ${TASK_BOUNDS.featuresPerRepository} features. Delete one first.`;
 export const FEATURE_READ_FAILURE_MESSAGE = "The description and app version could not be read.";
 
-/** Which fixed line a failed create or update shows: the duplicate title sits under the Title field, the others under the fields. */
-export type FeatureFailure = "duplicate" | "limit" | "failed";
+/** Which fixed line a failed create, update or delete shows (a failed delete is the "delete" line, whatever the error): the duplicate title sits under the Title field, the others under the fields. */
+export type FeatureFailure = "duplicate" | "limit" | "failed" | "delete";
 
 export function featureFailure(error: TaskActionError | "unavailable"): FeatureFailure {
   return error === "conflict" ? "duplicate" : error === "limit" ? "limit" : "failed";
@@ -43,4 +44,24 @@ export function featurePatch(stored: FeatureFormDraft, draft: FeatureFormDraft, 
 /** What a create sends beyond the title: only a detail that holds text. */
 export function featureCreateDetails(draft: FeatureFormDraft): { description?: string; appVersion?: string } {
   return { ...(detail(draft.description) !== "" && { description: detail(draft.description) }), ...(detail(draft.appVersion) !== "" && { appVersion: detail(draft.appVersion) }) };
+}
+
+export const FEATURE_DELETE_FAILURE_MESSAGE = "The feature could not be deleted.";
+
+/** The confirmation line of Delete feature: what happens to the feature's tasks, every one of them, done ones included. */
+export function featureDeleteLine(taskCount: number): string {
+  if (taskCount === 0) return "Delete this feature? This cannot be undone.";
+  const tasks = taskCount === 1 ? "Its 1 task stays" : `Its ${taskCount} tasks stay`;
+  return `Delete this feature? ${tasks} on the board with no feature. This cannot be undone.`;
+}
+
+/** The task that blocks Delete feature, named by the line that disables it. */
+export function featureRunningLine(taskId: string): string {
+  return `${taskId} is running. Delete the feature after its tasks finish.`;
+}
+
+/** The first task of the feature, by ID, that has started and is not done: the monitor refuses the delete while one exists. */
+export function featureBlocker(tasks: readonly Task[], featureId: string): Task | null {
+  const number = (task: Task) => Number(task.id.slice(2));
+  return tasks.filter((task) => task.featureId === featureId && task.state !== "done" && taskStarted(task)).toSorted((a, b) => number(a) - number(b))[0] ?? null;
 }

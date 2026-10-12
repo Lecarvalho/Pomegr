@@ -169,7 +169,7 @@ test("a stored description or app version outside the contract reads as not set"
 test("the feature actions are store only: no desktop or paired-device action names them", () => {
   for (const list of [TASK_ACTIONS, ROUTE_ACTIONS]) {
     assert.equal(list.some((name) => name.startsWith("agent_")), false);
-    assert.deepEqual(list.filter((name) => name.startsWith("feature_")), ["feature_create", "feature_update"]);
+    assert.deepEqual(list.filter((name) => name.startsWith("feature_")), ["feature_create", "feature_update", "feature_delete"]);
   }
 });
 

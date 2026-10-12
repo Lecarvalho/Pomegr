@@ -44,6 +44,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal }: { b
   if ((reveal ?? null) !== revealed) { setRevealed(reveal ?? null); setChosenFilter(ALL_FEATURES); }
   // A filter hides cards, so positions drawn would not be positions on the monitor.
   const filter = effectiveFeatureFilter(board, chosenFilter);
+  // A filter that named a feature the board no longer holds (it was deleted) returns to All, and stays there.
+  if (filter !== chosenFilter) setChosenFilter(filter);
   const filtered = filter !== ALL_FEATURES;
   const allColumns = taskColumns(board);
   const columns = filtered ? allColumns.map((column) => ({ ...column, tasks: column.tasks.filter((task) => matchesFeatureFilter(task, filter)) })) : allColumns;

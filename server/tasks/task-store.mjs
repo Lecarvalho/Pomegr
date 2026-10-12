@@ -17,6 +17,7 @@ import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs
 import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { deleteFeatureDetails, findFeature, readFeature, writeFeatureDetails } from "./task-feature-details.mjs";
+import { deleteFeature } from "./task-feature-actions.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
 import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl } from "./task-remote-control.mjs";
@@ -543,7 +544,7 @@ function reorderQueuedTask({ database, repositoryId }, payload) {
 // Actions by name.
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
-  feature_create: createFeature, feature_update: updateFeature,
+  feature_create: createFeature, feature_update: updateFeature, feature_delete: deleteFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.

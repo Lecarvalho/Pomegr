@@ -559,10 +559,24 @@ or compares it, and it gates nothing.
 - **Store only.** The store actions `agent_feature_create`, `agent_feature_update`, and
   `agent_feature_delete` are absent from the fixed action list, like `agent_create`, so
   the desktop route, the paired-device route, and the IPC channel never accept them.
+  The desktop `feature_delete` is a different action, with its own rule (below).
 - **Desktop create and update.** The desktop `feature_create` takes `{ name }` and,
   optionally, `description` and `appVersion`. The desktop `feature_update` takes
   `{ id, name?, description?, appVersion? }` with at least one field beside `id`.
   They validate and store the fields as the agent tools do, in the same store rows.
+- **Desktop delete.** The desktop `feature_delete` takes `{ id }` and nothing else. It
+  detaches every task of the feature, then deletes the feature with its description and
+  app version, all in the one write of the action. A detached task keeps its column,
+  state, queue position, schedule, session, report, and update time, and loses its
+  feature and its step, so a queued one becomes a single queued task. It keeps its
+  position too, except a waiting card of Ready: `settleReadyColumn` places it with the
+  single tasks, after the waiting cards of every remaining feature, so those cards can
+  move up and the queue starts them first. It is refused
+  with `conflict`, and writes nothing, while a task of the feature has started and is not
+  done: `rowStarted` of `task-record.mjs`, the rule that refuses `update`, with a `done`
+  task never blocking. A queue pause that names a detached task stays. An
+  unknown feature, or one of another repository, is `not_found`. `delete_feature` keeps
+  its own rule: only a feature that has no task.
 - **Desktop read.** The desktop reads one feature's description and app version through
   its own IPC channel, `pomegr:task-feature`, and the route `feature-read`. The desktop
   app is the only client that can read or change them besides the agent tools.
@@ -1896,7 +1910,7 @@ serves no other client.
 | `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
 
-- The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `feature_update`, `queue_add`,
+- The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `feature_update`, `feature_delete`, `queue_add`,
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
   `resolve_requeue`. Any other action name is refused: `invalid` from the preload, desktop
   main, and the route, and `unsupported` from the store itself. That includes the removed
@@ -1930,9 +1944,11 @@ serves no other client.
   detaches (a step sent with it must be null), and the task's own feature ID or a `step`
   alone moves it inside its feature. Steps stay dense (1 to n) after every write that
   changes a task's feature or step, or deletes a task in a feature, renumbering without
-  changing the update time of other tasks. The desktop actions have no feature rename,
-  delete, or reorder yet; an agent renames a feature and deletes an empty one (see
-  [Feature context](#feature-context)).
+  changing the update time of other tasks. `feature_delete` takes `{ id }`, answers `not_found`
+  for an unknown feature or one of another repository and `conflict` while a task of the
+  feature has started and is not done, and otherwise detaches the feature's tasks and
+  deletes it (see [Feature context](#feature-context)). The desktop actions have no
+  feature reorder.
   `queue_add` takes `{ id }` and, optionally, `at`, an instant written as
   `2026-10-09T02:00:00.000Z`. Without `at`, a task in state `not_queued` becomes `queued`
   with its card in Ready (last when it comes from another column), and a `scheduled` task becomes `queued` in the place it has and
@@ -2037,10 +2053,11 @@ fixed values.
   - The desktop Feature modal (task T-70) reads them through `pomegr:task-feature` and
     `POST /internal/tasks/feature-read`, and writes them through `feature_create` and
     `feature_update`. Only the trusted renderer of the desktop app receives them, in
-    memory while the modal shows them. `feature_update` is not in the paired-device
-    route, and that route refuses a `feature_create` with any key beside `name`, so a
-    paired device can neither read nor write them, and no Next route proxies the read.
-  - The answers of `feature_create` and `feature_update` carry the board, which lists a
+    memory while the modal shows them. `feature_update` and `feature_delete` are not in
+    the paired-device route, and that route refuses a `feature_create` with any key beside
+    `name`, so a paired device can neither read nor write them, and no Next route proxies
+    the read.
+  - The answers of `feature_create`, `feature_update`, and `feature_delete` carry the board, which lists a
     feature as `{ id, name, done }`, and never the description or the app version. The
     read route's answer is bounded again on the way out, and carries no error text.
   - The answers of `feature-create`, `feature-update`, and `feature-delete` carry the

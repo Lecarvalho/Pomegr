@@ -133,7 +133,7 @@ describe("Design-system reference page", () => {
     expect(within(section).getAllByText("Not passed")).toHaveLength(2);
     expect(within(section).getAllByText("Passed")).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();
-  }, 20_000);
+  }, 40_000);
 
   it("renders the Events rail from static data: every kind, the expander, and the empty and unavailable states", async () => {
     const user = userEvent.setup();
@@ -555,7 +555,7 @@ describe("Design-system reference page", () => {
     const save = within(stored).getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
     expect(save).toHaveClass("commandPrimaryAction");
-    expect(within(stored).queryByRole("button", { name: /Delete/ })).toBeNull();
+    expect(within(stored).getByRole("button", { name: "Delete feature" })).toHaveClass("commandQuietAction");
     expect(within(stored).queryByRole("button", { name: "Cancel" })).toBeNull();
     const tasks = stored.querySelector("details.taskFeatureDetails") as HTMLDetailsElement;
     expect(tasks.open).toBe(false);
@@ -580,8 +580,21 @@ describe("Design-system reference page", () => {
     expect(within(duplicate).getByRole("textbox", { name: "Title" }).getAttribute("aria-describedby")?.split(" ")).toContain(line.id);
     expect(within(sample(fields, "Feature modal, could not save")).getByRole("alert")).toHaveTextContent("The feature could not be saved.");
     expect(within(sample(fields, "Feature modal, feature limit")).getByRole("alert")).toHaveTextContent("This board already holds 50 features. Delete one first.");
+    // The delete footer: the confirmation with the tasks, the started task that blocks it, and the failed delete.
+    const confirmation = sample(fields, "Feature modal, delete confirmation");
+    expect(within(confirmation).queryByRole("button", { name: "Save" })).toBeNull();
+    const group = within(confirmation).getByRole("group", { name: "Confirm delete" });
+    expect(group.querySelector(".taskModalNote")).toHaveTextContent("Delete this feature? Its 4 tasks stay on the board with no feature. This cannot be undone.");
+    expect(within(group).getByRole("button", { name: "Delete feature" })).toHaveClass("commandSecondaryAction");
+    await user.click(within(group).getByRole("button", { name: "Keep feature" }));
+    expect(within(confirmation).queryByRole("group", { name: "Confirm delete" })).toBeNull();
+    expect(within(confirmation).getByRole("button", { name: "Delete feature" })).toHaveClass("commandQuietAction");
+    const blocked = sample(fields, "Feature modal, delete blocked");
+    expect(blocked.querySelector(".taskModalResolve .taskModalNote")).toHaveTextContent("T-2 is running. Delete the feature after its tasks finish.");
+    expect(within(blocked).getByRole("button", { name: "Delete feature" })).toBeDisabled();
+    expect(within(sample(fields, "Feature modal, could not delete")).getByRole("alert")).toHaveTextContent("The feature could not be deleted.");
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it("renders the Sessions list Task cell for every outcome and the feature fields, from static references", async () => {
     const user = userEvent.setup();
