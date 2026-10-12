@@ -43,6 +43,7 @@ The returned PID proves terminal launch, not app readiness. Locate the new Elect
 
 ## Pair or reconnect the phone
 
+- An explicit request to pair the owner's phone authorizes creating its code and sharing its link with that owner. The code is single-use and expires after five minutes. The browser pairing ends when sharing stops or Pomegr quits. Apply confirmation rules to these actual actions; do not infer another approval solely because pairing grants local access. Honor any explicit tool-enforced approval boundary.
 - Open **Settings > Phone access** in the running desktop. Keep **Sharing started** intact. Otherwise enable sharing on the intended private network as part of the requested pairing. Do not change firewall or Windows network policy to overcome a refusal; report the concrete blocker.
 - A restart revokes previous pairings. For a phone that needs pairing, reuse a visible unexpired code or select **Create pairing code** when none exists. A code is single-use and expires after five minutes; the address can change on each restart. Regenerate only when the existing code is expired, consumed or unusable.
 - When the owner is away from the PC, provide the QR's actual pairing URL as a clickable link in this chat. Its fragment is essential. Obtain it from the displayed QR through local decoding; do not reconstruct it, read process memory, alter the pairing store or redeem it in your own browser.
@@ -54,6 +55,7 @@ Report whether the app was reused or started, and either verified pairing or the
 
 ## Desktop automation recovery
 
+- Use the Computer Use plugin's `node_repl` runtime and `sky` API for native desktop actions. The separate `cua_repl` browser runtime does not expose native Windows controls. An empty `cua` inventory does not establish that Computer Use is unavailable.
 - With `@oai/sky`, initialize the runtime in the current JavaScript session before using it; bindings from a previous turn may no longer exist.
 - Capture screenshot-backed state before clicking desktop controls. Accessibility text can expose an element index without usable input geometry. If an index is unavailable or geometry is missing, capture fresh state and use the visible control's coordinates with that screenshot's ID.
 - Refresh state after each input. If the immediate observation shows the previous page, window, or a loading message, observe again before retrying. Verify the intended transition instead of repeating a click against stale state.
