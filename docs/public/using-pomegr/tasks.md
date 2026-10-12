@@ -353,7 +353,8 @@ have to be in the queue. A step whose tasks are all done accepts none. Tasks wit
 A task that stalled or was blocked by its agent stops the whole
 queue. A banner reads **Queue blocked** and names the task. Nothing new starts
 until you resolve that task; sessions already running continue. Open the task and
-choose one of two actions.
+choose one of two actions. In the desktop app, the banner also offers them, as
+**Mark done and resume** and **Requeue T-n**, on the Board and in the Queue view.
 
 - **Mark done and resume queue** accepts the task as done and keeps its report and
   session link.
@@ -398,7 +399,7 @@ task and one of these reasons. Fix it, then select **On** again to retry.
 ## Start gates
 
 Before every start, manual or queued, Pomegr judges four start gates from
-facts it has already observed. The **Queue** view lists each reading, and a held
+facts it has already observed. **Queue settings** on the Board and the **Queue** view list each reading, and a held
 queued task shows "Waiting:" with the reasons. A missing, stale, or partial
 reading is unknown, and unknown holds a start exactly like a failed gate.
 
@@ -427,7 +428,7 @@ Claude Code usage is not known yet."
   starting it earlier. Clear the time to leave the task **Queued**. A scheduled
   task that is not yet due holds nothing behind it, but its feature's next step
   waits until it has run.
-- **The queue's window.** In the Queue view's **Schedule** panel, **Start at a
+- **The queue's window.** Under **Schedule**, in **Queue settings** on the Board or in the Queue view, **Start at a
   time** sets a time of day before which the queue starts nothing, and **Stop
   starting tasks after** sets a time from which it starts nothing. Pomegr applies
   the next occurrence of that time. Both hold queued starts only; a start you make

@@ -8,9 +8,9 @@ const RULES = [
   { when: "The agent reports it cannot continue: ", state: "blocked", tone: "isError" },
 ] as const;
 
-export function QueueBlockRules() {
+export function QueueBlockRules({ embedded = false }: { embedded?: boolean }) {
   const headingId = useId();
-  return <section className="panel taskQueuePanel taskBlockRulesPanel" aria-labelledby={headingId}>
+  return <section className={`${embedded ? "" : "panel taskQueuePanel "}taskBlockRulesPanel`} aria-labelledby={headingId}>
     <h3 id={headingId} className="taskQueueHeading">When the queue blocks</h3>
     <ul className="taskBlockRules">
       {RULES.map((rule) => <li key={rule.state}>{rule.when}<span className={`taskBlockState ${rule.tone}`}>{taskStateLabels[rule.state]}</span></li>)}

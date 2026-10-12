@@ -27,7 +27,7 @@ export function QueueBanner({ board, view, onOpenTask, edits }: {
     setFolder({ taskId: id, status: "opening" });
     setFolder({ taskId: id, status: await openDesktopTaskWorktree(repositoryId, id) });
   };
-  const resolve = view === "queue" && edits && task !== null && banner.resolvable ? edits : null;
+  const resolve = edits && task !== null && banner.resolvable ? edits : null;
   return <section className="taskQueueBanner" aria-label="Queue status" data-view={view} data-queue-status={board.queue.status}>
     <div className="taskQueueBannerText">
       <p className="taskQueueBannerTitle">{banner.title}</p>

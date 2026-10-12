@@ -23,8 +23,9 @@ function stopLine(schedule: TaskQueueSchedule, now: number): string | null {
     : `No task starts from ${label}.`;
 }
 
-export function SchedulePanel({ queue, edits }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits }) {
+export function SchedulePanel({ queue, edits, embedded = false }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits; embedded?: boolean }) {
   const headingId = useId();
+  const Heading = embedded ? "h3" : "h2";
   const startId = useId();
   const stopId = useId();
   const now = useMinuteClock();
@@ -57,8 +58,8 @@ export function SchedulePanel({ queue, edits }: { queue: TaskBoard["queue"]; edi
   const starts = startLine(stored, queue.status, now);
   const stops = stopLine(stored, now);
 
-  return <section className="panel taskGatesPanel taskSchedulePanel" aria-labelledby={headingId}>
-    <h2 id={headingId} className="taskGatesHeading">Schedule</h2>
+  return <section className={`${embedded ? "" : "panel "}taskGatesPanel taskSchedulePanel`} aria-labelledby={headingId}>
+    <Heading id={headingId} className="taskGatesHeading">Schedule</Heading>
     {edits ? <>
       <div className="commandSegmented taskScheduleMode" role="group" aria-label="Queue start">
         <button type="button" aria-pressed={!atTime} disabled={edits.busy} onClick={runNow}>Run now</button>

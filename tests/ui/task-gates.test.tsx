@@ -143,10 +143,11 @@ describe("the capacity strip", () => {
     expect(strip.textContent).toContain("A task starts only when its provider has capacity.");
   });
 
-  it("is omitted without gates", () => {
+  it("holds only the Queue settings action without gates", () => {
     setBoard({ gates: undefined });
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(screen.queryByRole("region", { name: "Provider capacity" })).toBeNull();
+    const strip = screen.getByRole("region", { name: "Provider capacity" });
+    expect(strip.textContent).toBe("Queue settings");
   });
 });
 

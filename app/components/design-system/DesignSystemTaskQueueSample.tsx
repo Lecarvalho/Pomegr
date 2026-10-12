@@ -6,6 +6,7 @@ import { QueueBanner } from "../tasks/QueueBanner";
 import { QueueBlockRules } from "../tasks/QueueBlockRules";
 import { QueueControl } from "../tasks/QueueControl";
 import { QueueFeaturePanel } from "../tasks/QueueFeaturePanel";
+import { QueueSettings } from "../tasks/QueueSettingsPanel";
 import { QueueSingleTasks } from "../tasks/QueueSingleTasks";
 import { QueueTaskCard } from "../tasks/QueueTaskCard";
 import { TaskBoardView } from "../tasks/TaskBoardView";
@@ -13,13 +14,14 @@ import { waitingLine } from "../tasks/task-gates-model";
 import { moveChoices, queueFeatures, singleQueueTasks } from "../tasks/task-queue-model";
 import { useQueueDrag } from "../tasks/use-queue-drag";
 import { Sample, Section } from "./DesignSystemKit";
-import { BOARD_BLOCKED, BOARD_PAUSED, BOARD_RUNNING, inertEdits } from "./DesignSystemTaskSampleData";
+import { BOARD_BLOCKED, BOARD_PAUSED, BOARD_RUNNING, SAMPLE_FUTURE_STOP, inertEdits } from "./DesignSystemTaskSampleData";
 
 const noop = () => undefined;
 const EDITS_BLOCKED = inertEdits(BOARD_BLOCKED);
 const EDITS_PAUSED = inertEdits(BOARD_PAUSED);
 const EDITS_RUNNING = inertEdits(BOARD_RUNNING);
 const PANELS = queueFeatures(BOARD_RUNNING);
+const QUEUE_WITH_STOP = { ...BOARD_RUNNING.queue, schedule: { startAt: null, stopAfter: SAMPLE_FUTURE_STOP } };
 const upload = PANELS[0];
 const task = (id: string): Task => BOARD_RUNNING.tasks.find((entry) => entry.id === id) as Task;
 
@@ -45,9 +47,9 @@ export function TaskQueueSection() {
     </div>
     <div className="designSystemGrid">
       <Sample label="Banner, blocked (Board)" note="Error-soft fill and error line, title in the error color, body in ink. It names the task that holds the queue and why.">
-        <Frame><QueueBanner board={BOARD_BLOCKED} view="board" onOpenTask={noop} /></Frame>
+        <Frame><QueueBanner board={BOARD_BLOCKED} view="board" onOpenTask={noop} edits={EDITS_BLOCKED} /></Frame>
       </Sample>
-      <Sample label="Banner, blocked (Queue)" note="The same words, plus the desktop-only Mark done and resume (Secondary) and Requeue (Quiet, ink).">
+      <Sample label="Banner, blocked (Queue)" note="A stalled or blocked task adds the desktop-only Mark done and resume (Secondary) and Requeue (Quiet, ink), on the Board and on the Queue view.">
         <Frame><QueueBanner board={BOARD_BLOCKED} view="queue" onOpenTask={noop} edits={EDITS_BLOCKED} /></Frame>
       </Sample>
       <Sample label="Banner, paused" note="Words one fixed pause reason; turning the queue on again is the retry.">
@@ -74,6 +76,14 @@ export function TaskQueueSection() {
       <Sample label="Single tasks"><Frame><QueueSingleTasks tasks={singleQueueTasks(BOARD_RUNNING)} nextId="T-2" queue={BOARD_RUNNING.queue} /></Frame></Sample>
       <Sample label="Single tasks, none queued"><Frame><QueueSingleTasks tasks={[]} nextId={null} queue={BOARD_RUNNING.queue} /></Frame></Sample>
       <Sample label="When the queue blocks" note="Fixed copy; each rule ends in its state, in that state's tone. The closing line names the state that does not block."><Frame><QueueBlockRules /></Frame></Sample>
+    </div>
+    <div className="designSystemGrid">
+      <Sample label="Queue settings, desktop app" note="The side panel the Board's Queue settings action opens: 400px wide at the right edge of the Tasks page, full height, on the panel fill with a strong-line left border. Start gates, Schedule and the blocking rules are its sections, with 13px headings; a rule and 20px divide them. It is drawn in place here; on the Board it is a modal dialog.">
+        <Frame><QueueSettings queue={QUEUE_WITH_STOP} edits={EDITS_RUNNING} onClose={noop} titleId="design-system-queue-settings" /></Frame>
+      </Sample>
+      <Sample label="Queue settings, browser" note="Read-only: the threshold is plain text and the two schedule values are a two-row definition list.">
+        <Frame><QueueSettings queue={QUEUE_WITH_STOP} onClose={noop} titleId="design-system-queue-settings-browser" /></Frame>
+      </Sample>
     </div>
     <Wide label="Queue view, browser (blocked queue)" note="Feature panels, single tasks and rules in the left column; Start gates and Schedule wrap under it when narrow.">
       <TaskBoardView board={BOARD_BLOCKED} view="queue" />

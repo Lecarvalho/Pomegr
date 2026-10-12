@@ -27,11 +27,13 @@ function CapacityRow({ provider, usage }: { provider: TaskProvider; usage: TaskG
   return <Row label={label} mono>{reading}</Row>;
 }
 
-export function StartGatesPanel({ queue, edits }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits }) {
+/** `embedded` draws the panel as a section of Queue settings: no frame of its own, and a heading one level down. */
+export function StartGatesPanel({ queue, edits, embedded = false }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits; embedded?: boolean }) {
   const headingId = useId();
   const gates = queue.gates;
-  return <section className="panel taskGatesPanel" aria-labelledby={headingId}>
-    <h2 id={headingId} className="taskGatesHeading">Start gates</h2>
+  const Heading = embedded ? "h3" : "h2";
+  return <section className={embedded ? "taskGatesPanel" : "panel taskGatesPanel"} aria-labelledby={headingId}>
+    <Heading id={headingId} className="taskGatesHeading">Start gates</Heading>
     <p className="taskGatesCaption">Checked before every session Pomegr starts.</p>
     {!gates ? <p className="taskGatesCaption">Start gates are not available yet.</p> : <>
       <dl className="taskGateList">
@@ -41,7 +43,7 @@ export function StartGatesPanel({ queue, edits }: { queue: TaskBoard["queue"]; e
         <Row label="Provider status" tone={providerStatusRow(gates).tone}>{providerStatusRow(gates).text}</Row>
         <Row label="Working tree" tone={workingTreeRow(gates).tone}>{workingTreeRow(gates).text}</Row>
       </dl>
-      <div className="taskGateField">
+      <div className="taskGateField taskGateThreshold">
         <span className="taskGateFieldLabel">Do not start above</span>
         {edits
           ? <CommandSelect aria-label="Do not start above" value={gates.threshold} options={THRESHOLD_OPTIONS} disabled={edits.busy}

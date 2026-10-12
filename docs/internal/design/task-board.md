@@ -1,6 +1,6 @@
 # Task board design
 
-> Scope: the Tasks home, the Tasks page (page header, Board, Queue view, Start gates and Schedule panels), the task card and its chips, and the session surfaces for a task session.
+> Scope: the Tasks home, the Tasks page (page header, Board, Queue settings panel, Queue view, Start gates and Schedule panels), the task card and its chips, and the session surfaces for a task session.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/components/tasks/`, `app/styles/tasks.css`, the `/design-system` samples,
@@ -75,7 +75,7 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 - The page is a composition of the existing roles, chips, and tokens. It adds no button role.
 - The page holds these parts in order: the shared page header, the **Queue status** banner, and then the Board or the Queue view.
 - The **Queue status** banner shows only while the queue is blocked or paused.
-- The Board holds the capacity strip, the feature filter, and the lanes of task cards.
+- The Board holds the capacity strip, the feature filter, and the lanes of task cards. Its **Queue settings** action opens the [Queue settings panel](#queue-settings-panel).
 - The Queue view holds the feature panels with steps, **Single tasks**, **When the queue blocks**, and a right column with the **Start gates** and **Schedule** panels.
 - One desktop-only modal holds the task fields, in three modes: new, promote, and edit. See [task-modal.md](task-modal.md).
 - A session started for a task adds the session surfaces at the end of this page.
@@ -95,9 +95,9 @@ The head actions appear in this order:
 | --- | --- | --- |
 | 1 | **Repository** `CommandSelect` | Always. 32px high, 12px text, at most 240px wide. 44px high on phone and coarse pointers. |
 | 2 | **Tasks view** `.commandSegmented` switch (**Board**, **Queue**) | The board is ready. |
-| 3 | The queue switch and **+ New feature** | The desktop app, on the Queue view. |
-| 3 | **+ New feature** | The desktop app, on the Board once it has a feature. The filter row carries it. |
-| 4 | The Secondary **Promote issues** link | The desktop issues bridge exists. |
+| 3 | The [queue switch](#queue-switch) | The desktop app or a paired device, on the Board and on the Queue view. |
+| 4 | **+ New feature** | The desktop app, on the Queue view, and on the Board with no feature yet. Once the Board has a feature, the filter row carries it. |
+| 5 | The Secondary **Promote issues** link | The desktop issues bridge exists. |
 
 - The **Promote issues** link has a 14px circle-dot glyph and opens the Promote issues page.
 - Like the other desktop-only actions, the **Promote issues** link is decided at first render.
@@ -205,14 +205,24 @@ The head actions appear in this order:
 - The options carry the task count in parentheses. **All** is first and **No feature** is last.
 - The row stays one control however many features a board holds.
 - The desktop app adds the Quiet **+ New feature**, an inline name form. With no feature yet, it sits in the page header.
-- While a filter is on, the row shows the line “Moving cards is off while a feature filter is on.”
+- While a feature is selected, the row shows its progress (`.taskFeatureProgress`), in any client: muted 12px “0 of 7 tasks done · step 1 of 4 running”.
+- The counts of that line use the data font and ink.
+- The step clause names the lowest step with a task that has a session and is not done, and the feature's last step. With no such step, the line is the done count only.
+- **All** and **No feature** show no progress line.
+- While a filter is on, the desktop app's row then shows the line “Moving cards is off while a feature filter is on.”
 
 ### Capacity strip
 
 - The capacity strip is above the feature filter. It is one muted 12px row.
 - The row starts with a **Start gates** eyebrow.
 - It then shows each provider with its two percentages in the data font.
-- It ends with “A task starts only when its provider has capacity.”
+- It then shows “A task starts only when its provider has capacity.”
+- On the Board, the strip's end (`.taskCapacityEnd`, `margin-left: auto`) reads “Do not start above 80% · stops starting after 23:00”.
+- The threshold and the time of that line use the data font and ink. The stop clause shows only when a stop time is set.
+- **Queue settings** (`.taskQueueSettingsAction`) is last in the strip, in any client. It is the [Quiet](../../../DESIGN.md#buttons) role, 32px high, 12px/500 ink, underlined.
+- It is 44px high on phone and coarse pointers.
+- It has `aria-haspopup="dialog"` and opens the [Queue settings panel](#queue-settings-panel).
+- A board that sends no gates draws only the **Queue settings** action in the strip.
 
 ### States
 
@@ -361,9 +371,30 @@ Each row below the title shows only when it is set, in this order:
 
 | Banner | Desktop app actions | Browser |
 | --- | --- | --- |
-| Board, blocked | One secondary **Open T-n** | Text only |
-| Queue view, blocked | A secondary **Open T-n**, a secondary **Mark done and resume**, and a quiet **Requeue T-n** drawn in ink | Text only |
+| Blocked, on the Board and on the Queue view | A secondary **Open T-n**, a secondary **Mark done and resume**, and a quiet **Requeue T-n** drawn in ink | Text only |
 | **Queue paused** | Only **Open T-n**. The banner states one fixed reason. | Text only |
+
+- The actions are 32px high with an 8px gap.
+- **Mark done and resume** and **Requeue T-n** show only for a task that stalled or was blocked by its agent.
+
+### Queue settings panel
+
+- The panel is a side panel, not a popover. The Board's **Queue settings** action opens it.
+- It is the task modal's native modal `<dialog>` frame (`TaskDialog`), named “Queue settings”, with no scrim fill.
+- The panel (`.taskQueueSettings`) is at the right edge of the Tasks page, 400px wide and full height. It scrolls its own content.
+- It has the panel fill, a one-pixel `--command-line-strong` left border, 20px padding, and a 20px gap between its sections.
+- The head is the h2 **Queue settings** (16px/650) and a 32px [Icon](../../../DESIGN.md#buttons) close button named “Close”.
+- Focus starts on **Close**. Escape, **Close**, and a click outside the panel close it. Focus returns to the **Queue settings** action.
+- The sections are **Start gates**, **Schedule**, and **When the queue blocks**: the Queue view's three panels with no frame of their own.
+- A section heading is an h3 at 13px/650.
+- **Start gates** holds the caption “Checked before every session Pomegr starts.” and the five rows.
+- The five rows have 8px block padding and are divided by one-pixel `--command-line` rules. The reading is right-aligned, in its usual color.
+- **Do not start above** is one row: a muted 12px label on the left and the 32px `CommandSelect` on the right. A browser reads plain text there.
+- **Schedule** and **When the queue blocks** each sit over a one-pixel `--command-line` rule with 20px top padding.
+- **Schedule** holds the **Run now** / **Start at a time** pair, the **Stop starting tasks after** time field, the day line, and the fixed note.
+- A browser reads the two schedule values as a two-row definition list.
+- **When the queue blocks** holds its two items and its closing line, as in the Queue view.
+- The panel reads only what the board already serves. Without the desktop app or a paired device, it is read-only.
 
 ### Queue view
 
@@ -537,7 +568,8 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
 - The Ready lane with its step groups, and a card outside Ready in a parallel step.
 - The Ready lane with a step target and with the new-step zone, and a card with its Move to step select.
-- The feature filter and the capacity strip.
+- The feature filter and the capacity strip, with the strip's Board form.
+- The Queue settings panel, drawn in place, in its desktop and browser forms.
 - Whole boards and Queue views in their browser and desktop forms.
 - The queue switch and the banners.
 - Step cards, feature panels, single tasks, and the blocking rules.

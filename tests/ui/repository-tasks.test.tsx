@@ -370,7 +370,8 @@ describe("task board", () => {
     render(<TaskBoardView board={board({ tasks: [task(1, { text: "<img src=x onerror=alert(1)> **bold**" })] })} />);
     expect(screen.getByText("<img src=x onerror=alert(1)> **bold**")).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
-    expect(screen.queryAllByRole("button")).toEqual([]);
+    // The one control opens Queue settings, which a browser reads and cannot change.
+    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Queue settings"]);
     expect(screen.queryAllByRole("link")).toEqual([]);
     expect(document.querySelector("[draggable]")).toBeNull();
   });

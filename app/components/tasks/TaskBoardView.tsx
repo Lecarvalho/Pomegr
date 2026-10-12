@@ -4,6 +4,7 @@ import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState 
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { CapacityStrip } from "./CapacityStrip";
+import { QueueSettingsPanel } from "./QueueSettingsPanel";
 import { FeatureFilter } from "./FeatureFilter";
 import { QueueBanner } from "./QueueBanner";
 import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
@@ -53,6 +54,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   const scroller = useRef<HTMLDivElement>(null);
   const restore = useRef<Restore | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsTrigger = useRef<HTMLButtonElement>(null);
   const panels = useMemo(() => queueFeatures(board), [board]);
   // A change of step is the Queue view's own action and rule.
   const moveStep = (id: string, step: number) => {
@@ -117,7 +120,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   return <>
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
-    <CapacityStrip queue={board.queue} />
+    <CapacityStrip queue={board.queue} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)} />
+    {settingsOpen && <QueueSettingsPanel queue={board.queue} edits={edits} returnFocus={settingsTrigger} onClose={() => setSettingsOpen(false)} />}
     {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
