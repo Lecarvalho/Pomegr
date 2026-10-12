@@ -10,9 +10,10 @@ import { TaskCard, type TaskCardMove } from "../tasks/TaskCard";
 import { TaskColumnHeader } from "../tasks/TaskColumnHeader";
 import { ALL_FEATURES, featureLines, type FeatureFilterValue } from "../tasks/task-features";
 import { taskColumns } from "../tasks/task-presentation";
+import { readySegments } from "../tasks/task-ready-groups";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
+  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FUTURE, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
 const LINES = featureLines(BOARD_BLOCKED);
@@ -24,6 +25,8 @@ const BOARD_ENTRY = newTaskEntry();
 const REVEALED_ENTRY = newTaskEntry();
 const COLUMNS = taskColumns(BOARD_RUNNING);
 const noMove = () => undefined;
+// The Ready lane of the running board, read on the scheduled task's own day so its Starts line says "today".
+const READY_LANE = { segments: readySegments(COLUMNS[1].tasks, BOARD_RUNNING), queue: BOARD_RUNNING.queue, now: Date.parse(SAMPLE_FUTURE) };
 
 const MOVE: TaskCardMove = { drag: {}, available: { up: false, down: true, left: false, right: true }, onMove: noop };
 
@@ -72,6 +75,14 @@ export function TaskBoardSection() {
       </Sample>
       <Sample label="Lane, drop target" note="The raised fill is the lane itself, so the lane under a dragged card takes the strong line on its border instead. The two-pixel ink drop line shows where the card will land, here under the last card.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[2]} lines={LINES} nextId={null} dropTarget dropLine={{ beforeId: null }} cardMoveFor={noMove} /></div></Frame>
+      </Sample>
+    </div>
+    <div className="designSystemGrid">
+      <Sample label="Ready lane, step groups" note="Ready is the queue's lane, so it alone groups its waiting cards, in the order they already hold. A feature step with two or more waiting cards takes the strong-line frame and the parallel glyph with its count; a one-task step and Single tasks take the caption only, at the same inset. A grouped card is the board card at compact padding, with no feature line and no Complete when line. The next card adds its Waiting line while a gate holds it.">
+        <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={READY_LANE} /></div></Frame>
+      </Sample>
+      <Sample label="Card outside Ready, parallel step" note="The feature line opens with the muted parallel glyph and names the other tasks of the step, in any lane, in the data font. A card alone in its step reads the feature and the step only.">
+        <Frame><ul className="taskColumnList"><TaskCard task={T2_REVIEW} featureLine={LINES.get("T-2")} /><TaskCard task={T1_DONE} featureLine={LINES.get("T-1")} /></ul></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">

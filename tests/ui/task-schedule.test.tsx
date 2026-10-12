@@ -247,7 +247,8 @@ describe("a scheduled task", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(card("T-2").querySelector(".commandChip")).toHaveTextContent("Scheduled");
     expect(card("T-2").querySelector(".commandChip")).toHaveClass("info");
-    expect(within(card("T-2")).getByText("Starts Oct 9, 02:00")).toHaveClass("taskCardDetail");
+    expect(card("T-2").querySelector(".taskCardDetail.taskCardStarts")?.textContent).toBe("Starts Oct 9, 02:00");
+    expect(card("T-2").querySelector(".taskCardStartsTime")).toHaveTextContent("02:00");
     // Once its session works on it the card borrows the session's state and names no start time.
     expect(within(card("T-4")).queryByText(/^Starts /u)).not.toBeInTheDocument();
     await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));

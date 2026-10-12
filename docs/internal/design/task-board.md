@@ -84,6 +84,7 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 ### Page header
 
 - The header is `CommandPageHeader` with the h1 **Tasks**, a muted description, and the head actions at its end.
+- The description reads “Work for this repository. Ready is the queue: cards start from the top.”
 - The breadcrumb is **Tasks**, a chevron separator, and the repository name. **Tasks** links to the Tasks home, and the name carries `aria-current`.
 - The head actions (`.taskHeadActions`) wrap and use a 12px gap.
 - The header has no primary action: **New task** lives in the first lane.
@@ -157,6 +158,32 @@ The head actions appear in this order:
 - The column header is the name (13px/650, ink) and a data-font count (12px, muted) over a one-pixel `--command-line` rule.
 - The column header has no control in the desktop app or a browser.
 - Columns are never added, renamed, moved, or deleted.
+- The count counts cards. A step group of the Ready lane is not counted.
+
+### Ready step groups
+
+- Groups are drawn in Ready only. No other lane groups its cards.
+- A group holds the waiting cards of Ready that sit next to each other and share a feature step, or that have no feature step.
+- A waiting card is a Queued or Scheduled card with no session. Any other card of Ready is a plain board card where it is.
+- The grouping reads only the lane's card order and each task's feature and step. It reorders no card and stores no value.
+- A card that does not wait, between two waiting cards of one step, splits the step into two groups.
+- A group (`.taskReadyGroup`) is its caption and then its cards, with a 6px gap.
+- A **parallel step group** (`.taskReadyGroup.isParallel`) is a frame around a step's two or more waiting cards.
+- The frame is a one-pixel `--command-line-strong` border with the panel radius, 6px padding, and no fill.
+- Any other group has no frame. Its caption and cards are inset 6px on each side, plus one transparent pixel, so they line up with framed cards.
+- The caption (`.taskReadyCaption`) is the first row, with 2px/4px padding and its two parts at the ends.
+- The left part is the feature name (12px, muted), “ · ”, and “Step k of n” (12px/650, ink).
+- The right part of a step that holds one task is “One task” (11px, muted).
+- The right part of a step that holds more tasks, in any lane, is the parallel glyph, a 4px gap, and “Parallel · n” (11px/500, ink), with the count in the data font.
+- The count is the number of tasks of the step in any lane, as in the Queue view.
+- The parallel glyph is 12px: two vertical 1.5px strokes in the current color. In a caption it is hidden from assistive technology.
+- The waiting cards with no feature step come under the caption “Single tasks” (12px/650, ink) with “One at a time” (11px, muted).
+- A grouped card (`.taskReadyCard`) is the board card at 10px/12px padding with a 6px gap.
+- A grouped card shows the ID and chip, the title, the provider badge with “model · effort” at 11px, and its Starts or Waiting line.
+- A grouped card shows no Complete when line and no feature line. Its caption carries the feature and the step.
+- The card the monitor lists first keeps the chip **Queued · next**.
+- That card adds one muted 12px “Waiting: …” line while a gate holds it and the queue is on.
+- The drop line and the move toolbar work on a grouped card as on any card.
 
 ### + New task
 
@@ -212,9 +239,11 @@ Each row below the title shows only when it is set, in this order:
 - The provider badge with the planned “model · effort” in the data font.
 - The muted **Observed model:** line.
 - When the planned model and the observed model differ, the single amber line “Planned x, observed y”. It is a text color, never a fill.
-- The muted **Starts** line of a scheduled task, until its session is linked.
+- The muted **Starts** line of a scheduled task, until its session is linked. It reads “Starts today 22:00”, or “Starts Oct 9, 22:00” on another day, with the time in the data font.
 - One muted **Complete when** line.
-- The feature line “Feature · step k of n · parallel”.
+- The feature line “Feature · step k of n”, on a card that is not in a Ready group.
+- When other tasks share the step, the line opens with the muted 12px parallel glyph, named “Parallel”, and a 6px gap.
+- That line then ends “ · parallel with T-55, T-57”: the other tasks of the step, in any lane, by number, in the data font.
 - **Open session**, a Text link that is not stretched.
 
 ### States
@@ -482,6 +511,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - The cards in every state.
 - Column headers.
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
+- The Ready lane with its step groups, and a card outside Ready in a parallel step.
 - The feature filter and the capacity strip.
 - Whole boards and Queue views in their browser and desktop forms.
 - The queue switch and the banners.

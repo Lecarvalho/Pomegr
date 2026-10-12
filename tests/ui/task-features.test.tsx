@@ -97,6 +97,7 @@ const optionLabels = (trigger: HTMLElement) => {
 };
 const card = (id: string) => document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement;
 const column = (name: string) => screen.getByRole("region", { name });
+const featureLine = (id: string) => card(id).querySelector(".taskCardFeature");
 const cardIds = () => [...document.querySelectorAll("li.taskCard")].map((element) => element.getAttribute("data-task-id"));
 
 async function openNew(user: ReturnType<typeof userEvent.setup>) {
@@ -424,7 +425,7 @@ describe("Feature filter and card feature line", () => {
     expect(select).toHaveTextContent("Task board v1 (8)");
     expect(cardIds()).toEqual(["T-1", "T-2", "T-3", "T-4", "T-7", "T-8", "T-9", "T-10"]);
     expect(within(column("Backlog")).getAllByRole("listitem")).toHaveLength(3);
-    expect(within(column("Ready")).getAllByRole("listitem")).toHaveLength(5);
+    expect(column("Ready").querySelectorAll("li.taskCard")).toHaveLength(5);
 
     chooseCommandOption(select, "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
@@ -468,12 +469,17 @@ describe("Feature filter and card feature line", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("A feature with this name already exists.");
   });
 
-  it("shows '<feature> · step K of N' on a card, with ' · parallel' only when another task shares the step", () => {
+  it("shows '<feature> · step K of N' on a card, and names the other tasks of its step only when another task shares it", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(within(card("T-1")).getByText("Task board v1 · step 1 of 4")).toHaveClass("taskCardDetail");
-    expect(within(card("T-2")).getByText("Task board v1 · step 2 of 4 · parallel")).toBeInTheDocument();
-    expect(within(card("T-4")).getByText("Task board v1 · step 3 of 4")).toBeInTheDocument();
-    expect(within(card("T-9")).getByText("Task board v1 · step 4 of 4 · parallel")).toBeInTheDocument();
+    expect(featureLine("T-1")).toHaveClass("taskCardDetail");
+    expect(featureLine("T-1")?.textContent).toBe("Task board v1 · step 1 of 4");
+    expect(featureLine("T-2")?.textContent).toBe("Task board v1 · step 2 of 4 · parallel with T-3");
+    expect(within(featureLine("T-2") as HTMLElement).getByRole("img", { name: "Parallel" })).toBeInTheDocument();
+    expect(featureLine("T-2")?.querySelector(".taskCardFeatureIds")).toHaveTextContent("T-3");
+    // T-4 waits in Ready, so its group caption carries the feature and the step.
+    expect(featureLine("T-4")).toBeNull();
+    expect(featureLine("T-9")?.textContent).toBe("Task board v1 · step 4 of 4 · parallel with T-7, T-8, T-10");
+    expect(featureLine("T-1")?.querySelector("svg")).toBeNull();
     expect(within(card("T-5")).getByText("Finished work · step 1 of 1")).toBeInTheDocument();
     expect(card("T-6")).not.toHaveTextContent("step");
     // It is the card's last line; only the keyboard move toolbar follows it.
@@ -491,7 +497,7 @@ describe("without the desktop bridge", () => {
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
     // The filter is the only Feature select: no Task modal field is drawn outside it.
     expect(screen.getAllByRole("combobox", { name: "Feature" })).toEqual([within(group).getByRole("combobox", { name: "Feature" })]);
-    expect(within(card("T-2")).getByText("Task board v1 · step 2 of 4 · parallel")).toBeInTheDocument();
+    expect(featureLine("T-2")?.textContent).toBe("Task board v1 · step 2 of 4 · parallel with T-3");
     chooseCommandOption(within(group).getByRole("combobox", { name: "Feature" }), "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
     expect(card("T-6")).not.toHaveAttribute("draggable");

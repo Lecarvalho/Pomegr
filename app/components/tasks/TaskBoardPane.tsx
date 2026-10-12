@@ -68,7 +68,7 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   return <section ref={section} className="commandView tasksPage" aria-labelledby={headingId} aria-busy={board.readiness === "loading"}>
     <CommandPageHeader className="tasksPageHeader" headingId={headingId} breadcrumb={breadcrumb} title="Tasks"
       meta={<div className="tasksPageMeta">
-        <p>Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.</p>
+        <p>Work for this repository. Ready is the queue: cards start from the top.</p>
         {access === "absent" && <p className="taskBoardNote">Tasks are created and edited in the Pomegr desktop app or on a paired device.</p>}
         {access === "paired" && <p className="taskBoardNote">Sessions start on the computer running Pomegr.</p>}
         {/* A blocked or paused queue is worded by its banner instead. */}

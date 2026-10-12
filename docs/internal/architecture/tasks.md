@@ -405,6 +405,13 @@ Scheduled and no session is linked. For every such task:
 The board mirrors the two rules for its optimistic move (`task-board-model.ts`), so a
 dragged card is drawn at once where the committed board will show it.
 
+The Board draws the waiting cards of Ready in step groups (`readySegments` in
+`app/components/tasks/task-ready-groups.ts`): the cards of one feature step that sit next
+to each other, and the single tasks. This is a projection of facts the board already
+serves, the card order of Ready and each task's `featureId` and `step`. It moves no card,
+stores nothing, and adds no field to the board. [Task board design](../design/task-board.md#ready-step-groups)
+owns how a group looks.
+
 A store written before this rule may hold queued cards in other columns, with single
 tasks ordered by a stored `queue_position`. When the monitor opens the store, each
 repository is settled once in one transaction: the waiting cards move to the end of

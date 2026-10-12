@@ -174,6 +174,10 @@ Pomegr moves a card to another column when its task changes state:
 - The queued cards in **Ready** read top to bottom in the order the queue starts
   them, the same order the **Queue** view shows. Cards that are not queued keep
   their place between them.
+- **Ready** groups its queued cards by step. Each group is headed by its feature
+  and step, such as "Step 2 of 4". A frame marked **Parallel** surrounds the cards
+  of one step that start together. The queued cards with no feature come last,
+  under **Single tasks**.
 - **Reorder single tasks by moving their cards.** Drag a queued card with no
   feature above or below another in **Ready**, or use its move up and move
   down buttons. Feature tasks follow their steps, so a card dropped out of that order

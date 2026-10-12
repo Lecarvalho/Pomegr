@@ -1,13 +1,15 @@
 import type { HTMLAttributes } from "react";
 import type { Task } from "../../../shared/task-contract";
+import { ParallelGlyph } from "./ParallelGlyph";
 import { TaskMoveBar, type CardMoves } from "./TaskMoveBar";
 import type { CardMoveKind } from "./task-board-model";
+import type { FeatureLine } from "./task-features";
 import { TaskCardIds } from "./TaskIssueChip";
 import { TaskRunLine } from "./TaskRunLine";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { completeWhenSummary } from "./task-fields";
 import { taskCardTitle, taskChip } from "./task-presentation";
-import { startsLine } from "./task-schedule";
+import { startsParts } from "./task-schedule";
 
 export type TaskCardMove = {
   drag: Pick<HTMLAttributes<HTMLLIElement>, "onDragStart" | "onDragEnd">;
@@ -15,12 +17,25 @@ export type TaskCardMove = {
   onMove(kind: CardMoveKind): void;
 };
 
-export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine }: { task: Task; featureLine?: string | null; nextQueued?: boolean; onOpen?: (task: Task, opener: HTMLElement) => void; move?: TaskCardMove; dropLine?: "before" | "after" }) {
+export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine, grouped = false, waiting, now }: {
+  task: Task;
+  featureLine?: FeatureLine | null;
+  nextQueued?: boolean;
+  onOpen?: (task: Task, opener: HTMLElement) => void;
+  move?: TaskCardMove;
+  dropLine?: "before" | "after";
+  /** A card inside a Ready group: compact, with no Complete when line and no feature line, which its caption carries. */
+  grouped?: boolean;
+  waiting?: string | null;
+  /** The clock the Starts line names "today" from. */
+  now?: number;
+}) {
   const chip = taskChip(task, nextQueued);
   const title = taskCardTitle(task);
-  const starts = startsLine(task);
-  const summary = completeWhenSummary(task.completeWhen);
-  const className = ["taskCard", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone", dropLine === "before" && "isDropBefore", dropLine === "after" && "isDropAfter"].filter(Boolean).join(" ");
+  const starts = startsParts(task, now);
+  const summary = grouped ? null : completeWhenSummary(task.completeWhen);
+  const feature = grouped ? null : featureLine;
+  const className = ["taskCard", grouped && "taskReadyCard", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone", dropLine === "before" && "isDropBefore", dropLine === "after" && "isDropAfter"].filter(Boolean).join(" ");
   return <li className={className} data-task-id={task.id} data-task-state={task.state} draggable={move ? true : undefined} {...move?.drag}>
     <div className="taskCardTop">
       <TaskCardIds task={task} />
@@ -30,9 +45,13 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
       ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title} onClick={(event) => onOpen(task, event.currentTarget)}><span className="taskCardTitle">{title}</span></button>
       : <p className="taskCardTitle" title={title}>{title}</p>}
     <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
-    {starts && <p className="taskCardDetail taskCardStarts">{starts}</p>}
+    {starts && <p className="taskCardDetail taskCardStarts">Starts {starts.day} <span className="taskCardStartsTime">{starts.time}</span></p>}
+    {waiting && <p className="taskCardWaiting">{waiting}</p>}
     {summary && <p className="taskCardDetail">{summary}</p>}
-    {featureLine && <p className="taskCardDetail taskCardFeature">{featureLine}</p>}
+    {feature && <p className="taskCardDetail taskCardFeature">
+      {feature.parallelWith.length > 0 && <ParallelGlyph label="Parallel" />}
+      <span>{feature.text}{feature.parallelWith.length > 0 && <> · parallel with <span className="taskCardFeatureIds">{feature.parallelWith.join(", ")}</span></>}</span>
+    </p>}
     {task.session && <TaskSessionLink sessionId={task.session.id} className="taskCardLink" />}
     {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} />}
   </li>;
