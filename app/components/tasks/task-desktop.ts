@@ -53,13 +53,13 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
   const bridge = taskDesktopBridge();
-  // A paired device may create a feature from a name but never edits one: feature_update has no paired route.
-  if (!bridge && (action === "feature_update" || clientAccessMode() !== "lan")) return { ok: false, error: "unavailable" };
+  // A paired device may create a feature from a name but never edits or deletes one: neither has a paired route.
+  if (!bridge && (action === "feature_update" || action === "feature_delete" || clientAccessMode() !== "lan")) return { ok: false, error: "unavailable" };
   try {
     const result: unknown = bridge ? await bridge.taskAction(repositoryId, action, payload) : await postPairedTaskAction(repositoryId, action, payload);
     if (typeof result === "object" && result !== null) {
@@ -140,6 +140,11 @@ export type FeaturePatch = { name?: string; description?: string | null; appVers
 
 export function updateDesktopFeature(repositoryId: string, id: string, patch: FeaturePatch): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "feature_update", { id, ...patch });
+}
+
+/** Deletes a feature; its tasks stay on the board with no feature. The monitor refuses while one of them has started and is not done. */
+export function deleteDesktopFeature(repositoryId: string, id: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "feature_delete", { id });
 }
 
 export type FeatureDetails = { description: string | null; appVersion: string | null };

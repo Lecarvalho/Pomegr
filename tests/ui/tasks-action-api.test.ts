@@ -79,6 +79,13 @@ describe("POST /api/tasks/action", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("refuses feature_delete: a paired device never deletes a feature", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const remove = { repositoryId, action: "feature_delete", payload: { id: "feat-0123456789ab" } };
+    expect(await (await post(remove)).json()).toEqual({ ok: false, error: "invalid" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("refuses a feature_create that carries a description or an app version, and passes a name alone", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => monitorAnswer({ ok: true }));
     for (const extra of [{ description: "Shared context" }, { appVersion: "1.4.0" }, { description: null }]) {

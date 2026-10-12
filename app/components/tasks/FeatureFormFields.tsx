@@ -3,7 +3,7 @@
 import { useId, type Ref } from "react";
 import { TASK_BOUNDS } from "../../../shared/task-contract";
 import {
-  FEATURE_DUPLICATE_MESSAGE, FEATURE_LIMIT_MESSAGE, FEATURE_READ_FAILURE_MESSAGE, FEATURE_SAVE_FAILURE_MESSAGE, featureCount, featureDescriptionOver,
+  FEATURE_DELETE_FAILURE_MESSAGE, FEATURE_DUPLICATE_MESSAGE, FEATURE_LIMIT_MESSAGE, FEATURE_READ_FAILURE_MESSAGE, FEATURE_SAVE_FAILURE_MESSAGE, featureCount, featureDescriptionOver,
   type FeatureFailure, type FeatureFormDraft,
 } from "./feature-form";
 
@@ -52,5 +52,6 @@ export function FeatureFormFields({ draft, onChange, failure, detailsDisabled, r
     {readFailed && <p className="newTaskError" role="alert">{FEATURE_READ_FAILURE_MESSAGE}</p>}
     {failure === "limit" && <p className="newTaskError" role="alert">{FEATURE_LIMIT_MESSAGE}</p>}
     {failure === "failed" && <p className="newTaskError" role="alert">{FEATURE_SAVE_FAILURE_MESSAGE}</p>}
+    {failure === "delete" && <p className="newTaskError" role="alert">{FEATURE_DELETE_FAILURE_MESSAGE}</p>}
   </>;
 }

@@ -17,9 +17,11 @@ describe("Feature modal visual contract", () => {
     const pane = readFileSync(join(dir, "TaskBoardPane.tsx"), "utf8");
     // Contract lines 6 and 12: the task modal's frame, one primary, and no scrim close while the form holds something to save.
     expect(modal).toMatch(/<TaskModalFrame title=\{feature \? "Feature" : "New feature"\}/);
-    expect(modal).toMatch(/closeOnScrim=\{!holdsText && !busy\}/);
+    expect(modal).toMatch(/closeOnScrim=\{!holdsText && !busy && !deleting\}/);
     expect(modal).toMatch(/className="commandPrimaryAction" disabled=\{!canSubmit\}/);
     expect(modal).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel</);
+    // Mode New feature draws no Delete feature: its footer is its own branch, and the edit footer is FeatureEditFooter.
+    expect(modal).toMatch(/feature && counts\s*\? <FeatureEditFooter/);
     expect(modal).not.toMatch(/Delete feature/);
     // Lines 7 to 11: the fields use the task modal's input and helper classes, with the bounds of the contract.
     expect(form).toMatch(/className="newTaskField featureField"/);
@@ -52,5 +54,33 @@ describe("Feature modal visual contract", () => {
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemFeatureModalSample.tsx"), "utf8");
     expect(sample).toMatch(/TaskModalChrome/);
     expect(sample).not.toMatch(/<TaskModalFrame/);
+  });
+
+  it("draws Delete feature on the task modal's inline confirmation with its shared roles, and documents and samples it", () => {
+    const dir = join(process.cwd(), "app", "components", "tasks");
+    const footer = readFileSync(join(dir, "FeatureEditFooter.tsx"), "utf8");
+    const form = readFileSync(join(dir, "FeatureFormFields.tsx"), "utf8");
+    const tasksStyles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    // Contract lines 21 to 23: Quiet Delete feature, spacer, primary Save; the confirmation is the task modal's group.
+    expect(footer).toMatch(/className="commandQuietAction" disabled=\{blockerId !== null \|\| busy\} onClick=\{onAskDelete\}>Delete feature</);
+    expect(footer).toMatch(/<span className="taskModalSpacer" aria-hidden="true" \/>\s*<button type="button" className="commandPrimaryAction" disabled=\{!canSave\} onClick=\{onSave\}>Save</);
+    expect(footer).toMatch(/<div className="taskModalConfirm" role="group" aria-label="Confirm delete">/);
+    expect(footer).toMatch(/className="commandSecondaryAction" disabled=\{deleting\} onClick=\{onDelete\}>Delete feature</);
+    expect(footer).toMatch(/ref=\{keepRef\} type="button" className="commandQuietAction" disabled=\{deleting\} onClick=\{onKeep\}>Keep feature</);
+    // Line 27: the started task's note sits in a taskModalResolve above the actions.
+    expect(footer).toMatch(/<div className="taskModalResolve"><span className="taskModalNote">\{featureRunningLine\(blockerId\)\}<\/span><\/div>/);
+    // Line 30: one fixed alert under the fields.
+    expect(form).toMatch(/failure === "delete" && <p className="newTaskError" role="alert">\{FEATURE_DELETE_FAILURE_MESSAGE\}<\/p>/);
+    // The confirmation fills the footer with a token-free rule, so its spacer can push the two actions right.
+    expect(tasksStyles).toMatch(/\.taskModalFooter > \.taskModalConfirm \{ flex: 1 1 auto; \}/);
+    expect(designContract).toMatch(/Quiet \*\*Delete feature\*\*, primary \*\*Save\*\*/);
+    expect(designContract).toMatch(/“Delete this feature\? Its n tasks stay on the board with no feature\. This cannot be undone\.”/);
+    expect(designContract).toMatch(/“T-n is running\. Delete the feature after its tasks finish\.”/);
+    expect(designContract).toMatch(/“The feature could not be deleted\.”/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemFeatureModalSample.tsx"), "utf8");
+    expect(sample).toMatch(/FeatureEditFooter/);
+    for (const label of ["Feature modal, delete confirmation", "Feature modal, delete blocked", "Feature modal, could not delete"]) expect(sample).toContain(label);
+    expect(sample).toMatch(/board=\{BOARD_BLOCKED\}/);
+    expect(sample).toMatch(/confirm \/>/);
   });
 });

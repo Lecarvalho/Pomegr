@@ -288,9 +288,9 @@ description and the app version with the `get_feature` tool when it needs them. 
 desktop app sets all three fields, and an agent can too (see
 [What agents report](#what-agents-report)).
 
-### Create and edit a feature
+### Create, edit, and delete a feature
 
-You make and edit features in the Pomegr desktop app. A browser or a paired phone
+You make, edit, and delete features in the Pomegr desktop app. A browser or a paired phone
 shows features but does not change them, except that a task's **New feature…** field
 still names a feature from a title alone.
 
@@ -316,6 +316,20 @@ closes it only while it holds nothing to save.
 A title that another feature already has is refused, with the line "Another feature
 already has this title." A board holds up to 50 features. Any other failure shows
 "The feature could not be saved." The window stays open and keeps what you typed.
+
+To delete a feature, open it with **Edit feature**, choose **Delete feature**, and
+confirm. The window asks first and says how many tasks the feature has. Deleting
+cannot be undone, but it removes no task. Each task stays on the board, in the same
+lane, with no feature and no step. A queued task stays queued and runs as a single
+task, so in **Ready** it moves below the queued tasks of the other features and starts
+after them. The feature's description and app version are deleted with it. If the
+feature was chosen in the **Feature** filter, the filter returns to **All**.
+
+You cannot delete a feature while one of its tasks has started and is not done. The
+window shows which task, for example "T-34 is running. Delete the feature after its
+tasks finish.", and **Delete feature** stays disabled. A done task never blocks.
+If the delete fails, the window stays open and shows "The feature could not be
+deleted."
 
 A step that holds more than one task starts each task in a Git worktree of its
 own, on a branch named `tasks/<task ID>`, so parallel agents do not edit the same

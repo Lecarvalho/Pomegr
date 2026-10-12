@@ -259,6 +259,10 @@
 .taskModalSession { display: flex; flex-direction: column; gap: var(--space-1); }
 .taskModalSessionTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
 .taskModalConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* The inline confirmation fills the footer, so a spacer inside it pushes the two actions to the right. */
+.taskModalFooter > .taskModalConfirm { flex: 1 1 auto; }
+/* A long line before the spacer wraps its own text, so the two actions stay together on its row. */
+.taskModalConfirm > .taskModalNote:has(+ .taskModalSpacer) { flex: 1 1 50%; min-width: 0; }
 
 /* Feature fields and the folded "In this feature" list (D217-D233, D273-D294): two selects in a row, a native
    disclosure between two lines, and rows that lead with the step number only in the Task modal. */

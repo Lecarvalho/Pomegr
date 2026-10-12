@@ -10,7 +10,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const IMPLEMENTED = ["create", "update", "delete", "move", "feature_create", "feature_update", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+const IMPLEMENTED = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 async function temporaryDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-actions-"));
@@ -62,7 +62,7 @@ const taskCount = (databasePath) => withRawDatabase(databasePath, (database) => 
 
 test("the route's mirrored action list equals the record module's fixed list", () => {
   assert.deepEqual([...ROUTE_ACTIONS], [...TASK_ACTIONS]);
-  assert.equal(TASK_ACTIONS.length, 12);
+  assert.equal(TASK_ACTIONS.length, 13);
 });
 
 test("create lands as the last card of the first column with the next ID and every other field at its default", async (t) => {
