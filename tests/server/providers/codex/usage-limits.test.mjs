@@ -468,3 +468,41 @@ test("provider registry never reads current Codex limits for historical state", 
   });
   assert.equal(calls, 0);
 });
+
+test("confirmed Codex login retries unavailable account usage and preserves a healthy cooldown", async () => {
+  let calls = 0;
+  const provider = createCodexProvider({
+    rateLimitsReader: { async readRateLimits() {
+      calls += 1;
+      if (calls === 1) throw new Error("PRIVATE_ACCOUNT_FAILURE");
+      return rateLimitResponse();
+    } },
+  });
+  const failed = await provider.readUsageLimits();
+  assert.equal(failed.failureKind, "unavailable");
+  await provider.readUsageLimits();
+  assert.equal(calls, 1);
+  const recovered = await provider.readUsageLimits({ afterSignIn: true });
+  assert.equal(recovered.available, true);
+  assert.equal(recovered.failureKind, null);
+  assert.equal(calls, 2);
+  await provider.readUsageLimits({ afterSignIn: true });
+  assert.equal(calls, 2, "native completion does not bypass healthy usage cooldown");
+  assert.doesNotMatch(JSON.stringify(recovered), /PRIVATE_ACCOUNT_FAILURE/);
+});
+
+test("confirmed Codex login rechecks empty windows without inventing known usage", async () => {
+  let calls = 0;
+  const provider = createCodexProvider({ rateLimitsReader: { async readRateLimits() {
+    calls += 1;
+    return calls === 1 ? { result: { rateLimits: {} } } : rateLimitResponse();
+  } } });
+  const empty = await provider.readUsageLimits();
+  assert.equal(empty.available, false);
+  assert.equal(empty.failureKind, null);
+  await provider.readUsageLimits();
+  assert.equal(calls, 1);
+  const recovered = await provider.readUsageLimits({ afterSignIn: true });
+  assert.equal(calls, 2);
+  assert.equal(recovered.available, true);
+});

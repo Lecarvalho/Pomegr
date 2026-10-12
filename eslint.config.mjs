@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "docs/internal/plans/session-allowance/prototype/vendor/**",
     "docs/internal/plans/session-allowance/prototype/support.js",
     "desktop/workers/**",
+    // Temporary desktop web copies contain generated production bundles.
+    ".wrangler/**",
     // Task worktrees Pomegr makes inside the repository: each is a checkout of its own.
     ".pomegr/worktrees/**",
     "plugins/claude-code/mcp/server.bundle.mjs",

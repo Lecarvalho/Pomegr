@@ -149,6 +149,9 @@ function completeRateLimits(response, limits) {
 export function createCodexUsageLimitsCoordinator({ request, now = () => Date.now(), sourceScope = () => null }) {
   return createCoordinatedUsageLimitsReader({
     now,
+    // The account-only reader intentionally collapses signed-out failures.
+    signInRetryFailures: ["authentication_required", "unavailable"],
+    signInRetryEmpty: true,
     async read() {
       const scope = sourceScope();
       const response = await request();

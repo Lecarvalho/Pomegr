@@ -1,10 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UsageLimitsView } from "../../app/components/command-center/CommandViews";
 import { useUsageLimits } from "../../app/usage-limits-client";
+import { getUsageLimitsStore } from "../../app/usage-limits-client";
+import { CodexUsageHelp } from "../../app/components/CodexUsageHelp";
 import type { UsageLimits, UsageLimitsSnapshot } from "../../shared/monitor-contract";
 
-vi.mock("../../app/usage-limits-client", () => ({ useUsageLimits: vi.fn() }));
+vi.mock("../../app/usage-limits-client", () => ({ useUsageLimits: vi.fn(), getUsageLimitsStore: vi.fn() }));
 vi.mock("../../app/provider-status-client", () => ({
   useProviderStatus: () => ({ revision: 1, generatedAt: null, providers: [] }),
 }));
@@ -28,6 +30,11 @@ function publish(usageLimits: UsageLimits, readiness: "ready" | "unavailable" | 
   vi.mocked(useUsageLimits).mockReturnValue(snapshot);
 }
 beforeEach(() => publish(missing));
+
+const authRequired: UsageLimits = { ...ready, available: false, failureKind: "authentication_required", error: "Authentication required" };
+function setDesktopBridge(bridge?: { startCodexSignIn?: () => Promise<{ status: string }> }) {
+  Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: bridge });
+}
 
 describe("Codex usage troubleshooting", () => {
   it("replaces endless loading with missing-CLI guidance while Claude stays available", () => {
@@ -70,5 +77,86 @@ describe("Codex usage troubleshooting", () => {
     render(<UsageLimitsView />);
     expect(screen.getByText("Waiting for provider usage")).toBeVisible();
     expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
+  });
+
+  it("shows a desktop reconnect action only for authentication failures, including signed out/API key", async () => {
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status: "cancelled" }) });
+    render(<CodexUsageHelp usageLimits={authRequired} />);
+    expect(await screen.findByRole("button", { name: "Reconnect Codex" })).toBeVisible();
+    expect(screen.queryByText("codex login status")).not.toBeInTheDocument();
+  });
+
+  it("hides reconnect in the browser and during cooldown", async () => {
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status: "cancelled" }) });
+    const { unmount } = render(<CodexUsageHelp usageLimits={authRequired} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reconnect Codex" })).toBeVisible());
+    unmount();
+    setDesktopBridge();
+    render(<CodexUsageHelp usageLimits={authRequired} />);
+    expect(screen.queryByRole("button", { name: "Reconnect Codex" })).not.toBeInTheDocument();
+    unmount();
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status: "cancelled" }) });
+    render(<CodexUsageHelp usageLimits={{ ...authRequired, failureKind: "rate_limited" }} />);
+    expect(await screen.findByText(/respects the provider’s cooldown/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Reconnect Codex" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["sanitized unavailable", { ...authRequired, failureKind: "unavailable" as const, error: "Usage request failed" }],
+    ["missing CLI", missing],
+    ["valid response with no windows", { ...authRequired, available: false, failureKind: null, error: "", fetchedAt: "2026-09-02T12:00:00.000Z" }],
+  ])("offers desktop reconnect for %s", async (_label, usageLimits) => {
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status: "cancelled" }) });
+    render(<CodexUsageHelp usageLimits={usageLimits} />);
+    expect(await screen.findByRole("button", { name: "Reconnect Codex" })).toBeVisible();
+  });
+
+  it("keeps fixed manual guidance for browser failures and hides controls without an issue", async () => {
+    setDesktopBridge();
+    const { rerender } = render(<CodexUsageHelp usageLimits={{ ...authRequired, failureKind: "unavailable" }} />);
+    expect(screen.getByText("codex login status")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Reconnect Codex" })).not.toBeInTheDocument();
+    rerender(<CodexUsageHelp usageLimits={{ ...authRequired, available: false, failureKind: null, error: "", fetchedAt: null }} />);
+    expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
+  });
+
+  it("guards pending sign-in and reports bounded status messages", async () => {
+    let finish!: (value: { status: string }) => void;
+    const startCodexSignIn = vi.fn(() => new Promise<{ status: string }>((resolve) => { finish = resolve; }));
+    setDesktopBridge({ startCodexSignIn });
+    render(<CodexUsageHelp usageLimits={authRequired} />);
+    const button = await screen.findByRole("button", { name: "Reconnect Codex" });
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Waiting for sign-in…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Waiting for sign-in…" }));
+    expect(startCodexSignIn).toHaveBeenCalledTimes(1);
+    finish({ status: "busy" });
+    expect(await screen.findByRole("status")).toHaveTextContent("A Codex sign-in is already open. Finish it in your browser.");
+  });
+
+  it.each([
+    ["completed", "Codex sign-in completed. Usage availability has not been confirmed yet."],
+    ["cancelled", "Sign-in cancelled."],
+    ["failed", "Codex could not complete sign-in."],
+    ["unavailable", "Codex could not be found."],
+    ["busy", "A Codex sign-in is already open."],
+    ["timed_out", "Sign-in timed out."],
+  ])("shows sanitized %s status", async (status, message) => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(getUsageLimitsStore).mockReturnValue({ refresh } as never);
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status }) });
+    render(<CodexUsageHelp usageLimits={authRequired} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect Codex" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(message);
+    expect(refresh).toHaveBeenCalledTimes(status === "completed" ? 1 : 0);
+    expect(screen.queryByText(/PRIVATE|token|credential/i)).not.toBeInTheDocument();
+  });
+
+  it("sanitizes native exceptions and does not expose their text", async () => {
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockRejectedValue(new Error("PRIVATE_NATIVE_TOKEN")) });
+    render(<CodexUsageHelp usageLimits={authRequired} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect Codex" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Codex could not complete sign-in.");
+    expect(screen.queryByText(/PRIVATE_NATIVE_TOKEN/)).not.toBeInTheDocument();
   });
 });

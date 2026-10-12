@@ -19,6 +19,7 @@ import {
 import {
   CLAUDE_SIGN_IN_CHANNEL,
   createClaudeSignInAction,
+  confirmProviderSignIn,
   installConfirmedTrustedActionIpcHandler,
 } from "./claude-auth.mjs";
 import {
@@ -33,7 +34,8 @@ import {
   secureBrowserWindowOptions,
 } from "./security-policy.mjs";
 import { waitForMessage } from "./utility-lifecycle.mjs";
-import { createMonitorWorker, refreshClaudeUsageAfterSignIn } from "./monitor-worker.mjs";
+import { CODEX_SIGN_IN_CHANNEL, createCodexSignInAction } from "./codex-auth.mjs";
+import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn } from "./monitor-worker.mjs";
 import { withDeadline } from "./bounded-lifecycle.mjs";
 import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
@@ -108,6 +110,8 @@ let removeWindowBoundsGuard;
 let removeWindowLifecycle;
 let notificationPoller;
 let updaterController;
+let codexSignIn;
+let removeCodexSignInIpc;
 let claudeSignIn;
 let removeClaudeSignInIpc;
 let claudeUsageIntegration;
@@ -340,21 +344,6 @@ function installClaudeSignInIpc() {
   });
 }
 
-async function confirmClaudeSignIn() {
-  if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: "question",
-    title: "Sign in to Claude",
-    message: "Open Claude sign-in in your browser?",
-    detail: "Pomegr will launch installed Claude Code. Completing sign-in in the browser may change the Claude Code account on this computer.",
-    buttons: ["Open sign-in", "Cancel"],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
-  });
-  return result.response === 0 && runtimeState === "running";
-}
-
 async function confirmClaudeUsageSetup() {
   if (!mainWindow || mainWindow.isDestroyed() || runtimeState !== "running") return false;
   const result = await dialog.showMessageBox(mainWindow, {
@@ -436,6 +425,8 @@ async function stopRuntime() {
     removePhoneAccessIpc = undefined;
     try { await withDeadline(phoneAccess?.dispose(), STOP_TIMEOUT_MS, "DESKTOP_PHONE_STOP_TIMEOUT"); } catch { /* Other services still stop. */ }
     phoneAccess = undefined;
+    removeCodexSignInIpc?.();
+    removeCodexSignInIpc = undefined;
     removeClaudeSignInIpc?.();
     removeClaudeSignInIpc = undefined;
     removeClaudeUsageIpc?.();
@@ -453,6 +444,7 @@ async function stopRuntime() {
     repositoryPluginCli?.dispose();
     repositoryPluginCli = undefined;
     claudeUsageIntegration?.dispose();
+    try { await codexSignIn?.dispose(); } catch { /* Native sign-in cleanup is bounded. */ }
     try { await claudeSignIn?.dispose(); } catch { /* Native sign-in cleanup is bounded. */ }
     notificationPoller?.stop();
     notificationPoller = undefined;
@@ -522,10 +514,15 @@ async function startDesktop() {
       throw new Error("DESKTOP_RESTART_FAILED");
     }
   }
+  codexSignIn = createCodexSignInAction({
+    environment: providerEnvironment,
+    confirm: () => confirmProviderSignIn(dialog, mainWindow, () => runtimeState === "running", "Codex"),
+    onCompleted: () => refreshCodexUsageAfterSignIn(monitorChild),
+  });
   claudeSignIn = createClaudeSignInAction({
     environment: providerEnvironment,
     nativeEnvironment: nativeClaudeEnvironment(providerEnvironment),
-    confirm: confirmClaudeSignIn,
+    confirm: () => confirmProviderSignIn(dialog, mainWindow, () => runtimeState === "running", "Claude"),
     onCompleted: () => refreshClaudeUsageAfterSignIn(monitorChild),
   });
   repositoryPluginCli = createRepositoryPluginCli({ environment: providerEnvironment });
@@ -701,6 +698,9 @@ async function startDesktop() {
         removeProviderSettingsIpc = installProviderSettingsIpc({ ipcMain, isTrustedEvent: (event) => trustedDesktopEvent(event) && event.senderFrame === mainWindow.webContents.mainFrame, controller: providerSettingsController });
         removeStorageSettingsIpc = installStorageSettingsIpc({ ipcMain, isTrustedEvent: (event) => trustedDesktopEvent(event) && event.senderFrame === mainWindow.webContents.mainFrame, controller: storageSettingsController });
         installClaudeSignInIpc();
+        removeCodexSignInIpc = installConfirmedTrustedActionIpcHandler({
+          ipcMain, channel: CODEX_SIGN_IN_CHANNEL, isTrustedEvent: trustedDesktopEvent, action: codexSignIn,
+        });
         removeClaudeUsageIpc = installClaudeUsageIntegrationIpc({ ipcMain, isTrustedEvent: trustedDesktopEvent, integration: claudeUsageIntegration });
         removeRepositoryInventoryIpc = installRepositoryInventoryCaptureIpc({
           ipcMain,

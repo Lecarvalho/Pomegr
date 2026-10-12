@@ -145,6 +145,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | --- | --- |
 | Tokens, button roles, chips, fields, panels, tables, shell, navigation | This file |
 | Token values | `app/styles/tokens.css` |
+| Usage limits and provider connection help | [Usage limits design](docs/internal/design/usage-limits.md) |
 | Settings sections and the storage usage meter | [Settings design](docs/internal/design/settings.md) |
 | Home and the What's new card | [Home design](docs/internal/design/home.md) |
 | Sessions directory, session header, Overview, Events, Signals | [Sessions design](docs/internal/design/sessions.md) |

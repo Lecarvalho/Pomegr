@@ -624,6 +624,7 @@ export function createMonitorRuntime(options = {}) {
     serveHome: observation.serveHome,
     serveUsageLimits: observation.serveUsageLimits,
     refreshUsageAfterClaudeSignIn: observation.refreshUsageAfterClaudeSignIn,
+    refreshUsageAfterCodexSignIn: observation.refreshUsageAfterCodexSignIn,
     serveSessionHistory: observation.serveSessionHistory,
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
@@ -760,7 +761,8 @@ export async function startMonitorServer(options = {}) {
       return closePromise;
     };
     return Object.freeze({ ...handle, operationsEndpoint: operationsTransport?.endpoint || null,
-      refreshUsageAfterClaudeSignIn: runtime.refreshUsageAfterClaudeSignIn, close });
+      refreshUsageAfterClaudeSignIn: runtime.refreshUsageAfterClaudeSignIn,
+      refreshUsageAfterCodexSignIn: runtime.refreshUsageAfterCodexSignIn, close });
   } catch (error) {
     try { await stopObservationOnce(); } catch { /* preserve bounded startup failure */ }
     try { await operationsTransport?.close(); } catch { /* preserve bounded startup failure */ }
