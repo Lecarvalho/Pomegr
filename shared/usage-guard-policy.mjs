@@ -9,6 +9,10 @@ export const USAGE_GUARD_DEFAULTS = Object.freeze({
   maxConcurrencyReservePercent: 15,
 });
 export const USAGE_GUARD_MAX_AGE_MS = 5 * 60_000;
+// A usage reading counts for this long after it was observed. It must stay longer than one provider
+// refresh interval (five minutes) plus one usage poll, or a healthy account reads unknown at the end
+// of every refresh cycle. A failed or expired reading arrives labelled stale and stays unknown.
+export const USAGE_GUARD_USAGE_MAX_AGE_MS = 10 * 60_000;
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
@@ -32,9 +36,9 @@ function timestamp(value) {
   return typeof value === "string" ? Date.parse(value) : NaN;
 }
 
-function freshAt(value, now) {
+function freshAt(value, now, maxAgeMs = USAGE_GUARD_MAX_AGE_MS) {
   const at = timestamp(value);
-  return Number.isFinite(at) && at <= now && now - at <= USAGE_GUARD_MAX_AGE_MS;
+  return Number.isFinite(at) && at <= now && now - at <= maxAgeMs;
 }
 
 function localActivity(value, now) {
@@ -77,7 +81,7 @@ export function evaluateUsageGuard(snapshot, provider, config, now = Date.now())
   const entry = matches[0];
   const activity = localActivity(entry.localActivity, now);
   if (entry.readiness !== "ready" || entry.available !== true || entry.freshness !== "fresh"
-    || !freshAt(entry.observedAt, now) || !Array.isArray(entry.windows)
+    || !freshAt(entry.observedAt, now, USAGE_GUARD_USAGE_MAX_AGE_MS) || !Array.isArray(entry.windows)
     || entry.windows.length === 0 || entry.windows.length > 8) return unavailable(activity);
 
   const reserve = activity

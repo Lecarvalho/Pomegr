@@ -64,7 +64,7 @@ test("weekly capacity, missing windows, passed resets, and original age retain t
   assert.equal(evaluateUsageGuard(weekly, "claude", config, now).stage, "handoff");
   assert.equal(evaluateUsageGuard(weekly, "claude", config, now).kind, "weekly");
   for (const change of [
-    (entry) => { entry.observedAt = iso(now - 300_001); },
+    (entry) => { entry.observedAt = iso(now - 600_001); },
     (entry) => { entry.observedAt = iso(now + 1); },
     (entry) => { entry.freshness = "stale"; },
     (entry) => { entry.available = false; },
@@ -77,6 +77,9 @@ test("weekly capacity, missing windows, passed resets, and original age retain t
     change(value.providers[0]);
     assert.equal(evaluateUsageGuard(value, "claude", config, now).stage, "unknown");
   }
+  const aged = snapshot(3);
+  aged.providers[0].observedAt = iso(now - 600_000);
+  assert.equal(evaluateUsageGuard(aged, "claude", config, now).stage, "normal", "a reading outlasts the refresh that replaces it");
   const partialHigh = snapshot(84);
   partialHigh.providers[0].windows.pop();
   assert.equal(evaluateUsageGuard(partialHigh, "claude", config, now).stage, "handoff");

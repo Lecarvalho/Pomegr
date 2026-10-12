@@ -3,10 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { createClaudeUsageApiCache } from "./usage-api-cache.mjs";
 import { createEmptyUsageLimits } from "../../../shared/monitor-state.mjs";
-import { createUsageLimitsCoordinator } from "../../normalize/usage-limits.mjs";
+import { createUsageLimitsCoordinator, USAGE_REFRESH_INTERVAL_MS } from "../../normalize/usage-limits.mjs";
 import { withUsageNotificationSource } from "../../normalize/usage-notification-facts.mjs";
 import { claudeUsageLimitsFromSnapshot, claudeUsageSnapshotsRoot, readClaudeUsageSnapshot } from "./usage-feed.mjs";
 import { resolveClaudeProfileRoots } from "./profile-roots.mjs";
+
+// A provider reading counts as fresh for this long after it was fetched. It must stay longer than one
+// refresh interval plus one usage poll: a refresh answers the previous reading while its request runs,
+// so a shorter bound labels a healthy account stale for the poll that starts each refresh.
+export const CLAUDE_PROVIDER_USAGE_FRESH_MS = 2 * USAGE_REFRESH_INTERVAL_MS;
 
 export function normalizedClaudeResetTimestamp(value) {
   const numeric = typeof value === "number"
@@ -117,13 +122,25 @@ export function createClaudeUsageLimitsReader(options = {}) {
       : usage;
   }
 
-  function freshness(usage, requireCurrentResets = false) {
+  // A refresh that failed after the reading was taken: the reading is the last known value, not the current one.
+  function failedSince(observed) {
+    if (!latestRemote || (latestRemote.failureKind ?? null) === null) return false;
+    const attempted = Date.parse(latestRemote.attemptedAt || "");
+    return !Number.isFinite(attempted) || attempted > observed;
+  }
+
+  // A local observation keeps the feed bound and must describe windows that have not reset. A provider
+  // reading stays fresh across the refresh that replaces it, and goes stale when that refresh fails.
+  function freshness(usage) {
     const observed = timestamp(usage);
     const current = now();
-    const currentResets = Array.isArray(usage?.limits) && usage.limits.length > 0
+    if (observed < 0 || observed > current) return "stale";
+    if (usage.origin !== "local_observation") {
+      return current - observed <= CLAUDE_PROVIDER_USAGE_FRESH_MS && !failedSince(observed) ? "fresh" : "stale";
+    }
+    const currentResets = Array.isArray(usage.limits) && usage.limits.length > 0
       && usage.limits.every((limit) => Number.isFinite(Date.parse(limit?.resetsAt || "")) && Date.parse(limit.resetsAt) > current);
-    return observed >= 0 && observed <= current && current - observed <= freshMs
-      && (!requireCurrentResets || currentResets) ? "fresh" : "stale";
+    return current - observed <= freshMs && currentResets ? "fresh" : "stale";
   }
 
   function local() {
@@ -141,12 +158,12 @@ export function createClaudeUsageLimitsReader(options = {}) {
     const remoteRead = activeRemote.get({ afterSignIn });
     const completedRemote = activeRemote.peek();
     if (completedRemote) acceptRemote(completedRemote);
-    if (!afterSignIn && localUsage && freshness(localUsage, true) === "fresh") {
+    if (!afterSignIn && localUsage && freshness(localUsage) === "fresh") {
       void remoteRead.then((usage) => { if (currentRemote(activeRemote)) acceptRemote(usage); }).catch(() => {});
       const selected = newestSuccessful;
       return withRetainedLimits(selected ? {
         ...selected,
-        freshness: freshness(selected, selected.origin === "local_observation"),
+        freshness: freshness(selected),
         attemptedAt: latestRemote?.attemptedAt ?? null,
         failureKind: latestRemote?.failureKind ?? null,
         retryAt: latestRemote?.retryAt ?? null,
@@ -161,7 +178,7 @@ export function createClaudeUsageLimitsReader(options = {}) {
     const remoteCandidate = acceptRemote(remoteUsage);
     const selected = newestSuccessful;
     if (selected) {
-      const output = { ...selected, freshness: freshness(selected, selected.origin === "local_observation") };
+      const output = { ...selected, freshness: freshness(selected) };
       if (remoteCandidate) return withRetainedLimits(output);
       return withRetainedLimits({
         ...output,

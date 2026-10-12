@@ -416,7 +416,7 @@ test("a healthy Claude account never reads unknown between refreshes, and a fail
     ] }), { status: 200 }) : new Response("", { status: 503 })),
   });
   const rows = await pollUsage(reader, clock, 16);
-  // The reader's own label is `stale` for the poll that starts each refresh; the gate must not follow it.
+  // The gate judges the reading itself, whatever label the reader gives it.
   const labels = new Set(rows.map((row) => row.usageLimits.freshness));
   assert.ok(labels.has("fresh") && [...labels].every((label) => label === "fresh" || label === "stale"), [...labels].join());
   for (const row of rows) {
