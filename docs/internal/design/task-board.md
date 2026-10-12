@@ -113,7 +113,8 @@ The head actions appear in this order:
 ### Non-desktop clients
 
 - An unpaired same-computer browser reads one muted line that says tasks are created and edited in the desktop app or on a paired device. The page decides this at first render.
-- A paired phone's board note says “Sessions start on the computer running Pomegr. Turn the queue on in the desktop app.”
+- A paired phone's board note says “Sessions start on the computer running Pomegr.”
+- A paired phone uses the same Queue **Off / On** control as the desktop app, including retry after a pause.
 - Every client reads one muted line that says whether the queue is off or on.
 - An unpaired client that is not on this computer reads only a **Desktop only** notice.
 

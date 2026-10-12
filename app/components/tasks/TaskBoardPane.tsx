@@ -70,7 +70,7 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
       meta={<div className="tasksPageMeta">
         <p>Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.</p>
         {access === "absent" && <p className="taskBoardNote">Tasks are created and edited in the Pomegr desktop app or on a paired device.</p>}
-      {access === "paired" && <p className="taskBoardNote">Sessions start on the computer running Pomegr. Turn the queue on in the desktop app.</p>}
+        {access === "paired" && <p className="taskBoardNote">Sessions start on the computer running Pomegr.</p>}
         {/* A blocked or paused queue is worded by its banner instead. */}
         {ready && queueLine && <p className="taskBoardNote">{queueLine}</p>}
       </div>}
@@ -80,7 +80,7 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
           <button type="button" aria-pressed={view === "board"} onClick={() => chooseView("board")}>Board</button>
           <button type="button" aria-pressed={view === "queue"} onClick={() => chooseView("queue")}>Queue</button>
         </div>}
-        {editable && ready && <QueueControl status={board.queue.status} busy={edits.busy} offOnly={access === "paired"} onSet={(on) => { void edits.setQueue(on); }} />}
+        {editable && ready && <QueueControl status={board.queue.status} busy={edits.busy} onSet={(on) => { void edits.setQueue(on); }} />}
         {/* The Board filter row carries this action once a feature exists. */}
         {editable && ready && (view === "queue" || board.features.length === 0) && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
         {/* Opens the Promote issues page. */}

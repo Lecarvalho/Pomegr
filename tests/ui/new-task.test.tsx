@@ -294,7 +294,7 @@ describe("on a paired device", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, taskId: "T-7" }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(screen.getByText("Sessions start on the computer running Pomegr. Turn the queue on in the desktop app.")).toBeInTheDocument();
+    expect(screen.getByText("Sessions start on the computer running Pomegr.")).toBeInTheDocument();
     await user.type(await openPanel(user), "From a phone");
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
@@ -317,7 +317,7 @@ describe("on a paired device", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("turns the queue off but never on", async () => {
+  it("turns the queue on, retries a paused queue, and turns it off", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ ok: true }));
     const queue = (status: "idle" | "running" | "paused") => ({ status, blockedBy: null, pauseReason: null, order: [] });
     const ready = { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }] };
@@ -325,15 +325,23 @@ describe("on a paired device", () => {
     const view = render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = () => screen.getByRole("group", { name: "Queue" });
     const button = (name: string) => [...group().querySelectorAll("button")].find((entry) => entry.textContent === name) as HTMLButtonElement;
-    expect(button("On")).toBeDisabled();
+    fireEvent.click(button("On"));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(button("On")).toBeEnabled());
     useTasks.mockReturnValue({ board: { ...ready, queue: queue("paused") }, refresh });
     view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(button("On")).toBeDisabled();
+    fireEvent.click(button("On"));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(button("On")).toBeEnabled());
     useTasks.mockReturnValue({ board: { ...ready, queue: queue("running") }, refresh });
     view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
     fireEvent.click(button("Off"));
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toEqual({ repositoryId, action: "queue_settings", payload: { on: false } });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(3));
+    expect(fetchSpy.mock.calls.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+      { repositoryId, action: "queue_settings", payload: { on: true } },
+      { repositoryId, action: "queue_settings", payload: { on: true } },
+      { repositoryId, action: "queue_settings", payload: { on: false } },
+    ]);
   });
 });
 

@@ -20,8 +20,8 @@ tasks.
   move, queue, and schedule tasks in the Pomegr desktop app or on a phone you
   paired with it (see [Phone access](phone-access.md)). You can also confirm a
   manual start on the phone; the session runs on the computer running Pomegr.
-  Only the desktop app turns the queue on, attaches images, and works with GitHub
-  issues. A browser on the same computer shows the board
+  You can turn the queue on or off from either device. Pomegr must remain open on the computer.
+  Only the desktop app attaches images and works with GitHub issues. A browser on the same computer shows the board
   read-only and says "Tasks are created and edited in the Pomegr desktop app or
   on a paired device."
 - **Starting sessions works on Windows only for now.** Elsewhere a start answers
