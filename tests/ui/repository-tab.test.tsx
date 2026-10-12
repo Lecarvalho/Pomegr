@@ -198,6 +198,20 @@ describe("RepositoryTab", () => {
     expect(screen.getByText("File history requires a linked repository.")).toBeInTheDocument();
   });
 
+  it("opens a single pull request from its chip and leaves a multiple-PR count as a label", () => {
+    useSessionDomain.mockReturnValue(result(domain()));
+    const { rerender } = renderTab({ sessionId: SESSION_ID, historical: false });
+    expect(screen.getByRole("link", { name: "Draft PR #24" })).toHaveAttribute("href", draftPullRequest.url);
+    expect(screen.getByRole("link", { name: "Draft PR #24" })).toHaveAttribute("target", "_blank");
+
+    useSessionDomain.mockReturnValue(result(domain({
+      pullRequests: { status: "ready", checkedAt: "2026-09-22T12:00:00.000Z", items: [draftPullRequest, { ...draftPullRequest, number: 25, url: "https://github.com/PomegrHQ/pomegr/pull/25" }] },
+    })));
+    rerender(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[]}><RepositoryTab sessionId={SESSION_ID} historical={false} /></SessionCatalogProvider></LiveClockProvider>);
+    expect(screen.getByText("2 pull requests")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /pull requests/ })).not.toBeInTheDocument();
+  });
+
   describe("files body (F17/F18)", () => {
     function domainWithFiles(overrides: Record<string, unknown> = {}) {
       return domain({

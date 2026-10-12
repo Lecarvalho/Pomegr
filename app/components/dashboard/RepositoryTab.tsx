@@ -239,7 +239,9 @@ export function RepositoryTab({ sessionId, historical, paused = false, selectedP
           <span className="repositoryTabBarBranch">{repository.branch || "Branch unavailable"}</span>
           {comparisonText && <span className={`commandChip${comparisonTone ? ` ${comparisonTone}` : ""}`}>{comparisonText}</span>}
           {!comparisonText && remoteStateText && !snapshotMissing && <span className="repositoryTabBarRemoteState">{remoteStateText}</span>}
-          {prChipText && <span className="commandChip">{prChipText}</span>}
+          {prChipText && (pullRequests.length === 1
+            ? <a className="commandChip repositoryTabPrLink" href={pullRequests[0]!.url} target="_blank" rel="noopener noreferrer">{prChipText}</a>
+            : <span className="commandChip">{prChipText}</span>)}
         </div>
         {lineParts.length > 0 && <p className="repositoryTabBarLine2">{joinLineParts(lineParts)}</p>}
         {snapshotMissing && <p className="repositoryTabBarUnrecorded">No saved Git snapshot for this session. Branch comparison, pull requests, and uncommitted files are unavailable.</p>}

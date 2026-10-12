@@ -166,6 +166,11 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .repositoryTabBarLine1 > .commandIcon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--command-muted); }
 .repositoryTabBarBranch { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--command-ink); font: var(--text-sm) var(--font-data); }
 .repositoryTabBarRemoteState { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryTabPrLink { text-decoration: none; }
+.repositoryTabPrLink:hover { border-color: var(--command-line-strong); color: var(--command-ink); }
+@media (max-width: 760px), (pointer: coarse) {
+  .repositoryTabPrLink { min-height: 44px; }
+}
 .repositoryTabBarLine2 { min-width: 0; margin: 0; overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); white-space: nowrap; text-overflow: ellipsis; }
 .repositoryTabBarRecordedCaption { margin: 0; color: var(--command-faint); font-size: var(--text-caption); }
 .repositoryTabBarAction { flex: 0 0 auto; }
