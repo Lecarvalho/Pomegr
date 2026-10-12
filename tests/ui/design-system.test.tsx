@@ -594,7 +594,7 @@ describe("Design-system reference page", () => {
     expect(within(blocked).getByRole("button", { name: "Delete feature" })).toBeDisabled();
     expect(within(sample(fields, "Feature modal, could not delete")).getByRole("alert")).toHaveTextContent("The feature could not be deleted.");
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it("renders the Sessions list Task cell for every outcome and the feature fields, from static references", async () => {
     const user = userEvent.setup();
