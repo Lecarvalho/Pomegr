@@ -4,6 +4,7 @@ import { validModelIdentifier, validModelLabel } from "../../shared/model-notifi
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+  "session_assign", "session_unassign",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 // The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
@@ -23,6 +24,7 @@ const QUEUE_START_LIMIT = 16;
 const WORKTREE_ACTIONS = Object.freeze(["worktree-cleanups", "worktree-root", "worktree-cleaned"]);
 const WORKTREE_CLEANUP_LIMIT = 64;
 const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
+export const AGENT_SESSION_REF_PATTERN = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const RUN_MODEL_LIMIT = 64;
@@ -36,7 +38,7 @@ const GATE_PROVIDERS = Object.freeze(["claude", "codex"]);
 const GATE_USAGE_STATUSES = Object.freeze(["ok", "over", "unknown"]);
 const GATE_PROVIDER_STATUSES = Object.freeze(["ok", "incident", "unknown"]);
 const GATE_TREE_STATES = Object.freeze(["clean", "dirty", "unknown"]);
-const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
+export const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
 function emptyBoard(readiness, repositoryId) {
   return {
@@ -309,8 +311,18 @@ function serveWorktreeAction({ response, taskStore, resolveStart, action, reposi
   }
 }
 
+function sessionOfRepository(resolveSession, sessionId, repositoryId) {
+  if (typeof resolveSession !== "function" || typeof sessionId !== "string" || !AGENT_SESSION_REF_PATTERN.test(sessionId)) return false;
+  try {
+    const session = resolveSession(sessionId);
+    return session?.found === true && session.repositoryId === repositoryId;
+  } catch {
+    return false;
+  }
+}
+
 // `POST /internal/tasks/<action>`.
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
@@ -378,6 +390,11 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
       writeActionResult(response, 503, rejected("conflict"));
       return;
     }
+    // The owner assigns only a session the monitor has committed for this repository; any other reads as not there.
+    if (action === "session_assign" && !sessionOfRepository(resolveSession, body.payload.sessionId, body.repositoryId)) {
+      writeActionResult(response, 404, rejected("not_found"));
+      return;
+    }
     const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts });
     if (result?.ok === true) {
       const taskId = action === "create" && typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId) ? result.taskId : null;
@@ -392,7 +409,6 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
 }
 
 export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
-const AGENT_SESSION_REF_PATTERN = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 // `doneWhen` is the name an installed plugin from before the rename still sends for `completeWhen`.
 const AGENT_TASK_KEYS = new Set(["sessionRef", "text", "run", "completeWhen", "doneWhen", "feature"]);
 const AGENT_FEATURE_NAME_LIMIT = 80;
@@ -408,7 +424,7 @@ function writeAgentAddResult(response, reason, taskId = null, { close = false } 
   response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true, taskId } : { schemaVersion: 1, ok: false, reason }));
 }
 
-async function readAgentJson(request, requestUrl, limit) {
+export async function readAgentJson(request, requestUrl, limit) {
   const mediaType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
   if (requestUrl.search || mediaType !== "application/json" || request.headers["transfer-encoding"] !== undefined
     || Number(request.headers["content-length"] || 0) > limit) return { failed: true };
@@ -431,7 +447,14 @@ function linkedBoardRepositoryId(taskStore, sessionRef) {
   }
 }
 
-function agentBoardRepository(taskStore, resolveSession, sessionRef) {
+// The tasks of a session, as references: the one Pomegr started it for, then the ones it is assigned to.
+function agentSessionTasks(taskStore, sessionRef) {
+  const started = taskStore.sessionTasks?.([sessionRef])?.get(sessionRef) ?? null;
+  const assigned = typeof taskStore.sessionAssignedTasks === "function" ? taskStore.sessionAssignedTasks([sessionRef])?.get(sessionRef) ?? [] : [];
+  return [...(started ? [started] : []), ...assigned];
+}
+
+export function agentBoardRepository(taskStore, resolveSession, sessionRef) {
   const linkedRepositoryId = linkedBoardRepositoryId(taskStore, sessionRef);
   let session = null;
   try {
@@ -513,12 +536,12 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
 }
 
 export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
-const AGENT_REMOVE_BODY_LIMIT_BYTES = 1024;
+export const AGENT_REMOVE_BODY_LIMIT_BYTES = 1024;
 const AGENT_REMOVE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
-const AGENT_TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
+export const AGENT_TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 
 // The answer of a write that carries nothing but its outcome: `ok`, or one fixed reason with its status.
-function writeAgentOutcome(statuses, response, reason, { close = false } = {}) {
+export function writeAgentOutcome(statuses, response, reason, { close = false } = {}) {
   const ok = reason === null;
   response.writeHead(ok ? 200 : statuses[reason], {
     ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
@@ -610,14 +633,14 @@ export const AGENT_FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
 export const AGENT_FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
 export const AGENT_FEATURE_PATHS = Object.freeze([AGENT_FEATURE_GET_PATH, AGENT_FEATURE_CREATE_PATH, AGENT_FEATURE_UPDATE_PATH, AGENT_FEATURE_DELETE_PATH]);
 const AGENT_FEATURE_STATUS = Object.freeze({
-  invalid: 400, session_not_found: 404, repository_unavailable: 409, not_found: 404, conflict: 409, limit: 409, unavailable: 503,
+  invalid: 400, session_not_found: 404, repository_unavailable: 409, not_found: 404, task_required: 409, conflict: 409, limit: 409, unavailable: 503,
 });
 const AGENT_FEATURE_ID_PATTERN = /^feat-[0-9a-f]{12}$/u;
 const AGENT_FEATURE_DESCRIPTION_LIMIT = 2000;
 const AGENT_FEATURE_APP_VERSION_LIMIT = 40;
 // The keys each path takes beside `sessionRef`, and the ones it requires.
 const AGENT_FEATURE_KEYS = Object.freeze({
-  [AGENT_FEATURE_GET_PATH]: { allowed: ["feature"], required: [] },
+  [AGENT_FEATURE_GET_PATH]: { allowed: ["feature", "taskId"], required: [] },
   [AGENT_FEATURE_CREATE_PATH]: { allowed: ["title", "description", "appVersion"], required: ["title"] },
   [AGENT_FEATURE_UPDATE_PATH]: { allowed: ["feature", "title", "description", "appVersion"], required: ["feature"] },
   [AGENT_FEATURE_DELETE_PATH]: { allowed: ["feature"], required: ["feature"] },
@@ -660,6 +683,7 @@ export async function serveAgentFeatureRoute({ request, response, requestUrl, ta
     && Object.keys(body).every((key) => key === "sessionRef" || keys.allowed.includes(key))
     && keys.required.every((key) => Object.hasOwn(body, key))
     && (body.feature === undefined || boundedString(body.feature, AGENT_FEATURE_NAME_LIMIT))
+    && (body.taskId === undefined || (body.feature === undefined && typeof body.taskId === "string" && AGENT_TASK_ID_PATTERN.test(body.taskId)))
     && (body.title === undefined || boundedString(body.title, AGENT_FEATURE_NAME_LIMIT))
     && clearableString(body.description, AGENT_FEATURE_DESCRIPTION_LIMIT) && clearableString(body.appVersion, AGENT_FEATURE_APP_VERSION_LIMIT);
   if (!valid) {
@@ -677,8 +701,16 @@ export async function serveAgentFeatureRoute({ request, response, requestUrl, ta
       return;
     }
     if (operation === AGENT_FEATURE_GET_PATH) {
-      // Without a feature the read is of the feature the session's own task belongs to.
-      const reference = body.feature ?? taskStore.sessionTasks?.([body.sessionRef])?.get(body.sessionRef)?.featureId ?? null;
+      // Without a feature the read is of the feature one task of the session belongs to: the named one, or its only one.
+      let reference = body.feature ?? null;
+      if (reference === null) {
+        const tasks = agentSessionTasks(taskStore, body.sessionRef).filter((task) => body.taskId === undefined || task.id === body.taskId);
+        if (tasks.length > 1) {
+          writeAgentFeatureResult(response, "task_required");
+          return;
+        }
+        reference = tasks[0]?.featureId ?? null;
+      }
       const feature = reference === null ? null : servedFeature(taskStore.readFeature(repositoryId, reference));
       if (feature) writeAgentFeatureResult(response, null, { feature });
       else writeAgentFeatureResult(response, "not_found");
@@ -728,69 +760,5 @@ export async function serveAgentTaskBindRoute({ request, response, requestUrl, t
     else writeAgentBindResult(response, Object.hasOwn(AGENT_BIND_STATUS, result?.error) ? result.error : "unavailable");
   } catch {
     writeAgentBindResult(response, "unavailable");
-  }
-}
-
-export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
-export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
-const AGENT_REPORT_BODY_LIMIT_BYTES = 2048;
-const AGENT_BLOCK_REASON_LIMIT = 200;
-const AGENT_REPORT_STATUS = Object.freeze({ invalid: 400, not_found: 404, already_reported: 409, stalled: 409, unavailable: 503 });
-const REPORT_CHECKS = Object.freeze(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"]);
-
-function writeAgentReportResult(response, reason, answer = null, { close = false } = {}) {
-  const ok = reason === null;
-  response.writeHead(ok ? 200 : AGENT_REPORT_STATUS[reason], {
-    ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
-  });
-  response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true, ...answer } : { schemaVersion: 1, ok: false, reason }));
-}
-
-// Only the fixed check names and booleans the store recorded reach the agent.
-function reportResults(results) {
-  return (Array.isArray(results) ? results : [])
-    .filter((result) => REPORT_CHECKS.includes(result?.check) && typeof result.passed === "boolean")
-    .map((result) => ({ check: result.check, passed: result.passed }));
-}
-
-// `POST /api/agent/v1/tasks/complete` and `/block`: the bound session reports on the task it was started for.
-export async function serveAgentTaskReportRoute({ request, response, requestUrl, taskStore, resolveCheckFacts = null, readCheckFacts = null }) {
-  const blocking = requestUrl.pathname === AGENT_TASK_BLOCK_PATH;
-  const read = await readAgentJson(request, requestUrl, AGENT_REPORT_BODY_LIMIT_BYTES);
-  if (read.failed) {
-    writeAgentReportResult(response, "invalid", null, { close: true });
-    return;
-  }
-  const { body } = read;
-  const noted = !blocking && isPlainObject(body) && Object.hasOwn(body, "attention");
-  const keys = blocking ? ["sessionRef", "reason"] : noted ? ["sessionRef", "attention"] : ["sessionRef"];
-  const boundedLine = (value) => typeof value === "string" && value.trim().length > 0 && value.length <= AGENT_BLOCK_REASON_LIMIT;
-  const valid = isPlainObject(body) && Object.keys(body).length === keys.length && keys.every((key) => Object.hasOwn(body, key))
-    && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
-    && (!blocking || boundedLine(body.reason)) && (!noted || boundedLine(body.attention));
-  if (!valid) {
-    writeAgentReportResult(response, "invalid");
-    return;
-  }
-  try {
-    const call = blocking ? taskStore?.blockTask : taskStore?.completeTask;
-    if (typeof call !== "function") {
-      writeAgentReportResult(response, "unavailable");
-      return;
-    }
-    let read = null;
-    if (!blocking && typeof readCheckFacts === "function" && typeof taskStore.reportChecks === "function"
-      && (taskStore.reportChecks(body.sessionRef) ?? []).length > 0) {
-      try { read = await readCheckFacts(body.sessionRef); } catch { read = null; }
-    }
-    const result = blocking
-      ? call({ sessionId: body.sessionRef, reason: body.reason })
-      : call({ sessionId: body.sessionRef, ...(noted ? { attention: body.attention } : {}) }, () => read ?? (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
-    if (result?.ok === true && blocking) writeAgentReportResult(response, null, { state: "blocked" });
-    else if (result?.ok === true && result.state === "needs_review") {
-      writeAgentReportResult(response, null, { state: result.state, results: reportResults(result.results) });
-    } else writeAgentReportResult(response, Object.hasOwn(AGENT_REPORT_STATUS, result?.error) ? result.error : "unavailable");
-  } catch {
-    writeAgentReportResult(response, "unavailable");
   }
 }

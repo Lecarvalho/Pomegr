@@ -73,7 +73,7 @@ function keysOf(value) {
 }
 
 const ACTIONS = ["create", "update", "delete", "move", "feature_create",
-  "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign"];
 
 test("the first read seeds the five default columns in order and a ready, idle board", async (t) => {
   const temp = await temporaryDirectory(t);
@@ -267,7 +267,7 @@ test("unknown action names answer unsupported and change nothing", async (t) => 
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  const implemented = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign"];
   assert.deepEqual(ACTIONS.filter((name) => !implemented.includes(name)), [], "every listed action has a handler");
   for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
@@ -384,7 +384,7 @@ test("closing is idempotent and an unusable store serves nothing", async (t) => 
   store.close();
   assert.equal(store.readBoard(REPOSITORY).readiness, "unavailable");
   assert.equal(store.apply(REPOSITORY, "create", { text: "x" }).ok, false);
-  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "addImage", "apply", "bindSession", "blockTask", "close", "completeTask", "featureSessionGroups", "featureSessions", "issueDraft", "nextQueueStarts", "pauseQueue", "planStart", "promotedIssues", "readBoard", "readFeature", "readHome", "readImage", "removeImage", "reportChecks", "sessionTasks", "stallEndedTasks", "worktreeCleaned", "worktreeCleanups"]);
+  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "addImage", "apply", "bindSession", "blockTask", "close", "completeTask", "featureSessionGroups", "featureSessions", "issueDraft", "nextQueueStarts", "pauseQueue", "planStart", "promotedIssues", "readBoard", "readFeature", "readHome", "readImage", "removeImage", "reportChecks", "sessionAssignedTasks", "sessionTasks", "stallEndedTasks", "worktreeCleaned", "worktreeCleanups"]);
 });
 
 test("the task layer imports neither the runtime nor the serving layer", async () => {

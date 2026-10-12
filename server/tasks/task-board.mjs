@@ -29,10 +29,7 @@ function checksOf(task, resolveCheckFacts) {
   } catch { return null; }
 }
 
-function sessionOf(task, resolveFacts, resolveCheckFacts) {
-  const { id } = task.session;
-  const checks = checksOf(task, resolveCheckFacts);
-  const reading = checks ? { checks } : {};
+function sessionOf(id, resolveFacts, reading = {}) {
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts(id) : null; } catch { facts = null; }
   if (facts === null || typeof facts !== "object") return { id, title: null, state: "unknown", observedModel: null, ...reading };
@@ -45,11 +42,20 @@ function sessionOf(task, resolveFacts, resolveCheckFacts) {
   };
 }
 
-// Returns the board with `session` filled for every task that has a linked session.
+function filled(task, resolveFacts, resolveCheckFacts) {
+  if (!task?.session && !Array.isArray(task?.assigned)) return task;
+  const next = { ...task };
+  if (task.session) {
+    const checks = checksOf(task, resolveCheckFacts);
+    next.session = sessionOf(task.session.id, resolveFacts, checks ? { checks } : {});
+  }
+  // An assigned session borrows the same facts and carries no reading of the conditions.
+  if (Array.isArray(task.assigned)) next.assigned = task.assigned.map((session) => sessionOf(session.id, resolveFacts));
+  return next;
+}
+
+// Returns the board with `session` filled for every task that has a linked session, and `assigned` for every assigned one.
 export function fillTaskSessions(board, resolveFacts, resolveCheckFacts = null) {
   if (board === null || typeof board !== "object" || !Array.isArray(board.tasks)) return board;
-  return {
-    ...board,
-    tasks: board.tasks.map((task) => (task?.session ? { ...task, session: sessionOf(task, resolveFacts, resolveCheckFacts) } : task)),
-  };
+  return { ...board, tasks: board.tasks.map((task) => filled(task, resolveFacts, resolveCheckFacts)) };
 }

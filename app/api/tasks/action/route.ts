@@ -9,7 +9,7 @@ const ACTIONS = new Set([
   "create", "update", "delete", "move",
   "feature_create",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings",
-  "resolve_done", "resolve_requeue",
+  "resolve_done", "resolve_requeue", "session_assign", "session_unassign",
 ]);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;

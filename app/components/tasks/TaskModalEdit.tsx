@@ -9,11 +9,12 @@ import { TaskModalFrame } from "./TaskModalFrame";
 import { TaskModalSource } from "./TaskModalPromote";
 import { CompleteWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
+import { TaskSessionsField } from "./TaskSessionsField";
 import { TaskStartTimeField } from "./TaskStartTimeField";
 import {
-  DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE,
+  ASSIGN_FAILURE_MESSAGE, ASSIGN_LIMIT_MESSAGE, DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE,
   RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask,
-  resolveDesktopTaskDone, updateDesktopTask,
+  UNASSIGN_FAILURE_MESSAGE, assignDesktopTaskSession, resolveDesktopTaskDone, unassignDesktopTaskSession, updateDesktopTask,
 } from "./task-desktop";
 import { observedModelDiffers } from "./task-fields";
 import { taskImagesAvailable } from "./task-images-desktop";
@@ -27,6 +28,7 @@ import {
 import { SAVE_FIRST_LINE, taskDraftPatch, useTaskDraft } from "./use-task-draft";
 import { useFeatureCreation } from "./use-feature-creation";
 import { shownTaskText, useStoredImages } from "./use-task-images";
+import { SESSION_CANDIDATES_SHOWN, useTaskSessionCandidates } from "./use-task-session-candidates";
 import { useTaskStart } from "./use-task-start";
 
 const STALLED_NOTE = "The session ended with no report.";
@@ -59,6 +61,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const [deleting, setDeleting] = useState(false);
   const [queueing, setQueueing] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const saveInFlight = useRef(false);
   const createFeature = useFeatureCreation(repositoryId, board, refresh);
@@ -85,6 +89,11 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
   const columnName = board.columns.find((column) => column.id === task.columnId)?.name ?? null;
   const blocked = saving || deleting;
+  // A done task takes no report, so it takes no new session. The sessions it holds can still be unassigned.
+  const assigned = useMemo(() => task.assigned ?? [], [task.assigned]);
+  const listed = useTaskSessionCandidates(repositoryId, task.state !== "done");
+  const candidates = useMemo(() => listed?.filter((candidate) => candidate.id !== task.session?.id && !assigned.some((session) => session.id === candidate.id)).slice(0, SESSION_CANDIDATES_SHOWN),
+    [listed, task.session, assigned]);
   const startLine = showStart && start.line !== SAVE_FIRST_LINE ? start.line : null;
   // Only a task that has not started can hold a draft.
   const saveLine = dirty && !confirming && startLine === null;
@@ -154,6 +163,16 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     const result = await (done ? resolveDesktopTaskDone(repositoryId, task.id) : requeueDesktopTask(repositoryId, task.id));
     setResolving(false);
     if (result.ok) onChanged(); else setFailure(done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE);
+  };
+
+  const changeAssignment = async (sessionId: string, assign: boolean) => {
+    if (assigning) return;
+    setAssigning(true);
+    setAssignError(null);
+    const result = await (assign ? assignDesktopTaskSession(repositoryId, task.id, sessionId) : unassignDesktopTaskSession(repositoryId, task.id, sessionId));
+    setAssigning(false);
+    if (result.ok) onChanged();
+    else setAssignError(!assign ? UNASSIGN_FAILURE_MESSAGE : result.error === "limit" ? ASSIGN_LIMIT_MESSAGE : ASSIGN_FAILURE_MESSAGE);
   };
 
   const remove = async () => {
@@ -233,6 +252,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
       ownNote={task.report && draft.completeWhen.ownText.trim() !== "" && task.completeWhen.own !== null ? "Agent-reported" : null}
       footnote={outcomeNote ? <span className="newTaskHelper taskCompleteWhenNote">{outcomeNote}</span> : undefined} disabled={locked}
       onDraftChange={setCompleteWhen} />
+    <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} busy={assigning || blocked} error={assignError}
+      onAssign={(sessionId) => void changeAssignment(sessionId, true)} onUnassign={(sessionId) => void changeAssignment(sessionId, false)} />
     {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}
   </TaskModalFrame>;
 }

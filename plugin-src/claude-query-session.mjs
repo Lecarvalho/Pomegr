@@ -9,14 +9,16 @@ import { createTaskBindingProof } from "./task-binding-proof.mjs";
 const MAX_INPUT_BYTES = 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
-const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|update_task|remove_task|complete_task|block_task|get_feature|create_feature|update_feature|delete_feature)$/u;
+const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|update_task|remove_task|assign_task|unassign_task|complete_task|block_task|get_feature|create_feature|update_feature|delete_feature)$/u;
 const WRITE_FIELDS = {
   add_task: ["text", "provider", "model", "effort", "remote_control", "complete_when", "own_condition", "feature"],
   update_task: ["task_id", "text", "provider", "model", "effort", "complete_when", "own_condition"],
   remove_task: ["task_id"],
-  complete_task: ["attention"],
-  block_task: ["reason"],
-  get_feature: ["feature"],
+  assign_task: ["task_id"],
+  unassign_task: ["task_id"],
+  complete_task: ["attention", "task_id"],
+  block_task: ["reason", "task_id"],
+  get_feature: ["feature", "task_id"],
   create_feature: ["title", "description", "app_version"],
   update_feature: ["feature", "title", "description", "app_version"],
   delete_feature: ["feature"],
@@ -26,6 +28,8 @@ const WRITE_DENIED = {
   add_task: "Pomegr could not bind this task to the current session, so it was not added.",
   update_task: "Pomegr could not bind this call to the current session, so no task was changed.",
   remove_task: "Pomegr could not bind this call to the current session, so no task was removed.",
+  assign_task: "Pomegr could not bind this call to the current session, so no task was assigned.",
+  unassign_task: "Pomegr could not bind this call to the current session, so no task was unassigned.",
   complete_task: "Pomegr could not bind this report to the current session, so nothing was reported.",
   block_task: "Pomegr could not bind this report to the current session, so nothing was reported.",
   get_feature: FEATURE_DENIED,

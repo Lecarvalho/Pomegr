@@ -53,7 +53,7 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -197,6 +197,14 @@ export function resolveDesktopTaskDone(repositoryId: string, id: string): Promis
   return sendTaskAction(repositoryId, "resolve_done", { id });
 }
 
+export function assignDesktopTaskSession(repositoryId: string, id: string, sessionId: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "session_assign", { id, sessionId });
+}
+
+export function unassignDesktopTaskSession(repositoryId: string, id: string, sessionId: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "session_unassign", { id, sessionId });
+}
+
 export function requeueDesktopTask(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "resolve_requeue", { id });
 }
@@ -221,6 +229,9 @@ export const QUEUE_ADD_FAILURE_MESSAGE = "The task could not be added to the que
 export const QUEUE_REMOVE_FAILURE_MESSAGE = "The task could not be removed from the queue.";
 export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done.";
 export const REQUEUE_FAILURE_MESSAGE = "The task could not be requeued.";
+export const ASSIGN_FAILURE_MESSAGE = "The session could not be assigned.";
+export const ASSIGN_LIMIT_MESSAGE = "The task or the session holds the most assignments it can.";
+export const UNASSIGN_FAILURE_MESSAGE = "The session could not be unassigned.";
 export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 
 /** One fixed message per feature failure. */

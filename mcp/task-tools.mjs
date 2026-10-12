@@ -6,17 +6,24 @@ export const TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 export const TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
 export const TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
+export const TASK_ASSIGN_PATH = "/api/agent/v1/tasks/assign";
+export const TASK_UNASSIGN_PATH = "/api/agent/v1/tasks/unassign";
 export const TASK_UPDATE_PATH = "/api/agent/v1/tasks/update";
 export const FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
 export const FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
 export const FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
 export const FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
-export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole and no tool reads a task's text back, so set it only when you hold the full text the task should have. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
+export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole and no tool reads a task's text back, so set it only when you hold the full text the task should have. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once per task, and only on a task Pomegr started it for or one assigned to it. Use assign_task when the user asks this session to work on an existing board task it was not started for, such as to resume a task whose first session stopped, then report with complete_task or block_task, naming task_id if the session has more than one task; use unassign_task when the session stops working on that task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
 export const TASK_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.";
 export const TASK_REPORT_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the report was recorded. It may have been: do not assume it failed. Calling the same tool once more is safe, because a task takes one report; if the answer is that this session already reported, the first report stands.";
 export const TASK_REMOVE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was removed. It may have been: do not assume it failed. Calling remove_task once more with the same task ID is safe; if the answer is that no task was removed, the first call removed it or it could not be removed.";
+
+export const TASK_ASSIGN_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was assigned.";
+export const TASK_UNASSIGN_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was unassigned.";
+export const TASK_ASSIGN_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was assigned. It may have been: do not assume it failed. Calling assign_task once more with the same task ID is safe, because assigning a task again changes nothing.";
+export const TASK_UNASSIGN_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was unassigned. It may have been: do not assume it failed. Calling unassign_task once more with the same task ID is safe; if the answer is that this session is not assigned, the first call removed the assignment or there was none.";
 
 const noAnswer = (error) => error instanceof Error && error.message === AGENT_TASK_NO_ANSWER;
 
@@ -95,7 +102,8 @@ const CHECK_LABELS = {
 };
 const REPORT_REASON_TEXT = {
   invalid: "Pomegr rejected the report as invalid, so nothing was reported.",
-  not_found: "No Pomegr task is linked to this session, so nothing was reported.",
+  not_found: "No Pomegr task is linked to this session, or the task named is not one of its tasks, so nothing was reported.",
+  task_required: "This session has more than one task, so nothing was reported. Call the tool again with task_id set to the task you are reporting on.",
   already_reported: "This session already reported on its task, so nothing changed.",
   stalled: "Pomegr marked this task Stalled, because it read this session as ended before any report, so nothing was reported. Only the user can change that, with Mark done or Requeue on the board. Tell the user what you finished, and do not report again.",
   unavailable: "Pomegr is unavailable, so nothing was reported.",
@@ -108,6 +116,24 @@ const REMOVE_REASON_TEXT = {
   not_found: "No task was removed. This session can remove only a task it added itself that has not started.",
   unavailable: "Pomegr is unavailable, so no task was removed.",
 };
+
+const ASSIGN_REASON_TEXT = {
+  invalid: "Pomegr rejected the request as invalid, so no task was assigned.",
+  session_not_found: "Pomegr does not know the current session yet, so no task was assigned.",
+  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was assigned.",
+  not_found: "No task was assigned. A session can be assigned only to a task on its own repository's board.",
+  conflict: "No task was assigned. A task that is done cannot be assigned, and this session already reports the task Pomegr started it for.",
+  limit: "No task was assigned. A task holds at most 16 assigned sessions, and a session can be assigned to at most 16 tasks.",
+  unavailable: "Pomegr is unavailable, so no task was assigned.",
+};
+const UNASSIGN_REASON_TEXT = {
+  invalid: "Pomegr rejected the request as invalid, so no task was unassigned.",
+  session_not_found: "Pomegr does not know the current session yet, so no task was unassigned.",
+  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was unassigned.",
+  not_found: "No task was unassigned. This session can unassign only a task it is assigned to.",
+  unavailable: "Pomegr is unavailable, so no task was unassigned.",
+};
+const taskIdSchema = z.string().regex(/^T-[1-9][0-9]{0,8}$/u, "Use a task ID such as T-12.");
 
 const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u;
 const TEXT_LINES = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]*$/u;
@@ -128,11 +154,12 @@ const FEATURE_REASON_TEXT = {
   invalid: "Pomegr rejected the request as invalid, so no feature was read or changed.",
   session_not_found: "Pomegr does not know the current session yet, so no feature was read or changed.",
   repository_unavailable: "Pomegr could not resolve the current session's repository, so no feature was read or changed.",
+  task_required: "This session has more than one task, so no feature was read. Call get_feature again with task_id set to the task whose feature you want, or name the feature.",
   limit: "The board holds as many features as it can, so no feature was created.",
   unavailable: "Pomegr is unavailable, so no feature was read or changed.",
 };
 const FEATURE_NOT_FOUND_TEXT = {
-  get_feature: "No such feature on the board. Without an input, get_feature reads the feature of the task this session was started for, and this session has none.",
+  get_feature: "No such feature on the board. Without a feature, get_feature reads the feature of the task this session was started for or is assigned to, and that task has none; a task_id must name one of this session's tasks.",
   update_feature: "No such feature on the board, so nothing was changed.",
   delete_feature: "No such feature on the board, so nothing was deleted.",
 };
@@ -141,6 +168,8 @@ const FEATURE_CONFLICT_TEXT = {
   update_feature: "Another feature already has that title, so nothing was changed.",
   delete_feature: "The feature still has tasks, so it was not deleted. Only a feature with no task can be deleted.",
 };
+
+const optionalTaskId = taskIdSchema.optional().describe("Optional. ID of the task, such as T-12. Needed only when this session has more than one task: the one Pomegr started it for and tasks assigned to it.");
 
 const featureReference = (optional) => {
   const schema = z.string().trim().min(1).max(80).regex(ONE_LINE, "Use one line of plain text.");
@@ -263,7 +292,44 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     return result(text, true);
   });
 
-  // Both report tools act only on the task linked to the bound session; neither takes a task or repository input.
+  const assignment = (tool, path, unboundText, noAnswerText, reasons, done) => async (input, extra) => {
+    const ref = await resolveSession(input, extra, tool);
+    if (typeof ref !== "string" || !ref) return result(unboundText, true);
+    let answer;
+    try {
+      answer = await post(path, { sessionRef: ref, taskId: input.task_id });
+    } catch (error) {
+      return result(noAnswer(error) ? noAnswerText : reasons.unavailable, true);
+    }
+    if (answer && answer.ok === true) return result(done(input.task_id), false);
+    const text = answer && answer.ok === false && typeof answer.reason === "string" && Object.hasOwn(reasons, answer.reason)
+      ? reasons[answer.reason] : reasons.unavailable;
+    return result(text, true);
+  };
+
+  server.registerTool("assign_task", {
+    title: "Assign a Pomegr task to this session",
+    description: "Assign a task of the current repository's Pomegr board to this session, so this session can report it with complete_task or block_task and read its feature with get_feature. It works for any task of the board that is not done, including one that already has a session and one that has not started. It changes no state, column, or queue place and starts nothing. The first report on a task wins. A session can be assigned to several tasks and a task can hold several sessions; assigning the same task again changes nothing. The repository and session are bound by the host; the only input is the task ID.",
+    inputSchema: z.object({
+      task_id: taskIdSchema.describe("ID of the task to assign to this session, such as T-12."),
+      ...hookFields(hookBound),
+    }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, assignment("assign_task", TASK_ASSIGN_PATH, TASK_ASSIGN_UNBOUND_TEXT, TASK_ASSIGN_NO_ANSWER_TEXT, ASSIGN_REASON_TEXT,
+    (taskId) => `Task ${taskId} assigned to this session. Report it with complete_task or block_task, naming task_id if this session has more than one task.`));
+
+  server.registerTool("unassign_task", {
+    title: "Unassign a Pomegr task from this session",
+    description: "Remove this session's own assignment to a task, such as when the session stops working on it. It removes only this session's assignment: other sessions of the task, the task's state, and its column stay as they are. It does not touch the task Pomegr started this session for. The repository and session are bound by the host; the only input is the task ID.",
+    inputSchema: z.object({
+      task_id: taskIdSchema.describe("ID of the task to unassign from this session, such as T-12."),
+      ...hookFields(hookBound),
+    }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, assignment("unassign_task", TASK_UNASSIGN_PATH, TASK_UNASSIGN_UNBOUND_TEXT, TASK_UNASSIGN_NO_ANSWER_TEXT, UNASSIGN_REASON_TEXT,
+    (taskId) => `Task ${taskId} unassigned from this session.`));
+
+  // Both report tools act on a task of the bound session: the one Pomegr started it for, or one assigned to it. They take no repository input.
   const report = async (path, ref, body, done) => {
     if (typeof ref !== "string" || !ref) return result(TASK_REPORT_UNBOUND_TEXT, true);
     let answer;
@@ -283,14 +349,15 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("complete_task", {
     title: "Report the Pomegr task complete",
-    description: "Report that the task Pomegr started this session for is complete. Pomegr then verifies the conditions the user checked and puts the task in Review with each result; only the user marks it done. Set attention only when the work is finished but something needs the user's attention, such as a choice you made for them or a follow-up they must do; leave it out otherwise. A task in Review does not hold the queue; when the work that follows must not start, call block_task instead. The session is bound by the host, and each session reports once.",
+    description: "Report that the task Pomegr started this session for, or a task assigned to this session, is complete. Pomegr then verifies the conditions the user checked and puts the task in Review with each result; only the user marks it done. Set attention only when the work is finished but something needs the user's attention, such as a choice you made for them or a follow-up they must do; leave it out otherwise. A task in Review does not hold the queue; when the work that follows must not start, call block_task instead. The session is bound by the host, and each session reports once per task, and the first report on a task wins. Name task_id only when this session has more than one task.",
     inputSchema: z.object({
+      task_id: optionalTaskId,
       attention: z.string().trim().min(1).max(200).regex(ONE_LINE, "Use one line of plain text.").optional()
         .describe("Optional. What in the finished work needs the user's attention, in one line of at most 200 characters. No secrets, commands, or output."),
       ...hookFields(hookBound),
     }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async (input, extra) => report(TASK_COMPLETE_PATH, await resolveSession(input, extra, "complete_task"), input.attention === undefined ? {} : { attention: input.attention }, (answer) => {
+  }, async (input, extra) => report(TASK_COMPLETE_PATH, await resolveSession(input, extra, "complete_task"), { ...(input.task_id === undefined ? {} : { taskId: input.task_id }), ...(input.attention === undefined ? {} : { attention: input.attention }) }, (answer) => {
     // A monitor from before every report went to Review still answers `done`.
     if (answer.state === "done") return "Task reported complete. Pomegr marked it done.";
     if (answer.state !== "needs_review") return null;
@@ -324,10 +391,11 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("get_feature", {
     title: "Read a Pomegr feature",
-    description: "Read one feature of the current repository's Pomegr board: its ID, title, description, and app version. The description holds the context the feature's tasks share. With no input it reads the feature of the task Pomegr started this session for. It changes nothing. The repository and session are bound by the host.",
-    inputSchema: z.object({ feature: featureReference(true), ...hookFields(hookBound) }).strict(),
+    description: "Read one feature of the current repository's Pomegr board: its ID, title, description, and app version. The description holds the context the feature's tasks share. With no feature it reads the feature of the task Pomegr started this session for or of a task assigned to it; name task_id only when this session has more than one task, and never together with feature. It changes nothing. The repository and session are bound by the host.",
+    inputSchema: z.object({ feature: featureReference(true), task_id: optionalTaskId, ...hookFields(hookBound) }).strict()
+      .refine((value) => value.feature === undefined || value.task_id === undefined, "Name a feature or a task_id, not both."),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async (input, extra) => feature("get_feature", FEATURE_GET_PATH, input, extra, input.feature === undefined ? {} : { feature: input.feature },
+  }, async (input, extra) => feature("get_feature", FEATURE_GET_PATH, input, extra, { ...(input.feature === undefined ? {} : { feature: input.feature }), ...(input.task_id === undefined ? {} : { taskId: input.task_id }) },
     (answer) => (servedFeature(answer.feature) ? formatFeature(answer.feature) : null)));
 
   server.registerTool("create_feature", {
@@ -373,13 +441,14 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("block_task", {
     title: "Report the Pomegr task blocked",
-    description: "Report that you cannot continue the task Pomegr started this session for, with a short reason the user will read. The task is marked blocked until the user resolves it. The session is bound by the host, and each session reports once.",
+    description: "Report that you cannot continue the task Pomegr started this session for, or a task assigned to this session, with a short reason the user will read. The task is marked blocked until the user resolves it. The session is bound by the host, and each session reports once per task. Name task_id only when this session has more than one task.",
     inputSchema: z.object({
+      task_id: optionalTaskId,
       reason: z.string().trim().min(1).max(200).regex(ONE_LINE, "Use one line of plain text.")
         .describe("Why the task cannot continue, in one line of at most 200 characters. No secrets, commands, or output."),
       ...hookFields(hookBound),
     }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async (input, extra) => report(TASK_BLOCK_PATH, await resolveSession(input, extra, "block_task"), { reason: input.reason },
+  }, async (input, extra) => report(TASK_BLOCK_PATH, await resolveSession(input, extra, "block_task"), { ...(input.task_id === undefined ? {} : { taskId: input.task_id }), reason: input.reason },
     (answer) => (answer.state === "blocked" ? "Task reported as blocked. The user will resolve it." : null)));
 }

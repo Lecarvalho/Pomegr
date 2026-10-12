@@ -485,7 +485,7 @@ clear it. A schedule never stops, pauses, or touches a running session.
 
 ## What agents report
 
-The plugin gives agents nine task tools. Each call is tied to the calling session by
+The plugin gives agents eleven task tools. Each call is tied to the calling session by
 the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md) lists
 these tools with the plugin's reporting and query tools.
 
@@ -494,9 +494,11 @@ these tools with the plugin's reporting and query tools.
 | `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which puts the task in a new last step. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
 | `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, or **Complete when**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
-| `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
+| `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](#assign-a-session-to-a-task). |
+| `unassign_task` | Removes the session's own assignment from a task. It needs plugin 0.9.8 or later. |
+| `complete_task` | Reports the work done on the task the session was started for, or on a task it is assigned to. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
-| `get_feature` | Reads one feature of the board: its ID, title, description, and app version. The agent names the feature by its ID or its exact title. With no input, it reads the feature of the task the session was started for. It changes nothing. |
+| `get_feature` | Reads one feature of the board: its ID, title, description, and app version. The agent names the feature by its ID or its exact title. With no input, it reads the feature of the session's task. It changes nothing. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. A title that another feature has is refused. |
 | `update_feature` | Changes the title, description, or app version of a feature. A field the agent leaves out stays as it is. It changes no task. |
 | `delete_feature` | Deletes a feature that has no task. A feature that still has tasks is refused, so no task loses its feature or its step. It cannot be undone. |
@@ -507,7 +509,7 @@ approval, because it only reads the session's own board. The three tools that ch
 a feature ask for your approval like the other task tools.
 
 `complete_task` and `block_task` act only on the task linked to the calling
-session. In Claude Code, the coding tool ties each call to its session; if Claude
+session and on the tasks that session is assigned to. In Claude Code, the coding tool ties each call to its session; if Claude
 Code hooks are off or the hook times out, an agent's add, update, remove, complete, block, or feature call is
 refused and nothing is added, removed, reported, read, or changed. When Claude Code asks you to approve such
 a call, you have up to ten minutes to do so; after that the call is refused and the
@@ -575,6 +577,46 @@ tasks it did not add. To delete one of them, use **Delete task** in the desktop 
 A removal cannot be undone, and the task number is not used again. The task's images
 are deleted with it. If the queue was blocked at that task, the queue resumes.
 
+## Assign a session to a task
+
+Pomegr links a task to the session that it starts for the task. You can also assign
+other sessions to a task, such as a session that you start by hand to continue the
+work after the first session stopped. A task can have many assigned sessions, and a
+session can be assigned to many tasks.
+
+An assignment is only a marker. It does not change the state, the column, or the
+queue place of the task. It does not start, stop, or change a session. The queue can
+still start its own session for the task, so remove the task from the queue if you do
+not want that.
+
+To let the agent assign its own session, ask it to assign itself to the task, for
+example "assign this session to T-12". The agent calls `assign_task`. It can assign
+itself only to a task of its own repository's board that is not **Done**.
+
+To assign a session yourself, in the desktop app or on a paired phone:
+
+1. Open the task.
+2. Under **Sessions**, choose a session. The list shows the ten newest sessions of
+   the repository that are not closed.
+3. Select **Assign session**. The session appears in the list as **Assigned**.
+
+To remove an assignment, select **Unassign** on the row of the session. You cannot
+unassign the session that Pomegr started.
+
+An assigned session can report the task with `complete_task` or `block_task`:
+
+- The first report on a task wins. A later report from another session changes
+  nothing.
+- An assigned session can report a **Stalled** task. The task then goes to
+  **Review**, or becomes **Blocked by agent**.
+- Pomegr verifies **Complete when** on the repository and the branch of the session
+  that reports.
+- A session with more than one task names the task in its report.
+- **Requeue task** keeps the assigned sessions.
+
+The card shows **Open session** for the first session, and **+1 more** for each
+other one. The card state still follows only the session that Pomegr started.
+
 ## See a task from Sessions
 
 On a same-computer browser or the desktop app, tasks show up beside the sessions
@@ -584,8 +626,9 @@ started for them. Other devices see none of it.
   [GitHub issue](github-issues.md) if it has one, its feature and
   step, and a chip only for **Needs review**, **Stalled**, or **Done**. **Group
   by** **Feature** and the **Feature** chip filter are described in
-  [Sessions and agents](sessions-and-agents.md#find-a-session). A dash means you
-  started the session yourself.
+  [Sessions and agents](sessions-and-agents.md#find-a-session). A session that is
+  assigned to tasks shows them after the word **Assigned**. A dash means that the
+  session has no task.
 - **Session view.** The header shows the task, feature, and step. The **Overview**
   tab has a compact **Task** row whose heading opens the **Task** tab, the last
   tab. It is read-only. It shows the task text, the planned and observed model, the

@@ -65,6 +65,8 @@ afterEach(() => {
 // The modal's dialog is named by its h2 alone ("Task"); the task ID is a sibling span in the header.
 const panel = () => screen.queryByRole("dialog", { name: "Task" });
 const card = (title: string) => screen.getByRole("button", { name: title });
+// The Sessions rows repeat the started session's title and state, so the header and the title line are read by their own element.
+const header = () => within(document.querySelector(".taskModalHeader") as HTMLElement);
 const save = (dialog: ReturnType<typeof within>) => dialog.getByRole("button", { name: "Save" });
 async function openReviewPanel(user: ReturnType<typeof userEvent.setup>) {
   await user.click(card("Task store and privacy rules"));
@@ -118,7 +120,7 @@ describe("Task modal, mode edit", () => {
     expect(dialog.getByText("T-12")).toBeInTheDocument();
     expect(dialog.getByText("Needs review")).toHaveClass("commandChip");
     expect(dialog.getByRole("heading", { level: 2, name: "Task" })).toBeInTheDocument();
-    expect(dialog.getByText("Task store and privacy rules")).toHaveClass("taskModalSessionTitle");
+    expect(dialog.getByText("Task store and privacy rules", { selector: ".taskModalSessionTitle" })).toBeInTheDocument();
     expect(dialog.getByText(/Title from the session/)).toBeInTheDocument();
     expect(dialog.getByText("in Backlog")).toHaveClass("taskModalSubtitle");
     expect(dialog.getByRole("link", { name: "Open session" })).toHaveAttribute("href", expect.stringMatching(/^\/sessions\//));
@@ -202,7 +204,7 @@ describe("Task modal, mode edit", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Session title"));
     let dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(dialog.getByText("Session title")).toHaveClass("taskModalSessionTitle");
+    expect(dialog.getByText("Session title", { selector: ".taskModalSessionTitle" })).toBeInTheDocument();
     expect(dialog.getByText(/^Title from the session ·$/)).toBeInTheDocument();
     expect(dialog.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/claude-s5");
     expect(dialog.getByRole("link", { name: "Open session" })).toHaveClass("commandTextLink");
@@ -232,7 +234,7 @@ describe("Task modal, mode edit", () => {
     const view = render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Chip session"));
     let dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(dialog.getByText("Needs input")).toHaveClass("commandChip", "warning");
+    expect(header().getByText("Needs input")).toHaveClass("commandChip", "warning");
     expect(dialog.queryByText("Queued")).not.toBeInTheDocument();
     view.unmount();
 
@@ -240,16 +242,16 @@ describe("Task modal, mode edit", () => {
     const unknown = render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Chip session"));
     dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(dialog.getByText("Queued")).toHaveClass("commandChip");
-    expect(dialog.queryByText("Unknown")).not.toBeInTheDocument();
+    expect(header().getByText("Queued")).toHaveClass("commandChip");
+    expect(header().queryByText("Unknown")).not.toBeInTheDocument();
     unknown.unmount();
 
     setBoard([task(5, { state: "done", session: session("working") })]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Chip session"));
     dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(dialog.getByText("Done")).toHaveClass("commandChip");
-    expect(dialog.queryByText("In progress")).not.toBeInTheDocument();
+    expect(header().getByText("Done")).toHaveClass("commandChip");
+    expect(header().queryByText("In progress")).not.toBeInTheDocument();
   });
 
   it("cannot start a session again for a task that already has one", async () => {
@@ -580,7 +582,7 @@ describe("Task modal resolutions", () => {
       session: { id: "claude:abc125", title: null, state: "closed", observedModel: null } })]);
     const { user, dialog } = await open("Stalled work");
     expect(dialog.getByText("Stalled")).toHaveClass("commandChip", "warning");
-    expect(dialog.queryByText("Closed")).not.toBeInTheDocument();
+    expect(header().queryByText("Closed")).not.toBeInTheDocument();
     expect(dialog.getByText("The session ended with no report.")).toBeInTheDocument();
     expect(dialog.queryByText(/Agent reported/u)).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
@@ -637,7 +639,7 @@ describe("Task modal resolutions", () => {
     const done = dialog.getByRole("button", { name: "Mark done" });
     const requeue = dialog.getByRole("button", { name: "Requeue task" });
     // The session's own state stays on the chip; both exits are secondary so Start session keeps the one primary role.
-    expect(dialog.getByText("In progress")).toHaveClass("commandChip");
+    expect(header().getByText("In progress")).toHaveClass("commandChip");
     expect(done).toHaveClass("commandSecondaryAction");
     expect(requeue).toHaveClass("commandSecondaryAction");
     expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();

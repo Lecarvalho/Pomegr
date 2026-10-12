@@ -259,11 +259,16 @@ Each row below the title shows only when it is set, in this order:
 - The feature line “Feature · step k of n”, on a card that is not in a Ready group.
 - When other tasks share the step, the line opens with the muted 12px parallel glyph, named “Parallel”, and a 6px gap.
 - That line then ends “ · parallel with T-55, T-57”: the other tasks of the step, in any lane, by number, in the data font.
-- **Open session**, a Text link that is not stretched.
+- The sessions line: **Open session**, a Text link that is not stretched, for the first session.
+- The first session is the one Pomegr started, or else the first assigned session.
+- When the task has more sessions, the muted “+N more” follows the link.
+- When Pomegr started none, the muted word “Assigned” ends the line.
+- The line is 12px text in a wrapping row with an 8px gap.
 
 ### States
 
 - The border turns green while the bound session works.
+- An assigned session never changes the chip or the border.
 - The border turns amber for Needs review, Stalled, and Blocked by agent.
 
 ## State chips
@@ -463,7 +468,10 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 - The ID stays the one prominent identifier.
 - Assistive technology reads “GitHub issue #128”.
 - The issue number sits before the outcome chip.
-- A session that you started shows an em dash.
+- A session that is assigned to one task, and started for none, shows that task in the same form with the muted word “Assigned”.
+- Any other assigned tasks are one line: the muted word “Assigned”, then each task ID as a Text link to its board.
+- That line has no chip and no feature line, and it follows the started task.
+- A session with no task shows an em dash.
 - One muted footnote under the table explains the column.
 - Grouping by **Feature** is the fourth Group by option. It lists only sessions started for a feature's task.
 
@@ -534,6 +542,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - Under **Queue controls**: the queue switch (off, on, busy), the banner (blocked, paused, browser), and the Queue settings panel (desktop app, browser).
 - Under **Start gates and schedule**: the Start gates and Schedule sections in each state.
 - The Sessions list Task cell.
+- Under **Assigned sessions**: the card's sessions line, the Task modal's Sessions block, and the Task cell of an assigned session.
 
 The session header meta, the Overview Task panel, and the Task tab read the board through the task store. This page specifies them, and `/design-system` does not render them.
 

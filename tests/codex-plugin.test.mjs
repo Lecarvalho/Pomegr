@@ -133,6 +133,7 @@ test("installed Codex plugin starts without repository dependencies and lists bo
     const tools = await readMcpToolInventory(path.join(installedPlugin, "mcp", "server.bundle.mjs"), runtimeCwd);
     assert.deepEqual(tools.map((tool) => tool.name).sort(), [
       "add_task",
+      "assign_task",
       "block_task",
       "clear_agent_signal",
       "clear_session_progress",
@@ -153,6 +154,7 @@ test("installed Codex plugin starts without repository dependencies and lists bo
       "report_session_progress",
       "report_session_signal",
       "report_task_signal",
+      "unassign_task",
       "update_feature",
       "update_task",
     ]);

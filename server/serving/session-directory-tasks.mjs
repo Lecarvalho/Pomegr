@@ -10,8 +10,12 @@ export function validFeatureQuery(value) {
   return value === "" || FEATURE_ID.test(value);
 }
 
-function withTasks(sessions, references) {
-  return sessions.map((session) => ({ ...session, task: references.get(session.id) ?? null }));
+// `assignedTasks` is present only on a session that is assigned to a task.
+function withTasks(sessions, references, assigned) {
+  return sessions.map((session) => {
+    const tasks = assigned?.get(session.id);
+    return { ...session, task: references.get(session.id) ?? null, ...(tasks ? { assignedTasks: tasks } : {}) };
+  });
 }
 
 // `query` is the validated catalog query.
@@ -42,12 +46,14 @@ export function serveSessionDirectoryWithTasks({ runtime, taskStore = null, allo
   }
 
   const groups = Array.isArray(page.groups) ? page.groups : [];
-  const references = taskStore.sessionTasks([...page.sessions, ...groups.flatMap((group) => group.sessions)].map((session) => session.id));
+  const sessionIds = [...page.sessions, ...groups.flatMap((group) => group.sessions)].map((session) => session.id);
+  const references = taskStore.sessionTasks(sessionIds);
   if (!references) return { ...page, taskReadiness: "unavailable" };
+  const assigned = typeof taskStore.sessionAssignedTasks === "function" ? taskStore.sessionAssignedTasks(sessionIds) : null;
   return {
     ...page,
-    sessions: withTasks(page.sessions, references),
-    ...(Array.isArray(page.groups) ? { groups: page.groups.map((group) => ({ ...group, sessions: withTasks(group.sessions, references) })) } : {}),
+    sessions: withTasks(page.sessions, references, assigned),
+    ...(Array.isArray(page.groups) ? { groups: page.groups.map((group) => ({ ...group, sessions: withTasks(group.sessions, references, assigned) })) } : {}),
     ...(feature ? { feature: featureLabel } : {}),
     taskReadiness: "ready",
   };

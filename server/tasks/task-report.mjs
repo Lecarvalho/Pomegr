@@ -1,27 +1,56 @@
-// The agent's report on the task its session was started for, and the user's two resolutions.
+// The agent's report on a task of its session (the one it was started for, or one it is assigned to), and the user's two resolutions.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { sessionAssignedTasks } from "./task-assignments.mjs";
 import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
-import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
+import { IN_FLIGHT_STATES, isTaskId, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
-export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "stalled", "unavailable"]);
+export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "task_required", "already_reported", "stalled", "unavailable"]);
 
 const UNRESOLVED_STATES = Object.freeze(["needs_review", "stalled", "blocked"]);
 const QUEUE_HOLDING_STATES = Object.freeze(["stalled", "blocked"]);
 
-const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "object" && !Array.isArray(payload)
-  && Object.keys(payload).length === keys.length && keys.every((key) => Object.hasOwn(payload, key));
+// A report names its session, optionally one task of that session, and the keys of its kind.
+const reportInput = (payload, required, optional = []) => payload !== null && typeof payload === "object" && !Array.isArray(payload)
+  && ["sessionId", ...required].every((key) => Object.hasOwn(payload, key))
+  && Object.keys(payload).every((key) => key === "sessionId" || key === "taskId" || required.includes(key) || optional.includes(key))
+  && isTaskSessionId(payload.sessionId) && (payload.taskId === undefined || isTaskId(payload.taskId));
 
 const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT * FROM tasks WHERE session_id = ?").get(sessionId);
+const taskRow = (database, repositoryId, number) => preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number);
+const sameTask = (left, right) => left.repository_id === right.repository_id && Number(left.number) === Number(right.number);
 
-const reportable = (row) => IN_FLIGHT_STATES.includes(row.state) && (row.report_at ?? null) === null;
+// The tasks a session may report: the one Pomegr started it for, then the ones it is assigned to.
+function sessionRows(database, sessionId) {
+  const linked = linkedRow(database, sessionId);
+  const rows = linked ? [linked] : [];
+  for (const assigned of sessionAssignedTasks(database, sessionId)) {
+    const row = taskRow(database, assigned.repositoryId, assigned.number);
+    if (row && !rows.some((entry) => sameTask(entry, row))) rows.push(row);
+  }
+  return rows;
+}
 
-// Why a linked task takes no report: Pomegr stalled it before any report, or it has an outcome.
-const refusal = (row) => (row?.state === "stalled" && (row.report_at ?? null) === null ? "stalled" : "already_reported");
+// The one task a report is about: the named one, or the session's only task.
+function reportTarget(database, sessionId, taskId) {
+  const rows = sessionRows(database, sessionId);
+  const named = taskId === undefined ? rows : rows.filter((row) => taskIdFromNumber(Number(row.number)) === taskId);
+  if (named.length === 0) return { error: "not_found" };
+  return named.length === 1 ? { row: named[0] } : { error: "task_required" };
+}
+
+const unreported = (row) => (row.report_at ?? null) === null;
+// The first report on a task wins. An assigned session may also report a task Pomegr stalled: its first session ended
+// with no report, and the assigned session is the one that resumed the work.
+const reportable = (row, sessionId) => unreported(row)
+  && (IN_FLIGHT_STATES.includes(row.state) || (row.state === "stalled" && row.session_id !== sessionId));
+
+// Why a task takes no report: Pomegr stalled it before any report from the session it started, or it has an outcome.
+const refusal = (row) => (row?.state === "stalled" && unreported(row) ? "stalled" : "already_reported");
 
 export function blockQueue(database, repositoryId, taskId) {
   preparedStatement(database, "UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = ? WHERE repository_id = ? AND queue_status = 'running'")
@@ -39,67 +68,70 @@ export function releaseQueue(database, repositoryId) {
 }
 
 function storeReport(database, row, { state, at, results, blockReason, attention = null }) {
-  const written = preparedStatement(database, `UPDATE tasks SET state = ?, queue_position = NULL, report_at = ?, report_results = ?, report_block_reason = ?, updated_at = ?
-    WHERE repository_id = ? AND number = ? AND session_id = ? AND report_at IS NULL`)
-    .run(state, at, JSON.stringify(results), blockReason, at, row.repository_id, row.number, row.session_id);
+  // A task an assigned session reports before any session linked keeps no dispatch: a start still in flight links nothing.
+  const written = preparedStatement(database, `UPDATE tasks SET state = ?, queue_position = NULL, dispatch_token = NULL, report_at = ?, report_results = ?, report_block_reason = ?, updated_at = ?
+    WHERE repository_id = ? AND number = ? AND report_at IS NULL`)
+    .run(state, at, JSON.stringify(results), blockReason, at, row.repository_id, row.number);
   if (Number(written.changes) !== 1) return false;
   if (attention === null) deleteTaskAttention(database, row.repository_id, Number(row.number));
   else writeTaskAttention(database, row.repository_id, Number(row.number), attention);
   if (state === "needs_review") moveTaskToRole(database, row.repository_id, Number(row.number), "review");
   if (QUEUE_HOLDING_STATES.includes(state)) blockQueue(database, row.repository_id, taskIdFromNumber(Number(row.number)));
+  // A stalled task that is now reported complete holds the queue no longer.
+  else if (row.state === "stalled") releaseQueue(database, row.repository_id);
   return true;
 }
 
-export function reportableChecks({ database, sessionId }) {
-  if (!isTaskSessionId(sessionId)) return null;
-  const row = linkedRow(database, sessionId);
-  const task = row && reportable(row) ? normalizeStoredTask(row) : null;
+export function reportableChecks({ database, sessionId, taskId }) {
+  if (!isTaskSessionId(sessionId) || (taskId !== undefined && !isTaskId(taskId))) return null;
+  const { row } = reportTarget(database, sessionId, taskId);
+  const task = row && reportable(row, sessionId) ? normalizeStoredTask(row) : null;
   return task ? [...task.completeWhen.checks] : null;
 }
 
-// `complete`: the bound session reports its task complete.
+// Stores a report on the task the earlier read chose, if it is still that session's task and still takes a report.
+function storeFresh({ database, transaction, payload, row }, report) {
+  let fresh = null;
+  const stored = transaction(() => {
+    fresh = sessionRows(database, payload.sessionId).find((entry) => sameTask(entry, row)) ?? null;
+    return fresh !== null && reportable(fresh, payload.sessionId) && storeReport(database, fresh, report);
+  });
+  return stored ? null : fresh === null ? "not_found" : refusal(fresh);
+}
+
+// `complete`: the bound session reports one of its tasks complete.
 export function reportComplete({ database, transaction, payload, resolveFacts, now }) {
-  const noted = hasExactKeys(payload, ["sessionId", "attention"]);
-  if ((!noted && !hasExactKeys(payload, ["sessionId"])) || !isTaskSessionId(payload.sessionId)) return { ok: false, error: "invalid" };
+  if (!reportInput(payload, [], ["attention"])) return { ok: false, error: "invalid" };
+  const noted = Object.hasOwn(payload, "attention");
   const attention = noted ? normalizeBlockReason(payload.attention) : null;
   if (attention === undefined || (noted && attention === null)) return { ok: false, error: "invalid" };
-  const row = linkedRow(database, payload.sessionId);
-  if (!row) return { ok: false, error: "not_found" };
+  const { row, error } = reportTarget(database, payload.sessionId, payload.taskId);
+  if (!row) return { ok: false, error };
   const task = normalizeStoredTask(row);
   if (!task) return { ok: false, error: "unavailable" };
-  if (!reportable(row)) return { ok: false, error: refusal(row) };
+  if (!reportable(row, payload.sessionId)) return { ok: false, error: refusal(row) };
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts() : null; } catch { facts = null; }
   const results = verifyChecks(task.completeWhen.checks, facts);
   const state = "needs_review";
-  let fresh = null;
-  const stored = transaction(() => {
-    fresh = linkedRow(database, payload.sessionId);
-    return Boolean(fresh) && fresh.number === row.number && fresh.repository_id === row.repository_id && reportable(fresh)
-      && storeReport(database, fresh, { state, at: now(), results, blockReason: null, attention });
-  });
-  return stored ? { ok: true, state, results } : { ok: false, error: refusal(fresh) };
+  const refused = storeFresh({ database, transaction, payload, row }, { state, at: now(), results, blockReason: null, attention });
+  return refused === null ? { ok: true, state, results } : { ok: false, error: refused };
 }
 
-// `block`: the bound session reports it cannot continue, with a one-line reason of at most 200 characters.
+// `block`: the bound session reports it cannot continue one of its tasks, with a one-line reason of at most 200 characters.
 export function reportBlock({ database, transaction, payload, now }) {
-  if (!hasExactKeys(payload, ["sessionId", "reason"]) || !isTaskSessionId(payload.sessionId)) return { ok: false, error: "invalid" };
+  if (!reportInput(payload, ["reason"])) return { ok: false, error: "invalid" };
   const reason = normalizeBlockReason(payload.reason);
   if (reason === undefined || reason === null) return { ok: false, error: "invalid" };
-  const row = linkedRow(database, payload.sessionId);
-  if (!row) return { ok: false, error: "not_found" };
+  const { row, error } = reportTarget(database, payload.sessionId, payload.taskId);
+  if (!row) return { ok: false, error };
   if (!normalizeStoredTask(row)) return { ok: false, error: "unavailable" };
-  if (!reportable(row)) return { ok: false, error: refusal(row) };
-  let fresh = null;
-  const stored = transaction(() => {
-    fresh = linkedRow(database, payload.sessionId);
-    return Boolean(fresh) && fresh.number === row.number && fresh.repository_id === row.repository_id && reportable(fresh)
-      && storeReport(database, fresh, { state: "blocked", at: now(), results: [], blockReason: reason });
-  });
-  return stored ? { ok: true, state: "blocked" } : { ok: false, error: refusal(fresh) };
+  if (!reportable(row, payload.sessionId)) return { ok: false, error: refusal(row) };
+  const refused = storeFresh({ database, transaction, payload, row }, { state: "blocked", at: now(), results: [], blockReason: reason });
+  return refused === null ? { ok: true, state: "blocked" } : { ok: false, error: refused };
 }
 
-const awaitingReport = (row) => rowInFlight(row) && reportable(row);
+const awaitingReport = (row) => rowInFlight(row) && unreported(row);
 
 function unresolvedTask(database, repositoryId, payload) {
   const input = normalizeQueueTaskPayload(payload);
