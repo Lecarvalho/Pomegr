@@ -2644,8 +2644,8 @@ pending work. This lets the shared browser usage store leave its initial one-sec
 polling cadence. Codex presents **Codex CLI required for usage limits** and expanded
 setup help. Account-read failures and successful responses with no windows show sign-in
 and connectivity guidance; retained figures do not hide failures. Healthy readings
-remove the helper. Native CLI detection remains process-scoped, so installing or
-updating it requires fully quitting and reopening Pomegr.
+remove the helper. Failed Codex CLI detection retries through background usage checks after a sixty-second cooldown.
+Concurrent checks share one detection attempt. Successful detection remains cached for the monitor process.
 
 This is a normalized failure/readiness presentation change. Provider acquisition stays
 in background work, GETs serve committed caches, revisions and last-known-good values

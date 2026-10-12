@@ -12,6 +12,7 @@ export const CODEX_MODEL_LIST_MAX_PAGES = 4;
 export const CODEX_MODEL_LIST_MAX_ITEMS = 128;
 
 const VERSION_TIMEOUT_MS = 2_000;
+const EXECUTABLE_RETRY_MS = 60_000;
 const EXIT_GRACE_MS = 400;
 const WINDOWS_STORE_DIRECTORY = /[\\/]WindowsApps[\\/]/i;
 const WINDOWS_DESKTOP_DIRECTORY = /[\\/]AppData[\\/]Local[\\/]Programs[\\/]Codex(?:[\\/]|$)/i;
@@ -285,18 +286,22 @@ async function requestAccountRead(executable, {
 export function createCodexAppServerRateLimitsReader(options = {}) {
   const spawnFn = options.spawnFn || spawn;
   const resolver = options.resolveExecutable || (() => resolveCodexAppServerExecutable(options));
+  const now = options.now || Date.now;
   let validation = null;
+  let retryAt = Infinity;
 
   async function executable() {
+    if (validation && now() >= retryAt) validation = null;
     if (!validation) validation = (async () => {
+      retryAt = Infinity;
       try {
         const candidate = await resolver();
-        return candidate && await verifyExecutable(candidate, { spawnFn, env: options.env, timeoutMs: options.versionTimeoutMs })
-          ? candidate
-          : null;
+        if (candidate && await verifyExecutable(candidate, { spawnFn, env: options.env, timeoutMs: options.versionTimeoutMs })) return candidate;
       } catch {
-        return null;
+        // Missing installations and transient startup failures can recover.
       }
+      retryAt = now() + EXECUTABLE_RETRY_MS;
+      return null;
     })();
     return validation;
   }
