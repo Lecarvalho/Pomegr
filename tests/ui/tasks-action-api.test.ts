@@ -72,16 +72,15 @@ describe("POST /api/tasks/action", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("never turns the queue on, and passes the other queue settings", async () => {
+  it("passes queue on, off, and other settings through the authorized monitor route", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => monitorAnswer({ ok: true }));
-    for (const on of [true, "true", 1, null]) {
-      expect(await (await post({ repositoryId, action: "queue_settings", payload: { on } })).json()).toEqual({ ok: false, error: "unsupported" });
-    }
-    expect(fetchMock).not.toHaveBeenCalled();
-    for (const payload of [{ on: false }, { threshold: 70 }, { schedule: { startAt: null, stopAfter: null } }]) {
+    for (const payload of [{ on: true }, { on: false }, { threshold: 70 }, { schedule: { startAt: null, stopAfter: null } }]) {
       expect(await (await post({ repositoryId, action: "queue_settings", payload })).json()).toEqual({ ok: true });
+      const [url, init] = fetchMock.mock.calls.at(-1)!;
+      expect(url).toBe("http://127.0.0.1:4317/internal/tasks/queue_settings");
+      expect(JSON.parse(String(init?.body))).toEqual({ repositoryId, payload });
     }
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("answers the monitor's fixed error, and unavailable for anything else, never its text", async () => {

@@ -43,7 +43,6 @@ export async function POST(request: Request) {
   const { repositoryId, action, payload } = body;
   const serialized = JSON.stringify(payload);
   if (Buffer.byteLength(serialized, "utf8") > PAYLOAD_MAX_BYTES) return answer({ ok: false, error: "invalid" });
-  if (action === "queue_settings" && Object.hasOwn(payload, "on") && payload.on !== false) return answer({ ok: false, error: "unsupported" });
   try {
     const response = await fetch(`${monitorOrigin()}/internal/tasks/${action}`, {
       method: "POST",

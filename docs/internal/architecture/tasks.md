@@ -1832,11 +1832,10 @@ serves no other client.
   with one of `invalid`, `not_found`, `limit`, `conflict`, `unsupported`, and
   `unavailable`. The board never crosses this route; the device reads it again through
   the GET.
-- **The queue is turned on in the desktop app only.** `queue_settings` with `on` other
-  than `false` answers `unsupported` from the route. Turning the queue on is the consent
-  that lets Pomegr start sessions with no prompt, and it stays a desktop action. A paired
-  device may turn the queue off and set the threshold and the schedule. A task it queues
-  while the queue is on is started by the desktop queue runner like any other.
+- **Queue control.** The owner's request of 2026-10-12 lets a paired device turn the queue on, retry it, or turn it off.
+  Selecting **On** consents to automatic starts by the desktop queue runner, as in the desktop app.
+  The existing `queue_settings` action accepts the same settings and monitor validation as desktop IPC.
+  The device may also set the threshold and schedule. Pomegr must remain open on the computer to start sessions.
 - **Manual start.** The owner's request of 2026-10-12 adds `POST /api/tasks/start`. The desktop gateway handles it directly. It never forwards the request to the web host or exposes a start-plan proxy. Its exact JSON body is `{ repositoryId, taskId, confirmed: true }`, optionally with `worktree: true`. IDs use the existing repository and task patterns. Unknown keys, false flags, and missing confirmation are invalid. The route requires the pairing cookie, the gateway's own `Origin`, and JSON content type. It permits no query or transfer encoding. The declared body must be at most 512 bytes.
 - **Start confirmation.** The phone's browser asks before every manual start and names the task ID and the computer running Pomegr. A separate-worktree confirmation explains that it excludes uncommitted changes. Cancellation sends no request. Desktop main uses the same starter and exclusive launch slot as native IPC and the queue runner. The same manual start gates apply, with no second confirmation on the PC. It revalidates pairing and network authorization before reserving a dispatch, after the plan returns, and immediately before launch. Lost authorization aborts a reserved dispatch. It never stops a session already launched.
 - **Start answer.** The gateway returns only `{ status }` from the fixed `pomegr:task-start` status list, or a fixed HTTP refusal. It never returns a prompt, plan, path, dispatch token, process output, or exception. There is no automatic retry.
@@ -1850,8 +1849,8 @@ serves no other client.
   one and the route only when `/api/client-access` answered `lan`. The start action follows the same availability and confirms on the paired device before posting to its direct start route.
 - **Residual risk.** The gateway serves plain HTTP on the local network, so task content
   and the session cookie cross it unencrypted, as session content already does. Whoever
-  holds a paired device's cookie can change the board, request a manual start, and queue work while the queue is
-  on. The confirmation is an owner-facing UI boundary, not proof against a holder of the cookie. Pairing, its four-device bound, the network checks, and revocation are unchanged.
+  holds a paired device's cookie can change the board, request a manual start, turn the queue on, and queue work.
+  The confirmation is an owner-facing UI boundary, not proof against a holder of the cookie. Pairing, its four-device bound, the network checks, and revocation are unchanged.
   The product owner accepts this risk as part of phone access.
 - **Revocation.** Revoking phone access ends the device's reads and writes at once.
 
@@ -1863,7 +1862,7 @@ serves no other client.
 | `GET /api/tasks?view=home` | The same clients, under the same gate and the same forwarding | The [Tasks home](#tasks-home), `no-store`: for each stored board its five column counts, its count of open features, its queue status with the blocking task's ID and the fixed pause reason, and the time of its newest task change; and for at most 50 tasks that wait for the owner, the repository ID, the task ID, the state, and one title line. A denied client gets `readiness: "desktop_only"` and no content |
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
-| `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board. `queue_settings` that turns the queue on answers `unsupported` |
+| `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds, including queue on and off; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status |
 | `POST /api/tasks/start` | A paired device through the desktop LAN gateway, behind confirmation on that device and repeated authorization checks | `{ repositoryId, taskId, confirmed: true, worktree?: true }`, at most 512 bytes; answers only `{ status }` from the IPC start allowlist; never forwards or exposes a start plan |
@@ -1968,6 +1967,7 @@ serves no other client.
 
 ## Privacy
 
+- A paired device may send queue on and off through the existing authenticated task action route. Only the desktop queue runner launches sessions.
 - A paired manual start sends only the repository ID, task ID, confirmation flag, and optional separate-worktree flag to the desktop gateway. Its answer exposes only a fixed start status. The private plan, prompt, filesystem paths, image files, credentials, and dispatch token stay on the desktop's existing private launch path.
 
 Task text, the own condition, and a feature's name, description, and app version are
