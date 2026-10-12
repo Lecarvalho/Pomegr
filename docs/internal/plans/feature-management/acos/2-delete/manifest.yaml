@@ -1,0 +1,224 @@
+# Composed 2026-10-12 by /acos plan. The workers and slices are a suggestion; the part's orchestrator settles them at the start.
+acos: "0.1"
+id: 2026-10-12-feature-management-2-delete
+part:
+  plan: 2026-10-12-feature-management
+  index: 2
+  of: 2
+  mode: sequential
+  attendance: afk
+  task: T-71
+  base: main
+  after: [1]
+  assumes:
+    - "main holds part 1 (board task T-70): the Feature modal in the modes New feature and Feature, the desktop actions that create and update a feature, and the desktop-only read of its description and app version."
+    - "The Feature modal's edit footer holds a spacer and the primary Save, and no Delete feature action."
+    - "Part 1's pull request body holds its handoff: the final action names, signatures, and anything assumed."
+authorization: "Product owner, 2026-10-12: GO is given. This part runs unattended in the session of board task T-71, commits on that task's branch, and opens one pull request against main; it never merges. Workers do not commit. The pull request body lists the decisions taken and anything assumed."
+intent: In the desktop app the owner deletes a feature from the Feature modal; its tasks stay on the board with no feature, and a feature with a started, unfinished task cannot be deleted.
+design:
+  sources:
+    - docs/internal/plans/feature-management/prototype.html
+  contract: .agents/skills/acos/runs/2026-10-12-feature-management/artifacts/design-contract.md
+scope:
+  include:
+    - server/tasks/
+    - server/serving/task-routes.mjs
+    - desktop/runtime/
+    - app/components/tasks/
+    - app/components/design-system/
+    - tests/server/tasks/
+    - tests/desktop-task-action.test.mjs
+    - tests/ui/
+    - docs/internal/architecture/tasks.md
+    - docs/internal/design/task-modal.md
+    - docs/public/using-pomegr/tasks.md
+    - docs/internal/plans/
+    - docs/internal/README.md
+  notes: "Decisions: docs/internal/plans/feature-management.md. Out of scope: the Queue view, the agent tool delete_feature (it still deletes only a feature with no task). Run artifacts go to .agents/skills/acos/runs/2026-10-12-feature-management/2-delete/ (git-ignored)."
+stages:
+  - name: contract
+    block: contract
+    adapter: inline
+    inputs: [design]
+    outputs: [design-contract]
+    prompt: |
+      Transcribe the delete states of the prototype into numbered lines: the edit
+      footer's idle and confirmation states in section 3, and the three footers of
+      section 4 (no task, tasks and none started, a started and unfinished task), with
+      roles, order and verbatim copy. Write the contract to
+      .agents/skills/acos/runs/2026-10-12-feature-management/artifacts/design-contract.md.
+    check:
+      kind: review
+      criteria: "Each footer state has a line per element with its role, order and verbatim copy."
+    on_fail: retry
+  - name: implement
+    block: implement
+    adapter: subagent
+    provider: anthropic
+    tier: balanced
+    model: claude-sonnet-5-5
+    effort: high
+    inputs: [design-contract]
+    outputs: [implement-notes]
+    owns:
+      - server/tasks/
+      - server/serving/task-routes.mjs
+      - desktop/runtime/task-action.mjs
+      - desktop/runtime/preload.cjs
+      - app/components/tasks/
+      - app/components/design-system/
+      - tests/server/tasks/
+      - tests/desktop-task-action.test.mjs
+      - tests/ui/
+      - docs/internal/architecture/tasks.md
+      - docs/internal/design/task-modal.md
+      - docs/public/using-pomegr/tasks.md
+    prompt: |
+      The user is away: never stop on a doubt; assume, record it, and go on. You work
+      alone in this tree.
+
+      Read docs/internal/plans/feature-management.md, the design contract, AGENTS.md,
+      and in docs/internal/architecture/tasks.md the sections Features and steps,
+      Feature context, Queue, Boundaries and Privacy. Read how part 1 built the desktop
+      feature actions and follow the same path for one more.
+
+      Store and bridge:
+      - a desktop action that deletes a feature by ID, in the fixed action lists part 1
+        used and in no other channel;
+      - in one store write: every task of the feature loses its feature and its step,
+        and the feature, its description and its app version are deleted. A detached
+        task keeps its column, position, state, queue state, schedule and session, and
+        its update time. A queued one is a single task afterwards;
+      - refused with conflict while a task of the feature has started and is not done;
+        "started" is the store's existing rule for a task that can no longer change.
+        An unknown feature, or one of another repository, answers not_found;
+      - a queue pause or block that names a task of the feature stays valid;
+      - the agent store action agent_feature_delete keeps its rule.
+
+      Interface: the Feature modal's edit footer per the contract. Quiet Delete feature
+      first; it swaps in the inline confirmation with a Secondary Delete feature and a
+      Quiet Keep feature, as the task modal does for Delete task, with no native dialog.
+      The line counts the tasks. With a started, unfinished task the action is disabled
+      and one muted line names the task. After a delete the modal closes, the board is
+      read again, a filter that named the feature returns to All, and focus goes to the
+      filter. A failure keeps the modal open with one fixed line.
+
+      Tests: a delete with no task; with tasks in several columns and states, checking
+      every kept field and that no task is dropped or duplicated; with queued tasks,
+      checking the queue order; the refusal; not_found; a refused paired-device call;
+      the footer states and the filter reset. Add the footer states to the
+      /design-system sample and tests/ui/pomegr-design-contract.test.tsx.
+
+      Pages: docs/internal/architecture/tasks.md (the action, and the sentence that the
+      desktop actions have no feature delete), docs/internal/design/task-modal.md (the
+      Feature modal's footer and confirmation), docs/public/using-pomegr/tasks.md.
+
+      Keep every source file under 800 lines. Do not commit. Do not start a provider
+      session. Finish with the contract repeated, each line done <file:line> or
+      deferred: <why>, and one capture line per contract line against
+      http://localhost:3003/design-system. Save it to
+      .agents/skills/acos/runs/2026-10-12-feature-management/2-delete/artifacts/implement-notes.md
+      and end with that path.
+    check:
+      kind: command
+      command: 'node --experimental-strip-types --test "tests/server/tasks/*.test.mjs" && node --test tests/desktop-task-action.test.mjs && npx vitest run tests/ui/task tests/ui/pomegr-design-contract && npm run check:boundaries'
+    on_fail: retry
+    max_iterations: 3
+  - name: verify
+    block: verify
+    adapter: inline
+    check:
+      kind: command
+      command: "npm run verify:fast && npm run build && npm test"
+    on_fail: retry
+    max_iterations: 3
+  - name: evidence
+    block: evidence
+    adapter: subagent
+    provider: anthropic
+    tier: balanced
+    model: claude-sonnet-5-5
+    effort: low
+    inputs: [implement-notes, design-contract]
+    outputs: [try-it]
+    prompt: |
+      Start the dashboard with `npm run dev` in the background when
+      http://localhost:3003 does not answer, and stop it when you finish. Capture every
+      line of the implement notes with `node .agents/skills/acos/scripts/shot.mjs`, into
+      .agents/skills/acos/runs/2026-10-12-feature-management/2-delete/artifacts/shots/,
+      and compare each crop with its contract line. Write
+      .agents/skills/acos/runs/2026-10-12-feature-management/2-delete/artifacts/try-it.md.
+    check:
+      kind: review
+      criteria: "VERDICT: PASS, with every contract line match or deferred by name."
+    on_fail: retry
+    max_iterations: 2
+  - name: review
+    block: review
+    adapter: subagent
+    provider: anthropic
+    tier: strong
+    model: claude-opus-5-5
+    effort: high
+    inputs: [diff, design-contract]
+    outputs: [review-verdict]
+    prompt: |
+      Review this part's working-tree diff, and with it part 1's merged change (find it
+      in the Git history of the Feature modal), against
+      docs/internal/plans/feature-management.md and
+      docs/internal/architecture/tasks.md. Look for: a task dropped, duplicated,
+      reordered, or left pointing at a deleted feature or holding a step with no
+      feature; a delete that passes while a task has started and is not done; a
+      description or an app version in GET /api/tasks, /api/state, or any answer a
+      browser or a paired device receives; a feature action a paired device or the
+      agent chat can reach without the owner; session-derived text in a command line
+      or a path; and a contract line built smaller or with changed copy.
+
+      Save your verdict (PASS or FAIL with each defect as file, line, and failure case)
+      to .agents/skills/acos/runs/2026-10-12-feature-management/2-delete/artifacts/review-verdict.md
+      and end with PASS or FAIL and that path.
+    check:
+      kind: review
+      criteria: "Verdict PASS, or every FAIL defect fixed and re-checked."
+    on_fail: retry
+    max_iterations: 2
+  - name: close-plan
+    block: implement
+    adapter: inline
+    inputs: [review-verdict]
+    outputs: [diff]
+    owns:
+      - docs/internal/plans/feature-management.md
+      - docs/internal/plans/feature-management/
+      - docs/internal/README.md
+    prompt: |
+      Apply the closure steps of docs/STYLE_GUIDE.md (Maintain or retire the artifact)
+      and docs/internal/development/documentation.md: check that each permanent
+      destination holds what the plan decided, then delete
+      docs/internal/plans/feature-management.md and docs/internal/plans/feature-management/
+      and remove the plan's row from docs/internal/README.md. Make no archive copy.
+    check:
+      kind: command
+      command: "npm run check:docs"
+    on_fail: retry
+    max_iterations: 2
+limits:
+  orchestrator_tokens: 120000
+  worker_context_tokens: 200000
+gates:
+  go: required
+estimate:
+  files: 12
+  deliverables: 6
+  calibration: fallback
+  confidence: low
+  orchestrator: { startup_tokens: 40000, work_tokens: 20000, coordination_tokens: 10000, reserved_tokens: 70000, limit: 120000 }
+  workers:
+    - { stage: implement, class: semantic, files: 12, reserved_tokens: 130000, limit: 200000 }
+    - { stage: evidence, class: evidence, reserved_tokens: 60000, limit: 200000 }
+    - { stage: review, class: review, reserved_tokens: 200000, limit: 200000 }
+  aggregate_reserved_tokens: 460000
+  observed_tokens: null
+  agents: 3
+  basis: "No calibration.md. One store action with its allowlist and route keys, one footer state, tests and pages; one worker holds it. Model ids are the aliases' current ids as named by the harness (sonnet: claude-sonnet-5-5, opus: claude-opus-5-5). Reservations, not usage."

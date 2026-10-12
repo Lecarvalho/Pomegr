@@ -1,0 +1,132 @@
+# Composed 2026-10-12 by /acos plan (board task T-59).
+acos: "0.1"
+id: 2026-10-12-feature-management
+created: 2026-10-12
+harness: claude
+mode: sequential
+sessions: 2
+status: planned
+intent: >-
+  In the desktop app the owner creates a feature with a title, a description, and an app
+  version, edits those fields, and deletes a feature, from one Feature modal opened on the
+  Board's filter row.
+authorization: >-
+  Product owner, 2026-10-12: prototype approved, cut and sequential mode approved. Each
+  part runs unattended in the session of its board task (part 1: T-70, part 2: T-71),
+  commits on that task's branch, and opens one pull request against main; it never merges.
+  Workers do not commit.
+brief: docs/internal/plans/feature-management.md
+design:
+  sources:
+    - docs/internal/plans/feature-management/prototype.html
+  contract: .agents/skills/acos/runs/2026-10-12-feature-management/artifacts/design-contract.md
+artifacts: >-
+  The plan and the manifests are tracked here so a task worktree holds them. Everything a
+  run writes (the settled manifest copy, log.yaml, artifacts, handoff) goes to the
+  git-ignored .agents/skills/acos/runs/2026-10-12-feature-management/<part dir>/ of the
+  worktree the part runs in. A part's handoff for the next part goes in its pull request
+  body, because the next part runs in another worktree.
+limits:
+  orchestrator_tokens: 120000
+  worker_context_tokens: 200000
+calibration: fallback
+ownership: >-
+  Strictly sequential. Part 1 owns every file first. Part 2 reopens
+  server/tasks/task-store.mjs, server/tasks/task-record.mjs,
+  server/serving/task-routes.mjs, desktop/runtime/task-action.mjs,
+  desktop/runtime/preload.cjs, the Feature modal, app/components/tasks/task-desktop.ts,
+  docs/internal/architecture/tasks.md, docs/internal/design/task-modal.md, and the
+  design-system sample, and names them in its assumes.
+pending: []
+discoveries: []
+parts:
+  - index: 1
+    dir: 1-create-and-edit
+    task: T-70
+    base: main
+    attendance: afk
+    summary: Create and edit a feature with title, description, and app version
+    owns:
+      - server/tasks/
+      - shared/task-contract.ts
+      - server/serving/task-routes.mjs
+      - app/api/tasks/
+      - desktop/runtime/task-action.mjs
+      - desktop/runtime/preload.cjs
+      - app/components/tasks/
+      - app/styles/tasks.css
+      - app/components/design-system/
+      - tests/server/tasks/
+      - tests/desktop-task-action.test.mjs
+      - tests/ui/
+      - docs/internal/architecture/tasks.md
+      - docs/internal/design/task-modal.md
+      - docs/internal/design/task-board.md
+      - docs/public/using-pomegr/tasks.md
+    after: []
+    estimate:
+      files: 22
+      deliverables: 7
+      calibration: fallback
+      confidence: low
+      orchestrator: { startup_tokens: 40000, work_tokens: 35000, coordination_tokens: 10000, reserved_tokens: 85000, limit: 120000 }
+      workers:
+        - { stage: implement-monitor, class: semantic, files: 10, reserved_tokens: 140000, limit: 200000 }
+        - { stage: implement-interface, class: semantic, files: 12, reserved_tokens: 160000, limit: 200000 }
+        - { stage: evidence, class: evidence, reserved_tokens: 60000, limit: 200000 }
+      aggregate_reserved_tokens: 445000
+      observed_tokens: null
+      agents: 3
+      basis: >-
+        No calibration.md. Counts from globs, searches for feature_create, and line counts;
+        files not opened end to end. Worker figures are judgement: the monitor slice edits
+        the 769-line task store, the 796-line task routes, and five test files; the
+        interface slice adds one modal of about 200 lines, reworks the filter row, and
+        writes the design pages and samples. Reservations, not usage.
+    status: planned
+  - index: 2
+    dir: 2-delete
+    task: T-71
+    base: main
+    attendance: afk
+    summary: Delete a feature, its tasks detached; review of the whole change; plan closure
+    owns:
+      - server/tasks/task-store.mjs
+      - server/tasks/task-record.mjs
+      - server/serving/task-routes.mjs
+      - desktop/runtime/task-action.mjs
+      - desktop/runtime/preload.cjs
+      - app/components/tasks/
+      - app/components/design-system/
+      - tests/server/tasks/
+      - tests/desktop-task-action.test.mjs
+      - tests/ui/
+      - docs/internal/architecture/tasks.md
+      - docs/internal/design/task-modal.md
+      - docs/public/using-pomegr/tasks.md
+      - docs/internal/plans/feature-management.md
+      - docs/internal/plans/feature-management/
+      - docs/internal/README.md
+    after: [1]
+    estimate:
+      files: 12
+      deliverables: 6
+      calibration: fallback
+      confidence: low
+      orchestrator: { startup_tokens: 40000, work_tokens: 20000, coordination_tokens: 10000, reserved_tokens: 70000, limit: 120000 }
+      workers:
+        - { stage: implement, class: semantic, files: 12, reserved_tokens: 130000, limit: 200000 }
+        - { stage: evidence, class: evidence, reserved_tokens: 60000, limit: 200000 }
+        - { stage: review, class: review, reserved_tokens: 200000, limit: 200000 }
+      aggregate_reserved_tokens: 460000
+      observed_tokens: null
+      agents: 3
+      basis: >-
+        No calibration.md. One store action, its allowlist and route keys, one footer
+        state, and their tests and pages. One worker holds it. Review is here because it
+        is the last part and this part rewrites stored tasks. Reservations, not usage.
+    status: planned
+aggregate:
+  reserved_tokens: 905000
+  contexts: 8
+  note: Volume across both sessions, one startup per session; not a budget and not observed usage.
