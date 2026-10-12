@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pair Pomegr Phone"
+  short_description: "Pair your phone with Pomegr; restart only if needed"
+  default_prompt: "Use $pair-pomegr-phone to make Pomegr available on my paired phone, reusing the running app when possible."
