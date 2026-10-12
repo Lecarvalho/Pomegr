@@ -42,7 +42,8 @@ function reading(root: HTMLElement, label: string) {
   return within(root).getByText(label, { selector: "dt" }).nextElementSibling as HTMLElement;
 }
 
-describe("Design-system reference page", () => {
+// Every test here renders the whole page, which runs past the default 5 s on CI.
+describe("Design-system reference page", { timeout: 20_000 }, () => {
   let fetchSpy: MockInstance;
 
   beforeEach(() => {
