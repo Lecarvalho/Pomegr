@@ -36,6 +36,8 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
   const starts = startsParts(task, now);
   const summary = grouped ? null : completeWhenSummary(task.completeWhen);
   const feature = grouped ? null : featureLine;
+  // The started session leads; the assigned sessions follow in the order they were assigned.
+  const sessions = [...(task.session ? [task.session] : []), ...(task.assigned ?? [])];
   const className = ["taskCard", grouped && "taskReadyCard", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone", dropLine === "before" && "isDropBefore", dropLine === "after" && "isDropAfter"].filter(Boolean).join(" ");
   return <li className={className} data-task-id={task.id} data-task-state={task.state} draggable={move ? true : undefined} {...move?.drag}>
     <div className="taskCardTop">
@@ -53,7 +55,11 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
       {feature.parallelWith.length > 0 && <ParallelGlyph label="Parallel" />}
       <span>{feature.text}{feature.parallelWith.length > 0 && <> · parallel with <span className="taskCardFeatureIds">{feature.parallelWith.join(", ")}</span></>}</span>
     </p>}
-    {task.session && <TaskSessionLink sessionId={task.session.id} className="taskCardLink" />}
+    {sessions.length > 0 && <p className="taskCardDetail taskCardSessions">
+      <TaskSessionLink sessionId={sessions[0].id} className="taskCardLink" />
+      {sessions.length > 1 && <span>+{sessions.length - 1} more</span>}
+      {task.session === null && <span>Assigned</span>}
+    </p>}
     {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} step={move.step} />}
   </li>;
 }

@@ -52,6 +52,7 @@ import { PromoteIssuesSection } from "./DesignSystemPromoteIssuesSample";
 import { GitHubSettingsSection } from "./DesignSystemGitHubSettingsSample";
 import { AgentChatSection } from "./DesignSystemAgentChatSample";
 import { SessionTaskSection } from "./DesignSystemSessionTaskSample";
+import { AssignedSessionsSection } from "./DesignSystemAssignedSessionsSample";
 import { CommandTableSection, SettingsRailSection } from "./DesignSystemLayoutSamples";
 
 function subscribeAvailability() { return () => {}; }
@@ -93,6 +94,7 @@ export function DesignSystemView() {
     <QueueControlsSection />
     <TaskGatesSection />
     <SessionTaskSection />
+    <AssignedSessionsSection />
     <PromoteIssuesSection />
     <GitHubSettingsSection />
     <AgentChatSection />

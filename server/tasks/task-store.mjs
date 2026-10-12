@@ -11,9 +11,10 @@ import { hasFixedColumns, readColumnRoles, readyColumnId, reconcileFixedColumns,
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
-import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
+import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs";
+import { assignSession, deleteTaskAssigned, readTaskAssignments, unassignSession } from "./task-assignments.mjs";
 import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { deleteFeatureDetails, findFeature, readFeature, writeFeatureDetails } from "./task-feature-details.mjs";
@@ -302,6 +303,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskAttention(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
+  deleteTaskAssigned(database, repositoryId, input.number);
   writeTaskRemoteControl(database, repositoryId, input.number, false);
   deleteTaskWorktreeCleanup(database, repositoryId, input.number);
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
@@ -547,6 +549,7 @@ const ACTIONS = Object.freeze({
   feature_create: createFeature, feature_update: updateFeature, feature_delete: deleteFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
+  session_assign: assignSession, session_unassign: unassignSession,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
   promote_issue: promoteIssue, record_issue: recordIssue,
   agent_create: agentCreateTask, agent_remove: agentRemoveTask, agent_update: agentUpdateTask,
@@ -603,13 +606,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const images = readTaskImages(database, repositoryId);
     const remoteControls = readTaskRemoteControls(database, repositoryId);
     const keepWorktrees = readTaskKeepWorktrees(database, repositoryId);
+    const assignments = readTaskAssignments(database, repositoryId);
     return {
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
-        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)) })),
+        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)), assigned_sessions: assignments.get(Number(row.number)) ?? [] })),
     };
   }
 
@@ -758,7 +762,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const sessionTasks = (sessionIds) => link(sessionTaskReferences, { sessionIds });
   const featureLink = (featureId) => link(featureSessions, { featureId });
   const featureLinks = () => link(featureSessionGroups, {});
-  const reportChecks = (sessionId) => link(reportableChecks, { sessionId });
+  const reportChecks = (sessionId, taskId) => link(reportableChecks, { sessionId, taskId });
+  const sessionAssigned = (sessionIds) => link(sessionAssignedReferences, { sessionIds });
   const feature = (repositoryId, reference) => link(readFeature, { repositoryId, feature: reference });
   // A task's images (task-images.mjs): the bytes are files beside the database, the list is in `meta`.
   const image = (operation, repositoryId, payload) => {
@@ -773,5 +778,5 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
   return Object.freeze({ readBoard, readHome, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
-    addImage, removeImage, readImage, sessionTasks, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

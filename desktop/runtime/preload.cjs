@@ -9,7 +9,7 @@ const TASK_ACTIONS = new Set([
   "create", "update", "delete", "move",
   "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings",
-  "resolve_done", "resolve_requeue",
+  "resolve_done", "resolve_requeue", "session_assign", "session_unassign",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
 const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);

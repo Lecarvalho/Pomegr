@@ -10,9 +10,12 @@ import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/sto
 import { serveNotificationRoute } from "./notification-routes.mjs";
 import { serveSessionDirectoryWithTasks, validFeatureQuery } from "./session-directory-tasks.mjs";
 import {
-  AGENT_FEATURE_PATHS, AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REMOVE_PATH, AGENT_TASK_UPDATE_PATH, TASK_ACTION_PATH_PREFIX,
-  serveAgentFeatureRoute, serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskRemoveRoute, serveAgentTaskReportRoute, serveAgentTaskUpdateRoute, serveTaskActionRoute, serveTaskRoute,
+  AGENT_FEATURE_PATHS, AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_REMOVE_PATH, AGENT_TASK_UPDATE_PATH, TASK_ACTION_PATH_PREFIX,
+  serveAgentFeatureRoute, serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskRemoveRoute, serveAgentTaskUpdateRoute, serveTaskActionRoute, serveTaskRoute,
 } from "./task-routes.mjs";
+import {
+  AGENT_TASK_ASSIGN_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_UNASSIGN_PATH, serveAgentTaskAssignRoute, serveAgentTaskReportRoute,
+} from "./task-session-routes.mjs";
 import { isTaskHomeRequest, serveTaskHomeRoute } from "./task-home-route.mjs";
 import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
@@ -118,10 +121,11 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      // The agent POST paths (add, update, remove, bind, complete, block, and the four feature paths); every other agent route stays GET-only.
+      // The agent POST paths (add, update, remove, assign, unassign, bind, complete, block, and the four feature paths); every other agent route stays GET-only.
       const agentTaskWrite = requestUrl.pathname === AGENT_TASK_ADD_PATH ? serveAgentTaskAddRoute
         : AGENT_FEATURE_PATHS.includes(requestUrl.pathname) ? serveAgentFeatureRoute
         : requestUrl.pathname === AGENT_TASK_REMOVE_PATH ? serveAgentTaskRemoveRoute
+        : requestUrl.pathname === AGENT_TASK_ASSIGN_PATH || requestUrl.pathname === AGENT_TASK_UNASSIGN_PATH ? serveAgentTaskAssignRoute
         : requestUrl.pathname === AGENT_TASK_UPDATE_PATH ? serveAgentTaskUpdateRoute
         : requestUrl.pathname === AGENT_TASK_BIND_PATH ? serveAgentTaskBindRoute
           : requestUrl.pathname === AGENT_TASK_COMPLETE_PATH || requestUrl.pathname === AGENT_TASK_BLOCK_PATH ? serveAgentTaskReportRoute : null;
@@ -253,6 +257,8 @@ export function createRequestHandler({
       }
       await serveTaskActionRoute({
         request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts, resolveCheckFacts,
+        // Read lazily, and only for an assignment.
+        resolveSession: (ref) => runtime.resolveTaskSession?.(ref),
         resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),
       });
       return;

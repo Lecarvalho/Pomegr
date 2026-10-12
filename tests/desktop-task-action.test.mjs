@@ -39,7 +39,7 @@ test("task action channel and list are fixed", () => {
   assert.equal(TASK_ACTION_CHANNEL, "pomegr:task-action");
   assert.deepEqual([...TASK_ACTION_NAMES], [
     "create", "update", "delete", "move",
-    "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+    "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign",
   ]);
 });
 

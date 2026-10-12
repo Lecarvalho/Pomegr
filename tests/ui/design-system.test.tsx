@@ -17,10 +17,10 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Assigned sessions", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
 const SAMPLE_SOURCES = [
   "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample", "DesignSystemFeatureModalSample",
-  "DesignSystemTaskBoardSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAgentChatSample",
+  "DesignSystemTaskBoardSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAssignedSessionsSample", "DesignSystemAgentChatSample",
 ].map((name) => `app/components/design-system/${name}.tsx`).concat("app/components/design-system/DesignSystemTaskSampleData.ts");
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 
@@ -42,7 +42,8 @@ function reading(root: HTMLElement, label: string) {
   return within(root).getByText(label, { selector: "dt" }).nextElementSibling as HTMLElement;
 }
 
-describe("Design-system reference page", () => {
+// Every test here renders the whole page, which runs past the default 5 s on CI.
+describe("Design-system reference page", { timeout: 20_000 }, () => {
   let fetchSpy: MockInstance;
 
   beforeEach(() => {
@@ -91,8 +92,8 @@ describe("Design-system reference page", () => {
     expect(screen.queryByText(/Design system unavailable here/)).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
     // The first render of the whole page is cold and its role queries walk every sample; a hosted
-    // Windows runner takes just over the default five seconds for it.
-  }, 20_000);
+    // Windows runner takes just over the default five seconds for it, and the page keeps growing.
+  }, 40_000);
 
   it("renders static lane and single-chart samples with a neutral, described minimap", () => {
     render(<DesignSystemView />);
@@ -612,8 +613,8 @@ describe("Design-system reference page", () => {
     expect(sample(cells, "Done").querySelector(".commandChip")).toHaveClass("neutral");
     expect(sample(cells, "Under a Feature group").querySelector(".commandSessionTaskFeature")?.textContent).toBe("Step 2");
     expect(sample(cells, "No feature").querySelector(".commandSessionTaskFeature")).toBeNull();
-    expect(within(sample(cells, "Started by you")).getByTitle("Not started from a task")).toHaveTextContent("—");
-    expect(within(sample(cells, "Table footnote")).getByText(/^Task shows the task a session was started for\./)).toHaveClass("commandUnavailableNote");
+    expect(within(sample(cells, "Started by you")).getByTitle("Not started from a task and not assigned to one")).toHaveTextContent("—");
+    expect(within(sample(cells, "Table footnote")).getByText(/^Task shows the task a session was started for, and the tasks it is assigned to\./)).toHaveClass("commandUnavailableNote");
 
     const fields = sectionOf("Task fields");
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(3);

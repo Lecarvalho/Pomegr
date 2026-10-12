@@ -46,7 +46,7 @@ Guide: [MCP queries](mcp-queries.md).
 
 ## Task tools
 
-These nine tools work on the task board of the repository. Eight of them write to
+These eleven tools work on the task board of the repository. Ten of them write to
 it; they are the only tools that change something you made or that Pomegr manages.
 `get_feature` only reads. Guide: [Tasks](tasks.md#what-agents-report).
 
@@ -55,15 +55,19 @@ it; they are the only tools that change something you made or that Pomegr manage
 | `add_task` | Adds a task to the first column of the board. It does not queue or start the task. |
 | `update_task` | Changes the text, **Run on**, **Effort**, or **Complete when** of a task that has not started. |
 | `remove_task` | Deletes a task that the same session added, if the task has not started. |
-| `complete_task` | Reports that the task of the session is complete. The task goes to **Review**. |
-| `block_task` | Reports that the agent cannot continue, with a short reason. |
+| `assign_task` | Assigns the session to a task of the board that is not done, so the session can report it. It changes no state and starts nothing. |
+| `unassign_task` | Removes the session's own assignment from a task. |
+| `complete_task` | Reports that a task of the session is complete. The task goes to **Review**. |
+| `block_task` | Reports that the agent cannot continue a task, with a short reason. |
 | `get_feature` | Reads the title, description, and app version of one feature. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. |
 | `update_feature` | Changes the title, description, or app version of a feature. |
 | `delete_feature` | Deletes a feature that has no task. |
 
-`complete_task` and `block_task` work only in a session that Pomegr started for a
-task.
+`complete_task` and `block_task` work in a session that Pomegr started for a task, and
+in a session that is assigned to a task. A session with more than one task names the
+task with `task_id`. The first report on a task wins. `assign_task` and `unassign_task`
+need plugin 0.9.8 or later.
 
 ## If a tool is missing
 

@@ -340,7 +340,7 @@ describe("Sessions view", () => {
       expect(cell("Session 1").querySelector(".commandChip")).toBeNull();
       expect(cell("Session 0")).toHaveTextContent(/^—$/);
       expect(screen.getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/tasks?repository=${REPOSITORY}`);
-      expect(screen.getByText(/A dash means you started the session yourself\./)).toBeInTheDocument();
+      expect(screen.getByText(/A dash means neither\./)).toBeInTheDocument();
     });
 
     it("prints a promoted task's issue number as plain muted text after the task ID: no chip, icon or link", async () => {
