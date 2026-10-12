@@ -105,6 +105,11 @@ This page covers how the repository surfaces look and how the user operates them
 
 - Capture confirmation buttons stack.
 
+## Session Repository bar
+
+- A single pull request is a chip link that opens its GitHub URL in the browser.
+- A count of multiple pull requests stays a noninteractive chip because it has no single destination.
+
 ## FileTree
 
 ### Content
