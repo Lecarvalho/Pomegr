@@ -44,7 +44,7 @@ const reorderQueueTask = vi.fn(async () => true);
 const moveTask = vi.fn(async () => true);
 function edits(value: TaskBoard): TaskBoardEdits {
   const none = async () => false;
-  return { board: value, failure: null, busy: false, settled: 0, moveTask, addFeature: none, reorderQueueTask, setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none };
+  return { board: value, failure: null, busy: false, settled: 0, moveTask, reorderQueueTask, setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none };
 }
 function renderBoard() {
   const value = board();

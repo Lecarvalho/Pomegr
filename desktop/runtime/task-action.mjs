@@ -2,11 +2,13 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 
 // A task's images travel on a channel of their own (task-image.mjs); the shell installs both from here.
 export { installTaskImageIpc } from "./task-image.mjs";
+// A feature's description and app version are read on a channel of their own (task-feature.mjs).
+export { installTaskFeatureIpc } from "./task-feature.mjs";
 
 export const TASK_ACTION_CHANNEL = "pomegr:task-action";
 export const TASK_ACTION_NAMES = Object.freeze([
   "create", "update", "delete", "move",
-  "feature_create",
+  "feature_create", "feature_update",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings",
   "resolve_done", "resolve_requeue",
 ]);

@@ -81,7 +81,7 @@ export const BOARD_EMPTY: TaskBoard = { ...createEmptyTaskBoard(SAMPLE_REPOSITOR
 export function inertEdits(board: TaskBoard): TaskBoardEdits {
   const none = async () => false;
   return {
-    board, failure: null, busy: false, settled: 0, moveTask: none, addFeature: none,
+    board, failure: null, busy: false, settled: 0, moveTask: none,
     reorderQueueTask: none, setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none,
   };
 }

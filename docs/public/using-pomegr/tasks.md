@@ -285,8 +285,37 @@ version**, the version you plan the feature for. Put there what every task of th
 feature needs to know, so that each task's own text stays short. The session Pomegr
 starts for a task gets the feature's title and ID in its prompt, and reads the
 description and the app version with the `get_feature` tool when it needs them. The
-desktop app sets only the title for now: ask an agent to set or change the
-description and the app version (see [What agents report](#what-agents-report)).
+desktop app sets all three fields, and an agent can too (see
+[What agents report](#what-agents-report)).
+
+### Create and edit a feature
+
+You make and edit features in the Pomegr desktop app. A browser or a paired phone
+shows features but does not change them, except that a task's **New feature…** field
+still names a feature from a title alone.
+
+1. To create a feature, choose **+ New feature** on the Board, in the row above the
+   lanes. While the board has no feature, the button is in the page header instead.
+2. Enter a **Title**, up to 80 characters. It is the only required field.
+3. Optionally enter a **Description**, up to 2,000 characters, and an **App version**,
+   up to 40. The counters show how much room is left.
+4. Choose **Create feature**. It stays disabled until the title holds text.
+5. To edit a feature, choose it in the **Feature** filter above the board, then choose
+   **Edit feature**. The description and the app version load when the window opens.
+   If they cannot be read, those two fields stay disabled and you can still rename the
+   feature.
+6. Change a field and choose **Save**. It stays disabled until something differs, and
+   it sends only what you changed. Empty the description or the app version and save
+   to remove it.
+
+The window shows how many of the feature's tasks are done. A feature with tasks lists
+them under **Tasks**, folded; choose a task there to open it. Closing the window or
+pressing Escape discards your changes without asking. A click outside the window
+closes it only while it holds nothing to save.
+
+A title that another feature already has is refused, with the line "Another feature
+already has this title." A board holds up to 50 features. Any other failure shows
+"The feature could not be saved." The window stays open and keeps what you typed.
 
 A step that holds more than one task starts each task in a Git worktree of its
 own, on a branch named `tasks/<task ID>`, so parallel agents do not edit the same

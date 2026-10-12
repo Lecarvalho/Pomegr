@@ -1,12 +1,12 @@
 # Feature management in the desktop app
 
-> Status: proposed; prototype approved by the product owner on 2026-10-12 (task T-59), no code written.
+> Status: in progress; prototype approved by the product owner on 2026-10-12 (task T-59). Part 1 (task T-70) is built; part 2 is not started.
 > Created: 2026-10-12.
 > Scope: let the owner create, edit, and delete a feature of a task board in the desktop app, with its title, description, and app version. Excludes a separate Features list view, and any change to the agent feature tools.
 > Prototype: [feature-management/prototype.html](feature-management/prototype.html). It links the app's own stylesheets, so open it from the repository. The rules below win where the drawing differs.
 > Continuation owner: the sessions of board tasks T-70 (part 1) and T-71 (part 2).
 > Authority: working proposal. [Tasks](../architecture/tasks.md), [task-modal.md](../design/task-modal.md), and [task-board.md](../design/task-board.md) stay authoritative; each part changes them.
-> Next task or decision: T-70.
+> Next task or decision: T-71.
 > Completion criteria: both parts merged, with `npm run build` and `npm test` passing, the design pages and `/design-system` holding the Feature modal, and the Tasks privacy section listing the new desktop read.
 > Permanent destinations: [Tasks](../architecture/tasks.md) (actions, read, privacy), [task-modal.md](../design/task-modal.md) (the Feature modal), [task-board.md](../design/task-board.md) (the filter row), and `docs/public/using-pomegr/tasks.md` (user guide).
 > Lifetime: temporary; part 2 deletes this page and `feature-management/` after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -53,7 +53,7 @@ each task starts its part by the absolute path.
 | 1 | T-70 | The owner creates a feature with all three fields and edits them. | 1, 2, 3, 5 |
 | 2 | T-71 | The owner deletes a feature. The part reviews the whole change and closes this plan. | 3, 4 |
 
-- [ ] Part 1: create and edit.
+- [x] Part 1: create and edit.
 - [ ] Part 2: delete, review, and plan closure.
 
 ## Privacy

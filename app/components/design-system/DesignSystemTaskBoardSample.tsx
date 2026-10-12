@@ -4,6 +4,7 @@ import { createRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createEmptyTaskBoard, type Task } from "../../../shared/task-contract";
 import { CapacityStrip } from "../tasks/CapacityStrip";
 import { FeatureFilter } from "../tasks/FeatureFilter";
+import type { FeatureEntry } from "../tasks/FeatureActions";
 import type { NewTaskEntry } from "../tasks/NewTaskAction";
 import { TaskBoardView, TaskColumn } from "../tasks/TaskBoardView";
 import { TaskCard, type TaskCardMove } from "../tasks/TaskCard";
@@ -14,7 +15,7 @@ import { dropKey, newStepLabel, queueFeatures } from "../tasks/task-queue-model"
 import { readySegments } from "../tasks/task-ready-groups";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
+  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FEATURE_ID, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
 const LINES = featureLines(BOARD_BLOCKED);
@@ -56,9 +57,11 @@ function Frame({ children }: { children: ReactNode }) {
   return <div className="designSystemTaskFrame">{children}</div>;
 }
 
-function FilterSample({ desktop }: { desktop: boolean }) {
-  const [filter, setFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
-  return <Frame><FeatureFilter board={BOARD_RUNNING} filter={filter} onFilter={setFilter} edits={desktop ? EDITS : undefined} /></Frame>;
+const FEATURE_ENTRY: FeatureEntry = { onNew: noop, onEdit: noop };
+
+function FilterSample({ desktop, initial = ALL_FEATURES }: { desktop: boolean; initial?: FeatureFilterValue }) {
+  const [filter, setFilter] = useState<FeatureFilterValue>(initial);
+  return <Frame><FeatureFilter board={BOARD_RUNNING} filter={filter} onFilter={setFilter} edits={desktop ? EDITS : undefined} entry={desktop ? FEATURE_ENTRY : undefined} /></Frame>;
 }
 
 export function TaskBoardSection() {
@@ -108,8 +111,11 @@ export function TaskBoardSection() {
       <Sample label="Feature filter" note="One select whose options carry a task count: All first, No feature last. Filtering is client state only.">
         <FilterSample desktop={false} />
       </Sample>
-      <Sample label="Feature filter, desktop app" note="Adds the Quiet + New feature action. Choose a feature to see its progress, with the counts in the data font and the step that is running when one is, and then the line that says moving cards is off.">
+      <Sample label="Feature filter, desktop app" note="With All or No feature chosen the row adds only the Quiet + New feature, which opens the Feature modal in mode New feature. Choose a feature to see the row below.">
         <FilterSample desktop />
+      </Sample>
+      <Sample label="Feature filter, desktop app, a feature chosen" note="While one feature is chosen the row adds a Quiet Edit feature before + New feature, which opens the Feature modal in mode Feature. Then come the feature's progress, with the counts in the data font and the step that is running when one is, and the line that says moving cards is off.">
+        <FilterSample desktop initial={SAMPLE_FEATURE_ID} />
       </Sample>
       <Sample label="Capacity strip" note="The same two readings as Start gates, above the board; omitted when the board sends no gates.">
         <Frame><CapacityStrip queue={BOARD_RUNNING.queue} /></Frame>
@@ -125,12 +131,12 @@ export function TaskBoardSection() {
     </div>
     <div className="designSystemGrid">
       <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, a card of a feature changes step from its toolbar or by a drop in Ready, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
-        <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} newTask={BOARD_ENTRY} /></div></Frame>
+        <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} newTask={BOARD_ENTRY} features={FEATURE_ENTRY} /></div></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
       <Sample label="Board, desktop app (blocked queue)" note="The Board banner carries every action: the secondary Open T-n and Mark done and resume, and the quiet Requeue T-n in ink. A paused queue keeps only Open T-n.">
-        <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_BLOCKED} edits={EDITS_BLOCKED} onOpenTask={noop} newTask={newTaskEntry()} /></div></Frame>
+        <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_BLOCKED} edits={EDITS_BLOCKED} onOpenTask={noop} newTask={newTaskEntry()} features={FEATURE_ENTRY} /></div></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">

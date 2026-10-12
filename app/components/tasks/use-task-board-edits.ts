@@ -5,7 +5,7 @@ import type { TaskBoard, TaskGateThreshold, TaskQueueSchedule } from "../../../s
 import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
   GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_REORDER_FAILURE_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE,
-  createDesktopFeature, featureFailureMessage, moveDesktopTask,
+  moveDesktopTask,
   reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
@@ -19,7 +19,6 @@ export type TaskBoardEdits = {
   busy: boolean;
   settled: number;
   moveTask(move: TaskMove): Promise<boolean>;
-  addFeature(name: string): Promise<boolean>;
   reorderQueueTask(id: string, step: number): Promise<boolean>;
   setQueue(on: boolean): Promise<boolean>;
   setGateThreshold(threshold: TaskGateThreshold): Promise<boolean>;
@@ -110,7 +109,6 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     busy: running > 0,
     settled,
     moveTask,
-    addFeature: useCallback((name: string) => waitedAction(() => createDesktopFeature(repositoryId, name), featureFailureMessage), [waitedAction, repositoryId]),
     reorderQueueTask: useCallback((id: string, step: number) => waitedAction(() => reorderDesktopQueueTask(repositoryId, id, step), () => QUEUE_REORDER_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueue: useCallback((on: boolean) => waitedAction(() => setDesktopQueue(repositoryId, on), () => QUEUE_SETTINGS_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setGateThreshold: useCallback((threshold: TaskGateThreshold) => waitedAction(() => setDesktopGateThreshold(repositoryId, threshold), () => GATE_THRESHOLD_FAILURE_MESSAGE), [waitedAction, repositoryId]),

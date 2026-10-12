@@ -342,7 +342,9 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 
 | Role | A card moves there when | The write that moves it |
 | --- | --- | --- |
-| `in_progress` | Its session links | `POST /api/agent/v1/tasks/bind` |
+| `in_progress` | Its session links | `pomegr:task-feature` IPC | The renderer, through a trusted main frame only | A repository ID and a feature ID. Answers `{ ok: true, description, appVersion }` (each a string or null) or `{ ok: false, error }` with `invalid`, `not_found`, or `unavailable` |
+| `POST /internal/tasks/feature-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action`, and no Next route proxies it | `{ repositoryId, payload: { id } }` in, exactly those keys; `{ ok: true, feature: { description, appVersion } }` out, each field re-bounded (2000 and 40 characters) or null; or one fixed error (`invalid` 400, `not_found` 404, `unavailable` 503). The only desktop path that answers a feature's description and app version |
+| `POST /api/agent/v1/tasks/bind` |
 | `review` | Its state becomes Needs review | Verification of a `complete_task` report |
 | `done` | Its state becomes Done | The user's Mark done (`resolve_done`) |
 
@@ -557,10 +559,14 @@ or compares it, and it gates nothing.
 - **Store only.** The store actions `agent_feature_create`, `agent_feature_update`, and
   `agent_feature_delete` are absent from the fixed action list, like `agent_create`, so
   the desktop route, the paired-device route, and the IPC channel never accept them.
-  The desktop `feature_create` still takes exactly `{ name }`.
-- **Not in the desktop app yet.** The board shows and sets a feature's title only. The
-  description and the app version are read and written through the agent tools; a
-  desktop control for them is not built.
+- **Desktop create and update.** The desktop `feature_create` takes `{ name }` and,
+  optionally, `description` and `appVersion`. The desktop `feature_update` takes
+  `{ id, name?, description?, appVersion? }` with at least one field beside `id`.
+  They validate and store the fields as the agent tools do, in the same store rows.
+- **Desktop read.** The desktop reads one feature's description and app version through
+  its own IPC channel, `pomegr:task-feature`, and the route `feature-read`. The desktop
+  app is the only client that can read or change them besides the agent tools.
+  A paired device and a browser can neither read nor update them.
 
 The monitor serves the four tools as `POST /api/agent/v1/tasks/feature-get`,
 `feature-create`, `feature-update`, and `feature-delete`, under the gate of `add` and
@@ -1890,7 +1896,7 @@ serves no other client.
 | `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
 
-- The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`,
+- The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `feature_update`, `queue_add`,
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
   `resolve_requeue`. Any other action name is refused: `invalid` from the preload, desktop
   main, and the route, and `unsupported` from the store itself. That includes the removed
@@ -1905,8 +1911,15 @@ serves no other client.
   `columnId` that is not one of the board's five columns answers `not_found`, and a card
   that waits in the queue sent to another column than Ready answers `conflict`. Task
   positions stay dense after every action.
-  `feature_create` takes exactly `{ name }` (one line, 1 to 80 characters); a
-  duplicate name in the repository answers `conflict` and a 51st feature `limit`. A
+  `feature_create` takes `{ name, description?, appVersion? }` (the name is one line of 1
+  to 80 characters, the description at most 2000, the app version one line of at most 40;
+  an absent or blank one is none); a
+  duplicate name in the repository answers `conflict` and a 51st feature `limit`.
+  `feature_update` takes `{ id, name?, description?, appVersion? }` with at least one
+  field beside `id`: a present field replaces the stored one, an absent one stays, and a
+  null `description` or `appVersion` clears it. An unknown `id` answers `not_found`, a
+  name another feature holds `conflict`, and the feature's own name is no conflict.
+  Neither answers the description or the app version. A
   feature with no task is listed with `done: false`. `create` and `update` take two
   optional keys, `featureId` (a feature ID or null) and `step` (an integer of at least 1
   or null). Joining a feature without a step lands in a new last step; a `step` is valid
@@ -2021,6 +2034,15 @@ fixed values.
     diagnostics.
   - The session prompt carries the feature's title and opaque ID, never the other two
     fields.
+  - The desktop Feature modal (task T-70) reads them through `pomegr:task-feature` and
+    `POST /internal/tasks/feature-read`, and writes them through `feature_create` and
+    `feature_update`. Only the trusted renderer of the desktop app receives them, in
+    memory while the modal shows them. `feature_update` is not in the paired-device
+    route, and that route refuses a `feature_create` with any key beside `name`, so a
+    paired device can neither read nor write them, and no Next route proxies the read.
+  - The answers of `feature_create` and `feature_update` carry the board, which lists a
+    feature as `{ id, name, done }`, and never the description or the app version. The
+    read route's answer is bounded again on the way out, and carries no error text.
   - The answers of `feature-create`, `feature-update`, and `feature-delete` carry the
     opaque feature ID or nothing, and one fixed reason on refusal. `not_found` is the
     same for a feature that does not exist and one of another repository's board.

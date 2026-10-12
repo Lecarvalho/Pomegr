@@ -73,7 +73,7 @@ test("a feature keeps a title, a description, and an app version, and the board 
   // A feature made in the desktop app has no description and no app version.
   assert.equal(store.apply(REPOSITORY, "feature_create", { name: "Desktop" }).ok, true);
   assert.deepEqual({ ...store.readFeature(REPOSITORY, "Desktop"), id: null }, { id: null, title: "Desktop", description: null, appVersion: null });
-  assert.deepEqual(store.apply(REPOSITORY, "feature_create", { name: "More", description: "x" }), { ok: false, error: "invalid" });
+  assert.deepEqual(store.apply(REPOSITORY, "feature_create", { name: "More", extra: "x" }), { ok: false, error: "invalid" });
 
   assert.equal(store.readFeature(REPOSITORY, "Missing"), null);
   assert.equal(store.readFeature(REPOSITORY, "feat-000000000000"), null);
@@ -169,7 +169,7 @@ test("a stored description or app version outside the contract reads as not set"
 test("the feature actions are store only: no desktop or paired-device action names them", () => {
   for (const list of [TASK_ACTIONS, ROUTE_ACTIONS]) {
     assert.equal(list.some((name) => name.startsWith("agent_")), false);
-    assert.deepEqual(list.filter((name) => name.startsWith("feature_")), ["feature_create"]);
+    assert.deepEqual(list.filter((name) => name.startsWith("feature_")), ["feature_create", "feature_update"]);
   }
 });
 

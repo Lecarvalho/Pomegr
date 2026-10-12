@@ -126,16 +126,8 @@
 @media (max-width: 760px), (pointer: coarse) { .taskColumnAdd.commandQuietAction { min-height: 44px; } }
 @media (pointer: coarse) { .taskColumnAdd.commandQuietAction { opacity: 1; } }
 
-/* Head actions: the repository switcher, the queue switch and Promote issues (D28, D29); .taskAddColumn is the Add feature form. */
+/* Head actions: the repository switcher, the queue switch, + New feature before a feature exists, and Promote issues (D28, D29). */
 .taskHeadActions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); }
-.taskAddColumn { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.taskAddColumn .taskOwnInput { flex: 0 1 200px; }
-@media (max-width: 760px), (pointer: coarse) {
-  .taskAddColumn .taskOwnInput { min-height: 44px; }
-}
-@media (max-width: 760px) {
-  .taskAddColumn .commandQuietAction { width: auto; }
-}
 
 /* Loading, unavailable, desktop-only and empty states. */
 .taskBoardSkeleton { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: var(--space-3); overflow-x: auto; }
@@ -247,6 +239,20 @@
   .taskCompleteWhen .taskOwnInput { min-height: 44px; }
 }
 
+/* Feature modal (New feature and Feature): three fields over the task modal's field styles. Each foot holds the helper and,
+   for Title and Description, a live counter; the counter takes the error colour past its bound. Inputs are drawn at the
+   control height on a fine pointer and 44px on a phone or coarse pointer, like Own condition. */
+.featureField { gap: var(--space-2); }
+.featureField .taskOwnInput { flex: 0 0 auto; min-height: var(--control-height); padding: 0 var(--space-3); }
+.featureField .featureVersion { max-width: 240px; font-family: var(--font-data); }
+.featureField :is(.taskOwnInput, textarea):disabled { opacity: .48; cursor: default; }
+.featureFieldFoot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.featureCounter { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.featureCounter.isOver { color: var(--command-error); }
+@media (max-width: 760px), (pointer: coarse) {
+  .featureField .taskOwnInput { min-height: 44px; }
+}
+
 /* Task modal, mode edit (G241-G298): the task ID beside the title, the session title line, and the inline delete confirmation.
    The footer actions are sized by the .taskModalFooter rule above. */
 .taskModalId { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
@@ -283,6 +289,7 @@
 .taskFeatureSelect { max-width: 320px; }
 .taskFeatureSelect .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
 @media (max-width: 760px), (pointer: coarse) { .taskFeatureSelect .commandSelectTrigger { min-height: 44px; } }
+@media (max-width: 760px), (pointer: coarse) { .taskFeatureFilter .commandQuietAction { width: auto; } }
 .taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
 .taskCardFeature { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .taskCardFeature > span { min-width: 0; }

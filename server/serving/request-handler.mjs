@@ -16,6 +16,7 @@ import {
 import { isTaskHomeRequest, serveTaskHomeRoute } from "./task-home-route.mjs";
 import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
+import { TASK_FEATURE_ACTIONS, serveTaskFeatureRoute } from "./task-feature-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -244,6 +245,10 @@ export function createRequestHandler({
       }
       if (TASK_IMAGE_ACTIONS.includes(requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length))) {
         await serveTaskImageRoute({ request, response, requestUrl, taskStore });
+        return;
+      }
+      if (TASK_FEATURE_ACTIONS.includes(requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length))) {
+        await serveTaskFeatureRoute({ request, response, requestUrl, taskStore });
         return;
       }
       await serveTaskActionRoute({

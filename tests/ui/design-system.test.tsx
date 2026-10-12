@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -19,7 +19,7 @@ import DesignSystemPage from "../../app/design-system/page";
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
 const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
 const SAMPLE_SOURCES = [
-  "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample",
+  "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample", "DesignSystemFeatureModalSample",
   "DesignSystemTaskBoardSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAgentChatSample",
 ].map((name) => `app/components/design-system/${name}.tsx`).concat("app/components/design-system/DesignSystemTaskSampleData.ts");
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
@@ -318,6 +318,8 @@ describe("Design-system reference page", () => {
     expect(within(filter).queryByRole("button", { name: "+ New feature" })).toBeNull();
     const desktopFilter = sample(board, "Feature filter, desktop app");
     expect(within(desktopFilter).getByRole("button", { name: "+ New feature" })).toHaveClass("commandQuietAction");
+    // With All chosen the row has no Edit feature.
+    expect(within(desktopFilter).queryByRole("button", { name: "Edit feature" })).toBeNull();
     await user.click(within(desktopFilter).getByRole("combobox", { name: "Feature" }));
     await user.click(screen.getByRole("option", { name: /^Upload reliability \(\d+\)$/ }));
     expect(within(desktopFilter).getByRole("combobox", { name: "Feature" })).toHaveTextContent(/^Upload reliability \(\d+\)$/);
@@ -327,6 +329,11 @@ describe("Design-system reference page", () => {
     expect(progress.textContent).toMatch(/^\d+ of \d+ tasks done( · step \d+ of \d+ running)?$/);
     expect(progress.querySelectorAll(".taskFeatureProgressNum").length).toBeGreaterThanOrEqual(2);
     expect(progress.compareDocumentPosition(within(desktopFilter).getByText("Moving cards is off while a feature filter is on.")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // With one feature chosen: the eyebrow, the select, Edit feature, + New feature, then the progress line and the helper.
+    const row = within(sample(board, "Feature filter, desktop app, a feature chosen")).getByRole("group", { name: "Filter by feature" });
+    expect([...row.children].map((child) => child.textContent?.replace(/\s+/g, " ").trim().slice(0, 14))).toEqual(["Feature", "Upload reliabi", "Edit feature", "+ New feature", "1 of 4 tasks d", "Moving cards i"]);
+    expect(within(row).getByRole("button", { name: "Edit feature" })).toHaveClass("commandQuietAction");
+    expect(within(row).getByRole("button", { name: "+ New feature" })).toHaveClass("commandQuietAction");
 
     const strip = within(sample(board, "Capacity strip")).getByRole("region", { name: "Provider capacity" });
     expect(strip).toHaveTextContent("Claude Code 5h 91% · 7d 37%");
@@ -422,7 +429,10 @@ describe("Design-system reference page", () => {
     const promote = within(actions).getByRole("link", { name: "Promote issues" });
     expect(follows(repository, queueGroup)).toBe(true);
     expect(follows(queueGroup, promote)).toBe(true);
-    expect(actions.children).toHaveLength(3);
+    // While the board has no feature, the desktop app adds + New feature between the Queue switch and Promote issues.
+    expect(follows(queueGroup, within(actions).getByRole("button", { name: "+ New feature" }))).toBe(true);
+    expect(follows(within(actions).getByRole("button", { name: "+ New feature" }), promote)).toBe(true);
+    expect(actions.children).toHaveLength(4);
     expect(within(actions).queryByRole("group", { name: "Tasks view" })).toBeNull();
     expect(within(actions).getByRole("link", { name: "Promote issues" })).toBeInTheDocument();
 
@@ -505,6 +515,71 @@ describe("Design-system reference page", () => {
     expect(within(atTime).getByRole("button", { name: "Start at a time" })).toHaveAttribute("aria-pressed", "true");
     expect(within(atTime).getByLabelText("Start at")).toHaveAttribute("type", "time");
     expect(within(atTime).getByLabelText("Start at")).toHaveClass("taskTimeInput");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders the Feature modal as static chrome: both modes, the live primary, the unread fields and the three failure lines", async () => {
+    const user = userEvent.setup();
+    render(<DesignSystemView />);
+    const fields = sectionOf("Task fields");
+
+    const created = sample(fields, "Feature modal, new feature");
+    expect(within(created).getByRole("heading", { level: 2, name: "New feature" })).toBeInTheDocument();
+    expect(created.querySelector(".taskModalSubtitle")).toHaveTextContent("pomegr");
+    const title = within(created).getByRole("textbox", { name: "Title" });
+    expect(title).toHaveAttribute("maxlength", "80");
+    expect(title).toHaveAttribute("placeholder", "What is this feature?");
+    expect(within(created).getByRole("textbox", { name: "Description" })).not.toHaveAttribute("maxlength");
+    const version = within(created).getByRole("textbox", { name: "App version" });
+    expect(version).toHaveClass("taskOwnInput", "featureVersion");
+    expect(version).toHaveAttribute("maxlength", "40");
+    expect(created.querySelectorAll(".newTaskField.featureField")).toHaveLength(3);
+    expect([...created.querySelectorAll(".featureCounter")].map((counter) => counter.textContent)).toEqual(["0 / 80", "0 / 2,000"]);
+    const create = within(created).getByRole("button", { name: "Create feature" });
+    expect(create).toBeDisabled();
+    expect(create).toHaveClass("commandPrimaryAction");
+    expect(within(created).getByRole("button", { name: "Cancel" })).toHaveClass("commandQuietAction");
+    await user.type(title, "Retry telemetry");
+    expect(created.querySelector(".featureCounter")).toHaveTextContent("15 / 80");
+    expect(create).toBeEnabled();
+    // The Description counter takes the error colour past its bound, and the primary is disabled.
+    fireEvent.change(within(created).getByRole("textbox", { name: "Description" }), { target: { value: "x".repeat(2001) } });
+    expect(created.querySelectorAll(".featureCounter")[1]).toHaveClass("isOver");
+    expect(created.querySelectorAll(".featureCounter")[1]).toHaveTextContent("2,001 / 2,000");
+    expect(create).toBeDisabled();
+
+    const stored = sample(fields, "Feature modal, feature, saved");
+    expect(within(stored).getByRole("heading", { level: 2, name: "Feature" })).toBeInTheDocument();
+    expect(stored.querySelector(".taskModalTitleGroup .commandChip")).toHaveClass("taskCardChip", "neutral");
+    expect(stored.querySelector(".taskModalTitleGroup .commandChip")).toHaveTextContent("1 of 4 done");
+    const save = within(stored).getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    expect(save).toHaveClass("commandPrimaryAction");
+    expect(within(stored).queryByRole("button", { name: /Delete/ })).toBeNull();
+    expect(within(stored).queryByRole("button", { name: "Cancel" })).toBeNull();
+    const tasks = stored.querySelector("details.taskFeatureDetails") as HTMLDetailsElement;
+    expect(tasks.open).toBe(false);
+    expect(tasks.querySelector(".taskFeatureLabel")).toHaveTextContent("Tasks");
+    expect(tasks.querySelector(".taskFeatureCount")).toHaveTextContent("4 tasks · 1 done");
+    expect(tasks.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(4);
+    expect(tasks.querySelector(".taskFeatureOpen")).toBeInTheDocument();
+    await user.type(within(stored).getByRole("textbox", { name: "App version" }), "1");
+    expect(save).toBeEnabled();
+    expect(within(sample(fields, "Feature modal, feature, changed")).getByRole("button", { name: "Save" })).toBeEnabled();
+
+    const unread = sample(fields, "Feature modal, details not read");
+    expect(within(unread).getByRole("textbox", { name: "Description" })).toBeDisabled();
+    expect(within(unread).getByRole("textbox", { name: "App version" })).toBeDisabled();
+    expect(within(unread).getByRole("textbox", { name: "Title" })).toBeEnabled();
+    expect(within(unread).getByRole("alert")).toHaveTextContent("The description and app version could not be read.");
+
+    const duplicate = sample(fields, "Feature modal, duplicate title");
+    const line = within(duplicate).getByRole("alert");
+    expect(line).toHaveClass("newTaskError");
+    expect(line).toHaveTextContent("Another feature already has this title.");
+    expect(within(duplicate).getByRole("textbox", { name: "Title" }).getAttribute("aria-describedby")?.split(" ")).toContain(line.id);
+    expect(within(sample(fields, "Feature modal, could not save")).getByRole("alert")).toHaveTextContent("The feature could not be saved.");
+    expect(within(sample(fields, "Feature modal, feature limit")).getByRole("alert")).toHaveTextContent("This board already holds 50 features. Delete one first.");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

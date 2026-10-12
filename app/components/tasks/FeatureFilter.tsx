@@ -1,16 +1,18 @@
 "use client";
 
-import { TASK_BOUNDS, type TaskBoard } from "../../../shared/task-contract";
+import type { TaskBoard } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
-import { AddFeatureAction } from "./AddFeatureAction";
+import { NewFeatureAction, type FeatureEntry } from "./FeatureActions";
 import { ALL_FEATURES, WITHOUT_FEATURE, featureProgress, type FeatureFilterValue } from "./task-features";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
-export function FeatureFilter({ board, filter, onFilter, edits }: {
+export function FeatureFilter({ board, filter, onFilter, edits, entry }: {
   board: Pick<TaskBoard, "features" | "tasks">;
   filter: FeatureFilterValue;
   onFilter(next: FeatureFilterValue): void;
   edits?: TaskBoardEdits;
+  /** Desktop app only: Edit feature and + New feature open the Feature modal. */
+  entry?: FeatureEntry;
 }) {
   const count = (match: (featureId: string | null) => boolean) => board.tasks.filter((task) => match(task.featureId)).length;
   const options = [
@@ -23,7 +25,9 @@ export function FeatureFilter({ board, filter, onFilter, edits }: {
   return <div className="taskFeatureFilter" role="group" aria-label="Filter by feature">
     <span className="taskFilterEyebrow">Feature</span>
     <CommandSelect className="taskFeatureSelect" aria-label="Feature" options={options} value={filter} onChange={onFilter} />
-    {edits && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
+    {entry && filter !== ALL_FEATURES && filter !== WITHOUT_FEATURE
+      && <button type="button" className="commandQuietAction" aria-haspopup="dialog" onClick={(event) => entry.onEdit(filter, event.currentTarget)}>Edit feature</button>}
+    {entry && <NewFeatureAction board={board} entry={entry} />}
     {progress && <span className="taskFeatureProgress">
       {num(progress.done)} of {num(progress.total)} {progress.total === 1 ? "task" : "tasks"} done
       {progress.running && <> · step {num(progress.running.step)} of {num(progress.running.of)} running</>}

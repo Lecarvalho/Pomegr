@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { CapacityStrip } from "./CapacityStrip";
 import { QueueSettingsPanel } from "./QueueSettingsPanel";
+import type { FeatureEntry } from "./FeatureActions";
 import { FeatureFilter } from "./FeatureFilter";
 import { QueueBanner } from "./QueueBanner";
 import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
@@ -37,7 +38,7 @@ type Restore = { find(): HTMLElement | null; settled: number };
 
 export type TaskReveal = { id: string; turn: number };
 
-function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
+function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null }) {
   const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
   const [revealed, setRevealed] = useState(reveal ?? null);
   if ((reveal ?? null) !== revealed) { setRevealed(reveal ?? null); setChosenFilter(ALL_FEATURES); }
@@ -120,7 +121,7 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
     <CapacityStrip queue={board.queue} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)} />
     {settingsOpen && <QueueSettingsPanel queue={board.queue} edits={edits} returnFocus={settingsTrigger} onClose={() => setSettingsOpen(false)} />}
-    {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} />}
+    {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} entry={features} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
         {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.order[0] ?? null}
@@ -178,7 +179,7 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
   </section>;
 }
 
-export function TaskBoardView({ board, onOpenTask, edits, newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
+export function TaskBoardView({ board, onOpenTask, edits, newTask, features, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null }) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -187,6 +188,6 @@ export function TaskBoardView({ board, onOpenTask, edits, newTask, reveal }: { b
   </section>;
   return <>
     <QueueBanner board={board} onOpenTask={onOpenTask} edits={edits} />
-    <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} reveal={reveal} />
+    <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} features={features} reveal={reveal} />
   </>;
 }

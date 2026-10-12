@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { FeatureFields } from "../tasks/FeatureFields";
+import { FeatureModalSamples } from "./DesignSystemFeatureModalSample";
 import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
@@ -105,6 +106,7 @@ export function TaskFieldsSection() {
       <IssueCreateSamples />
       <TaskModalPromoteSamples />
       <TaskModalEditSamples />
+      <FeatureModalSamples />
     </div>
   </Section>;
 }

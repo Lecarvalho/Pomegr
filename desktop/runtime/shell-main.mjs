@@ -59,7 +59,7 @@ import { boundedDesktopVersion, createDesktopUpdaterController, createWindowsUpd
 import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-action.mjs";
 import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
-import { installTaskActionIpc, installTaskImageIpc } from "./task-action.mjs";
+import { installTaskActionIpc, installTaskFeatureIpc, installTaskImageIpc } from "./task-action.mjs";
 import { createAgentChat, installAgentChatIpc } from "./agent-chat.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
@@ -720,7 +720,7 @@ async function startDesktop() {
           }),
         });
         const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
-        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc(taskBridge), installAgentChatIpc({ ...taskBridge, chat: agentChat })];
+        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc(taskBridge), installTaskFeatureIpc(taskBridge), installAgentChatIpc({ ...taskBridge, chat: agentChat })];
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain,

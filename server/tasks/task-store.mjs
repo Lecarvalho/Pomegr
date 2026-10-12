@@ -24,7 +24,7 @@ import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } fr
 import { deleteTaskWorktreeCleanup, pendingWorktreeCleanups, readTaskKeepWorktree, readTaskKeepWorktrees, settleWorktreeCleanup, writeTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import {
   DEFAULT_TASK_COLUMNS, IN_FLIGHT_STATES, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
-  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeFeatureUpdatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -440,6 +440,7 @@ function createFeature({ database, repositoryId }, payload) {
   const input = normalizeFeatureCreatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   const created = insertFeature(database, repositoryId, input.name);
+  if (created.ok) writeFeatureDetails(database, repositoryId, created.featureId, input);
   return created.ok ? { ok: true } : created;
 }
 
@@ -452,8 +453,14 @@ function agentCreateFeature({ database, repositoryId }, payload) {
   return created;
 }
 
-function agentUpdateFeature({ database, repositoryId }, payload) {
-  const input = normalizeAgentFeatureUpdatePayload(payload);
+const agentUpdateFeature = (context, payload) => applyFeatureUpdate(context, normalizeAgentFeatureUpdatePayload(payload));
+// The desktop's `feature_update`; it answers no ID, and a rename to the feature's own title is no conflict.
+const updateFeature = (context, payload) => {
+  const result = applyFeatureUpdate(context, normalizeFeatureUpdatePayload(payload));
+  return result.ok ? { ok: true } : result;
+};
+
+function applyFeatureUpdate({ database, repositoryId }, input) {
   if (!input) return { ok: false, error: "invalid" };
   const stored = findFeature(database, repositoryId, input.feature);
   if (!stored) return { ok: false, error: "not_found" };
@@ -536,7 +543,7 @@ function reorderQueuedTask({ database, repositoryId }, payload) {
 // Actions by name.
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
-  feature_create: createFeature,
+  feature_create: createFeature, feature_update: updateFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
