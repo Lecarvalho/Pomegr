@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useId, type ReactNode } from "react";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
-import { sessionTaskHref } from "../tasks/SessionTaskCell";
+import { sessionFeatureHref } from "../tasks/SessionTaskCell";
 import { modelSummary, nextIds, queueBlockedLine, referenceChip, stepLabel, summaryCompleteWhen, type TextPart } from "../tasks/session-task-model";
 import { TaskIssueChip } from "../tasks/TaskIssueChip";
 import { taskIssueNumber } from "../tasks/task-presentation";
@@ -11,7 +11,7 @@ import { useSessionTask } from "../tasks/use-session-task";
 
 export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference; taskHref: string | null }) {
   const { stepTotal } = useSessionTask(task);
-  const boardHref = sessionTaskHref(task);
+  const boardHref = sessionFeatureHref(task);
   return <span className="sessionTaskMeta">
     <span className="sessionTaskMetaGroup">
       <span>Task</span>

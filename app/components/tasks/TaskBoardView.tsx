@@ -38,9 +38,16 @@ type Restore = { find(): HTMLElement | null; settled: number };
 
 export type TaskReveal = { id: string; turn: number };
 
-function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null }) {
+/** A feature the board was asked to show, such as by a session's feature link: the filter chooses it. */
+export type FeatureSelection = { id: string };
+
+type BoardProps = { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null; featureSelection?: FeatureSelection | null };
+
+function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
   const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
   const [revealed, setRevealed] = useState(reveal ?? null);
+  const [selection, setSelection] = useState<FeatureSelection | null>(null);
+  if ((featureSelection ?? null) !== selection) { setSelection(featureSelection ?? null); if (featureSelection) setChosenFilter(featureSelection.id); }
   if ((reveal ?? null) !== revealed) { setRevealed(reveal ?? null); setChosenFilter(ALL_FEATURES); }
   // A filter hides cards, so positions drawn would not be positions on the monitor.
   const filter = effectiveFeatureFilter(board, chosenFilter);
@@ -181,7 +188,7 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
   </section>;
 }
 
-export function TaskBoardView({ board, onOpenTask, edits, newTask, features, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null }) {
+export function TaskBoardView({ board, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -190,6 +197,6 @@ export function TaskBoardView({ board, onOpenTask, edits, newTask, features, rev
   </section>;
   return <>
     <QueueBanner board={board} onOpenTask={onOpenTask} edits={edits} />
-    <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} features={features} reveal={reveal} />
+    <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} features={features} reveal={reveal} featureSelection={featureSelection} />
   </>;
 }
