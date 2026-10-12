@@ -45,7 +45,9 @@ A paired phone can also use the [agent chat](agent-chat.md).
 [Tasks](tasks.md) are the one thing a paired phone can change. It shows each
 repository's board with its task text, and you can create, edit, delete, move,
 queue, and schedule tasks, mark a task done, requeue it, and turn the queue off.
-It cannot start a session, turn the queue on, attach or show images, or work with
+Open a task and choose **Start session**, then confirm on the phone, to launch
+it on the computer running Pomegr. The same start gates apply, and Pomegr must remain open.
+The phone cannot turn the queue on, attach or show images, or work with
 GitHub issues; do those in the desktop app. A task you queue from the phone
 starts only while the queue is on. The phone talks to your computer over plain
 HTTP on your network, so pair only on a network you trust.

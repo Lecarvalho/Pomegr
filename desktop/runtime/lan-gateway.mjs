@@ -1,13 +1,19 @@
 import http from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { lanPairingPage } from "./lan-pairing-page.mjs";
+import { TASK_START_STATUSES } from "./task-dispatch.mjs";
 
 const PRIVATE_RANGES = Object.freeze([
   [10, 0, 0, 0, 8], [172, 16, 0, 0, 12], [192, 168, 0, 0, 16],
 ]);
 const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/session-domain", "/api/session-history", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/notifications", "/api/storage", "/api/provider-folders", "/api/repositories", "/api/repository-files", "/api/events", "/api/tasks"]);
-// The one write a paired device has: a fixed task-board action. The web route behind it holds the closed action list.
+// A paired device's fixed board action is the one write forwarded to the web host.
 const TASK_ACTION_PATH = "/api/tasks/action";
+// Paired manual starts stay in desktop main; the private start plan never reaches the web host.
+const TASK_START_PATH = "/api/tasks/start";
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
+const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
+const MAX_TASK_START_BODY_BYTES = 512;
 // The Pomegr agent chat of a paired device: answered here by desktop main, never forwarded upstream.
 const AGENT_CHAT_PATH = "/api/agent-chat";
 // The 16 KiB action payload plus its fixed envelope, as the monitor bounds it.
@@ -176,6 +182,17 @@ function safeRedirect(value, upstream) {
   } catch { return null; }
 }
 
+function pairedStartRequest(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const keys = Object.keys(body);
+  if (!keys.every((key) => ["repositoryId", "taskId", "confirmed", "worktree"].includes(key))
+    || keys.length !== (Object.hasOwn(body, "worktree") ? 4 : 3)
+    || typeof body.repositoryId !== "string" || !REPOSITORY_ID.test(body.repositoryId)
+    || typeof body.taskId !== "string" || !TASK_ID.test(body.taskId)
+    || body.confirmed !== true || (Object.hasOwn(body, "worktree") && body.worktree !== true)) return null;
+  return body;
+}
+
 function closeSoon(server, sockets, upstreamRequests, upstreamStreams) {
   for (const upstream of upstreamRequests) upstream.destroy();
   for (const stream of upstreamStreams) stream.destroy();
@@ -341,7 +358,8 @@ export async function startLanGateway(options = {}) {
     }
     const agentChat = method === "POST" && pathname === AGENT_CHAT_PATH;
     const taskAction = method === "POST" && pathname === TASK_ACTION_PATH;
-    if (method !== "GET" && method !== "HEAD" && !taskAction && !agentChat) { fixed(response, 405); return; }
+    const taskStart = method === "POST" && pathname === TASK_START_PATH;
+    if (method !== "GET" && method !== "HEAD" && !taskAction && !taskStart && !agentChat) { fixed(response, 405); return; }
     if (!authenticated(request)) {
       if (pathname.startsWith("/api/")) { fixed(response, 401, "Unauthorized"); return; }
       if (acceptsHtml(request)) { noStore(response); response.writeHead(302, { Location: "/__pomegr/pair" }); response.end(); return; }
@@ -360,15 +378,42 @@ export async function startLanGateway(options = {}) {
       if (url.search || hasBody) { fixed(response, 403); return; }
     }
     let actionBody = null;
-    if (taskAction || agentChat) {
+    if (taskAction || taskStart || agentChat) {
       // A paired device's own page only: the gateway's origin, a JSON body within the bound, and no query.
       const declared = request.headers["content-length"];
-      if (url.search || request.headers.origin !== origin || !String(request.headers["content-type"] || "").startsWith("application/json")
-        || request.headers["transfer-encoding"] !== undefined || !/^\d+$/.test(String(declared ?? "")) || Number(declared) > MAX_TASK_ACTION_BODY_BYTES) { fixed(response, 403); return; }
-      actionBody = await readBoundedBody(request, MAX_TASK_ACTION_BODY_BYTES);
+      const bodyLimit = taskStart ? MAX_TASK_START_BODY_BYTES : MAX_TASK_ACTION_BODY_BYTES;
+      const contentType = String(request.headers["content-type"] || "");
+      if (url.search || request.headers.origin !== origin || !(taskStart
+        ? /^application\/json(?:\s*;\s*charset=utf-8)?$/iu.test(contentType)
+        : contentType.startsWith("application/json"))
+        || request.headers["transfer-encoding"] !== undefined || !/^\d+$/.test(String(declared ?? "")) || Number(declared) > bodyLimit) { fixed(response, 403); return; }
+      actionBody = await readBoundedBody(request, bodyLimit);
       if (actionBody === null) { fixed(response, 400); return; }
       if (!active || suspended || !authenticated(request)) { fixed(response, 403); return; }
     } else if (!routeIsAllowed(pathname)) { fixed(response, 404); return; }
+    if (taskStart) {
+      let body = null;
+      try { body = pairedStartRequest(JSON.parse(actionBody.toString("utf8"))); } catch { /* invalid JSON */ }
+      let answer = { status: "invalid" };
+      if (body) {
+        const revision = networkRevision;
+        const isAuthorized = async () => {
+          if (!active || suspended || revision !== networkRevision || !authenticated(request) || response.destroyed) return false;
+          await networkAllowed();
+          return active && !suspended && revision === networkRevision && authenticated(request) && !response.destroyed;
+        };
+        try {
+          answer = typeof options.taskStart === "function"
+            ? await options.taskStart(body.repositoryId, body.taskId, body.worktree, isAuthorized)
+            : { status: "unavailable" };
+        } catch { answer = { status: "unavailable" }; }
+      }
+      if (!active || suspended || !authenticated(request) || response.destroyed) { if (!response.destroyed) fixed(response, 403); return; }
+      noStore(response);
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ status: TASK_START_STATUSES.includes(answer?.status) ? answer.status : "unavailable" }));
+      return;
+    }
     if (agentChat) {
       // One fixed operation and its payload in; the chat's own bounded answer out. Nothing of it reaches the web host.
       let answer = { ok: false, error: "invalid" };

@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   createTaskStart,
+  confirmTaskStart,
   installTaskStartIpc,
   TASK_START_CHANNEL,
   TASK_START_LAUNCH_ARGUMENTS,
@@ -558,6 +559,20 @@ test("the confirmation of a separate-worktree start says the uncommitted changes
   const separate = taskStartConfirmation({ taskId: "T-3", separateWorktree: true });
   assert.equal(separate.message, "Start task T-3 in a separate worktree?");
   assert.match(separate.detail, /uncommitted changes in this repository are not part of it and are left untouched/u);
+});
+
+test("native task confirmation uses the current window and defaults to Cancel", async () => {
+  const window = { isDestroyed: () => false };
+  const shown = [];
+  const dialog = { showMessageBox: async (...args) => { shown.push(args); return { response: 0 }; } };
+  assert.equal(await confirmTaskStart(dialog, () => window, { taskId: "T-3", separateWorktree: true }), true);
+  assert.equal(shown[0][0], window);
+  assert.equal(shown[0][1].message, "Start task T-3 in a separate worktree?");
+  assert.deepEqual(shown[0][1].buttons, ["Start session", "Cancel"]);
+  assert.equal(shown[0][1].defaultId, 1);
+  assert.equal(shown[0][1].cancelId, 1);
+  assert.equal(await confirmTaskStart(dialog, () => ({ isDestroyed: () => true }), { taskId: "T-3" }), false);
+  assert.equal(shown.length, 1);
 });
 
 test("a separate-worktree start never runs in the repository root, and takes only the fixed mark", async () => {

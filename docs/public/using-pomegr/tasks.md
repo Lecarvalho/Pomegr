@@ -18,10 +18,10 @@ tasks.
 
 - **Use the desktop app or a paired device to change tasks.** You create, edit,
   move, queue, and schedule tasks in the Pomegr desktop app or on a phone you
-  paired with it (see [Phone access](phone-access.md)). Only the desktop app
-  starts a session, turns the queue on, attaches images, and works with GitHub
-  issues; a paired device says "Sessions are started and the queue is turned on
-  in the Pomegr desktop app." A browser on the same computer shows the board
+  paired with it (see [Phone access](phone-access.md)). You can also confirm a
+  manual start on the phone; the session runs on the computer running Pomegr.
+  Only the desktop app turns the queue on, attaches images, and works with GitHub
+  issues. A browser on the same computer shows the board
   read-only and says "Tasks are created and edited in the Pomegr desktop app or
   on a paired device."
 - **Starting sessions works on Windows only for now.** Elsewhere a start answers
@@ -239,9 +239,9 @@ Open a card and select **Start session**. A task can start when it is **Not
 queued**, **Queued**, or **Scheduled** and has no session linked. A scheduled task
 cannot start before its own time.
 
-1. Pomegr asks "Start task T-3?" and does nothing until you select **Start
-   session** in that dialog.
-2. A visible terminal window opens in the repository, or in the task's worktree
+1. Pomegr asks "Start task T-3?" and does nothing until you confirm. On a paired
+   phone, confirm in the phone's browser; no click on the PC is needed.
+2. A visible terminal window opens on the computer running Pomegr, in the repository, or in the task's worktree
    (see below), running Claude Code or Codex with the model and effort you chose.
    The task window says "Session started in a new terminal window."
 3. When the plugin in that session reports in, the task links to the session. The

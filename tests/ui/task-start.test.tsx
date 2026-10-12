@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Task, TaskBoard } from "../../shared/task-contract";
 
 const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
+const access = vi.hoisted(() => ({ mode: "local" as "local" | "lan" | "unknown" }));
+vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => ({ mode: access.mode }), clientAccessMode: () => access.mode }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: { revision: 1, readiness: "ready", repositories: [] }, loading: false, connected: true, refresh: vi.fn() }) }));
@@ -36,7 +38,7 @@ async function openModal(user: ReturnType<typeof userEvent.setup>) {
 }
 
 beforeEach(() => { taskStart.mockResolvedValue({ status: "started" }); setBridge({ taskAction, taskStart }); setBoard(task()); });
-afterEach(() => { setBridge(undefined); vi.clearAllMocks(); });
+afterEach(() => { setBridge(undefined); access.mode = "local"; vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Start session", () => {
   it("is absent without the desktop bridge", () => {
@@ -433,6 +435,77 @@ describe("Start in separate worktree after a dirty repository", () => {
     await waitFor(() => expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled());
     expect(dialog.getByRole("status")).toHaveTextContent("This repository has uncommitted changes.");
     expect(dialog.getByRole("button", { name: "Start in separate worktree" })).toBeInTheDocument();
+  });
+});
+
+describe("paired phone starts", () => {
+  const fetchStart = vi.fn();
+  beforeEach(() => {
+    setBridge(undefined);
+    access.mode = "lan";
+    fetchStart.mockReset().mockResolvedValue({ ok: true, json: async () => ({ status: "started" }) });
+    vi.stubGlobal("fetch", fetchStart);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+
+  it("confirms on the phone and sends one bounded start, with no native bridge", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openModal(user);
+    await user.dblClick(dialog.getByRole("button", { name: "Start session" }));
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("computer running Pomegr"));
+    expect(fetchStart).toHaveBeenCalledTimes(1);
+    expect(fetchStart).toHaveBeenCalledWith("/api/tasks/start", {
+      method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repositoryId, taskId: "T-1", confirmed: true }),
+    });
+    expect(taskStart).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal on the computer running Pomegr.");
+  });
+
+  it("cancels without a request and leaves the task startable", async () => {
+    vi.mocked(window.confirm).mockReturnValue(false);
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openModal(user);
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    expect(fetchStart).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+  });
+
+  it("confirms a separate worktree and keeps the offer when cancelled", async () => {
+    fetchStart.mockResolvedValueOnce({ ok: true, json: async () => ({ status: "tree_dirty" }) });
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openModal(user);
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    vi.mocked(window.confirm).mockReturnValueOnce(false);
+    await user.click(dialog.getByRole("button", { name: "Start in separate worktree" }));
+    expect(fetchStart).toHaveBeenCalledTimes(1);
+    expect(dialog.getByRole("button", { name: "Start in separate worktree" })).toBeEnabled();
+    await user.click(dialog.getByRole("button", { name: "Start in separate worktree" }));
+    expect(window.confirm).toHaveBeenLastCalledWith(expect.stringContaining("uncommitted changes are left out and remain untouched"));
+    expect(JSON.parse(fetchStart.mock.calls[1][1].body)).toEqual({ repositoryId, taskId: "T-1", confirmed: true, worktree: true });
+  });
+
+  it.each(["local", "unknown"] as const)("never sends a start from %s browser access", async (mode) => {
+    access.mode = mode;
+    expect(await startDesktopTask(repositoryId, "T-1")).toBe("unavailable");
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(fetchStart).not.toHaveBeenCalled();
+  });
+
+  it("uses fixed failures for revoked access, unknown statuses, and network errors", async () => {
+    fetchStart.mockResolvedValueOnce({ ok: false, json: async () => ({ status: "started", private: "secret" }) });
+    expect(await startDesktopTask(repositoryId, "T-1")).toBe("unavailable");
+    fetchStart.mockResolvedValueOnce({ ok: true, json: async () => ({ status: "secret" }) });
+    expect(await startDesktopTask(repositoryId, "T-1")).toBe("failed");
+    fetchStart.mockRejectedValueOnce(new Error("secret"));
+    expect(await startDesktopTask(repositoryId, "T-1")).toBe("unavailable");
+    expect(fetchStart).toHaveBeenCalledTimes(3);
   });
 });
 

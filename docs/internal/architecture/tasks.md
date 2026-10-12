@@ -25,9 +25,9 @@ implemented; see [Open questions and unassigned work](#open-questions-and-unassi
 Pomegr is an observer plus an opt-in dispatcher. Observation is unchanged: it
 reads provider data and never writes it. Tasks and dispatch are a separate control
 plane that lets the user queue work for a repository and have Pomegr start a new
-Claude Code or Codex session for it, in the desktop app only. A paired device may read
-the board and send the fixed task actions (see [Paired devices](#paired-devices)); it
-never starts a session.
+Claude Code or Codex session for it on the desktop computer. A paired device may read
+the board, send the fixed task actions, and confirm a manual start on that computer
+(see [Paired devices](#paired-devices)).
 
 ## Ownership
 
@@ -757,7 +757,7 @@ and only one step at a time. Every start first passes the [start gates](#start-g
     answers no start before `startAt` and none from `stopAfter` on. The queue stays
     `running` and its tasks stay queued; the board names the hold on the next task as
     `before_queue_start` or `after_queue_stop`. The window holds the queue's starts only:
-    a start the user makes by hand, with its native confirmation, is not held by it.
+    a start the user makes by hand, with its confirmation, is not held by it.
     Setting the schedule never turns the queue on or off, and turning the queue off and
     on keeps the schedule.
   - **A time that has passed.** A time is checked only when the desktop queue runner asks,
@@ -848,9 +848,9 @@ the owner may accept the second case on purpose:
   a scheduled task before its own time stay `gate_held`. The working-tree reading is
   already on `queue.gates.workingTree`, so the answer exposes no new fact.
 - After that answer the task modal shows **Start in separate worktree**. It calls
-  `pomegr:task-start` again with the fixed third argument `true` and nothing else. The
-  native confirmation names the separate worktree and says that the repository's
-  uncommitted changes are not part of it and are left untouched. Cancelling it leaves
+  `pomegr:task-start` again with the fixed third argument `true`, or the paired start
+  route with `worktree: true`. The confirmation on the requesting device names the separate worktree.
+  It says that uncommitted changes are not part of it and stay untouched. Cancelling it leaves
   the offer in place.
 - Desktop main then asks for the plan with `{ id, worktree: true }`. For that payload the
   monitor does not hold the start on `tree_dirty` (every other gate still holds it) and
@@ -1485,9 +1485,10 @@ How it is built:
 
 ## Starting a session
 
-Starting is desktop-only and explicit.
+Starting is explicit and runs on the desktop computer.
 
-1. A manual start shows a native confirmation. The queue runner starts without a prompt
+1. A manual start shows a native confirmation in the desktop app or a browser confirmation on the paired device.
+   The queue runner starts without a prompt
    only after the user turned the queue on.
 2. The runner opens a visible terminal window in the repository root, or in the task's
    worktree, that runs the provider CLI. It uses `spawn` with an argument array and
@@ -1518,11 +1519,11 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`, `gate_held`,
   `tree_dirty`, `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`,
   `failed`, or `worktree_dirty`.
-- Desktop main checks the platform and looks for the Claude Code and Codex executables,
-  then shows the native confirmation, which names only the task ID. Only after the user
+- Desktop main checks the platform and looks for the Claude Code and Codex executables.
+  An IPC start then shows the native confirmation. A paired start was already confirmed on the requesting device. Only after the user
   confirms does it ask the monitor for the start plan, because the plan mints a
   single-use token. The provider is therefore known only from the plan: with no provider
-  executable installed the start answers `cli_missing` before the confirmation, and when
+  executable installed an IPC start answers `cli_missing` before the native confirmation, and when
   the plan's own provider executable is missing desktop main aborts the dispatch and
   answers `cli_missing`.
 - `POST /internal/tasks/start-plan` answers the plan for a startable task: provider,
@@ -1816,8 +1817,7 @@ serves no other client.
   `{ repositoryId, action, payload }`. Three layers gate it, and each refuses on its own:
   1. The gateway takes the POST only with the session cookie, its own `Origin`, a JSON
      content type, no query, and a declared body of at most 17 KiB. It forwards the body
-     with the desktop token and the `x-pomegr-lan-gateway` mark. Every other POST path
-     answers 405.
+     with the desktop token and the `x-pomegr-lan-gateway` mark. Only the start and agent-chat POST paths described below are also accepted.
   2. The desktop web gate (`installLocalRequestGate` in `server/web/server.mjs`) lets
      through that one POST path, with the token and no `Origin`. Every other method and
      path stays read-only.
@@ -1837,18 +1837,21 @@ serves no other client.
   that lets Pomegr start sessions with no prompt, and it stays a desktop action. A paired
   device may turn the queue off and set the threshold and the schedule. A task it queues
   while the queue is on is started by the desktop queue runner like any other.
-- **Desktop only.** Starting a session by hand, Open folder, images, and GitHub issues
+- **Manual start.** The owner's request of 2026-10-12 adds `POST /api/tasks/start`. The desktop gateway handles it directly. It never forwards the request to the web host or exposes a start-plan proxy. Its exact JSON body is `{ repositoryId, taskId, confirmed: true }`, optionally with `worktree: true`. IDs use the existing repository and task patterns. Unknown keys, false flags, and missing confirmation are invalid. The route requires the pairing cookie, the gateway's own `Origin`, and JSON content type. It permits no query or transfer encoding. The declared body must be at most 512 bytes.
+- **Start confirmation.** The phone's browser asks before every manual start and names the task ID and the computer running Pomegr. A separate-worktree confirmation explains that it excludes uncommitted changes. Cancellation sends no request. Desktop main uses the same starter and exclusive launch slot as native IPC and the queue runner. The same manual start gates apply, with no second confirmation on the PC. It revalidates pairing and network authorization before reserving a dispatch, after the plan returns, and immediately before launch. Lost authorization aborts a reserved dispatch. It never stops a session already launched.
+- **Start answer.** The gateway returns only `{ status }` from the fixed `pomegr:task-start` status list, or a fixed HTTP refusal. It never returns a prompt, plan, path, dispatch token, process output, or exception. There is no automatic retry.
+- **Desktop only.** Open folder, images, and GitHub issues
   have no forwarded route. The device's Task field shows an image as its marker.
 - **Agent chat.** A paired device also reaches the agent chat, through one route that
   the gateway answers itself. [Agent chat](agent-chat.md#boundaries) owns it.
 - **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
   `desktop`, `paired`, `absent`, or `pending` until the client knows which, so no control
   or note is drawn and then taken back. `sendTaskAction` uses the bridge when there is
-  one and the route only when `/api/client-access` answered `lan`.
+  one and the route only when `/api/client-access` answered `lan`. The start action follows the same availability and confirms on the paired device before posting to its direct start route.
 - **Residual risk.** The gateway serves plain HTTP on the local network, so task content
   and the session cookie cross it unencrypted, as session content already does. Whoever
-  holds a paired device's cookie can change the board and queue work while the queue is
-  on. Pairing, its four-device bound, the network checks, and revocation are unchanged.
+  holds a paired device's cookie can change the board, request a manual start, and queue work while the queue is
+  on. The confirmation is an owner-facing UI boundary, not proof against a holder of the cookie. Pairing, its four-device bound, the network checks, and revocation are unchanged.
   The product owner accepts this risk as part of phone access.
 - **Revocation.** Revoking phone access ends the device's reads and writes at once.
 
@@ -1863,6 +1866,7 @@ serves no other client.
 | `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board. `queue_settings` that turns the queue on answers `unsupported` |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status |
+| `POST /api/tasks/start` | A paired device through the desktop LAN gateway, behind confirmation on that device and repeated authorization checks | `{ repositoryId, taskId, confirmed: true, worktree?: true }`, at most 512 bytes; answers only `{ status }` from the IPC start allowlist; never forwards or exposes a start plan |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
@@ -1957,13 +1961,14 @@ serves no other client.
 - The `GET` is a committed-store read. It acquires no provider evidence and never
   triggers observation. Its session facts come from a lookup that reads memory only, and
   the `/internal/tasks/<action>` answers carry the same filled board.
-- A browser that is not a paired device never mutates tasks, and no browser or LAN client
-  starts a session.
+- A browser that is not a paired device never mutates tasks or starts a session. A paired device may request only the confirmed manual start described in [Paired devices](#paired-devices); the desktop performs the launch.
 - The seven MCP observation tools stay read-only, as in [MCP observation queries](mcp-queries.md).
   The task tools are a separate registration with the eight POST paths above: seven
   writes and the `feature-get` read.
 
 ## Privacy
+
+- A paired manual start sends only the repository ID, task ID, confirmation flag, and optional separate-worktree flag to the desktop gateway. Its answer exposes only a fixed start status. The private plan, prompt, filesystem paths, image files, credentials, and dispatch token stay on the desktop's existing private launch path.
 
 Task text, the own condition, and a feature's name, description, and app version are
 user-authored content, a new data class. A description or an app version that an agent
