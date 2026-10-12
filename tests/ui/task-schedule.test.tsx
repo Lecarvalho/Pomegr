@@ -14,8 +14,7 @@ vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory
 
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 import { waitingLine } from "../../app/components/tasks/task-gates-model";
-import { singleQueueTasks } from "../../app/components/tasks/task-queue-model";
-import { editedSchedule, instantOfLocalDateTime, localDateTime, nextOccurrence, scheduleLabel, startsLine, timeOfDay, waitsForOwnTime } from "../../app/components/tasks/task-schedule";
+import { editedSchedule, instantOfLocalDateTime, localDateTime, nextOccurrence, scheduleLabel, startsParts, timeOfDay, waitsForOwnTime } from "../../app/components/tasks/task-schedule";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -67,9 +66,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+/** The schedule is a section of the Queue settings dialog, which the Board's capacity strip opens. */
 async function showQueue() {
   render(<TaskBoardPane repositoryId={repositoryId} />);
-  await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
+  await userEvent.click(screen.getByRole("button", { name: "Queue settings" }));
   return within(screen.getByRole("region", { name: "Schedule" }));
 }
 const scheduleCalls = () => taskAction.mock.calls.filter((call) => call[1] === "queue_settings").map((call) => call[2]);
@@ -115,19 +115,14 @@ describe("schedule time helpers", () => {
   });
 
   it("shows a start line only for a scheduled task that still waits for a session", () => {
-    expect(startsLine(task(1, "a", { state: "scheduled", scheduledAt: local(2026, 10, 9, 2) }))).toBe("Starts Oct 9, 02:00");
-    expect(startsLine(task(1, "a", { state: "queued", scheduledAt: local(2026, 10, 9, 2) }))).toBeNull();
-    expect(startsLine(task(1, "a", { state: "scheduled" }))).toBeNull();
-    expect(startsLine(tasks()[3])).toBeNull();
+    expect(startsParts(task(1, "a", { state: "scheduled", scheduledAt: local(2026, 10, 9, 2) }))).toEqual({ day: "Oct 9,", time: "02:00" });
+    expect(startsParts(task(1, "a", { state: "queued", scheduledAt: local(2026, 10, 9, 2) }))).toBeNull();
+    expect(startsParts(task(1, "a", { state: "scheduled" }))).toBeNull();
+    expect(startsParts(tasks()[3])).toBeNull();
     const now = Date.parse(local(2026, 10, 8, 22));
     expect(waitsForOwnTime(task(1, "a", { state: "scheduled", scheduledAt: local(2026, 10, 9, 2) }), now)).toBe(true);
     expect(waitsForOwnTime(task(1, "a", { state: "scheduled", scheduledAt: local(2026, 10, 8, 21) }), now)).toBe(false);
     expect(waitsForOwnTime(task(1, "a", { state: "queued", scheduledAt: local(2026, 10, 9, 2) }), now)).toBe(false);
-  });
-
-  it("lists a scheduled single task among the waiting ones only once the monitor put it in the order", () => {
-    const board = setBoard({ order: ["T-2", "T-1"] }, [task(1, "a", { state: "queued" }), task(2, "b", { state: "scheduled", scheduledAt: PAST }), task(3, "c", { state: "scheduled", scheduledAt: FAR })]);
-    expect(singleQueueTasks(board).map((entry) => entry.id)).toEqual(["T-2", "T-1", "T-3"]);
   });
 
   it("words the queue's own schedule as a reason the next task waits", () => {
@@ -143,7 +138,7 @@ describe("schedule time helpers", () => {
 describe("the Schedule panel", () => {
   it("reads Run now with an empty stop time and the two fixed notes (D170-D177)", async () => {
     const panel = await showQueue();
-    expect(panel.getByRole("heading", { name: "Schedule" })).toBeInTheDocument();
+    expect(panel.getByRole("heading", { level: 3, name: "Schedule" })).toBeInTheDocument();
     const mode = panel.getByRole("group", { name: "Queue start" });
     expect(mode).toHaveClass("commandSegmented");
     expect(within(mode).getByRole("button", { name: "Run now" })).toHaveAttribute("aria-pressed", "true");
@@ -151,11 +146,9 @@ describe("the Schedule panel", () => {
     expect(panel.queryByLabelText("Start at")).not.toBeInTheDocument();
     expect(panel.getByLabelText("Stop starting tasks after")).toHaveValue("");
     expect(panel.getByText("A running session is never stopped by the schedule. Pomegr must be open for scheduled tasks to start.")).toBeInTheDocument();
-    // The panel sits in the Queue view's aside, after the start gates.
-    const aside = screen.getByRole("complementary", { name: "Queue settings" });
-    const regions = within(aside).getAllByRole("region").map((region) => region.getAttribute("aria-labelledby"));
-    expect(regions).toHaveLength(2);
-    expect(within(aside).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["Start gates", "Schedule"]);
+    // The section sits in the Queue settings dialog, after the start gates and before the block rules.
+    const dialog = screen.getByRole("dialog", { name: "Queue settings" });
+    expect(within(dialog).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["Start gates", "Schedule", "When the queue blocks"]);
   });
 
   it("sends a stop time as its next occurrence when the field loses focus, and nothing when it did not change", async () => {
@@ -243,7 +236,7 @@ describe("the Schedule panel", () => {
 });
 
 describe("a scheduled task", () => {
-  it("shows Scheduled with its time in the Queue view and Starts with its time on the Board card (D63, D81, D155)", async () => {
+  it("shows Scheduled and a Starts line with its time on the Board card (D63, D81, D155)", async () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(card("T-2").querySelector(".commandChip")).toHaveTextContent("Scheduled");
     expect(card("T-2").querySelector(".commandChip")).toHaveClass("info");
@@ -251,8 +244,6 @@ describe("a scheduled task", () => {
     expect(card("T-2").querySelector(".taskCardStartsTime")).toHaveTextContent("02:00");
     // Once its session works on it the card borrows the session's state and names no start time.
     expect(within(card("T-4")).queryByText(/^Starts /u)).not.toBeInTheDocument();
-    await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
-    expect(card("T-2").querySelector(".commandChip")).toHaveTextContent("Scheduled · Oct 9, 02:00");
   });
 
   it("takes its start time from the Task modal as queue_add with the instant, when the field loses focus", async () => {

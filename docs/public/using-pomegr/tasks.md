@@ -52,10 +52,9 @@ there until its session starts.
 
 ### Create a task
 
-1. On the **Board** view, hover the **Backlog** column, or move keyboard focus
+1. On the **Board**, hover the **Backlog** column, or move keyboard focus
    into it, and select **New task** under its last card. On a touch screen the
-   action is always shown. The **Queue** view has no columns, so it has no
-   **New task**.
+   action is always shown.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
    field. A card shows this text until its session has a title, then the title.
 3. To show the agent a screenshot or a mock-up, paste an image into the text or
@@ -172,17 +171,20 @@ Pomegr moves a card to another column when its task changes state:
   choose **Remove from queue** or its session starts. **Remove from queue** leaves
   the card in **Ready**.
 - The queued cards in **Ready** read top to bottom in the order the queue starts
-  them, the same order the **Queue** view shows. Cards that are not queued keep
+  them, the order the queue starts them. Cards that are not queued keep
   their place between them.
 - **Ready** groups its queued cards by step. Each group is headed by its feature
   and step, such as "Step 2 of 4". A frame marked **Parallel** surrounds the cards
   of one step that start together. The queued cards with no feature come last,
   under **Single tasks**.
-- **Change a card's step in Ready.** Drag a queued card of a feature onto another
-  step of that feature to run it in parallel with that step. Drag it just under
-  the feature's last step to give it a **New step** of its own at the end. From
-  the keyboard, focus the card and use **Move to step…**. A step that is running
-  is listed and cannot be chosen. This is off while a feature filter is on.
+- **Change a card's step.** In **Ready**, drag a queued card of a feature onto
+  another step of that feature to run it in parallel with that step. Drag it just
+  under the feature's last step to give it a **New step** of its own at the end.
+  A step cannot be inserted between two steps. From the keyboard, or for a card
+  that is not in **Ready**, focus the card and use **Move to step…**. It works
+  for any card of a feature that has not started, queued or not. A step that is
+  running is listed and cannot be chosen. A step whose tasks are all done accepts
+  nothing. This is off while a feature filter is on.
 - **Reorder single tasks by moving their cards.** Drag a queued card with no
   feature above or below another in **Ready**, or use its move up and move
   down buttons. Feature tasks follow their steps, so a card dropped out of that order
@@ -274,7 +276,7 @@ next step starts only when every task of the step before it is done. Select
 **New feature…** in a task's **Feature** field or **+ New feature** above the
 board. A task that joins a feature takes a new last step, so it runs after the
 feature's other tasks. To run it in parallel with another task, or earlier, move it
-to that step in the **Queue** view (see [Run the queue](#run-the-queue)). A feature is done when all its tasks are.
+to that step on the Board (see [Queued cards stay in Ready](#queued-cards-stay-in-ready)). A feature is done when all its tasks are.
 Only unfinished features are offered for a new attachment. Select a feature chip
 in the filter row to show only its tasks.
 
@@ -318,15 +320,13 @@ so the worktrees do not show as changes in the repository.
 ## Run the queue
 
 The queue starts tasks without you. It is **Off** for every repository until you
-select **On** in the **Queue** switch of the Tasks header (which is separate from
-the **Board** and **Queue** view buttons beside it). Add a task with **Add to
-queue** in its task window. With the queue off, queued tasks start only when you start
+select **On** in the **Queue** switch of the Tasks header. Add a task with
+**Add to queue** in its task window. With the queue off, queued tasks start only when you start
 them. Turning it off never touches a running session.
 
-The **Queue** view shows what runs when. Each unfinished feature lists its steps,
-marked **Parallel** or **One task**. Drag a task that has not started to another step, or to
-**New last step**, or use **Move to step…** from the keyboard; the task does not
-have to be in the queue. A step whose tasks are all done accepts none. Tasks with no feature appear under **Single tasks**.
+The **Ready** column shows what runs when. Each step is headed **Parallel** or
+**One task**. Tasks with no feature appear under **Single tasks**. To change a
+step, see [Queued cards stay in Ready](#queued-cards-stay-in-ready).
 
 - **Order.** Features come first, in the order the board lists them, then each
   feature's steps in order, then single tasks in the order of their cards in the
@@ -344,7 +344,7 @@ have to be in the queue. A step whose tasks are all done accepts none. Tasks wit
 - **Started tasks.** A task whose session has started is no longer shown as next or
   as waiting. It keeps its state and shows its session's state, and later steps
   wait for it. While a task with no feature is running, the queue starts nothing,
-  even when the Queue view still marks the next single task **Queued · next**.
+  even when the Board still marks the next single task **Queued · next**.
 - **Timing.** The desktop app asks for the next start every 15 seconds, so the
   queue works only while Pomegr is open.
 
@@ -354,7 +354,7 @@ A task that stalled or was blocked by its agent stops the whole
 queue. A banner reads **Queue blocked** and names the task. Nothing new starts
 until you resolve that task; sessions already running continue. Open the task and
 choose one of two actions. In the desktop app, the banner also offers them, as
-**Mark done and resume** and **Requeue T-n**, on the Board and in the Queue view.
+**Mark done and resume** and **Requeue T-n**.
 
 - **Mark done and resume queue** accepts the task as done and keeps its report and
   session link.
@@ -399,7 +399,7 @@ task and one of these reasons. Fix it, then select **On** again to retry.
 ## Start gates
 
 Before every start, manual or queued, Pomegr judges four start gates from
-facts it has already observed. **Queue settings** on the Board and the **Queue** view list each reading, and a held
+facts it has already observed. **Queue settings** on the Board lists each reading, and a held
 queued task shows "Waiting:" with the reasons. A missing, stale, or partial
 reading is unknown, and unknown holds a start exactly like a failed gate.
 
@@ -428,7 +428,7 @@ Claude Code usage is not known yet."
   starting it earlier. Clear the time to leave the task **Queued**. A scheduled
   task that is not yet due holds nothing behind it, but its feature's next step
   waits until it has run.
-- **The queue's window.** Under **Schedule**, in **Queue settings** on the Board or in the Queue view, **Start at a
+- **The queue's window.** Under **Schedule**, in **Queue settings** on the Board, **Start at a
   time** sets a time of day before which the queue starts nothing, and **Stop
   starting tasks after** sets a time from which it starts nothing. Pomegr applies
   the next occurrence of that time. Both hold queued starts only; a start you make

@@ -1,8 +1,6 @@
 import type { Task, TaskBoard, TaskQueuePauseReason } from "../../../shared/task-contract";
 import type { TaskWorktreeOpenStatus } from "./task-desktop";
 
-export type QueueBannerView = "board" | "queue";
-
 export type QueueBannerModel = {
   title: string;
   body: string;

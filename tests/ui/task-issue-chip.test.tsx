@@ -1,7 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import { QueueTaskCard } from "../../app/components/tasks/QueueTaskCard";
 import { TaskCard } from "../../app/components/tasks/TaskCard";
 import { TaskCardIds, TaskIssueChip } from "../../app/components/tasks/TaskIssueChip";
 import { taskIssueNumber, validIssueNumber } from "../../app/components/tasks/task-presentation";
@@ -75,13 +74,6 @@ describe("the chip on a card", () => {
     expect(document.querySelectorAll(".taskIssueChip")).toHaveLength(0);
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(document.querySelectorAll(".taskCardIds > .taskCardId")).toHaveLength(3);
-  });
-
-  it("shows the same chip on a queue card", () => {
-    render(list(<QueueTaskCard task={promoted} nextQueued={false} />));
-    const ids = screen.getByRole("listitem").querySelector(".taskCardIds") as HTMLElement;
-    expect(ids).toHaveTextContent("T-34#142");
-    expect(within(ids).getByRole("img", { name: "GitHub issue #142" })).toHaveClass("taskIssueChip");
   });
 
   it("renders the issue as text only: no link, no markup from the title", () => {

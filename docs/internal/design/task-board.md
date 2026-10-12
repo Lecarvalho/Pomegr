@@ -1,6 +1,6 @@
 # Task board design
 
-> Scope: the Tasks home, the Tasks page (page header, Board, Queue settings panel, Queue view, Start gates and Schedule panels), the task card and its chips, and the session surfaces for a task session.
+> Scope: the Tasks home, the Tasks page (page header, Board, Queue settings panel with its Start gates, Schedule, and blocking-rule sections), the task card and its chips, and the session surfaces for a task session.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/components/tasks/`, `app/styles/tasks.css`, the `/design-system` samples,
@@ -73,10 +73,9 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 
 - The route is `/tasks?repository=<repositoryId>`. It is a root route. The repository detail's Tasks tab only links to it.
 - The page is a composition of the existing roles, chips, and tokens. It adds no button role.
-- The page holds these parts in order: the shared page header, the **Queue status** banner, and then the Board or the Queue view.
+- The page holds these parts in order: the shared page header, the **Queue status** banner, and then the Board.
 - The **Queue status** banner shows only while the queue is blocked or paused.
 - The Board holds the capacity strip, the feature filter, and the lanes of task cards. Its **Queue settings** action opens the [Queue settings panel](#queue-settings-panel).
-- The Queue view holds the feature panels with steps, **Single tasks**, **When the queue blocks**, and a right column with the **Start gates** and **Schedule** panels.
 - One desktop-only modal holds the task fields, in three modes: new, promote, and edit. See [task-modal.md](task-modal.md).
 - A session started for a task adds the session surfaces at the end of this page.
 - Every element draws committed board facts. A state is never shown and then retracted.
@@ -94,10 +93,9 @@ The head actions appear in this order:
 | Order | Action | Shown when |
 | --- | --- | --- |
 | 1 | **Repository** `CommandSelect` | Always. 32px high, 12px text, at most 240px wide. 44px high on phone and coarse pointers. |
-| 2 | **Tasks view** `.commandSegmented` switch (**Board**, **Queue**) | The board is ready. |
-| 3 | The [queue switch](#queue-switch) | The desktop app or a paired device, on the Board and on the Queue view. |
-| 4 | **+ New feature** | The desktop app, on the Queue view, and on the Board with no feature yet. Once the Board has a feature, the filter row carries it. |
-| 5 | The Secondary **Promote issues** link | The desktop issues bridge exists. |
+| 2 | The [queue switch](#queue-switch) | The desktop app or a paired device. |
+| 3 | **+ New feature** | The desktop app, while the board has no feature. Once the board has a feature, the filter row carries it. |
+| 4 | The Secondary **Promote issues** link | The desktop issues bridge exists. |
 
 - The **Promote issues** link has a 14px circle-dot glyph and opens the Promote issues page.
 - Like the other desktop-only actions, the **Promote issues** link is decided at first render.
@@ -148,7 +146,6 @@ The head actions appear in this order:
 - The lane is at least 240px tall.
 - Above 760px, the lane is exactly as tall as the window leaves under the page header, gates, and filter. The page itself does not scroll.
 - Above 760px, each lane scrolls its own cards under a thin scrollbar. Its header and **+ New task** stay in view.
-- The Queue view fits the window the same way from 1100px wide. The queue and the settings column each scroll on their own.
 - The lane under a dragged card cannot take the raised fill, so it takes the strong line (`--command-line-strong`) on its border.
 - The drop-target border is two pixels wide, drawn as an inset one-pixel ring, in both themes.
 
@@ -175,7 +172,7 @@ The head actions appear in this order:
 - The left part is the feature name (12px, muted), “ · ”, and “Step k of n” (12px/650, ink).
 - The right part of a step that holds one task is “One task” (11px, muted).
 - The right part of a step that holds more tasks, in any lane, is the parallel glyph, a 4px gap, and “Parallel · n” (11px/500, ink), with the count in the data font.
-- The count is the number of tasks of the step in any lane, as in the Queue view.
+- The count is the number of tasks of the step in any lane.
 - The parallel glyph is 12px: two vertical 1.5px strokes in the current color. In a caption it is hidden from assistive technology.
 - The waiting cards with no feature step come under the caption “Single tasks” (12px/650, ink) with “One at a time” (11px, muted).
 - A grouped card (`.taskReadyCard`) is the board card at 10px/12px padding with a 6px gap.
@@ -184,7 +181,7 @@ The head actions appear in this order:
 - The card the monitor lists first keeps the chip **Queued · next**.
 - That card adds one muted 12px “Waiting: …” line while a gate holds it and the queue is on.
 - The drop line and the move toolbar work on a grouped card as on any card.
-- A queued card of a feature changes step here. See [Changing a step](#changing-a-step).
+- A waiting card of a feature changes step here. See [Changing a step](#changing-a-step).
 
 ### + New task
 
@@ -195,7 +192,6 @@ The head actions appear in this order:
 - It is always visible on a coarse pointer and at 760px and narrower. It is 44px tall there.
 - It has no transition.
 - It opens the New task modal and has `aria-haspopup="dialog"`. Focus returns to it when the modal closes.
-- The Queue view has no lanes, so the action is on the Board only.
 
 ### Feature filter
 
@@ -271,7 +267,7 @@ Each row below the title shows only when it is set, in this order:
 | Not queued | Neutral and muted. |
 | Queued | Neutral, in ink on the raised fill, with no border. It differs from Not queued. |
 | **Queued · next** | The label of the one task the monitor lists first. |
-| Scheduled | Info. In the Queue view's single-task row, it carries its time. |
+| Scheduled | Info. The card's Starts line carries its time. |
 | Needs review | Warning. |
 | Stalled | Warning. |
 | Blocked by agent | Warning. |
@@ -290,7 +286,7 @@ Each row below the title shows only when it is set, in this order:
 - The text is muted on the panel line.
 - It is a label and never a link.
 - Its accessible name is “GitHub issue #N”.
-- It shows right after the task ID on a card, on the Board and on queue step cards.
+- It shows right after the task ID on a card, on the Board.
 - It shows in the Source line of the Task tab (“Source”, the chip, “GitHub issue”).
 - It shows as the Source cell of the Overview Task panel.
 - It shows only for a task with a source.
@@ -325,8 +321,9 @@ Each row below the title shows only when it is set, in this order:
 
 ### Changing a step
 
-- In the desktop app, a queued card of a feature changes step on the Board. A queued card is a Queued or Scheduled card with no session.
-- The Board sends the Queue view's step action and applies the Queue view's rule. See [Moving queued tasks](#moving-queued-tasks).
+- In the desktop app, a waiting card of a feature in Ready changes step by drag. A waiting card is a Queued or Scheduled card with no session.
+- The **Move to step…** select changes the step of every card of a feature that has not started, queued or not. A Not queued card in Backlog changes step too.
+- A step move is the board's step action. It joins the card to an existing step or gives it a new last step.
 - While the card is dragged over a step group of its own feature, the group (`.taskReadyGroup.isStepTarget`) takes the panel fill.
 - That group also takes a two-pixel border, drawn as an inset one-pixel ring, in `--command-line-strong`.
 - Dropping the card on the group gives it that step. No drop line is drawn over a step target.
@@ -334,11 +331,12 @@ Each row below the title shows only when it is set, in this order:
 - The zone has a one-pixel dashed `--command-ink` border, the panel radius, and 10px/12px padding.
 - The zone's text is centered 12px ink and reads “New step 3 · after step 2”, in the step numbers drawn now.
 - Dropping the card on the zone gives it a new last step. The zone is drawn only while the card is over that gap.
-- No zone is drawn between two steps: the step action adds a step only after the last one.
+- A step cannot be inserted between two steps. No zone is drawn between two steps.
 - The card's own step is no target. The only card of the last step has no zone.
 - A step whose tasks are all done accepts nothing. A card never drops on a step of another feature.
-- A single task has no step target. A card that is not queued has none either.
-- The move toolbar of a queued card of a feature gains the **Move to step…** `CommandSelect` (`.taskMoveStep`) after the four arrows.
+- A single task has no step target and no select.
+- Nothing moves while a feature filter is on. No card changes step then, by drag or by select.
+- The move toolbar of such a card gains the **Move to step…** `CommandSelect` (`.taskMoveStep`) after the four arrows.
 - The select is 32px high with 12px text. It is 44px high on phone and coarse pointers. It is its own tab stop.
 - Its options are one for each unfinished step except the card's own, then **New last step**.
 - A step option reads “Step 2 · parallel with T-59, T-60”: the tasks of that step, by number.
@@ -348,8 +346,7 @@ Each row below the title shows only when it is set, in this order:
 
 ### Copy
 
-- A muted 12px footnote under the board reads “Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own.”
-- Nothing moves while a feature filter is on. No card changes step then.
+- A muted 12px footnote under the board reads “Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.”
 
 ## Queue
 
@@ -362,7 +359,7 @@ Each row below the title shows only when it is set, in this order:
 
 ### Queue status banner
 
-- The banner shows while the queue is blocked or paused. It sits above the Board and above the Queue view.
+- The banner shows while the queue is blocked or paused. It sits above the Board.
 - It has the error-soft fill with the error line.
 - The title is in the error color. The body text is in ink.
 - The actions are on the right. They wrap under the text when narrow.
@@ -371,8 +368,8 @@ Each row below the title shows only when it is set, in this order:
 
 | Banner | Desktop app actions | Browser |
 | --- | --- | --- |
-| Blocked, on the Board and on the Queue view | A secondary **Open T-n**, a secondary **Mark done and resume**, and a quiet **Requeue T-n** drawn in ink | Text only |
-| **Queue paused** | Only **Open T-n**. The banner states one fixed reason. | Text only |
+| Blocked | A secondary **Open T-n**, a secondary **Mark done and resume**, and a quiet **Requeue T-n** drawn in ink | Text only |
+| **Queue paused** | **Open T-n**, and **Open folder** for a dirty worktree. The banner states one fixed reason. | Text only |
 
 - The actions are 32px high with an 8px gap.
 - **Mark done and resume** and **Requeue T-n** show only for a task that stalled or was blocked by its agent.
@@ -385,7 +382,7 @@ Each row below the title shows only when it is set, in this order:
 - It has the panel fill, a one-pixel `--command-line-strong` left border, 20px padding, and a 20px gap between its sections.
 - The head is the h2 **Queue settings** (16px/650) and a 32px [Icon](../../../DESIGN.md#buttons) close button named “Close”.
 - Focus starts on **Close**. Escape, **Close**, and a click outside the panel close it. Focus returns to the **Queue settings** action.
-- The sections are **Start gates**, **Schedule**, and **When the queue blocks**: the Queue view's three panels with no frame of their own.
+- The sections are **Start gates**, **Schedule**, and **When the queue blocks**: three sections with no frame of their own. They exist nowhere else.
 - A section heading is an h3 at 13px/650.
 - **Start gates** holds the caption “Checked before every session Pomegr starts.” and the five rows.
 - The five rows have 8px block padding and are divided by one-pixel `--command-line` rules. The reading is right-aligned, in its usual color.
@@ -393,62 +390,19 @@ Each row below the title shows only when it is set, in this order:
 - **Schedule** and **When the queue blocks** each sit over a one-pixel `--command-line` rule with 20px top padding.
 - **Schedule** holds the **Run now** / **Start at a time** pair, the **Stop starting tasks after** time field, the day line, and the fixed note.
 - A browser reads the two schedule values as a two-row definition list.
-- **When the queue blocks** holds its two items and its closing line, as in the Queue view.
+- **When the queue blocks** holds a two-item list and one closing line. The state words Stalled and Blocked by agent carry the error color. The closing line says that Needs review, in amber, does not block the queue.
 - The panel reads only what the board already serves. Without the desktop app or a paired device, it is read-only.
 
-### Queue view
+## Start gates section
 
-- The Queue view is `.taskQueueRow`.
-- The left column (`.taskQueueView`, `flex: 999 1 480px`) holds one `.panel` per unfinished feature, **Single tasks**, and the **When the queue blocks** panel.
-- The right column (`.taskQueueAside`) is described under Start gates and Schedule below.
-- The **When the queue blocks** panel is a two-item list. Its state words carry the error color (Stalled, Blocked by agent).
-- One muted line closes the panel. It says that Needs review, in amber, does not block the queue.
-
-### Feature panels
-
-- A feature panel has 16px padding and gap.
-- The feature name is a 16px/650 heading.
-- Under it is a muted 12px “n of m tasks done” with data-font counts.
-- Then come the steps as rows divided by one-pixel rules.
-- A muted note ends the panel. The read-only copy drops its drag sentence.
-
-### Steps
-
-- A step has a 96px label column and its cards in a three-column grid.
-- At 760px and narrower, the grid is one column with the label above.
-- The label shows “Step n” (12px/650 ink).
-- Under it, the label shows “One task” or “Parallel · n” in 11px muted.
-- A parallel step also shows “One worktree each”.
-- A queue card is the board card at compact padding (8px/12px, 4px gap). It has no Complete when line and no feature line.
-- A queue card adds the muted **Waiting:** line on the next task while a gate holds it.
-
-### Moving queued tasks
-
-- In the desktop app, a queued task of a feature drags to another step.
-- The target step takes the raised fill.
-- A step whose tasks are all done accepts nothing.
-- A task also drags onto the one-pixel dashed **new last step** zone.
-- The keyboard alternative is the **Move to step…** `CommandSelect`. It is drawn like the move toolbar.
-
-### Single tasks
-
-- **Single tasks** has the muted caption “Run after features, one at a time”.
-- Each task is one wrapping row: ID, title, planned run, state chip, and any Waiting line.
-- A queue with nothing in it reads “Nothing is in the queue yet.”
-
-## Start gates panel
-
-- The right column (`.taskQueueAside`) is `flex: 1 1 280px` and at most 360px.
-- It wraps under the queue when narrow. At 760px and narrower, it is full width.
-- It starts with the **Start gates** panel: the heading, one caption, and a definition list of five rows.
+- The **Start gates** section of the Queue settings panel holds the heading, one caption, and a definition list of five rows.
 - Each row has the label on the left and the reading on the right.
 - The two capacity readings are mono. They print only the percentages the board sent. They append “· above threshold” when they hold.
 - Below the rows, the **Do not start above** field is a `CommandSelect` with the three fixed thresholds in the desktop app. A browser reads plain text.
 - The Board's capacity strip shows the same two capacity readings.
 - A qualified weekly-only Codex reading shows only `7d`; its hold message names the seven-day window.
 - The threshold options say “of the usage window”; the caption explains the weekly-only Codex case.
-- The next queued task's card adds one muted **Waiting:** line while a gate holds it and the queue is on.
-- The gates panel, the capacity strip, and the Waiting line are local to the Tasks tab. They use the `taskGate*` classes in `app/styles/tasks.css`.
+- The gates section, the capacity strip, and the Waiting line are local to the Tasks tab. They use the `taskGate*` classes in `app/styles/tasks.css`.
 
 | Reading | Color |
 | --- | --- |
@@ -456,13 +410,13 @@ Each row below the title shows only when it is set, in this order:
 | The gate holds | Error |
 | The gate is unknown, or no task is queued | Muted |
 
-## Schedule panel
+## Schedule section
 
-- The **Schedule** panel is below the gates panel in the same column.
-- It shares the gates panel's frame, heading, field, and caption classes.
+- The **Schedule** section follows the gates section in the Queue settings panel.
+- It shares the gates section's heading, field, and caption classes.
 - A browser reads the same two values as a two-row definition list.
 
-In the desktop app the panel holds these parts:
+In the desktop app the section holds these parts:
 
 - A `.commandSegmented` pair, **Run now** and **Start at a time**.
 - A **Start at** time field, shown only for **Start at a time**.
@@ -479,7 +433,6 @@ In the desktop app the panel holds these parts:
 ### Scheduled task
 
 - A scheduled task's chip reads **Scheduled** in the info tone.
-- The chip carries its time in the Queue view's single-task row.
 - The card adds one muted **Starts** line until its session is linked.
 
 ## Session task surfaces
@@ -569,11 +522,9 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - The Ready lane with its step groups, and a card outside Ready in a parallel step.
 - The Ready lane with a step target and with the new-step zone, and a card with its Move to step select.
 - The feature filter and the capacity strip, with the strip's Board form.
-- The Queue settings panel, drawn in place, in its desktop and browser forms.
-- Whole boards and Queue views in their browser and desktop forms.
-- The queue switch and the banners.
-- Step cards, feature panels, single tasks, and the blocking rules.
-- Start gates and Schedule.
+- Whole boards in their browser and desktop forms.
+- Under **Queue controls**: the queue switch (off, on, busy), the banner (blocked, paused, browser), and the Queue settings panel (desktop app, browser).
+- Under **Start gates and schedule**: the Start gates and Schedule sections in each state.
 - The Sessions list Task cell.
 
 The session header meta, the Overview Task panel, and the Task tab read the board through the task store. This page specifies them, and `/design-system` does not render them.

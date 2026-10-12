@@ -86,7 +86,7 @@ the issue as it is now, so you can review it before promoting. "This issue is no
 longer open." means it was closed or removed.
 
 **Where the issue shows.** A promoted task carries a **#N** chip after its ID on the
-board and in the **Queue** view, and its task window shows **Source** with **GitHub
+board, and its task window shows **Source** with **GitHub
 issue**. The **Sessions** list prints the number as plain text after the task number.
 It is a label, not a link. A session started for the task is asked to write `Closes
 #N` in its pull request description.

@@ -204,7 +204,7 @@ test("Ready lists the waiting cards in start order: feature steps first, then si
   assert.deepEqual(board.queue.order, ["T-2", "T-3", "T-5", "T-1"]);
   board = move(store, "T-3", "Ready", 0).board;
   assert.deepEqual(cardsIn(board, "Ready"), ["T-2", "T-3", "T-4", "T-5", "T-1"]);
-  // A step change in the Queue view moves the cards with it.
+  // A step change moves the cards with it.
   board = reorder(store, "T-2", 3).board;
   assert.deepEqual(board.queue.order, ["T-3", "T-2", "T-5", "T-1"]);
   assert.deepEqual(cardsIn(board, "Ready"), ["T-3", "T-2", "T-4", "T-5", "T-1"]);

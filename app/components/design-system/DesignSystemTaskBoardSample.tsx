@@ -10,9 +10,8 @@ import { TaskCard, type TaskCardMove } from "../tasks/TaskCard";
 import { TaskColumnHeader } from "../tasks/TaskColumnHeader";
 import { ALL_FEATURES, featureLines, type FeatureFilterValue } from "../tasks/task-features";
 import { taskColumns } from "../tasks/task-presentation";
-import { newStepLabel, queueFeatures } from "../tasks/task-queue-model";
+import { dropKey, newStepLabel, queueFeatures } from "../tasks/task-queue-model";
 import { readySegments } from "../tasks/task-ready-groups";
-import { dropKey } from "../tasks/use-queue-drag";
 import { Sample, Section } from "./DesignSystemKit";
 import {
   BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
@@ -32,11 +31,11 @@ const QUEUE_WITH_STOP = { ...BOARD_RUNNING.queue, schedule: { startAt: null, sto
 const READY_LANE = { segments: readySegments(COLUMNS[1].tasks, BOARD_RUNNING), queue: BOARD_RUNNING.queue, now: Date.parse(SAMPLE_FUTURE) };
 
 const MOVE: TaskCardMove = { drag: {}, available: { up: false, down: true, left: false, right: true }, onMove: noop };
-// A queued card of a feature adds Move to step: a running step is listed and cannot be chosen.
+// A card of a feature that has not started adds Move to step: a running step is listed and cannot be chosen.
 const STEP_MOVE: TaskCardMove = { ...MOVE, step: { onMove: noop, choices: [
   { step: 1, label: "Step 1 · running", disabled: true }, { step: 2, label: "Step 2 · parallel with T-2, T-3" }, { step: 4, label: "New last step" },
 ] } };
-// The feature of the Ready lane's step groups, as the Queue view reads it.
+// The feature of the Ready lane's step groups.
 const STEP_PANEL = queueFeatures(BOARD_RUNNING).find((panel) => panel.feature.id === T4_QUEUED.featureId) ?? queueFeatures(BOARD_RUNNING)[0];
 const STEP_TARGET_LANE = { ...READY_LANE, overStep: dropKey(STEP_PANEL.feature.id, 2) };
 const NEW_STEP_LANE = { ...READY_LANE, overStep: dropKey(STEP_PANEL.feature.id, null), newStep: { featureId: STEP_PANEL.feature.id, label: newStepLabel(STEP_PANEL) } };
@@ -73,7 +72,7 @@ export function TaskBoardSection() {
       <Sample label="Card, desktop app" note="The title opens the Task modal, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
         <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} nextQueued featureLine={LINES.get("T-3")} onOpen={noop} move={MOVE} /></ul></Frame>
       </Sample>
-      <Sample label="Card, desktop app, Move to step" note="A queued card of a feature adds the Move to step select after the four arrows, 32px high with 12px text. It lists each unfinished step with the tasks the card would run in parallel with, then New last step. A step that started reads running and cannot be chosen.">
+      <Sample label="Card, desktop app, Move to step" note="A card of a feature that has not started, queued or not, adds the Move to step select after the four arrows, 32px high with 12px text. It lists each unfinished step with the tasks the card would run in parallel with, then New last step. A step that started reads running and cannot be chosen.">
         <Frame><ul className="taskColumnList"><TaskCard task={T4_QUEUED} grouped onOpen={noop} move={STEP_MOVE} /></ul></Frame>
       </Sample>
       <Sample label="Column header" note="The name and a data-font count over a one-pixel rule, with no control: the board has five fixed columns, in the desktop app and in a browser alike.">
@@ -120,12 +119,12 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, browser (blocked queue)" note="Read-only: no draggable card, no control. The Queue banner sits above the capacity strip, the feature filter and the columns; columns scroll sideways instead of shrinking below 220px.">
+      <Sample label="Board, browser (blocked queue)" note="Read-only: no draggable card and no control but Queue settings. The Queue banner sits above the capacity strip, the feature filter and the columns; columns scroll sideways instead of shrinking below 220px.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_BLOCKED} /></div></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, a queued card of a feature changes step in Ready, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
+      <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, a card of a feature changes step from its toolbar or by a drop in Ready, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} newTask={BOARD_ENTRY} /></div></Frame>
       </Sample>
     </div>
@@ -140,6 +139,6 @@ export function TaskBoardSection() {
       <Sample label="Board, desktop only" note="Served to a client that is not on this computer, with no task content."><Frame><TaskBoardView board={createEmptyTaskBoard(SAMPLE_REPOSITORY_ID, "desktop_only")} /></Frame></Sample>
       <Sample label="Board, no tasks"><Frame><div className="tasksPageBody"><TaskBoardView board={{ ...BOARD_RUNNING, features: [], tasks: [] }} /></div></Frame></Sample>
     </div>
-    <p className="designSystemNote">Not rendered here because they need the desktop bridge or a live store: the New task and Task modals (native dialogs that save through the desktop), the Start at field of the Task modal, and the Tasks page header, whose repository switcher is the shared CommandSelect and whose other controls are shown above and in the Task queue section.</p>
+    <p className="designSystemNote">Not rendered here because they need the desktop bridge or a live store: the New task and Task modals (native dialogs that save through the desktop), the Start at field of the Task modal, and the Tasks page itself, whose header actions are shown in the Queue controls section.</p>
   </Section>;
 }

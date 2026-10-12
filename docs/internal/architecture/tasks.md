@@ -452,7 +452,7 @@ or without a role. Such a board is brought to the five columns once
 
 A feature is an ordered list of steps. Tasks in the same step run in parallel, each in
 its own Git worktree; a step starts only when every task of the step before it is
-done. A task attached to a feature takes a new last step (the task forms have no Step field since task T-39, 2026-10-11; the Queue view moves a task to another step), and `step` is at least
+done. A task attached to a feature takes a new last step (the task forms have no Step field since task T-39, 2026-10-11; the Board moves a task to another step), and `step` is at least
 1. Worktree creation and cleanup belong to the desktop (`task-worktree.mjs`); worktree
 paths stay desktop-private and never reach the monitor store or browser state.
 
@@ -609,7 +609,7 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   the dispatch with `dispatchStanding` from the leaf module `task-dispatch-standing.mjs`;
   the board projection and the queue share this one rule). It keeps its state and its step, so its step
   is not done, and a task of a later step waits on it (`blockedBy`). `queue.gates.next`
-  never names it. The Queue view shows it with the borrowed session state, or its own chip
+  never names it. The Board shows it with the borrowed session state, or its own chip
   until a session links, with no Waiting line, no next marker, and no move. The first
   entry is the task shown as next.
 - **Held features.** Decided for task T-53 (2026-10-11); it replaces the earlier rule
@@ -928,7 +928,7 @@ interval, one commit, and a margin, so a healthy account never reads unknown, an
 reading that missed a whole refresh does.
 
 A reading that is missing, unavailable, older than ten minutes, or followed by a failed
-refresh stays unknown and holds a start. The Start gates panel and the capacity strip
+refresh stays unknown and holds a start. The Start gates section of Queue settings and the capacity strip
 show **Unknown** whenever the status is `unknown`, even when a retained seven-day percentage is known.
 
 What a held gate does:
@@ -2210,7 +2210,7 @@ Each item is owned by the product owner; none is implemented until they answer.
    [product positioning decision](../decisions/product-positioning.md) still call
    Pomegr a read-only observer. Observation is read-only; the product now also starts
    sessions and has an [agent chat](agent-chat.md). No delivered change owned those files.
-4. **Board deep links.** The board has no address for the Queue view or one task, so
+4. **Board deep links.** The board has no address for one task, so
    feature links and Open on board in the session view open the board only, and a task
    ID on the Sessions list opens the board instead of the session's Task tab.
 5. **Session start outside Windows.** Other platforms answer the fixed
@@ -2227,7 +2227,7 @@ three more, one of which (a start with a plugin too old for tasks) is fixed. A f
 1. **A started task without a feature holds every start, but `queue.gates.next` does not
    say so.** A started task with no feature is a step of its own that holds the queue,
    yet `queue.gates.next` still names the next queued single task with no hold reason, so
-   the Queue view shows **Queued · next** on a task that does not start. A pinned test
+   the Board shows **Queued · next** on a task that does not start. A pinned test
    keeps this behavior. A fixed reason such as `task_running` would widen the
    [Privacy](#privacy) section, so it is not added until the product owner
    decides.

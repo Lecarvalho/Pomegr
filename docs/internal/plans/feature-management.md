@@ -2,7 +2,7 @@
 
 > Status: proposed; prototype approved by the product owner on 2026-10-12 (task T-59), no code written.
 > Created: 2026-10-12.
-> Scope: let the owner create, edit, and delete a feature of a task board in the desktop app, with its title, description, and app version. Excludes the Queue view, which is to be removed, a separate Features list view, and any change to the agent feature tools.
+> Scope: let the owner create, edit, and delete a feature of a task board in the desktop app, with its title, description, and app version. Excludes a separate Features list view, and any change to the agent feature tools.
 > Prototype: [feature-management/prototype.html](feature-management/prototype.html). It links the app's own stylesheets, so open it from the repository. The rules below win where the drawing differs.
 > Continuation owner: the sessions of board tasks T-70 (part 1) and T-71 (part 2).
 > Authority: working proposal. [Tasks](../architecture/tasks.md), [task-modal.md](../design/task-modal.md), and [task-board.md](../design/task-board.md) stay authoritative; each part changes them.
@@ -26,7 +26,6 @@ The product owner took these on 2026-10-12.
 | Surface | One Feature modal on the task modal's frame, in the modes New feature and Feature. |
 | Fields | Title (required, 80 characters), Description (2,000), App version (40). |
 | Entry point | The Board's filter row only: **+ New feature** opens the modal, and a Quiet **Edit feature** shows while one feature is chosen. |
-| Queue view | Not changed. It is to be removed. |
 | Features list view | Not built. The filter lists every feature, so a finished or an empty one is reached there. |
 | Delete | Deleting a feature detaches its tasks. They stay on the board with no feature. |
 | Delete refusal | Delete is refused while a task of the feature has started and is not done. |

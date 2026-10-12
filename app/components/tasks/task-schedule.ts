@@ -40,12 +40,6 @@ export function instantOfLocalDateTime(value: string): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-export function startsLine(task: Pick<Task, "state" | "scheduledAt" | "session">): string | null {
-  if (task.state !== "scheduled" || task.scheduledAt === null || task.session !== null) return null;
-  const label = scheduleLabel(task.scheduledAt);
-  return label === null ? null : `Starts ${label}`;
-}
-
 /** The Starts line of a board card in two parts, so the time can take the data font. The day is "today" when `now` falls on it. */
 export function startsParts(task: Pick<Task, "state" | "scheduledAt" | "session">, now?: number): { day: string; time: string } | null {
   if (task.state !== "scheduled" || task.scheduledAt === null || task.session !== null) return null;
