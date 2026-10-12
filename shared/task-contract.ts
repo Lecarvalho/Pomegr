@@ -85,6 +85,28 @@ export type TaskBoard = {
 
 export type TaskRunModels = { codex: { id: string; label: string | null }[] };
 
+// The Tasks home (`GET /api/tasks?view=home`): one summary of every stored board.
+export type TaskHomeAttentionState = "needs_review" | "stalled" | "blocked";
+// `counts` holds the five column counts in board order; it is empty when the board is unavailable.
+export type TaskHomeBoard = {
+  repositoryId: string;
+  readiness: "ready" | "unavailable";
+  counts: number[];
+  openFeatures: number;
+  queue: { status: TaskQueueStatus; blockedBy: string | null; pauseReason: TaskQueuePauseReason | null };
+  updatedAt: string | null;
+};
+// `title` is one bounded line: the session title, or the first line of the task text.
+export type TaskHomeAttention = { repositoryId: string; taskId: string; title: string; state: TaskHomeAttentionState };
+export type TaskHome = { version: 1; readiness: TaskBoardReadiness; boards: TaskHomeBoard[]; attention: TaskHomeAttention[]; attentionTotal: number };
+export const TASK_HOME_ATTENTION_STATES: readonly TaskHomeAttentionState[] = ["needs_review", "stalled", "blocked"];
+export const TASK_HOME_BOUNDS = { boards: 200, attention: 50, titleLength: 160 } as const;
+
+// A home with no content, for loading, unavailable, and desktop-only answers.
+export function createEmptyTaskHome(readiness: TaskBoardReadiness): TaskHome {
+  return { version: 1, readiness, boards: [], attention: [], attentionTotal: 0 };
+}
+
 export const TASK_REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 export const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 

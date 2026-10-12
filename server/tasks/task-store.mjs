@@ -6,6 +6,7 @@ import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
+import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, readyColumnId, reconcileFixedColumns, seedColumnRoles, settleReadyColumn, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
@@ -632,6 +633,23 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     }
   }
 
+  // The Tasks home (task-home.mjs): every stored board, summarized. It seeds nothing and writes nothing.
+  function readHome({ resolveSessionFacts = null } = {}) {
+    if (!database) return null;
+    try {
+      const entries = [];
+      for (const { repository_id: repositoryId } of preparedStatement(database, "SELECT repository_id FROM repositories ORDER BY repository_id LIMIT ?").all(TASK_HOME_BOARD_LIMIT)) {
+        if (!isRepositoryId(repositoryId)) continue;
+        let board = null;
+        try { board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() }); } catch { board = null; }
+        entries.push({ repositoryId, board: board ? fillTaskSessions(board, resolveSessionFacts) : null });
+      }
+      return summarizeTaskHome(entries);
+    } catch {
+      return null;
+    }
+  }
+
   function apply(repositoryId, action, payload, resolvers = {}) {
     if (!isRepositoryId(repositoryId)) return { ok: false, error: "invalid" };
     let taskId = null;
@@ -746,6 +764,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const addImage = (repositoryId, payload) => image(addTaskImage, repositoryId, payload);
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
-  return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ readBoard, readHome, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, sessionTasks, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

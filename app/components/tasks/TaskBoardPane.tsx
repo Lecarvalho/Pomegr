@@ -19,7 +19,7 @@ import { useTaskIssuesAvailability } from "./use-promote-issues";
 
 type OpenModal = { kind: "new" } | { kind: "task"; id: string } | null;
 
-export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string; switcher?: ReactNode }) {
+export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { repositoryId: string; switcher?: ReactNode; breadcrumb?: ReactNode }) {
   const headingId = useId();
   const { board: committed, refresh } = useTasks(repositoryId);
   const edits = useTaskBoardEdits(repositoryId, committed, refresh);
@@ -66,7 +66,7 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
     return setPaletteScope({ label: "Search tasks", placeholder: "Search tasks and destinations", emptyLine: "No tasks or destinations match that search.", items: searchItems, onSelect: openFound });
   }, [openFound, searchItems]);
   return <section ref={section} className="commandView tasksPage" aria-labelledby={headingId} aria-busy={board.readiness === "loading"}>
-    <CommandPageHeader className="tasksPageHeader" headingId={headingId} title="Tasks"
+    <CommandPageHeader className="tasksPageHeader" headingId={headingId} breadcrumb={breadcrumb} title="Tasks"
       meta={<div className="tasksPageMeta">
         <p>Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.</p>
         {access === "absent" && <p className="taskBoardNote">Tasks are created and edited in the Pomegr desktop app or on a paired device.</p>}

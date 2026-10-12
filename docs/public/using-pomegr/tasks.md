@@ -5,9 +5,10 @@ description: "Plan work on a repository's task board, queue it, and have the Pom
 
 # Tasks
 
-**Tasks** in the sidebar opens a board of work you want coding agents to do, one
-repository at a time; the **Repository** menu beside the heading switches
-repository. You can start a session for a task yourself, or turn on a queue and
+**Tasks** in the sidebar opens the Tasks home: the tasks that wait for you on any
+board, and one row for each repository's board. A board holds the work you want
+coding agents to do in one repository; the **Repository** menu beside its heading
+switches repository. You can start a session for a task yourself, or turn on a queue and
 let the desktop app start tasks one step at a time. After a start, Pomegr only
 observes the session: it never stops, attaches to, answers, or approves anything
 in a running session. Observing sessions works the same whether or not you use
@@ -37,8 +38,13 @@ tasks.
 
 ## Create and organize tasks
 
-Select **Tasks** in the sidebar and choose a repository in the **Repository**
-menu. A repository's own **Tasks** tab links to the same board. A board has five
+Select **Tasks** in the sidebar. **Needs you** lists the tasks that need review,
+are stalled, or are blocked by their agent, newest first; a row opens that task's
+board. **Boards** shows each repository with its queue, the number of tasks in
+each column, and when a task last changed; select a repository's name to open its
+board. On a board, **Tasks** above the heading returns to the home.
+
+A repository's own **Tasks** tab links to the same board. A board has five
 columns: **Backlog**, **Ready**, **In progress**, **Review**, and **Done**. You
 cannot add, rename, reorder, or delete a column. Moving a card never changes its
 state. **Ready** is the queue's column: a queued or scheduled task's card stays

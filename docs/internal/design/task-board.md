@@ -1,12 +1,71 @@
 # Task board design
 
-> Scope: the Tasks page (page header, Board, Queue view, Start gates and Schedule panels), the task card and its chips, and the session surfaces for a task session.
+> Scope: the Tasks home, the Tasks page (page header, Board, Queue view, Start gates and Schedule panels), the task card and its chips, and the session surfaces for a task session.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/components/tasks/`, `app/styles/tasks.css`, the `/design-system` samples,
 > and `tests/ui/pomegr-design-contract.test.tsx`.
 
 The Tasks page draws committed board facts. The task modal and the task fields are in [task-modal.md](task-modal.md). The data, queue, and gate rules are in [Tasks](../architecture/tasks.md).
+
+## Tasks home
+
+### Layout
+
+- The route is `/tasks` with no `repository` parameter. The rail and the palette open it.
+- The home is a composition of the existing roles, chips, and tokens. It adds no button role and no shared control.
+- The header is `CommandPageHeader` with the h1 **Tasks** and a muted description. It has no action.
+- The page holds two `.panel` sections in order: **Needs you**, then **Boards**.
+- Each panel head is a 16px/650 heading with a muted data-font count beside it.
+- Every element draws committed board facts. A state is never shown and then retracted.
+
+### Needs you
+
+- The panel lists the tasks that wait for the owner on any board: Needs review, Stalled, and Blocked by agent.
+- The newest change is first. At most 50 tasks are listed.
+- Each row is one link to the task's board, at least 44px tall.
+- A row shows the repository name (12px muted), the task ID (data font, muted), one title line (13px/500), the state chip, and a muted 14px chevron.
+- The title is the session title when the session has one, otherwise the first line of the task text. It is one line with an ellipsis.
+- The state chip is the shared `.commandChip` in the warning tone.
+- With no such task, the panel reads “Nothing waits for you.”
+- When more than 50 tasks wait, a muted line reads “Showing the newest 50 of n.”
+- A task of a repository that the inventory does not list is not drawn or counted.
+
+### Boards
+
+- The panel is one table with one row for each repository in the inventory.
+- The columns are Repository, Queue, the five board columns, and Last change.
+- Boards that changed last come first. The other repositories keep the inventory's order.
+- The repository name (13px/600 ink) is the row's one link. It opens `/tasks?repository=<repositoryId>`.
+- Under the name, a muted 12px line reads “n open features”, “No open feature”, “No tasks yet”, or “Board unavailable”.
+- The five counts and the last change use the data font and are right-aligned. A zero is muted.
+- Last change is the relative time of the board's newest task change, or an em dash.
+- A repository with no stored board reads zero counts, **Off**, and “No tasks yet”. Its name is muted.
+- A board that is unavailable reads an em dash in every cell. It never reads a count.
+- The table scrolls sideways in its panel when the window is narrow.
+
+| Queue | Chip |
+| --- | --- |
+| Off | Neutral and muted. |
+| On | Neutral, in ink. |
+| Blocked | Negative. It reads “Blocked by T-n”. |
+| Paused | Warning. |
+
+### States
+
+| State | Draw |
+| --- | --- |
+| Loading | Two placeholder blocks with the label **Loading tasks**. |
+| Unavailable | A panel notice with a status role. |
+| A client that is not on this computer | Only the **Desktop only** notice. |
+| No repository observed | The shared empty state. |
+
+### Phone
+
+- At 760px and narrower, a Needs you row stacks: the repository and the ID, then the title on its own wrapping line, then the chip and the chevron.
+- At 760px and narrower, each board row is a card: the name and the queue chip, then the five counts under their caption labels, then the last change.
+- The table header is not drawn there. Each count carries its column name as its label.
+- The repository link is at least 44px tall there.
 
 ## Tasks page
 
@@ -25,6 +84,7 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 ### Page header
 
 - The header is `CommandPageHeader` with the h1 **Tasks**, a muted description, and the head actions at its end.
+- The breadcrumb is **Tasks**, a chevron separator, and the repository name. **Tasks** links to the Tasks home, and the name carries `aria-current`.
 - The head actions (`.taskHeadActions`) wrap and use a 12px gap.
 - The header has no primary action: **New task** lives in the first lane.
 
@@ -44,8 +104,9 @@ The head actions appear in this order:
 ### Repository selection
 
 - The repository comes from the validated `repository` URL parameter.
-- With no parameter, or a repository the inventory does not list, the page shows the first listed repository. The URL is replaced once with its canonical form.
-- While the repository inventory loads, the page draws the five-lane placeholder. It never draws a board that it then withdraws.
+- With no parameter, the page is the [Tasks home](#tasks-home).
+- With a repository the inventory does not list, the page is the Tasks home too. The URL is replaced once with `/tasks`.
+- While the repository inventory loads, a URL that names a repository draws the five-lane placeholder. It never draws a board that it then withdraws.
 - Choosing a repository replaces the URL and remounts the board. No panel state carries over.
 - Focus stays on the switcher after a repository change.
 
@@ -425,3 +486,5 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - The Sessions list Task cell.
 
 The session header meta, the Overview Task panel, and the Task tab read the board through the task store. This page specifies them, and `/design-system` does not render them.
+
+The Tasks home reads its summary through its own store. This page specifies it, and `/design-system` does not render it.

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepositoryInventorySnapshot, SessionActivityStatus } from "../../shared/monitor-contract";
-import type { Task, TaskBoard, TaskState } from "../../shared/task-contract";
+import type { Task, TaskBoard, TaskHome, TaskState } from "../../shared/task-contract";
 
 const navigation = vi.hoisted(() => ({ search: "", replace: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -13,6 +13,8 @@ vi.mock("next/navigation", () => ({
 }));
 const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
+const { useTaskHome } = vi.hoisted(() => ({ useTaskHome: vi.fn() }));
+vi.mock("../../app/tasks-home-store", () => ({ useTaskHome }));
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
 // The repository list is committed inventory state; each test sets what the store would hand out.
 const inventoryState = vi.hoisted(() => ({ snapshot: null as unknown as RepositoryInventorySnapshot, loading: false, connected: true }));
@@ -56,6 +58,10 @@ function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
   return { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, ...overrides };
 }
 
+function home(overrides: Partial<TaskHome> = {}): TaskHome {
+  return { version: 1, readiness: "ready", boards: [], attention: [], attentionTotal: 0, ...overrides };
+}
+
 const column = (name: string) => screen.getByRole("region", { name });
 
 function setBridge(bridge: unknown) {
@@ -69,6 +75,7 @@ beforeEach(() => {
   inventoryState.loading = false;
   inventoryState.connected = true;
   useTasks.mockReturnValue({ board: board(), refresh: vi.fn() });
+  useTaskHome.mockReturnValue(home());
 });
 afterEach(() => {
   setBridge(undefined);
@@ -169,6 +176,7 @@ describe("the Tasks page", () => {
 
   it("opens the New task modal over the Tasks page and returns focus to the New task action when it closes", async () => {
     setBridge({ taskAction: vi.fn() });
+    navigation.search = `repository=${repositoryId}`;
     const user = userEvent.setup();
     render(<TasksPage />);
     const opener = screen.getByRole("button", { name: "New task" });
@@ -181,27 +189,46 @@ describe("the Tasks page", () => {
     expect(opener).toHaveFocus();
   });
 
+  it("shows the Tasks home, and reads no board, when the URL names no repository", () => {
+    inventoryState.snapshot = twoRepositories;
+    navigation.search = "";
+    render(<TasksPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Tasks" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Needs you" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Boards" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Task board" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Repository" })).not.toBeInTheDocument();
+    expect(useTasks).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
   it.each([
-    ["no repository", ""],
     ["a repository the inventory does not list", "repository=repo-aaaaaaaaaaaaaaaaaaaaaaaa"],
     ["a value that is not a repository ID", `repository=${encodeURIComponent("../../etc?x=1")}`],
-  ])("shows the first listed repository for %s and replaces the URL once with its canonical form", (_name, search) => {
+  ])("shows the Tasks home for %s and replaces the URL once with the home's", (_name, search) => {
     inventoryState.snapshot = twoRepositories;
     navigation.search = search;
     const view = render(<TasksPage />);
-    expect(useTasks).toHaveBeenCalledWith(repositoryId);
-    expect(useTasks).not.toHaveBeenCalledWith(otherRepositoryId);
-    expect(switcher()).toHaveTextContent("Example project");
-    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Boards" })).toBeInTheDocument();
+    expect(useTasks).not.toHaveBeenCalled();
     // Re-rendering before the URL updates must not send the replace again.
     view.rerender(<TasksPage />);
     expect(navigation.replace).toHaveBeenCalledTimes(1);
-    expect(navigation.replace).toHaveBeenCalledWith(`/tasks?repository=${repositoryId}`, { scroll: false });
+    expect(navigation.replace).toHaveBeenCalledWith("/tasks", { scroll: false });
+  });
+
+  it("names the repository in a breadcrumb that links back to the Tasks home", () => {
+    navigation.search = `repository=${repositoryId}`;
+    render(<TasksPage />);
+    const trail = document.querySelector(".commandPageBreadcrumb") as HTMLElement;
+    expect(within(trail).getByRole("link", { name: "Tasks" })).toHaveAttribute("href", "/tasks");
+    expect(within(trail).getByText("Example project")).toHaveAttribute("aria-current", "page");
   });
 
   it("draws the placeholder, never a board, while the repository inventory loads", () => {
     inventoryState.snapshot = { revision: null, readiness: "loading", repositories: [] };
     inventoryState.loading = true;
+    navigation.search = `repository=${repositoryId}`;
     const view = render(<TasksPage />);
     expect(screen.getByLabelText("Loading tasks")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Tasks" })).toBeInTheDocument();
@@ -212,7 +239,7 @@ describe("the Tasks page", () => {
     view.rerender(<TasksPage />);
     expect(screen.queryByLabelText("Loading tasks")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
-    expect(navigation.replace).toHaveBeenCalledWith(`/tasks?repository=${repositoryId}`, { scroll: false });
+    expect(navigation.replace).not.toHaveBeenCalled();
   });
 
   it("says the inventory is unavailable, or that no repository is observed, without reading a board", () => {
