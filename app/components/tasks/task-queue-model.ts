@@ -1,4 +1,5 @@
 import type { Task, TaskBoard, TaskFeature } from "../../../shared/task-contract";
+import { waitsInQueue } from "./task-board-model";
 
 export type QueueStep = { step: number; tasks: Task[]; allDone: boolean };
 export type QueueFeature = { feature: TaskFeature; steps: QueueStep[]; total: number; done: number; highest: number };
@@ -55,6 +56,31 @@ export function moveChoices(panel: QueueFeature, task: Task): { step: number; la
   const choices = panel.steps.filter((candidate) => reorderTarget(panel, task, candidate.step) !== null).map((candidate) => ({ step: candidate.step, label: `Step ${candidate.step}` }));
   const fresh = reorderTarget(panel, task, null);
   return fresh === null ? choices : [...choices, { step: fresh, label: "New last step" }];
+}
+
+/** A card the Board gives a step: a waiting card of a feature. The Board uses the Queue view's own rule, `reorderTarget`. */
+export function isBoardStepTask(task: Task) {
+  return waitsInQueue(task) && isMovableQueueTask(task);
+}
+
+export type BoardStepChoice = { step: number; label: string; disabled?: boolean };
+
+/** The Board's "Move to step…" options: each unfinished step but the task's own, then the new last step. A step that started is listed and cannot be chosen. */
+export function boardStepChoices(panel: QueueFeature, task: Task): BoardStepChoice[] {
+  const choices: BoardStepChoice[] = [];
+  for (const candidate of panel.steps) {
+    if (reorderTarget(panel, task, candidate.step) === null) continue;
+    const running = candidate.tasks.some((other) => other.state !== "done" && other.session !== null);
+    choices.push(running ? { step: candidate.step, label: `Step ${candidate.step} · running`, disabled: true }
+      : { step: candidate.step, label: `Step ${candidate.step} · parallel with ${candidate.tasks.map((other) => other.id).join(", ")}` });
+  }
+  const fresh = reorderTarget(panel, task, null);
+  return fresh === null ? choices : [...choices, { step: fresh, label: "New last step" }];
+}
+
+/** The text of the Board's new-step zone, in the step numbers drawn now. */
+export function newStepLabel(panel: QueueFeature) {
+  return `New step ${panel.highest + 1} · after step ${panel.highest}`;
 }
 
 export function stepModeLabel(step: QueueStep) {

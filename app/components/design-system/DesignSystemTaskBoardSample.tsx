@@ -10,10 +10,12 @@ import { TaskCard, type TaskCardMove } from "../tasks/TaskCard";
 import { TaskColumnHeader } from "../tasks/TaskColumnHeader";
 import { ALL_FEATURES, featureLines, type FeatureFilterValue } from "../tasks/task-features";
 import { taskColumns } from "../tasks/task-presentation";
+import { newStepLabel, queueFeatures } from "../tasks/task-queue-model";
 import { readySegments } from "../tasks/task-ready-groups";
+import { dropKey } from "../tasks/use-queue-drag";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FUTURE, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
+  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FUTURE, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
 const LINES = featureLines(BOARD_BLOCKED);
@@ -29,6 +31,14 @@ const noMove = () => undefined;
 const READY_LANE = { segments: readySegments(COLUMNS[1].tasks, BOARD_RUNNING), queue: BOARD_RUNNING.queue, now: Date.parse(SAMPLE_FUTURE) };
 
 const MOVE: TaskCardMove = { drag: {}, available: { up: false, down: true, left: false, right: true }, onMove: noop };
+// A queued card of a feature adds Move to step: a running step is listed and cannot be chosen.
+const STEP_MOVE: TaskCardMove = { ...MOVE, step: { onMove: noop, choices: [
+  { step: 1, label: "Step 1 · running", disabled: true }, { step: 2, label: "Step 2 · parallel with T-2, T-3" }, { step: 4, label: "New last step" },
+] } };
+// The feature of the Ready lane's step groups, as the Queue view reads it.
+const STEP_PANEL = queueFeatures(BOARD_RUNNING).find((panel) => panel.feature.id === T4_QUEUED.featureId) ?? queueFeatures(BOARD_RUNNING)[0];
+const STEP_TARGET_LANE = { ...READY_LANE, overStep: dropKey(STEP_PANEL.feature.id, 2) };
+const NEW_STEP_LANE = { ...READY_LANE, overStep: dropKey(STEP_PANEL.feature.id, null), newStep: { featureId: STEP_PANEL.feature.id, label: newStepLabel(STEP_PANEL) } };
 
 const CARD_STATES: { label: string; note: string; task: Task; next?: boolean }[] = [
   { label: "Not queued", note: "Task text only; nothing else is set.", task: T8_IDLE },
@@ -62,6 +72,9 @@ export function TaskBoardSection() {
       <Sample label="Card, desktop app" note="The title opens the Task modal, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
         <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} nextQueued featureLine={LINES.get("T-3")} onOpen={noop} move={MOVE} /></ul></Frame>
       </Sample>
+      <Sample label="Card, desktop app, Move to step" note="A queued card of a feature adds the Move to step select after the four arrows, 32px high with 12px text. It lists each unfinished step with the tasks the card would run in parallel with, then New last step. A step that started reads running and cannot be chosen.">
+        <Frame><ul className="taskColumnList"><TaskCard task={T4_QUEUED} grouped onOpen={noop} move={STEP_MOVE} /></ul></Frame>
+      </Sample>
       <Sample label="Column header" note="The name and a data-font count over a one-pixel rule, with no control: the board has five fixed columns, in the desktop app and in a browser alike.">
         <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress" }} headingId="design-system-column-header" taskCount={1} /></Frame>
       </Sample>
@@ -80,6 +93,12 @@ export function TaskBoardSection() {
     <div className="designSystemGrid">
       <Sample label="Ready lane, step groups" note="Ready is the queue's lane, so it alone groups its waiting cards, in the order they already hold. A feature step with two or more waiting cards takes the strong-line frame and the parallel glyph with its count; a one-task step and Single tasks take the caption only, at the same inset. A grouped card is the board card at compact padding, with no feature line and no Complete when line. The next card adds its Waiting line while a gate holds it.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={READY_LANE} /></div></Frame>
+      </Sample>
+      <Sample label="Ready lane, step target" note="While a queued card is dragged over a step group of its own feature, the group takes the panel fill and the lane's two-pixel strong-line border. Dropping gives the card that step, so it runs in parallel with the group.">
+        <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget cardMoveFor={noMove} ready={STEP_TARGET_LANE} /></div></Frame>
+      </Sample>
+      <Sample label="Ready lane, new-step zone" note="While the card is over the gap after its feature's last step, a dashed ink zone names the step a drop adds. It is drawn only then.">
+        <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget cardMoveFor={noMove} ready={NEW_STEP_LANE} /></div></Frame>
       </Sample>
       <Sample label="Card outside Ready, parallel step" note="The feature line opens with the muted parallel glyph and names the other tasks of the step, in any lane, in the data font. A card alone in its step reads the feature and the step only.">
         <Frame><ul className="taskColumnList"><TaskCard task={T2_REVIEW} featureLine={LINES.get("T-2")} /><TaskCard task={T1_DONE} featureLine={LINES.get("T-1")} /></ul></Frame>
@@ -102,7 +121,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
+      <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, a queued card of a feature changes step in Ready, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} newTask={BOARD_ENTRY} /></div></Frame>
       </Sample>
     </div>

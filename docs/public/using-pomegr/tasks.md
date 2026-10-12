@@ -178,6 +178,11 @@ Pomegr moves a card to another column when its task changes state:
   and step, such as "Step 2 of 4". A frame marked **Parallel** surrounds the cards
   of one step that start together. The queued cards with no feature come last,
   under **Single tasks**.
+- **Change a card's step in Ready.** Drag a queued card of a feature onto another
+  step of that feature to run it in parallel with that step. Drag it just under
+  the feature's last step to give it a **New step** of its own at the end. From
+  the keyboard, focus the card and use **Move to step…**. A step that is running
+  is listed and cannot be chosen. This is off while a feature filter is on.
 - **Reorder single tasks by moving their cards.** Drag a queued card with no
   feature above or below another in **Ready**, or use its move up and move
   down buttons. Feature tasks follow their steps, so a card dropped out of that order

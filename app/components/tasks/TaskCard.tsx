@@ -1,7 +1,7 @@
 import type { HTMLAttributes } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { ParallelGlyph } from "./ParallelGlyph";
-import { TaskMoveBar, type CardMoves } from "./TaskMoveBar";
+import { TaskMoveBar, type CardMoves, type CardStepMove } from "./TaskMoveBar";
 import type { CardMoveKind } from "./task-board-model";
 import type { FeatureLine } from "./task-features";
 import { TaskCardIds } from "./TaskIssueChip";
@@ -15,6 +15,7 @@ export type TaskCardMove = {
   drag: Pick<HTMLAttributes<HTMLLIElement>, "onDragStart" | "onDragEnd">;
   available: CardMoves;
   onMove(kind: CardMoveKind): void;
+  step?: CardStepMove;
 };
 
 export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine, grouped = false, waiting, now }: {
@@ -53,6 +54,6 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
       <span>{feature.text}{feature.parallelWith.length > 0 && <> · parallel with <span className="taskCardFeatureIds">{feature.parallelWith.join(", ")}</span></>}</span>
     </p>}
     {task.session && <TaskSessionLink sessionId={task.session.id} className="taskCardLink" />}
-    {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} />}
+    {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} step={move.step} />}
   </li>;
 }
