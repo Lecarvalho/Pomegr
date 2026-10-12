@@ -1231,7 +1231,9 @@ supplies.
       session, so it needs the product owner's decision before any code ships.
 - **Codex**: the thread identity Codex puts in the `_meta` of every MCP tool call
   (`threadId`, which must agree with `thread_id` in its turn metadata when that is
-  present), read by `resolveCodexCallSession` in `mcp/task-tools.mjs`. A stdio MCP server
+  present), read by `resolveCodexCallSession` in `mcp/task-tools.mjs`.
+  The MCP SDK exposes this metadata at `context.mcpReq._meta`; transport tests verify the binding through the SDK.
+  A stdio MCP server
   does not receive `CODEX_THREAD_ID`: Codex 0.157 starts it with an allowlisted
   environment, so that variable is only the fallback. A Codex subagent thread has its
   own identity and therefore no linked task.
