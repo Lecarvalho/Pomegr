@@ -23,11 +23,13 @@ Use the repository containing this skill only when a start, build or update is n
 - Read the checkout's `AGENTS.md` before repository operations.
 - Pull or change branches only when requested. For a pull, inspect branch, dirty state, pending Git operations and upstream divergence first. Preserve work and fast-forward a clean main when possible. Use the host environment for Git and builds.
 - Run `npm run desktop:prepare` in the checkout and require success before closing the working app. It builds the web assets, plugin bundles, legal notices and desktop workers. Use `npm ci` only when dependencies require it. Do not run builds concurrently.
-- This is the Electron desktop workflow. `npm run dev` provides different services and cannot replace the desktop's pairing and task dispatcher.
+- To restart the development desktop during phone pairing, use this skill's Electron workflow and `launch-desktop.ps1`. The `restart-pomegr` skill runs `npm run dev`, which provides different services. It cannot replace the desktop's pairing and task dispatcher.
 
 ## Optional: restart or launch independently
 
 For a needed restart, identify the Pomegr window by its returned app/window identity and the checkout's Electron executable. Close that window and select **Quit Pomegr** if the tray-choice dialog appears. Keep the user's remembered close behavior unchanged. Confirm that the identified main Electron process exits; do not kill all Electron, Node, PowerShell or provider sessions. Skip shutdown when the app is absent.
+
+If closing appears to do nothing, refresh window state and inspect for the tray-choice dialog before retrying. A failed Quit click leaves the app running. If the launch helper refuses an existing desktop, return to that app's quit flow. Confirm process exit before launching again.
 
 Run the bundled helper in the host environment, resolving its absolute path relative to this skill:
 
@@ -45,8 +47,14 @@ The returned PID proves terminal launch, not app readiness. Locate the new Elect
 - A restart revokes previous pairings. For a phone that needs pairing, reuse a visible unexpired code or select **Create pairing code** when none exists. A code is single-use and expires after five minutes; the address can change on each restart. Regenerate only when the existing code is expired, consumed or unusable.
 - When the owner is away from the PC, provide the QR's actual pairing URL as a clickable link in this chat. Its fragment is essential. Obtain it from the displayed QR through local decoding; do not reconstruct it, read process memory, alter the pairing store or redeem it in your own browser.
 - Use an available local QR decoder against the captured QR pixels. If a decoder is needed, install it in a temporary tool directory, not the repository's dependencies. Temporary screenshots must stay local and be removed after decoding. Never send the QR to an external decoding service or persist its secret in the skill, Git, logs or reports. The link is shared only with the requesting owner.
-- If native automation is available through `@oai/sky`, refresh state after each input. Use a screenshot-backed observation when index input reports missing geometry. A freshly clicked page may need another observation before its accessibility tree catches up. Do not automate terminals through the UI.
 - The owner must open the link in the phone browser on the same private network. Providing a link is not proof of pairing. Once the owner opens it, check the desktop's paired-phone count; that count confirms redeemed browser pairings, not current connectivity. Avoid routine polling. If no phone reply arrives, finish with the link and clearly state that opening it completes pairing.
 - Read the displayed expiry before sharing a visible code. If the app or phone reports that the code expired or could not be used, generate another on request. Never redeem a code yourself to test whether it was consumed. Keep **Start on a private network** unchanged unless the owner asks to change it.
 
 Report whether the app was reused or started, and either verified pairing or the fresh link with its expiry. Include the commit only after a Git update and the terminal PID only after a launch. For task starts, the owner opens a task and confirms **Start session** on the phone; this workflow does not itself launch a task.
+
+## Desktop automation recovery
+
+- With `@oai/sky`, initialize the runtime in the current JavaScript session before using it; bindings from a previous turn may no longer exist.
+- Capture screenshot-backed state before clicking desktop controls. Accessibility text can expose an element index without usable input geometry. If an index is unavailable or geometry is missing, capture fresh state and use the visible control's coordinates with that screenshot's ID.
+- Refresh state after each input. If the immediate observation shows the previous page, window, or a loading message, observe again before retrying. Verify the intended transition instead of repeating a click against stale state.
+- Do not automate terminals through the UI. Use the host shell for builds, launch helpers, process ancestry, and listener checks.
