@@ -194,7 +194,7 @@ On the computer running Pomegr:
 
 1. Install or update the native Codex CLI using the [official installation guide](https://learn.chatgpt.com/docs/codex/cli#get-started-with-codex-cli). For Windows Pomegr, use a Windows-native CLI installation.
 2. Run `codex login` and sign in with ChatGPT. `codex login status` reports the active authentication mode; API-key-only access does not supply the ChatGPT account windows used here. These commands are documented in the [official CLI reference](https://learn.chatgpt.com/docs/developer-commands?surface=cli#codex-login).
-3. Fully quit and reopen Pomegr after installing or updating the CLI, because executable detection is cached for the monitor process. Merely closing to the tray does not restart detection.
+3. Allow the background usage check to retry failed CLI detection after its sixty-second cooldown. Restart Pomegr if installation changes `PATH`. Closing to the tray does not refresh the environment.
 
 If the CLI is already installed but undetected, use the absolute native executable override above. If it is already signed in with ChatGPT, check connectivity and allow the normal retry interval. A missing CLI is an unavailable setup state, not a pending account request; the dashboard settles to its normal polling cadence. Reading Codex desktop session history does not require this CLI and cannot establish account-usage access. Pomegr only displays these instructions; it does not install Codex, launch sign-in, or expose credentials through the browser.
 

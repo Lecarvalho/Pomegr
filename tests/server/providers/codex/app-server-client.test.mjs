@@ -143,7 +143,7 @@ test("fails closed on app-server errors, asynchronous EPIPE, malformed initializ
   }
 });
 
-test("isAvailable caches absent, invalid, oversized, and valid executable checks as booleans", async () => {
+test("isAvailable caches absent, invalid, oversized, and valid executable checks within the cooldown", async () => {
   let absentResolutions = 0;
   const absentCalls = [];
   const absent = createCodexAppServerRateLimitsReader({
@@ -184,6 +184,53 @@ test("isAvailable caches absent, invalid, oversized, and valid executable checks
   assert.equal(await valid.isAvailable(), true);
   assert.equal(await valid.isAvailable(), true);
   assert.equal(validCalls.length, 1);
+});
+
+test("retries failed CLI detection after a bounded cooldown and shares recovery across callers", async () => {
+  for (const failure of ["missing", "resolver", "version", "timeout", "spawn"]) {
+    let time = 0;
+    let resolutions = 0;
+    const failedVersion = failure === "timeout" ? child() : versionWithOutput("PRIVATE_VALIDATION_FAILURE\n", 1);
+    const server = child();
+    server.stdin.write = (data) => {
+      const message = JSON.parse(String(data));
+      if (message.id === 1) queueMicrotask(() => server.stdout.emit("data", '{"id":1,"result":{}}\n'));
+      if (message.id === 2) queueMicrotask(() => server.stdout.emit("data", '{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":12}}}}\n'));
+      return true;
+    };
+    const calls = [];
+    const spawn = fakeSpawn([
+      ...(["version", "timeout"].includes(failure) ? [failedVersion] : []),
+      successfulVersion(), server,
+    ], calls);
+    let spawnFailed = false;
+    const reader = createCodexAppServerRateLimitsReader({
+      now: () => time,
+      versionTimeoutMs: 10,
+      resolveExecutable: () => {
+        resolutions += 1;
+        if (resolutions === 1 && failure === "missing") return null;
+        if (resolutions === 1 && failure === "resolver") throw new Error("PRIVATE_RESOLVER_FAILURE");
+        return "C:\\tools\\codex.exe";
+      },
+      spawnFn: (...args) => {
+        if (failure === "spawn" && !spawnFailed) { spawnFailed = true; throw new Error("PRIVATE_SPAWN_FAILURE"); }
+        return spawn(...args);
+      },
+    });
+    assert.equal(await reader.isAvailable(), false, failure);
+    time = 59_999;
+    assert.equal(await reader.isAvailable(), false, failure);
+    await assert.rejects(reader.readRateLimits(), new RegExp(CODEX_APP_SERVER_UNAVAILABLE));
+    assert.equal(resolutions, 1, failure);
+    time = 60_000;
+    assert.deepEqual(await Promise.all(Array.from({ length: 8 }, () => reader.isAvailable())), Array(8).fill(true), failure);
+    assert.equal(resolutions, 2, failure);
+    assert.deepEqual(await reader.readRateLimits(), { result: { rateLimits: { primary: { usedPercent: 12 } } } });
+    time += 60_000;
+    assert.equal(await reader.isAvailable(), true, failure);
+    assert.equal(resolutions, 2, failure);
+  }
 });
 
 test("caches a successful executable validation but never leaks validation errors", async () => {
