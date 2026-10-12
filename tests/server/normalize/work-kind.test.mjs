@@ -134,13 +134,16 @@ test("a carried MCP or dynamic tool is an integration unless its exact identity 
 });
 
 test("a Pomegr task tool call names its fixed action by exact server and tool identity", () => {
-  assert.deepEqual([...TASK_ACTIONS], ["added", "removed", "completed", "blocked"]);
+  assert.deepEqual([...TASK_ACTIONS], ["added", "removed", "completed", "blocked", "updated"]);
   for (const [tool, detail, action] of [
     ["mcp__plugin_pomegr_pomegr__add_task", "", "added"],
     ["mcp__pomegr__remove_task", "", "removed"],
     ["mcp__plugin_pomegr_pomegr__complete_task", "PRIVATE_DETAIL", "completed"],
     ["MCP", "pomegr / block_task", "blocked"],
     ["Dynamic tool", "pomegr / add_task", "added"],
+    ["mcp__plugin_pomegr_pomegr__update_task", "PRIVATE_DETAIL", "updated"],
+    ["MCP", "pomegr / update_task", "updated"],
+    ["mcp__notpomegr__update_task", "", null],
     // Reads, reports, feature tools, and other servers are not task actions.
     ["mcp__plugin_pomegr_pomegr__get_feature", "", null],
     ["mcp__plugin_pomegr_pomegr__update_feature", "", null],

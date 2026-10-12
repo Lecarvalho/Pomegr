@@ -4,7 +4,7 @@ export const SESSION_EVENT_KINDS = Object.freeze([
   "agent_started", "agent_finished", "agent_stopped", "signal_reported", "estimate_updated",
   "user_message", "resource_peak", "commit_observed", "pull_request_opened",
   "cache_refill", "context_compacted",
-  "task_added", "task_removed", "task_completed", "task_blocked",
+  "task_added", "task_removed", "task_completed", "task_blocked", "task_updated",
 ]);
 export const SESSION_EVENT_LIMIT = 50;
 export const SESSION_EVENT_READINESS_SECTIONS = Object.freeze(["core", "agentEvidence", "activityEvidence"]);
@@ -22,7 +22,7 @@ const RESOURCE_PEAK_FLOORS = new Map([
 const PRIMARY_AGENT_ID = "primary";
 const REFILL_KINDS = new Set(["possible_full", "provider_diagnosed", "lifetime_elapsed"]);
 const COMPACTION_TRIGGERS = new Set(["automatic", "manual"]);
-const TASK_ACTION_KINDS = new Map([["added", "task_added"], ["removed", "task_removed"], ["completed", "task_completed"], ["blocked", "task_blocked"]]);
+const TASK_ACTION_KINDS = new Map([["added", "task_added"], ["removed", "task_removed"], ["completed", "task_completed"], ["blocked", "task_blocked"], ["updated", "task_updated"]]);
 const TASK_ACTION_COUNT_LIMIT = 64;
 
 function instant(value) {

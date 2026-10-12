@@ -166,10 +166,10 @@ checkpoints; aggregate feeds are derived from retained evidence after restore.
 Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
-Claude's `conversation-activity-v12` and Codex's `codex-activity-v4` source
+Claude's `conversation-activity-v13` and Codex's `codex-activity-v5` source
 fingerprints trigger rehydration of checkpoints produced before the current
 work-kind classification, Claude recorded request send times, Claude tool-change
-attribution, and Codex completed-item coverage; see the
+attribution, Codex completed-item coverage, and successful `update_task` event evidence; see the
 [provider tool inventory](tool-inventory.md).
 Claude merges recorded tool IDs across fragments sharing one request identity,
 including live snapshot merges after a read window advances. The private
@@ -236,8 +236,9 @@ follow the same pattern through `eventRecordForSession`, with one difference: th
 projection also derives the current entries from committed cache-event and context-boundary
 state, so only entries older than the retained evidence wait for that read. Task actions
 follow it too: the projection derives the current ones from the committed tool-call
-evidence (the optional `taskAction` field an adapter sets on a Pomegr task tool call whose
-recorded result is not an error), and reads nothing from the task store. See
+evidence (the optional `taskAction` field an adapter sets on a Pomegr `add_task`,
+`remove_task`, `complete_task`, `block_task`, or `update_task` call whose recorded result
+is not an error), and reads nothing from the task store. See
 [Session-event sidecar](#session-event-sidecar). The feed reads
 neither the windowed activity evidence nor the live repository commit list. Items are the
 50 newest by the time recorded with their evidence, never the observation time, and
@@ -1189,7 +1190,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](metrics.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v12`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v13`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged
@@ -3621,10 +3622,12 @@ to the session checkpoint and its repository sidecar.
   `provider_diagnosed`, `lifetime_elapsed`, and `trigger` one of `automatic`, `manual`. Each
   list keeps its newest 256 entries, oldest first. A record that holds a task action has a
   third list, `taskActions: [{ at, agentId, action, count }]`, with `action` one of `added`,
-  `removed`, `completed`, `blocked` and `count` an integer from 1 to 64 (the tool calls of
+  `removed`, `completed`, `blocked`, `updated` and `count` an integer from 1 to 64 (the tool calls of
   one assistant turn share its recorded time). The key is absent while the list is empty,
   so a record without a task action is written as it was before task T-57, and the version
-  stays 1. A build from before that task treats a record that has the key as invalid: it
+  stays 1. Task T-63 adds `updated` without changing the record shape or discarding
+  accumulated entries; the provider normalization fingerprints above rehydrate earlier
+  checkpoints from unchanged sources. A build from before that task treats a record that has the key as invalid: it
   does not load it and prunes it. Nothing else is stored: no reason,
   provider status, inference detail, token count, percentage, prior context total, request
   number, provider ID, tool-call ID, task ID, task text, or tool argument. `normalizeSessionEventRecord` validates the record as a whole, with

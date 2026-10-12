@@ -767,7 +767,7 @@ export function createCodexProvider(options = {}) {
         const states = liveness.observe(selectedMetadata.map(owningRuntime.decorate)).threads.map((thread) => [
           thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive, thread.presenceConfirmed,
         ]);
-        return createHash("sha256").update(JSON.stringify(["codex-activity-v4", catalogEntry?.isLive, states])).digest("hex");
+        return createHash("sha256").update(JSON.stringify(["codex-activity-v5", catalogEntry?.isLive, states])).digest("hex");
       },
     }),
     readTranscriptPath,

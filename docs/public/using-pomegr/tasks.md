@@ -540,13 +540,13 @@ started for them. Other devices see none of it.
   and next step. **Open on board** goes to the card. A session with no task has no
   **Task** tab.
 - **Events.** The **Events** list on the **Overview** tab adds a row when the agent
-  adds a task, removes a task, reports its task complete, or reports it blocked. The
+  adds, removes, updates, or reports a task complete or blocked. The
   row names the agent and the time, not the task. It comes from the agent's own tool
   call in the session, so it appears on every device that shows the session, and a
-  call that Pomegr refused adds no row. **Task reported complete** is the agent's
+  call that Pomegr refused adds no row. **Task updated** records the agent's update
+  call. **Task reported complete** is the agent's
   report; the task then waits in **Review** until you mark it done. A change you make
-  on the board adds no row. A task that the agent changes with `update_task` adds no
-  row either.
+  on the board adds no row.
 
 ## What Pomegr does not do
 

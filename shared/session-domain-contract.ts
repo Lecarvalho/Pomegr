@@ -104,6 +104,7 @@ export const SESSION_EVENT_KINDS = [
   "task_removed",
   "task_completed",
   "task_blocked",
+  "task_updated",
 ] as const;
 
 export type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];

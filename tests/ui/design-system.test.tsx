@@ -148,14 +148,14 @@ describe("Design-system reference page", () => {
     expect(full.querySelectorAll(".sessionEventRow.isStatic")).toHaveLength(1);
     expect(within(full).getAllByRole("button", { name: rowName })).toHaveLength(8);
     expect(within(full).getAllByRole("button", { name: rowName })[0]).toHaveClass("commandQuietAction", "sessionEventRow");
-    await user.click(within(full).getByRole("button", { name: "Show 8 earlier" }));
-    expect(full.querySelectorAll(".sessionEventRow")).toHaveLength(17);
+    await user.click(within(full).getByRole("button", { name: "Show 9 earlier" }));
+    expect(full.querySelectorAll(".sessionEventRow")).toHaveLength(18);
     expect(within(full).getByRole("button", { name: "Show fewer" })).toHaveClass("commandTextLink");
-    for (const label of ["Agent started", "Agent finished", "Agent stopped", "Signal reported", "Agent estimate updated", "User message", "Resource peak", "Commit observed", "Pull request opened", "Cache refill", "Context compacted", "Task added", "Task removed", "Task reported complete", "Task reported blocked"]) {
+    for (const label of ["Agent started", "Agent finished", "Agent stopped", "Signal reported", "Agent estimate updated", "User message", "Resource peak", "Commit observed", "Pull request opened", "Cache refill", "Context compacted", "Task updated", "Task added", "Task removed", "Task reported complete", "Task reported blocked"]) {
       expect(within(full).getAllByText(label, { selector: ".sessionEventLabel" }).length).toBeGreaterThan(0);
     }
     expect(within(full).getByText("×2")).toBeInTheDocument();
-    expect(within(full).getByText("18 events")).toBeInTheDocument();
+    expect(within(full).getByText("19 events")).toBeInTheDocument();
     expect(within(empty).getByText("No events recorded.")).toBeInTheDocument();
     expect(within(loading).getByText("Loading Event evidence…")).toBeInTheDocument();
     expect(within(unavailable).getByText("Event evidence unavailable.")).toBeInTheDocument();

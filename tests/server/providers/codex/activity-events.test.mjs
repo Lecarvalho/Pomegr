@@ -16,6 +16,8 @@ import { createCodexProvider } from "../../../../server/providers/codex/index.mj
 import { createCodexIncrementalObserver } from "../../../../server/providers/codex/observation.mjs";
 import { canonicalCodexSourcePath } from "../../../../server/providers/codex/source-path.mjs";
 import { providerSessionEvidenceSchema } from "../../../../server/providers/provider-contract.mjs";
+import { sessionEvents } from "../../../../server/sessions/domain/session-events.mjs";
+import { derivedSessionEventRecord } from "../../../../server/sessions/domain/session-event-record.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   monitorStateFromProviderEvidence,
@@ -524,7 +526,7 @@ test("native Codex function tools keep their own identity instead of a dynamic-t
 
 test("a Codex Pomegr task tool call names its action only when it completed and its result is not an error", () => {
   const stamp = (second) => new Date(Date.UTC(2026, 9, 11, 10, 0, second)).toISOString();
-  const begin = (second, id, tool) => ({ type: "event_msg", timestamp: stamp(second), payload: { type: "mcp_tool_call_begin", call_id: id, invocation: { server: "pomegr", tool, arguments: { text: "TASK_TEXT_MUST_NOT_LEAK" } } } });
+  const begin = (second, id, tool, args = { text: "TASK_TEXT_MUST_NOT_LEAK" }) => ({ type: "event_msg", timestamp: stamp(second), payload: { type: "mcp_tool_call_begin", call_id: id, invocation: { server: "pomegr", tool, arguments: args } } });
   const end = (second, id, tool, result) => ({ type: "event_msg", timestamp: stamp(second), payload: { type: "mcp_tool_call_end", call_id: id, invocation: { server: "pomegr", tool, arguments: {} }, result } });
   const ok = { Ok: { content: [{ type: "text", text: "RESULT_MUST_NOT_LEAK" }] } };
   const records = [
@@ -540,6 +542,9 @@ test("a Codex Pomegr task tool call names its action only when it completed and 
     { type: "event_msg", timestamp: stamp(14), payload: { type: "mcp_tool_call_end", call_id: "other-ok", invocation: { server: "synthetic", tool: "add_task", arguments: {} }, result: ok } },
     { type: "event_msg", timestamp: stamp(15), payload: { type: "item_completed", item: { type: "McpToolCall", id: "block-item", server: "pomegr", tool: "block_task", arguments: {}, status: "completed", result: { isError: false } } } },
     { type: "event_msg", timestamp: stamp(16), payload: { type: "item_completed", item: { type: "McpToolCall", id: "complete-item-refused", server: "pomegr", tool: "complete_task", arguments: {}, status: "completed", result: { isError: true } } } },
+    begin(17, "update-ok", "update_task", { task_id: "T-13", text: "UPDATED_TASK_TEXT_MUST_NOT_LEAK" }), end(18, "update-ok", "update_task", ok),
+    begin(19, "update-refused", "update_task", { task_id: "T-14", text: "REFUSED_TASK_TEXT_MUST_NOT_LEAK" }), end(20, "update-refused", "update_task", { Err: "PRIVATE_ERROR" }),
+    begin(21, "update-open", "update_task", { task_id: "T-15", text: "UNANSWERED_TASK_TEXT_MUST_NOT_LEAK" }),
   ];
   const parsed = parseCodexActivityRecords(records, { actor: ACTOR });
   assert.ok(parsed.every((call) => !Object.hasOwn(call, "taskAction")), "the action is named only at the seal");
@@ -555,6 +560,9 @@ test("a Codex Pomegr task tool call names its action only when it completed and 
     ["synthetic / add_task", "completed", null],
     ["pomegr / block_task", "completed", "blocked"],
     ["pomegr / complete_task", "failed", null],
+    ["pomegr / update_task", "completed", "updated"],
+    ["pomegr / update_task", "completed", null],
+    ["pomegr / update_task", "running", null],
   ]);
   assert.ok(sealed.every((call) => !Object.hasOwn(call, "mcpRefused")), "the private marker never reaches evidence");
   assert.doesNotMatch(JSON.stringify(sealed), /MUST_NOT_LEAK|PRIVATE_ERROR/u);
@@ -566,15 +574,37 @@ test("a Codex Pomegr task tool call names its action only when it completed and 
     { id: "canonical-error", type: "mcpToolCall", server: "pomegr", tool: "add_task", arguments: {}, status: "completed", error: { message: "PRIVATE_ERROR" } },
     { id: "add-ok", type: "mcpToolCall", server: "pomegr", tool: "add_task", arguments: {}, status: "completed", result: { isError: true, content: [] } },
     { id: "remove-ok", type: "mcpToolCall", server: "pomegr", tool: "remove_task", arguments: {}, status: "completed", result: { content: [] } },
+    { id: "update-ok", type: "mcpToolCall", server: "pomegr", tool: "update_task", arguments: {}, status: "completed", result: { content: [] } },
   ] }], { actor: ACTOR });
   const named = (calls) => calls.filter((call) => call.taskAction).map((call) => [call.detail, call.taskAction, call.timestamp]).sort();
   const merged = sealCodexTaskActions(mergeCodexToolCalls([parsed, canonical]), parsed);
-  assert.deepEqual(named(merged), [["pomegr / block_task", "blocked", stamp(15)], ["pomegr / remove_task", "removed", stamp(9)]]);
+  assert.deepEqual(named(merged), [
+    ["pomegr / block_task", "blocked", stamp(15)],
+    ["pomegr / remove_task", "removed", stamp(9)],
+    ["pomegr / update_task", "updated", stamp(17)],
+  ]);
   assert.ok(merged.every((call) => !Object.hasOwn(call, "mcpRefused")));
   // The app server times a call of an unfinished turn by the turn's start, which is not the call's recorded time:
   // the action waits, so it is never recorded at a time that later moves.
   const running = parseCodexCanonicalTurns([{ id: "turn-open", status: "inProgress", startedAt: STARTED_SECONDS, items: [
     { id: "remove-ok", type: "mcpToolCall", server: "pomegr", tool: "remove_task", arguments: {}, status: "completed", result: { content: [] } },
+    { id: "update-ok", type: "mcpToolCall", server: "pomegr", tool: "update_task", arguments: {}, status: "completed", result: { content: [] } },
   ] }], { actor: ACTOR });
   assert.deepEqual(named(sealCodexTaskActions(mergeCodexToolCalls([parsed, running]), parsed)).map(([detail]) => detail), ["pomegr / add_task", "pomegr / block_task"]);
+  assert.doesNotMatch(JSON.stringify(sealed), /T-13|T-14|T-15|TASK_TEXT_MUST_NOT_LEAK|UPDATED_TASK_TEXT_MUST_NOT_LEAK|REFUSED_TASK_TEXT_MUST_NOT_LEAK|UNANSWERED_TASK_TEXT_MUST_NOT_LEAK|PRIVATE_ERROR/u);
+  const feed = sessionEvents({
+    readiness: { core: "ready", agentEvidence: "ready", activityEvidence: "ready" },
+    agents: [ACTOR],
+    eventRecord: derivedSessionEventRecord({ toolCalls: merged }),
+  });
+  const updatedEvents = feed.items.filter((event) => event.kind === "task_updated");
+  assert.equal(updatedEvents.length, 1);
+  const [updatedEvent] = updatedEvents;
+  assert.deepEqual(Object.keys(updatedEvent).sort(), ["agentId", "agentLabel", "at", "compaction", "durationMs", "id", "kind", "progress", "pullRequestNumber", "refill", "resource", "signal"]);
+  assert.match(updatedEvent.id, /^event-[a-f0-9]{16}$/u);
+  const { id: _eventId, ...updatedFields } = updatedEvent;
+  assert.deepEqual(updatedFields, {
+    kind: "task_updated", at: stamp(17), agentId: "primary", agentLabel: "Primary agent",
+    durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null,
+  });
 });
