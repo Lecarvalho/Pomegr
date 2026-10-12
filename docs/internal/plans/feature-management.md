@@ -45,7 +45,9 @@ The planner took these. A part may change one and must record it in its pull req
 ## Parts
 
 Each part is one board task, one session, and one pull request. The ACOS plan and its two
-manifests are in [feature-management/acos/](feature-management/acos/plan.yaml).
+manifests are in the main checkout's ACOS runs folder, as
+`.agents/skills/acos/runs/2026-10-12-feature-management/`. That folder is git-ignored, so
+each task starts its part by the absolute path.
 
 | Part | Task | Makes true | Prototype sections |
 | --- | --- | --- | --- |
