@@ -77,6 +77,16 @@ export function featureCounts(board: Pick<BoardShape, "tasks">, featureId: strin
   return { total: tasks.length, done: tasks.filter((task) => task.state === "done").length };
 }
 
+/** The filter row's line for a selected feature. A step is running while one of its tasks has a session and is not done. */
+export type FeatureProgress = { total: number; done: number; running: { step: number; of: number } | null };
+
+export function featureProgress(board: Pick<BoardShape, "features" | "tasks">, featureId: string): FeatureProgress | null {
+  if (!board.features.some((feature) => feature.id === featureId)) return null;
+  const steps = stepsOf(board.tasks, featureId);
+  const running = [...steps.entries()].filter(([, tasks]) => tasks.some((task) => task.state !== "done" && task.session !== null)).map(([step]) => step);
+  return { ...featureCounts(board, featureId), running: running.length > 0 ? { step: Math.min(...running), of: Math.max(...steps.keys()) } : null };
+}
+
 export function featureSiblings(board: BoardShape, featureId: string, selfId?: string): Task[] {
   const order = boardOrder(board.columns);
   return featureTasks(board, featureId).filter((task) => task.id !== selfId)

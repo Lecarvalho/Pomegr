@@ -415,6 +415,32 @@
 .taskTimeInput:disabled { opacity: .48; }
 .taskCardWaiting { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskQueueSingleWaiting { flex: 1 1 100%; }
+/* Queue controls on the Board (T-68 D3, D4, D18-D26). The capacity strip ends with the threshold, the stop time and the
+   action that opens Queue settings. The panel is the task dialog at the right edge of the page, with no scrim fill;
+   inside it the gates, schedule and rules panels are sections with no frame of their own. */
+.taskCapacityEnd { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.taskQueueSettingsAction.commandQuietAction { min-height: var(--control-compact); color: var(--command-ink); text-decoration: underline; text-underline-offset: 3px; }
+.taskFeatureProgress { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskFeatureProgressNum { color: var(--command-ink); font-family: var(--font-data); }
+.taskQueueSettingsScrim { padding: 0; background: transparent; overflow: hidden; }
+.taskQueueSettingsScrim[open] { align-items: stretch; justify-content: flex-end; }
+.taskQueueSettingsScrim::backdrop { background: transparent; }
+.taskQueueSettings { box-sizing: border-box; flex: 0 1 400px; width: 100%; max-width: 400px; min-width: 0; display: flex; flex-direction: column; gap: 20px; padding: 20px; overflow-y: auto; border-left: 1px solid var(--command-line-strong); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
+.taskQueueSettingsHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.taskQueueSettingsHead h2 { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskQueueSettings .taskGatesPanel, .taskQueueSettings .taskBlockRulesPanel { flex: 0 0 auto; display: flex; flex-direction: column; padding: 0; }
+.taskQueueSettings .taskBlockRulesPanel { gap: var(--space-2); }
+.taskQueueSettings .taskSchedulePanel, .taskQueueSettings .taskBlockRulesPanel { padding-top: 20px; border-top: 1px solid var(--command-line); }
+.taskQueueSettings .taskGatesHeading, .taskQueueSettings .taskQueueHeading { font: 650 var(--text-sm)/1.4 var(--font-ui); }
+.taskQueueSettings .taskGateList { gap: 0; }
+.taskQueueSettings .taskGateRow { padding: var(--space-2) 0; }
+.taskQueueSettings .taskGateRow + .taskGateRow { border-top: 1px solid var(--command-line); }
+.taskQueueSettings .taskGateThreshold { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); }
+.taskQueueSettings .taskGateThreshold .taskGateFieldLabel { color: var(--command-muted); font-weight: 400; }
+.taskQueueSettings .taskGateThreshold .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
+@media (max-width: 760px), (pointer: coarse) {
+  .taskQueueSettingsAction.commandQuietAction, .taskQueueSettings .taskGateThreshold .commandSelectTrigger { min-height: 44px; }
+}
 
 /* Session view task surfaces (design contract D361-D380 and D397-D440): the header meta, the compact Overview panel and
    the read-only Task tab. The panels are the shared .panel frame; every value is a token. */

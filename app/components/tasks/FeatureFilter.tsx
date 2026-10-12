@@ -3,7 +3,7 @@
 import { TASK_BOUNDS, type TaskBoard } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { AddFeatureAction } from "./AddFeatureAction";
-import { ALL_FEATURES, WITHOUT_FEATURE, type FeatureFilterValue } from "./task-features";
+import { ALL_FEATURES, WITHOUT_FEATURE, featureProgress, type FeatureFilterValue } from "./task-features";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
 export function FeatureFilter({ board, filter, onFilter, edits }: {
@@ -18,10 +18,16 @@ export function FeatureFilter({ board, filter, onFilter, edits }: {
     ...board.features.map((feature) => ({ value: feature.id, label: feature.name, total: count((id) => id === feature.id) })),
     { value: WITHOUT_FEATURE, label: "No feature", total: count((id) => id === null) },
   ].map((option) => ({ value: option.value, label: `${option.label} (${option.total})` }));
+  const progress = featureProgress(board, filter);
+  const num = (value: number) => <span className="taskFeatureProgressNum">{value}</span>;
   return <div className="taskFeatureFilter" role="group" aria-label="Filter by feature">
     <span className="taskFilterEyebrow">Feature</span>
     <CommandSelect className="taskFeatureSelect" aria-label="Feature" options={options} value={filter} onChange={onFilter} />
     {edits && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
+    {progress && <span className="taskFeatureProgress">
+      {num(progress.done)} of {num(progress.total)} {progress.total === 1 ? "task" : "tasks"} done
+      {progress.running && <> · step {num(progress.running.step)} of {num(progress.running.of)} running</>}
+    </span>}
     {edits && filter !== ALL_FEATURES && <span className="newTaskHelper">Moving cards is off while a feature filter is on.</span>}
   </div>;
 }

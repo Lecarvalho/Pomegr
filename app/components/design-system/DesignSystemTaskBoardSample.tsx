@@ -15,7 +15,7 @@ import { readySegments } from "../tasks/task-ready-groups";
 import { dropKey } from "../tasks/use-queue-drag";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FUTURE, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
+  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
 const LINES = featureLines(BOARD_BLOCKED);
@@ -27,6 +27,7 @@ const BOARD_ENTRY = newTaskEntry();
 const REVEALED_ENTRY = newTaskEntry();
 const COLUMNS = taskColumns(BOARD_RUNNING);
 const noMove = () => undefined;
+const QUEUE_WITH_STOP = { ...BOARD_RUNNING.queue, schedule: { startAt: null, stopAfter: SAMPLE_FUTURE_STOP } };
 // The Ready lane of the running board, read on the scheduled task's own day so its Starts line says "today".
 const READY_LANE = { segments: readySegments(COLUMNS[1].tasks, BOARD_RUNNING), queue: BOARD_RUNNING.queue, now: Date.parse(SAMPLE_FUTURE) };
 
@@ -108,11 +109,14 @@ export function TaskBoardSection() {
       <Sample label="Feature filter" note="One select whose options carry a task count: All first, No feature last. Filtering is client state only.">
         <FilterSample desktop={false} />
       </Sample>
-      <Sample label="Feature filter, desktop app" note="Adds the Quiet + New feature action. Choose a feature to see the line that says moving cards is off.">
+      <Sample label="Feature filter, desktop app" note="Adds the Quiet + New feature action. Choose a feature to see its progress, with the counts in the data font and the step that is running when one is, and then the line that says moving cards is off.">
         <FilterSample desktop />
       </Sample>
       <Sample label="Capacity strip" note="The same two readings as Start gates, above the board; omitted when the board sends no gates.">
         <Frame><CapacityStrip queue={BOARD_RUNNING.queue} /></Frame>
+      </Sample>
+      <Sample label="Capacity strip, on the Board" note="On the Board the strip ends with the threshold and, only when a stop time is set, that time, with both values in the data font and ink. Queue settings is last: the Quiet role, 32px high, in underlined ink. It opens the Queue settings panel.">
+        <Frame><CapacityStrip queue={QUEUE_WITH_STOP} onOpenSettings={noop} /></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
@@ -126,7 +130,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, desktop app (blocked queue)" note="The Board banner adds one secondary Open T-n; Mark done and Requeue appear on the Queue view only.">
+      <Sample label="Board, desktop app (blocked queue)" note="The Board banner carries every action: the secondary Open T-n and Mark done and resume, and the quiet Requeue T-n in ink. A paused queue keeps only Open T-n.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_BLOCKED} edits={EDITS_BLOCKED} onOpenTask={noop} newTask={newTaskEntry()} /></div></Frame>
       </Sample>
     </div>

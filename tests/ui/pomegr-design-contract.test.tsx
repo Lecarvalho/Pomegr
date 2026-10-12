@@ -433,6 +433,37 @@ describe("Pomegr visual contract", () => {
     expect(sample).toMatch(/Card outside Ready, parallel step/);
   });
 
+  it("puts every queue control on the Board: the strip's end, the Queue settings panel, the banner and the filter line", () => {
+    const read = (name: string) => readFileSync(join(process.cwd(), "app", "components", "tasks", name), "utf8");
+    // D3, D4: the strip ends with the threshold and stop time, then the underlined ink Quiet action at the compact height.
+    expect(styles).toMatch(/\.taskCapacityEnd \{ margin-left: auto;/);
+    expect(styles).toMatch(/\.taskQueueSettingsAction\.commandQuietAction \{ min-height: var\(--control-compact\); color: var\(--command-ink\); text-decoration: underline;/);
+    expect(read("CapacityStrip.tsx")).toMatch(/className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog"/);
+    // D18: the task dialog at the right edge, 400px wide, panel fill, strong-line left border, 20px padding and gap, no scrim fill.
+    expect(read("QueueSettingsPanel.tsx")).toMatch(/<TaskDialog className="taskModalScrim taskQueueSettingsScrim" labelledBy=\{titleId\} closeOnScrim/);
+    expect(styles).toMatch(/\.taskQueueSettingsScrim \{ padding: 0; background: transparent;/);
+    expect(styles).toMatch(/\.taskQueueSettingsScrim\[open\] \{ align-items: stretch; justify-content: flex-end; \}/);
+    expect(styles).toMatch(/\.taskQueueSettings \{[^}]*max-width: 400px;[^}]*gap: 20px; padding: 20px; overflow-y: auto; border-left: 1px solid var\(--command-line-strong\); background: var\(--command-panel\);/);
+    // D19, D20: a 16px/650 head and 13px/650 section headings; the rows take 8px padding and one-pixel rules.
+    expect(styles).toMatch(/\.taskQueueSettingsHead h2 \{[^}]*font: 650 var\(--text-heading\)\/1\.35 var\(--font-ui\)/);
+    expect(styles).toMatch(/\.taskQueueSettings \.taskGatesHeading, \.taskQueueSettings \.taskQueueHeading \{ font: 650 var\(--text-sm\)\/1\.4 var\(--font-ui\); \}/);
+    expect(styles).toMatch(/\.taskQueueSettings \.taskGateRow \{ padding: var\(--space-2\) 0; \}/);
+    expect(styles).toMatch(/\.taskQueueSettings \.taskGateRow \+ \.taskGateRow \{ border-top: 1px solid var\(--command-line\); \}/);
+    // D21: one row, a muted label and the compact select.
+    expect(styles).toMatch(/\.taskQueueSettings \.taskGateThreshold \{ flex-direction: row;[^}]*justify-content: space-between;/);
+    expect(styles).toMatch(/\.taskQueueSettings \.taskGateThreshold \.taskGateFieldLabel \{ color: var\(--command-muted\); font-weight: 400; \}/);
+    expect(styles).toMatch(/\.taskQueueSettings \.taskGateThreshold \.commandSelectTrigger \{ min-height: var\(--control-compact\); font-size: var\(--text-xs\); \}/);
+    // D22, D23: Schedule and the rules sit over a rule with 20px top padding.
+    expect(styles).toMatch(/\.taskQueueSettings \.taskSchedulePanel, \.taskQueueSettings \.taskBlockRulesPanel \{ padding-top: 20px; border-top: 1px solid var\(--command-line\); \}/);
+    // D25: the banner resolves on either view. D26: the filter line is muted 12px with data-font ink counts.
+    expect(read("QueueBanner.tsx")).toMatch(/const resolve = edits && task !== null && banner\.resolvable \? edits : null;/);
+    expect(styles).toMatch(/\.taskFeatureProgress \{ color: var\(--command-muted\); font: 400 var\(--text-xs\)\/1\.4 var\(--font-ui\); \}/);
+    expect(styles).toMatch(/\.taskFeatureProgressNum \{ color: var\(--command-ink\); font-family: var\(--font-data\); \}/);
+    expect(designContract).toMatch(/### Queue settings panel/);
+    expect(designContract).toMatch(/The panel is a side panel, not a popover\./);
+    expect(designContract).toMatch(/\*\*Queue settings\*\* \(`\.taskQueueSettingsAction`\) is last in the strip/);
+  });
+
   it("changes a card's step on the Board with the Queue view's rule, tokens, and the shared select", () => {
     // D27: the step group under the dragged card takes the panel fill and the lane's two-pixel strong-line border.
     expect(styles).toMatch(/\.taskReadyGroup\.isStepTarget \{ border-color: var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); box-shadow: inset 0 0 0 1px var\(--command-line-strong\); \}/);
@@ -489,7 +520,8 @@ describe("Pomegr visual contract", () => {
     expect(tasksStyles).toMatch(/\.taskCompleteWhen \.taskOwnInput \{ min-height: var\(--control-height\)/);
     expect(tasksStyles).toMatch(/\.taskTextCounter \{[^}]*align-self: flex-end[^}]*font: 400 var\(--text-xs\)\/1\.4 var\(--font-data\)/);
     // D2: a native modal dialog with its name, no scrim-click close, and Escape unless a control inside handled the key.
-    expect(frame).toMatch(/<dialog[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby=\{titleId\}/);
+    expect(frame).toMatch(/<dialog[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby=\{labelledBy\}/);
+    expect(frame).toMatch(/<TaskDialog className="taskModalScrim" labelledBy=\{titleId\}/);
     expect(frame).toMatch(/showModal\(\)/);
     expect(frame).toMatch(/event\.key !== "Escape" \|\| event\.defaultPrevented/);
     expect(frame).toMatch(/className="commandIconAction" aria-label="Close"/);

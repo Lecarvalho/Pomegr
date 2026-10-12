@@ -322,10 +322,22 @@ describe("Design-system reference page", () => {
     await user.click(screen.getByRole("option", { name: /^Upload reliability \(\d+\)$/ }));
     expect(within(desktopFilter).getByRole("combobox", { name: "Feature" })).toHaveTextContent(/^Upload reliability \(\d+\)$/);
     expect(within(desktopFilter).getByText("Moving cards is off while a feature filter is on.")).toBeInTheDocument();
+    // The selected feature's progress comes before that line, with its counts in the data font.
+    const progress = desktopFilter.querySelector(".taskFeatureProgress") as HTMLElement;
+    expect(progress.textContent).toMatch(/^\d+ of \d+ tasks done( · step \d+ of \d+ running)?$/);
+    expect(progress.querySelectorAll(".taskFeatureProgressNum").length).toBeGreaterThanOrEqual(2);
+    expect(progress.compareDocumentPosition(within(desktopFilter).getByText("Moving cards is off while a feature filter is on.")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const strip = within(sample(board, "Capacity strip")).getByRole("region", { name: "Provider capacity" });
     expect(strip).toHaveTextContent("Claude Code 5h 91% · 7d 37%");
     expect(strip).toHaveTextContent("Codex 5h 38% · 7d 12%");
+    expect(strip.querySelector("button")).toBeNull();
+    const stripEnd = sample(board, "Capacity strip, on the Board").querySelector(".taskCapacityEnd") as HTMLElement;
+    expect(stripEnd.querySelector(".taskCapacitySettings")?.textContent).toMatch(/^Do not start above 85% · stops starting after \d\d:\d\d$/);
+    expect(stripEnd.querySelectorAll(".taskCapacityValue")).toHaveLength(2);
+    expect(stripEnd.lastElementChild).toBe(within(stripEnd).getByRole("button", { name: "Queue settings" }));
+    expect(within(stripEnd).getByRole("button", { name: "Queue settings" })).toHaveClass("commandQuietAction", "taskQueueSettingsAction");
+    expect(within(stripEnd).getByRole("button", { name: "Queue settings" })).toHaveAttribute("aria-haspopup", "dialog");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -383,7 +395,9 @@ describe("Design-system reference page", () => {
 
     const blocked = sample(board, "Board, desktop app (blocked queue)");
     expect(within(blocked).getByRole("button", { name: "Open T-2" })).toHaveClass("commandSecondaryAction");
-    expect(within(blocked).queryByRole("button", { name: "Mark done and resume" })).toBeNull();
+    expect(within(blocked).getByRole("button", { name: "Mark done and resume" })).toHaveClass("commandSecondaryAction");
+    expect(within(blocked).getByRole("button", { name: "Requeue T-2" })).toHaveClass("commandQuietAction");
+    expect(within(sample(board, "Board, browser (blocked queue)")).getByRole("region", { name: "Queue status" }).querySelector("button")).toBeNull();
 
     expect(sample(board, "Board, loading").querySelector(".taskBoardSkeleton")).toHaveAttribute("aria-label", "Loading tasks");
     expect(within(sample(board, "Board, unavailable")).getByRole("status")).toHaveTextContent("Tasks are unavailable.");
@@ -448,6 +462,24 @@ describe("Design-system reference page", () => {
     const desktopView = sample(queue, "Queue view, desktop app (queue on)");
     expect(within(desktopView).getByRole("combobox", { name: "Do not start above" })).toBeInTheDocument();
     expect(within(desktopView).getByRole("group", { name: "Queue start" })).toHaveClass("commandSegmented");
+
+    // Queue settings: one h2, then the three sections as h3 with no panel frame of their own.
+    const settings = sample(queue, "Queue settings, desktop app").querySelector(".taskQueueSettings") as HTMLElement;
+    expect(within(settings).getByRole("heading", { level: 2, name: "Queue settings" })).toBeInTheDocument();
+    expect(within(settings).getByRole("button", { name: "Close" })).toHaveClass("commandIconAction");
+    expect(within(settings).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["Start gates", "Schedule", "When the queue blocks"]);
+    expect(settings.querySelector(".panel")).toBeNull();
+    expect(settings.querySelectorAll(".taskGatesPanel:not(.taskSchedulePanel) .taskGateRow")).toHaveLength(5);
+    expect(within(settings).getByText("Checked before every session Pomegr starts.")).toBeInTheDocument();
+    expect(within(settings).getByRole("combobox", { name: "Do not start above" }).closest(".taskGateThreshold")).not.toBeNull();
+    expect(within(settings).getByRole("group", { name: "Queue start" })).toHaveClass("commandSegmented");
+    expect(within(settings).getByLabelText("Stop starting tasks after")).toHaveClass("taskTimeInput");
+    expect(within(settings).getByText("Stalled")).toHaveClass("isError");
+    expect(within(settings).getByText("Needs review")).toHaveClass("isReview");
+    const readOnly = sample(queue, "Queue settings, browser").querySelector(".taskQueueSettings") as HTMLElement;
+    expect(within(readOnly).queryByRole("combobox")).toBeNull();
+    expect(within(readOnly).queryByRole("group", { name: "Queue start" })).toBeNull();
+    expect(readOnly.querySelectorAll(".taskSchedulePanel .taskGateRow")).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

@@ -31,21 +31,21 @@ export function TaskModalChrome({ titleId, title, titleExtra, subtitle, closeRef
   </div>;
 }
 
-/** A modal dialog over the page. */
-export function TaskModalFrame({ title, titleExtra, subtitle, initialFocus, closeOnScrim = false, onClose, footer, children }: Omit<ChromeProps, "titleId" | "closeRef"> & {
-  initialFocus?: RefObject<{ focus(options?: FocusOptions): void } | null>;
+/** The native modal dialog under the task modal and the Queue settings panel: it traps Tab and closes on Escape. */
+export function TaskDialog({ className, labelledBy, closeOnScrim = false, onClose, children }: {
+  className: string;
+  labelledBy: string;
   closeOnScrim?: boolean;
+  onClose(): void;
+  children: ReactNode;
 }) {
-  const titleId = useId();
   const dialog = useRef<HTMLDialogElement | null>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const pressedScrim = useRef(false);
   const showDialog = useCallback((node: HTMLDialogElement | null) => {
     dialog.current = node;
     if (!node || node.open) return;
     if (typeof node.showModal === "function") node.showModal(); else node.setAttribute("open", "");
   }, []);
-  useEffect(() => { (initialFocus?.current ?? closeRef.current)?.focus({ preventScroll: true }); }, [initialFocus]);
 
   const wrapTab = (event: KeyboardEvent<HTMLDialogElement>) => {
     const items = [...(dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
@@ -62,9 +62,22 @@ export function TaskModalFrame({ title, titleExtra, subtitle, initialFocus, clos
     onClose();
   };
 
-  return <dialog ref={showDialog} className="taskModalScrim" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+  return <dialog ref={showDialog} className={className} role="dialog" aria-modal="true" aria-labelledby={labelledBy} tabIndex={-1}
     onKeyDown={keyDown} onMouseDown={(event) => { pressedScrim.current = event.target === event.currentTarget; }}
     onClick={(event) => { if (closeOnScrim && pressedScrim.current && event.target === event.currentTarget) onClose(); }} onCancel={(event) => { event.preventDefault(); onClose(); }}>
-    <TaskModalChrome titleId={titleId} title={title} titleExtra={titleExtra} subtitle={subtitle} closeRef={closeRef} onClose={onClose} footer={footer}>{children}</TaskModalChrome>
+    {children}
   </dialog>;
+}
+
+/** A modal dialog over the page. */
+export function TaskModalFrame({ title, titleExtra, subtitle, initialFocus, closeOnScrim = false, onClose, footer, children }: Omit<ChromeProps, "titleId" | "closeRef"> & {
+  initialFocus?: RefObject<{ focus(options?: FocusOptions): void } | null>;
+  closeOnScrim?: boolean;
+}) {
+  const titleId = useId();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { (initialFocus?.current ?? closeRef.current)?.focus({ preventScroll: true }); }, [initialFocus]);
+  return <TaskDialog className="taskModalScrim" labelledBy={titleId} closeOnScrim={closeOnScrim} onClose={onClose}>
+    <TaskModalChrome titleId={titleId} title={title} titleExtra={titleExtra} subtitle={subtitle} closeRef={closeRef} onClose={onClose} footer={footer}>{children}</TaskModalChrome>
+  </TaskDialog>;
 }

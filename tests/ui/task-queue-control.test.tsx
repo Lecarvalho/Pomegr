@@ -244,15 +244,15 @@ describe("the Queue banner", () => {
     expect(banner().compareDocumentPosition(screen.getByRole("region", { name: "Single tasks" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("offers only Open on the Board", async () => {
+  it("offers only Open for a blocker that is not stalled or blocked", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12" });
     await renderOn("board");
     expect(within(banner()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Open T-12"]);
   });
 
-  it("offers Open, Mark done and resume, and Requeue on the Queue, each in its role", async () => {
+  it.each(["board", "queue"] as const)("offers Open, Mark done and resume, and Requeue on the %s view, each in its role", async (view) => {
     setBoard({ status: "blocked", blockedBy: "T-14" });
-    await renderOn("queue");
+    await renderOn(view);
     const buttons = within(banner()).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Open T-14", "Mark done and resume", "Requeue T-14"]);
     expect(buttons[0]).toHaveClass("commandSecondaryAction");
@@ -267,17 +267,17 @@ describe("the Queue banner", () => {
     expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
   });
 
-  it("marks the task done and resumes with resolve_done for that task", async () => {
+  it.each(["board", "queue"] as const)("marks the task done and resumes with resolve_done for that task on the %s view", async (view) => {
     setBoard({ status: "blocked", blockedBy: "T-13" });
-    await renderOn("queue");
+    await renderOn(view);
     await userEvent.click(within(banner()).getByRole("button", { name: "Mark done and resume" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-13" }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
-  it("requeues the task with resolve_requeue for that task", async () => {
+  it.each(["board", "queue"] as const)("requeues the task with resolve_requeue for that task on the %s view", async (view) => {
     setBoard({ status: "blocked", blockedBy: "T-14" });
-    await renderOn("queue");
+    await renderOn(view);
     await userEvent.click(within(banner()).getByRole("button", { name: "Requeue T-14" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-14" }));
   });
