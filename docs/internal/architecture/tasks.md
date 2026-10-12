@@ -40,7 +40,7 @@ they never import observation internals beyond the shared value primitives.
 | `server/serving/task-routes.mjs` | HTTP for tasks, called from the request handler (pattern: `notification-routes.mjs`) | Task rules; it only parses, authorizes, and delegates |
 | `shared/task-contract.ts` | Browser-visible types and bounds | Anything from `server/` or `desktop/` |
 | `desktop/runtime/task-*.mjs` | Trusted IPC, session start, queue runner, worktrees | The renderer; `server/` internals (the monitor is reached over its internal HTTP) |
-| `app/components/tasks/`, `app/tasks-store.ts`, `app/api/tasks/route.ts` | Presentation and the same-origin proxy | Credentials, raw session files, the store, any mutation path |
+| `app/components/tasks/`, `app/tasks-store.ts`, `app/tasks-home-store.ts`, `app/api/tasks/route.ts` | Presentation and the same-origin proxy | Credentials, raw session files, the store, any mutation path |
 | `mcp/task-tools.mjs` and `plugin-src/` | Agent tools; never hand-edit `plugins/**` bundles, edit sources and run `npm run build:plugin` | `desktop/`; `server/` beyond the shared normalizers |
 
 The pure rule modules take plain records and return plain values, with no store,
@@ -769,6 +769,43 @@ and only one step at a time. Every start first passes the [start gates](#start-g
     and at most 366 days ahead; anything else is `invalid`, and so is a stop time that
     does not come after the start time. A stored time that is sent back unchanged is kept
     even when it has passed, so the other time can still be edited.
+
+## Tasks home
+
+Task T-54, validated by the product owner on 2026-10-11. The Tasks home is the page a
+client sees before it chooses a repository: what waits for the owner on any board, and
+one row for each board. [Task board design](../design/task-board.md#tasks-home) owns how
+it looks.
+
+- **One read.** `GET /api/tasks?view=home` answers every stored board at once, so the
+  page does not read each board. `view=home` is the whole query: any other key beside it
+  is `400`, and a `view` with any other value is an invalid board query.
+- **Shape.** `TaskHome` in `shared/task-contract.ts`:
+  `{ version: 1, readiness, boards, attention, attentionTotal }`.
+  - A board is `{ repositoryId, readiness, counts, openFeatures, queue, updatedAt }`.
+    `counts` holds the five column counts in board order. `openFeatures` counts the
+    features that are not done. `queue` is `{ status, blockedBy, pauseReason }`.
+    `updatedAt` is the newest `updatedAt` of the board's tasks, or null.
+  - A board that does not project is `readiness: "unavailable"` with no counts. It is
+    never served as an empty ready board.
+  - An attention item is `{ repositoryId, taskId, title, state }` for a task whose state
+    is `needs_review`, `stalled`, or `blocked`. The newest change is first. At most 50
+    are served, and `attentionTotal` counts them all.
+- **Only stored boards.** `readHome` in `server/tasks/task-store.mjs` reads the
+  repositories the store already holds, at most 200. It seeds no board and writes
+  nothing, so a repository that never had a task is not in the answer. The page draws
+  such a repository from the repository inventory, as an empty board with the queue off.
+- **Pure summary.** `summarizeTaskHome(entries)` in `server/tasks/task-home.mjs` takes
+  projected boards and returns plain values, like the other rule modules.
+- **Committed facts only.** The read is a committed-store read like the board's. A
+  session title comes from the same memory lookup. It reads no gate fact, no check
+  fact, and no run-model catalog.
+- **Serving.** `server/serving/task-home-route.mjs` gates the read like the board read,
+  and serves only the contract keys of what the store answered, each inside its bound.
+- **Client.** `app/tasks-home-store.ts` polls the read every ten seconds while the page
+  is visible, and keeps the last home until a complete answer replaces it.
+- **Queue paused.** A paused queue is not an attention item: its row in Boards says
+  **Paused**, and the board's banner names the task and the reason.
 
 ## Start gates
 
@@ -1767,7 +1804,8 @@ serves no other client.
 
 - **Read.** The gateway forwards `GET /api/tasks`, so the device gets the board a
   same-computer browser gets, and its `/api/sessions` directory reads get the task
-  reference.
+  reference. The same path with `view=home` is the [Tasks home](#tasks-home), so the
+  device gets that too.
 - **Write.** One route, `POST /api/tasks/action`, with the body
   `{ repositoryId, action, payload }`. Three layers gate it, and each refuses on its own:
   1. The gateway takes the POST only with the session cookie, its own `Origin`, a JSON
@@ -1813,6 +1851,7 @@ serves no other client.
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
+| `GET /api/tasks?view=home` | The same clients, under the same gate and the same forwarding | The [Tasks home](#tasks-home), `no-store`: for each stored board its five column counts, its count of open features, its queue status with the blocking task's ID and the fixed pause reason, and the time of its newest task change; and for at most 50 tasks that wait for the owner, the repository ID, the task ID, the state, and one title line. A denied client gets `readiness: "desktop_only"` and no content |
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board. `queue_settings` that turns the queue on answers `unsupported` |
@@ -1944,6 +1983,12 @@ fixed values.
 
 - They live only in the task store, and are served only by `GET /api/tasks` (to a
   same-computer client or a paired device) and the desktop IPC.
+- The Tasks home (`GET /api/tasks?view=home`, task T-54, 2026-10-11) is that same read
+  under that same gate, so it reaches no new client. It serves less than a board: of
+  user-authored content, only one title line for each of at most 50 tasks that need
+  review, are stalled, or are blocked. The line is the bound session's title, or the
+  first line of the task text, cut at 160 characters. No own condition, block reason,
+  attention line, feature name, image, model, or session ID enters it.
 - A feature's description and app version live only in the task store and are served
   only by `POST /api/agent/v1/tasks/feature-get`, to an agent whose session is bound to
   that board (task T-33, 2026-10-10). This is a deliberate widening: an agent could

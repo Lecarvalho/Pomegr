@@ -13,6 +13,7 @@ import {
   AGENT_FEATURE_PATHS, AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REMOVE_PATH, AGENT_TASK_UPDATE_PATH, TASK_ACTION_PATH_PREFIX,
   serveAgentFeatureRoute, serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskRemoveRoute, serveAgentTaskReportRoute, serveAgentTaskUpdateRoute, serveTaskActionRoute, serveTaskRoute,
 } from "./task-routes.mjs";
+import { isTaskHomeRequest, serveTaskHomeRoute } from "./task-home-route.mjs";
 import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
 
@@ -67,6 +68,10 @@ export function createRequestHandler({
     const sameComputerRead = request.headers.host === expectedHost
       && request.headers.origin === undefined
       && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
+    if (requestUrl.pathname === "/api/tasks" && isTaskHomeRequest(requestUrl)) {
+      serveTaskHomeRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead, resolveSessionFacts });
+      return;
+    }
     if (requestUrl.pathname === "/api/tasks") {
       serveTaskRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead,
         runModels: () => runtime.resolveRunModels?.(), resolveSessionFacts, resolveGateFacts, resolveCheckFacts });

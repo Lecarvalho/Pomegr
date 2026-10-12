@@ -1,4 +1,4 @@
-import { createEmptyTaskBoard, type TaskBoard } from "../../../shared/task-contract";
+import { createEmptyTaskBoard, createEmptyTaskHome, type TaskBoard } from "../../../shared/task-contract";
 import { proxyMonitorJson } from "../monitor-proxy";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,22 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const supplied = url.searchParams;
   const repositoryId = supplied.get("repositoryId") || "";
+  // The Tasks home: one summary of every stored board, gated like a board read.
+  if (supplied.getAll("view").join() === "home") {
+    if (!isSameComputerRequest(request, url)) {
+      return Response.json(createEmptyTaskHome("desktop_only"), { status: 403, headers: { "Cache-Control": "no-store" } });
+    }
+    if ([...supplied.keys()].join() !== "view") {
+      return Response.json({ error: "Invalid tasks query" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+    return proxyMonitorJson({
+      path: "/api/tasks?view=home",
+      timeoutMs: 5_000,
+      unavailableBody: createEmptyTaskHome("unavailable"),
+      acceptEncoding: request.headers.get("accept-encoding"),
+      ifNoneMatch: request.headers.get("if-none-match"),
+    });
+  }
   if (!isSameComputerRequest(request, url)) {
     return Response.json(contentFreeBoard(REPOSITORY_ID_PATTERN.test(repositoryId) ? repositoryId : "", "desktop_only"), { status: 403, headers: { "Cache-Control": "no-store" } });
   }
