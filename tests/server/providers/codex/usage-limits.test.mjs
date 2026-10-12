@@ -506,3 +506,23 @@ test("confirmed Codex login rechecks empty windows without inventing known usage
   assert.equal(calls, 2);
   assert.equal(recovered.available, true);
 });
+
+test("registry forwards native sign-in recovery to Codex readiness before account acquisition", async () => {
+  const checks = [];
+  let reads = 0;
+  const provider = createCodexProvider({ rateLimitsReader: {
+    async isAvailable({ afterSignIn = false } = {}) {
+      checks.push(afterSignIn);
+      return afterSignIn;
+    },
+    async readRateLimits() { reads += 1; return rateLimitResponse(); },
+  } });
+  const registry = createProviderRegistry([provider]);
+  assert.equal((await registry.readUsageLimits(provider)).failureKind, "runtime_unavailable");
+  assert.equal(reads, 0, "unavailable runtime never acquires account data");
+  const recovered = await registry.readUsageLimits(provider, { afterSignIn: true });
+  assert.deepEqual(checks, [false, true]);
+  assert.equal(recovered.available, true);
+  assert.equal(recovered.failureKind, null);
+  assert.equal(reads, 1);
+});

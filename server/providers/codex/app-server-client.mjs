@@ -290,7 +290,12 @@ export function createCodexAppServerRateLimitsReader(options = {}) {
   let validation = null;
   let retryAt = Infinity;
 
-  async function executable() {
+  async function executable({ afterSignIn = false } = {}) {
+    if (afterSignIn && validation) {
+      const previous = validation;
+      // Await an older validation before discarding only its failed result.
+      if (!await previous && validation === previous) validation = null;
+    }
     if (validation && now() >= retryAt) validation = null;
     if (!validation) validation = (async () => {
       retryAt = Infinity;
@@ -307,8 +312,8 @@ export function createCodexAppServerRateLimitsReader(options = {}) {
   }
 
   return {
-    async isAvailable() {
-      return Boolean(await executable());
+    async isAvailable(options = {}) {
+      return Boolean(await executable(options));
     },
     async readRateLimits() {
       try {

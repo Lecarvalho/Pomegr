@@ -2755,12 +2755,18 @@ The native action waits for a bounded completion acknowledgement, then F revalid
 the shared usage store with a cache-only GET instead of waiting for its next poll.
 **Reconnect Codex** uses the same confirmed native boundary and bounded worker acknowledgement.
 The fixed Codex completion message queues only Codex's existing asynchronous account reader.
+The registry passes the native `afterSignIn` flag through readiness before acquiring usage.
+Codex waits for older CLI validation and discards only a failed result, bypassing its sixty-second detection cooldown.
+Concurrent recovery checks share one new validation; successful CLI validation remains cached.
+The flag comes from the confirmed private worker operation, never a GET or browser argument.
 An older usage job finishes first; each completed check atomically publishes normalized usage with its own revision.
 The account-only reader collapses signed-out failures into `unavailable`; explicit sign-in completion permits retrying that failed check immediately.
 A completed account check with no windows also permits an immediate sign-in retry.
 Available observations and recognized throttling retain their cooldowns; launch or exit success establishes neither available usage nor provider health.
 Failure retains last known-good values; serving GETs remain cache-only, and session checkpoints receive no account or login data.
-The renderer revalidates the shared usage store after acknowledgement; ordinary background checks also recover without restarting Pomegr.
+The renderer waits for an older browser poll, then reads the committed usage cache after acknowledgement.
+The feedback distinguishes checking, unavailable CLI, unavailable usage, and a failed cache read using normalized state only.
+A completed native action does not manufacture a successful usage result; ordinary background checks also recover without restarting Pomegr.
 [Provider and account privacy](privacy/providers-and-accounts.md#desktop-account-sign-in) owns the login exposure boundary.
 
 F expands usage connection help for a recorded failure even while last-good readings

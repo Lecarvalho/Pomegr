@@ -22,6 +22,10 @@ export const PROVIDER_SOURCES = Object.freeze({
   codex: "Codex",
 });
 
+// resolveReadiness receives a monitor-private { afterSignIn?: boolean } option.
+// Only confirmed native sign-in completion sets it; ordinary readiness reads do not.
+// It requests revalidation of failed runtime discovery, never optimistic readiness.
+
 // Monitor-private provider capability catalog.
 export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
   { key: "approvalMode", label: "Approval mode", evidencePath: "session.approvalMode", requiredOperation: "readSession" },

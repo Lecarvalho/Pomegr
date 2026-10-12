@@ -59,6 +59,7 @@ export class UsageLimitsStore {
   private timer: number | null = null;
   private controller: AbortController | null = null;
   private requestInFlight = false;
+  private requestCompletion: Promise<void> | null = null;
   private retryAttempt = 0;
   private focusListener: (() => void) | null = null;
   private visibilityListener: (() => void) | null = null;
@@ -97,9 +98,17 @@ export class UsageLimitsStore {
     for (const listener of this.listeners) listener();
   }
 
+  async refreshAfterSignIn() {
+    // A poll begun before native completion may still hold the previous revision.
+    if (this.requestCompletion) await this.requestCompletion;
+    return this.refresh();
+  }
+
   async refresh(signal?: AbortSignal) {
     if (this.requestInFlight) return false;
     this.requestInFlight = true;
+    let finishRequest!: () => void;
+    this.requestCompletion = new Promise<void>((resolve) => { finishRequest = resolve; });
     const requestController = signal ? null : new AbortController();
     const requestSignal = signal || requestController!.signal;
     try {
@@ -127,6 +136,8 @@ export class UsageLimitsStore {
       return false;
     } finally {
       this.requestInFlight = false;
+      this.requestCompletion = null;
+      finishRequest();
       requestController?.abort();
     }
   }

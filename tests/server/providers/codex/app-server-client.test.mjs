@@ -182,12 +182,12 @@ test("isAvailable caches absent, invalid, oversized, and valid executable checks
     spawnFn: fakeSpawn([successfulVersion()], validCalls),
   });
   assert.equal(await valid.isAvailable(), true);
-  assert.equal(await valid.isAvailable(), true);
+  assert.equal(await valid.isAvailable({ afterSignIn: true }), true);
   assert.equal(validCalls.length, 1);
 });
 
-test("retries failed CLI detection after a bounded cooldown and shares recovery across callers", async () => {
-  for (const failure of ["missing", "resolver", "version", "timeout", "spawn"]) {
+test("retries failed CLI detection after cooldown or sign-in and shares recovery across callers", async () => {
+  for (const afterSignIn of [false, true]) for (const failure of ["missing", "resolver", "version", "timeout", "spawn"]) {
     let time = 0;
     let resolutions = 0;
     const failedVersion = failure === "timeout" ? child() : versionWithOutput("PRIVATE_VALIDATION_FAILURE\n", 1);
@@ -223,8 +223,8 @@ test("retries failed CLI detection after a bounded cooldown and shares recovery 
     assert.equal(await reader.isAvailable(), false, failure);
     await assert.rejects(reader.readRateLimits(), new RegExp(CODEX_APP_SERVER_UNAVAILABLE));
     assert.equal(resolutions, 1, failure);
-    time = 60_000;
-    assert.deepEqual(await Promise.all(Array.from({ length: 8 }, () => reader.isAvailable())), Array(8).fill(true), failure);
+    if (!afterSignIn) time = 60_000;
+    assert.deepEqual(await Promise.all(Array.from({ length: 8 }, () => reader.isAvailable({ afterSignIn }))), Array(8).fill(true), failure);
     assert.equal(resolutions, 2, failure);
     assert.deepEqual(await reader.readRateLimits(), { result: { rateLimits: { primary: { usedPercent: 12 } } } });
     time += 60_000;
@@ -251,4 +251,28 @@ test("caches a successful executable validation but never leaks validation error
   await reader.readRateLimits();
   await reader.readRateLimits();
   assert.equal(calls.filter(({ args }) => args[0] === "--version").length, 1);
+});
+
+test("sign-in recovery waits for older failed executable validation before sharing a fresh check", async () => {
+  const previous = child();
+  let started;
+  const startedPromise = new Promise((resolve) => { started = resolve; });
+  previous.start = () => started();
+  const calls = [];
+  const reader = createCodexAppServerRateLimitsReader({
+    resolveExecutable: () => "C:\\tools\\codex.exe",
+    spawnFn: fakeSpawn([previous, successfulVersion()], calls),
+  });
+  const original = reader.isAvailable();
+  await startedPromise;
+  const recovery = reader.isAvailable({ afterSignIn: true });
+  assert.equal(calls.length, 1);
+  previous.stdout.emit("data", "PRIVATE_FAILED_VERSION");
+  previous.exitCode = 1;
+  previous.emit("exit", 1);
+  assert.equal(await original, false);
+  assert.equal(await recovery, true);
+  assert.equal(calls.length, 2);
+  assert.equal(await reader.isAvailable({ afterSignIn: true }), true);
+  assert.equal(calls.length, 2, "successful validation remains cached");
 });

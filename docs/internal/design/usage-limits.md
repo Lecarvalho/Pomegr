@@ -16,6 +16,9 @@
 - Rate-limited evidence shows cooldown guidance without a reconnect control.
 - Pending sign-in disables reconnect and shows **Waiting for sign-in…**.
 - A polite status line shows fixed completion, cancellation, missing-CLI, launch-failure, busy, and timeout messages.
-- Completion requests a usage refresh without changing observed usage or provider health in the renderer.
+- Completion shows **Codex sign-in completed. Checking usage…** while the shared store refreshes.
+- Feedback reads the normalized Codex usage result and distinguishes a failed refresh, unavailable CLI, unavailable usage, and refreshed usage.
+- Retained readings with a refresh failure never produce **Usage refreshed.**
+- Completion does not change observed usage or provider health in the renderer.
 - Recovered usage removes connection help.
 - Native confirmation and login data rules belong to [Provider and account privacy](../architecture/privacy/providers-and-accounts.md#desktop-account-sign-in).
