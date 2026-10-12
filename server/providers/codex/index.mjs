@@ -713,11 +713,11 @@ export function createCodexProvider(options = {}) {
     },
     providerFolders: { codexHome },
     readinessCapabilities: ["usageLimits"],
-    async resolveReadiness() {
+    async resolveReadiness({ afterSignIn = false } = {}) {
       let usageLimitsAvailable = Boolean(appServer);
       if (rateLimitsReader) {
         usageLimitsAvailable = typeof rateLimitsReader.isAvailable === "function"
-          ? await rateLimitsReader.isAvailable()
+          ? await rateLimitsReader.isAvailable({ afterSignIn })
           : typeof rateLimitsReader.readRateLimits === "function";
       }
       return {

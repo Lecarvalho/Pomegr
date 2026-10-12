@@ -10,7 +10,7 @@ type SignInStatus = "completed" | "cancelled" | "failed" | "unavailable" | "busy
 type CodexDesktopBridge = { startCodexSignIn?: () => Promise<{ status: SignInStatus }> };
 
 const SIGN_IN_MESSAGES: Record<SignInStatus, string> = {
-  completed: "Codex sign-in completed. Usage availability has not been confirmed yet.",
+  completed: "Codex sign-in completed. Checking usage…",
   cancelled: "Sign-in cancelled. You can reconnect whenever you’re ready.",
   failed: "Codex could not complete sign-in. Try again, or see the setup guide.",
   unavailable: "Codex could not be found. Install the native Codex CLI on this computer, then try again.",
@@ -46,7 +46,29 @@ export function CodexUsageHelp({ usageLimits }: { usageLimits: UsageLimits }) {
     try {
       const result = await bridge.startCodexSignIn();
       if (result?.status === "completed") {
-        try { await getUsageLimitsStore().refresh(); } catch { /* A cache read cannot change the native exit outcome. */ }
+        if (!mounted.current) return;
+        setMessage(SIGN_IN_MESSAGES.completed);
+        try {
+          const store = getUsageLimitsStore();
+          const refreshed = await store.refreshAfterSignIn();
+          if (!mounted.current) return;
+          if (!refreshed) {
+            setMessage("Pomegr could not refresh usage. It will retry automatically.");
+          } else {
+            const codexUsage = store.getSnapshot().providers.find((provider) => provider.provider === "codex")?.usageLimits;
+            const refreshedFailure = codexUsage ? usageLimitFailureKind(codexUsage) : null;
+            if (refreshedFailure === "runtime_unavailable") {
+              setMessage("Codex CLI could not be verified. Pomegr retries automatically.");
+            } else if (!codexUsage?.available || refreshedFailure || !codexUsage.limits.length) {
+              setMessage("Usage is still unavailable. Pomegr retries automatically.");
+            } else {
+              setMessage("Usage refreshed.");
+            }
+          }
+        } catch {
+          if (mounted.current) setMessage("Pomegr could not refresh usage. It will retry automatically.");
+        }
+        return;
       }
       if (!mounted.current) return;
       setMessage(SIGN_IN_MESSAGES[result?.status] || SIGN_IN_MESSAGES.failed);

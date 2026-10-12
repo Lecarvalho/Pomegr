@@ -135,21 +135,48 @@ describe("Codex usage troubleshooting", () => {
   });
 
   it.each([
-    ["completed", "Codex sign-in completed. Usage availability has not been confirmed yet."],
     ["cancelled", "Sign-in cancelled."],
     ["failed", "Codex could not complete sign-in."],
     ["unavailable", "Codex could not be found."],
     ["busy", "A Codex sign-in is already open."],
     ["timed_out", "Sign-in timed out."],
   ])("shows sanitized %s status", async (status, message) => {
-    const refresh = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(getUsageLimitsStore).mockReturnValue({ refresh } as never);
     setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status }) });
     render(<CodexUsageHelp usageLimits={authRequired} />);
     fireEvent.click(await screen.findByRole("button", { name: "Reconnect Codex" }));
     expect(await screen.findByRole("status")).toHaveTextContent(message);
-    expect(refresh).toHaveBeenCalledTimes(status === "completed" ? 1 : 0);
     expect(screen.queryByText(/PRIVATE|token|credential/i)).not.toBeInTheDocument();
+  });
+
+  it("shows progress immediately after CLI completion and then reports a failed browser refresh", async () => {
+    let finishRefresh!: (success: boolean) => void;
+    const refreshAfterSignIn = vi.fn(() => new Promise<boolean>((resolve) => { finishRefresh = resolve; }));
+    vi.mocked(getUsageLimitsStore).mockReturnValue({ refreshAfterSignIn } as never);
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status: "completed" }) });
+    render(<CodexUsageHelp usageLimits={authRequired} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect Codex" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Codex sign-in completed. Checking usage…");
+    expect(refreshAfterSignIn).toHaveBeenCalledTimes(1);
+    finishRefresh(false);
+    expect(await screen.findByRole("status")).toHaveTextContent("Pomegr could not refresh usage");
+    expect(screen.getByRole("status")).toHaveTextContent("retry automatically");
+  });
+
+  it.each([
+    ["missing CLI", true, missing, "Codex CLI could not be verified"],
+    ["other unavailable result", true, { ...ready, available: false, failureKind: "unavailable", error: "private" }, "Usage is still unavailable"],
+    ["no windows", true, { ...ready, available: false, failureKind: null, limits: [] }, "Usage is still unavailable"],
+    ["recovered usage", true, ready, "Usage refreshed."],
+  ])("classifies the refreshed snapshot after %s", async (_label, refreshResult, codexUsage, message) => {
+    const refreshAfterSignIn = vi.fn().mockResolvedValue(refreshResult);
+    const getSnapshot = vi.fn().mockReturnValue({ providers: [{ provider: "codex", usageLimits: codexUsage }] });
+    vi.mocked(getUsageLimitsStore).mockReturnValue({ refreshAfterSignIn, getSnapshot } as never);
+    setDesktopBridge({ startCodexSignIn: vi.fn().mockResolvedValue({ status: "completed" }) });
+    render(<CodexUsageHelp usageLimits={authRequired} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect Codex" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(message);
+    expect(getSnapshot).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/private/i)).not.toBeInTheDocument();
   });
 
   it("sanitizes native exceptions and does not expose their text", async () => {

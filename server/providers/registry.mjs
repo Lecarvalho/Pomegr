@@ -288,7 +288,7 @@ export function createProviderRegistry(adapters, options = {}) {
     if (options.historical) return createProviderRuntimeReadiness(manifest);
     try {
       const resolved = typeof provider.resolveReadiness === "function"
-        ? await provider.resolveReadiness()
+        ? await provider.resolveReadiness({ afterSignIn: options.afterSignIn === true })
         : {};
       const readinessCapabilitySet = new Set(provider.readinessCapabilities || []);
       const resolvedKeys = Object.keys(resolved || {});
