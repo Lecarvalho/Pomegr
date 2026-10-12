@@ -62,27 +62,27 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const viewSwitch = () => within(screen.getByRole("group", { name: "Tasks view" }));
 const queueSwitch = () => within(screen.getByRole("group", { name: "Queue" }));
 const banner = () => screen.getByRole("region", { name: "Queue status" });
 const queueSettings = () => taskAction.mock.calls.filter((call) => call[1] === "queue_settings");
 const chipText = (id: string) => document.querySelector(`li[data-task-id="${id}"]`)?.querySelector(".commandChip")?.textContent;
 
-async function showQueue() {
-  await userEvent.click(viewSwitch().getByRole("button", { name: "Queue" }));
+/** Opens the Queue settings dialog from the Board's capacity strip. */
+async function openSettings() {
+  await userEvent.click(screen.getByRole("button", { name: "Queue settings" }));
+  return screen.getByRole("dialog", { name: "Queue settings" });
 }
-async function renderOn(view: "board" | "queue") {
+function renderBoard() {
   render(<TaskBoardPane repositoryId={repositoryId} />);
-  if (view === "queue") await showQueue();
 }
 
 describe("the queue switch", () => {
-  it("is a two-segment Off | On group in the desktop app, beside the view switch", () => {
+  it("is a two-segment Off | On group in the desktop app, in the page header actions", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = screen.getByRole("group", { name: "Queue" });
     expect(group).toHaveClass("commandSegmented");
     expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(["Off", "On"]);
-    expect(group.closest(".taskHeadActions")).toBe(screen.getByRole("group", { name: "Tasks view" }).closest(".taskHeadActions"));
+    expect(group.closest(".taskHeadActions")).not.toBeNull();
   });
 
   it("is absent without the desktop bridge, with the board still readable", () => {
@@ -90,7 +90,7 @@ describe("the queue switch", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("group", { name: "Queue" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Off" })).not.toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Tasks view" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
   });
 
   it("is absent until the board is ready", () => {
@@ -110,8 +110,8 @@ describe("the queue switch", () => {
     for (const side of ["Off", "On"]) expect(queueSwitch().getByRole("button", { name: side })).toHaveAttribute("aria-pressed", String(side === pressed));
   });
 
-  it.each(["board", "queue"] as const)("is drawn on the %s view", async (view) => {
-    await renderOn(view);
+  it("is drawn", async () => {
+    renderBoard();
     expect(screen.getByRole("group", { name: "Queue" })).toBeInTheDocument();
   });
 
@@ -196,11 +196,9 @@ describe("the queue status line", () => {
 });
 
 describe("the Queue banner", () => {
-  it.each(["idle", "running"] as const)("is not drawn for a %s queue on either view", async (status) => {
+  it.each(["idle", "running"] as const)("is not drawn for a %s queue ", async (status) => {
     setBoard({ status });
-    await renderOn("board");
-    expect(screen.queryByRole("region", { name: "Queue status" })).not.toBeInTheDocument();
-    await showQueue();
+    renderBoard();
     expect(screen.queryByRole("region", { name: "Queue status" })).not.toBeInTheDocument();
     expect(screen.queryByText("Queue blocked")).not.toBeInTheDocument();
     expect(screen.queryByText("Queue paused")).not.toBeInTheDocument();
@@ -208,51 +206,48 @@ describe("the Queue banner", () => {
 
   // A task in review never holds the queue, so the monitor never names one. A queue that names one anyway is worded
   // without a cause and offers no resolution.
-  it.each(["board", "queue"] as const)("gives a task in review no blocked copy of its own on the %s view", async (view) => {
+  it("gives a task in review no blocked copy of its own", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12" });
-    await renderOn(view);
+    renderBoard();
     expect(within(banner()).getByText("A task needs you. Running sessions continue. Nothing new starts until it is resolved.")).toBeInTheDocument();
     expect(banner()).not.toHaveTextContent("did not pass");
     expect(within(banner()).queryByRole("button", { name: "Mark done and resume" })).not.toBeInTheDocument();
     expect(within(banner()).queryByRole("button", { name: "Requeue T-12" })).not.toBeInTheDocument();
   });
 
-  it.each(["board", "queue"] as const)("reads the stalled and blocked copy on the %s view without printing the block reason", async (view) => {
+  it("reads the stalled and blocked copy without printing the block reason", async () => {
     setBoard({ status: "blocked", blockedBy: "T-13" });
     const first = render(<TaskBoardPane repositoryId={repositoryId} />);
-    if (view === "queue") await showQueue();
     expect(within(banner()).getByText("T-13's session ended with no report. Running sessions continue. Nothing new starts until you resolve T-13.")).toBeInTheDocument();
     first.unmount();
     setBoard({ status: "blocked", blockedBy: "T-14" });
-    await renderOn(view);
+    renderBoard();
     expect(within(banner()).getByText("T-14's agent reported it cannot continue. Running sessions continue. Nothing new starts until you resolve T-14.")).toBeInTheDocument();
     expect(banner()).not.toHaveTextContent("secrets");
   });
 
   it("does not name a blocker the board does not hold, and offers no action for it", async () => {
     setBoard({ status: "blocked", blockedBy: "T-99" });
-    await renderOn("queue");
+    renderBoard();
     expect(within(banner()).getByText("A task needs you. Running sessions continue. Nothing new starts until it is resolved.")).toBeInTheDocument();
     expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("is drawn above the board on the Board view and above the queue on the Queue view", async () => {
+  it("is drawn above the board", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12" });
-    await renderOn("board");
+    renderBoard();
     expect(banner().compareDocumentPosition(screen.getByRole("region", { name: "Task board" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await showQueue();
-    expect(banner().compareDocumentPosition(screen.getByRole("region", { name: "Single tasks" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("offers only Open for a blocker that is not stalled or blocked", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12" });
-    await renderOn("board");
+    renderBoard();
     expect(within(banner()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Open T-12"]);
   });
 
-  it.each(["board", "queue"] as const)("offers Open, Mark done and resume, and Requeue on the %s view, each in its role", async (view) => {
+  it("offers Open, Mark done and resume, and Requeue, each in its role", async () => {
     setBoard({ status: "blocked", blockedBy: "T-14" });
-    await renderOn(view);
+    renderBoard();
     const buttons = within(banner()).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Open T-14", "Mark done and resume", "Requeue T-14"]);
     expect(buttons[0]).toHaveClass("commandSecondaryAction");
@@ -262,22 +257,22 @@ describe("the Queue banner", () => {
 
   it("opens the Task modal of the named task", async () => {
     setBoard({ status: "blocked", blockedBy: "T-13" });
-    await renderOn("board");
+    renderBoard();
     await userEvent.click(within(banner()).getByRole("button", { name: "Open T-13" }));
     expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
   });
 
-  it.each(["board", "queue"] as const)("marks the task done and resumes with resolve_done for that task on the %s view", async (view) => {
+  it("marks the task done and resumes with resolve_done for that task", async () => {
     setBoard({ status: "blocked", blockedBy: "T-13" });
-    await renderOn(view);
+    renderBoard();
     await userEvent.click(within(banner()).getByRole("button", { name: "Mark done and resume" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-13" }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
-  it.each(["board", "queue"] as const)("requeues the task with resolve_requeue for that task on the %s view", async (view) => {
+  it("requeues the task with resolve_requeue for that task", async () => {
     setBoard({ status: "blocked", blockedBy: "T-14" });
-    await renderOn(view);
+    renderBoard();
     await userEvent.click(within(banner()).getByRole("button", { name: "Requeue T-14" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-14" }));
   });
@@ -285,7 +280,7 @@ describe("the Queue banner", () => {
   it("shows one fixed line when the monitor refuses a resolution", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     setBoard({ status: "blocked", blockedBy: "T-14" });
-    await renderOn("queue");
+    renderBoard();
     await userEvent.click(within(banner()).getByRole("button", { name: "Mark done and resume" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("The task could not be marked done.");
     await userEvent.click(within(banner()).getByRole("button", { name: "Requeue T-14" }));
@@ -295,10 +290,9 @@ describe("the Queue banner", () => {
   it("is read-only without the desktop bridge: the words, no action", async () => {
     setBridge(undefined);
     setBoard({ status: "blocked", blockedBy: "T-14" });
-    await renderOn("board");
+    renderBoard();
     expect(within(banner()).getByText("Queue blocked")).toBeInTheDocument();
     expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
-    await showQueue();
     expect(within(banner()).getByText(/^T-14's agent reported it cannot continue\./)).toBeInTheDocument();
     expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
   });
@@ -313,13 +307,11 @@ describe("the paused Queue banner", () => {
     ["session_not_linked", "its terminal opened, but the session did not report back."],
     ["worktree_dirty", "its worktree has uncommitted changes, and Pomegr never removes them."],
     [null, "the start did not succeed."],
-  ])("words the %s reason on both views", async (pauseReason, reason) => {
+  ])("words the %s reason", async (pauseReason, reason) => {
     setBoard({ status: "paused", blockedBy: "T-15", pauseReason });
-    await renderOn("board");
+    renderBoard();
     const body = `T-15 could not start: ${reason} Running sessions continue. Turn the queue on again to retry.`;
     expect(within(banner()).getByText("Queue paused")).toBeInTheDocument();
-    expect(within(banner()).getByText(body)).toBeInTheDocument();
-    await showQueue();
     expect(within(banner()).getByText(body)).toBeInTheDocument();
   });
 
@@ -330,7 +322,7 @@ describe("the paused Queue banner", () => {
     it("is offered for a dirty worktree on the desktop and calls the bridge with the two IDs only", async () => {
       setBridge({ taskAction, taskWorktreeOpen });
       setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
-      await renderOn("queue");
+      renderBoard();
       await userEvent.click(within(banner()).getByRole("button", { name: "Open folder" }));
       expect(taskWorktreeOpen).toHaveBeenCalledExactlyOnceWith(repositoryId, "T-15");
       expect(within(banner()).queryByText("The folder could not be opened.")).not.toBeInTheDocument();
@@ -346,7 +338,7 @@ describe("the paused Queue banner", () => {
       taskWorktreeOpen.mockResolvedValue({ status, path: "D:\\private-folder\\worktree" });
       setBridge({ taskAction, taskWorktreeOpen });
       setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
-      await renderOn("queue");
+      renderBoard();
       await userEvent.click(within(banner()).getByRole("button", { name: "Open folder" }));
       expect(await within(banner()).findByRole("status")).toHaveTextContent(line);
       expect(banner()).not.toHaveTextContent("private-folder");
@@ -356,7 +348,7 @@ describe("the paused Queue banner", () => {
       taskWorktreeOpen.mockRejectedValue(new Error("D:\\private-folder"));
       setBridge({ taskAction, taskWorktreeOpen });
       setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
-      await renderOn("queue");
+      renderBoard();
       await userEvent.click(within(banner()).getByRole("button", { name: "Open folder" }));
       expect(await within(banner()).findByRole("status")).toHaveTextContent("The folder could not be opened.");
       expect(banner()).not.toHaveTextContent("private-folder");
@@ -365,7 +357,7 @@ describe("the paused Queue banner", () => {
     it("is absent on a desktop build that cannot open a folder, and the dirty reason is still worded", async () => {
       setBridge({ taskAction });
       setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
-      await renderOn("queue");
+      renderBoard();
       expect(within(banner()).queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
       expect(within(banner()).getByRole("button", { name: "Open T-15" })).toBeInTheDocument();
       expect(banner()).toHaveTextContent("its worktree has uncommitted changes");
@@ -374,14 +366,14 @@ describe("the paused Queue banner", () => {
     it("is absent without the desktop bridge and for every other reason", async () => {
       setBridge(undefined);
       setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
-      await renderOn("queue");
+      renderBoard();
       expect(within(banner()).queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
     });
 
     it("is absent for a paused queue with another reason", async () => {
       setBridge({ taskAction, taskWorktreeOpen });
       setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "start_failed" });
-      await renderOn("queue");
+      renderBoard();
       expect(within(banner()).queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
     });
   });
@@ -389,7 +381,7 @@ describe("the paused Queue banner", () => {
   it("does not name a task the board does not hold, and offers no folder for it", async () => {
     setBridge({ taskAction, taskWorktreeOpen: vi.fn() });
     setBoard({ status: "paused", blockedBy: "T-99", pauseReason: "worktree_dirty" });
-    await renderOn("queue");
+    renderBoard();
     expect(banner()).toHaveTextContent("A task could not start: its worktree has uncommitted changes");
     expect(banner()).not.toHaveTextContent("T-99");
     expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
@@ -414,16 +406,14 @@ describe("the paused Queue banner", () => {
 
   it("does not name a task when the monitor names none", async () => {
     setBoard({ status: "paused", blockedBy: null, pauseReason: "cli_missing" });
-    await renderOn("board");
+    renderBoard();
     expect(banner()).toHaveTextContent("A task could not start: the provider's command-line tool was not found on this computer. Running sessions continue.");
     expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("offers only Open for the task that did not start, on both views", async () => {
+  it("offers only Open for the task that did not start", async () => {
     setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "plugin_missing" });
-    await renderOn("board");
-    expect(within(banner()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Open T-15"]);
-    await showQueue();
+    renderBoard();
     expect(within(banner()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Open T-15"]);
     await userEvent.click(within(banner()).getByRole("button", { name: "Open T-15" }));
     expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
@@ -431,20 +421,21 @@ describe("the paused Queue banner", () => {
 });
 
 describe("Queued · next while the queue is held", () => {
-  it.each([["board"], ["queue"]] as const)("follows queue.order on the %s view", async (view) => {
+  it("follows queue.order", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12", order: ["T-16", "T-15"] });
-    await renderOn(view);
+    renderBoard();
     expect(chipText("T-16")).toBe("Queued · next");
     expect(chipText("T-15")).toBe("Queued");
     expect(screen.getAllByText("Queued · next")).toHaveLength(1);
   });
 });
 
-describe("the When the queue blocks panel", () => {
+describe("the When the queue blocks section of Queue settings", () => {
   it("lists the two outcomes that block with the exact copy, each state in its tone, and says that Needs review does not", async () => {
-    await renderOn("queue");
-    const panel = screen.getByRole("region", { name: "When the queue blocks" });
-    expect(within(panel).getByRole("heading", { name: "When the queue blocks" })).toBeInTheDocument();
+    renderBoard();
+    const dialog = await openSettings();
+    const panel = within(dialog).getByRole("region", { name: "When the queue blocks" });
+    expect(within(panel).getByRole("heading", { level: 3, name: "When the queue blocks" })).toBeInTheDocument();
     const items = within(panel).getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
       "The session ends with no report: Stalled",
@@ -457,23 +448,15 @@ describe("the When the queue blocks panel", () => {
     expect(within(note).getByText("Needs review")).toHaveClass("taskBlockState", "isReview");
   });
 
-  it("follows the feature panels and the single tasks", async () => {
-    await renderOn("queue");
-    expect(screen.getByRole("region", { name: "Single tasks" }).compareDocumentPosition(screen.getByRole("region", { name: "When the queue blocks" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it("is drawn for an empty queue too", async () => {
-    setBoard({ order: [] }, { tasks: [task(1, "Idea")] });
-    await renderOn("queue");
-    expect(screen.getByText(/Nothing is in the queue yet\./)).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "When the queue blocks" })).toBeInTheDocument();
-  });
-
-  it("is drawn in a read-only client and not on the Board", async () => {
-    setBridge(undefined);
-    await renderOn("board");
+  it("is not drawn on the Board itself until the dialog is open", () => {
+    renderBoard();
     expect(screen.queryByRole("region", { name: "When the queue blocks" })).not.toBeInTheDocument();
-    await showQueue();
-    expect(screen.getByRole("region", { name: "When the queue blocks" })).toBeInTheDocument();
+  });
+
+  it("is read-only in a browser too", async () => {
+    setBridge(undefined);
+    renderBoard();
+    const dialog = await openSettings();
+    expect(within(dialog).getByRole("region", { name: "When the queue blocks" })).toBeInTheDocument();
   });
 });

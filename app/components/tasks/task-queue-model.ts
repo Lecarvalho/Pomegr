@@ -28,18 +28,13 @@ export function queueFeatures(board: Pick<TaskBoard, "features" | "tasks">): Que
   return panels;
 }
 
-export function singleQueueTasks(board: Pick<TaskBoard, "tasks" | "queue">): Task[] {
-  const order = new Map(board.queue.order.map((id, index) => [id, index]));
-  const listed = board.tasks.filter((task) => task.featureId === null && task.state !== "not_queued" && task.state !== "done");
-  // A started task keeps its queued state but is not in the order.
-  const waits = (task: Task) => (task.state === "queued" || task.state === "scheduled") && order.has(task.id);
-  const queued = listed.filter(waits).sort((left, right) => (order.get(left.id) ?? Infinity) - (order.get(right.id) ?? Infinity) || byTaskNumber(left, right));
-  return [...queued, ...listed.filter((task) => !waits(task)).sort(byTaskNumber)];
-}
-
+/** A card whose step can change: a task of a feature that has not started. */
 export function isMovableQueueTask(task: Task) {
   return (task.state === "not_queued" || task.state === "queued" || task.state === "scheduled") && task.session === null && task.featureId !== null && task.step !== null;
 }
+
+/** The key of one step target: a step of a feature, or its new last step when `step` is null. */
+export const dropKey = (featureId: string, step: number | null) => `${featureId}:${step ?? "new"}`;
 
 /** The step a drop would send, or null when nothing should be sent. */
 export function reorderTarget(panel: QueueFeature, task: Task, step: number | null): number | null {
@@ -52,20 +47,14 @@ export function reorderTarget(panel: QueueFeature, task: Task, step: number | nu
   return !target || target.allDone || task.step === step ? null : step;
 }
 
-export function moveChoices(panel: QueueFeature, task: Task): { step: number; label: string }[] {
-  const choices = panel.steps.filter((candidate) => reorderTarget(panel, task, candidate.step) !== null).map((candidate) => ({ step: candidate.step, label: `Step ${candidate.step}` }));
-  const fresh = reorderTarget(panel, task, null);
-  return fresh === null ? choices : [...choices, { step: fresh, label: "New last step" }];
-}
-
-/** A card the Board gives a step: a waiting card of a feature. The Board uses the Queue view's own rule, `reorderTarget`. */
+/** A card that takes a step by a drop in Ready: a waiting card of a feature. */
 export function isBoardStepTask(task: Task) {
   return waitsInQueue(task) && isMovableQueueTask(task);
 }
 
 export type BoardStepChoice = { step: number; label: string; disabled?: boolean };
 
-/** The Board's "Move to step…" options: each unfinished step but the task's own, then the new last step. A step that started is listed and cannot be chosen. */
+/** The "Move to step…" options: each unfinished step but the task's own, then the new last step. A step that started is listed and cannot be chosen. */
 export function boardStepChoices(panel: QueueFeature, task: Task): BoardStepChoice[] {
   const choices: BoardStepChoice[] = [];
   for (const candidate of panel.steps) {
@@ -81,8 +70,4 @@ export function boardStepChoices(panel: QueueFeature, task: Task): BoardStepChoi
 /** The text of the Board's new-step zone, in the step numbers drawn now. */
 export function newStepLabel(panel: QueueFeature) {
   return `New step ${panel.highest + 1} · after step ${panel.highest}`;
-}
-
-export function stepModeLabel(step: QueueStep) {
-  return step.tasks.length > 1 ? `Parallel · ${step.tasks.length}` : "One task";
 }

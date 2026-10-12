@@ -22,7 +22,7 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own.";
+const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
@@ -737,12 +737,10 @@ describe("New task in the first lane", () => {
     expect(add()).toBeInTheDocument();
   });
 
-  it("is on the Board only: the Queue view has no lanes, and the Board brings it back", async () => {
-    const user = userEvent.setup();
+  it("is on the Board, which is the only view of the Tasks page", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    await user.click(screen.getByRole("button", { name: "Queue" }));
-    expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Board" }));
+    expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Queue" })).not.toBeInTheDocument();
     expect(add()).toBeInTheDocument();
   });
 

@@ -5,8 +5,7 @@ import type { DragEvent } from "react";
 import { TASK_ID_PATTERN, type TaskBoard } from "../../../shared/task-contract";
 import { dropPosition, isNoopMove, leavesReady } from "./task-board-model";
 import type { TaskMove } from "./task-desktop";
-import { isBoardStepTask, reorderTarget, type QueueFeature } from "./task-queue-model";
-import { dropKey } from "./use-queue-drag";
+import { dropKey, isBoardStepTask, reorderTarget, type QueueFeature } from "./task-queue-model";
 
 export type ColumnDropHandlers = {
   onDragOver(event: DragEvent<HTMLElement>): void;
@@ -130,7 +129,7 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void, 
     return leavesReady(board, move) || isNoopMove(board, move) ? null : move;
   };
 
-  /** The step a drop here gives the dragged card, by the Queue view's rule, or null when the drop is a card move. */
+  /** The step a drop here gives the dragged card, or null when the drop is a card move. */
   const stepTarget = (event: DragEvent<HTMLElement>, id: string, columnId: string) => {
     if (!steps || steps.columnId !== columnId) return null;
     const task = board.tasks.find((candidate) => candidate.id === id);

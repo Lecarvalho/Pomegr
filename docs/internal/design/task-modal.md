@@ -116,7 +116,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - Escape cancels the name.
 - The forms have no Step field.
 - A task that joins a feature takes a new last step.
-- The Queue view moves a task to another step.
+- The Board moves a task to another step.
 - Once a created feature is chosen, a folded **In this feature** disclosure appears.
 - The disclosure is a native `details` between two rules.
 - The disclosure summary is 44px high, with a muted chevron and a “n tasks · m done” count in data-font numbers.

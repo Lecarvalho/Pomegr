@@ -27,13 +27,12 @@ function CapacityRow({ provider, usage }: { provider: TaskProvider; usage: TaskG
   return <Row label={label} mono>{reading}</Row>;
 }
 
-/** `embedded` draws the panel as a section of Queue settings: no frame of its own, and a heading one level down. */
-export function StartGatesPanel({ queue, edits, embedded = false }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits; embedded?: boolean }) {
+/** A section of Queue settings: no frame of its own, under the panel's h2. */
+export function StartGatesPanel({ queue, edits }: { queue: TaskBoard["queue"]; edits?: TaskBoardEdits }) {
   const headingId = useId();
   const gates = queue.gates;
-  const Heading = embedded ? "h3" : "h2";
-  return <section className={embedded ? "taskGatesPanel" : "panel taskGatesPanel"} aria-labelledby={headingId}>
-    <Heading id={headingId} className="taskGatesHeading">Start gates</Heading>
+  return <section className="taskGatesPanel" aria-labelledby={headingId}>
+    <h3 id={headingId} className="taskGatesHeading">Start gates</h3>
     <p className="taskGatesCaption">Checked before every session Pomegr starts.</p>
     {!gates ? <p className="taskGatesCaption">Start gates are not available yet.</p> : <>
       <dl className="taskGateList">

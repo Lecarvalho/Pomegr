@@ -111,10 +111,8 @@ describe("the task board in the Search bar", () => {
     const user = userEvent.setup();
     const onScope = vi.fn();
     render(<><ScopeProbe onScope={onScope} /><TaskBoardPane repositoryId={repositoryId} /></>);
-    await user.click(screen.getByRole("button", { name: "Queue" }));
-    expect(screen.queryByRole("region", { name: "Task board" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
     act(() => { (onScope.mock.lastCall?.[0] as PaletteScope).onSelect("T-2"); });
-    expect(screen.getByRole("button", { name: "Board" })).toHaveAttribute("aria-pressed", "true");
     const card = screen.getByRole("region", { name: "Task board" }).querySelector('[data-task-id="T-2"]');
     expect(card).toHaveFocus();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

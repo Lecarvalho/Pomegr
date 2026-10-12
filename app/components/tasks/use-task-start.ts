@@ -24,7 +24,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   invalid: "The session could not be started.",
   unavailable: "The session could not be started.",
   failed: "The session could not be started.",
-  gate_held: "A start gate holds this task. See Start gates in the Queue view.",
+  gate_held: "A start gate holds this task. See Start gates in Queue settings.",
   tree_dirty: "This repository has uncommitted changes. Commit or discard them, or start the task in a separate worktree, which leaves them out.",
   worktree_dirty: "This task's worktree has uncommitted changes. Pomegr never removes them. Open the folder to commit or discard them, then try again.",
 };

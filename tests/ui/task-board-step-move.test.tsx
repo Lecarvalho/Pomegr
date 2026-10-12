@@ -148,14 +148,24 @@ describe("dropping a card on a step", () => {
 });
 
 describe("Move to step in the move toolbar", () => {
-  it("follows the four arrows for a queued card of a feature only", () => {
+  it("sends the step action for a card that is not queued", () => {
+    renderBoard();
+    const select = within(card("T-80")).getByRole("combobox", { name: "Move T-80 to step" });
+    chooseCommandOption(select, "Step 3 · parallel with T-59, T-60");
+    expect(reorderQueueTask).toHaveBeenCalledWith("T-80", 3);
+    expect(moveTask).not.toHaveBeenCalled();
+  });
+
+  it("follows the four arrows for a card of a feature that has not started, queued or not", () => {
     renderBoard();
     const bar = within(card("T-63")).getByRole("toolbar", { name: "Move T-63" });
     const select = within(bar).getByRole("combobox", { name: "Move T-63 to step" });
     expect(select).toHaveTextContent("Move to step…");
     expect(select.closest(".commandSelect")).toHaveClass("taskMoveStep");
     expect(select.closest(".commandSelect")?.previousElementSibling).toHaveAttribute("data-move", "right");
-    for (const id of ["T-71", "T-80", "T-55"]) expect(within(card(id)).queryByRole("combobox")).toBeNull();
+    for (const id of ["T-71", "T-55"]) expect(within(card(id)).queryByRole("combobox")).toBeNull();
+    // A card that is not queued but has a feature and no session takes a step too, from the Backlog.
+    expect(within(card("T-80")).getByRole("combobox", { name: "Move T-80 to step" })).toBeInTheDocument();
   });
 
   it("lists the steps, leaves a running step disabled, and sends the step action", () => {

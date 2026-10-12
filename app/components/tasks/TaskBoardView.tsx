@@ -10,22 +10,20 @@ import { QueueBanner } from "./QueueBanner";
 import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
 import { ReadyNewStepZone, ReadyStepGroup } from "./ReadyStepGroup";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
-import { TaskQueueView } from "./TaskQueueView";
 import { TaskColumnHeader } from "./TaskColumnHeader";
 import { cardMove, readyColumnId, type CardMoveKind } from "./task-board-model";
 import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue, type FeatureLine } from "./task-features";
 import { waitingLine } from "./task-gates-model";
 import { useMinuteClock } from "./task-panel-hooks";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
-import { boardStepChoices, isBoardStepTask, newStepLabel, queueFeatures } from "./task-queue-model";
+import { boardStepChoices, dropKey, isMovableQueueTask, newStepLabel, queueFeatures } from "./task-queue-model";
 import { readySegments, type ReadySegment } from "./task-ready-groups";
 import { useCardDrag, type CardDropLine, type ColumnDropHandlers } from "./use-card-drag";
-import { dropKey } from "./use-queue-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
 type OpenTask = (task: Task, opener: HTMLElement) => void;
 
-const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own.";
+const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.";
 
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 
@@ -57,7 +55,7 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
   const panels = useMemo(() => queueFeatures(board), [board]);
-  // A change of step is the Queue view's own action and rule.
+  // A change of step is its own action: it moves no card.
   const moveStep = (id: string, step: number) => {
     setAnnouncement(`${id} moved to step ${step}.`);
     void edits?.reorderQueueTask(id, step);
@@ -105,7 +103,7 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     return card?.querySelector<HTMLElement>(".taskMoveStep [role='combobox']") ?? card?.querySelector<HTMLElement>(".taskCardOpen") ?? null;
   };
   const stepMoveFor = (task: Task): TaskCardMove["step"] => {
-    const panel = isBoardStepTask(task) ? panels.find((candidate) => candidate.feature.id === task.featureId) : undefined;
+    const panel = isMovableQueueTask(task) ? panels.find((candidate) => candidate.feature.id === task.featureId) : undefined;
     if (!edits || !panel) return undefined;
     return { choices: boardStepChoices(panel, task), onMove: (step) => { restore.current = { find: stepControl(task.id), settled: edits.settled }; moveStep(task.id, step); } };
   };
@@ -180,9 +178,7 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
   </section>;
 }
 
-export type TaskView = "board" | "queue";
-
-export function TaskBoardView({ board, onOpenTask, edits, view = "board", newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
+export function TaskBoardView({ board, onOpenTask, edits, newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -190,7 +186,7 @@ export function TaskBoardView({ board, onOpenTask, edits, view = "board", newTas
     <p>The task board is available in the Pomegr desktop app on this computer.</p>
   </section>;
   return <>
-    <QueueBanner board={board} view={view} onOpenTask={onOpenTask} edits={edits} />
-    {view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} reveal={reveal} />}
+    <QueueBanner board={board} onOpenTask={onOpenTask} edits={edits} />
+    <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} reveal={reveal} />
   </>;
 }

@@ -3,12 +3,11 @@
 import { useState } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { openDesktopTaskWorktree, taskDesktopBridge, useTaskDesktopAvailability, type TaskWorktreeOpenStatus } from "./task-desktop";
-import { queueBanner, worktreeOpenLine, type QueueBannerView } from "./task-queue-banner";
+import { queueBanner, worktreeOpenLine } from "./task-queue-banner";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
-export function QueueBanner({ board, view, onOpenTask, edits }: {
+export function QueueBanner({ board, onOpenTask, edits }: {
   board: Pick<TaskBoard, "queue" | "tasks"> & { repositoryId?: string };
-  view: QueueBannerView;
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
   edits?: TaskBoardEdits;
 }) {
@@ -28,7 +27,7 @@ export function QueueBanner({ board, view, onOpenTask, edits }: {
     setFolder({ taskId: id, status: await openDesktopTaskWorktree(repositoryId, id) });
   };
   const resolve = edits && task !== null && banner.resolvable ? edits : null;
-  return <section className="taskQueueBanner" aria-label="Queue status" data-view={view} data-queue-status={board.queue.status}>
+  return <section className="taskQueueBanner" aria-label="Queue status" data-queue-status={board.queue.status}>
     <div className="taskQueueBannerText">
       <p className="taskQueueBannerTitle">{banner.title}</p>
       <p className="taskQueueBannerBody">{banner.body}</p>

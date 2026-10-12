@@ -155,9 +155,9 @@ describe("Start session", () => {
     it.each<[string, Gates | undefined]>([
       ["the board serves no gate readings", undefined],
       ["the readings show no hold", passing],
-    ])("points at the Queue view when %s, and never says a gate passed", async (_name, gates) => {
+    ])("points at Queue settings when %s, and never says a gate passed", async (_name, gates) => {
       const { dialog } = await startHeld(gates);
-      expect(dialog.getByRole("status")).toHaveTextContent("A start gate holds this task. See Start gates in the Queue view.");
+      expect(dialog.getByRole("status")).toHaveTextContent("A start gate holds this task. See Start gates in Queue settings.");
       expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
     });
 

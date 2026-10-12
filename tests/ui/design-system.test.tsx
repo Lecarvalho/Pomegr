@@ -17,10 +17,10 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Task queue", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
 const SAMPLE_SOURCES = [
   "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample",
-  "DesignSystemTaskBoardSample", "DesignSystemTaskQueueSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAgentChatSample",
+  "DesignSystemTaskBoardSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAgentChatSample",
 ].map((name) => `app/components/design-system/${name}.tsx`).concat("app/components/design-system/DesignSystemTaskSampleData.ts");
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 
@@ -406,62 +406,37 @@ describe("Design-system reference page", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders the queue switch, banners, step cards, feature panels, single tasks and rules from static data", () => {
+  it("renders the queue switch, banners, header actions and Queue settings from static data", () => {
     render(<DesignSystemView />);
-    const queue = sectionOf("Task queue");
+    const queue = sectionOf("Queue controls");
 
     expect(within(within(sample(queue, "Queue switch, off")).getByRole("group", { name: "Queue" })).getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
     expect(within(within(sample(queue, "Queue switch, on")).getByRole("group", { name: "Queue" })).getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
     expect(within(sample(queue, "Queue switch, busy")).getByRole("button", { name: "On" })).toBeDisabled();
 
-    const boardBanner = within(sample(queue, "Banner, blocked (Board)")).getByRole("region", { name: "Queue status" });
+    // The page header actions: the Repository select, the Queue switch, then Promote issues. No view switch.
+    const actions = sample(queue, "Page header actions, desktop app").querySelector(".taskHeadActions") as HTMLElement;
+    const follows = (first: HTMLElement, second: HTMLElement) => Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const repository = within(actions).getByRole("combobox", { name: "Repository" });
+    const queueGroup = within(actions).getByRole("group", { name: "Queue" });
+    const promote = within(actions).getByRole("link", { name: "Promote issues" });
+    expect(follows(repository, queueGroup)).toBe(true);
+    expect(follows(queueGroup, promote)).toBe(true);
+    expect(actions.children).toHaveLength(3);
+    expect(within(actions).queryByRole("group", { name: "Tasks view" })).toBeNull();
+    expect(within(actions).getByRole("link", { name: "Promote issues" })).toBeInTheDocument();
+
+    const boardBanner = within(sample(queue, "Banner, blocked")).getByRole("region", { name: "Queue status" });
     expect(boardBanner).toHaveTextContent("T-2's agent reported it cannot continue.");
     expect(within(boardBanner).getByRole("button", { name: "Open T-2" })).toHaveClass("commandSecondaryAction");
-    const resolvable = within(sample(queue, "Banner, blocked (Queue)")).getByRole("region", { name: "Queue status" });
-    expect(resolvable).toHaveTextContent("Nothing new starts until you resolve T-2.");
-    expect(within(resolvable).getByRole("button", { name: "Mark done and resume" })).toHaveClass("commandSecondaryAction");
-    expect(within(resolvable).getByRole("button", { name: "Requeue T-2" })).toHaveClass("commandQuietAction");
+    expect(within(boardBanner).getByRole("button", { name: "Mark done and resume" })).toHaveClass("commandSecondaryAction");
+    expect(within(boardBanner).getByRole("button", { name: "Requeue T-2" })).toHaveClass("commandQuietAction");
+    expect(boardBanner).toHaveTextContent("Nothing new starts until you resolve T-2.");
     const paused = within(sample(queue, "Banner, paused")).getByRole("region", { name: "Queue status" });
     expect(paused).toHaveTextContent("Queue paused");
     expect(paused).toHaveTextContent("command-line tool was not found");
     expect(within(paused).queryByRole("button", { name: "Mark done and resume" })).toBeNull();
     expect(within(within(sample(queue, "Banner, browser")).getByRole("region", { name: "Queue status" })).queryByRole("button")).toBeNull();
-
-    const cards = sample(queue, "Queue cards");
-    expect(cards.querySelectorAll(".taskQueueCard")).toHaveLength(3);
-    expect(cards.querySelector(".taskCardWaiting")).toHaveTextContent("Waiting: Claude Code is above 85% of the five-hour window");
-    expect(within(cards).getByRole("combobox", { name: "Move T-3 to step" })).toBeInTheDocument();
-
-    const browserPanel = within(sample(queue, "Feature panel, browser")).getByRole("region", { name: "Upload reliability" });
-    expect(browserPanel.querySelector(".taskQueueCaption")).toHaveTextContent("1 of 4 tasks done");
-    expect(within(browserPanel).getByText("Parallel · 2")).toBeInTheDocument();
-    expect(within(browserPanel).getByText("One worktree each")).toBeInTheDocument();
-    expect(browserPanel.querySelector(".taskQueueStep.isAllDone")).not.toBeNull();
-    expect(browserPanel.querySelector(".taskQueueNote")?.textContent).not.toMatch(/Drag/);
-    expect(browserPanel.querySelector(".taskQueueNewStep")).toBeNull();
-    const desktopPanel = within(sample(queue, "Feature panel, desktop app")).getByRole("region", { name: "Upload reliability" });
-    expect(desktopPanel.querySelector(".taskQueueNote")?.textContent).toMatch(/^Steps run in order\..*Drag a task that has not started/);
-    expect(within(desktopPanel).getByRole("group", { name: "New last step" })).toHaveTextContent("Drop a task here to add a step at the end");
-    expect(desktopPanel.querySelectorAll(".taskQueueCard[draggable='true']")).toHaveLength(3);
-
-    const singles = within(sample(queue, "Single tasks")).getByRole("region", { name: "Single tasks" });
-    expect(within(singles).getByText("T-7").closest("li")?.querySelector(".taskCardChip")?.textContent).toMatch(/^Scheduled · /);
-    expect(within(singles).getByText("T-6").closest("li")?.querySelector(".taskCardChip")).toHaveTextContent("In progress");
-    expect(within(sample(queue, "Single tasks, none queued")).getByText("No single task is queued.")).toBeInTheDocument();
-    const rules = within(sample(queue, "When the queue blocks")).getByRole("list");
-    expect(within(sample(queue, "When the queue blocks")).getByText("Needs review")).toHaveClass("taskBlockState", "isReview");
-    expect(within(rules).queryByText("Needs review")).toBeNull();
-    expect(within(rules).getByText("Stalled")).toHaveClass("isError");
-    expect(within(rules).getByText("Blocked by agent")).toHaveClass("isError");
-
-    const browserView = sample(queue, "Queue view, browser (blocked queue)");
-    expect(browserView.querySelector(".taskQueueRow > .taskQueueAside")).not.toBeNull();
-    expect(within(browserView).getByRole("region", { name: "Queue status" })).toBeInTheDocument();
-    expect(within(browserView).getByRole("heading", { level: 2, name: "Schedule" })).toBeInTheDocument();
-    expect(within(browserView).queryByRole("combobox", { name: "Do not start above" })).toBeNull();
-    const desktopView = sample(queue, "Queue view, desktop app (queue on)");
-    expect(within(desktopView).getByRole("combobox", { name: "Do not start above" })).toBeInTheDocument();
-    expect(within(desktopView).getByRole("group", { name: "Queue start" })).toHaveClass("commandSegmented");
 
     // Queue settings: one h2, then the three sections as h3 with no panel frame of their own.
     const settings = sample(queue, "Queue settings, desktop app").querySelector(".taskQueueSettings") as HTMLElement;
@@ -487,6 +462,10 @@ describe("Design-system reference page", () => {
     render(<DesignSystemView />);
     const gates = sectionOf("Start gates and schedule");
 
+    // Every sample is a frameless section of the Queue settings panel, under an h3.
+    expect(gates.querySelectorAll(".taskQueueSettings").length).toBeGreaterThan(0);
+    expect(within(sample(gates, "Start gates, held")).getByRole("heading", { level: 3, name: "Start gates" })).toBeInTheDocument();
+    expect(sample(gates, "Start gates, held").querySelector(".panel")).toBeNull();
     const held = sample(gates, "Start gates, held");
     expect(reading(held, "Claude Code capacity")).toHaveTextContent("5h 91% · 7d 37% · above threshold");
     expect(reading(held, "Claude Code capacity")).toHaveClass("isMono", "is-error");

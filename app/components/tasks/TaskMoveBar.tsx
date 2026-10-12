@@ -11,7 +11,7 @@ const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 const PHRASES: Record<CardMoveKind, string> = { up: "up", down: "down", left: "to the previous column", right: "to the next column" };
 
 export type CardMoves = Record<CardMoveKind, boolean>;
-/** The step choices of a queued card that belongs to a feature. */
+/** The step choices of a card of a feature that has not started. */
 export type CardStepMove = { choices: BoardStepChoice[]; onMove(step: number): void };
 
 export function TaskMoveBar({ id, available, onMove, step }: { id: string; available: CardMoves; onMove(kind: CardMoveKind): void; step?: CardStepMove }) {

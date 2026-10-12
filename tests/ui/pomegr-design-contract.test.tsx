@@ -418,10 +418,9 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.taskParallelGlyph \{[^}]*width: 12px; height: 12px; \}/);
     const tasksComponents = join(process.cwd(), "app", "components", "tasks");
     expect(readFileSync(join(tasksComponents, "ParallelGlyph.tsx"), "utf8")).toMatch(/stroke="currentColor" strokeWidth="1\.5"[^]*d="M4 2v8M8 2v8"/);
-    // Only the Ready lane is handed groups, and the Queue view does not use them.
+    // Only the Ready lane is handed groups.
     const view = readFileSync(join(tasksComponents, "TaskBoardView.tsx"), "utf8");
     expect(view).toMatch(/ready=\{column\.id === readyId \? \{ segments: readySegments\(column\.tasks, board\)/);
-    expect(readFileSync(join(tasksComponents, "TaskQueueView.tsx"), "utf8")).not.toMatch(/ReadyStepGroup|readySegments/);
     // D17: the page description.
     expect(readFileSync(join(tasksComponents, "TaskBoardPane.tsx"), "utf8")).toMatch(/<p>Work for this repository\. Ready is the queue: cards start from the top\.<\/p>/);
     expect(designContract).toMatch(/### Ready step groups/);
@@ -464,7 +463,7 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/\*\*Queue settings\*\* \(`\.taskQueueSettingsAction`\) is last in the strip/);
   });
 
-  it("changes a card's step on the Board with the Queue view's rule, tokens, and the shared select", () => {
+  it("changes a card's step on the Board with the shared step rule, tokens, and the shared select", () => {
     // D27: the step group under the dragged card takes the panel fill and the lane's two-pixel strong-line border.
     expect(styles).toMatch(/\.taskReadyGroup\.isStepTarget \{ border-color: var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); box-shadow: inset 0 0 0 1px var\(--command-line-strong\); \}/);
     // D28: the new-step zone is a dashed ink border at the panel radius with centered 12px ink text.
@@ -478,20 +477,20 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/| Disabled option\| Disabled option \| Muted text and the default cursor\./);
     const tasksComponents = join(process.cwd(), "app", "components", "tasks");
     const read = (name: string) => readFileSync(join(tasksComponents, name), "utf8");
-    // The Board writes no second step rule: its targets and options come from the Queue view's `reorderTarget`, and a drop sends the Queue view's action.
+    // The Board writes no second step rule: its targets and options come from `reorderTarget`, and a drop sends the `queue_reorder` action.
     expect(read("use-card-drag.ts")).toMatch(/reorderTarget\(panel, task, step\)/);
     expect(read("task-queue-model.ts")).toMatch(/export function boardStepChoices[^]*reorderTarget\(panel, task, candidate\.step\) === null\) continue;[^]*reorderTarget\(panel, task, null\)/);
     expect(read("TaskBoardView.tsx")).toMatch(/void edits\?\.reorderQueueTask\(id, step\);/);
     expect(read("TaskMoveBar.tsx")).toMatch(/<CommandSelect className="taskMoveStep" aria-label=\{`Move \$\{id\} to step`\} placeholder="Move to step…"/);
     // D16: the footnote.
-    expect(read("TaskBoardView.tsx")).toMatch(/const FOOTNOTE = "Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own\.";/);
+    expect(read("TaskBoardView.tsx")).toMatch(/const FOOTNOTE = "Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.";/);
     expect(designContract).toMatch(/### Changing a step/);
     expect(designContract).toMatch(/the group \(`\.taskReadyGroup\.isStepTarget`\) takes the panel fill/);
     expect(designContract).toMatch(/The zone has a one-pixel dashed `--command-ink` border, the panel radius, and 10px\/12px padding\./);
-    expect(designContract).toMatch(/No zone is drawn between two steps: the step action adds a step only after the last one\./);
+    expect(designContract).toMatch(/A step cannot be inserted between two steps. No zone is drawn between two steps./);
     expect(designContract).toMatch(/gains the \*\*Move to step…\*\* `CommandSelect` \(`\.taskMoveStep`\) after the four arrows/);
     expect(designContract).toMatch(/reads “Step 1 · running”\. That option is disabled\./);
-    expect(designContract).toMatch(/“Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own\.”/);
+    expect(designContract).toMatch(/“Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.”/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
     expect(sample).toMatch(/Card, desktop app, Move to step/);
     expect(sample).toMatch(/Ready lane, step target/);
@@ -777,5 +776,31 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/Each pending card has its own Primary/);
     expect(designContract).toMatch(/A message that was refused stays in the field/);
     expect(designContract).toMatch(/an inline question, a Secondary \*\*Delete\*\* and a Quiet \*\*Keep\*\*[^.]*and no native dialog/);
+  });
+});
+
+describe("the Tasks page has one view", () => {
+  const app = join(process.cwd(), "app");
+  const removedFiles = [
+    "components/tasks/TaskQueueView.tsx", "components/tasks/QueueFeaturePanel.tsx", "components/tasks/QueueSingleTasks.tsx",
+    "components/tasks/QueueTaskCard.tsx", "components/tasks/use-queue-drag.ts", "components/design-system/DesignSystemTaskQueueSample.tsx",
+  ];
+  const removedClasses = [
+    "taskQueueView", "taskQueueRow", "taskQueueAside", "taskQueuePanel", "taskQueueHead", "taskQueueCaption", "taskQueueNum",
+    "taskQueueSteps", "taskQueueStep", "taskQueueCards", "taskQueueCard", "taskQueueNewStep", "taskQueueNote", "taskQueueMove", "taskQueueSingle",
+  ];
+
+  it.each(removedFiles)("has no %s", (file) => {
+    expect(existsSync(join(app, file))).toBe(false);
+  });
+
+  it("keeps no Queue view class in tasks.css and no view switch in the page header", () => {
+    const tasksCss = readFileSync(join(app, "styles", "tasks.css"), "utf8");
+    for (const name of removedClasses) expect(tasksCss, name).not.toMatch(new RegExp(`\.${name}(?![A-Za-z0-9])`));
+    expect(tasksCss).not.toMatch(/.taskQueueStep[A-Za-z]*/);
+    expect(tasksCss).not.toMatch(/.taskQueueSingle[A-Za-z]*/);
+    expect(tasksCss).not.toMatch(/data-view/);
+    const pane = readFileSync(join(app, "components", "tasks", "TaskBoardPane.tsx"), "utf8");
+    expect(pane).not.toMatch(/Tasks view/);
   });
 });

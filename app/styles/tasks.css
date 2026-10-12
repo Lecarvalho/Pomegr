@@ -55,18 +55,6 @@
      every swipe that starts on a card from reaching the page. Sideways, a swipe on a card still moves the board. */
   .tasksPage .taskColumnList { overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
 }
-/* The Queue view fits the window the same way once its two columns sit side by side: the queue and the settings
-   each scroll on their own. Narrower, the settings wrap under the queue and the page scrolls. */
-@media (min-width: 1100px) {
-  .commandShell:has(.tasksPage .taskQueueRow) { height: 100dvh; }
-  .tasksPage:has(.taskQueueRow) { height: 100%; display: flex; flex-direction: column; }
-  .tasksPage:has(.taskQueueRow) .tasksPageBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  .tasksPage:has(.taskQueueRow) > :not(.tasksPageBody), .tasksPage:has(.taskQueueRow) .tasksPageBody > :not(.taskQueueRow) { flex: 0 0 auto; }
-  .tasksPage .taskQueueRow { flex: 1 1 0; min-height: 240px; flex-wrap: nowrap; align-items: stretch; }
-  .tasksPage .taskQueueRow > :is(.taskQueueView, .taskQueueAside) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: var(--space-1); scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
-  .tasksPage .taskQueueRow > .taskQueueView { align-content: start; }
-  .tasksPage .taskQueueAside > * { flex: 0 0 auto; }
-}
 .tasksPage .taskColumnList { flex: 0 1 auto; min-height: 0; padding: 2px var(--space-1) 2px 2px; margin: -2px calc(-1 * var(--space-1)) -2px -2px; }
 .taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-2); border-bottom: 1px solid var(--command-line); }
 .taskColumnHeader h3 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
@@ -125,7 +113,7 @@
 .taskMove[data-move="up"] > svg { transform: rotate(-90deg); }
 .taskMove[data-move="down"] > svg { transform: rotate(90deg); }
 .taskMove[data-move="left"] > svg { transform: rotate(180deg); }
-/* Move to step: the Queue view's step select, after the arrows, for a queued card of a feature. */
+/* Move to step: the step select, after the arrows, for a card of a feature that has not started. */
 .taskMoveStep { flex: 1 1 120px; display: grid; min-width: 0; }
 .taskMoveStep .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
 @media (max-width: 760px), (pointer: coarse) { .taskMoveStep .commandSelectTrigger { min-height: 44px; } }
@@ -138,7 +126,7 @@
 @media (max-width: 760px), (pointer: coarse) { .taskColumnAdd.commandQuietAction { min-height: 44px; } }
 @media (pointer: coarse) { .taskColumnAdd.commandQuietAction { opacity: 1; } }
 
-/* Head actions: the repository switcher, the view switch and the queue controls (D28, D29); .taskAddColumn is the Add feature form. */
+/* Head actions: the repository switcher, the queue switch and Promote issues (D28, D29); .taskAddColumn is the Add feature form. */
 .taskHeadActions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); }
 .taskAddColumn { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .taskAddColumn .taskOwnInput { flex: 0 1 200px; }
@@ -321,50 +309,12 @@
 .taskReadyGroup.isStepTarget { border-color: var(--command-line-strong); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: inset 0 0 0 1px var(--command-line-strong); }
 .taskReadyNewStep { padding: 10px var(--space-3); border: 1px dashed var(--command-ink); border-radius: var(--panel-radius); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); text-align: center; }
 
-/* Queue view (D101-D155): one panel per unfinished feature, steps as rows, the single tasks after them. A step card is
-   the board card at the compact padding. Drag-over takes the raised fill; a step whose tasks are all done never does. */
-.taskQueueView { display: grid; gap: var(--space-4); }
-.taskQueuePanel { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
-.taskQueueHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-.taskQueueHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
-.taskQueueCaption { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskQueueNum { font-family: var(--font-data); }
-.taskQueueSteps { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.taskQueueStep { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3); padding: var(--space-2); border-radius: var(--panel-radius); }
-.taskQueueStep + .taskQueueStep { border-top: 1px solid var(--command-line); }
-.taskQueueStep.isDragOver, .taskQueueNewStep.isDragOver { background: var(--command-panel-2); }
-.taskQueueStepLabel { flex: 0 0 96px; display: flex; flex-direction: column; gap: 2px; padding-top: var(--space-2); }
-.taskQueueStepName { color: var(--command-ink); font: 650 var(--text-xs)/1.4 var(--font-ui); }
-.taskQueueStepMode, .taskQueueStepNote { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); }
-.taskQueueStepNote { font-weight: 400; }
-.taskQueueCards { flex: 1 1 320px; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.taskQueueCard { gap: var(--space-1); padding: var(--space-2) var(--space-3); cursor: default; }
-.taskQueueCard.isMovable { cursor: grab; }
-.taskQueueNewStep { padding: var(--space-3) var(--space-2); border: 1px dashed var(--command-line-strong); border-radius: var(--panel-radius); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-align: center; }
-.taskQueueNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-/* Keyboard alternative: the move select is drawn while the card holds keyboard focus (or on a coarse pointer) and
-   stays in the accessibility tree otherwise, like the board's move toolbar. */
-.taskQueueMove .commandSelect { display: grid; }
-.taskQueueCard:not(:has(:focus-visible)):not(:has([aria-expanded="true"])) .taskQueueMove { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; border: 0; clip-path: inset(50%); white-space: nowrap; }
-@media (pointer: coarse) {
-  .taskQueueCard:not(:has(:focus-visible)):not(:has([aria-expanded="true"])) .taskQueueMove { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; white-space: normal; }
-}
-.taskQueueSingles { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.taskQueueSingle { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
-.taskQueueSingle .taskCardId { flex: 0 0 auto; }
-.taskQueueSingleTitle { flex: 1 1 240px; min-width: 0; }
 .taskCardChip.isInk { background: var(--command-panel-2); border-color: transparent; }
-@media (max-width: 760px) {
-  .taskQueueStepLabel { flex: 1 0 100%; padding-top: 0; }
-  .taskQueueCards { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* Queue switch, banner and block rules (D30-D34, D108-D114, D178-D183). The switch is the Segmented role beside the view
-   switch. The banner sits on the error-soft panel with the error line; its Secondary actions take the stronger line and
+/* Queue switch, banner and block rules (D30-D34, D108-D114, D178-D183). The switch is the Segmented role in the page
+   header. The banner sits on the error-soft panel with the error line; its Secondary actions take the stronger line and
    panel fill (role default: panel line, no fill) and Requeue is the Quiet role in ink (role default: muted). */
 .taskQueueSwitch { display: inline-flex; align-items: center; gap: var(--space-2); }
-.taskQueueBanner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--command-error); border-radius: var(--panel-radius); background: var(--color-error-soft); }
-.taskQueueBanner[data-view="board"] { gap: var(--space-4); }
+.taskQueueBanner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--command-error); border-radius: var(--panel-radius); background: var(--color-error-soft); }
 .taskQueueBannerText { flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .taskQueueBannerTitle { margin: 0; color: var(--command-error); font: 650 var(--text-sm)/1.4 var(--font-ui); }
 .taskQueueBannerBody { margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
@@ -372,6 +322,7 @@
 .taskQueueBannerActions .commandSecondaryAction { border-color: var(--command-line-strong); background: var(--command-panel); }
 .taskQueueBannerActions .commandQuietAction { color: var(--command-ink); }
 .taskBlockRulesPanel { gap: var(--space-2); }
+.taskQueueHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
 .taskBlockRules { display: grid; gap: var(--space-1); margin: 0; padding: 0 0 0 var(--space-4); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskBlockRulesNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskBlockState { font-weight: 500; }
@@ -384,14 +335,10 @@
   .taskQueueBannerActions .commandSecondaryAction { flex: 1 1 0; }
 }
 
-/* Start gates (D35-D39, D156-D169): the capacity strip above the Board and the panel beside the Queue. The gate value
+/* Start gates (D35-D39, D156-D169): the capacity strip above the Board and the section of Queue settings. The gate value
    colours are the tone of the reading: green passes, error holds, muted is unknown or empty. */
 .taskCapacityStrip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskCapacityValue { color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-data); }
-.taskQueueRow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
-.taskQueueRow > .taskQueueView { flex: 999 1 480px; min-width: 0; }
-.taskQueueAside { flex: 1 1 280px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
-@media (max-width: 760px) { .taskQueueAside { max-width: none; } }
 .taskGatesPanel { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
 .taskGatesHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
 .taskGatesCaption { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
@@ -407,14 +354,13 @@
 .taskGateField { display: flex; flex-direction: column; gap: var(--space-1); }
 .taskGateFieldLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
 .taskGateReadOnly { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
-/* Schedule (D170-D177): the panel shares the gates panel's frame, heading, field and caption. A time field is the form
+/* Schedule (D170-D177): the section shares the gates section's heading, field and caption. A time field is the form
    field of D176: control height, the stronger line, the data font. */
 .taskScheduleMode { align-self: flex-start; }
 .taskTimeInput { box-sizing: border-box; width: 100%; min-height: var(--control-height); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-data); }
 .taskTimeInput:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .taskTimeInput:disabled { opacity: .48; }
 .taskCardWaiting { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskQueueSingleWaiting { flex: 1 1 100%; }
 /* Queue controls on the Board (T-68 D3, D4, D18-D26). The capacity strip ends with the threshold, the stop time and the
    action that opens Queue settings. The panel is the task dialog at the right edge of the page, with no scrim fill;
    inside it the gates, schedule and rules panels are sections with no frame of their own. */

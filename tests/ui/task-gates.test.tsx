@@ -39,7 +39,7 @@ const gates = (overrides: Partial<TaskGates> = {}): TaskGates => ({
 function setBoard(queue: Partial<TaskQueue> = {}) {
   const board: TaskBoard = {
     version: 1, readiness: "ready", repositoryId, columns, features: [],
-    tasks: [task(15, "Advance", { state: "queued" }), task(16, "Adapter", { state: "queued" })],
+    tasks: [task(15, "Advance", { state: "queued", columnId: "col-2" }), task(16, "Adapter", { state: "queued", columnId: "col-2" })],
     queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-15", "T-16"], gates: gates(), ...queue },
   };
   useTasks.mockReturnValue({ board, refresh });
@@ -49,9 +49,10 @@ const setBridge = (bridge: unknown) => { (window as Window & { pomegrDesktop?: u
 beforeEach(() => { taskAction.mockResolvedValue({ ok: true }); setBridge({ taskAction }); setBoard(); });
 afterEach(() => { setBridge(undefined); vi.clearAllMocks(); });
 
+/** The start gates are a section of the Queue settings dialog, which the Board's capacity strip opens. */
 async function showQueue() {
   render(<TaskBoardPane repositoryId={repositoryId} />);
-  await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
+  await userEvent.click(screen.getByRole("button", { name: "Queue settings" }));
 }
 const panel = () => screen.getByRole("region", { name: "Start gates" });
 const row = (label: string) => within(panel()).getByText(label).closest("div") as HTMLElement;
@@ -62,14 +63,14 @@ describe("the Start gates panel", () => {
     setBoard({ gates: weekly });
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.getByRole("region", { name: "Provider capacity" }).textContent).toContain("Codex 7d 90%");
-    await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Queue settings" }));
     expect(row("Codex capacity").textContent).toBe("Codex capacity7d 90% · above threshold");
     expect(heldStartLine(task(15, "Start", { run: { provider: "codex", model: null, effort: null } }), { gates: weekly }))
       .toBe("This task is held: Codex is above 85% of the seven-day window.");
   });
   it("lists the five gates with their readings", async () => {
     await showQueue();
-    expect(within(panel()).getByRole("heading", { name: "Start gates" })).toBeTruthy();
+    expect(within(panel()).getByRole("heading", { level: 3, name: "Start gates" })).toBeTruthy();
     expect(within(panel()).getByText("Checked before every session Pomegr starts.")).toBeTruthy();
     expect(row("Previous step done").textContent).toContain("Done");
     expect(row("Claude Code capacity").textContent).toContain("5h 62% · 7d 31%");
@@ -98,7 +99,7 @@ describe("the Start gates panel", () => {
     const strip = screen.getByRole("region", { name: "Provider capacity" });
     expect(strip.textContent).toContain("Claude Code Unknown");
     expect(strip.textContent).not.toContain("31%");
-    await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Queue settings" }));
     expect(row("Claude Code capacity").textContent).toBe("Claude Code capacityUnknown");
     expect(row("Codex capacity").textContent).toContain("5h 18% · 7d 9%");
   });
@@ -134,7 +135,7 @@ describe("the Start gates panel", () => {
 });
 
 describe("the capacity strip", () => {
-  it("sits on the Board view with both readings and the rule", () => {
+  it("sits on the Board with both readings and the rule", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const strip = screen.getByRole("region", { name: "Provider capacity" });
     expect(strip.textContent).toContain("Start gates");
@@ -156,7 +157,7 @@ describe("the waiting line", () => {
 
   it("shows on the held next task while the queue runs", async () => {
     setBoard({ status: "running", gates: held });
-    await showQueue();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const text = "Waiting: Codex is above 85% of the five-hour window; the working tree has uncommitted changes";
     expect(screen.getAllByText(text)).toHaveLength(1);
     expect(document.querySelector('[data-task-id="T-16"]')?.textContent).not.toContain("Waiting");
@@ -164,7 +165,7 @@ describe("the waiting line", () => {
 
   it("does not show while the queue is not running", async () => {
     setBoard({ status: "idle", gates: held });
-    await showQueue();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByText(/^Waiting:/)).toBeNull();
   });
 });

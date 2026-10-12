@@ -8,7 +8,7 @@ import { CommandPageHeader } from "../command-center/CommandPage";
 import { setPaletteScope } from "../command-center/palette-scope";
 import { AddFeatureAction } from "./AddFeatureAction";
 import { QueueControl } from "./QueueControl";
-import { TaskBoardView, type TaskReveal, type TaskView } from "./TaskBoardView";
+import { TaskBoardView, type TaskReveal } from "./TaskBoardView";
 import { TaskModal } from "./TaskModal";
 import { PromoteIssuesAction } from "./promote-issues-action";
 import { useTaskEditAvailability } from "./task-desktop";
@@ -29,7 +29,6 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   const editable = access === "desktop" || access === "paired";
   const issuesBridge = useTaskIssuesAvailability();
   const [modal, setModal] = useState<OpenModal>(null);
-  const [view, setView] = useState<TaskView>("board");
   const [reveal, setReveal] = useState<TaskReveal | null>(null);
   const section = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -53,9 +52,8 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
   const queueLine = queueStatusLine(board.queue.status);
   const openNew = useCallback(() => { opener.current = trigger.current; setModal({ kind: "new" }); }, []);
   const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setModal({ kind: "task", id: task.id }); }, []);
-  const chooseView = useCallback((next: TaskView) => { setReveal(null); setView(next); }, []);
   const openFound = useCallback((id: string) => {
-    if (!editable) { setView("board"); setReveal((last) => ({ id, turn: (last?.turn ?? 0) + 1 })); return; }
+    if (!editable) { setReveal((last) => ({ id, turn: (last?.turn ?? 0) + 1 })); return; }
     const card = [...(section.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === id);
     opener.current = card?.querySelector<HTMLElement>(".taskCardOpen") ?? trigger.current;
     setModal({ kind: "task", id });
@@ -76,18 +74,14 @@ export function TaskBoardPane({ repositoryId, switcher, breadcrumb }: { reposito
       </div>}
       actions={(switcher || ready || issuesBridge === "available") && <div className="taskHeadActions">
         {switcher}
-        {ready && <div className="commandSegmented" role="group" aria-label="Tasks view">
-          <button type="button" aria-pressed={view === "board"} onClick={() => chooseView("board")}>Board</button>
-          <button type="button" aria-pressed={view === "queue"} onClick={() => chooseView("queue")}>Queue</button>
-        </div>}
         {editable && ready && <QueueControl status={board.queue.status} busy={edits.busy} onSet={(on) => { void edits.setQueue(on); }} />}
-        {/* The Board filter row carries this action once a feature exists. */}
-        {editable && ready && (view === "queue" || board.features.length === 0) && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
+        {/* The filter row carries this action once a feature exists. */}
+        {editable && ready && board.features.length === 0 && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
         {/* Opens the Promote issues page. */}
         {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
-      <TaskBoardView board={board} view={view} reveal={reveal} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
+      <TaskBoardView board={board} reveal={reveal} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
         newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} />
       {editable && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onIssueFailed={openCreated} onClose={close} />}
       {editable && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}

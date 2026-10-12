@@ -28,7 +28,6 @@ vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => (
 
 import { RepositoryDetailView } from "../../app/components/repositories/RepositoryDetailView";
 import { repositoryTabs } from "../../app/components/repositories/repository-route";
-import { QueueTaskCard } from "../../app/components/tasks/QueueTaskCard";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
 import { TasksPage } from "../../app/components/tasks/TasksPage";
 import { sessionState } from "../../app/dashboard-utils";
@@ -283,6 +282,7 @@ describe("the Tasks page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Tasks" })).toBeInTheDocument();
     expect(screen.getByText("Desktop only")).toHaveClass("commandChip");
     expect(screen.queryByRole("group", { name: "Tasks view" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Task board" })).not.toBeInTheDocument();
   });
 });
 
@@ -536,28 +536,18 @@ describe("task card borrowing its session", () => {
     });
   });
 
-  it("draws the same borrowed chip, observed model and link on a queue card", () => {
-    render(<ul><QueueTaskCard nextQueued={false} task={task(1, { state: "queued", run: { provider: "claude", model: "opus", effort: null }, session: session({ observedModel: "sonnet" }) })} /></ul>);
-    const card = screen.getByRole("listitem");
-    expect(within(card).getByText("In progress")).toHaveClass("positive");
-    expect(within(card).getByText("Parser refactor")).toBeInTheDocument();
-    expect(card).toHaveTextContent("Planned opus, observed sonnet");
-    expect(within(card).getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/claude-abc123");
-  });
 });
 
 describe("the Queue banner on a read-only board", () => {
   const held = (queue: Partial<TaskBoard["queue"]>, tasks: Task[]) => board({ tasks, queue: { status: "blocked", blockedBy: "T-3", pauseReason: null, order: [], ...queue } });
 
-  it("words a blocked queue for any client, on the Board and the Queue, with no action to take", () => {
+  it("words a blocked queue for any client, on the Board, with no action to take", () => {
     const tasks = [task(3, { state: "blocked", report: { at: "2026-10-08T12:00:00.000Z", results: [], blockReason: "The schema needs a decision." } })];
-    const view = render(<TaskBoardView board={held({}, tasks)} />);
+    render(<TaskBoardView board={held({}, tasks)} />);
     const banner = screen.getByRole("region", { name: "Queue status" });
     expect(within(banner).getByText("Queue blocked")).toBeInTheDocument();
     expect(banner).toHaveTextContent("T-3's agent reported it cannot continue.");
     expect(within(banner).queryByRole("button")).not.toBeInTheDocument();
-    view.rerender(<TaskBoardView board={held({}, tasks)} view="queue" />);
-    expect(screen.getByRole("region", { name: "Queue status" })).toHaveTextContent("T-3's agent reported it cannot continue.");
   });
 
   it("words a paused queue and draws nothing for a queue that is off or on", () => {

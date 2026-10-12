@@ -18,9 +18,9 @@ export function QueueSettings({ queue, edits, onClose, titleId, closeRef }: Prop
       <h2 id={titleId}>Queue settings</h2>
       <button ref={closeRef} type="button" className="commandIconAction" aria-label="Close" onClick={onClose}><CommandIcon name="close" /></button>
     </header>
-    <StartGatesPanel queue={queue} edits={edits} embedded />
-    <SchedulePanel queue={queue} edits={edits} embedded />
-    <QueueBlockRules embedded />
+    <StartGatesPanel queue={queue} edits={edits} />
+    <SchedulePanel queue={queue} edits={edits} />
+    <QueueBlockRules />
   </div>;
 }
 
