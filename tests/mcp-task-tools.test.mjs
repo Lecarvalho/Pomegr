@@ -249,10 +249,10 @@ test("Codex server falls back to CODEX_THREAD_ID when a call carries no thread m
 });
 
 const THREAD = "019a0000-2222-7333-8444-555566667777";
-const codexMeta = (overrides = {}) => ({ _meta: { threadId: THREAD, "x-codex-turn-metadata": { thread_id: THREAD, session_id: THREAD }, ...overrides } });
+const codexMeta = (overrides = {}) => ({ mcpReq: { _meta: { threadId: THREAD, "x-codex-turn-metadata": { thread_id: THREAD, session_id: THREAD }, ...overrides } } });
 
 test("the Codex call metadata names the thread, and only when it is well formed and agrees with itself", () => {
-  assert.equal(resolveCodexCallSession(codexMeta()._meta), `codex:${THREAD}`);
+  assert.equal(resolveCodexCallSession(codexMeta().mcpReq._meta), `codex:${THREAD}`);
   assert.equal(resolveCodexCallSession({ threadId: THREAD }), `codex:${THREAD}`);
   for (const meta of [
     null, undefined, [], "meta", {}, { threadId: 7 }, { threadId: "" }, { threadId: "../x" }, { threadId: "a b" }, { threadId: "x".repeat(129) },
