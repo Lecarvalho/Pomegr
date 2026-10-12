@@ -391,6 +391,9 @@ Scheduled and no session is linked. For every such task:
   action (`settleReadyColumn` in `server/tasks/task-columns.mjs`, called by `apply`): the
   places the waiting cards hold are filled again in that order, and a card that is not
   in the queue keeps its place. So a change of step or feature moves the cards with it.
+  The cards of a held feature (see [Queue](#queue)) keep this place, though the queue
+  starts them last: whether a feature is held can change with the clock, and no
+  observation moves a card.
 - **The card order of single tasks is the queue order.** Single tasks have no other
   order, so dragging one above another in Ready is how the user reorders them. A drop
   that would put a single task ahead of a feature task, or a later step ahead of an
@@ -591,7 +594,8 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   come the single queued tasks, which have no feature or step. They run in the order of
   their cards in the Ready column, top first (see
   [Queued cards stay in Ready](#queued-cards-stay-in-ready)), so the Board and the Queue
-  view always show one order. A task in another state
+  view always show one order. A held feature's queued tasks come last, after the single
+  tasks (see **Held features** below). A task in another state
   is not in the order, even when it belongs to a queued task's feature. A task that
   already started is not in the order either: one with a linked session and no report, or
   a dispatch still inside its ten minutes (`rowInFlight` in `task-record.mjs`, which judges
@@ -601,6 +605,18 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   never names it. The Queue view shows it with the borrowed session state, or its own chip
   until a session links, with no Waiting line, no next marker, and no move. The first
   entry is the task shown as next.
+- **Held features.** Decided for task T-53 (2026-10-11); it replaces the earlier rule
+  that a waiting step holds every task behind it. A feature is held when a step before
+  its first queued step holds a task that is neither settled (done or in review) nor in
+  flight: a task that is not queued, a scheduled task whose time has not come, or a
+  stalled or blocked one. The queue never starts that task, so the feature cannot go on
+  by itself, and its queued tasks hold nothing outside the feature. `orderQueue` puts
+  them last in `queue.order`, in their own order, so the first entry is still the task
+  that starts next. A task in flight in the earlier step does not hold its feature: the
+  feature goes on when the task reports. The feature takes its place again when the
+  earlier steps are settled, or when their tasks are queued. The order is computed on
+  each read, so this moves no card (see
+  [Queued cards stay in Ready](#queued-cards-stay-in-ready)).
 - **Place in the queue.** A single task's place is its card's place in Ready
   (`Task.position`, already on the board). A task queued from another column joins last,
   because its card lands last in Ready; one queued from Ready runs where its card is.
@@ -627,7 +643,10 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   outside one feature step hold the queue. A step waits while an earlier step of its
   feature is not settled, and a step is settled only when every one of its tasks is done
   or needs review (`settled` beside `done` in `orderQueue`'s steps); the queue never
-  skips ahead to a later task. A task in review is finished work that waits for the
+  skips ahead to a later step of that feature. The wait holds only the feature: a held
+  feature is last in the order, so another feature's step or a single task starts
+  instead, and the queue starts nothing only when every queued task is in a held
+  feature. A task in review is finished work that waits for the
   owner, so the step after it starts. A step is still done, for the feature and for a
   move into it, only when every one of its tasks is done.
 - **Gates.** Each start of a step is judged on its own. One that a start gate holds is

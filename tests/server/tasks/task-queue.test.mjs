@@ -60,7 +60,8 @@ test("only queued tasks are in the order, in every other state", () => {
     task(index * 2 + 2, { state, queuePosition: index }),
   ]);
   assert.deepEqual(orderQueue(tasks, FEATURES).order, []);
-  assert.deepEqual(orderQueue([...tasks, queued(99, { featureId: A, step: 9 }), queued(100)], FEATURES).order, ["T-99", "T-100"]);
+  // The feature's earlier steps hold tasks the queue will not start, so its queued task comes after the single one.
+  assert.deepEqual(orderQueue([...tasks, queued(99, { featureId: A, step: 9 }), queued(100)], FEATURES).order, ["T-100", "T-99"]);
 });
 
 test("steps lists every step of every feature, ascending, with its tasks of any state", () => {

@@ -98,8 +98,8 @@ test("a candidate waits for every earlier step of its feature and never skips ah
   assert.deepEqual(next([step(1, 1, { state: "needs_review" }), step(2, 2)]), { starts: ["T-2"] });
   assert.deepEqual(next([step(1, 1, { state: "done" }), step(2, 1, { state: "needs_review" }), step(3, 2)]), { starts: ["T-3"] });
   assert.equal(next([step(1, 1, { state: "needs_review" }), step(2, 1, { state: "stalled" }), step(3, 2)]), null);
-  // The queue waits; a queued task without a feature further down does not jump the line.
-  assert.equal(next([step(1, 1, { state: "stalled" }), step(2, 2), task(3)]), null);
+  // The step waits, and holds only its own feature: a queued task without a feature starts.
+  assert.deepEqual(next([step(1, 1, { state: "stalled" }), step(2, 2), task(3)]), { starts: ["T-3"] });
   // One undone task in an earlier step is enough, and every step before the candidate counts.
   assert.equal(next([step(1, 1, { state: "done" }), step(2, 2, { state: "done" }), step(3, 2, { state: "stalled" }), step(4, 3)]), null);
   assert.equal(next([step(1, 1, { state: "stalled" }), step(2, 2, { state: "done" }), step(3, 3)]), null);
@@ -115,6 +115,37 @@ test("another feature's steps do not hold a candidate", () => {
   // The stalled task is in the other feature's step 1, so it holds nothing of this feature, in either feature order.
   assert.deepEqual(next(tasks), { starts: ["T-2"] });
   assert.deepEqual(next(tasks, "running", [features[1], features[0]]), { starts: ["T-2"] });
+});
+
+test("a feature held by a task the queue will not start lets other features and single tasks start", () => {
+  const held = (state, overrides = {}) => [
+    task(1, { featureId: FEATURE, step: 1, state, ...overrides }),
+    task(2, { featureId: FEATURE, step: 2 }),
+    task(3, { featureId: FEATURE, step: 3 }),
+  ];
+  for (const state of ["not_queued", "scheduled", "stalled", "blocked"]) {
+    const tasks = [...held(state), task(4, { featureId: OTHER_FEATURE, step: 1 }), task(5)];
+    // The held feature's tasks are last in the order, so the first entry is still the task that starts.
+    assert.deepEqual(orderQueue(tasks, features).order, ["T-4", "T-5", "T-2", "T-3"], state);
+    assert.deepEqual(next(tasks), { starts: ["T-4"] }, state);
+    assert.deepEqual(next([...held(state), task(5)]), { starts: ["T-5"] }, state);
+    // Nothing else is queued: the queue waits and never starts the held step.
+    assert.equal(next(held(state)), null, state);
+  }
+  // A running task of the earlier step holds nothing back in the order: its feature goes on when it reports.
+  const running = [...held("queued", { inFlight: true }), task(4, { featureId: OTHER_FEATURE, step: 1 })];
+  assert.deepEqual(orderQueue(running, features).order, ["T-2", "T-3", "T-4"]);
+  assert.equal(next(running), null);
+  // Beside a task that is not queued, the running task leaves the feature held.
+  const mixed = [...held("queued", { inFlight: true }), task(6, { featureId: FEATURE, step: 1, state: "not_queued" }), task(4, { featureId: OTHER_FEATURE, step: 1 })];
+  assert.deepEqual(orderQueue(mixed, features).order, ["T-4", "T-2", "T-3"]);
+  assert.equal(next(mixed), null);
+  // Settling the earlier step puts the feature back in its place.
+  assert.deepEqual(orderQueue([...held("needs_review"), task(4, { featureId: OTHER_FEATURE, step: 1 }), task(5)], features).order, ["T-2", "T-3", "T-4", "T-5"]);
+  // Only steps before the first queued one hold a feature: a later step that is not queued does not.
+  const later = [task(1, { featureId: FEATURE, step: 1 }), task(2, { featureId: FEATURE, step: 2, state: "not_queued" }), task(3, { featureId: FEATURE, step: 3 }), task(5)];
+  assert.deepEqual(orderQueue(later, features).order, ["T-1", "T-3", "T-5"]);
+  assert.deepEqual(next(later), { starts: ["T-1"] });
 });
 
 test("an unlinked candidate pauses before the step rule is consulted", () => {
