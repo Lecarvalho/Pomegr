@@ -75,6 +75,7 @@ const KIND_CASES: KindCase[] = [
   ["cache_refill", { agentId: "primary", agentLabel: "Primary agent", refill: "lifetime_elapsed" }, "Cache refill", "Partial refill · inference · Primary agent", { tab: "agents", agent: "primary" }],
   ["context_compacted", { agentId: "primary", agentLabel: "Primary agent", compaction: "automatic" }, "Context compacted", "Automatic · Primary agent", { tab: "agents", agent: "primary" }],
   ["context_compacted", { agentId: "primary", agentLabel: "Primary agent", compaction: "manual" }, "Context compacted", "Manual · Primary agent", { tab: "agents", agent: "primary" }],
+  ["task_updated", { agentId: "primary", agentLabel: "Primary agent" }, "Task updated", "Primary agent", { tab: "agents", agent: "primary" }],
   ["task_added", { agentId: "primary", agentLabel: "Primary agent" }, "Task added", "Primary agent", { tab: "agents", agent: "primary" }],
   ["task_removed", { agentId: "primary", agentLabel: "Primary agent" }, "Task removed", "Primary agent", { tab: "agents", agent: "primary" }],
   ["task_completed", { agentId: "primary", agentLabel: "Primary agent" }, "Task reported complete", "Primary agent", { tab: "agents", agent: "primary" }],
@@ -358,10 +359,11 @@ describe("SessionEventsPanel", () => {
       polluted("a", "user_message", { agentId: "x", agentLabel: sentinels.label, durationMs: 1_000, signal: { label: sentinels.label, tone: "negative" }, pullRequestNumber: 7, resource: "cpu_cores", progress: { percent: 99, phase: "complete" } }),
       polluted("b", "commit_observed", { agentLabel: sentinels.label, signal: { label: sentinels.label, tone: "positive" } }),
       polluted("c", "agent_started", { agentLabel: "Visible agent", durationMs: 600_000, signal: { label: sentinels.label, tone: "positive" } }),
+      polluted("updated", "task_updated", { agentLabel: "Visible agent", durationMs: 600_000, signal: { label: sentinels.label, tone: "positive" } }),
       polluted("d", "signal_reported", { agentLabel: sentinels.label, signal: { label: "Visible signal", tone: "warning" } }),
     ]));
     const names = rowButtons().map((button) => button.textContent);
-    expect(names).toEqual(["11:29User message", "11:29Commit observedGit-observed", "11:29Agent startedVisible agent", "11:29Signal reportedVisible signal · agent-reported"]);
+    expect(names).toEqual(["11:29User message", "11:29Commit observedGit-observed", "11:29Agent startedVisible agent", "11:29Task updatedVisible agent", "11:29Signal reportedVisible signal · agent-reported"]);
     for (const value of Object.values(sentinels)) expect(container.innerHTML).not.toContain(value);
     expect(container.innerHTML).not.toContain("99%");
   });

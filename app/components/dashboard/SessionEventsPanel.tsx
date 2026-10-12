@@ -26,6 +26,7 @@ const GLYPH_SHAPES: Record<SessionEventKind, ReactNode> = {
   pull_request_opened: <><circle cx="4" cy="4" r="1.6" /><circle cx="4" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><path d="M4 5.6v4.8M12 10.4V7a2 2 0 0 0-2-2H8" /></>,
   cache_refill: <><path d="M13 8a5 5 0 1 1-1.6-3.7" /><path d="M13 2.5v3h-3" /></>,
   context_compacted: <><path d="M2.5 8h11" /><path d="M8 1.5v4M6 3.5l2 2 2-2M8 14.5v-4M6 12.5l2-2 2 2" /></>,
+  task_updated: <><path d="M3 2.5h10v11H3z" /><path d="M5.5 10.5l1-3 3-3 2 2-3 3z" /></>,
   task_added: <><path d="M3 2.5h10v11H3z" /><path d="M8 5.5v5M5.5 8h5" /></>,
   task_removed: <><path d="M3 2.5h10v11H3z" /><path d="M5.5 8h5" /></>,
   task_completed: <><path d="M3 2.5h10v11H3z" /><path d="M5.5 8l2 2 3-4" /></>,
@@ -67,6 +68,7 @@ const PRESENTATION: Record<SessionEventKind, EventPresentation> = {
   cache_refill: { label: "Cache refill", detail: refillDetail, destination: agentDestination },
   context_compacted: { label: "Context compacted", detail: compactionDetail, destination: agentDestination },
   // The agent's own Pomegr task tool calls. A report is the agent's claim; only the owner marks a task done.
+  task_updated: { label: "Task updated", detail: (event) => plainText(event.agentLabel), destination: agentDestination },
   task_added: { label: "Task added", detail: (event) => plainText(event.agentLabel), destination: agentDestination },
   task_removed: { label: "Task removed", detail: (event) => plainText(event.agentLabel), destination: agentDestination },
   task_completed: { label: "Task reported complete", detail: (event) => plainText(event.agentLabel), destination: agentDestination },

@@ -10,6 +10,8 @@ import { createClaudeLiveUsageSnapshotReader } from "../../../../server/provider
 import { parseClaudeContextRecords } from "../../../../server/providers/claude/context.mjs";
 import { repositoryRelativePath } from "../../../../server/normalize/repository-path.mjs";
 import { providerSessionEvidenceSchema } from "../../../../server/providers/provider-contract.mjs";
+import { sessionEvents } from "../../../../server/sessions/domain/session-events.mjs";
+import { derivedSessionEventRecord } from "../../../../server/sessions/domain/session-event-record.mjs";
 
 async function withTempDir(run) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-warm-derivation-"));
@@ -428,6 +430,11 @@ test("tool-call evidence reader: a Pomegr task tool call names its action only o
     toolResult("block1", "2026-09-01T00:03:01.000Z"),
     toolUse("feature1", "2026-09-01T00:04:00.000Z", tool("update_feature"), { feature: "F" }),
     toolResult("feature1", "2026-09-01T00:04:01.000Z"),
+    toolUse("update1", "2026-09-01T00:04:30.000Z", tool("update_task"), { task_id: "T-13", text: "UPDATED_TASK_TEXT_MUST_NOT_LEAK" }),
+    toolResult("update1", "2026-09-01T00:04:31.000Z"),
+    toolUse("update2", "2026-09-01T00:04:40.000Z", tool("update_task"), { task_id: "T-14", text: "REFUSED_TASK_TEXT_MUST_NOT_LEAK" }),
+    toolResult("update2", "2026-09-01T00:04:41.000Z", { isError: true }),
+    toolUse("update3", "2026-09-01T00:04:50.000Z", tool("update_task"), { task_id: "T-15", text: "UNANSWERED_TASK_TEXT_MUST_NOT_LEAK" }),
     toolUse("other1", "2026-09-01T00:05:00.000Z", "mcp__notpomegr__add_task", {}),
     toolResult("other1", "2026-09-01T00:05:01.000Z"),
     toolUse("complete1", "2026-09-01T00:06:00.000Z", tool("complete_task"), {}),
@@ -435,12 +442,28 @@ test("tool-call evidence reader: a Pomegr task tool call names its action only o
   const args = { file: "/fake/session.jsonl", key: null, actor: primaryActor, isMain: true, stat, cwd: os.tmpdir(), forbiddenRoots: [], validatePath: repositoryRelativePath };
   const pending = createClaudeToolCallEvidenceReader({}).read({ ...args, records });
   assert.deepEqual(pending.toolCalls.map((call) => [call.id, call.taskAction ?? null]), [
-    ["add1", "added"], ["add2", null], ["remove1", "removed"], ["block1", "blocked"], ["feature1", null], ["other1", null], ["complete1", null],
+    ["add1", "added"], ["add2", null], ["remove1", "removed"], ["block1", "blocked"], ["feature1", null],
+    ["update1", "updated"], ["update2", null], ["update3", null], ["other1", null], ["complete1", null],
   ]);
   assert.ok(pending.toolCalls.filter((call) => !call.taskAction).every((call) => !Object.hasOwn(call, "taskAction")));
   // The report gains its action when its result arrives; it is never named before.
   const answered = createClaudeToolCallEvidenceReader({}).read({ ...args, records: [...records, toolResult("complete1", "2026-09-01T00:06:01.000Z")] });
   assert.equal(answered.toolCalls.at(-1).taskAction, "completed");
   for (const call of answered.toolCalls) assert.equal(providerSessionEvidenceSchema.shape.toolCalls.element.safeParse(call).success, true, call.id);
-  assert.doesNotMatch(JSON.stringify(answered.toolCalls.map((call) => call.taskAction)), /T-12|MUST_NOT_LEAK/u);
+  assert.doesNotMatch(JSON.stringify(answered.toolCalls), /T-12|T-13|T-14|T-15|MUST_NOT_LEAK/u);
+  const feed = sessionEvents({
+    readiness: { core: "ready", agentEvidence: "ready", activityEvidence: "ready" },
+    agents: [primaryActor],
+    eventRecord: derivedSessionEventRecord({ toolCalls: answered.toolCalls }),
+  });
+  const updatedEvents = feed.items.filter((event) => event.kind === "task_updated");
+  assert.equal(updatedEvents.length, 1);
+  const [updatedEvent] = updatedEvents;
+  assert.deepEqual(Object.keys(updatedEvent).sort(), ["agentId", "agentLabel", "at", "compaction", "durationMs", "id", "kind", "progress", "pullRequestNumber", "refill", "resource", "signal"]);
+  assert.match(updatedEvent.id, /^event-[a-f0-9]{16}$/u);
+  const { id: _eventId, ...updatedFields } = updatedEvent;
+  assert.deepEqual(updatedFields, {
+    kind: "task_updated", at: "2026-09-01T00:04:30.000Z", agentId: "primary", agentLabel: "Primary agent",
+    durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null,
+  });
 });

@@ -244,7 +244,7 @@ test("context_compacted comes only from recorded automatic and manual compaction
   assert.equal(derive({ agents, contextBoundaries: "none" }).total, 0);
 });
 
-test("the four task kinds come only from tool calls an adapter marked with a fixed task action", () => {
+test("the five task kinds come only from tool calls an adapter marked with a fixed task action", () => {
   const agents = [{ id: "primary", label: "Primary agent", status: "active" }, { id: "agent-a", label: "Reviewer", status: "active" }];
   const call = (timestamp, taskAction, actorId = "primary", fields = {}) => ({ id: `call-${timestamp}-${taskAction}`, timestamp, actor: { id: actorId, label: "PRIVATE_ACTOR_LABEL" },
     tool: "mcp__plugin_pomegr_pomegr__add_task", detail: "PRIVATE_TASK_TEXT", status: null, ...(taskAction ? { taskAction } : {}), ...fields });
@@ -254,7 +254,8 @@ test("the four task kinds come only from tool calls an adapter marked with a fix
     call(at(3), "completed", "agent-a"),
     call(at(4), "blocked"),
     call(at(5), undefined), // a refused or unanswered call carries no action
-    call(at(6), "updated"), // an action outside the fixed four
+    call(at(6), "updated"),
+    call(at(6), "unknown"), // an action outside the fixed five
     call(at(7), "added", "hidden"), // no visible agent
     call("soon", "added"),
     call(at(8), "added", "primary", { wrapper: true }),
@@ -262,6 +263,7 @@ test("the four task kinds come only from tool calls an adapter marked with a fix
   ];
   const feed = derive({ agents, toolCalls });
   assert.deepEqual(feed.items.map(withoutId), [
+    expected("task_updated", at(6), { agentId: "primary", agentLabel: "Primary agent" }),
     expected("task_blocked", at(4), { agentId: "primary", agentLabel: "Primary agent" }),
     expected("task_completed", at(3), { agentId: "agent-a", agentLabel: "Reviewer" }),
     expected("task_removed", at(2), { agentId: "primary", agentLabel: "Primary agent" }),
@@ -269,7 +271,7 @@ test("the four task kinds come only from tool calls an adapter marked with a fix
     expected("task_added", at(1), { agentId: "primary", agentLabel: "Primary agent" }),
     expected("task_added", at(1), { agentId: "primary", agentLabel: "Primary agent" }),
   ]);
-  assert.equal(new Set(feed.items.map((item) => item.id)).size, 6);
+  assert.equal(new Set(feed.items.map((item) => item.id)).size, 7);
   for (const forbidden of ["PRIVATE_", "call-", "add_task", "mcp__"]) assert.ok(!JSON.stringify(feed).includes(forbidden), forbidden);
   assert.equal(derive({ agents, toolCalls: "none" }).total, 0);
   assert.equal(derive({ toolCalls }).total, 0, "no visible agent, no task event");
@@ -443,10 +445,10 @@ test("a feed built from sentinel-laden inputs exposes only the twelve contract k
     cacheEvents: { status: "ready", items: [{ id: "SENTINEL_CACHE_EVENT_ID", agentId: "primary", kind: "refill", observedAt: at(4, 10) }],
       possibleFullRefills: [{ agentId: "primary", count: 1, occurrences: [{ observedAt: at(4, 10), reason: "SENTINEL_REFILL_REASON", cacheLifetimeInference: { elapsedMs: 424242 } }] }] },
     contextBoundaries: [{ id: "SENTINEL_BOUNDARY_ID", agentId: "primary", timestamp: at(4, 20), kind: "automatic_compaction", preTokens: 434343 }],
-    toolCalls: ["added", "removed", "completed", "blocked"].map((taskAction, index) => ({ id: "SENTINEL_TASK_CALL_ID", timestamp: at(4, 40 + index), actor: { id: "primary", label: "Primary agent" },
+    toolCalls: ["added", "removed", "completed", "blocked", "updated"].map((taskAction, index) => ({ id: "SENTINEL_TASK_CALL_ID", timestamp: at(4, 40 + index), actor: { id: "primary", label: "Primary agent" },
       tool: "mcp__plugin_pomegr_pomegr__SENTINEL_TASK_TOOL", detail: "SENTINEL_TASK_TEXT", status: null, taskAction })),
   });
-  assert.equal(feed.total, 16);
+  assert.equal(feed.total, 17);
   assert.deepEqual(new Set(kinds(feed)), new Set(SESSION_EVENT_KINDS));
   const serialized = JSON.stringify(feed);
   for (const sentinel of sentinels) assert.ok(!serialized.includes(sentinel), `${sentinel} must not reach the feed`);

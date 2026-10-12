@@ -8,7 +8,7 @@ const COMPACTION_TRIGGERS = new Set(["automatic", "manual"]);
 const OCCURRENCE_KINDS = new Map([[undefined, "possible_full"], ["provider_diagnosed", "provider_diagnosed"], ["lifetime_elapsed", "lifetime_elapsed"]]);
 // A snapshot drop is an unexplained context reduction, not a recorded compaction, so it is never recorded.
 const BOUNDARY_TRIGGERS = new Map([["automatic_compaction", "automatic"], ["manual_compaction", "manual"]]);
-const TASK_ACTIONS = new Set(["added", "removed", "completed", "blocked"]);
+const TASK_ACTIONS = new Set(["added", "removed", "completed", "blocked", "updated"]);
 // Tool calls of one assistant turn share its recorded time, so an entry counts the calls it stands for.
 const TASK_ACTION_COUNT_LIMIT = 64;
 const EMPTY = Object.freeze({ version: SESSION_EVENT_RECORD_VERSION, refills: Object.freeze([]), compactions: Object.freeze([]) });

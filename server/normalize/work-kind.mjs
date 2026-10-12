@@ -149,7 +149,7 @@ function carriedKind({ server, tool }) {
 }
 
 // The agent task tools that change a task on the board, by the fixed action each one reports.
-const TASK_TOOL_ACTIONS = new Map([["add_task", "added"], ["remove_task", "removed"], ["complete_task", "completed"], ["block_task", "blocked"]]);
+const TASK_TOOL_ACTIONS = new Map([["add_task", "added"], ["remove_task", "removed"], ["complete_task", "completed"], ["block_task", "blocked"], ["update_task", "updated"]]);
 // Only Pomegr's own MCP server, as either host names it; a server whose name merely contains it is third-party.
 const POMEGR_SERVER = /^(?:plugin_pomegr_)?pomegr$/;
 

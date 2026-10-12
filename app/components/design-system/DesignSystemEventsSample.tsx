@@ -9,6 +9,7 @@ function event(id: string, kind: SessionEvent["kind"], at: string, fields: Parti
 }
 
 const ITEMS: SessionEvent[] = [
+  event("e16", "task_updated", "2026-08-09T11:35:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),
   event("e15", "task_completed", "2026-08-09T11:34:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),
   event("e14", "task_blocked", "2026-08-09T11:33:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),
   event("e13", "task_removed", "2026-08-09T11:32:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),

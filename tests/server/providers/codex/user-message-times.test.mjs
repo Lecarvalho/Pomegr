@@ -43,8 +43,14 @@ test("Codex committed message times survive tails, deltas, checkpoints, restart 
   const id = "event-times-root", childId = "event-times-child";
   const file = path.join(directory, "rollout-root.jsonl"), childFile = path.join(directory, "rollout-child.jsonl");
   const header = { type: "session_meta", timestamp: at(0), payload: { id, cwd: root, source: "vscode" } };
+  const updateBegin = { type: "event_msg", timestamp: at(2), payload: { type: "mcp_tool_call_begin", call_id: "task-update", invocation: {
+    server: "pomegr", tool: "update_task", arguments: { task_id: "T-13", text: "UPDATED_TASK_TEXT_MUST_NOT_LEAK" },
+  } } };
+  const updateEnd = { type: "event_msg", timestamp: at(3), payload: { type: "mcp_tool_call_end", call_id: "task-update", invocation: {
+    server: "pomegr", tool: "update_task", arguments: {},
+  }, result: { Ok: { content: [{ type: "text", text: "PRIVATE_TASK_RESULT_MUST_NOT_LEAK" }] } } } };
   const padding = jsonl({ type: "response_item", timestamp: at(3), payload: { type: "function_call_output", output: "PRIVATE_OUTPUT".repeat(50_000) } });
-  await writeFile(file, jsonl(header, input(1)) + padding);
+  await writeFile(file, jsonl(header, input(1), updateBegin, updateEnd) + padding);
   await writeFile(childFile, jsonl({ ...header, payload: { id: childId, cwd: root, source: { subagent: { thread_spawn: { parent_thread_id: id } } } } }, input(2)));
   const provider = createCodexProvider({ codexHome: root, cacheMs: 0, includeArchived: false,
     writerPresence: { async refresh() {}, current() { return null; }, close() {} } });
@@ -67,6 +73,7 @@ test("Codex committed message times survive tails, deltas, checkpoints, restart 
   const first = await start();
   const times = () => published.at(-1).userMessageTimes;
   assert.deepEqual(times(), [at(1)], "initial input precedes the live tail; child inputs are excluded");
+  assert.equal(published.at(-1).toolCalls.filter((call) => call.taskAction === "updated").length, 1);
   const initial = structuredClone(published.at(-1));
   provider.qaStats(true);
   await appendFile(file, padding + jsonl(input(4)));
@@ -102,6 +109,9 @@ test("Codex committed message times survive tails, deltas, checkpoints, restart 
   first.controller.abort();
   const restarted = await start();
   assert.deepEqual(times(), [at(1), at(4), at(6)], "cold observation replays the same evidence");
+  assert.equal(published.at(-1).toolCalls.filter((call) => call.taskAction === "updated").length, 1,
+    "cold observation rederives the update action from the unchanged rollout");
+  assert.doesNotMatch(JSON.stringify(published.at(-1).toolCalls), /T-13|UPDATED_TASK_TEXT_MUST_NOT_LEAK|PRIVATE_TASK_RESULT_MUST_NOT_LEAK/u);
   await writeFile(file, jsonl(header) + jsonl(input(9)).slice(0, -5));
   await restarted.observer.hydrate(id);
   assert.deepEqual(times(), [at(1), at(4), at(6)], "incomplete replacement retains the old committed revision");

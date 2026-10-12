@@ -264,11 +264,12 @@ Present signals as agent-reported, not as Pomegr judgments.
 **Task events (task T-57, 2026-10-11):**
 
 - The feed may also carry an event for each of the agent's own Pomegr task tool calls
-  that changes a task: `add_task`, `remove_task`, `complete_task`, and `block_task`.
+  that changes a task: `add_task`, `remove_task`, `complete_task`, `block_task`, and
+  `update_task`.
 - The source is the session's recorded tool calls. The feed never reads the task store,
   so it is an observation of the session, not task-board content.
 - A provider adapter may mark such a tool call with one optional evidence value,
-  `taskAction`: `added`, `removed`, `completed`, or `blocked`.
+  `taskAction`: `added`, `removed`, `completed`, `blocked`, or `updated`.
   - It is set only for Pomegr's own MCP server and only when the recorded result is not
     an error.
   - It is checkpointed with the tool-call evidence and stays monitor-private. It is not
@@ -276,7 +277,8 @@ Present signals as agent-reported, not as Pomegr judgments.
 - Each of these events exposes only these values:
   - the normalized agent ID and label
   - the tool call's recorded time
-  - a fixed kind: `task_added`, `task_removed`, `task_completed`, or `task_blocked`
+  - a fixed kind: `task_added`, `task_removed`, `task_completed`, `task_blocked`, or
+    `task_updated`
 - Label a report as the agent's report. Only the owner marks a task done.
 
 **Session-event sidecar:**

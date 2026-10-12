@@ -432,17 +432,30 @@ test("synthetic assistant records preserve refill comparison and retention beyon
   }
 });
 
-test("Claude rebuilds unchanged pre-fix checkpoint evidence and publishes the retained refill once", async (t) => {
+test("Claude rebuilds unchanged pre-fix checkpoint evidence and publishes the retained refill and task update once", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-synthetic-refill-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, ".claude", "projects", "fixture", "local.jsonl");
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, claudeCacheRefillRecords().map((record) => JSON.stringify(record)).join("\n") + "\n");
-  const provider = createClaudeProvider({ homeDir: root, env: {}, explicitSession: file });
+  const updateCall = {
+    type: "assistant", timestamp: "2026-08-10T15:30:00.000Z", message: { content: [{
+      type: "tool_use", id: "task-update", name: "mcp__plugin_pomegr_pomegr__update_task",
+      input: { task_id: "T-13", text: "UPDATED_TASK_TEXT_MUST_NOT_LEAK" },
+    }] },
+  };
+  const updateResult = {
+    type: "user", timestamp: "2026-08-10T15:30:01.000Z", message: { content: [{ type: "tool_result", tool_use_id: "task-update", content: "PRIVATE_RESULT_MUST_NOT_LEAK" }] },
+  };
+  await writeFile(file, [...claudeCacheRefillRecords(), updateCall, updateResult].map((record) => JSON.stringify(record)).join("\n") + "\n");
+  const titleCreatedAt = "2026-08-10T10:00:00.000Z";
+  const provider = createClaudeProvider({ homeDir: root, env: {}, explicitSession: file,
+    scanTitleState: async () => ({ customTitle: "Checkpoint fixture", aiTitle: "", createdAt: titleCreatedAt }) });
   const historical = !(await provider.listSessions())[0].isLive;
   const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file], file, historical), null);
+  const currentFingerprint = crypto.createHash("sha256")
+    .update(`claude\0local\0${source.identity}:conversation-activity-v13:Checkpoint fixture\0${titleCreatedAt}:unknown`).digest("hex");
   const legacyFingerprint = crypto.createHash("sha256")
-    .update(`claude\0local\0${source.identity}:conversation-activity-v2`).digest("hex");
+    .update(`claude\0local\0${source.identity}:conversation-activity-v12:Checkpoint fixture\0${titleCreatedAt}:unknown`).digest("hex");
   let checkpoint = { fingerprint: legacyFingerprint, completeOffset: source.size };
   const controller = new AbortController();
   t.after(() => controller.abort());
@@ -459,11 +472,14 @@ test("Claude rebuilds unchanged pre-fix checkpoint evidence and publishes the re
   await observer.hydrate("local");
   assert.equal(published.length, 1, "a legacy checkpoint must replay even without new bytes");
   assert.notEqual(checkpoint.fingerprint, legacyFingerprint);
+  assert.equal(checkpoint.fingerprint, currentFingerprint, "only the parser identity version differs from the prior checkpoint");
   const state = monitorStateFromProviderEvidence("claude", published[0]);
   const { cacheEvents, requestSnapshots } = state.metrics.tokens;
   assert.equal(requestSnapshots.items.length, 66);
   assert.equal(cacheEvents.possibleFullRefills[0].count, 1);
   assert.equal(cacheEvents.possibleFullRefills[0].occurrences[0].observedAt, requestSnapshots.items[43].observedAt);
+  assert.equal(published[0].toolCalls.filter((call) => call.taskAction === "updated").length, 1);
+  assert.doesNotMatch(JSON.stringify(published[0].toolCalls), /T-13|UPDATED_TASK_TEXT_MUST_NOT_LEAK|PRIVATE_RESULT_MUST_NOT_LEAK/u);
   assert.doesNotMatch(JSON.stringify(state), /fixture-request|<synthetic>|cache_miss_reason|comparisonGroup|conversation-activity/);
   await observer.hydrate("local");
   assert.equal(published.length, 1, "unchanged corrected evidence must not churn revisions");
