@@ -294,7 +294,7 @@ describe("on a paired device", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, taskId: "T-7" }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(screen.getByText("Sessions are started and the queue is turned on in the Pomegr desktop app.")).toBeInTheDocument();
+    expect(screen.getByText("Sessions start on the computer running Pomegr. Turn the queue on in the desktop app.")).toBeInTheDocument();
     await user.type(await openPanel(user), "From a phone");
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());

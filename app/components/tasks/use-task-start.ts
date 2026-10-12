@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { Task } from "../../../shared/task-contract";
-import { openDesktopTaskWorktree, startDesktopTask, taskDesktopBridge, useTaskDesktopAvailability, type TaskStartStatus, type TaskWorktreeOpenStatus } from "./task-desktop";
+import { openDesktopTaskWorktree, startDesktopTask, taskDesktopBridge, useTaskEditAvailability, type TaskStartStatus, type TaskWorktreeOpenStatus } from "./task-desktop";
 import { heldStartLine } from "./task-gates-model";
 import type { TaskModalBoard } from "./task-modal-types";
 import { useMinuteClock } from "./task-panel-hooks";
@@ -46,7 +46,8 @@ function boardReason(task: Task, unsaved: boolean, now: number): string | null {
 }
 
 export function useTaskStart(repositoryId: string, task: Task, board: TaskModalBoard, unsaved: boolean, refresh: () => Promise<void>) {
-  const available = useTaskDesktopAvailability() === "available";
+  const access = useTaskEditAvailability();
+  const available = access === "desktop" || access === "paired";
   const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<{ status: TaskStartStatus; mark: string } | null>(null);
   const [folder, setFolder] = useState<TaskWorktreeOpenStatus | "opening" | null>(null);
@@ -61,7 +62,7 @@ export function useTaskStart(repositoryId: string, task: Task, board: TaskModalB
   const result = answer === null || stale ? null : answer.status;
   const locked = result !== null && FINAL.has(result);
   const run = async (separateWorktree = false) => {
-    if (inFlight.current || locked || reason !== null) return;
+    if (!available || inFlight.current || locked || reason !== null) return;
     inFlight.current = true;
     setPending(true);
     setAnswer(null);
@@ -74,7 +75,11 @@ export function useTaskStart(repositoryId: string, task: Task, board: TaskModalB
     // A held start is named from the board's gate readings, so the line is drawn from fresh ones.
     if (status === "started" || status === "gate_held") await refresh().catch(() => {});
   };
-  const resultLine = result === null ? null : (result === "gate_held" ? heldStartLine(task, board.queue) : null) ?? LINES[result];
+  const pairedLine = access !== "paired" ? null : result === "started"
+    ? "Session started in a new terminal on the computer running Pomegr."
+    : result === "cli_missing" ? "The provider's command-line tool was not found on the computer running Pomegr."
+    : result === "worktree_dirty" ? "This task's worktree has uncommitted changes. Commit or discard them on the computer running Pomegr, then try again." : null;
+  const resultLine = result === null ? null : pairedLine ?? (result === "gate_held" ? heldStartLine(task, board.queue) : null) ?? LINES[result];
   const line = pending ? null : locked ? resultLine : reason ?? resultLine;
   const folderOffered = available && !pending && reason === null && result === "worktree_dirty" && typeof taskDesktopBridge()?.taskWorktreeOpen === "function";
   const openFolder = async () => {

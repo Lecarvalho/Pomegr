@@ -60,7 +60,7 @@ import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "
 import { installTaskActionIpc, installTaskImageIpc } from "./task-action.mjs";
 import { createAgentChat, installAgentChatIpc } from "./agent-chat.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
-import { installTaskStartIpc, taskStartConfirmation } from "./task-dispatch.mjs";
+import { confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
 import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 import {
   clampWindowState,
@@ -116,6 +116,7 @@ let removeRepositoryInventoryIpc;
 let removeRepositoryPluginActionIpc;
 let removeTaskActionIpc;
 let removeTaskStartIpc;
+let taskStarter;
 let repositoryPluginCli;
 let privateMonitorOrigin;
 let phoneAccess;
@@ -447,6 +448,8 @@ async function stopRuntime() {
     removeTaskActionIpc = undefined;
     removeTaskStartIpc?.();
     removeTaskStartIpc = undefined;
+    taskStarter?.dispose();
+    taskStarter = undefined;
     repositoryPluginCli?.dispose();
     repositoryPluginCli = undefined;
     claudeUsageIntegration?.dispose();
@@ -673,8 +676,17 @@ async function startDesktop() {
           }),
         });
         const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot });
+        taskStarter = createTaskStart({
+          isTrustedEvent: trustedDesktopEvent,
+          monitorOrigin: privateMonitorOrigin,
+          authorizationToken,
+          environment: taskSessionEnvironment,
+          worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
+          openPath: (directory) => shell.openPath(directory),
+          confirm: (request) => confirmTaskStart(dialog, () => mainWindow, request),
+        });
         phoneAccess = createLanSharingController({
-          upstreamOrigin: web.origin, agentChat: agentChat.handle,
+          upstreamOrigin: web.origin, agentChat: agentChat.handle, taskStart: taskStarter.startPaired,
           authorizationToken,
           autoStart: desktopSettings.lanSharingAutoStart,
           canPersist: settingsLoad.canPersist,
@@ -712,25 +724,9 @@ async function startDesktop() {
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain,
-          isTrustedEvent: trustedDesktopEvent,
           monitorOrigin: privateMonitorOrigin,
           authorizationToken,
-          environment: taskSessionEnvironment,
-          worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
-          openPath: (directory) => shell.openPath(directory),
-          confirm: async (request) => {
-            if (!mainWindow || mainWindow.isDestroyed()) return false;
-            const answer = await dialog.showMessageBox(mainWindow, {
-              type: "question",
-              title: "Start a session",
-              ...taskStartConfirmation(request),
-              buttons: ["Start session", "Cancel"],
-              defaultId: 1,
-              cancelId: 1,
-              noLink: true,
-            });
-            return answer.response === 0;
-          },
+          starter: taskStarter,
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

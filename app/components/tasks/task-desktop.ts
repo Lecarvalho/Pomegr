@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThreshold, type TaskQueueSchedule, type TaskRun } from "../../../shared/task-contract";
 import { clientAccessMode, useClientAccess } from "../../hooks/ClientAccessContext";
 import type { FeatureInput } from "./task-features";
-import { postPairedTaskAction } from "./task-paired";
+import { postPairedTaskAction, postPairedTaskStart } from "./task-paired";
 
 // The two ways a client changes a task.
 
@@ -91,12 +91,16 @@ export function deleteDesktopTask(repositoryId: string, id: string): Promise<Tas
   return sendTaskAction(repositoryId, "delete", { id });
 }
 
-/** Asks the desktop to confirm and start a session for one task. */
+/** Confirms on the requesting device, then asks the desktop to start one task. */
 export async function startDesktopTask(repositoryId: string, id: string, separateWorktree = false): Promise<TaskStartStatus> {
   const bridge = typeof window === "undefined" ? undefined : (window as Window & { pomegrDesktop?: Partial<TaskDesktopBridge> }).pomegrDesktop;
-  if (typeof bridge?.taskStart !== "function") return "unavailable";
+  const native = typeof bridge?.taskStart === "function";
+  if (!native && (bridge || clientAccessMode() !== "lan")) return "unavailable";
   try {
-    const result: unknown = await (separateWorktree ? bridge.taskStart(repositoryId, id, true) : bridge.taskStart(repositoryId, id));
+    if (!native && !window.confirm(`Start task ${id}${separateWorktree ? " in a separate worktree" : ""}?\n\nThe session runs in a new terminal on the computer running Pomegr, using the task's saved Run on settings.${separateWorktree ? " The worktree starts from the current commit; uncommitted changes are left out and remain untouched." : ""}`)) return "cancelled";
+    const result: unknown = native
+      ? await (separateWorktree ? bridge!.taskStart!(repositoryId, id, true) : bridge!.taskStart!(repositoryId, id))
+      : await postPairedTaskStart(repositoryId, id, separateWorktree);
     const status = typeof result === "object" && result !== null ? (result as { status?: unknown }).status : undefined;
     if (typeof status !== "string") return "unavailable";
     return START_STATUSES.has(status) ? status as TaskStartStatus : "failed";

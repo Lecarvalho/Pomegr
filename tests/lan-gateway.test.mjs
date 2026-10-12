@@ -227,9 +227,10 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers: { ...actionHeaders, "Content-Type": "text/plain" }, body: action })).status, 403);
     assert.equal((await fetch(`${gateway.origin}/api/tasks/action?x=1`, { method: "POST", headers: actionHeaders, body: action })).status, 403);
     assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers: actionHeaders, body: JSON.stringify({ payload: "x".repeat(18 * 1024) }) })).status, 403);
-    for (const route of ["/api/tasks", "/api/tasks/action/", "/api/tasks/start", "/internal/tasks/create"]) {
+    for (const route of ["/api/tasks", "/api/tasks/action/", "/internal/tasks/create"]) {
       assert.equal((await fetch(`${gateway.origin}${route}`, { method: "POST", headers: actionHeaders, body: action })).status, 405);
     }
+    assert.deepEqual(await (await fetch(`${gateway.origin}/api/tasks/start`, { method: "POST", headers: actionHeaders, body: action })).json(), { status: "invalid" });
     assert.equal((await fetch(`${gateway.origin}/api/tasks/action`, { headers: { Cookie: cookie } })).status, 404);
     assert.equal(observed.length, beforeRefused);
     const beforeDenied = observed.length;
@@ -434,6 +435,30 @@ test("controller recovery closes streams, blocks reads and pairing, and restores
   } finally { await controller.dispose(); await close(upstream); }
 });
 
+test("LAN sharing passes the desktop starter's paired entrypoint to its gateway", async () => {
+  const network = { id: "test-home", label: "Test", address: "127.0.0.1", subnetMask: "255.255.255.0" };
+  const calls = [];
+  const starter = { startPaired: async (...args) => { calls.push(args); return { status: "started" }; } };
+  let gatewayStart;
+  const controller = createLanSharingController({
+    upstreamOrigin: "http://127.0.0.1:1234", authorizationToken: AUTHORIZATION,
+    networkReader: { read: async () => ({ status: "available", candidates: [network] }) },
+    taskStart: starter.startPaired,
+    startGateway: async (options) => {
+      gatewayStart = options.taskStart;
+      return { origin: "http://127.0.0.1:5678", snapshot: () => ({ pairedClients: 0 }), updateNetworkState() {}, revoke() {}, close: async () => {} };
+    },
+    schedule: () => 1, cancel: () => {},
+  });
+  try {
+    assert.equal((await controller.setSharing(true)).status, "sharing");
+    assert.equal(gatewayStart, starter.startPaired);
+    const authorized = () => true;
+    assert.deepEqual(await gatewayStart("repo-0123456789abcdef01234567", "T-3", true, authorized), { status: "started" });
+    assert.deepEqual(calls, [["repo-0123456789abcdef01234567", "T-3", true, authorized]]);
+  } finally { await controller.dispose(); }
+});
+
 test("gateway timeout and rejected verification preserve pairing without serving upstream data", async () => {
   let reads = 0;
   const upstream = http.createServer((_request, response) => { reads++; response.end("safe state"); });
@@ -591,6 +616,91 @@ test("LAN gateway answers a chat body with another key, or that is not JSON, as 
     await gateway.close();
     await close(upstream);
   }
+});
+
+test("LAN gateway handles paired manual task starts itself with strict consent and a fixed answer", async () => {
+  const received = [];
+  const observed = [];
+  const upstream = http.createServer((request, response) => { observed.push(request.url); response.end("{}"); });
+  const upstreamOrigin = await listen(upstream);
+  const gateway = await startLanGateway({
+    host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin,
+    authorizationToken: AUTHORIZATION, isNetworkAllowed: async () => true, networkPolicy: loopbackTestNetwork,
+    taskStart: async (...args) => {
+      received.push([...args.slice(0, 3), await args[3]()]);
+      return { status: received.length === 3 ? "private failure C:\\secret" : "started", secret: "private plan" };
+    },
+  });
+  try {
+    const cookie = await pair(gateway);
+    const headers = { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" };
+    const valid = { repositoryId: CHAT_REPOSITORY, taskId: "T-3", confirmed: true };
+    const send = (body, options = {}) => fetch(`${gateway.origin}/api/tasks/start${options.query || ""}`, {
+      method: "POST", headers: { ...headers, ...options.headers }, body: typeof body === "string" ? body : JSON.stringify(body),
+    });
+    const answer = await send(valid);
+    assert.equal(answer.status, 200);
+    assert.equal(answer.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await answer.json(), { status: "started" });
+    assert.equal(received.length, 1);
+    assert.deepEqual(received[0], [CHAT_REPOSITORY, "T-3", undefined, true]);
+    assert.deepEqual(await (await send({ ...valid, worktree: true })).json(), { status: "started" });
+    assert.equal(received[1][2], true);
+    assert.deepEqual(await (await send(valid)).json(), { status: "unavailable" }, "unexpected desktop details are stripped");
+    received.length = 0;
+
+    assert.equal((await fetch(`${gateway.origin}/api/tasks/start`, { method: "POST", headers: { Origin: gateway.origin, "Content-Type": "application/json" }, body: JSON.stringify(valid) })).status, 401);
+    assert.equal((await send(valid, { headers: { Origin: "http://127.0.0.1:1" } })).status, 403);
+    assert.equal((await send(valid, { query: "?x=1" })).status, 403);
+    assert.equal((await send(valid, { headers: { "Content-Type": "text/plain" } })).status, 403);
+    assert.equal(await requestStatus(gateway.origin, { path: "/api/tasks/start", method: "POST", headers: { Cookie: cookie, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(JSON.stringify(valid)) }, body: JSON.stringify(valid) }), 403);
+    assert.equal((await send({ ...valid, padding: "x".repeat(513) })).status, 403);
+    for (const body of [
+      { ...valid, confirmed: false }, { ...valid, confirmed: "true" }, { repositoryId: CHAT_REPOSITORY, taskId: "T-3" },
+      { ...valid, worktree: false }, { ...valid, extra: true }, { ...valid, repositoryId: "repo-bad" },
+      { ...valid, taskId: "T-0" }, [], "{", "null",
+    ]) {
+      assert.deepEqual(await (await send(body)).json(), { status: "invalid" });
+    }
+    assert.deepEqual(received, []);
+    assert.deepEqual(observed, [], "the web host never sees a task start");
+  } finally { await gateway.close(); await close(upstream); }
+});
+
+test("a paired start loses authorization when sharing is revoked during the desktop wait", async () => {
+  const upstream = http.createServer((_request, response) => response.end("{}"));
+  const upstreamOrigin = await listen(upstream);
+  let began;
+  const started = new Promise((resolve) => { began = resolve; });
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  let authorizedAfterRevocation;
+  let finish;
+  const completed = new Promise((resolve) => { finish = resolve; });
+  const gateway = await startLanGateway({
+    host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin,
+    authorizationToken: AUTHORIZATION, isNetworkAllowed: async () => true, networkPolicy: loopbackTestNetwork,
+    taskStart: async (_repositoryId, _taskId, _worktree, isAuthorized) => {
+      began();
+      await pending;
+      authorizedAfterRevocation = await isAuthorized();
+      finish();
+      return { status: "started" };
+    },
+  });
+  try {
+    const cookie = await pair(gateway);
+    const response = fetch(`${gateway.origin}/api/tasks/start`, {
+      method: "POST", headers: { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ repositoryId: CHAT_REPOSITORY, taskId: "T-3", confirmed: true }),
+    }).catch(() => null);
+    await started;
+    gateway.revoke();
+    release();
+    await completed;
+    assert.equal(authorizedAfterRevocation, false);
+    await response;
+  } finally { await gateway.close(); await close(upstream); }
 });
 
 test("LAN gateway answers unavailable when it was given no chat, and never leaks what a failing chat says", async () => {

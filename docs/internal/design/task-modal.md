@@ -240,7 +240,9 @@ A card's title opens the task modal for one stored task.
 - **Delete task** swaps in an inline confirmation.
 - The confirmation holds a Secondary delete and a Quiet Keep task. It uses no native dialog.
 - Then a spacer, a Secondary **Add to queue** or **Remove from queue**, and a Secondary **Start session**.
-- **Start session** asks for a native confirmation first.
+- **Start session** asks for a native confirmation in the desktop app, or a browser confirmation on a paired phone that names the task and says the session runs on the computer running Pomegr.
+- A paired phone's **Start in separate worktree** confirmation says that uncommitted changes are left out and remain untouched.
+- A paired phone's successful start says “Session started in a new terminal on the computer running Pomegr.”
 - The footer ends with the primary **Save**.
 - Footer action height follows the [Frame](#layout).
 

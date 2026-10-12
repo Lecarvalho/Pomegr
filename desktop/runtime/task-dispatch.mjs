@@ -50,6 +50,21 @@ export function taskStartConfirmation({ taskId, separateWorktree } = {}) {
     };
 }
 
+export async function confirmTaskStart(dialog, getWindow, request) {
+  const window = getWindow();
+  if (!window || window.isDestroyed()) return false;
+  const answer = await dialog.showMessageBox(window, {
+    type: "question",
+    title: "Start a session",
+    ...taskStartConfirmation(request),
+    buttons: ["Start session", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  return answer.response === 0;
+}
+
 /** Quotes one argument the way the Windows C runtime parses a command line, so it arrives unchanged. */
 export function windowsArgument(value) {
   if (value !== "" && !/[\s"]/u.test(value)) return value;
@@ -193,7 +208,7 @@ export function createTaskStart(options = {}) {
     try { await post("start-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ }
   }
 
-  async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false }) {
+  async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false, isAuthorized }) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
@@ -207,6 +222,12 @@ export function createTaskStart(options = {}) {
     if (!launcher) return result("unavailable");
     if (confirmRequired && await confirm({ taskId, separateWorktree }) !== true) return result("cancelled");
     if (disposed) return result("cancelled");
+    const authorized = async () => {
+      if (disposed) return false;
+      if (typeof isAuthorized !== "function") return true;
+      try { return await isAuthorized() === true && !disposed; } catch { return false; }
+    };
+    if (!await authorized()) return result("cancelled");
 
     let answer;
     try { answer = await post("start-plan", repositoryId, separateWorktree ? { id: taskId, worktree: true } : { id: taskId }); } catch { return result("unavailable"); }
@@ -216,6 +237,10 @@ export function createTaskStart(options = {}) {
     }
     const rawToken = isPlainObject(answer.plan) && typeof answer.plan.token === "string" && TOKEN.test(answer.plan.token)
       ? answer.plan.token : null;
+    if (!await authorized()) {
+      if (rawToken) await abort(repositoryId, taskId, rawToken);
+      return result("cancelled");
+    }
     const validated = validatePlan(answer.plan, taskId, directoryExists, fileExists);
     // A start the owner confirmed for a separate worktree never runs in the repository root.
     const plan = separateWorktree && validated?.worktree !== true ? null : validated;
@@ -248,6 +273,13 @@ export function createTaskStart(options = {}) {
       ...(plan.images.length > 0 ? provider.imageFlags(plan) : []),
     ];
     let started = false;
+    if (!await authorized()) {
+      await abort(repositoryId, taskId, plan.token);
+      if (made?.created === true) {
+        try { await worktrees.remove({ repositoryRoot: plan.root, repositoryId, taskId, deleteBranch: made.branchCreated === true }); } catch { /* kept */ }
+      }
+      return result("cancelled");
+    }
     try {
       const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {
         cwd: directory,
@@ -306,6 +338,12 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: false }, repositoryId, taskId);
   }
 
+  function startPaired(repositoryId, taskId, separateWorktree, isAuthorized) {
+    if (separateWorktree !== undefined && separateWorktree !== true) return Promise.resolve(result("invalid"));
+    if (typeof isAuthorized !== "function") return Promise.resolve(result("invalid"));
+    return exclusive({ confirmRequired: false, separateWorktree: separateWorktree === true, isAuthorized }, repositoryId, taskId);
+  }
+
   async function openWorktree(event, repositoryId, taskId) {
     if (!isTrustedEvent(event)) return result("invalid");
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
@@ -321,7 +359,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startQueued, openWorktree, cleanWorktree, dispose() { disposed = true; } });
+  return Object.freeze({ start, startQueued, startPaired, openWorktree, cleanWorktree, dispose() { disposed = true; } });
 }
 
 export function installTaskStartIpc(options = {}) {
