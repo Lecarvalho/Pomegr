@@ -373,7 +373,11 @@ describe("Design-system reference page", () => {
     expect(desktop.querySelectorAll(".taskColumnAdd")).toHaveLength(1);
     expect(within(lanes[0]).getByRole("button", { name: "New task" })).toHaveClass("commandQuietAction", "taskColumnAdd");
     expect(desktop.querySelector(".commandPrimaryAction")).toBeNull();
-    expect(desktop.querySelector(".taskBoardFootnote")).toHaveTextContent(/^Drag a card to another column/);
+    expect(desktop.querySelector(".taskBoardFootnote")).toHaveTextContent(/^Drag a card to move it\. In Ready, drop a card on a step/);
+    // The step target, the new-step zone, and the Move to step select are drawn from the shipped components.
+    expect(document.querySelector(".taskReadyGroup.isStepTarget")).toHaveAttribute("data-step", "2");
+    expect(document.querySelector(".taskReadyNewStep")).toHaveTextContent("New step 4 · after step 3");
+    expect(screen.getAllByRole("combobox", { name: "Move T-4 to step" }).length).toBeGreaterThan(0);
     expect(within(desktop).queryByRole("region", { name: "Queue status" })).toBeNull();
     expect(within(desktop).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
 

@@ -20,6 +20,8 @@ export type CommandSelectOption<V extends string | number = string> = {
   icon?: ReactNode;
   iconLabel?: string;
   group?: string;
+  /** Listed and read, but never chosen. */
+  disabled?: boolean;
 };
 
 type CommandSelectProps<V extends string | number> = {
@@ -69,7 +71,7 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
   const commit = (index: number) => {
     const option = options[index];
     close();
-    if (option && option.value !== value) onChange(option.value);
+    if (option && !option.disabled && option.value !== value) onChange(option.value);
   };
 
   const updatePosition = useCallback(() => {
@@ -224,6 +226,7 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
           id={optionId(index)}
           role="option"
           aria-selected={index === selectedIndex}
+          aria-disabled={option.disabled || undefined}
           data-value={String(option.value)}
           data-active={index === activeIndex || undefined}
           className="commandSelectOption"

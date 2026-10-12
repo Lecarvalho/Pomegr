@@ -17,10 +17,23 @@ function Caption({ group }: { group: StepGroup | ReadySingleGroup }) {
 }
 
 /** One group of the Ready lane: its caption, then its waiting cards in the lane's own order. */
-export function ReadyStepGroup({ group, renderCard }: { group: StepGroup | ReadySingleGroup; renderCard(task: Task): ReactNode }) {
+export function ReadyStepGroup({ group, renderCard, stepTarget = false }: {
+  group: StepGroup | ReadySingleGroup;
+  renderCard(task: Task): ReactNode;
+  /** The dragged card would take this step. */
+  stepTarget?: boolean;
+}) {
   const name = group.kind === "single" ? "Single tasks" : `${group.feature.name}, step ${group.step} of ${group.last}`;
-  return <li className={`taskReadyGroup${isFramed(group) ? " isParallel" : ""}`} data-ready-group={group.kind}>
+  return <li className={`taskReadyGroup${isFramed(group) ? " isParallel" : ""}${stepTarget ? " isStepTarget" : ""}`} data-ready-group={group.kind}
+    data-step-feature={group.kind === "step" ? group.feature.id : undefined} data-step={group.kind === "step" ? group.step : undefined}>
     <Caption group={group} />
     <ul className="taskReadyCards" aria-label={name}>{group.tasks.map(renderCard)}</ul>
+  </li>;
+}
+
+/** The zone a dragged card is dropped on to take a step of its own, after its feature's last step. */
+export function ReadyNewStepZone({ featureId, label }: { featureId: string; label: string }) {
+  return <li className="taskReadyNewStep" data-step-feature={featureId} data-new-step="">
+    <div role="group" aria-label="New step">{label}</div>
   </li>;
 }

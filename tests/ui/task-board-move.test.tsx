@@ -22,7 +22,7 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to another column, or between cards: a line shows where it will land. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {

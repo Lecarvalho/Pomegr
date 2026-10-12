@@ -400,7 +400,8 @@ describe("Pomegr visual contract", () => {
     // D6-D9: the frame is the strong line at the panel radius with no fill; an unframed group keeps the same inset.
     expect(styles).toMatch(/\.taskReadyGroup \{[^}]*gap: 6px[^}]*padding: 0 6px[^}]*border: 1px solid transparent/);
     expect(styles).toMatch(/\.taskReadyGroup\.isParallel \{ padding: 6px; border-color: var\(--command-line-strong\); border-radius: var\(--panel-radius\); \}/);
-    expect(styles).not.toMatch(/\.taskReady[A-Za-z]*[^{]*\{[^}]*(?:background|transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
+    // The one fill is the step target's (D27).
+    expect(styles.replace(/\.taskReadyGroup\.isStepTarget \{[^}]*\}/, "")).not.toMatch(/\.taskReady[A-Za-z]*[^{]*\{[^}]*(?:background|transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
     expect(styles).toMatch(/\.taskReadyCaption \{[^}]*justify-content: space-between[^}]*padding: 2px var\(--space-1\)/);
     expect(styles).toMatch(/\.taskReadyStep \{[^}]*color: var\(--command-ink\); font: 400 var\(--text-xs\)/);
     expect(styles).toMatch(/\.taskReadyFeature \{ color: var\(--command-muted\); \}/);
@@ -430,6 +431,40 @@ describe("Pomegr visual contract", () => {
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
     expect(sample).toMatch(/Ready lane, step groups/);
     expect(sample).toMatch(/Card outside Ready, parallel step/);
+  });
+
+  it("changes a card's step on the Board with the Queue view's rule, tokens, and the shared select", () => {
+    // D27: the step group under the dragged card takes the panel fill and the lane's two-pixel strong-line border.
+    expect(styles).toMatch(/\.taskReadyGroup\.isStepTarget \{ border-color: var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); box-shadow: inset 0 0 0 1px var\(--command-line-strong\); \}/);
+    // D28: the new-step zone is a dashed ink border at the panel radius with centered 12px ink text.
+    expect(styles).toMatch(/\.taskReadyNewStep \{ padding: 10px var\(--space-3\); border: 1px dashed var\(--command-ink\); border-radius: var\(--panel-radius\); color: var\(--command-ink\); font: 400 var\(--text-xs\)\/1\.4 var\(--font-ui\); text-align: center; \}/);
+    // D30: the select is 32px high with 12px text, and the toolbar stays drawn while its list is open.
+    expect(styles).toMatch(/\.taskMoveStep \.commandSelectTrigger \{ min-height: var\(--control-compact\); font-size: var\(--text-xs\); \}/);
+    expect(styles).toMatch(/\(pointer: coarse\) \{ \.taskMoveStep \.commandSelectTrigger \{ min-height: 44px; \} \}/);
+    expect(styles).toMatch(/\.taskCard:not\(:has\(:focus-visible\)\):not\(:has\(\[aria-expanded="true"\]\)\) \.taskCardMoves \{ position: absolute;/);
+    // D31: a disabled option of the shared select is muted and never chosen.
+    expect(styles).toMatch(/\.commandSelectOption\[aria-disabled="true"\] \{ color: var\(--command-muted\); cursor: default; \}/);
+    expect(designContract).toMatch(/| Disabled option\| Disabled option \| Muted text and the default cursor\./);
+    const tasksComponents = join(process.cwd(), "app", "components", "tasks");
+    const read = (name: string) => readFileSync(join(tasksComponents, name), "utf8");
+    // The Board writes no second step rule: its targets and options come from the Queue view's `reorderTarget`, and a drop sends the Queue view's action.
+    expect(read("use-card-drag.ts")).toMatch(/reorderTarget\(panel, task, step\)/);
+    expect(read("task-queue-model.ts")).toMatch(/export function boardStepChoices[^]*reorderTarget\(panel, task, candidate\.step\) === null\) continue;[^]*reorderTarget\(panel, task, null\)/);
+    expect(read("TaskBoardView.tsx")).toMatch(/void edits\?\.reorderQueueTask\(id, step\);/);
+    expect(read("TaskMoveBar.tsx")).toMatch(/<CommandSelect className="taskMoveStep" aria-label=\{`Move \$\{id\} to step`\} placeholder="Move to step…"/);
+    // D16: the footnote.
+    expect(read("TaskBoardView.tsx")).toMatch(/const FOOTNOTE = "Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own\.";/);
+    expect(designContract).toMatch(/### Changing a step/);
+    expect(designContract).toMatch(/the group \(`\.taskReadyGroup\.isStepTarget`\) takes the panel fill/);
+    expect(designContract).toMatch(/The zone has a one-pixel dashed `--command-ink` border, the panel radius, and 10px\/12px padding\./);
+    expect(designContract).toMatch(/No zone is drawn between two steps: the step action adds a step only after the last one\./);
+    expect(designContract).toMatch(/gains the \*\*Move to step…\*\* `CommandSelect` \(`\.taskMoveStep`\) after the four arrows/);
+    expect(designContract).toMatch(/reads “Step 1 · running”\. That option is disabled\./);
+    expect(designContract).toMatch(/“Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own\.”/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
+    expect(sample).toMatch(/Card, desktop app, Move to step/);
+    expect(sample).toMatch(/Ready lane, step target/);
+    expect(sample).toMatch(/Ready lane, new-step zone/);
   });
 
   it("draws the task modal frame as a modal dialog scrim with tokens only and documents its fields", () => {

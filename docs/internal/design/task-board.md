@@ -184,6 +184,7 @@ The head actions appear in this order:
 - The card the monitor lists first keeps the chip **Queued · next**.
 - That card adds one muted 12px “Waiting: …” line while a gate holds it and the queue is on.
 - The drop line and the move toolbar work on a grouped card as on any card.
+- A queued card of a feature changes step here. See [Changing a step](#changing-a-step).
 
 ### + New task
 
@@ -307,15 +308,38 @@ Each row below the title shows only when it is set, in this order:
 ### Keyboard and focus
 
 - The keyboard alternative is a `toolbar` named Move T-n of four [Icon](../../../DESIGN.md#buttons)-role arrow actions.
-- The toolbar is one tab stop. The arrow keys and Home/End work inside it.
+- The four arrows are one tab stop. The arrow keys and Home/End work inside the toolbar.
 - The toolbar is drawn only while the card holds keyboard focus.
 - The toolbar is always drawn on a coarse pointer.
 - Otherwise the toolbar stays in the accessibility tree.
 
+### Changing a step
+
+- In the desktop app, a queued card of a feature changes step on the Board. A queued card is a Queued or Scheduled card with no session.
+- The Board sends the Queue view's step action and applies the Queue view's rule. See [Moving queued tasks](#moving-queued-tasks).
+- While the card is dragged over a step group of its own feature, the group (`.taskReadyGroup.isStepTarget`) takes the panel fill.
+- That group also takes a two-pixel border, drawn as an inset one-pixel ring, in `--command-line-strong`.
+- Dropping the card on the group gives it that step. No drop line is drawn over a step target.
+- While the card is over the gap after the last step group of its feature in Ready, the **new-step zone** (`.taskReadyNewStep`) is drawn in that gap.
+- The zone has a one-pixel dashed `--command-ink` border, the panel radius, and 10px/12px padding.
+- The zone's text is centered 12px ink and reads “New step 3 · after step 2”, in the step numbers drawn now.
+- Dropping the card on the zone gives it a new last step. The zone is drawn only while the card is over that gap.
+- No zone is drawn between two steps: the step action adds a step only after the last one.
+- The card's own step is no target. The only card of the last step has no zone.
+- A step whose tasks are all done accepts nothing. A card never drops on a step of another feature.
+- A single task has no step target. A card that is not queued has none either.
+- The move toolbar of a queued card of a feature gains the **Move to step…** `CommandSelect` (`.taskMoveStep`) after the four arrows.
+- The select is 32px high with 12px text. It is 44px high on phone and coarse pointers. It is its own tab stop.
+- Its options are one for each unfinished step except the card's own, then **New last step**.
+- A step option reads “Step 2 · parallel with T-59, T-60”: the tasks of that step, by number.
+- A step with a task that has a session reads “Step 1 · running”. That option is disabled.
+- The toolbar stays drawn while the select's list is open.
+- After a change of step, a status line reads “T-n moved to step k.”
+
 ### Copy
 
-- A muted footnote under the board explains dragging.
-- Nothing moves while a feature filter is on.
+- A muted 12px footnote under the board reads “Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own.”
+- Nothing moves while a feature filter is on. No card changes step then.
 
 ## Queue
 
@@ -512,6 +536,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - Column headers.
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
 - The Ready lane with its step groups, and a card outside Ready in a parallel step.
+- The Ready lane with a step target and with the new-step zone, and a card with its Move to step select.
 - The feature filter and the capacity strip.
 - Whole boards and Queue views in their browser and desktop forms.
 - The queue switch and the banners.

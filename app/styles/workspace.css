@@ -263,6 +263,7 @@
 .commandSelectGroup { padding: var(--space-2) var(--space-2) var(--space-1); color: var(--command-muted); font: 500 var(--text-xs)/1.3 var(--font-ui); }
 .commandSelectOption[data-active] { background: var(--command-panel-2); }
 .commandSelectOption[aria-selected="true"] { color: var(--command-brand-text); font-weight: 600; }
+.commandSelectOption[aria-disabled="true"] { color: var(--command-muted); cursor: default; }
 @media (pointer: coarse) { .commandSelectOption { min-height: 44px; } }
 @media (forced-colors: active) { .commandSelectOption[data-active] { outline: 2px solid; outline-offset: -2px; } }
 .commandEmpty { min-height: 230px; padding: 34px; display: grid; place-items: center; align-content: center; border: 1px solid var(--command-line); background: var(--command-panel); color: var(--command-muted); text-align: center; }

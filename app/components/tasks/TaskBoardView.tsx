@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { CapacityStrip } from "./CapacityStrip";
 import { FeatureFilter } from "./FeatureFilter";
 import { QueueBanner } from "./QueueBanner";
 import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
-import { ReadyStepGroup } from "./ReadyStepGroup";
+import { ReadyNewStepZone, ReadyStepGroup } from "./ReadyStepGroup";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskQueueView } from "./TaskQueueView";
 import { TaskColumnHeader } from "./TaskColumnHeader";
@@ -16,13 +16,15 @@ import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilte
 import { waitingLine } from "./task-gates-model";
 import { useMinuteClock } from "./task-panel-hooks";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
+import { boardStepChoices, isBoardStepTask, newStepLabel, queueFeatures } from "./task-queue-model";
 import { readySegments, type ReadySegment } from "./task-ready-groups";
 import { useCardDrag, type CardDropLine, type ColumnDropHandlers } from "./use-card-drag";
+import { dropKey } from "./use-queue-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
 type OpenTask = (task: Task, opener: HTMLElement) => void;
 
-const FOOTNOTE = "Drag a card to another column, or between cards: a line shows where it will land. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or between steps to give it a step of its own.";
 
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 
@@ -51,7 +53,13 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
   const scroller = useRef<HTMLDivElement>(null);
   const restore = useRef<Restore | null>(null);
   const [announcement, setAnnouncement] = useState("");
-  const drag = useCardDrag(board, (move) => { void edits?.moveTask(move); });
+  const panels = useMemo(() => queueFeatures(board), [board]);
+  // A change of step is the Queue view's own action and rule.
+  const moveStep = (id: string, step: number) => {
+    setAnnouncement(`${id} moved to step ${step}.`);
+    void edits?.reorderQueueTask(id, step);
+  };
+  const drag = useCardDrag(board, (move) => { void edits?.moveTask(move); }, { columnId: readyId, panels, onStep: moveStep });
   const signature = columns.map((column) => `${column.id}:${column.tasks.map((task) => task.id).join(",")}`).join("|");
   const settled = edits?.settled ?? 0;
 
@@ -75,8 +83,9 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     (control ?? card).focus({ preventScroll: true });
   }, [reveal]);
 
+  const cardOf = (id: string) => [...(scroller.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === id);
   const cardControl = (id: string, kind: CardMoveKind) => () => {
-    const card = [...(scroller.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === id);
+    const card = cardOf(id);
     return card?.querySelector<HTMLElement>(`[data-move="${kind}"]:not(:disabled)`) ?? card?.querySelector<HTMLElement>("[data-move]:not(:disabled)") ?? card?.querySelector<HTMLElement>(".taskCardOpen") ?? null;
   };
 
@@ -88,11 +97,22 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     setAnnouncement(column ? `${id} moved to ${column.name}, position ${Math.min(move.position, column.tasks.length) + 1}.` : "");
     void edits.moveTask(move);
   };
+  const stepControl = (id: string) => () => {
+    const card = cardOf(id);
+    return card?.querySelector<HTMLElement>(".taskMoveStep [role='combobox']") ?? card?.querySelector<HTMLElement>(".taskCardOpen") ?? null;
+  };
+  const stepMoveFor = (task: Task): TaskCardMove["step"] => {
+    const panel = isBoardStepTask(task) ? panels.find((candidate) => candidate.feature.id === task.featureId) : undefined;
+    if (!edits || !panel) return undefined;
+    return { choices: boardStepChoices(panel, task), onMove: (step) => { restore.current = { find: stepControl(task.id), settled: edits.settled }; moveStep(task.id, step); } };
+  };
   const cardMoveFor = (task: Task): TaskCardMove | undefined => edits && !filtered ? {
     drag: drag.cardHandlers(task.id),
     available: Object.fromEntries(KINDS.map((kind) => [kind, cardMove(board, task.id, kind) !== null])) as TaskCardMove["available"],
     onMove: (kind) => moveCard(task.id, kind),
+    step: stepMoveFor(task),
   } : undefined;
+  const zonePanel = panels.find((panel) => drag.overStep === dropKey(panel.feature.id, null));
 
   return <>
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
@@ -102,7 +122,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
         {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.order[0] ?? null}
-          ready={column.id === readyId ? { segments: readySegments(column.tasks, board), queue: board.queue, now } : undefined}
+          ready={column.id === readyId ? { segments: readySegments(column.tasks, board), queue: board.queue, now, overStep: drag.overStep,
+            newStep: zonePanel && { featureId: zonePanel.feature.id, label: newStepLabel(zonePanel) } } : undefined}
           dropTarget={drag.overColumn === column.id} dropLine={drag.dropLine?.columnId === column.id ? drag.dropLine : undefined} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} newTask={index === 0 ? newTask : undefined} />)}
       </div>
     </div>}
@@ -112,7 +133,15 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: Task
 }
 
 /** The Ready lane's step groups, the queue their Waiting line reads, and the clock of their Starts line. */
-export type ReadyLane = { segments: ReadySegment[]; queue: TaskBoard["queue"]; now?: number };
+export type ReadyLane = {
+  segments: ReadySegment[];
+  queue: TaskBoard["queue"];
+  now?: number;
+  /** The step target under the dragged card, as a `dropKey`. */
+  overStep?: string | null;
+  /** The new-step zone, drawn after the last group of its feature while the dragged card is over that gap. */
+  newStep?: { featureId: string; label: string };
+};
 
 export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine, drop, cardMoveFor, newTask, ready }: {
   column: TaskColumnView;
@@ -133,10 +162,15 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
   const card = (task: Task, grouped = false) => <TaskCard key={task.id} task={task} grouped={grouped} now={ready?.now} waiting={grouped && ready ? waitingLine(ready.queue, task.id) : undefined}
     dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && task.id === lastId ? "after" : undefined}
     featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
+  const zoneAfter = ready?.newStep && ready.segments.findLast((segment) => segment.kind === "step" && segment.feature.id === ready.newStep?.featureId)?.key;
+  const group = (segment: Exclude<ReadySegment, { kind: "card" }>) => <Fragment key={segment.key}>
+    <ReadyStepGroup group={segment} renderCard={(task) => card(task, true)} stepTarget={segment.kind === "step" && ready?.overStep === dropKey(segment.feature.id, segment.step)} />
+    {ready?.newStep && segment.key === zoneAfter && <ReadyNewStepZone {...ready.newStep} />}
+  </Fragment>;
   return <section className={`taskColumn${dropTarget ? " isDropTarget" : ""}`} data-column-id={column.id} aria-labelledby={headingId} {...drop}>
     <TaskColumnHeader column={column} headingId={headingId} taskCount={column.tasks.length} />
     {column.tasks.length > 0 && <ul className="taskColumnList">{ready
-      ? ready.segments.map((segment) => segment.kind === "card" ? card(segment.task) : <ReadyStepGroup key={segment.key} group={segment} renderCard={(task) => card(task, true)} />)
+      ? ready.segments.map((segment) => segment.kind === "card" ? card(segment.task) : group(segment))
       : column.tasks.map((task) => card(task))}</ul>}
     {newTask && <NewTaskAction {...newTask} />}
   </section>;
