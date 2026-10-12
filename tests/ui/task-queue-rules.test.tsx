@@ -378,7 +378,7 @@ describe("without the desktop bridge", () => {
     expect(card("T-4")).toBeInTheDocument();
     expect(document.querySelectorAll("[draggable]")).toHaveLength(0);
     // The Feature filter is a combobox too; no card carries a Move to step select.
-    expect(screen.queryAllByRole("combobox").filter((box) => /^Move T-d+ to step$/.test(box.getAttribute("aria-label") ?? ""))).toHaveLength(0);
+    expect(screen.queryAllByRole("combobox").filter((box) => /^Move T-\d+ to step$/.test(box.getAttribute("aria-label") ?? ""))).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "+ New feature" })).not.toBeInTheDocument();
     expect(document.querySelector(".taskBoardFootnote")).toBeNull();
     expect(chipText("T-2")).toBe("Queued · next");

@@ -2,7 +2,7 @@ import type { Task, TaskBoard, TaskFeature } from "../../../shared/task-contract
 import { waitsInQueue } from "./task-board-model";
 
 export type QueueStep = { step: number; tasks: Task[]; allDone: boolean };
-export type QueueFeature = { feature: TaskFeature; steps: QueueStep[]; total: number; done: number; highest: number };
+export type QueueFeature = { feature: TaskFeature; steps: QueueStep[]; highest: number };
 
 function idNumber(id: string) {
   return Number(id.slice(2));
@@ -23,7 +23,7 @@ export function queueFeatures(board: Pick<TaskBoard, "features" | "tasks">): Que
     }
     const steps = [...byStep.entries()].sort((left, right) => left[0] - right[0])
       .map(([step, tasks]) => ({ step, tasks: tasks.sort(byTaskNumber), allDone: tasks.every((task) => task.state === "done") }));
-    panels.push({ feature, steps, total: own.length, done: own.filter((task) => task.state === "done").length, highest: steps.at(-1)?.step ?? 0 });
+    panels.push({ feature, steps, highest: steps.at(-1)?.step ?? 0 });
   }
   return panels;
 }

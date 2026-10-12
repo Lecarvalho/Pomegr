@@ -119,7 +119,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, browser (blocked queue)" note="Read-only: no draggable card, no control. The Queue banner sits above the capacity strip, the feature filter and the columns; columns scroll sideways instead of shrinking below 220px.">
+      <Sample label="Board, browser (blocked queue)" note="Read-only: no draggable card and no control but Queue settings. The Queue banner sits above the capacity strip, the feature filter and the columns; columns scroll sideways instead of shrinking below 220px.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_BLOCKED} /></div></Frame>
       </Sample>
     </div>

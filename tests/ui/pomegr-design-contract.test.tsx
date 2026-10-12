@@ -474,7 +474,9 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.taskCard:not\(:has\(:focus-visible\)\):not\(:has\(\[aria-expanded="true"\]\)\) \.taskCardMoves \{ position: absolute;/);
     // D31: a disabled option of the shared select is muted and never chosen.
     expect(styles).toMatch(/\.commandSelectOption\[aria-disabled="true"\] \{ color: var\(--command-muted\); cursor: default; \}/);
-    expect(designContract).toMatch(/| Disabled option\| Disabled option \| Muted text and the default cursor\./);
+    expect(designContract).toMatch(/\| Disabled option \| Muted text and the default cursor\./);
+    // D25: Requeue is the Quiet role at the compact control height, in ink.
+    expect(styles).toMatch(/\.taskQueueBannerActions \.commandQuietAction \{ min-height: var\(--control-compact\); color: var\(--command-ink\); \}/);
     const tasksComponents = join(process.cwd(), "app", "components", "tasks");
     const read = (name: string) => readFileSync(join(tasksComponents, name), "utf8");
     // The Board writes no second step rule: its targets and options come from `reorderTarget`, and a drop sends the `queue_reorder` action.
