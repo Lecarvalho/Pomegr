@@ -88,7 +88,11 @@ Account usage may also come from Claude Code's local status-line usage windows. 
 are provider-reported account percentages, not inferred token spend or session usage.
 The adapter accepts the complete five-hour/seven-day pair, retains its observation time,
 and marks it stale after five minutes or when a window reset has passed. Identical repeated
-status-line emissions do not renew freshness. See [local usage setup](../development/configuration.md#claude-local-usage-feed)
+status-line emissions do not renew freshness. A reading from the provider API has its own
+bound: it stays fresh for ten minutes, which is longer than the five-minute refresh interval
+plus the one-minute usage poll, so a healthy account is not stale while a refresh runs. It
+is stale as soon as a later refresh fails. The optional usage guard applies the same
+ten-minute bound to the age of a reading, for either provider. See [local usage setup](../development/configuration.md#claude-local-usage-feed)
 and the [observation contract](observation-cache.md#local-claude-usage-observations-and-desktop-recovery).
 
 Fable is not included in the local usage pair. A separately retained API value keeps its

@@ -2709,8 +2709,9 @@ a changed source cannot be published or checkpointed. This deliberately favors i
 cache reuse when Claude refreshes its credentials. The local status-line pair retains its
 existing operational profile/data-root scoping and separate schema.
 
-Restored remote data keeps its original observation timestamp and is marked stale by the
-existing freshness rules. A newer local pair can still show the restored Fable value as
+Restored remote data keeps its original observation timestamp and follows the
+[provider reading freshness rule](metrics.md#api-list-rate-estimate): stale when it is
+older than ten minutes or when the restored attempt failed. A newer local pair can still show the restored Fable value as
 **Last API value**. Restoring a failed attempt preserves the last good API observation and
 the full provider retry deadline, so restarting Pomegr does not cause an early retry for
 the same credential source. A successful response that omits Fable clears the model value,
