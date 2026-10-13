@@ -17,10 +17,12 @@ function AgentHead({ caption }: { caption: string | null }) {
   return <p className="agentChatMessageHead"><span className="agentChatMessageName">Aril</span>{caption && <span className="agentChatMessageCaption">{caption}</span>}</p>;
 }
 
-function AgentMessage({ message, tasks, resolving, onApply, onDismiss }: {
+function AgentMessage({ message, tasks, resolving, startHere, heldStart, onApply, onDismiss }: {
   message: AgentChatAgentMessage;
   tasks: readonly BoardTask[];
   resolving: string | null;
+  startHere: boolean;
+  heldStart?(taskId: string): string | null;
   onApply(proposalId: string): void;
   onDismiss(proposalId: string): void;
 }) {
@@ -28,7 +30,7 @@ function AgentMessage({ message, tasks, resolving, onApply, onDismiss }: {
     <AgentHead caption={agentCaption(message)} />
     {message.text !== "" && <AgentChatMarkdown text={message.text} />}
     {message.status !== "complete" && <p className="agentChatMessageNote">{STATUS_NOTES[message.status]}</p>}
-    {message.proposal && <AgentChatProposalCard proposal={message.proposal} tasks={tasks} busy={resolving === message.proposal.id} onApply={onApply} onDismiss={onDismiss} />}
+    {message.proposal && <AgentChatProposalCard proposal={message.proposal} tasks={tasks} busy={resolving === message.proposal.id} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />}
     {message.proposalUnreadable && <p className="taskNotice warning agentChatNotice">{UNREADABLE_PROPOSAL}</p>}
   </article>;
 }
@@ -49,7 +51,7 @@ function Empty({ onSuggest }: { onSuggest(text: string): void }) {
  * it stays where they are and offers Jump to latest. The partial answer is not a live region of its own: the log
  * announces each stored message, and the activity line is a status.
  */
-export function AgentChatMessages({ state, conversation, turn, pendingMessage, tasks, resolving, pinSignal = 0, onSuggest, onApply, onDismiss }: {
+export function AgentChatMessages({ state, conversation, turn, pendingMessage, tasks, resolving, pinSignal = 0, startHere = false, heldStart, onSuggest, onApply, onDismiss }: {
   state: AgentChatLogState;
   conversation: AgentChatConversation | null;
   turn: AgentChatTurn | null;
@@ -58,6 +60,10 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, t
   resolving: string | null;
   /** Changing it brings the newest line back into view, as when the owner sends a message. */
   pinSignal?: number;
+  /** True in the desktop window, where a proposed session start can be applied. */
+  startHere?: boolean;
+  /** The gates that hold a task's start now, as one line from the board's readings. */
+  heldStart?(taskId: string): string | null;
   onSuggest(text: string): void;
   onApply(proposalId: string): void;
   onDismiss(proposalId: string): void;
@@ -97,7 +103,7 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, t
       {state === "ready" && <>
         {messages.map((message) => (message.role === "user"
           ? <article key={message.id} className="agentChatMessage isOwner" aria-label="You"><p>{message.text}</p></article>
-          : <AgentMessage key={message.id} message={message} tasks={tasks} resolving={resolving} onApply={onApply} onDismiss={onDismiss} />))}
+          : <AgentMessage key={message.id} message={message} tasks={tasks} resolving={resolving} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />))}
         {showPending && <article className="agentChatMessage isOwner" aria-label="You"><p>{pendingMessage}</p></article>}
         {running && <article className="agentChatMessage isAgent isWriting" aria-label="Aril">
           <AgentHead caption={turn ? agentCaption(turn) : null} />

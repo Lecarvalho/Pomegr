@@ -21,7 +21,7 @@ test("the proposal contract constants are fixed", () => {
   assert.equal(PROPOSAL_FENCE, "pomegr-board");
   assert.equal(PROPOSAL_OPERATION_LIMIT, 40);
   assert.equal(PROPOSAL_SUMMARY_LIMIT, 300);
-  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step"]);
+  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session"]);
   assert.deepEqual([...BOARD_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
 });
 
@@ -35,6 +35,7 @@ test("every operation is accepted in its minimal form and kept as written", () =
     [{ op: "queue_task", id: "T-1" }, { op: "queue_task", id: "T-1" }],
     [{ op: "unqueue_task", id: "T-1" }, { op: "unqueue_task", id: "T-1" }],
     [{ op: "set_step", id: "T-1", step: 3 }, { op: "set_step", id: "T-1", step: 3 }],
+    [{ op: "start_session", id: "T-1" }, { op: "start_session", id: "T-1" }],
   ];
   assert.equal(accepted.length, BOARD_OPERATIONS.length);
   for (const [source, expected] of accepted) assert.deepEqual(normalizeOperation(source), expected, source.op);

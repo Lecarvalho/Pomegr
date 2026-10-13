@@ -4,7 +4,14 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session",
+]);
+// The one operation that is not a board change: it asks the desktop to start a session for a task, and stands alone in its proposal.
+export const START_OPERATION = "start_session";
+// Why an approved start did not launch a session: the fixed statuses of a manual start, without `started` and `cancelled`.
+export const START_FAILURES = Object.freeze([
+  "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held", "unsupported_provider", "not_found", "busy",
+  "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty",
 ]);
 export const BOARD_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
 
@@ -156,7 +163,7 @@ export function normalizeOperation(source) {
     const at = step(source.step);
     return only(source, ["op", "id", "step"]) && at !== null ? { op, id, step: at } : null;
   }
-  // delete_task, queue_task, unqueue_task
+  // delete_task, queue_task, unqueue_task, start_session
   return only(source, ["op", "id"]) ? { op, id } : null;
 }
 
@@ -172,7 +179,15 @@ export function normalizeProposal(source) {
     if (!operation) return null;
     operations.push(operation);
   }
+  // A start is answered on its own, so the owner approves one session for one named task and nothing else.
+  if (operations.length > 1 && operations.some((operation) => operation.op === START_OPERATION)) return null;
   return { summary, operations };
+}
+
+/** The task a proposal asks to start a session for, or null when it is a proposal of board changes. */
+export function startProposalTask(proposal) {
+  const operations = Array.isArray(proposal?.operations) ? proposal.operations : [];
+  return operations.length === 1 && operations[0]?.op === START_OPERATION ? taskId(operations[0].id) : null;
 }
 
 /**
@@ -262,6 +277,8 @@ export async function applyOperations(operations, { post, board }) {
   for (const operation of operations) {
     if (results.some((result) => result.ok !== true)) { results.push(failure("skipped")); continue; }
     const { op } = operation;
+    // A start is never a task action. The chat sends a start proposal to the dispatcher and never here.
+    if (op === START_OPERATION) { results.push(failure("unsupported")); continue; }
     if (op === "create_feature") {
       // A feature that is already there is the outcome the operation asked for.
       results.push(openFeature(operation.name) ? { ok: true } : (await act("feature_create", { name: operation.name })).answer);

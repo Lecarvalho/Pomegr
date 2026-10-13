@@ -6,6 +6,7 @@ import { useTasks } from "../../tasks-store";
 import type { AgentChatProvider } from "../../../shared/agent-chat-contract";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { DEFAULT_RUN, NO_MODELS, runFromSelectValue, runSelectOptions, runSelectValue } from "../tasks/task-fields";
+import { heldStartLine } from "../tasks/task-gates-model";
 import { useTaskModelOptions } from "../tasks/task-panel-hooks";
 import { AgentChatComposer, type AgentChatComposerHandle } from "./AgentChatComposer";
 import { AgentChatPanelFrame, AgentChatHeader, AgentChatRepositoryRow } from "./AgentChatFrame";
@@ -71,6 +72,10 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
     if (!await view.send(text, run.provider, run.model)) setDraft((current) => (current === "" ? text : current));
   };
   const apply = async (proposalId: string) => { if (await view.apply(proposalId)) await refresh(); };
+  const heldStart = (taskId: string) => {
+    const task = board.tasks.find((candidate) => candidate.id === taskId);
+    return task ? heldStartLine(task, board.queue) : null;
+  };
   const startNew = () => { view.open(null); setHistoryOpen(false); composer.current?.focus(); };
   const suggest = (text: string) => { setDraft(text); composer.current?.focus(); };
 
@@ -88,7 +93,7 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
         ? <AgentChatHistory conversations={view.conversations} openId={view.openId} runningId={view.runningId}
           onOpen={(conversationId) => { view.open(conversationId); setHistoryOpen(false); }} onDelete={(conversationId) => { void view.remove(conversationId); }} />
         : <AgentChatMessages state={logState} conversation={view.conversation} turn={view.turn} pendingMessage={view.pendingMessage} tasks={board.tasks}
-          resolving={view.resolving} pinSignal={pin} onSuggest={suggest} onApply={(proposalId) => { void apply(proposalId); }} onDismiss={(proposalId) => { void view.dismiss(proposalId); }} />}
+          resolving={view.resolving} pinSignal={pin} startHere={availability === "desktop"} heldStart={heldStart} onSuggest={suggest} onApply={(proposalId) => { void apply(proposalId); }} onDismiss={(proposalId) => { void view.dismiss(proposalId); }} />}
     </div>
     <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop}
       runOptions={runOptions} runValue={runSelectValue({ provider: run.provider, model: run.model, effort: null })}

@@ -5,7 +5,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
-import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT } from "./agent-chat-proposal.mjs";
+import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, START_FAILURES, START_OPERATION } from "./agent-chat-proposal.mjs";
 
 export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
 export const CONVERSATION_LIMIT = 50;
@@ -59,6 +59,11 @@ function storedOperation(operation) {
 
 function storedResult(result) {
   if (!isPlainObject(result) || typeof result.ok !== "boolean") return null;
+  // The outcome of a start: launched, or the fixed status that held or failed it.
+  if (result.start !== undefined) {
+    if (result.ok) return result.start === "started" ? { ok: true, start: "started" } : null;
+    return result.error === "not_started" && START_FAILURES.includes(result.start) ? { ok: false, error: "not_started", start: result.start } : null;
+  }
   const taskId = typeof result.taskId === "string" && TASK_ID.test(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
   return typeof result.error === "string" && RESULT_ERRORS.has(result.error) ? { ok: false, error: result.error, ...taskId } : null;
@@ -70,11 +75,16 @@ function storedProposal(proposal) {
     || proposal.operations.length === 0 || proposal.operations.length > PROPOSAL_OPERATION_LIMIT) return null;
   const operations = proposal.operations.map(storedOperation);
   if (operations.some((operation) => operation === null)) return null;
+  const start = operations.some((operation) => operation.op === START_OPERATION);
+  // A start stands alone, and it either launched (`applied`) or waits for the owner's next answer.
+  if (start && (operations.length !== 1 || proposal.state === "partial")) return null;
   const stored = { id: proposal.id, summary: proposal.summary, operations, state: proposal.state };
   if (proposal.results !== undefined) {
     if (!Array.isArray(proposal.results) || proposal.results.length !== operations.length) return null;
     const results = proposal.results.map(storedResult);
     if (results.some((result) => result === null)) return null;
+    if (results.some((result) => result.start !== undefined) !== start) return null;
+    if (start && results[0].ok !== (proposal.state === "applied")) return null;
     stored.results = results;
   }
   return stored;

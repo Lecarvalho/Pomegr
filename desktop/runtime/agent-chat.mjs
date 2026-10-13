@@ -8,7 +8,7 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { composePrompt } from "./agent-chat-prompt.mjs";
-import { applyOperations, extractProposal, visibleAnswer } from "./agent-chat-proposal.mjs";
+import { applyOperations, extractProposal, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
 import { runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
@@ -17,7 +17,7 @@ import { resolveCodexExecutable } from "./plugin-cli.mjs";
 
 export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat";
 export const AGENT_CHAT_OPERATIONS = Object.freeze(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
-export const AGENT_CHAT_ERRORS = Object.freeze(["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable"]);
+export const AGENT_CHAT_ERRORS = Object.freeze(["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"]);
 export const AGENT_CHAT_REQUEST_MAX_BYTES = 17 * 1024;
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -77,6 +77,8 @@ export function createAgentChat(options = {}) {
   const spawn = options.spawn || spawnChild;
   const now = options.now || (() => new Date());
   const runTurn = options.runTurn || runChatTurn;
+  // The desktop's manual start, behind its native confirmation: `(event, repositoryId, taskId)` answers `{ status }`.
+  const startTask = typeof options.startTask === "function" ? options.startTask : null;
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
   const store = options.store || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
     ? createAgentChatStore({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
@@ -249,20 +251,38 @@ export function createAgentChat(options = {}) {
     return await store.remove(payload.repositoryId, payload.conversationId) ? { ok: true } : UNAVAILABLE;
   }
 
+  // An approved start goes to the manual start of the Tasks page and to nothing else: the same native confirmation,
+  // start plan, gates, and launch slot. Only a launch answers the proposal; a start that was held or failed keeps it
+  // pending with the fixed status, so the owner may apply it again. Null when the owner cancelled the confirmation.
+  async function startSession(event, repositoryId, taskId, proposal) {
+    let status;
+    try { status = (await startTask(event, repositoryId, taskId))?.status; } catch { status = "failed"; }
+    if (status === "cancelled") return null;
+    if (status === "started") return { ...proposal, state: "applied", results: [{ ok: true, start: "started" }] };
+    return { ...proposal, state: "pending", results: [{ ok: false, error: "not_started", start: START_FAILURES.includes(status) ? status : "unavailable" }] };
+  }
+
   // Apply and Dismiss are the owner's answer to one proposal; each proposal takes one answer.
-  async function resolve(payload, approve) {
+  async function resolve(payload, approve, origin) {
     const found = await located(payload, ["repositoryId", "conversationId", "proposalId"]);
     if (!found || typeof payload.proposalId !== "string" || !PROPOSAL_ID.test(payload.proposalId)) return INVALID;
     const { repositoryId, proposalId } = payload;
     const message = found.conversation?.messages.find((entry) => entry.role === "agent" && entry.proposal?.id === proposalId);
     if (!message) return refused("not_found");
     if (message.proposal.state !== "pending") return refused("conflict");
+    const startTaskId = approve ? startProposalTask(message.proposal) : null;
+    // Only the desktop window starts a session from the chat: the confirmation is shown there, and a paired device has no such event.
+    if (startTaskId && !origin?.event) return refused("desktop_only");
+    if (startTaskId && !startTask) return UNAVAILABLE;
     const key = `${repositoryId}/${proposalId}`;
     if (applying.has(key)) return refused("busy");
     applying.add(key);
     try {
       let proposal = { ...message.proposal, state: "dismissed" };
-      if (approve) {
+      if (startTaskId) {
+        proposal = await startSession(origin.event, repositoryId, startTaskId, message.proposal);
+        if (!proposal) return { ok: true };
+      } else if (approve) {
         const board = await readBoard(repositoryId);
         if (!board) return UNAVAILABLE;
         const results = await applyOperations(message.proposal.operations, { board, post: (action, body) => taskAction(repositoryId, action, body) });
@@ -278,16 +298,19 @@ export function createAgentChat(options = {}) {
     }
   }
 
-  const handlers = { list, read, send, stop, delete: remove, apply: (payload) => resolve(payload, true), dismiss: (payload) => resolve(payload, false) };
+  const handlers = { list, read, send, stop, delete: remove, apply: (payload, origin) => resolve(payload, true, origin), dismiss: (payload) => resolve(payload, false) };
 
-  /** One operation for the owner: from the desktop window, or from a paired device through the LAN gateway. */
-  async function handle(operation, payload) {
+  /**
+   * One operation for the owner: from the desktop window, or from a paired device through the LAN gateway. `origin`
+   * is `{ event }` only for a call the trusted desktop window made; without it the chat starts no session.
+   */
+  async function handle(operation, payload, origin) {
     if (typeof operation !== "string" || !Object.hasOwn(handlers, operation) || !isPlainObject(payload)) return INVALID;
     try {
       if (Buffer.byteLength(JSON.stringify(payload), "utf8") > AGENT_CHAT_REQUEST_MAX_BYTES) return INVALID;
     } catch { return INVALID; }
     if (disposed || !store || !monitorOrigin || !authorizationToken) return UNAVAILABLE;
-    try { return await handlers[operation](payload); } catch { return UNAVAILABLE; }
+    try { return await handlers[operation](payload, origin); } catch { return UNAVAILABLE; }
   }
 
   return Object.freeze({
@@ -305,7 +328,7 @@ export function installAgentChatIpc(options = {}) {
   ipcMain.removeHandler(AGENT_CHAT_CHANNEL);
   ipcMain.handle(AGENT_CHAT_CHANNEL, async (event, operation, payload) => {
     if (!isTrustedEvent(event)) return INVALID;
-    try { return await chat.handle(operation, payload); } catch { return UNAVAILABLE; }
+    try { return await chat.handle(operation, payload, { event }); } catch { return UNAVAILABLE; }
   });
   return () => { ipcMain.removeHandler(AGENT_CHAT_CHANNEL); chat.dispose?.(); };
 }

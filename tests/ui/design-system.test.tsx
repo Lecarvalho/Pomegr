@@ -688,6 +688,20 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(sample(chat, "Proposal, partly applied")).toHaveTextContent("Created T-19, but it could not be queued");
     expect(sample(chat, "Proposal, partly applied")).toHaveTextContent("Not run");
 
+    const startCard = (label: string) => within(sample(chat, label)).getByRole("region", { name: "Proposed session start" });
+    expect(within(startCard("Session start, proposed")).getByRole("button", { name: "Start session" })).toHaveClass("commandPrimaryAction");
+    expect(startCard("Session start, proposed")).toHaveTextContent("Nothing starts until you select Start session.");
+    expect(chipOf("Session start, proposed")).toBeNull();
+    expect(startCard("Session start, held")).toHaveTextContent("Not started. A start gate held this task.");
+    expect(startCard("Session start, held")).toHaveTextContent("This task is held: Claude Code is above 85% of the five-hour window.");
+    expect(within(startCard("Session start, held")).getByRole("button", { name: "Start session" })).toBeEnabled();
+    expect(startCard("Session start, failed")).toHaveTextContent("Not started. Install or update the Pomegr plugin in this repository to start sessions.");
+    expect(chipOf("Session start, launched")).toHaveTextContent("Session started");
+    expect(startCard("Session start, launched")).toHaveTextContent("Session started in a new terminal window.");
+    expect(within(startCard("Session start, launched")).queryByRole("button")).toBeNull();
+    expect(within(startCard("Session start, on a paired device")).queryByRole("button", { name: "Start session" })).toBeNull();
+    expect(within(startCard("Session start, on a paired device")).getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+
     expect(within(sample(chat, "Composer, error")).getByRole("alert")).toHaveTextContent("Aril is already answering. Wait for it to finish.");
     expect(within(sample(chat, "Composer, over the limit")).getByText("4,012 / 4,000")).toHaveClass("isOver");
     expect(within(sample(chat, "Composer, over the limit")).getByRole("button", { name: "Send" })).toBeDisabled();

@@ -754,7 +754,9 @@ describe("Pomegr visual contract", () => {
     const tags = [...sources.matchAll(/<button\b[^>]*>/g)].map(([tag]) => tag);
     expect(tags.length).toBeGreaterThanOrEqual(12);
     for (const tag of tags) expect(tag).toMatch(/className=\{?[`"](?:commandPrimaryAction|commandSecondaryAction|commandQuietAction|commandIconAction|agentChatLauncher|agentChatHistoryOpen)/);
-    expect(read("AgentChatProposalCard.tsx")).toMatch(/className="commandPrimaryAction"[^]*?>Apply changes<\/button>/);
+    // The card has one Primary: Apply changes, or Start session for a session start where it can be applied.
+    expect(read("AgentChatProposalCard.tsx")).toContain('const primary = startTask === null ? "Apply changes" : startHere ? "Start session" : null;');
+    expect(read("AgentChatProposalCard.tsx")).toMatch(/\{primary && <button type="button" className="commandPrimaryAction"[^]*?>\{primary\}<\/button>\}/);
     expect(read("AgentChatProposalCard.tsx")).toMatch(/className="commandQuietAction"[^]*?>Dismiss<\/button>/);
     expect(read("AgentChatProposalCard.tsx").match(/commandPrimaryAction/g)).toHaveLength(1);
     expect(read("AgentChatComposer.tsx")).toMatch(/className="commandSecondaryAction"[^]*?>Stop<\/button>/);
@@ -781,6 +783,8 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/Escape first belongs to a layer inside the panel/);
     expect(designContract).toMatch(/`AgentChatMarkdown` builds React elements from the answer and sets no HTML/);
     expect(designContract).toMatch(/Only a pending proposal has a footer: the Primary \*\*Apply changes\*\* and the Quiet \*\*Dismiss\*\*/);
+    expect(designContract).toMatch(/The Primary of a session start reads \*\*Start session\*\*\./);
+    expect(designContract).toMatch(/On a paired device a session start has no Primary, only \*\*Dismiss\*\*\./);
     expect(designContract).toMatch(/“Cannot be undone” in the error color \(text only, never a fill\)/);
     expect(designContract).toMatch(/Each pending card has its own Primary/);
     expect(designContract).toMatch(/A message that was refused stays in the field/);

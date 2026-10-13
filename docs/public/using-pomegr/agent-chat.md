@@ -1,6 +1,6 @@
 ---
 title: "Agent chat"
-description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, order the board, and advise on models. You approve every board change."
+description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, order the board, advise on models, and start a task's session. You approve every change and every start."
 ---
 
 # Agent chat
@@ -8,7 +8,8 @@ description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, ord
 **Aril** is the agent built into Pomegr that helps you organize a repository's task
 board. You ask in a chat panel at the bottom right of the window. Aril reads the board,
 the repository's files, and what Pomegr observed, then answers. Aril never changes the
-board by itself: it proposes changes, and you apply them.
+board by itself: it proposes changes, and you apply them. Aril starts no session by
+itself either: it proposes the start, and you apply it.
 
 ## Before you start
 
@@ -65,8 +66,37 @@ for the rest once you know why it failed.
 
 A proposal can create a feature, create, update, delete, or move a task, add a task to
 the queue or remove it, and move a task to another step. It cannot turn the queue on or
-off, start a session, mark a task done, or requeue a task. Those stay with you, as
-described in [Tasks](tasks.md).
+off, mark a task done, or requeue a task. Those stay with you, as described in
+[Tasks](tasks.md).
+
+## Start a session from the chat
+
+Ask Aril to start one task by its ID, for example "start T-63". Aril answers with a
+start proposal for that task. A start is always a proposal of its own.
+
+1. In the Pomegr desktop app, select **Start session** on the proposal, or **Dismiss**
+   to drop it. Nothing starts before that.
+2. Confirm "Start task T-63?". Pomegr then starts the task as **Start session** in the
+   task window does, with the same checks. See
+   [Start a session](tasks.md#start-a-session).
+3. Read the result on the proposal.
+
+| Result | What it means |
+| --- | --- |
+| **Session started in a new terminal window.** | Pomegr opened the session. The task links to it when the plugin in that session reports in. |
+| **Not started.** and a reason | Nothing was started. A held start names what holds it, such as usage above the threshold or uncommitted changes. |
+
+A proposal that did not start stays open. Select **Start session** again when the
+reason is gone. Pomegr never tries again by itself, and a proposal that started a
+session cannot start a second one.
+
+- Aril proposes a start only when you ask for one, and only for a task that is **Not
+  queued**, **Queued**, or **Scheduled** with no session.
+- A start from the chat does not use the queue and changes nothing in it.
+- On a paired phone, the proposal has no **Start session**. Apply it in the desktop app,
+  or open the task on the phone and select **Start session** there.
+- To start in a separate worktree while the repository has uncommitted changes, use the
+  task window.
 
 > **Caution:** Aril can be wrong. Its advice on models is a reading of the tasks
 > recorded on your board, not a measurement. Check a proposal before you apply it.
@@ -82,7 +112,8 @@ described in [Tasks](tasks.md).
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without
   encryption, like the rest of phone access. Anyone who holds a paired phone can read
-  the conversations, send a message, and apply a proposal.
+  the conversations, send a message, and apply a proposal of board changes. A start that
+  Aril proposed can be applied only in the desktop app.
 
 ## If the result is missing
 
@@ -96,3 +127,5 @@ described in [Tasks](tasks.md).
 | Aril could not be reached | Check that Pomegr shows **Local monitor**, then send again. |
 | Aril wrote a proposal that Pomegr could not read | Ask for the proposal again. Nothing was changed. |
 | A line says **No longer possible** or **Not found** | The board changed after Aril wrote the proposal. Ask again. |
+| A start proposal says **Not started.** | Read the reason on the proposal. [Start gates](tasks.md#start-gates) explains a held start. Select **Start session** again when it is gone. |
+| A session can be started from this chat only in the Pomegr desktop app | Apply the start proposal in the desktop app, or start the task from its window. |

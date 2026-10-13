@@ -361,7 +361,7 @@ test("the IPC bridge registers the one channel, refuses an untrusted frame, and 
   for (const event of [{}, undefined, null, { trusted: false }, "trusted"]) assert.deepEqual(await call(event, "list", { repositoryId }), invalid);
   assert.equal(calls.length, 0, "an untrusted frame never reaches the chat");
   assert.deepEqual(await call(trusted, "list", { repositoryId }), { ok: true, conversations: [], running: null });
-  assert.deepEqual(calls, [["list", { repositoryId }]]);
+  assert.deepEqual(calls, [["list", { repositoryId }, { event: trusted }]]);
   remove();
   assert.equal(handlers.size, 0);
   assert.equal(disposed, 1);
@@ -506,8 +506,10 @@ test("every request the controller makes refuses redirects, is bounded in time, 
 test("the chat is wired once into the shell, the LAN gateway, and the preload", async () => {
   const [main, preload, sharing] = await Promise.all(["shell-main.mjs", "preload.cjs", "lan-sharing.mjs"].map(sourceOf));
   assert.match(main, /installAgentChatIpc\(\{ \.\.\.taskBridge, chat: agentChat \}\)/u);
-  assert.match(main, /agentChat: agentChat\.handle/u);
-  assert.match(main, /createAgentChat\(\{ monitorOrigin: privateMonitorOrigin, authorizationToken,/u);
+  // A paired device's call carries no origin, so it can never start a session from the chat.
+  assert.match(main, /agentChat: \(operation, payload\) => agentChat\.handle\(operation, payload\), taskStart:/u);
+  assert.match(main, /createAgentChat\(\{\s+monitorOrigin: privateMonitorOrigin, authorizationToken,/u);
+  assert.match(main, /startTask: \(event, repositoryId, taskId\) => taskStarter\.start\(event, repositoryId, taskId\) \}\);/u);
   assert.equal([...main.matchAll(/createAgentChat\(/gu)].length, 1);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat", operation, payload\)/u);
   assert.match(preload, /new Set\(\["list", "read", "send", "stop", "apply", "dismiss", "delete"\]\)/u);

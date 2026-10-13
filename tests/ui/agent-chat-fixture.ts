@@ -42,6 +42,8 @@ export class FakeChat {
   turn: Turn | null = null;
   /** The next `send` answers this refusal. */
   refuse: string | null = null;
+  /** What the desktop's manual start answers to an applied start proposal. */
+  startStatus = "started";
   /** The next `send` answers only when this resolves. */
   hold: Promise<void> | null = null;
   readonly agentChat = vi.fn((operation: string, payload: Json) => this.handle(operation, payload));
@@ -117,6 +119,13 @@ export class FakeChat {
         if (!stored || !proposal) return { ok: false, error: "not_found" };
         if (proposal.state !== "pending" || this.refuse === "conflict") return { ok: false, error: "conflict" };
         const operations = proposal.operations as Json[];
+        // A start is answered by the dispatcher: only a launch settles it, and a held or failed one stays pending.
+        if (operation === "apply" && operations.length === 1 && operations[0].op === "start_session") {
+          if (this.refuse === "desktop_only") return { ok: false, error: "desktop_only" };
+          if (this.startStatus === "started") Object.assign(proposal, { state: "applied", results: [{ ok: true, start: "started" }] });
+          else if (this.startStatus !== "cancelled") Object.assign(proposal, { state: "pending", results: [{ ok: false, error: "not_started", start: this.startStatus }] });
+          return { ok: true };
+        }
         if (operation === "apply") Object.assign(proposal, { state: "applied", results: operations.map((entry) => (entry.op === "create_task" ? { ok: true, taskId: "T-19" } : { ok: true })) });
         else proposal.state = "dismissed";
         return { ok: true };
