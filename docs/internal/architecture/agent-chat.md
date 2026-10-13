@@ -420,7 +420,9 @@ never a session's.
    valid `start_session` proposal. Claude Code also wrote none for a task with a session
    and none for a question about order. Codex was not asked those two. The probes started
    no session and are deleted. The Apply of a start, the native confirmation, and the
-   launch are covered by tests with fakes, and are not proven end to end on a device.
+   launch are covered by tests with fakes. The product owner also applied a start
+   proposal in the desktop app on 2026-10-12 and the session launched. Which build that
+   was is not recorded, so limit 2 stands.
 9. **Separate worktree.** A start that only the repository's uncommitted changes hold
    answers `tree_dirty`. The chat offers no separate-worktree start; the task window
    does.
