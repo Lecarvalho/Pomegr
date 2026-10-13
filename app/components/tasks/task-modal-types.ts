@@ -6,7 +6,7 @@ import type { TaskIssue, TaskIssueError } from "./task-issues-desktop";
 
 export type TaskModalBoard = Pick<TaskBoard, "columns" | "features" | "tasks"> & {
   runModels?: NonNullable<TaskBoard["runModels"]>;
-  queue?: Pick<TaskBoard["queue"], "order" | "gates" | "schedule">;
+  queue?: Pick<TaskBoard["queue"], "order" | "gates" | "schedule" | "waits">;
 };
 
 export function firstColumnName(columns: TaskBoard["columns"]): string | null {

@@ -1,4 +1,4 @@
-import { DEFAULT_TASK_COLUMN_ROLES, createEmptyTaskBoard, type Task, type TaskBoard, type TaskGates, type TaskQueue } from "../../../shared/task-contract";
+import { DEFAULT_TASK_COLUMN_ROLES, createEmptyTaskBoard, type Task, type TaskBoard, type TaskGates, type TaskQueue, type TaskQueueWait } from "../../../shared/task-contract";
 import type { TaskBoardEdits } from "../tasks/use-task-board-edits";
 
 // Synthetic task-board data shared by the task samples on /design-system.
@@ -66,7 +66,14 @@ export const GATES_STOPPED: TaskGates = {
   ...GATES_OPEN, providerStatus: { claude: "incident", codex: "ok" }, workingTree: "dirty", next: { taskId: "T-3", provider: "codex", blockedBy: "T-2", reasons: ["previous_step", "provider_incident", "tree_dirty"] },
 };
 
-export const QUEUE_RUNNING: TaskQueue = { status: "running", blockedBy: null, pauseReason: null, order: ["T-2", "T-3", "T-4"], gates: GATES_HELD };
+// Why each waiting card of the running board has not started: a held gate, a place only, an earlier step, and its own time.
+export const WAITS_RUNNING: TaskQueueWait[] = [
+  { taskId: "T-2", place: 1, reasons: [{ reason: "usage_over", taskIds: [], more: 0 }] },
+  { taskId: "T-3", place: 2, reasons: [] },
+  { taskId: "T-4", place: 3, reasons: [{ reason: "previous_step", taskIds: ["T-2"], more: 0 }] },
+  { taskId: "T-7", place: null, reasons: [{ reason: "own_schedule", taskIds: [], more: 0 }] },
+];
+export const QUEUE_RUNNING: TaskQueue = { status: "running", blockedBy: null, pauseReason: null, order: ["T-2", "T-3", "T-4"], gates: GATES_HELD, waits: WAITS_RUNNING };
 export const QUEUE_BLOCKED: TaskQueue = { status: "blocked", blockedBy: "T-2", pauseReason: null, order: ["T-3", "T-4"], gates: GATES_OPEN };
 export const QUEUE_PAUSED: TaskQueue = { status: "paused", blockedBy: "T-3", pauseReason: "cli_missing", order: ["T-3", "T-4"], gates: GATES_OPEN };
 export const QUEUE_IDLE: TaskQueue = { status: "idle", blockedBy: null, pauseReason: null, order: [], gates: GATES_OPEN };

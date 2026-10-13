@@ -7,6 +7,7 @@ import { FeatureFields } from "./FeatureFields";
 import { IssueCreateRow } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { TaskModalSource } from "./TaskModalPromote";
+import { TaskQueueWait } from "./TaskQueueWait";
 import { CompleteWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { TaskSessionsField } from "./TaskSessionsField";
@@ -30,6 +31,7 @@ import { useFeatureCreation } from "./use-feature-creation";
 import { shownTaskText, useStoredImages } from "./use-task-images";
 import { SESSION_CANDIDATES_SHOWN, useTaskSessionCandidates } from "./use-task-session-candidates";
 import { useTaskStart } from "./use-task-start";
+import { waitDetail } from "./task-wait-model";
 
 const STALLED_NOTE = "The session ended with no report.";
 
@@ -93,6 +95,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
   const columnName = board.columns.find((column) => column.id === task.columnId)?.name ?? null;
   const blocked = saving || deleting;
+  // Why a task that waits in the queue has not started, as the monitor judged it.
+  const queueWait = waitDetail(board.queue, task);
   // A done task takes no report, so it takes no new session. The sessions it holds can still be unassigned.
   const assigned = useMemo(() => task.assigned ?? [], [task.assigned]);
   const listed = useTaskSessionCandidates(repositoryId, task.state !== "done");
@@ -233,6 +237,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     {issueNumber !== null && <TaskModalSource number={issueNumber} caption="GitHub issue" />}
     {issueOffered && <IssueCreateRow repositoryId={repositoryId} taskId={task.id} unsaved={dirty} saveFirst={saveLine || confirming ? null : SAVE_FIRST_LINE}
       onChanged={onChanged} />}
+    {queueWait && <TaskQueueWait detail={queueWait} />}
     {(sessionTitle !== null || hasSessionLink) && <div className="taskModalSession">
       {sessionTitle !== null && <p className="taskModalSessionTitle">{sessionTitle}</p>}
       <span className="newTaskHelper">

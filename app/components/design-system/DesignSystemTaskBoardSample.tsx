@@ -95,7 +95,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Ready lane, step groups" note="Ready is the queue's lane, so it alone groups its waiting cards, in the order they already hold. A feature step with two or more waiting cards takes the strong-line frame and the parallel glyph with its count; a one-task step and Single tasks take the caption only, at the same inset. A grouped card is the board card at compact padding, with no feature line and no Complete when line. The next card adds its Waiting line while a gate holds it.">
+      <Sample label="Ready lane, step groups" note="Ready is the queue's lane, so it alone groups its waiting cards, in the order they already hold. A feature step with two or more waiting cards takes the strong-line frame and the parallel glyph with its count; a one-task step and Single tasks take the caption only, at the same inset. A grouped card is the board card at compact padding, with no feature line and no Complete when line. A waiting card adds one muted line: its place in the start order past the first, then Waiting with each reason it has not started.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={READY_LANE} /></div></Frame>
       </Sample>
       <Sample label="Ready lane, step target" note="While a queued card is dragged over a step group of its own feature, the group takes the panel fill and the lane's two-pixel strong-line border. Dropping gives the card that step, so it runs in parallel with the group.">

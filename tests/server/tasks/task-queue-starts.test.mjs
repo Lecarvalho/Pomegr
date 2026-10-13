@@ -4,7 +4,7 @@ import { TASK_DISPATCH_UNBOUND_TTL_MS } from "../../../server/tasks/task-dispatc
 import { TASK_QUEUE_START_LIMIT } from "../../../server/tasks/task-queue-advance.mjs";
 import {
   FACTS, OTHER_REPOSITORY, REPOSITORY, SESSION, START_TIME, createTask, metaValue, openTemporaryStore, pauseReasonKey, queueRow, queueSettings,
-  queueTask, repositoryNumber, setQueueRow, startedTask, updateTask, withDatabase, passingGates,
+  queueTask, repositoryNumber, setQueueRow, startedTask, updateTask, withDatabase, passingGates, storedQueue,
 } from "./queue-test-support.mjs";
 
 const MINUTE = 60_000;
@@ -84,7 +84,7 @@ test("a start whose time ran out with no session pauses the queue as session_not
   assert.equal(JSON.stringify(answer).includes("session_not_linked"), false, "a pause is written, never returned");
   assert.deepEqual(queueRow(directory), { queue_status: "paused", queue_blocked_by: "T-1" });
   assert.equal(metaValue(directory, pauseReasonKey()), "session_not_linked");
-  assert.deepEqual(store.readBoard(REPOSITORY).queue, { status: "paused", blockedBy: "T-1", pauseReason: "session_not_linked", order: ["T-1", "T-2"] });
+  assert.deepEqual(storedQueue(store.readBoard(REPOSITORY).queue), { status: "paused", blockedBy: "T-1", pauseReason: "session_not_linked", order: ["T-1", "T-2"] });
   // The other repository's queue is untouched, and the paused one answers nothing more.
   assert.equal(queueRow(directory, OTHER_REPOSITORY).queue_status, "running");
   assert.equal(metaValue(directory, pauseReasonKey(OTHER_REPOSITORY)), null);
@@ -100,7 +100,7 @@ test("turning the queue on after a session_not_linked pause lets the same task s
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   assert.equal(queueRow(directory).queue_status, "paused");
   const on = queueSettings(store, true);
-  assert.deepEqual(on.board.queue, { status: "running", blockedBy: null, pauseReason: null, order: ["T-1", "T-2"] });
+  assert.deepEqual(storedQueue(on.board.queue), { status: "running", blockedBy: null, pauseReason: null, order: ["T-1", "T-2"] });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
 });
 
@@ -188,7 +188,7 @@ test("pauseQueue pauses a running queue with the reported reason and names the t
     setQueueRow(directory, "running");
     assert.deepEqual(store.pauseQueue(REPOSITORY, { id: "T-2", reason }), { ok: true }, reason);
     assert.deepEqual(queueRow(directory), { queue_status: "paused", queue_blocked_by: "T-2" });
-    assert.deepEqual(store.readBoard(REPOSITORY).queue, { status: "paused", blockedBy: "T-2", pauseReason: reason, order: ["T-1", "T-2"] });
+    assert.deepEqual(storedQueue(store.readBoard(REPOSITORY).queue), { status: "paused", blockedBy: "T-2", pauseReason: reason, order: ["T-1", "T-2"] });
   }
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
 });

@@ -388,6 +388,11 @@
 .taskTimeInput:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .taskTimeInput:disabled { opacity: .48; }
 .taskCardWaiting { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* The Queue block of the Task modal (T-73): the task's place in the start order, then one line for each reason it waits. */
+.taskQueueWait { gap: var(--space-1); }
+.taskQueueWaitLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskQueueWaitPlace { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskQueueWaitReasons { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 /* Queue controls on the Board (T-68 D3, D4, D18-D26). The capacity strip ends with the threshold, the stop time and the
    action that opens Queue settings. The panel is the task dialog at the right edge of the page, with no scrim fill;
    inside it the gates, schedule and rules panels are sections with no frame of their own. */

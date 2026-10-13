@@ -8,6 +8,8 @@ import { createRequestHandler } from "../../../server/serving/request-handler.mj
 import { TASK_ACTIONS } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
+const storedQueue = ({ waits: _waits, ...queue }) => queue;
+
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const OTHER_REPOSITORY_ID = "repo-fedcba987654321001234567";
 const TOKEN = "t".repeat(40);
@@ -176,7 +178,7 @@ test("queue_add, queue_reorder, and queue_remove travel through the route with t
   await action("create", REPOSITORY_ID, { text: "single" }, { port });
   const added = await action("queue_add", REPOSITORY_ID, { id: "T-3" }, { port });
   assert.equal(added.status, 200);
-  assert.deepEqual(added.json.board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
+  assert.deepEqual(storedQueue(added.json.board.queue), { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
   // T-2 waits for T-1, which is not queued, so the single task is ahead of it.
   assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-2" }, { port })).json.board.queue.order, ["T-3", "T-2"]);
   assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port })).json.board.queue.order, ["T-1", "T-2", "T-3"]);

@@ -14,7 +14,7 @@ import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskColumnHeader } from "./TaskColumnHeader";
 import { cardMove, readyColumnId, type CardMoveKind } from "./task-board-model";
 import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue, type FeatureLine } from "./task-features";
-import { waitingLine } from "./task-gates-model";
+import { waitCardLine } from "./task-wait-model";
 import { useMinuteClock } from "./task-panel-hooks";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
 import { boardStepChoices, dropKey, isMovableQueueTask, newStepLabel, queueFeatures } from "./task-queue-model";
@@ -171,7 +171,7 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
 }) {
   const headingId = useId();
   const lastId = column.tasks.at(-1)?.id;
-  const card = (task: Task, grouped = false) => <TaskCard key={task.id} task={task} grouped={grouped} now={ready?.now} waiting={grouped && ready ? waitingLine(ready.queue, task.id) : undefined}
+  const card = (task: Task, grouped = false) => <TaskCard key={task.id} task={task} grouped={grouped} now={ready?.now} waiting={grouped && ready ? waitCardLine(ready.queue, task) : undefined}
     dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && task.id === lastId ? "after" : undefined}
     featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
   const zoneAfter = ready?.newStep && ready.segments.findLast((segment) => segment.kind === "step" && segment.feature.id === ready.newStep?.featureId)?.key;

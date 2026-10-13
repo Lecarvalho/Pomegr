@@ -32,12 +32,13 @@ export function workingTreeRow(gates: TaskGates): { text: string; tone: GateTone
   return { text: "Unknown", tone: "muted" };
 }
 
-function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<TaskGates["next"]>, schedule: TaskBoard["queue"]["schedule"]): string {
+/** One start-gate hold in words. Without the gate readings it names no threshold. */
+export function reasonText(reason: TaskGateReason, gates: TaskGates | undefined, next: Pick<NonNullable<TaskGates["next"]>, "provider" | "blockedBy">, schedule: TaskBoard["queue"]["schedule"]): string {
   const at = (value: string | null | undefined) => (value ? scheduleLabel(value) : null);
   const provider = PROVIDER_NAMES[next.provider];
   switch (reason) {
     case "previous_step": return next.blockedBy ? `step before it is not done (${next.blockedBy})` : "step before it is not done";
-    case "usage_over": return `${provider} is above ${gates.threshold}% of the ${gates.usage[next.provider].fiveHourPercent === null ? "seven-day" : "five-hour"} window`;
+    case "usage_over": return gates ? `${provider} is above ${gates.threshold}% of the ${gates.usage[next.provider].fiveHourPercent === null ? "seven-day" : "five-hour"} window` : `${provider} is above its usage threshold`;
     case "usage_unknown": return `${provider} usage is not known yet`;
     case "provider_incident": return `${provider} reports an incident`;
     case "provider_status_unknown": return `${provider} status is not known yet`;
