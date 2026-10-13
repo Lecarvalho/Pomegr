@@ -34,7 +34,7 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
   const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(() => newTaskDefaults(board.tasks).completeWhen);
   const [feature, setFeature] = useState<FeatureDraft>(NO_FEATURE_DRAFT);
   const [featureError, setFeatureError] = useState<string | null>(null);
-  const [wantIssue, setWantIssue] = useState(true);
+  const [wantIssue, setWantIssue] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const createFeature = useFeatureCreation(repositoryId, board, refresh);
