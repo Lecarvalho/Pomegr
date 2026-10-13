@@ -1242,7 +1242,9 @@ installed plugin from before the rename sends; a body with both names is `invali
   not one of its tasks), `task_required` (409, the session has more than one task and
   named none), `already_reported` (409), `stalled` (409, Pomegr stalled the task before
   any report), or `unavailable` (503). The plugins send `taskId` and know
-  `task_required` from version 0.9.8. The plugins know `stalled` from version 0.9.5; an older
+  `task_required` from version 0.9.8. From version 0.9.9 the `complete_task` tool names the
+  conditions that failed apart from those Pomegr could not verify; an older plugin words both as
+  not confirmed. The plugins know `stalled` from version 0.9.5; an older
   plugin reads it as an unknown reason and says that Pomegr is unavailable. It never
   carries a task ID, task
   content, or a repository fact. A completion with a checked condition answers after
