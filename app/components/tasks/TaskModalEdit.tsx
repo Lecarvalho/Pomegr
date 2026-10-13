@@ -14,7 +14,7 @@ import { TaskStartTimeField } from "./TaskStartTimeField";
 import {
   ASSIGN_FAILURE_MESSAGE, ASSIGN_LIMIT_MESSAGE, DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE,
   RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask,
-  UNASSIGN_FAILURE_MESSAGE, assignDesktopTaskSession, resolveDesktopTaskDone, unassignDesktopTaskSession, updateDesktopTask,
+  UNASSIGN_FAILURE_MESSAGE, assignDesktopTaskSession, resolveDesktopTaskDone, takeCreateFollowUp, unassignDesktopTaskSession, updateDesktopTask,
 } from "./task-desktop";
 import { observedModelDiffers } from "./task-fields";
 import { taskImagesAvailable } from "./task-images-desktop";
@@ -55,7 +55,9 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const shown = useMemo(() => ({ ...task, text: shownTaskText(task.text, task.images) }), [task]);
   const { draft, dirty, canSave, setText, setRun, setCompleteWhen, setFeature } = useTaskDraft(shown);
   const [featureError, setFeatureError] = useState<string | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  // A create that could not queue or start the task opens here with what happened.
+  const [followUp] = useState(() => takeCreateFollowUp(repositoryId, task.id));
+  const [failure, setFailure] = useState<string | null>(followUp && "failure" in followUp ? followUp.failure : null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -72,7 +74,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const unresolved = task.state === "needs_review" || task.state === "blocked" || task.state === "stalled";
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
   const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
-  const start = useTaskStart(repositoryId, task, board, dirty, refresh);
+  const start = useTaskStart(repositoryId, task, board, dirty, refresh, followUp && "start" in followUp ? followUp.start : null);
   const images = useStoredImages(repositoryId, task);
   const imagesOffered = taskImagesAvailable();
   // A task that needs the user offers its resolutions instead of Start session.

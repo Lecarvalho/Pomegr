@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { CommandSplitAction } from "../command-center/CommandSplitAction";
 import { FeatureFields } from "../tasks/FeatureFields";
 import { FeatureModalSamples } from "./DesignSystemFeatureModalSample";
 import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
@@ -18,6 +19,10 @@ import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
 const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] } as const;
 const RESULTS = new Map([["pr_open", false], ["tree_clean", true]] as const);
 const noop = () => undefined;
+const CREATE_FOLLOW_UPS = [
+  { value: "queue", label: "Create and queue", detail: "Goes to the end of Ready." },
+  { value: "start", label: "Create and start session", detail: "Opens a new terminal window now." },
+];
 const SAMPLE_IMAGE_IDS = ["img-000000000001", "img-000000000002", "img-000000000003", "img-000000000004"];
 const SAMPLE_IMAGE_URLS = new Map<string, string | null>(SAMPLE_IMAGE_IDS.map((id) => [id, null]));
 const noImages = () => [];
@@ -88,13 +93,13 @@ export function TaskFieldsSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Task modal, new" note="The modal frame drawn as static chrome over its scrim: a header with the title and subtitle, the Task field with its counter, on the desktop the Also create a GitHub issue checkbox (checked when the account can create issues), Run on and Effort in one row, Complete when, and a footer with Cancel and the one primary. The real frame is a modal dialog; this sample has no focus trap and does not make the page inert.">
+      <Sample label="Task modal, new" note="The modal frame drawn as static chrome over its scrim: a header with the title and subtitle, the Task field with its counter, on the desktop the Also create a GitHub issue checkbox (checked when the account can create issues), Run on and Effort in one row, Complete when, and a footer with Cancel and the one primary, a split action whose caret opens Create and queue and Create and start session. The real frame is a modal dialog; this sample has no focus trap and does not make the page inert.">
         <div className="designSystemTaskFrame designSystemTaskModalStage">
           <TaskModalChrome titleId={modalTitleId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
             footer={<>
               <span className="taskModalSpacer" aria-hidden="true" />
               <button type="button" className="commandQuietAction" onClick={noop}>Cancel</button>
-              <button type="button" className="commandPrimaryAction" onClick={noop}>Create task</button>
+              <CommandSplitAction label="Create task" menuLabel="More ways to create" items={CREATE_FOLLOW_UPS} onAction={noop} onSelect={noop} />
             </>}>
             <TaskTextField value={modalText} onChange={setModalText} />
             <IssueCreateCheckbox option={{ kind: "can" }} checked={issueChecked} onChange={setIssueChecked} />

@@ -685,12 +685,12 @@ describe("the task modal as a dialog (mode new)", () => {
     expect(taskAction).not.toHaveBeenCalled();
   });
 
-  it("shows only its own footer: Cancel and Create task, with no Save, Delete, queue or start action", async () => {
+  it("shows only its own footer: Cancel and the Create task split action, with no Save, Delete, queue or start button", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
     const footer = screen.getByRole("dialog", { name: "New task" }).querySelector(".taskModalFooter")!;
-    expect([...footer.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Cancel", "Create task"]);
+    expect([...footer.querySelectorAll("button")].map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual(["Cancel", "Create task", "More ways to create"]);
     for (const name of ["Save", "Delete task", "Start session", "Add to queue"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
   });
 

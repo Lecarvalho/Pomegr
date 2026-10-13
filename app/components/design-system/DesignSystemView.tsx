@@ -40,6 +40,7 @@ import {
   CommandStatus,
   CommandToolbar,
 } from "../command-center/CommandPage";
+import { CommandSplitAction } from "../command-center/CommandSplitAction";
 import { useClientAccess } from "../../hooks/ClientAccessContext";
 import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSamples";
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
@@ -202,6 +203,11 @@ const BUTTON_ROLES: ButtonRole[] = [
   },
 ];
 
+const SAMPLE_SPLIT_ITEMS = [
+  { value: "queue", label: "Create and queue", detail: "Goes to the end of Ready." },
+  { value: "start", label: "Create and start session", detail: "Opens a new terminal window now." },
+];
+
 function ButtonsSection() {
   return <Section id="buttons" title="Buttons" lede="Six roles share one 4px radius (--control-radius), one focus ring (2px --focus-ring, offset 2px; inset inside segmented frames), and one disabled treatment (opacity .48). Borders use --command-line; --command-line-strong appears only on hover and on form fields.">
     {BUTTON_ROLES.map((role) => <article key={role.id} className="designSystemRole" aria-labelledby={`design-system-role-${role.id}`}>
@@ -215,6 +221,18 @@ function ButtonsSection() {
         <Sample label="Focus" note="Tab to this sample: :focus-visible draws the shared 2px --focus-ring outline.">{role.render({})}</Sample>
       </div>
     </article>)}
+    <article className="designSystemRole" aria-labelledby="design-system-role-split">
+      <h3 id="design-system-role-split">Split action<code>.commandSplitAction</code></h3>
+      <p>A Primary and a caret in one frame, one pixel apart. The Primary runs the usual form of the action; the caret opens a menu of its other forms above the button. A composition of the Primary role, not a seventh role, and still the one primary of its view.</p>
+      <div className="designSystemStates">
+        <Sample label="Default" note="Press the caret: the menu opens above, with a label and one muted line for each item. Arrow keys move, Escape closes and returns to the caret.">
+          <CommandSplitAction label="Create task" menuLabel="More ways to create" items={SAMPLE_SPLIT_ITEMS} onAction={() => undefined} onSelect={() => undefined} />
+        </Sample>
+        <Sample label="Disabled" note="Both halves take the native disabled attribute, and the menu cannot open.">
+          <CommandSplitAction label="Create task" menuLabel="More ways to create, disabled" items={SAMPLE_SPLIT_ITEMS} disabled onAction={() => undefined} onSelect={() => undefined} />
+        </Sample>
+      </div>
+    </article>
     <p className="designSystemNote">Phone widths (max-width 760px) and coarse pointers keep the roles and change only size: every target reaches 44px, primary and segmented stretch to the full row (segments flex evenly), secondary pairs split the row through their local grid, quiet actions become full-width left-aligned rows, icon buttons become 44px squares, and text links keep a 44px tap box. Resize this window below 760px to see the samples above adopt those sizes.</p>
   </Section>;
 }

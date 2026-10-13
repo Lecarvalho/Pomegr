@@ -336,6 +336,22 @@ States:
 | Text link | Hover | Underline with a 3px offset |
 | Icon | Hover | Same as Quiet |
 
+Split action:
+
+- A split action (`.commandSplitAction`, `CommandSplitAction`) is a Primary and a caret in one frame, one pixel apart.
+- The Primary runs the usual form of the action.
+- The caret (`.commandSplitCaret`) is a Primary with 8px side padding and a 14px chevron-down. It has an `aria-label`, `aria-haspopup="menu"`, and `aria-expanded`.
+- The caret opens a menu (`.commandSplitMenu`, `role="menu"`) of the other forms of the same action, above the button and aligned to its end.
+- The menu has the panel fill, a one-pixel `--command-line-strong` border, the control radius, the overlay shadow, and 4px padding.
+- A menu item is a 13px/500 ink label over one optional muted 12px line. Hover and focus give it the raised fill.
+- Opening the menu focuses its first item. The arrow keys, Home, and End move between items.
+- Escape closes the menu and returns focus to the caret. A press outside and focus leaving also close it.
+- Choosing an item closes the menu and runs that form.
+- Disabled, both halves are disabled and the menu cannot open.
+- On a coarse pointer, the caret is at least 44px wide and a menu item at least 44px high.
+- A split action is a composition of the Primary role. It is not a seventh role, and it is still the one primary of its view.
+- Use it only when one action has a usual form and at most three rarer forms.
+
 Rules for the Text link and the panel heading link:
 
 - A Text link is never a standalone action.

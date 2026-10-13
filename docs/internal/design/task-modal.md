@@ -60,7 +60,7 @@ One task modal serves three modes, and the Feature modal uses its frame for a fo
 
 | Mode | Footer actions |
 | --- | --- |
-| New | Quiet **Cancel**, primary **Create task** |
+| New | Quiet **Cancel**, primary **Create task** as a [split action](../../../DESIGN.md#buttons) |
 | Edit | Quiet **Delete task**, Secondary **Add to queue** or **Remove from queue**, Secondary **Start session**, primary **Save** |
 | Promote | Quiet **Cancel**, primary **Promote issue** |
 | New feature | Quiet **Cancel**, primary **Create feature** |
@@ -186,6 +186,26 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - A failure says so under the Task field.
 - There is no “create and add another” action.
 - There is no footer note.
+
+### Create and queue, create and start
+
+- **Create task** is a [split action](../../../DESIGN.md#buttons). Its caret is named “More ways to create”.
+- The menu holds **Create and queue** and **Create and start session**, in that order.
+- **Create and queue** has the line “Goes to the end of Ready.”
+- **Create and start session** has the line “Opens a new terminal window now.”
+- On a paired phone, that line is “Opens a new terminal on the computer running Pomegr.”
+- The caret is disabled while **Create task** is disabled.
+- Each item creates the task as **Create task** does, and then acts on it.
+- **Create and queue** then adds the task to the queue, as **Add to queue** in mode edit does.
+- **Create and start session** then starts the task, as **Start session** in mode edit does, with the same confirmation.
+- While **Create and start session** runs, the primary reads “Starting…”. Any other running create reads “Creating…”.
+- When the follow-up works, the modal closes.
+- When the task exists but the follow-up did not happen, the modal becomes the Task modal of that task.
+- That Task modal shows why: the queue failure under the Task field, or the start line in the footer with its usual recoveries.
+- A start the owner cancels in the confirmation opens the Task modal with no line.
+- A task that lost an image or its GitHub issue is not queued or started. Its Task modal opens, as after **Create task**.
+- A failed create queues and starts nothing.
+- The promote form has no split action.
 
 ## Mode edit
 
@@ -526,6 +546,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 
 - `/design-system` renders the task fields, including Feature.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
+- The mode new sample ends with the split action.
 - `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the delete confirmation, with Delete feature blocked by a started task, with the details not read, and with each failure line.
 - The chrome is static markup over a static scrim, without the dialog behavior.
 - `/design-system` renders the Promote issues parts: the header action, row chips, page header, list and detail, and notices.

@@ -35,7 +35,7 @@ afterEach(() => {
 describe("Task images on a paired device", () => {
   it("offers Attach image and stores a picked image through the paired route after the task is created", async () => {
     render(<TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example" board={board} refresh={async () => {}}
-      onCreated={vi.fn()} onIssueFailed={vi.fn()} onClose={vi.fn()} />);
+      onCreated={vi.fn()} onFollowUpFailed={vi.fn()} onClose={vi.fn()} />);
     const attach = screen.getByRole("button", { name: "Attach image" });
     const input = attach.parentElement!.querySelector<HTMLInputElement>("input[type=file]")!;
     fireEvent.change(input, { target: { files: [new File([PNG.slice()], "shot.png", { type: "image/png" })] } });

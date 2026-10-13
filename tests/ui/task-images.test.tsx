@@ -21,7 +21,7 @@ const taskAction = vi.fn();
 const taskImage = vi.fn();
 const refresh = vi.fn(async () => {});
 const onCreated = vi.fn();
-const onIssueFailed = vi.fn();
+const onFollowUpFailed = vi.fn();
 const onChanged = vi.fn();
 const onClose = vi.fn();
 let urls = 0;
@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 const renderNew = () => render(<TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example" board={board} refresh={refresh}
-  onCreated={onCreated} onIssueFailed={onIssueFailed} onClose={onClose} />);
+  onCreated={onCreated} onFollowUpFailed={onFollowUpFailed} onClose={onClose} />);
 const field = () => screen.getByRole("textbox", { name: "Task" });
 const paste = (files: File[]) => fireEvent.paste(field(), { clipboardData: { files } });
 /** Types at the end of the rich-text field the way a browser does: the text lands in the DOM, then `input` fires. */
@@ -120,7 +120,7 @@ describe("New task", () => {
     const [repository, operation, payload] = taskImage.mock.calls[0];
     expect([repository, operation, payload.taskId, payload.imageId]).toEqual([repositoryId, "add", "T-9", imageId]);
     expect([...payload.bytes]).toEqual([...PNG]);
-    expect(onIssueFailed).not.toHaveBeenCalled();
+    expect(onFollowUpFailed).not.toHaveBeenCalled();
   });
 
   it("attaches picked and dropped files, and an image deleted from the text is never stored", async () => {
@@ -164,7 +164,7 @@ describe("New task", () => {
     typeText("Match the mock-up");
     paste([image()]);
     await user.click(screen.getByRole("button", { name: "Create task" }));
-    await waitFor(() => expect(onIssueFailed).toHaveBeenCalledWith("T-9"));
+    await waitFor(() => expect(onFollowUpFailed).toHaveBeenCalledWith("T-9"));
     expect(onCreated).toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     created.unmount();

@@ -1751,6 +1751,11 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   fixed status. It shows no native confirmation: the card's **Start session** is the
   owner's confirmation (product-owner decision, 2026-10-12). A paired device cannot apply such a proposal, and the
   queue is not touched.
+- The New task modal's **Create and queue** and **Create and start session** (task T-83,
+  2026-10-12) add no action, channel, or route. The renderer sends `create` and, once
+  the monitor answers the new task's ID, the existing `queue_add` for that ID or the
+  same manual start, with its confirmation. A create that fails sends neither. When
+  the follow-up does not happen, the task stays as created: first column, not queued.
 - After a manual start answers `worktree_dirty`, the task modal shows **Open folder**. It
   calls the fixed channel `pomegr:task-worktree-open` with the repository ID and task ID
   only and shows one line per fixed result (`opened`, `not_found`, `invalid`,
