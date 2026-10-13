@@ -225,6 +225,22 @@ A card's title opens the task modal for one stored task.
 - The report line shows below each condition.
 - In the Feature fields, the folded list leaves out the open task.
 - In the Feature fields, each row leads with its step number.
+- **Sessions** follows Complete when. It is a fieldset with the 12px/500 legend **Sessions**.
+- Sessions lists one ruled row for each session: the session Pomegr started first, then the assigned sessions in the order they were assigned.
+- A row holds the session title as a Text link to the session, over the muted 12px role “Started by Pomegr” or “Assigned”.
+- A session with no title reads “Untitled session”.
+- A row ends with the session's own state chip, in the Sessions list words and tones.
+- An assigned row then holds the Quiet **Unassign**. Its accessible name is “Unassign” and the session title.
+- The row of the session Pomegr started has no Unassign.
+- Under the rows is one wrapping row: a select of sessions and the Secondary **Assign session**.
+- The select offers the ten newest sessions of the repository that are not Closed and not on the task. Each option reads “title · state”.
+- The select placeholder is “Choose a session”, or “No other session in this repository” when it has no option, and then it is disabled.
+- **Assign session** is disabled until a session is chosen.
+- One muted helper line follows: “An assigned session can report this task complete or blocked. Pomegr does not start or stop it.”
+- A failed assign or unassign shows one error line under the helper.
+- Assign and Unassign save by themselves. They are not part of the draft, and they work on a started task.
+- A Done task shows its rows and Unassign, and no select.
+- A client that cannot assign draws the rows only. A task with no session then draws no Sessions block.
 - A task that still waits for a session ends with **Start at**, its own start time.
 - **Start at** is a `datetime-local` time field that saves by itself.
 - The Schedule design owns the `datetime-local` field. See [task-board.md](task-board.md).

@@ -14,7 +14,7 @@ For installation, repository setup, and troubleshooting, read the [Reporting plu
 | Delegated-report detection | `SubagentStop` hook | `SubagentStop` hook |
 | Signal and progress tools | Seven shared tools | Seven shared tools |
 | Observation query tools | Seven shared tools | Seven shared tools |
-| Task board tools | `add_task`, `update_task`, `remove_task`, `complete_task`, `block_task`, `get_feature`, `create_feature`, `update_feature`, `delete_feature`, bound by the thread identity in each tool call's `_meta` | The same nine tools, bound by a `PreToolUse` hook |
+| Task board tools | `add_task`, `update_task`, `remove_task`, `assign_task`, `unassign_task`, `complete_task`, `block_task`, `get_feature`, `create_feature`, `update_feature`, `delete_feature`, bound by the thread identity in each tool call's `_meta` | The same eleven tools, bound by a `PreToolUse` hook |
 | Task session link | `SessionStart` hook on `startup`, silent, only when `POMEGR_TASK_TOKEN` is set | `SessionStart` hook on `startup`, silent, only when `POMEGR_TASK_TOKEN` is set |
 | Native session-title tool | Provider automatic naming | `rename_session` |
 | Session line above the prompt | Not available | Function-hook module |

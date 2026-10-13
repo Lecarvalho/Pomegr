@@ -15,7 +15,7 @@ import { dropKey, newStepLabel, queueFeatures } from "../tasks/task-queue-model"
 import { readySegments } from "../tasks/task-ready-groups";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FEATURE_ID, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
+  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_FEATURE_ID, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T11_LONG, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
 const LINES = featureLines(BOARD_BLOCKED);
@@ -43,6 +43,7 @@ const NEW_STEP_LANE = { ...READY_LANE, overStep: dropKey(STEP_PANEL.feature.id, 
 
 const CARD_STATES: { label: string; note: string; task: Task; next?: boolean }[] = [
   { label: "Not queued", note: "Task text only; nothing else is set.", task: T8_IDLE },
+  { label: "Long text", note: "The title is the first sentence of the text, clamped to three lines. The rest follows as a muted excerpt of two lines. A backtick span is code in the data font. The whole text is the tooltip.", task: T11_LONG },
   { label: "Queued · next", note: "The first task the monitor would start. Queued reads in ink on the raised fill.", task: T3_QUEUED, next: true },
   { label: "Scheduled", note: "Info tone, plus the muted Starts line until a session is linked.", task: T7_SCHEDULED },
   { label: "Session working", note: "The chip is the bound session's state, borrowed from the Sessions list, with a green border. A differing model is one amber line.", task: T6_WORKING },

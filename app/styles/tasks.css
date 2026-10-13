@@ -74,7 +74,10 @@
 .taskIssueChip > svg { width: 11px; height: 11px; flex: 0 0 auto; }
 .taskCardChip { flex: 0 0 auto; white-space: nowrap; }
 .taskCardChip.isInk { color: var(--command-ink); }
-.taskCardTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskCardTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskCardTitle code, .taskCardExcerpt code { font: inherit; font-family: var(--font-data); }
+/* The text after the first sentence: two muted lines under the title. */
+.taskCardExcerpt { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskCard.isDone .taskCardTitle { color: var(--command-muted); }
 /* The title is the card's open control: the Quiet role drawn as plain title text. */
 .taskCardOpen.commandQuietAction { padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
@@ -88,6 +91,8 @@
 .taskCardDetail.taskCardModelDiffers { color: var(--command-amber); }
 /* Open session (D75): the Text link role, last on the card and not stretched across it. */
 .taskCardLink { align-self: flex-start; }
+/* The sessions line: Open session for the first session, then the muted count of the others and the Assigned mark. */
+.taskCardSessions { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
 
 /* Moving cards: dragging is the desktop app only. The raised fill is the lane itself, so the lane under a dragged card
    takes the strong line on its border instead (D48), two pixels wide; a movable card shows the grab cursor (D53); the
@@ -258,6 +263,16 @@
 .taskModalId { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskModalSession { display: flex; flex-direction: column; gap: var(--space-1); }
 .taskModalSessionTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+/* Sessions of a task: one ruled row per session (title link, role, state chip, Unassign), then the assign control. */
+.taskSessions { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.taskSessions legend { padding: 0; margin-bottom: var(--space-2); color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskSessionsList { margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--command-line); }
+.taskSessionsItem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-compact); padding-block: var(--space-2); border-top: 1px solid var(--command-line); }
+.taskSessionsName { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+.taskSessionsTitle { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskSessionsRole { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskSessionsAssign { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskSessionsAssign .commandSelect { flex: 1 1 220px; min-width: 0; display: grid; }
 .taskModalConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 /* The inline confirmation fills the footer, so a spacer inside it pushes the two actions to the right. */
 .taskModalFooter > .taskModalConfirm { flex: 1 1 auto; }

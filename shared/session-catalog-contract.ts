@@ -38,7 +38,8 @@ export type SessionTaskReference = {
 // Whether directory rows carry `task`.
 export type SessionDirectoryTaskReadiness = "ready" | "desktop_only" | "unavailable";
 
-export type WithSessionTask<Row> = Row & { task?: SessionTaskReference | null };
+// `task` is the task the session was started for. `assignedTasks` lists the tasks it is assigned to, and is absent when none.
+export type WithSessionTask<Row> = Row & { task?: SessionTaskReference | null; assignedTasks?: SessionTaskReference[] };
 
 export type SessionDirectoryTaskFields<Row> = {
   sessions: WithSessionTask<Row>[];

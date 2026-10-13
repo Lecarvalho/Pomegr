@@ -12,7 +12,7 @@ const LOADING_DELAY_MS = 1_500;
 const RETRY_DELAY_MS = 5_000;
 const READY_DELAY_MS = 10_000;
 
-const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64, issueNumber: 999_999_999 };
+const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64, issueNumber: 999_999_999, assignedSessions: 16 };
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const SINGLE_LINE = /^[^\u0000-\u001f]*$/u;
 
@@ -71,6 +71,11 @@ function validTask(value: unknown): value is Task {
   const results = report ? listOf(report.results, CHECKS.size, validResult) : [];
   const reading = session && session.checks !== undefined ? listOf(session.checks, CHECKS.size, validResult) : [];
   const checks = listOf(completeWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
+  const validAssigned = (entry: unknown): entry is Json => {
+    const assigned = record(entry);
+    return Boolean(assigned) && text(assigned!.id, LIMITS.label) && nullableText(assigned!.title, LIMITS.label) && text(assigned!.state, 40) && nullableText(assigned!.observedModel, LIMITS.model);
+  };
+  if (task.assigned !== undefined && listOf(task.assigned, LIMITS.assignedSessions, validAssigned) === null) return false;
   return typeof task.id === "string" && /^T-[1-9]\d*$/u.test(task.id)
     && text(task.text, LIMITS.text) && text(task.columnId, LIMITS.label) && count(task.position, 0)
     && (task.featureId === null || text(task.featureId, LIMITS.label)) && (task.step === null || count(task.step, 1))

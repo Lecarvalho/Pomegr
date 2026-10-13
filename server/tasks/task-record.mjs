@@ -40,6 +40,7 @@ export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+  "session_assign", "session_unassign",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -437,12 +438,17 @@ export function normalizeStoredTask(row) {
   if (!TASK_STATES.includes(row.state)) return undefined;
   if (featureId === null ? step !== null : typeof featureId !== "string" || !FEATURE_ID.test(featureId) || !Number.isSafeInteger(step) || step < 1) return undefined;
   if (sessionId !== null && (typeof sessionId !== "string" || !SESSION_ID.test(sessionId))) return undefined;
+  // The store attaches the assigned sessions (task-assignments.mjs). The session Pomegr started is never listed twice.
+  const assigned = (Array.isArray(row.assigned_sessions) ? row.assigned_sessions : [])
+    .filter((entry) => typeof entry === "string" && SESSION_ID.test(entry) && entry !== sessionId)
+    .map((entry) => ({ id: entry, title: null, state: "unknown", observedModel: null }));
   return {
     id, text, columnId: row.column_id, position, featureId, step, run,
     completeWhen: { checks, own },
     state: row.state,
     scheduledAt,
     session: sessionId === null ? null : { id: sessionId, title: null, state: "unknown", observedModel: null },
+    ...(assigned.length > 0 ? { assigned } : {}),
     source,
     // The store attaches the task's image list (task-images.mjs): identifiers, fixed types, and sizes, never bytes.
     images: normalizeStoredImages(row.images),

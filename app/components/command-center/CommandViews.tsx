@@ -155,7 +155,7 @@ function sessionColumns(providers: ProviderServiceStatus[], omit: "project" | "p
   },
   ...(showTask ? [{
     id: "task", label: "Task", cellLabel: "Task", className: "commandSessionCellTask", colClassName: "commandSessionColTask",
-    renderCell: (session: SessionDirectoryRow) => <SessionTaskCell task={session.task} omitFeature={omit === "feature"} />,
+    renderCell: (session: SessionDirectoryRow) => <SessionTaskCell task={session.task} assigned={session.assignedTasks} omitFeature={omit === "feature"} />,
   }] : []),
   {
     id: "state", label: "State", cellLabel: "State", className: "commandSessionCellState", colClassName: "commandSessionColState",

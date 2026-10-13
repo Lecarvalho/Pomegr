@@ -10,7 +10,7 @@ import test from "node:test";
 import { buildPomegrMcpServer as buildCodexServer } from "../mcp/server.mjs";
 import { buildPomegrMcpServer as buildClaudeServer } from "../plugins/claude-code/mcp/server.mjs";
 import {
-  buildAddTaskBody, FEATURE_CREATE_PATH, FEATURE_DELETE_PATH, FEATURE_GET_PATH, FEATURE_UPDATE_PATH, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REMOVE_PATH, TASK_REMOVE_UNBOUND_TEXT, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
+  buildAddTaskBody, TASK_ASSIGN_NO_ANSWER_TEXT, TASK_ASSIGN_PATH, TASK_ASSIGN_UNBOUND_TEXT, TASK_UNASSIGN_NO_ANSWER_TEXT, TASK_UNASSIGN_PATH, TASK_UNASSIGN_UNBOUND_TEXT, FEATURE_CREATE_PATH, FEATURE_DELETE_PATH, FEATURE_GET_PATH, FEATURE_UPDATE_PATH, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REMOVE_PATH, TASK_REMOVE_UNBOUND_TEXT, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
   TASK_UPDATE_NO_ANSWER_TEXT, TASK_UPDATE_PATH, TASK_UPDATE_UNBOUND_TEXT,
   TASK_NO_ANSWER_TEXT, TASK_REMOVE_NO_ANSWER_TEXT, TASK_REPORT_NO_ANSWER_TEXT, TASK_UNAVAILABLE_TEXT,
 } from "../mcp/task-tools.mjs";
@@ -199,9 +199,9 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   assert.equal(requests[0].init.headers[AGENT_QUERY_AUTH_HEADER], "t".repeat(43));
   assert.equal(requests[0].init.body, JSON.stringify({ text: "x" }));
 
-  // Add, bind, complete, block, remove, and update are the only task write paths; nothing else is reachable.
+  // Add, bind, complete, block, remove, update, assign, unassign, and the feature paths are the only task write paths; nothing else is reachable.
   assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, TASK_REMOVE_PATH, TASK_UPDATE_PATH,
-    FEATURE_GET_PATH, FEATURE_CREATE_PATH, FEATURE_UPDATE_PATH, FEATURE_DELETE_PATH]);
+    TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH, FEATURE_GET_PATH, FEATURE_CREATE_PATH, FEATURE_UPDATE_PATH, FEATURE_DELETE_PATH]);
   assert.equal(AGENT_TASK_COMPLETE_PATH, TASK_COMPLETE_PATH);
   assert.equal(AGENT_TASK_BLOCK_PATH, TASK_BLOCK_PATH);
   const bind = createAgentTaskWriter({ ...base, fetchFn: respond(200, { schemaVersion: 1, ok: true }) });
@@ -366,7 +366,7 @@ test("complete_task reports the state and names only the conditions Pomegr could
 test("the report tools map every refusal to fixed text and never echo the monitor's answer", async () => {
   const texts = {
     invalid: "Pomegr rejected the report as invalid, so nothing was reported.",
-    not_found: "No Pomegr task is linked to this session, so nothing was reported.",
+    not_found: "No Pomegr task is linked to this session, or the task named is not one of its tasks, so nothing was reported.",
     already_reported: "This session already reported on its task, so nothing changed.",
     stalled: "Pomegr marked this task Stalled, because it read this session as ended before any report, so nothing was reported. Only the user can change that, with Mark done or Requeue on the board. Tell the user what you finished, and do not report again.",
     unavailable: "Pomegr is unavailable, so nothing was reported.",
@@ -402,7 +402,7 @@ function claudeServer({ token = TOKEN, answer } = {}) {
     calls.push({ pathname, body });
     return answer ?? (pathname === TASK_BLOCK_PATH ? { ok: true, state: "blocked" }
       : pathname === TASK_COMPLETE_PATH ? { ok: true, state: "done", results: [] }
-        : pathname === TASK_REMOVE_PATH || pathname === TASK_UPDATE_PATH ? { ok: true } : { ok: true, taskId: "T-3" });
+        : [TASK_REMOVE_PATH, TASK_UPDATE_PATH, TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH].includes(pathname) ? { ok: true } : { ok: true, taskId: "T-3" });
   };
   const readBindingToken = typeof token === "function" ? token : async () => token;
   const server = buildClaudeServer({
@@ -416,6 +416,8 @@ const CLAUDE_CALLS = {
   add_task: { input: { text: "x" }, unbound: TASK_UNBOUND_TEXT, ok: "Task T-3 added to the board, not queued." },
   remove_task: { input: { task_id: "T-3" }, unbound: TASK_REMOVE_UNBOUND_TEXT, ok: "Task T-3 removed from the board." },
   update_task: { input: { task_id: "T-3", text: "x" }, unbound: TASK_UPDATE_UNBOUND_TEXT, ok: "Task T-3 updated." },
+  assign_task: { input: { task_id: "T-3" }, unbound: TASK_ASSIGN_UNBOUND_TEXT, ok: "Task T-3 assigned to this session. Report it with complete_task or block_task, naming task_id if this session has more than one task." },
+  unassign_task: { input: { task_id: "T-3" }, unbound: TASK_UNASSIGN_UNBOUND_TEXT, ok: "Task T-3 unassigned from this session." },
   complete_task: { input: {}, unbound: TASK_REPORT_UNBOUND_TEXT, ok: "Task reported complete. Pomegr marked it done." },
   block_task: { input: { reason: "stuck" }, unbound: TASK_REPORT_UNBOUND_TEXT, ok: "Task reported as blocked. The user will resolve it." },
 };
@@ -756,14 +758,14 @@ test("a write waits longer than a read, complete outlasts the monitor's 20-secon
   try {
     const hang = (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
     const write = createAgentTaskWriter({ ...base, fetchFn: hang });
-    for (const pathname of [AGENT_TASK_ADD_PATH, AGENT_TASK_REMOVE_PATH, TASK_UPDATE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH]) {
+    for (const pathname of [AGENT_TASK_ADD_PATH, AGENT_TASK_REMOVE_PATH, TASK_UPDATE_PATH, TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH]) {
       await assert.rejects(() => write(pathname, {}), /AGENT_QUERY_NO_ANSWER/u);
     }
     await assert.rejects(() => createAgentTaskWriter({ ...base, fetchFn: hang, timeoutMs: AGENT_QUERY_TIMEOUT_MS })(AGENT_TASK_BIND_PATH, {}), /AGENT_QUERY_NO_ANSWER/u);
   } finally {
     globalThis.setTimeout = original;
   }
-  assert.deepEqual(waits, [10_000, 10_000, 10_000, 10_000, 25_000, 2_000]);
+  assert.deepEqual(waits, [10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 25_000, 2_000]);
 });
 
 test("an unanswered write says the outcome is unknown, and an unreachable monitor says nothing was written", async () => {
@@ -772,6 +774,7 @@ test("an unanswered write says the outcome is unknown, and an unreachable monito
   const calls = [
     ["add_task", { text: SENTINEL }, TASK_NO_ANSWER_TEXT, TASK_UNAVAILABLE_TEXT],
     ["remove_task", { task_id: "T-4" }, TASK_REMOVE_NO_ANSWER_TEXT, "Pomegr is unavailable, so no task was removed."],
+    ["assign_task", { task_id: "T-4" }, TASK_ASSIGN_NO_ANSWER_TEXT, "Pomegr is unavailable, so no task was assigned."], ["unassign_task", { task_id: "T-4" }, TASK_UNASSIGN_NO_ANSWER_TEXT, "Pomegr is unavailable, so no task was unassigned."],
     ["update_task", { task_id: "T-4", text: SENTINEL }, TASK_UPDATE_NO_ANSWER_TEXT, "Pomegr is unavailable, so no task was changed."],
     ["complete_task", { attention: SENTINEL }, TASK_REPORT_NO_ANSWER_TEXT, "Pomegr is unavailable, so nothing was reported."],
     ["block_task", { reason: SENTINEL }, TASK_REPORT_NO_ANSWER_TEXT, "Pomegr is unavailable, so nothing was reported."],
@@ -787,7 +790,7 @@ test("an unanswered write says the outcome is unknown, and an unreachable monito
   }
   assert.equal(TASK_NO_ANSWER_TEXT, "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.");
   // No unknown-outcome text claims that nothing happened.
-  for (const text of [TASK_NO_ANSWER_TEXT, TASK_REMOVE_NO_ANSWER_TEXT, TASK_UPDATE_NO_ANSWER_TEXT, TASK_REPORT_NO_ANSWER_TEXT]) {
+  for (const text of [TASK_NO_ANSWER_TEXT, TASK_ASSIGN_NO_ANSWER_TEXT, TASK_UNASSIGN_NO_ANSWER_TEXT, TASK_REMOVE_NO_ANSWER_TEXT, TASK_UPDATE_NO_ANSWER_TEXT, TASK_REPORT_NO_ANSWER_TEXT]) {
     assert.match(text, /^Pomegr did not answer in time, so it is unknown whether /u);
     assert.doesNotMatch(text, /so no task was|so nothing was|is unavailable/u);
   }

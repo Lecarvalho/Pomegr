@@ -2,6 +2,7 @@
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { FEATURE_ID, normalizeFeatureName, taskIdFromNumber } from "./task-record.mjs";
 import { readTaskSource } from "./task-source.mjs";
+import { sessionAssignedTasks } from "./task-assignments.mjs";
 
 export const FEATURE_LINK_MAX = 2000;
 
@@ -11,6 +12,9 @@ const OUTCOME_STATES = new Set(["needs_review", "stalled", "blocked", "done"]);
 const REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t.state AS state, t.step AS step,
   t.feature_id AS featureId, f.name AS featureName
   FROM tasks t LEFT JOIN features f ON f.id = t.feature_id WHERE t.session_id = ?`;
+const ASSIGNED_REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t.state AS state, t.step AS step,
+  t.feature_id AS featureId, f.name AS featureName
+  FROM tasks t LEFT JOIN features f ON f.id = t.feature_id WHERE t.repository_id = ? AND t.number = ?`;
 
 const safeName = (value) => (typeof value === "string" ? normalizeFeatureName(value) ?? null : null);
 
@@ -39,6 +43,23 @@ export function sessionTaskReferences({ database, sessionIds }) {
     const row = statement.get(sessionId);
     const task = row ? reference(database, row) : null;
     if (task) references.set(sessionId, task);
+  }
+  return references;
+}
+
+// The tasks each session is assigned to, beside the one it was started for: the same reference, in board and number order.
+export function sessionAssignedReferences({ database, sessionIds }) {
+  const references = new Map();
+  const statement = preparedStatement(database, ASSIGNED_REFERENCE);
+  for (const sessionId of sessionIds) {
+    if (typeof sessionId !== "string" || references.has(sessionId)) continue;
+    const tasks = [];
+    for (const assigned of sessionAssignedTasks(database, sessionId)) {
+      const row = statement.get(assigned.repositoryId, assigned.number);
+      const task = row ? reference(database, row) : null;
+      if (task) tasks.push(task);
+    }
+    if (tasks.length > 0) references.set(sessionId, tasks);
   }
   return references;
 }

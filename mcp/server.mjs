@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from "node:url";
+import { tmpdir } from "node:os";
 import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
@@ -62,7 +63,7 @@ const signalAnnotations = {
 
 export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
-    { name: "pomegr", version: "0.9.7" },
+    { name: "pomegr", version: "0.9.8" },
     { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, report_session_progress for bounded session progress, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal, clear_session_signal, or clear_session_progress when the corresponding current state is no longer meaningful. " + AGENT_QUERY_INSTRUCTIONS + " " + TASK_TOOL_INSTRUCTIONS },
   );
 
@@ -212,5 +213,10 @@ export function buildPomegrMcpServer(options = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  serveStdio(() => buildPomegrMcpServer());
+  const dataRoot = defaultAgentQueryDataRoot();
+  // A long-lived Windows cwd handle inside the plugin cache prevents Codex
+  // from backing up that cache on update. Tools bind through provider metadata
+  // and absolute data roots, so the stdio worker does not need that directory.
+  process.chdir(tmpdir());
+  serveStdio(() => buildPomegrMcpServer({ dataRoot }));
 }

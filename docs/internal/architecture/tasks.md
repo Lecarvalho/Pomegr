@@ -1,8 +1,8 @@
 # Task board and session dispatch
 
 > Scope: the per-repository task board, the queue that starts sessions for its tasks,
-> and the agent tools that add, remove, complete, and block tasks and that read and
-> change features. It does not cover
+> and the agent tools that add, remove, complete, and block tasks, that assign a session
+> to a task, and that read and change features. It does not cover
 > observation, which stays read-only and is owned by the
 > [observation cache](observation-cache.md).
 > Authority: canonical design contract for tasks and dispatch, decided by the product
@@ -16,8 +16,8 @@
 
 **Status: built.** Every capability on this page has shipped: the board, features and
 steps, the queue with its start gates and schedule, session start for Claude Code and
-Codex on Windows, session binding, the eight agent tools, verified conditions, and the
-task reference on the Sessions list and in the session view. The user guide is
+Codex on Windows, session binding, assigned sessions, the eleven agent tools, verified
+conditions, and the task reference on the Sessions list and in the session view. The user guide is
 [Tasks](../../public/using-pomegr/tasks.md). Report-less completion (a task finishing
 from a deterministic condition with no agent report) is deliberately not designed or
 implemented; see [Open questions and unassigned work](#open-questions-and-unassigned-work).
@@ -96,6 +96,12 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   removed in the one that deletes it, and it is never projected onto a board (see
   [Agent task removal](#agent-task-removal)).
 
+- The sessions assigned to a task are kept there too, under
+  `task_assigned:<repositoryId>:<taskId>` with a JSON list of normalized session IDs as
+  the value, in the order they were assigned (`server/tasks/task-assignments.mjs`). The
+  row exists only while the task holds an assigned session, and it goes in the write that
+  deletes the task (see [Assigned sessions](#assigned-sessions)).
+
 - A feature's description and app version are kept there too, under
   `feature_description:<repositoryId>:<featureId>` and
   `feature_app_version:<repositoryId>:<featureId>` (`server/tasks/task-feature-details.mjs`).
@@ -123,6 +129,7 @@ type Task = {
   scheduledAt: string | null;
   session: { id: string; title: string | null; state: string; observedModel: string | null;
     checks?: { check: TaskCheck; passed: boolean }[] } | null;
+  assigned?: { id: string; title: string | null; state: string; observedModel: string | null }[];  // absent means none
   report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null;
     attention: string | null } | null;                 // what the agent asked the owner to look at
   source: { kind: "github_issue"; number: number } | null;   // set once, by a promote or an issue create
@@ -230,6 +237,12 @@ type TaskBoard = {
   and a model that is not a request model identifier is null. With no facts the
   session is `{ id, title: null, state: "unknown", observedModel: null }`: unknown,
   never guessed. The facts are borrowed per read and never stored.
+- `assigned` lists the sessions assigned to the task, in the order they were assigned
+  (see [Assigned sessions](#assigned-sessions)). Each entry is the same borrowed
+  reference as `session`, filled from the same committed facts by `fillTaskSessions`
+  and validated the same way, with no `checks` reading. It is absent from a task that
+  holds none and from an older monitor. It never lists the session Pomegr started for
+  the task, and it holds at most 16 entries.
 - `images` lists the task's images in the order they were attached: an opaque ID
   (`img-<12 hex>`), the fixed type the monitor read from the bytes, and the size in
   bytes. It never carries image bytes, a file name, or a path (see [Images](#images)).
@@ -311,6 +324,9 @@ was not given. A task has **started** when one of these holds (`rowStarted` in
 - a session is linked to it;
 - a dispatch for it is live, because the prompt is already built;
 - its state is Needs review, Blocked by agent, Stalled, or Done.
+
+An assigned session does not start a task: the task stays editable until one of the
+three holds (see [Assigned sessions](#assigned-sessions)).
 
 For a started task:
 
@@ -1151,21 +1167,29 @@ installed plugin from before the rename sends; a body with both names is `invali
     execution task. A compound or generic shell command, or another tool, that changes
     the branch or a pull request is not counted, and only the newest retained execution
     tasks are seen.
-- A task takes one report per dispatch. A second `complete_task` or `block_task`, and a
-  report on a task that already has an outcome, change nothing; the answer is
-  `already_reported`. A report on a task that Pomegr stalled changes nothing either, and
-  its answer is `stalled`: the session reported nothing, so the tool tells the agent
-  that the task is Stalled and that only the user can change it.
+- A task takes one report per dispatch, and the first report wins. The session Pomegr
+  started for the task and every session assigned to it may report it. A second
+  `complete_task` or `block_task`, from the same session or another one, and a report
+  on a task that already has an outcome, change nothing; the answer is
+  `already_reported`. A report from the session Pomegr started, on a task that Pomegr
+  stalled, changes nothing either, and its answer is `stalled`: the session reported
+  nothing, so the tool tells the agent that the task is Stalled and that only the user
+  can change it. An assigned session may report a stalled task (see
+  [Assigned sessions](#assigned-sessions)).
 - The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
   `/block`, under the gate of `add`. The body is `{ sessionRef }`, plus a one-line
   `reason` of at most 200 characters for a block, or an optional one-line `attention`
-  of at most 200 characters for a completion; any other key is `invalid`. The
-  session is the only input that names a task. The answer is
+  of at most 200 characters for a completion, and optionally `taskId`; any other key is
+  `invalid`. The session names the task: the one it was started for, or the one it is
+  assigned to. A session with more than one task names the one it reports with
+  `taskId`, which must be one of its own tasks. The answer is
   `{ schemaVersion: 1, ok: true, state, results }` (`state` is `needs_review` or
   `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`
-  with `invalid` (400), `not_found` (404, no task is linked to the session),
-  `already_reported` (409), `stalled` (409, Pomegr stalled the task before any report),
-  or `unavailable` (503). The plugins know `stalled` from version 0.9.5; an older
+  with `invalid` (400), `not_found` (404, the session has no task, or the named task is
+  not one of its tasks), `task_required` (409, the session has more than one task and
+  named none), `already_reported` (409), `stalled` (409, Pomegr stalled the task before
+  any report), or `unavailable` (503). The plugins send `taskId` and know
+  `task_required` from version 0.9.8. The plugins know `stalled` from version 0.9.5; an older
   plugin reads it as an unknown reason and says that Pomegr is unavailable. It never
   carries a task ID, task
   content, or a repository fact. A completion with a checked condition answers after
@@ -1178,7 +1202,7 @@ supplies.
 
 - **Claude Code**: a `PreToolUse` hook, like `plugins/claude-code/scripts/rename-session.mjs`,
   supplies the session on every call. The hook hands `session_ref` to `add_task`,
-  `update_task`, `remove_task`, `complete_task`, `block_task`, and the four feature tools (see
+  `update_task`, `remove_task`, `assign_task`, `unassign_task`, `complete_task`, `block_task`, and the four feature tools (see
   [Feature context](#feature-context)) through `updatedInput`, together with `session_proof`:
   `<issuedAtMs>.<base64url HMAC-SHA256>` over the tool name, the session reference, and the
   issue time, keyed by the local agent-query capability token
@@ -1335,7 +1359,8 @@ supplies.
 - A started session carries an opaque random dispatch token in `POMEGR_TASK_TOKEN`. The
   plugin's session-start hook reports the token and the session ID to the monitor, which
   links the task to the session. `complete_task` and `block_task` act only on the task
-  linked to the bound session. Both plugins run the same hook script on `startup` only;
+  linked to the bound session and on the tasks that session is assigned to (see
+  [Assigned sessions](#assigned-sessions)). Both plugins run the same hook script on `startup` only;
   the Codex plugin passes `--provider codex` and sends `codex:<session_id>`. The session
   ID always comes from the hook input. Codex replays its launch environment into hook
   commands but starts a stdio MCP server with an allowlisted environment, so the token
@@ -1362,13 +1387,99 @@ supplies.
   state, logs, reports, or notifications.
 
 A session that was not started from a task has no linked task; its tools can still add
-tasks to its repository. A session that is not linked, but that the user opened inside a
+tasks to its repository, and it can assign itself to a task of that board (see
+[Assigned sessions](#assigned-sessions)). A session that is not linked, but that the user opened inside a
 task worktree, adds to the main repository's board: a linked Git worktree takes its main
 repository's identity (product-owner decision, 2026-10-10; see
 [Repository context inventory](observation-cache.md#repository-context-inventory)). The
 identity comes from a Git read of the worktree folder. Once the folder is removed, the
 path shape of a Pomegr-made task worktree names the repository, for a repository ID the
 inventory already knows.
+
+## Assigned sessions
+
+Task T-97, product-owner decisions of 2026-10-12. The link of [Session binding](#session-binding)
+is one task to one session, made only by a dispatch. A session that Pomegr did not start
+for a task, such as one the owner starts by hand to resume a task whose first session
+stopped responding, is **assigned** to it instead. The relation is many to many: a task
+holds at most 16 assigned sessions, and a session is assigned to at most 16 tasks. The
+session Pomegr started for a task is its started session, never an assigned one.
+
+- **A marker only.** Assigning and unassigning change no state, column, queue place,
+  or update time, and move no card. An assignment is never a dispatch: it does not
+  start the task (see [A started task is read-only](#a-started-task-is-read-only)), it
+  is not in flight, it holds no queue, and the queue may still start its own session
+  for the task. The stall watcher follows only the started session.
+- **Which tasks.** Any task of the board that is not Done: one that has not started,
+  one with a started session, and one that needs review, is blocked, or stalled. A Done
+  task answers `conflict`, and so does the started session assigning itself to its own
+  task. Assigning a session that is already assigned answers `ok` and writes nothing.
+  A 17th session on a task, or a 17th task for a session, answers `limit`.
+- **Which board.** The agent's board is the one `add_task` writes to for that session
+  (see [Session binding](#session-binding)), so an agent reaches only its own
+  repository's board, and no input names a repository, a path, or a session. The
+  owner's action names a session; the route accepts it only when the monitor's
+  committed memory holds that session for the board's repository
+  (`resolveTaskSession`), and answers `not_found` for any other.
+- **What an assigned session may do.** It reports the task with `complete_task` or
+  `block_task`, and reads its feature with `get_feature`. It gets no prompt from
+  Pomegr, and no task text: no agent path returns one.
+- **The first report wins** (see [Completion](#completion)). The started session and
+  each assigned session may report; the first report sets the outcome and every later
+  one answers `already_reported`.
+- **A stalled task.** An assigned session may report a task that Pomegr stalled,
+  because it is the session that resumed the work. A completion sets Needs review,
+  moves the card to Review, and frees a queue the stall blocked (`releaseQueue`); a
+  block sets Blocked by agent, which keeps holding the queue. The started session's
+  own late report is still refused with `stalled`.
+- **A task that has not started.** A report from an assigned session sets the outcome
+  as for any task and takes the task out of the queue. The same write clears a
+  dispatch that has not linked, so a start still in flight links nothing: its
+  session-start `bind` answers `not_found`, and that session runs unlinked.
+- **Several tasks.** A session with more than one task (the one it was started for and
+  the ones it is assigned to) names the task in `complete_task`, `block_task`, and a
+  `get_feature` without a feature, with `task_id`. Without it the answer is
+  `task_required`. A task that is not one of its own answers `not_found`.
+- **Conditions are verified on the reporting session.** The report's read and the
+  board's committed facts are those of the session that reports: its own repository
+  root and branch (see [Completion](#completion)). The task's worktree and branch
+  rules do not apply to an assigned session: Pomegr creates, checks, and removes no
+  worktree or branch for it. The board's reading of a waiting task (`session.checks`)
+  still comes from the started session only.
+- **Requeue, Mark done, delete.** `resolve_requeue` keeps the assignments, so an
+  assigned session may report the task again; it clears only the started session's
+  link. `resolve_done` keeps them for the record. `delete` and `remove_task` remove
+  them with the task.
+- **Pomegr controls nothing.** An assigned session is never started, stopped,
+  answered, or approved by Pomegr. Observation stays read-only: the relation is a
+  projection of the task store, and no observation module reads it.
+
+The store actions are `session_assign` and `session_unassign`, each with exactly
+`{ id, sessionId }`. They are in the fixed action list, so the desktop IPC and the
+paired-device route accept them (see [Boundaries](#boundaries)). `session_unassign`
+answers `not_found` for a session that is not assigned to the task.
+
+The agent tools `assign_task` and `unassign_task` take only `task_id`. The monitor
+serves them as `POST /api/agent/v1/tasks/assign` and `/unassign`
+(`server/serving/task-session-routes.mjs`), under the gate of `add` and with the same
+content-type check. The body is a JSON object of at most 1 KiB with exactly
+`sessionRef` and `taskId`. The answer is `{ schemaVersion: 1, ok: true }` or
+`{ schemaVersion: 1, ok: false, reason }` with `invalid` (400), `session_not_found`
+(404), `repository_unavailable` (409), `not_found` (404), `conflict` (409, assign
+only), `limit` (409, assign only), or `unavailable` (503). It never carries task
+content, a state, or who else is assigned. The hook binds and signs both like any task
+write and makes no permission decision for them. The tools are in the plugins from
+version 0.9.8.
+
+The owner assigns and unassigns in the Task modal, in the desktop app and on a paired
+device ([Task modal design](../design/task-modal.md) owns the control). The modal
+offers the repository's ten newest sessions that are not Closed and not on the task
+yet. They come from one Sessions directory read the client already may make
+(`GET /api/sessions?mode=directory&repositoryId=…`, one page of 50) when the modal
+opens; a session outside the ten assigns itself with `assign_task`.
+
+Not yet proven on a device: an assign from a real Claude Code or Codex session, and a
+report from an assigned session on a stalled task.
 
 ## Agent task removal
 
@@ -1853,7 +1964,7 @@ serves no other client.
   3. The route (`app/api/tasks/action/route.ts`) refuses a request without the mark and
      the token with 403, so a same-computer browser, the development server, and its
      peers never write. A request that lacks the mark is refused, and a request that
-     lacks the token is refused. It holds the closed list of the eleven `pomegr:task-action`
+     lacks the token is refused. It holds the closed list of thirteen `pomegr:task-action`
      names, the repository ID pattern, and the 16 KiB payload cap, and posts to
      `POST /internal/tasks/<action>` with the desktop token. The monitor validates the
      record as it does for the desktop app.
@@ -1868,6 +1979,10 @@ serves no other client.
 - **Manual start.** The owner's request of 2026-10-12 adds `POST /api/tasks/start`. The desktop gateway handles it directly. It never forwards the request to the web host or exposes a start-plan proxy. Its exact JSON body is `{ repositoryId, taskId, confirmed: true }`, optionally with `worktree: true`. IDs use the existing repository and task patterns. Unknown keys, false flags, and missing confirmation are invalid. The route requires the pairing cookie, the gateway's own `Origin`, and JSON content type. It permits no query or transfer encoding. The declared body must be at most 512 bytes.
 - **Start confirmation.** The phone's browser asks before every manual start and names the task ID and the computer running Pomegr. A separate-worktree confirmation explains that it excludes uncommitted changes. Cancellation sends no request. Desktop main uses the same starter and exclusive launch slot as native IPC and the queue runner. The same manual start gates apply, with no second confirmation on the PC. It revalidates pairing and network authorization before reserving a dispatch, after the plan returns, and immediately before launch. Lost authorization aborts a reserved dispatch. It never stops a session already launched.
 - **Start answer.** The gateway returns only `{ status }` from the fixed `pomegr:task-start` status list, or a fixed HTTP refusal. It never returns a prompt, plan, path, dispatch token, process output, or exception. There is no automatic retry.
+- **Assigned sessions.** The owner's decision of 2026-10-12 (task T-97) gives a paired
+  device what the desktop app has: the board it reads carries `Task.assigned`, its
+  Sessions list carries `assignedTasks`, and `session_assign` and `session_unassign`
+  are in the route's closed list (see [Assigned sessions](#assigned-sessions)).
 - **Desktop only.** Open folder, images, and GitHub issues
   have no forwarded route. The device's Task field shows an image as its marker.
 - **Agent chat.** A paired device also reaches the agent chat, through one route that
@@ -1887,9 +2002,9 @@ serves no other client.
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
-| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked and each assigned session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
 | `GET /api/tasks?view=home` | The same clients, under the same gate and the same forwarding | The [Tasks home](#tasks-home), `no-store`: for each stored board its five column counts, its count of open features, its queue status with the blocking task's ID and the fixed pause reason, and the time of its newest task change; and for at most 50 tasks that wait for the owner, the repository ID, the task ID, the state, and one title line. A denied client gets `readiness: "desktop_only"` and no content |
-| `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
+| `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), on a session that is assigned to a task `assignedTasks` (the same reference for each such task), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds, including queue on and off; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
@@ -1903,16 +2018,17 @@ serves no other client.
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
 | `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
 | `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
-| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
+| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | `complete` and `block` carry the bound session, optionally one task ID of that session, and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
+| `POST /api/agent/v1/tasks/assign\|unassign` | An agent through the MCP tools `assign_task` and `unassign_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out. Never task content, a state, or another session |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
 | `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content or a state |
-| `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title in; that feature's ID, title, description, and app version out, or one fixed reason. The only agent path that answers user-authored board content |
+| `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title, or one task ID of that session, in; that feature's ID, title, description, and app version out, or one fixed reason. The only agent path that answers user-authored board content |
 | `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `feature_update`, `feature_delete`, `queue_add`,
-  `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
-  `resolve_requeue`. Any other action name is refused: `invalid` from the preload, desktop
+  `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`,
+  `resolve_requeue`, `session_assign`, and `session_unassign`. Any other action name is refused: `invalid` from the preload, desktop
   main, and the route, and `unsupported` from the store itself. That includes the removed
   `column_create`, `column_rename`, `column_reorder`, `column_delete`, and `column_role`. Built so far: `create` with `{ text, run?, completeWhen? }`, `update` with
   `{ id, text?, run?, completeWhen? }`, and `delete` with `{ id }`; a payload with any other
@@ -2000,8 +2116,8 @@ serves no other client.
   the `/internal/tasks/<action>` answers carry the same filled board.
 - A browser that is not a paired device never mutates tasks or starts a session. A paired device may request only the confirmed manual start described in [Paired devices](#paired-devices); the desktop performs the launch.
 - The seven MCP observation tools stay read-only, as in [MCP observation queries](mcp-queries.md).
-  The task tools are a separate registration with the eight POST paths above: seven
-  writes and the `feature-get` read.
+  The task tools are a separate registration with the twelve POST paths above (`bind`
+  is the hook's, not a tool's): eleven writes and the `feature-get` read.
 
 ## Privacy
 
@@ -2065,6 +2181,24 @@ fixed values.
     same for a feature that does not exist and one of another repository's board.
   - `get_feature` reads a feature of the session's own board only. The board is chosen
     by the session binding, never by an input.
+- Which sessions are assigned to a task is a list of normalized session IDs, the same
+  class as the linked session's ID (task T-97, 2026-10-12). This is a deliberate
+  widening of what the board and the Sessions list serve.
+  - The task store keeps the IDs beside the task, and nothing else of a session.
+  - `GET /api/tasks` serves them as `Task.assigned`, each with the borrowed title,
+    state, and observed model that `Task.session` already carries, under that route's
+    gate, to a same-computer client or a paired device. The facts are borrowed per read
+    and never stored.
+  - The Sessions list serves a session's assigned tasks as `assignedTasks`: the task
+    reference it already serves as `task`, with the same fields and the same gate, and
+    never task text, an own condition, a report, a block reason, or an attention line.
+  - The agent paths `assign` and `unassign` answer `ok` or one fixed reason. No agent
+    path returns who is assigned to a task, and `get_feature` with a task ID reads only
+    a task of the calling session.
+  - The owner's assign control reads the repository's sessions from the Sessions
+    directory the client may already read; the task routes serve no session list.
+  - Assignments never enter `/api/state`, a session domain, a catalog, a checkpoint, a
+    report, a log, a notification, or diagnostics, and no pipeline stage reads them.
 - Which session added a task is monitor-private. The task store keeps the normalized
   session ID of an `add_task` call beside the task, and only the rule of
   [Agent task removal](#agent-task-removal) reads it. It is on no board, route, list,
@@ -2157,12 +2291,14 @@ fixed values.
     the description and the app version still never reach them.
   - A feature ID the ready board does not hold opens nothing and reads nothing. The page
     does not say whether the feature was deleted or belongs to another board.
-- A session's task reference is found by the session link, never by repository ID. The
+- A session's task reference is found by the session link, and its assigned tasks by
+  the assignment rows, never by repository ID. The
   session catalog stores none of it: the catalog index only takes a bounded set of
   session IDs to narrow or group a page.
 - Grouping by feature lists only sessions started for a task that belongs to a feature,
   from at most the 2000 newest links. A session with no task, or with a task outside a
-  feature, is in no group.
+  feature, is in no group. An assigned session is not started for the task, so the
+  feature scope and the feature groups do not list it.
 - Task references follow the `GET /api/tasks` gate. The LAN gateway forwards
   `/api/sessions` with a loopback host, so it marks every forwarded request with
   `x-pomegr-lan-gateway`, and the same-origin proxy sets `tasks=1` on a marked

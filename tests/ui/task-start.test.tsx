@@ -444,7 +444,10 @@ describe("paired phone starts", () => {
     setBridge(undefined);
     access.mode = "lan";
     fetchStart.mockReset().mockResolvedValue({ ok: true, json: async () => ({ status: "started" }) });
-    vi.stubGlobal("fetch", fetchStart);
+    // The modal also reads the repository's sessions for its assign control; only the start requests are counted.
+    vi.stubGlobal("fetch", (url: string, init?: unknown) => String(url).startsWith("/api/sessions")
+      ? Promise.resolve({ ok: true, json: async () => ({ sessions: [] }) })
+      : fetchStart(url, init));
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
