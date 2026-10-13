@@ -250,7 +250,8 @@ a GitHub issue from a task sends the text only, with `[image]` in place of each 
 
 Open a card and select **Start session**. A task can start when it is **Not
 queued**, **Queued**, or **Scheduled** and has no session linked. A scheduled task
-cannot start before its own time.
+cannot start before its own time. In the desktop app you can also ask Aril to start a
+task: see [Start a session from the chat](agent-chat.md#start-a-session-from-the-chat).
 
 1. Pomegr asks "Start task T-3?" and does nothing until you confirm. On a paired
    phone, confirm in the phone's browser; no click on the PC is needed.

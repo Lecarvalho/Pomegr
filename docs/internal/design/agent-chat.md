@@ -170,6 +170,8 @@ The task board is in [Task board design](task-board.md).
 - Once the proposal was answered, the head adds a standard `.commandChip`.
 - The chip is positive **Applied**, warning **Partly applied**, or neutral **Dismissed**.
 - A pending proposal has no chip.
+- A session start that launched has the positive chip **Session started** in place of **Applied**.
+- The card is a region named “Proposed board changes”, or “Proposed session start” for a session start.
 
 ### Operations
 
@@ -187,9 +189,11 @@ The task board is in [Task board design](task-board.md).
 | **Add T-n to queue** | Nothing more |
 | **Remove T-n from queue** | Nothing more |
 | **Move T-n to step n** | Nothing more |
+| **Start a session for T-n** | The board's current first line of that task in muted text |
 
 - The line of what is set holds “in feature · step n”, provider, model, and effort, “Complete when: PR open, CI passed”, and “then add to queue”.
 - **Update T-n** leaves the current first line out when the board does not hold the task.
+- **Start a session for T-n** is the only row of its card.
 
 ### Results
 
@@ -201,6 +205,14 @@ The task board is in [Task board design](task-board.md).
 | “Not valid”, “Not found”, “Board is full”, “No longer possible”, “Not supported”, or “Pomegr did not answer” | The error color |
 | “Created T-n, but it could not be queued”, for a task that was created and could not be queued | The error color |
 | “Not run”, for an operation after the one that failed | Muted |
+| “Session started in a new terminal window.”, for a session start that launched | Green |
+| “Not started.” and one fixed sentence for the start status, for a session start that launched nothing | The error color |
+
+- A start that a gate held reads “Not started. A start gate held this task.”
+- While that card is pending, one muted 12px line follows with the Task modal's own held line, “This task is held: ...”, from the board's current gate readings.
+- The held line is left out when the board reads no hold now.
+- The other start sentences name Windows only, a missing command-line tool, a missing plugin, a task that could not be started, an unsupported provider, a task that no longer exists, another start under way, a start that could not be made, a dirty task worktree, and a dirty repository.
+- A session start that launched nothing keeps its result and stays pending.
 
 ### Footer
 
@@ -210,6 +222,10 @@ The task board is in [Task board design](task-board.md).
 - The line adds “Deleting cannot be undone.” when the proposal deletes a task.
 - Each pending card has its own Primary, so a conversation may hold more than one.
 - After a successful apply, the board is read again.
+- The Primary of a session start reads **Start session**.
+- The footer line of a session start reads “Nothing starts until you select Start session. Pomegr asks you to confirm, then checks the start gates.”
+- On a paired device a session start has no Primary, only **Dismiss**.
+- On a paired device the footer line of a session start reads “Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.”
 
 ### Unreadable proposal
 
@@ -260,6 +276,7 @@ The task board is in [Task board design](task-board.md).
 | “That proposal was already answered.” | None |
 | “That message could not be sent.” | None |
 | “Aril could not be reached. Try again.” | None |
+| “A session can be started from this chat only in the Pomegr desktop app.” | A session start that was applied outside the desktop window |
 
 ## Conversations
 
@@ -283,6 +300,7 @@ The task board is in [Task board design](task-board.md).
 - `/design-system` renders the Aril launcher in its three states.
 - It renders the panel from invented conversations: empty, with a pending proposal holding all eight operations, with an answer being written, as the conversation list, with the notes under an answer and the unreadable-proposal notice, and with no repository.
 - It renders the proposal card pending, with a delete, in flight, applied, partly applied, with a task that was not found, with every result word, and dismissed.
+- It renders the session start proposed, held, failed, launched, and on a paired device.
 - It renders the composer with an error, over the limit, and while an answer is written elsewhere.
 - It renders the answer text, including HTML and a link shown as literal text.
 - The panel's own behavior (focus, Escape, the repository choice, polling, and the desktop bridge) is specified here but is not rendered there.

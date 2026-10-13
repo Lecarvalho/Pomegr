@@ -673,7 +673,8 @@ async function startDesktop() {
             update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null, lastCheckedAt: null }),
           }),
         });
-        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot });
+        // An approved start proposal of the chat takes the manual start of the Tasks page, native confirmation included.
+        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, startTask: (event, repositoryId, taskId) => taskStarter.start(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           isTrustedEvent: trustedDesktopEvent,
           monitorOrigin: privateMonitorOrigin,
@@ -685,7 +686,7 @@ async function startDesktop() {
         });
         const taskImage = createTaskImage({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
         phoneAccess = createLanSharingController({
-          upstreamOrigin: web.origin, agentChat: agentChat.handle, taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired,
+          upstreamOrigin: web.origin, agentChat: (operation, payload) => agentChat.handle(operation, payload), taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired,
           authorizationToken,
           autoStart: desktopSettings.lanSharingAutoStart,
           canPersist: settingsLoad.canPersist,

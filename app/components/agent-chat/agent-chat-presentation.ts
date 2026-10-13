@@ -1,7 +1,7 @@
 import {
   AGENT_CHAT_BOUNDS,
   type AgentChatActivity, type AgentChatBoardOperation, type AgentChatConversationSummary, type AgentChatError, type AgentChatMessage,
-  type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatTurnStatus,
+  type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatStartFailure, type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
 import { plainTaskText, type Task } from "../../../shared/task-contract";
 import { repositoryRouteId } from "../repositories/repository-route";
@@ -50,6 +50,7 @@ export function errorCopy(error: AgentChatError, context: { provider: AgentChatP
     case "conflict": return "That proposal was already answered.";
     case "invalid": return "That message could not be sent.";
     case "unavailable": return "Aril could not be reached. Try again.";
+    case "desktop_only": return "A session can be started from this chat only in the Pomegr desktop app.";
   }
 }
 
@@ -180,6 +181,8 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Remove ", { id: operation.id }, " from queue"], details: [] };
     case "set_step":
       return { title: ["Move ", { id: operation.id }, ` to step ${operation.step}`], details: [] };
+    case "start_session":
+      return { title: ["Start a session for ", { id: operation.id }], text: current(operation.id), details: [] };
   }
 }
 
@@ -193,9 +196,36 @@ const FAILURE_WORDS: Record<Extract<AgentChatOperationResult, { ok: false }>["er
   unsupported: "Not supported",
   unavailable: "Pomegr did not answer",
   skipped: "Not run",
+  not_started: "Not started",
 };
 
+export const START_LAUNCHED = "Session started in a new terminal window.";
+
+// A start that launched nothing. The words are in the past: they tell what the attempt met, not what holds now.
+const START_FAILURE_LINES: Record<AgentChatStartFailure, string> = {
+  unsupported_platform: "Not started. Starting sessions is available on Windows only.",
+  cli_missing: "Not started. The provider's command-line tool was not found on this computer.",
+  plugin_missing: "Not started. Install or update the Pomegr plugin in this repository to start sessions.",
+  not_startable: "Not started. This task could not be started: it has a session, an outcome, or a start already under way.",
+  gate_held: "Not started. A start gate held this task.",
+  unsupported_provider: "Not started. Sessions cannot be started on this provider.",
+  not_found: "Not started. This task no longer exists.",
+  busy: "Not started. Another session was being started.",
+  invalid: "Not started. The session could not be started.",
+  unavailable: "Not started. The session could not be started.",
+  failed: "Not started. The session could not be started.",
+  worktree_dirty: "Not started. This task's worktree had uncommitted changes, and Pomegr never removes them.",
+  tree_dirty: "Not started. This repository had uncommitted changes. Commit or discard them, or open the task to start it in a separate worktree.",
+};
+
+/** The task a proposal asks to start a session for, or null for a proposal of board changes. */
+export function startProposalTask(proposal: Pick<AgentChatProposal, "operations">): string | null {
+  const [first] = proposal.operations;
+  return proposal.operations.length === 1 && first.op === "start_session" ? first.id : null;
+}
+
 export function operationOutcome(operation: AgentChatBoardOperation, result: AgentChatOperationResult): OperationOutcome {
+  if ("start" in result) return result.ok ? { text: START_LAUNCHED, tone: "ok" } : { text: START_FAILURE_LINES[result.start] ?? START_FAILURE_LINES.failed, tone: "error" };
   if (result.ok) return { text: operation.op === "create_task" && result.taskId ? `Created ${result.taskId}` : "Done", tone: "ok" };
   if (result.taskId) return { text: `Created ${result.taskId}, but it could not be queued`, tone: "error" };
   return { text: FAILURE_WORDS[result.error] ?? FAILURE_WORDS.unavailable, tone: result.error === "skipped" ? "muted" : "error" };
@@ -207,9 +237,20 @@ export const PROPOSAL_CHIPS: Record<Exclude<AgentChatProposalState, "pending">, 
   dismissed: { label: "Dismissed", tone: "neutral" },
 };
 
+export const START_CHIP = { label: "Session started", tone: "positive" } as const;
+
+export function proposalChip(proposal: AgentChatProposal): { label: string; tone: "positive" | "warning" | "neutral" } | null {
+  if (proposal.state === "pending") return null;
+  return proposal.state === "applied" && startProposalTask(proposal) !== null ? START_CHIP : PROPOSAL_CHIPS[proposal.state];
+}
+
 export const PROPOSAL_PENDING_NOTE = "Nothing changes until you apply.";
 export const PROPOSAL_DELETE_NOTE = "Nothing changes until you apply. Deleting cannot be undone.";
+export const START_PENDING_NOTE = "Nothing starts until you select Start session. Pomegr asks you to confirm, then checks the start gates.";
+export const START_ELSEWHERE_NOTE = "Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.";
 
-export function proposalNote(proposal: AgentChatProposal): string {
+/** `startHere` is true in the desktop window, the one place where a start proposal can be applied. */
+export function proposalNote(proposal: AgentChatProposal, startHere = false): string {
+  if (startProposalTask(proposal) !== null) return startHere ? START_PENDING_NOTE : START_ELSEWHERE_NOTE;
   return proposal.operations.some((operation) => operation.op === "delete_task") ? PROPOSAL_DELETE_NOTE : PROPOSAL_PENDING_NOTE;
 }

@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EIGHT_OPERATIONS, FakeChat, PROPOSAL_ID, REPO_A, agentMessage, chatId, conversationOf, harness, installHarness, newUser, proposalOf, removeHarness, settle, userMessage } from "./agent-chat-fixture";
+import { EIGHT_OPERATIONS, FakeChat, PROPOSAL_ID, REPO_A, agentMessage, chatId, conversationOf, harness, installHarness, newUser, proposalOf, removeHarness, setBridge, settle, userMessage } from "./agent-chat-fixture";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -212,5 +212,173 @@ describe("proposals", () => {
     expect(card().querySelector("img, b, script")).toBeNull();
     expect(card()).toHaveTextContent("<img src=x onerror=alert(1)> do it");
     expect(card()).toHaveTextContent("in <b>Bold</b>");
+  });
+});
+
+describe("a proposed session start", () => {
+  const START = [{ op: "start_session", id: "T-12" }];
+  const withStart = (state = "pending", extra: Record<string, unknown> = {}) => chat.seed(REPO_A, conversationOf(1, [
+    userMessage("start T-12"),
+    agentMessage("I propose the start.", { proposal: { ...proposalOf(START, state, extra), summary: "Start a session for T-12." } }),
+  ]));
+  const card = () => within(log()).getByRole("region", { name: "Proposed session start" });
+  const startButton = () => within(card()).getByRole("button", { name: "Start session" });
+  const HELD = [{ ok: false, error: "not_started", start: "gate_held" }];
+
+  it("is drawn as a start that has not happened: the task, Start session, and a line that nothing starts yet", async () => {
+    withStart();
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(within(log()).queryByRole("region", { name: "Proposed board changes" })).toBeNull();
+    const rows = within(card()).getAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("Start a session for T-12");
+    expect(rows[0].querySelector("code.agentChatTaskId")).toHaveTextContent("T-12");
+    expect(rows[0].querySelector(".agentChatOpText.isMuted")).toHaveTextContent("Log upload retries");
+    expect(rows[0].querySelector(".agentChatOpResult")).toBeNull();
+    expect(card().querySelector(".commandChip")).toBeNull();
+    expect(startButton()).toHaveClass("commandPrimaryAction");
+    expect(within(card()).queryByRole("button", { name: "Apply changes" })).toBeNull();
+    expect(within(card()).getByRole("button", { name: "Dismiss" })).toHaveClass("commandQuietAction");
+    expect(within(card()).getByText("Nothing starts until you select Start session. Pomegr asks you to confirm, then checks the start gates.")).toBeInTheDocument();
+    expect(card()).not.toHaveTextContent(/Session started/);
+    expect(chat.calls("apply")).toEqual([]);
+  });
+
+  it("says the session launched only after the desktop answered so, then offers no second start", async () => {
+    withStart();
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(startButton());
+    await settle();
+    expect(chat.calls("apply")).toEqual([{ repositoryId: REPO_A, conversationId: chatId(1), proposalId: PROPOSAL_ID }]);
+    expect(card().querySelector(".commandChip")).toHaveTextContent("Session started");
+    expect(card().querySelector(".commandChip")).toHaveClass("positive");
+    const result = card().querySelector(".agentChatOpResult");
+    expect(result).toHaveTextContent("Session started in a new terminal window.");
+    expect(result).toHaveClass("is-ok");
+    expect(within(card()).queryByRole("button", { name: "Start session" })).toBeNull();
+    expect(within(card()).queryByRole("button", { name: "Dismiss" })).toBeNull();
+    expect(within(card()).queryByText(/Nothing starts until/)).toBeNull();
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a held start as not started, with the gates the board reads now, and keeps Start session for another try", async () => {
+    harness.board = { ...harness.board, queue: { ...harness.board.queue, gates: {
+      threshold: 85, usage: { claude: { status: "over", fiveHourPercent: 91, sevenDayPercent: 40 }, codex: { status: "ok", fiveHourPercent: 10, sevenDayPercent: 5 } },
+      providerStatus: { claude: "ok", codex: "ok" }, workingTree: "unknown", next: null,
+    } } };
+    chat.startStatus = "gate_held";
+    withStart();
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(startButton());
+    await settle();
+    expect(card().querySelector(".commandChip")).toBeNull();
+    const result = card().querySelector(".agentChatOpResult");
+    expect(result).toHaveTextContent("Not started. A start gate held this task.");
+    expect(result).toHaveClass("is-error");
+    expect(within(card()).getByText("This task is held: Claude Code is above 85% of the five-hour window; the working tree state is not known yet.")).toBeInTheDocument();
+    expect(card()).not.toHaveTextContent(/Session started/);
+    expect(startButton()).toBeEnabled();
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
+    // The owner applies again once the gate is clear, and only that launch settles the card.
+    chat.startStatus = "started";
+    await person.click(startButton());
+    await settle();
+    expect(chat.calls("apply")).toHaveLength(2);
+    expect(card().querySelector(".commandChip")).toHaveTextContent("Session started");
+    expect(within(card()).queryByRole("button", { name: "Start session" })).toBeNull();
+  });
+
+  it("names a held start without a gate line when the board reads no hold now", async () => {
+    withStart("pending", { results: HELD });
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(card().querySelector(".agentChatOpResult")).toHaveTextContent("Not started. A start gate held this task.");
+    expect(within(card()).queryByText(/This task is held/)).toBeNull();
+    expect(startButton()).toBeEnabled();
+  });
+
+  it("has one fixed line for every way a start did not happen", async () => {
+    const lines: Record<string, string> = {
+      unsupported_platform: "Not started. Starting sessions is available on Windows only.",
+      cli_missing: "Not started. The provider's command-line tool was not found on this computer.",
+      plugin_missing: "Not started. Install or update the Pomegr plugin in this repository to start sessions.",
+      not_startable: "Not started. This task could not be started: it has a session, an outcome, or a start already under way.",
+      gate_held: "Not started. A start gate held this task.",
+      unsupported_provider: "Not started. Sessions cannot be started on this provider.",
+      not_found: "Not started. This task no longer exists.",
+      busy: "Not started. Another session was being started.",
+      invalid: "Not started. The session could not be started.",
+      unavailable: "Not started. The session could not be started.",
+      failed: "Not started. The session could not be started.",
+      worktree_dirty: "Not started. This task's worktree had uncommitted changes, and Pomegr never removes them.",
+      tree_dirty: "Not started. This repository had uncommitted changes. Commit or discard them, or open the task to start it in a separate worktree.",
+    };
+    for (const [start, line] of Object.entries(lines)) {
+      installHarness();
+      chat = harness.chat;
+      withStart("pending", { results: [{ ok: false, error: "not_started", start }] });
+      const view = render(<AgentChatDock />);
+      await openPanel();
+      expect(card().querySelector(".agentChatOpResult"), start).toHaveTextContent(line);
+      expect(card().querySelector(".agentChatOpResult"), start).toHaveClass("is-error");
+      view.unmount();
+    }
+  });
+
+  it("drops a start result outside the fixed statuses instead of drawing it", async () => {
+    withStart("pending", { results: [{ ok: false, error: "not_started", start: "C:\\private\\repo" }] });
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(card().querySelector(".agentChatOpResult")).toBeNull();
+    expect(card()).not.toHaveTextContent("private");
+  });
+
+  it("changes nothing when the owner cancels the confirmation", async () => {
+    chat.startStatus = "cancelled";
+    withStart();
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(startButton());
+    await settle();
+    expect(card().querySelector(".agentChatOpResult")).toBeNull();
+    expect(card().querySelector(".commandChip")).toBeNull();
+    expect(startButton()).toBeEnabled();
+  });
+
+  it("offers no start on a paired device, only Dismiss and where the start can be applied", async () => {
+    setBridge(undefined);
+    harness.mode = "lan";
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { operation: string; payload: Record<string, unknown> };
+      return new Response(JSON.stringify(await chat.agentChat(body.operation, body.payload)), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    withStart();
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(await within(log()).findByRole("region", { name: "Proposed session start" })).toBeInTheDocument();
+    expect(within(card()).queryByRole("button", { name: "Start session" })).toBeNull();
+    expect(within(card()).queryByRole("button", { name: "Apply changes" })).toBeNull();
+    expect(within(card()).getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    expect(within(card()).getByText("Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.")).toBeInTheDocument();
+    expect(chat.calls("apply")).toEqual([]);
+  });
+
+  it("says where a start can be applied when the desktop refuses one", async () => {
+    withStart();
+    chat.refuse = "desktop_only";
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(startButton());
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent("A session can be started from this chat only in the Pomegr desktop app.");
+    expect(card().querySelector(".commandChip")).toBeNull();
+    expect(harness.refresh).not.toHaveBeenCalled();
   });
 });

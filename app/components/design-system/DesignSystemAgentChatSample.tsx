@@ -108,8 +108,14 @@ function Panel({ state = "ready", conversation: shown = null, turn = null, pendi
   </AgentChatPanelFrame>;
 }
 
-function Card({ label, note, shown, busy = false }: { label: string; note?: string; shown: AgentChatProposal; busy?: boolean }) {
-  return <Sample label={label} note={note}><div className="designSystemTaskFrame"><AgentChatProposalCard proposal={shown} tasks={TASKS} busy={busy} onApply={noop} onDismiss={noop} /></div></Sample>;
+const START_SUMMARY = "Start a session for T-12.";
+const start = (state: AgentChatProposal["state"], results?: AgentChatOperationResult[]): AgentChatProposal => ({ id: "p-0123456789ac", summary: START_SUMMARY, operations: [{ op: "start_session", id: "T-12" }], state, ...(results ? { results } : {}) });
+const HELD_LINE = "This task is held: Claude Code is above 85% of the five-hour window.";
+
+function Card({ label, note, shown, busy = false, startHere = true, held = false }: { label: string; note?: string; shown: AgentChatProposal; busy?: boolean; startHere?: boolean; held?: boolean }) {
+  return <Sample label={label} note={note}><div className="designSystemTaskFrame">
+    <AgentChatProposalCard proposal={shown} tasks={TASKS} busy={busy} startHere={startHere} heldStart={held ? () => HELD_LINE : undefined} onApply={noop} onDismiss={noop} />
+  </div></Sample>;
 }
 
 export function AgentChatSection() {
@@ -152,6 +158,11 @@ export function AgentChatSection() {
       <Card label="Proposal, an operation not found" shown={NOT_FOUND} />
       <Card label="Proposal, every result word" note="Reference only: a real proposal stops at its first failure." shown={EVERY_WORD} />
       <Card label="Proposal, dismissed" shown={proposal("dismissed", undefined, OPERATIONS.slice(0, 3))} />
+      <Card label="Session start, proposed" note="A start is its own card with one row. Start session is its Primary, and nothing has started." shown={start("pending")} />
+      <Card label="Session start, held" note="The start did not happen: the fixed line, then the gates the board reads now. The card stays open to another try." shown={start("pending", [{ ok: false, error: "not_started", start: "gate_held" }])} held />
+      <Card label="Session start, failed" shown={start("pending", [{ ok: false, error: "not_started", start: "plugin_missing" }])} />
+      <Card label="Session start, launched" note="Only a launch the desktop confirmed settles the card." shown={start("applied", [{ ok: true, start: "started" }])} />
+      <Card label="Session start, on a paired device" note="A phone cannot apply a start from the chat, so the card has no Primary." shown={start("pending")} startHere={false} />
     </div>
     <div className="designSystemGrid">
       <Sample label="Composer, error" note="One fixed line as an alert; the typed text stays.">
