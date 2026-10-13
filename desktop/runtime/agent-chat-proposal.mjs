@@ -4,10 +4,15 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session", "set_queue",
 ]);
 // The one operation that is not a board change: it asks the desktop to start a session for a task, and stands alone in its proposal.
 export const START_OPERATION = "start_session";
+// The one operation that turns the repository's queue on or off. It names the state the owner asked for, never a toggle,
+// and it stands alone in its proposal too.
+export const QUEUE_OPERATION = "set_queue";
+// What an approved queue change left: on, on and held by a task that needs the owner, or off.
+export const QUEUE_RESULTS = Object.freeze(["on", "blocked", "off"]);
 // Why an approved start did not launch a session: the fixed statuses of a manual start, without `started` and `cancelled`.
 export const START_FAILURES = Object.freeze([
   "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held", "unsupported_provider", "not_found", "busy",
@@ -133,6 +138,7 @@ export function normalizeOperation(source) {
     if (source.queue === true) operation.queue = true;
     return operation;
   }
+  if (op === QUEUE_OPERATION) return only(source, ["op", "on"]) && typeof source.on === "boolean" ? { op, on: source.on } : null;
   const id = taskId(source.id);
   if (!id) return null;
   if (op === "update_task") {
@@ -179,9 +185,16 @@ export function normalizeProposal(source) {
     if (!operation) return null;
     operations.push(operation);
   }
-  // A start is answered on its own, so the owner approves one session for one named task and nothing else.
-  if (operations.length > 1 && operations.some((operation) => operation.op === START_OPERATION)) return null;
+  // A start is answered on its own, so the owner approves one session for one named task and nothing else. A queue
+  // change is too: turning the queue on lets Pomegr start tasks by itself, so it is never approved beside a board change.
+  if (operations.length > 1 && operations.some((operation) => operation.op === START_OPERATION || operation.op === QUEUE_OPERATION)) return null;
   return { summary, operations };
+}
+
+/** The queue state a proposal asks for (`true` is on), or null when it is not a queue proposal. */
+export function queueProposalState(proposal) {
+  const operations = Array.isArray(proposal?.operations) ? proposal.operations : [];
+  return operations.length === 1 && operations[0]?.op === QUEUE_OPERATION && typeof operations[0].on === "boolean" ? operations[0].on : null;
 }
 
 /** The task a proposal asks to start a session for, or null when it is a proposal of board changes. */
@@ -277,8 +290,8 @@ export async function applyOperations(operations, { post, board }) {
   for (const operation of operations) {
     if (results.some((result) => result.ok !== true)) { results.push(failure("skipped")); continue; }
     const { op } = operation;
-    // A start is never a task action. The chat sends a start proposal to the dispatcher and never here.
-    if (op === START_OPERATION) { results.push(failure("unsupported")); continue; }
+    // A start is never a task action, and a queue change has its own one request. The chat never sends either here.
+    if (op === START_OPERATION || op === QUEUE_OPERATION) { results.push(failure("unsupported")); continue; }
     if (op === "create_feature") {
       // A feature that is already there is the outcome the operation asked for.
       results.push(openFeature(operation.name) ? { ok: true } : (await act("feature_create", { name: operation.name })).answer);

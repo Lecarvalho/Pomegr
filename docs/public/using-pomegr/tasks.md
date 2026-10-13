@@ -368,7 +368,9 @@ so the worktrees do not show as changes in the repository.
 The queue starts tasks without you. It is **Off** for every repository until you
 select **On** in the **Queue** switch of the Tasks header. Add a task with
 **Add to queue** in its task window. With the queue off, queued tasks start only when you start
-them. Turning it off never touches a running session.
+them. Turning it off never touches a running session. You can also ask Aril to turn the
+queue on or off: see
+[Turn the queue on or off from the chat](agent-chat.md#turn-the-queue-on-or-off-from-the-chat).
 
 The **Ready** column shows what runs when. Each step is headed **Parallel** or
 **One task**. Tasks with no feature appear under **Single tasks**. To change a

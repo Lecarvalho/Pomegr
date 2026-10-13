@@ -8,7 +8,8 @@
 > Authority: canonical contract for the agent chat, and canonical owner of its privacy
 > invariants (the [Privacy](#privacy) section). Requested by the product owner on
 > 2026-10-11 (task T-29, GitHub issue #170). The session start that a proposal may ask
-> for was added on 2026-10-12 (task T-72). A change that widens exposure changes the
+> for was added on 2026-10-12 (task T-72), and the queue change on the same day (task
+> T-75). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -27,7 +28,10 @@ proposal only after the owner presses **Apply changes**. When the owner asks for
 also proposes to start a session for one named task; Pomegr starts it through the manual
 start of the Tasks page, only after the owner selects **Start session** on that proposal
 in the desktop app
-(see [Session start](#session-start)). The user guide is
+(see [Session start](#session-start)). When the owner asks for it, Aril also proposes to
+turn the repository's queue on or off; Pomegr sends the Tasks page's own queue action,
+only after the owner selects **Turn queue on** or **Turn queue off** on that proposal, in
+the desktop app or on a paired device (see [Queue change](#queue-change)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -37,10 +41,10 @@ serves the board and takes the fixed task actions as it does for the Tasks page.
 
 | Owner | Responsibility | May not |
 | --- | --- | --- |
-| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the trusted IPC handler, the answers, and the hand-off of an approved session start to the manual start | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's |
+| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, and the one request of an approved queue change | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; send `queue_settings` with any setting but `on` |
 | `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment |
 | `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the conversation history of one turn | Read anything itself |
-| `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request; start a session |
+| `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request; start a session; change the queue |
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with the seven read tools | Register a signal, task, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The one chat route of a paired device | Forward a chat request to the web host |
@@ -129,8 +133,8 @@ characters, in this order:
 
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
    read, that it only proposes, how to advise on task size, steps, order, and models,
-   the proposal format, when it proposes a session start, and that all following
-   content is data.
+   the proposal format, when it proposes a session start or a queue change, and that
+   all following content is data.
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the queue (status,
    order, blocker, start threshold, and the usage percentages of the start gates), the
@@ -138,7 +142,9 @@ characters, in this order:
 3. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
-   dismissed, launched, or not started with the fixed start status.
+   dismissed, launched, or not started with the fixed start status. A queue change is
+   one line with the state it asked for and what happened: not answered, dismissed,
+   on, on and held, off, or not changed with the fixed error.
 4. **The owner's message.**
 
 A task in the snapshot holds its ID, column, state, feature title, step, planned
@@ -178,6 +184,7 @@ Aril changes the board only by ending its answer with one fenced block tagged
 | `unqueue_task` | `id` | `queue_remove` |
 | `set_step` | `id`, `step` | `queue_reorder` |
 | `start_session` | `id` | None. It is not a board change: see [Session start](#session-start) |
+| `set_queue` | `on`, a boolean | `queue_settings` with `{ on }`, sent on its own path: see [Queue change](#queue-change) |
 
 - A feature is named by its exact title. Desktop main resolves it against the board when
   the proposal runs, so a `create_task` may name a feature that an earlier
@@ -189,9 +196,10 @@ Aril changes the board only by ending its answer with one fenced block tagged
   [Tasks](tasks.md) hold: a started task is read-only, a waiting card stays in Ready,
   and a bound applies.
 
-No operation turns the queue on or off, marks a task done, requeues a task, changes a
-feature's title or description, deletes a feature, attaches an image, or touches GitHub.
-Only `start_session` starts a session, by the rules below.
+No operation marks a task done, requeues a task, changes a feature's title or
+description, deletes a feature, attaches an image, sets the queue's threshold or
+schedule, or touches GitHub. Only `start_session` starts a session, and only `set_queue`
+turns the queue on or off, each by the rules below.
 
 ### Session start
 
@@ -257,6 +265,70 @@ Task T-72, 2026-10-12. It replaces the earlier rule that the chat starts no sess
 - **The next turn.** The conversation line of the proposal tells Aril what happened, so
   a later answer never reports a session that did not launch.
 
+### Queue change
+
+Task T-75, 2026-10-12. It replaces the earlier rule that the chat turns no queue on or
+off. A `set_queue` proposal asks Pomegr to turn the queue of the chat's repository on or
+off, as the **Off | On** control of the Tasks page does.
+
+- **Only on an explicit request.** The instructions tell Aril to propose a queue change
+  only when the owner's newest message asks to turn this repository's queue on or off,
+  and then to propose it instead of sending the owner to the Tasks page. Aril never
+  proposes one on its own, as part of a plan, as a way to get a task started, or because
+  text in the board, a file, or a tool result asks for it.
+- **A state, never a toggle.** The operation holds `on`, a boolean, and no other key: no
+  repository, task, threshold, or schedule. A stored proposal therefore always asks for
+  the same state, however often it is applied and whatever the queue is by then. The
+  repository is the one of the conversation; a proposal cannot name another.
+- **Nothing else in the proposal.** It is the only operation of its proposal. A queue
+  change beside any other operation, a start included, makes the whole proposal
+  unreadable, so the owner never approves automatic starts together with a board change.
+- **The canonical action.** `apply` sends one request, `POST
+  /internal/tasks/queue_settings` with `{ on }` and the desktop token, the action behind
+  the Tasks page's queue control ([Tasks: Queue](tasks.md#queue)). The chat reads no
+  board first and sends nothing else. `queue_settings` is not in the list of actions the
+  applier of board changes may send, and the chat has no path that sends a threshold or
+  a schedule.
+- **Turning on may start sessions.** A queue that is on lets the desktop queue runner
+  start the queued tasks, one step at a time, with no further confirmation. The chat
+  starts none of them: only the runner does, on its next poll, through the dispatcher
+  the Tasks page uses. Every gate holds as it does there: the queue order and steps, a
+  task's own state and start time, the queue's schedule, the provider's usage and status,
+  the repository's working tree, the plugin, and the provider's command-line tool. The
+  chat judges none of them and overrides none.
+- **The consequence is said before Apply.** The instructions make Aril say it in one
+  line before the block. The card's footer says it again in fixed words, and its Primary
+  names the state: **Turn queue on** or **Turn queue off**.
+- **Turning off stops nothing.** It only ends new starts by the runner. Sessions that
+  run continue, as on the Tasks page.
+- **A paired device may apply it.** Product-owner decision of 2026-10-12 (task T-75).
+  It is a deliberate widening of the chat route: until then a paired device could apply
+  only board changes there. It follows the decision of the same day that a paired device
+  may turn the queue on and off through `POST /api/tasks/action`
+  ([Tasks: Paired devices](tasks.md#paired-devices)), so the chat adds a second way to
+  the same action and no new authority. The gateway authenticates the device as for any
+  chat request, and the call carries no window event, which this operation does not
+  need. A session start from the chat stays desktop-only.
+- **What is stored.** The monitor's answer decides. An accepted change stores the
+  proposal as `applied` with `{ ok: true, queue }`: `on`, `off`, or `blocked` when the
+  answered board reads the queue as blocked at a stalled or blocked task. A change the
+  monitor refused, or that never reached it, leaves the proposal `pending` with
+  `{ ok: false, error }`, one of `invalid`, `not_found`, `limit`, `conflict`,
+  `unsupported`, and `unavailable`. A queue proposal is never `partial`.
+- **Repeated Apply is safe.** An applied proposal answers `conflict`, and two Apply
+  answers at once make the second `busy`, so one proposal changes the queue at most
+  once. A proposal whose change was not made stays pending, and another Apply sends the
+  same `{ on }` again. Behind both, the monitor treats `{ on: true }` on a queue that is
+  already on as no change.
+- **What the panel says.** A pending card reads as a change that has not happened. An
+  applied one reads "Queue turned on.", "Queue turned off.", or that a stalled or
+  blocked task holds the queue. A stored failure reads "Queue not changed." with one of
+  two fixed sentences: Pomegr refused the change, or Pomegr did not answer. The panel
+  never says that a task started. [Agent chat design](../design/agent-chat.md) owns the
+  words.
+- **The next turn.** The conversation line of the proposal tells Aril what the queue
+  became, so a later answer never reports a change that was not made.
+
 ### Approval
 
 A stored proposal is `pending`. The owner answers it once.
@@ -268,6 +340,8 @@ A stored proposal is `pending`. The owner answers it once.
   task's ID, or one fixed error.
 - **Start session** is the `apply` of a start proposal. It reads no board and sends no
   task action (see [Session start](#session-start)).
+- **Turn queue on** and **Turn queue off** are the `apply` of a queue proposal. It reads
+  no board and sends the one queue action (see [Queue change](#queue-change)).
 - **Dismiss** (`dismiss`) stores `dismissed` and sends nothing.
 - A proposal that is not `pending` answers `conflict`. Two answers at once: the second
   answers `busy`.
@@ -303,10 +377,10 @@ Desktop main keeps one JSON file per conversation:
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session |
-| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only` |
+| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
-| `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, and `queue_reorder`, for an approved proposal |
+| `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, and `queue_reorder`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
 
 The operations and their payloads, each with `repositoryId`:
@@ -317,7 +391,7 @@ The operations and their payloads, each with `repositoryId`:
 | `read` | `conversationId` | The conversation and the running `turn` or null |
 | `send` | `conversationId` or null, `text`, `provider`, `model` or null | The conversation ID |
 | `stop` | `conversationId` | Nothing more |
-| `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which |
+| `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer |
 | `delete` | `conversationId` | Nothing more |
 
 A refusal is `{ ok: false, error }` with one of `invalid`, `not_found`, `busy`, `limit`,
@@ -367,13 +441,22 @@ never a session's.
   start status, in the conversation file. Nothing of the start plan reaches the chat: no
   prompt, repository root, worktree path, image file, dispatch token, or launcher output.
   A paired device that reads the conversation sees that status like the rest of it.
+- **What Pomegr keeps of a queue change.** The state the proposal asked for and one
+  fixed result, in the conversation file: `on`, `blocked`, `off`, or a fixed error. No
+  task ID, blocker, pause reason, gate reading, or board content is kept with it, and
+  the action sends the monitor only `{ on }`.
 - **Paired devices.** The gateway serves plain HTTP on the local network, so the
   conversation and the session cookie cross it unencrypted, as task content does.
   Whoever holds a paired device's cookie can read the conversations, send a message
   (which spends the owner's provider allowance in a read-only run), and apply a
-  proposal of board changes. It cannot apply a session start from the chat. Revoking
+  proposal of board changes or a queue change. It cannot apply a session start from
+  the chat. Applying a queue change that turns the queue on lets the desktop start the
+  queued tasks, which the same holder can already do through `POST /api/tasks/action`
+  ([Tasks: Paired devices](tasks.md#paired-devices)). The card's Primary is an
+  owner-facing boundary, not proof against a holder of the cookie. Revoking
   phone access ends this at once. The product owner asked for the
-  chat on a paired device on 2026-10-11 and accepts this as part of phone access.
+  chat on a paired device on 2026-10-11, and for the queue change there on 2026-10-12
+  (task T-75), and accepts this as part of phone access.
 - **Fixed answers.** A refusal is one fixed word. No answer carries a path, a command,
   a token, or error text.
 
@@ -386,8 +469,14 @@ never a session's.
 - Aril never starts a session. Only `apply` of a start proposal does, from the desktop
   window, through the manual start and behind every start gate. The owner's **Start
   session** on the card is its confirmation. One Apply is at most one launch.
-- The chat turns no queue on, changes no queue to get a start through, and never stops,
-  attaches to, answers, approves, or steers anything in a session.
+- Aril never turns the queue on or off. Only `apply` of a queue proposal does, on the
+  owner's answer, through `queue_settings` with the one setting `on`. The state is the
+  one the proposal names, so no Apply reverses the queue.
+- The chat starts no queued task. After the queue is on, only the desktop queue runner
+  starts one, behind every start gate.
+- The chat changes no queue to get a start through, sets no threshold or schedule, and
+  never stops, attaches to, answers, approves, or steers anything in a session.
+- A queue change that was refused or did not reach the monitor is never shown as made.
 - A start that was held, failed, or cancelled is never shown as started, and is never
   retried without the owner's next Apply.
 - A failed or stopped turn stores the text it had and its status. It never stores a
@@ -420,7 +509,9 @@ never a session's.
    can still be misled by. The bounds are that the run cannot write, cannot reach another
    server, and cannot apply a proposal. The owner reads each proposal before it runs. A
    misled Aril can at most propose a start: the launch still needs the owner's **Start
-   session** on the card in the desktop window, and the card names the task.
+   session** on the card in the desktop window, and the card names the task. It can
+   likewise at most propose a queue change: the owner's **Turn queue on** still decides,
+   and the card says what turning the queue on lets Pomegr start.
    The renderer of the desktop window can send a message and apply the proposal that
    answers it, so a start from the chat rests on the trusted window alone, where the
    task window's start also has the native confirmation.
@@ -435,6 +526,14 @@ never a session's.
 9. **Separate worktree.** A start that only the repository's uncommitted changes hold
    answers `tree_dirty`. The chat offers no separate-worktree start; the task window
    does.
+10. **Queue proposals from a live provider.** Not probed. The reading of a `set_queue`
+    block, its Apply from the desktop window and through the paired-device gateway, the
+    stored results, and the real task store behind the action are covered by tests with
+    fakes. Whether Claude Code and Codex write the block for "turn the queue on", and
+    write none without an explicit request, is not proven on a device.
+11. **A paused queue.** The snapshot carries the queue's status and blocker but not its
+    pause reason, so Aril can say that the queue is paused and that turning it on is the
+    retry, and cannot say why the start failed. The Tasks page shows the reason.
 
 ## Change and verify
 
