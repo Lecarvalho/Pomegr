@@ -60,6 +60,7 @@ import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-act
 import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
 import { installTaskActionIpc, installTaskFeatureIpc, installTaskImageIpc } from "./task-action.mjs";
+import { createTaskImage } from "./task-image.mjs";
 import { createAgentChat, installAgentChatIpc } from "./agent-chat.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
@@ -682,8 +683,9 @@ async function startDesktop() {
           openPath: (directory) => shell.openPath(directory),
           confirm: (request) => confirmTaskStart(dialog, () => mainWindow, request),
         });
+        const taskImage = createTaskImage({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
         phoneAccess = createLanSharingController({
-          upstreamOrigin: web.origin, agentChat: agentChat.handle, taskStart: taskStarter.startPaired,
+          upstreamOrigin: web.origin, agentChat: agentChat.handle, taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired,
           authorizationToken,
           autoStart: desktopSettings.lanSharingAutoStart,
           canPersist: settingsLoad.canPersist,
@@ -720,7 +722,7 @@ async function startDesktop() {
           }),
         });
         const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
-        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc(taskBridge), installTaskFeatureIpc(taskBridge), installAgentChatIpc({ ...taskBridge, chat: agentChat })];
+        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc({ ...taskBridge, action: taskImage }), installTaskFeatureIpc(taskBridge), installAgentChatIpc({ ...taskBridge, chat: agentChat })];
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain,

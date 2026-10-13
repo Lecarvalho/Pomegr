@@ -55,8 +55,7 @@ export function createTaskImage(options = {}) {
   const timeoutMs = options.timeoutMs ?? 20_000;
   let disposed = false;
 
-  async function run(event, repositoryId, operation, payload) {
-    if (!isTrustedEvent(event)) return INVALID;
+  async function execute(repositoryId, operation, payload) {
     if (typeof operation !== "string" || !OPERATION_SET.has(operation)) return INVALID;
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return INVALID;
     const input = validPayload(operation, payload);
@@ -91,7 +90,12 @@ export function createTaskImage(options = {}) {
     }
   }
 
-  return Object.freeze({ run, dispose() { disposed = true; } });
+  /** The renderer's call: only a trusted window's event passes. */
+  const run = (event, repositoryId, operation, payload) => (isTrustedEvent(event) ? execute(repositoryId, operation, payload) : Promise.resolve(INVALID));
+  /** A paired device's call: the LAN gateway has already authenticated the device and bounded the request. */
+  const runPaired = (repositoryId, operation, payload) => execute(repositoryId, operation, payload);
+
+  return Object.freeze({ run, runPaired, dispose() { disposed = true; } });
 }
 
 export function installTaskImageIpc(options = {}) {
