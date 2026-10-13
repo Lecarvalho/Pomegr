@@ -1,6 +1,6 @@
 // The board's session projection.
 
-import { verifyChecks } from "./task-checks.mjs";
+import { readChecks } from "./task-checks.mjs";
 import { IN_FLIGHT_STATES, normalizeModelIdentifier } from "./task-record.mjs";
 
 export const TASK_SESSION_STATES = Object.freeze(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"]);
@@ -25,7 +25,7 @@ function checksOf(task, resolveCheckFacts) {
   if (!Array.isArray(checks) || checks.length === 0) return null;
   try {
     const facts = resolveCheckFacts(task.session.id);
-    return facts !== null && typeof facts === "object" ? verifyChecks(checks, facts) : null;
+    return facts !== null && typeof facts === "object" ? readChecks(checks, facts) : null;
   } catch { return null; }
 }
 

@@ -1,7 +1,7 @@
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import type { FeatureInput } from "./task-features";
 import type { ProviderSource } from "../../../shared/monitor-contract";
-import { AGENT_JUDGED_CHECKS, TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
+import { AGENT_JUDGED_CHECKS, TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskCheckOutcome, type TaskCheckResult, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
 
 export const PROVIDER_LABELS: Record<TaskProvider, ProviderSource> = { claude: "Claude Code", codex: "Codex" };
 export const EFFORT_LABELS: Record<TaskEffort, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Xhigh" };
@@ -22,6 +22,14 @@ export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
   user_validated: "Validated with the user",
 };
 export const AGENT_REPORTED_LABEL = "Agent-reported";
+// A condition Pomegr could not verify is neither passed nor failed, so it takes no result color.
+export const CHECK_OUTCOME_LABELS: Record<TaskCheckOutcome, string> = { passed: "Passed", failed: "Not passed", unavailable: "Not verified" };
+export const CHECK_OUTCOME_CLASSES: Record<TaskCheckOutcome, string> = { passed: " isPassed", failed: " isFailed", unavailable: "" };
+
+export function checkOutcome(result: TaskCheckResult): TaskCheckOutcome {
+  if (result.passed) return "passed";
+  return result.unavailable === true ? "unavailable" : "failed";
+}
 
 export const REMOTE_CONTROL_LABEL = "Remote Control";
 

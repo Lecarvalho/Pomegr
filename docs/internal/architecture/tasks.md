@@ -130,7 +130,8 @@ type Task = {
   session: { id: string; title: string | null; state: string; observedModel: string | null;
     checks?: { check: TaskCheck; passed: boolean }[] } | null;
   assigned?: { id: string; title: string | null; state: string; observedModel: string | null }[];  // absent means none
-  report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null;
+  report: { at: string; results: { check: TaskCheck; passed: boolean; unavailable?: true }[];   // `unavailable`: not verified
+    blockReason: string | null;
     attention: string | null } | null;                 // what the agent asked the owner to look at
   source: { kind: "github_issue"; number: number } | null;   // set once, by a promote or an issue create
   images?: { id: string; type: "png" | "jpeg" | "gif" | "webp"; bytes: number }[];   // at most four; never the bytes
@@ -1012,7 +1013,7 @@ installed plugin from before the rename sends; a body with both names is `invali
 | Own condition | Not verified; the agent judges it in its report |
 
 - **A report always sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
-  rule that a report whose conditions all passed set Done). Pass or fail, with or
+  rule that a report whose conditions all passed set Done). Whatever the results, with or
   without an attention line, the card goes to Review with each condition's result, and
   only the owner sets Done, with Mark done (`resolve_done`). The agent can call
   `block_task` with a bounded reason; the state becomes Blocked by agent.
@@ -1035,7 +1036,21 @@ installed plugin from before the rename sends; a body with both names is `invali
   Task tab label it Agent-reported after a report.
 - With no condition checked, the agent's `complete_task` report alone completes the
   task: it has no result to show, and the task still goes to Review.
-- The report keeps only `{ check, passed }` results, the time, the bounded block
+- **A result is passed, failed, or unavailable** (task T-90, 2026-10-13; it replaces the
+  earlier rule that an unknown fact was stored as not passed).
+  - Passed is `{ check, passed: true }`: a dated reading shows that the condition holds.
+  - Failed is `{ check, passed: false }`: a dated reading shows that it does not hold.
+  - Unavailable is `{ check, passed: false, unavailable: true }`: Pomegr has no dated
+    reading of the condition. It says nothing about whether the condition holds.
+  - `unavailable` is present only when true, and never beside `passed: true`. The store
+    rejects any other form, and so does the browser's board parser.
+  - A dated reading is a known value whose read time is not earlier than the work that
+    could have changed it (see the age rule below). A known failing value read before
+    that work is unavailable too: it may have changed since.
+  - A result stored before this rule holds no mark. It reads as failed, as it did then.
+  - Unavailable is not a pass. It moves no card and completes no task: only the owner
+    sets Done.
+- The report keeps only these results, the time, the bounded block
   reason, and the bounded attention line. Command output, diffs, and provider payloads are never kept or exposed.
 - **A report is verified on a read made when it arrives** (product-owner decision,
   2026-10-10). An agent reports right after its last command, so the facts the monitor
@@ -1060,11 +1075,24 @@ installed plugin from before the rename sends; a body with both names is `invali
     although the report was recorded.
   - The answer of the read replaces the session's live repository value like any
     refresh, so the next derive commits it. Nothing new is stored or served.
+  - **The read follows the branch the bound checkout has** (task T-90, 2026-10-13). A
+    session can leave the branch recorded for it: Codex records only its launch branch,
+    and an agent in the repository root makes its own task branch there. The live check
+    then refuses the checkout as `branch_changed`, and every fact was unknown. In the
+    report that showed this, a Codex session launched on `tasks/T-62` ran
+    `git switch -c tasks/T-64`; its pull request, clean tree, and passed CI all read not
+    passed. When Git answers for the bound root on another branch, the report's read now
+    judges the tree, the comparison, and the pull requests of the branch the root has.
+    The root must still be the bound one; a read that Git answers for another root
+    verifies nothing.
+  - That read is the report's alone. It replaces no live repository value, records no
+    sidecar, and commits nothing; the Repository tab keeps saying that the branch changed.
+    The board's reading of a waiting task still judges the recorded branch only.
   - A read that cannot be made (no bound repository, a failed Git read, the deadline)
     falls back to the committed facts below, which the age rule then judges. A fact that
-    is unknown is not a pass.
+    is unknown is not a pass and not a failure: its result is unavailable.
   - CI still running when the report arrives is a known `pending`, so the condition
-    does not pass. The agent waits for CI before it reports.
+    fails. The agent waits for CI before it reports.
 - The board's reading of a waiting task (below) uses committed facts only and never
   blocks on acquisition (`resolveTaskCheckFacts`).
 - Both hand the pure rule `verifyChecks(checks, facts)` the same shape,
@@ -1079,15 +1107,18 @@ installed plugin from before the rename sends; a body with both names is `invali
     the two always name the same pull requests (task T-88, 2026-10-12; it replaces the
     earlier rule that only a pull request whose head is the recorded branch counted).
     Its items are the pull requests the session created and those whose head is the
-    session's branch (`readPullRequests`); an item with no known state is not judged.
+    session's branch (`readPullRequests`). An item with no known state is listed as
+    `unknown`: it leaves the condition unavailable unless another item holds the state.
+    A ready block that lists no pull request is a known answer, so both conditions fail.
   - CI passed: the monitor's pull-request read (`server/repository/pull-requests.mjs`)
     asks gh for `statusCheckRollup` in the same call and normalizes it to one of
     `passed`, `failed`, `pending`, or `none`: any failed check gives `failed`, otherwise
     any unfinished check gives `pending`, and a pull request with no check gives `none`.
     A missing or unrecognized list is unknown. The condition judges the block's
     open pull requests, or its merged ones when none is open, and passes only when each
-    is `passed`. Pending, failed, no check, and no such pull request are not passed; a
-    pull request whose status the monitor has not read is unknown. The status and the
+    is `passed`. Pending, failed, no check, and no such pull request are known failures; a
+    pull request whose status the monitor has not read is unknown. No such pull request is
+    dated by the pull-request block's read. The status and the
     time of the read that established it are taken from memory (`pullRequestCheckRead`);
     a report's own pull-request read is what puts them there.
   - An unavailable or historical repository block, a missing base comparison, and a
@@ -1105,7 +1136,8 @@ installed plugin from before the rename sends; a body with both names is `invali
   GitHub, or provider read. `verifyChecks` passes a fact only when its read time is a
   finite number not earlier than its work time. A missing, malformed, or non-finite read
   time is unknown, a read earlier than the work is unknown, a null work time means no
-  relevant work is recorded, and unknown is never a pass.
+  relevant work is recorded, and unknown is never a pass. In a report, each unknown is an
+  unavailable result.
   - **Read times** come from monitor-private `readAt` stamps that the producers commit
     with the values they date. The repository block's `readAt` is the start of the Git
     read its changed files and base comparison come from; it dates `tree_clean` and, while
@@ -1139,11 +1171,11 @@ installed plugin from before the rename sends; a body with both names is `invali
     session and are removed by `serializeServedSessionState`
     (`server/repository/session-repository-enrichment.mjs`), which is the observation
     store's default serializer and the `/api/state` serializer. The answer of
-    `complete_task` still carries only per-condition pass or fail.
+    `complete_task` still carries only per-condition results: passed, failed, or unavailable.
 - **One source for a condition, before and after the report.** While a linked task has
   no report and no outcome (its state is still Not queued, Queued, or Scheduled) and has
   a checked condition, every board that leaves the monitor carries `session.checks`: one
-  `{ check, passed }` per checked condition, from `verifyChecks` on the facts
+  `{ check, passed }` per checked condition, from the rule of `verifyChecks` on the facts
   `resolveTaskCheckFacts` returns at that read. `fillTaskSessions` computes it with the
   rule that verifies the report, on the committed facts instead of a new read. A runtime without the lookup, a lookup that throws, and a
   lookup with no facts give no reading.
@@ -1154,22 +1186,28 @@ installed plugin from before the rename sends; a body with both names is `invali
     A reading can change with the next read, like the start gates' readings; only the
     report's verification is final.
   - Once a report or an outcome is recorded the board carries no reading, and the Task
-    tab shows the report's own results ("Passed", "Did not pass") or "No report".
+    tab shows the report's own results ("Passed", "Did not pass", "Not verified") or
+    "No report".
   - The age rule applies to the reading, so CI passed, Commit on task branch, and
     Working tree clean read "Not yet" until their read is later than the session's
     latest work. A report made at that moment is judged on its own read, so it can pass
     a condition the reading still shows as "Not yet". A pull request the Repository tab
     lists reads "Holds now" at once.
   - It carries pass or fail only: no fact, read time, work time, CI status, pull-request
-    item, or path.
-- A report is verified once. A task whose condition did not pass but holds
-  later (CI that finished after the report, for example) is resolved by the user with
-  Mark done; the verification is not repeated.
+    item, or path. It has no unavailable mark (`readChecks`): "Not yet" already says that
+    the condition is not established now.
+- A report is verified once. A task whose condition did not pass or was not verified but
+  holds later (CI that finished after the report, for example) is resolved by the user
+  with Mark done; the verification is not repeated.
 - **Limits, stated plainly.**
   - The work times come from committed state, which can trail the agent by a moment. A
     command that ended just before the report and is still committed as running leaves
-    its facts unknown, and the condition reads not passed although it holds. The
+    its facts unknown, and the condition reads not verified although it holds. The
     report's read takes long enough that this is rare.
+  - The report's read trusts the bound checkout, not the branch. It is a heuristic: when
+    another session moved a shared checkout to another branch, the report is judged on
+    that branch and its pull requests. A task that runs in its own worktree has no such
+    neighbor.
   - The board's reading judges committed facts. A refresh enters the committed state only
     at the next evidence-driven derive, and the store's unchanged-detection ignores the
     stamps, so a derive whose served state is identical keeps the older stamp. The
@@ -2067,7 +2105,7 @@ serves no other client.
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
 | `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
 | `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
-| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | `complete` and `block` carry the bound session, optionally one task ID of that session, and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
+| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | `complete` and `block` carry the bound session, optionally one task ID of that session, and, for a block, the reason; they answer the resulting state and each condition's result: passed, failed, or unavailable |
 | `POST /api/agent/v1/tasks/assign\|unassign` | An agent through the MCP tools `assign_task` and `unassign_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out. Never task content, a state, or another session |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
 | `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content or a state |
@@ -2385,8 +2423,8 @@ fixed values.
   that established it, for at most 256 pull-request URLs, and it is not part of the
   normalized pull-request item. It is never persisted and never enters `/api/state`, a
   session domain, a repository snapshot, a report, a log, or `GET /api/tasks`. Its only
-  use is the CI passed condition, which exposes pass or fail, and the time only refuses a
-  pass on a fact read before the session's latest relevant work. Check names, URLs,
+  use is the CI passed condition, which exposes passed, failed, or unavailable, and the time
+  only refuses a result on a fact read before the session's latest relevant work. Check names, URLs,
   conclusions, and counts are dropped when the list is normalized.
 - The committed repository and pull-request blocks of a live session state also carry a
   monitor-private `readAt` (the start of the Git read, and the start of the oldest

@@ -149,7 +149,8 @@ characters, in this order:
 
 A task in the snapshot holds its ID, column, state, feature title, step, planned
 provider, model and effort, complete-when checks and own condition, the linked session's
-reference, state and observed model, the report's results, block reason and attention
+reference, state and observed model, the report's results (each one passed, failed, or
+unavailable), block reason and attention
 line, the GitHub issue number, the scheduled time, the update time, and the task text.
 Task text shares a budget of 48,000 characters. Unfinished tasks get their whole text
 first; past the budget a task carries 240 characters and `text_cut`.

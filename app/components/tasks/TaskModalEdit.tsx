@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Task, TaskCheck } from "../../../shared/task-contract";
+import type { Task, TaskCheck, TaskCheckOutcome } from "../../../shared/task-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateRow } from "./IssueCreate";
@@ -16,7 +16,7 @@ import {
   RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask,
   UNASSIGN_FAILURE_MESSAGE, assignDesktopTaskSession, resolveDesktopTaskDone, takeCreateFollowUp, unassignDesktopTaskSession, updateDesktopTask,
 } from "./task-desktop";
-import { observedModelDiffers } from "./task-fields";
+import { checkOutcome, observedModelDiffers } from "./task-fields";
 import { taskImagesAvailable } from "./task-images-desktop";
 import { taskIssuesAvailable } from "./task-issues-desktop";
 import { featureDraftFromTask, type FeatureDraft } from "./task-features";
@@ -72,7 +72,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
 
   const chip = taskChip(task, task.id === board.queue?.order[0]);
   const unresolved = task.state === "needs_review" || task.state === "blocked" || task.state === "stalled";
-  const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
+  const results = useMemo(() => new Map<TaskCheck, TaskCheckOutcome>((task.report?.results ?? []).map((entry) => [entry.check, checkOutcome(entry)])), [task.report]);
   const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
   const start = useTaskStart(repositoryId, task, board, dirty, refresh, followUp && "start" in followUp ? followUp.start : null);
   const images = useStoredImages(repositoryId, task);

@@ -65,7 +65,7 @@ function writeAgentReportResult(response, reason, answer = null, { close = false
 function reportResults(results) {
   return (Array.isArray(results) ? results : [])
     .filter((result) => REPORT_CHECKS.includes(result?.check) && typeof result.passed === "boolean")
-    .map((result) => ({ check: result.check, passed: result.passed }));
+    .map((result) => ({ check: result.check, passed: result.passed, ...(result.passed === false && result.unavailable === true ? { unavailable: true } : {}) }));
 }
 
 // `POST /api/agent/v1/tasks/complete` and `/block`: the bound session reports on the task it was started for or on one
