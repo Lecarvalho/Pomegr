@@ -27,7 +27,7 @@ vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory
 const access = vi.hoisted(() => ({ mode: "local" as "unknown" | "local" | "lan" }));
 vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => ({ mode: access.mode }), clientAccessMode: () => access.mode }));
 
-import { SessionTaskMeta } from "../../app/components/dashboard/SessionTaskSummary";
+import { SessionTaskMeta } from "../../app/components/dashboard/SessionTaskMeta";
 import { SessionTaskTab } from "../../app/components/dashboard/SessionTaskTab";
 import { sessionFeatureHref } from "../../app/components/tasks/SessionTaskCell";
 import { TasksPage } from "../../app/components/tasks/TasksPage";

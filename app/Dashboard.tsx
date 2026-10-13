@@ -16,7 +16,7 @@ import { ResourcesTab } from "./components/dashboard/ResourcesTab";
 import { SignalsTab } from "./components/dashboard/SignalsTab";
 import { SessionOverview } from "./components/dashboard/SessionOverview";
 import { SessionTabs } from "./components/dashboard/SessionTabs";
-import { SessionTaskMeta, SessionTaskSummary } from "./components/dashboard/SessionTaskSummary";
+import { SessionTaskMeta } from "./components/dashboard/SessionTaskMeta";
 import { SessionTaskTab } from "./components/dashboard/SessionTaskTab";
 import { parseSessionTab, sessionQueryString, type SessionRouteQuery, type SessionTab } from "./components/dashboard/session-route";
 import { CommandBreadcrumbSeparator, CommandIcon, CommandPageHeader, CommandStatus } from "./components/command-center/CommandPage";
@@ -162,7 +162,6 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
     <SessionKpis summary={summary} historical={historical} />
     <SessionTabs active={activeTab} task={sessionTask.status} summary={summary} onSelect={selectTab} />
     <div className="sessionTabPanel" role="tabpanel" id="session-tab-panel" aria-labelledby={`session-tab-${activeTab}`}>
-      {activeTab === "overview" && sessionTask.task && <SessionTaskSummary task={sessionTask.task} taskHref={taskTabHref} />}
       {activeTab === "overview" && <SessionOverview summary={summary} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
       {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
       {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
