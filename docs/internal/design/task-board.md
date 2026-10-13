@@ -242,8 +242,13 @@ The head actions appear in this order:
 
 - The card (`.taskCard`) has the panel fill, a one-pixel `--command-line` border, a 6px radius, 12px padding, and an 8px gap.
 - The top row is the task ID (data font, 12px, muted) and the state chip.
-- The title is 13px/500 ink, clamped to six lines.
-- The title is the task text until its session has a title.
+- The title is 13px/500 ink, clamped to three lines.
+- The title is the first sentence of the first line of the task text until its session has a title. The split is a heuristic.
+- A first line of one sentence is the whole title, and a Markdown heading mark is left out.
+- The rest of the task text follows as one muted 12px excerpt (`.taskCardExcerpt`), on one run of text clamped to two lines.
+- A card with a session title, and a grouped card, shows no excerpt.
+- A backtick span in the title or the excerpt is drawn in the data font, without its backticks.
+- The tooltip of the title is the whole task text, or the session title.
 - A Done card's title is muted.
 - In the desktop app, the title is the Quiet role drawn as plain title text, underlined on hover. It opens the task modal.
 
