@@ -45,6 +45,7 @@ import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSa
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
 import { EventsRailSection } from "./DesignSystemEventsSample";
 import { HomeUpdateSection } from "./DesignSystemHomeUpdateSample";
+import { TaskCreatePrototypeSection } from "./DesignSystemTaskCreatePrototype";
 import { TaskFieldsSection } from "./DesignSystemTaskFieldsSample";
 import { TaskBoardSection } from "./DesignSystemTaskBoardSample";
 import { QueueControlsSection, TaskGatesSection } from "./DesignSystemTaskGatesSample";
@@ -90,6 +91,7 @@ export function DesignSystemView() {
     <EventsRailSection />
     <HomeUpdateSection />
     <TaskFieldsSection />
+    <TaskCreatePrototypeSection />
     <TaskBoardSection />
     <QueueControlsSection />
     <TaskGatesSection />
