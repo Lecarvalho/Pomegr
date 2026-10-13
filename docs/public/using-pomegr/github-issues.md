@@ -97,7 +97,8 @@ It is a label, not a link. A session started for the task is asked to write `Clo
 ## Create an issue from a task
 
 1. In **New task**, write the task. Under **Task**, **Also create a GitHub issue** is
-   on by default when your account can create issues here. Below it, a line says
+   is off by default and available when your account can create issues here. Check it
+   to create an issue. Below it, a line says
    "The task text is sent to GitHub once, with its first line as the issue title.
    Anyone who can see the repository can read it. Later edits here are not sent."
    Everyone can read an issue on a public repository; on a private one, people with

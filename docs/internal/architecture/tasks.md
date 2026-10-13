@@ -675,7 +675,9 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   queue turned off. `queue_settings` with `{ on: true }` sets it to `running`, or to
   `blocked` with the lowest-numbered task that is stalled or blocked in
   `blockedBy` when one exists; `{ on: false }` sets it back to `idle`. Turning the queue
-  off never touches a running session. No other action turns the queue on, and the one
+  off never touches a running session. The agent chat sends this same action, with
+  `{ on }` alone, for a queue proposal the owner applied
+  (see [Agent chat: Queue change](agent-chat.md#queue-change)). No other action turns the queue on, and the one
   other write that turns it off is the end of a pause whose named task is gone (see
   **A pause ends with its task** below).
 - **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
@@ -1867,7 +1869,7 @@ so it reads nothing and says that issues are read in the desktop app.
   an issue is never promoted twice.
 - **Creating an issue from the Task modal.** In the new mode the modal reads the GitHub
   status once when it opens. When the repository can create issues it shows **Also create
-  a GitHub issue**, checked, with one line saying that the text is sent once and who can
+  a GitHub issue**, unchecked, with one line saying that the text is sent once and who can
   read it; otherwise the box is disabled with one fixed reason. **Create task** creates
   the task first and asks for the issue only after the task exists. If the issue fails,
   the modal closes on the created task, which has no chip. In the edit mode a task with
@@ -2030,7 +2032,10 @@ serves no other client.
 - **Agent chat.** A paired device also reaches the agent chat, through one route that
   the gateway answers itself. [Agent chat](agent-chat.md#boundaries) owns it. A session
   start that Aril proposed is applied only in the desktop app: the chat route refuses it
-  from a paired device, which keeps its own **Manual start** above.
+  from a paired device, which keeps its own **Manual start** above. A queue change that
+  Aril proposed can be applied on a paired device (task T-75, 2026-10-12): desktop main
+  then sends `queue_settings` with `{ on }`, the action of **Queue control** above, so
+  the chat route gives the device no queue authority it did not have.
 - **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
   `desktop`, `paired`, `absent`, or `pending` until the client knows which, so no control
   or note is drawn and then taken back. `sendTaskAction` uses the bridge when there is
@@ -2166,6 +2171,7 @@ serves no other client.
 ## Privacy
 
 - A paired device may send queue on and off through the existing authenticated task action route. Only the desktop queue runner launches sessions.
+- A paired device may also apply a queue proposal of the agent chat. Desktop main then sends the same `queue_settings` action with `{ on }` and nothing else, and the chat keeps only the state asked for and one fixed result.
 - A paired manual start sends only the repository ID, task ID, confirmation flag, and optional separate-worktree flag to the desktop gateway. Its answer exposes only a fixed start status. The private plan, prompt, filesystem paths, image files, credentials, and dispatch token stay on the desktop's existing private launch path.
 
 Task text, the own condition, and a feature's name, description, and app version are
@@ -2295,7 +2301,8 @@ fixed values.
   [Agent chat: Privacy](agent-chat.md#privacy). The chat changes the board only through
   the fixed task actions, after the owner applies a proposal. Of a session start it
   applied, the chat keeps the task ID and one fixed start status, and nothing of the
-  start plan.
+  start plan. Of a queue change it applied, the chat keeps the state asked for and one
+  fixed result, and nothing of the board.
 - The Sessions list and session view receive only the task ID, task state, feature name,
   step, and the number of the GitHub issue the task was promoted from. That is a
   deliberate widening of exposure (the issue number was added on 2026-10-09): the part

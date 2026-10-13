@@ -8,7 +8,7 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { composePrompt } from "./agent-chat-prompt.mjs";
-import { applyOperations, extractProposal, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
+import { applyOperations, extractProposal, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
 import { runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
@@ -28,6 +28,8 @@ const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
 const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder"]);
+// The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
+const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
 const MONITOR_TIMEOUT_MS = 10_000;
 
@@ -114,6 +116,8 @@ export function createAgentChat(options = {}) {
     } catch { return null; }
   }
 
+  const monitorRefusal = (answer) => refused(isPlainObject(answer) && typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
+
   // The applier's one way to the board: the fixed task actions, validated by the monitor like any desktop action.
   async function taskAction(repositoryId, action, payload) {
     if (!TASK_ACTIONS.has(action)) return refused("invalid");
@@ -122,7 +126,19 @@ export function createAgentChat(options = {}) {
       if (isPlainObject(answer) && answer.ok === true) {
         return { ok: true, board: isPlainObject(answer.board) ? answer.board : null, taskId: typeof answer.taskId === "string" && TASK_ID.test(answer.taskId) ? answer.taskId : null };
       }
-      return refused(isPlainObject(answer) && typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
+      return monitorRefusal(answer);
+    } catch { return UNAVAILABLE; }
+  }
+
+  // An approved queue proposal: the desired state and nothing else, so no threshold or schedule rides along and a
+  // repeated request never reverses the queue. The monitor judges it as it does for the Board's own control, and only
+  // the desktop queue runner starts anything afterwards.
+  async function setQueue(repositoryId, on) {
+    try {
+      const answer = await postAction(QUEUE_ACTION, repositoryId, { on });
+      if (!isPlainObject(answer) || answer.ok !== true) return monitorRefusal(answer);
+      const status = isPlainObject(answer.board) && isPlainObject(answer.board.queue) ? answer.board.queue.status : null;
+      return { ok: true, queue: !on ? "off" : status === "blocked" ? "blocked" : "on" };
     } catch { return UNAVAILABLE; }
   }
 
@@ -275,6 +291,7 @@ export function createAgentChat(options = {}) {
     // Only the desktop window starts a session from the chat: the start needs its trusted event, and a paired device has none.
     if (startTaskId && !origin?.event) return refused("desktop_only");
     if (startTaskId && !startTask) return UNAVAILABLE;
+    const queueOn = approve ? queueProposalState(message.proposal) : null;
     const key = `${repositoryId}/${proposalId}`;
     if (applying.has(key)) return refused("busy");
     applying.add(key);
@@ -283,6 +300,11 @@ export function createAgentChat(options = {}) {
       if (startTaskId) {
         proposal = await startSession(origin.event, repositoryId, startTaskId, message.proposal);
         if (!proposal) return { ok: true };
+      } else if (queueOn !== null) {
+        // Only a change the monitor accepted answers the proposal. One it refused, or that never reached it, keeps the
+        // proposal pending with the fixed error, so the owner may apply the same desired state again.
+        const result = await setQueue(repositoryId, queueOn);
+        proposal = { ...message.proposal, state: result.ok ? "applied" : "pending", results: [{ ...result }] };
       } else if (approve) {
         const board = await readBoard(repositoryId);
         if (!board) return UNAVAILABLE;

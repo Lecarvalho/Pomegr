@@ -257,7 +257,7 @@ function IssueCreateSamples() {
   const [checked, setChecked] = useState(true);
   const [off, setOff] = useState(false);
   return <>
-    <Sample label="Also create a GitHub issue" note="Under the Task counter. Checked by default when the account can create issues in the repository; the task is created first and a failed issue never costs it. Nothing is drawn in a browser or before the first GitHub read answers.">
+    <Sample label="Also create a GitHub issue" note="Under the Task counter. Unchecked by default; available when the account can create issues in the repository; the task is created first and a failed issue never costs it. Nothing is drawn in a browser or before the first GitHub read answers.">
       <div className="designSystemStates">
         <IssueCreateCheckbox option={{ kind: "can" }} checked={checked} onChange={setChecked} />
         <IssueCreateCheckbox option={{ kind: "can" }} checked={off} onChange={setOff} />

@@ -382,3 +382,143 @@ describe("a proposed session start", () => {
     expect(harness.refresh).not.toHaveBeenCalled();
   });
 });
+
+describe("a proposed queue change", () => {
+  const withQueue = (on = true, state = "pending", extra: Record<string, unknown> = {}) => chat.seed(REPO_A, conversationOf(1, [
+    userMessage(on ? "turn the queue on" : "turn the queue off"),
+    agentMessage("I propose the change.", { proposal: { ...proposalOf([{ op: "set_queue", on }], state, extra), summary: on ? "Turn the queue on." : "Turn the queue off." } }),
+  ]));
+  const card = () => within(log()).getByRole("region", { name: "Proposed queue change" });
+  const ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, one step at a time, as each passes the start gates.";
+  const OFF_NOTE = "Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.";
+  const asPairedDevice = () => {
+    setBridge(undefined);
+    harness.mode = "lan";
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { operation: string; payload: Record<string, unknown> };
+      return new Response(JSON.stringify(await chat.agentChat(body.operation, body.payload)), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+  };
+
+  it("is drawn as a change that has not happened: the state, its own Primary, and what turning the queue on lets Pomegr do", async () => {
+    withQueue();
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(within(log()).queryByRole("region", { name: "Proposed board changes" })).toBeNull();
+    const rows = within(card()).getAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("Turn the queue on");
+    expect(rows[0].querySelector(".agentChatOpResult")).toBeNull();
+    expect(card().querySelector(".commandChip")).toBeNull();
+    expect(within(card()).getByRole("button", { name: "Turn queue on" })).toHaveClass("commandPrimaryAction");
+    expect(within(card()).queryByRole("button", { name: "Apply changes" })).toBeNull();
+    expect(within(card()).getByRole("button", { name: "Dismiss" })).toHaveClass("commandQuietAction");
+    expect(within(card()).getByText(ON_NOTE)).toBeInTheDocument();
+    expect(card()).not.toHaveTextContent(/Queue turned/);
+    expect(chat.calls("apply")).toEqual([]);
+  });
+
+  it("names Off as its own state, with a line that running sessions continue", async () => {
+    withQueue(false);
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(within(card()).getAllByRole("listitem")[0]).toHaveTextContent("Turn the queue off");
+    expect(within(card()).getByRole("button", { name: "Turn queue off" })).toHaveClass("commandPrimaryAction");
+    expect(within(card()).queryByRole("button", { name: "Turn queue on" })).toBeNull();
+    expect(within(card()).getByText(OFF_NOTE)).toBeInTheDocument();
+  });
+
+  it("says the queue was turned on only after the desktop answered so, then offers no second change", async () => {
+    withQueue();
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
+    await settle();
+    expect(chat.calls("apply")).toEqual([{ repositoryId: REPO_A, conversationId: chatId(1), proposalId: PROPOSAL_ID }]);
+    expect(card().querySelector(".commandChip")).toHaveTextContent("Applied");
+    const result = card().querySelector(".agentChatOpResult");
+    expect(result).toHaveTextContent("Queue turned on.");
+    expect(result).toHaveClass("is-ok");
+    expect(within(card()).queryByRole("button")).toBeNull();
+    expect(within(card()).queryByText(/Nothing changes until/)).toBeNull();
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("says that a task holds a queue that was turned on", async () => {
+    chat.queueAnswer = { status: "blocked" };
+    withQueue();
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
+    await settle();
+    const held = card().querySelector(".agentChatOpResult");
+    expect(held).toHaveTextContent("Queue turned on. A stalled or blocked task holds it, so nothing starts until you resolve that task.");
+    expect(held).toHaveClass("is-muted");
+  });
+
+  it("says that the queue was turned off", async () => {
+    withQueue(false);
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(within(card()).getByRole("button", { name: "Turn queue off" }));
+    await settle();
+    expect(card().querySelector(".agentChatOpResult")).toHaveTextContent("Queue turned off.");
+    expect(card().querySelector(".agentChatOpResult")).toHaveClass("is-ok");
+  });
+
+  it("shows a refused or unanswered change as not changed, and keeps the same Primary for another try", async () => {
+    for (const [error, line] of [["conflict", "Queue not changed. Pomegr refused this change."], ["invalid", "Queue not changed. Pomegr refused this change."], ["unavailable", "Queue not changed. Pomegr did not answer. Try again."]]) {
+      installHarness();
+      chat = harness.chat;
+      chat.queueAnswer = { error };
+      withQueue();
+      const person = user();
+      const view = render(<AgentChatDock />);
+      await openPanel(person);
+      await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
+      await settle();
+      const result = card().querySelector(".agentChatOpResult");
+      expect(result, error).toHaveTextContent(line);
+      expect(result, error).toHaveClass("is-error");
+      expect(card().querySelector(".commandChip")).toBeNull();
+      expect(card()).not.toHaveTextContent(/Queue turned/);
+      // The owner applies again, and only an accepted change settles the card.
+      chat.queueAnswer = { status: "running" };
+      await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
+      await settle();
+      expect(chat.calls("apply")).toHaveLength(2);
+      expect(card().querySelector(".agentChatOpResult")).toHaveTextContent("Queue turned on.");
+      expect(within(card()).queryByRole("button")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("can be applied on a paired device, through the chat route", async () => {
+    asPairedDevice();
+    withQueue();
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    expect(await within(log()).findByRole("region", { name: "Proposed queue change" })).toBeInTheDocument();
+    expect(within(card()).getByText(ON_NOTE)).toBeInTheDocument();
+    await person.click(within(card()).getByRole("button", { name: "Turn queue on" }));
+    await settle();
+    expect(chat.calls("apply")).toEqual([{ repositoryId: REPO_A, conversationId: chatId(1), proposalId: PROPOSAL_ID }]);
+    expect(card().querySelector(".agentChatOpResult")).toHaveTextContent("Queue turned on.");
+  });
+
+  it("dismisses without changing the queue", async () => {
+    withQueue();
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(within(card()).getByRole("button", { name: "Dismiss" }));
+    await settle();
+    expect(chat.calls("apply")).toEqual([]);
+    expect(card().querySelector(".commandChip")).toHaveTextContent("Dismissed");
+    expect(card().querySelector(".agentChatOpResult")).toBeNull();
+  });
+});

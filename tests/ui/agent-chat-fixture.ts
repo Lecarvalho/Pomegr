@@ -44,6 +44,8 @@ export class FakeChat {
   refuse: string | null = null;
   /** What the desktop's manual start answers to an applied start proposal. */
   startStatus = "started";
+  /** What the monitor answers to an applied queue proposal: the status the queue then has, or a fixed error. */
+  queueAnswer: { status: string } | { error: string } = { status: "running" };
   /** The next `send` answers only when this resolves. */
   hold: Promise<void> | null = null;
   readonly agentChat = vi.fn((operation: string, payload: Json) => this.handle(operation, payload));
@@ -124,6 +126,12 @@ export class FakeChat {
           if (this.refuse === "desktop_only") return { ok: false, error: "desktop_only" };
           if (this.startStatus === "started") Object.assign(proposal, { state: "applied", results: [{ ok: true, start: "started" }] });
           else if (this.startStatus !== "cancelled") Object.assign(proposal, { state: "pending", results: [{ ok: false, error: "not_started", start: this.startStatus }] });
+          return { ok: true };
+        }
+        // A queue change is answered by the monitor: only an accepted one settles it, and a refused one stays pending.
+        if (operation === "apply" && operations.length === 1 && operations[0].op === "set_queue") {
+          if ("error" in this.queueAnswer) Object.assign(proposal, { state: "pending", results: [{ ok: false, error: this.queueAnswer.error }] });
+          else Object.assign(proposal, { state: "applied", results: [{ ok: true, queue: operations[0].on !== true ? "off" : this.queueAnswer.status === "blocked" ? "blocked" : "on" }] });
           return { ok: true };
         }
         if (operation === "apply") Object.assign(proposal, { state: "applied", results: operations.map((entry) => (entry.op === "create_task" ? { ok: true, taskId: "T-19" } : { ok: true })) });

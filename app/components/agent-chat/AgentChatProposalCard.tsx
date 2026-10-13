@@ -1,6 +1,6 @@
 import type { AgentChatProposal } from "../../../shared/agent-chat-contract";
 import type { Task } from "../../../shared/task-contract";
-import { describeOperation, operationOutcome, proposalChip, proposalNote, startProposalTask, type OperationTitlePart } from "./agent-chat-presentation";
+import { describeOperation, operationOutcome, proposalChip, proposalLabel, proposalNote, proposalPrimary, type OperationTitlePart } from "./agent-chat-presentation";
 
 type BoardTask = Pick<Task, "id" | "text">;
 
@@ -14,6 +14,7 @@ function Title({ parts }: { parts: OperationTitlePart[] }) {
  * What Aril proposes, one row for each operation, and the owner's answer. Every word is a fixed verb and a target set as text.
  * A session start is its own card: it is applied only in the desktop window (`startHere`), and it stays open to another
  * try while no session launched. `heldStart` names the gates that hold a task now, from the board's own readings.
+ * A queue change is its own card too. It can be applied on a paired device, and it stays open while the queue was not changed.
  */
 export function AgentChatProposalCard({ proposal, tasks, busy, startHere = false, heldStart, onApply, onDismiss }: {
   proposal: AgentChatProposal;
@@ -25,10 +26,9 @@ export function AgentChatProposalCard({ proposal, tasks, busy, startHere = false
   onDismiss(proposalId: string): void;
 }) {
   const chip = proposalChip(proposal);
-  const startTask = startProposalTask(proposal);
   // The card's one Primary. A session start has it only where the start can be applied.
-  const primary = startTask === null ? "Apply changes" : startHere ? "Start session" : null;
-  return <section className="agentChatProposal" aria-label={startTask === null ? "Proposed board changes" : "Proposed session start"} aria-busy={busy || undefined}>
+  const primary = proposalPrimary(proposal, startHere);
+  return <section className="agentChatProposal" aria-label={proposalLabel(proposal)} aria-busy={busy || undefined}>
     <header className="agentChatProposalHead">
       <p className="agentChatProposalSummary">{proposal.summary}</p>
       {chip && <span className={`commandChip ${chip.tone}`}>{chip.label}</span>}

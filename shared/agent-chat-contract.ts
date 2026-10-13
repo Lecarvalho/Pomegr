@@ -33,7 +33,8 @@ export const AGENT_CHAT_COLUMNS: readonly AgentChatColumn[] = ["Backlog", "Ready
 // One board change the agent proposes. A feature is named by its title; the desktop resolves it when the owner approves.
 // `run` and `completeWhen` hold only the parts the proposal sets: on an update the rest stays as stored.
 // `start_session` is no board change: it asks the desktop to start a session for that task, and it is the only
-// operation of its proposal.
+// operation of its proposal. `set_queue` asks for the repository's queue to be on or off, as a state and never a toggle,
+// and it is the only operation of its proposal too.
 export type AgentChatBoardOperation =
   | { op: "create_feature"; name: string }
   | { op: "create_task"; text: string; feature?: string; step?: number; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean }
@@ -43,12 +44,17 @@ export type AgentChatBoardOperation =
   | { op: "queue_task"; id: string }
   | { op: "unqueue_task"; id: string }
   | { op: "set_step"; id: string; step: number }
-  | { op: "start_session"; id: string };
+  | { op: "start_session"; id: string }
+  | { op: "set_queue"; on: boolean };
 
 export type AgentChatBoardOperationName = AgentChatBoardOperation["op"];
 export const AGENT_CHAT_BOARD_OPERATIONS: readonly AgentChatBoardOperationName[] = [
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session", "set_queue",
 ];
+
+// What an approved queue change left: on, on and held by a stalled or blocked task, or off.
+export type AgentChatQueueResult = "on" | "blocked" | "off";
+export const AGENT_CHAT_QUEUE_RESULTS: readonly AgentChatQueueResult[] = ["on", "blocked", "off"];
 
 // Why an approved session start launched nothing: the fixed statuses of a manual start, without `started` and `cancelled`.
 export type AgentChatStartFailure = "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable" | "gate_held" | "unsupported_provider"
@@ -60,8 +66,10 @@ export const AGENT_CHAT_START_FAILURES: readonly AgentChatStartFailure[] = [
 
 // The outcome of one approved operation. `skipped` is an operation after the first one that failed. A failure with a
 // task ID is a task that was created and then could not be queued. A result with `start` is the outcome of a session
-// start: the launch, or `not_started` with the status that held or failed it.
+// start: the launch, or `not_started` with the status that held or failed it. A result with `queue` is a queue change
+// the monitor accepted; one it refused is an ordinary failure.
 export type AgentChatOperationResult =
+  | { ok: true; queue: AgentChatQueueResult }
   | { ok: true; taskId?: string }
   | { ok: false; error: "invalid" | "not_found" | "limit" | "conflict" | "unsupported" | "unavailable" | "skipped"; taskId?: string }
   | { ok: true; start: "started" }
@@ -69,7 +77,7 @@ export type AgentChatOperationResult =
 
 // `pending` waits for the owner; `applied` ran whole; `partial` stopped at a failed operation; `dismissed` never ran.
 // A session start is `applied` only when the session launched. One that was held or failed stays `pending` with its
-// result, so the owner may apply it again.
+// result, so the owner may apply it again. A queue change is the same: `applied` only when the monitor accepted it.
 export type AgentChatProposalState = "pending" | "applied" | "partial" | "dismissed";
 export const AGENT_CHAT_PROPOSAL_STATES: readonly AgentChatProposalState[] = ["pending", "applied", "partial", "dismissed"];
 
