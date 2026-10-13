@@ -324,3 +324,76 @@ test("the instructions keep the read-only promise and treat everything else as d
   assert.match(AGENT_CHAT_INSTRUCTIONS, /never say that you created, changed, queued, moved, deleted, or started something/iu);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Recommend only a model listed under "models" in the snapshot/u);
 });
+
+const IMAGE_A = "img-0123456789ab";
+const IMAGE_B = "img-ba9876543210";
+
+test("images the conversation holds are listed in an images section before the owner message, and the new ones are named after it", () => {
+  const images = [{ id: IMAGE_A, type: "png", file: "C:\\Data\\images\\chat-0123456789ab\\img-0123456789ab.png" }, { id: IMAGE_B, type: "webp", file: "C:\\Data\\images\\chat-0123456789ab\\img-ba9876543210.webp" }];
+  const prompt = composePrompt({ board: fullBoard(), message: "Look at these", images, attached: [images[1]], now });
+  const tail = [
+    "</conversation>", "", "<images>", `${IMAGE_A} (png): ${images[0].file}`, `${IMAGE_B} (webp): ${images[1].file}`, "</images>", "",
+    "<owner_message>", "Look at these", "</owner_message>", `Images attached to this message, in order: ${IMAGE_B}.`,
+  ].join("\n");
+  assert.equal(prompt.endsWith(tail), true);
+  const several = composePrompt({ board: fullBoard(), message: "x", images, attached: images, now });
+  assert.equal(several.endsWith(`</owner_message>\nImages attached to this message, in order: ${IMAGE_A}, ${IMAGE_B}.`), true);
+});
+
+test("without images the prompt has no images section and no attached line", () => {
+  const plain = composePrompt({ board: fullBoard(), message: "Hello", now });
+  assert.equal(plain.endsWith("<owner_message>\nHello\n</owner_message>"), true);
+  assert.doesNotMatch(plain, /^<images>$|^<\/images>$|^Images attached to this message/mu);
+  for (const options of [{ images: [], attached: [] }, { images: undefined, attached: undefined }]) assert.equal(composePrompt({ board: fullBoard(), message: "Hello", now, ...options }), plain);
+  const onlyEarlier = composePrompt({ board: fullBoard(), message: "Hello", now, images: [{ id: IMAGE_A, type: "gif", file: "/d/img-0123456789ab.gif" }] });
+  assert.match(onlyEarlier, /^<images>\nimg-0123456789ab \(gif\): \/d\/img-0123456789ab\.gif\n<\/images>$/mu);
+  assert.doesNotMatch(onlyEarlier, /^Images attached to this message/mu);
+});
+
+test("a prompt that the images section pushes past the limit is refused", () => {
+  const base = composePrompt({ board: fullBoard(), message: "", now }).length;
+  const images = [{ id: IMAGE_A, type: "png", file: "/d/img-0123456789ab.png" }];
+  const extra = composePrompt({ board: fullBoard(), message: "", now, images }).length - base;
+  assert.ok(composePrompt({ board: fullBoard(), message: "x".repeat(PROMPT_LIMIT - base - extra), now, images }));
+  assert.equal(composePrompt({ board: fullBoard(), message: "x".repeat(PROMPT_LIMIT - base - extra + 1), now, images }), null);
+});
+
+test("an owner line in the history says which images the owner attached", () => {
+  const line = (message) => conversationHistory([message], 10_000).lines[0];
+  const owner = (images) => ({ id: "m-1", role: "user", text: "See this", ...(images === undefined ? {} : { images }) });
+  const image = (id) => ({ id, type: "png", bytes: 5 });
+  assert.equal(line(owner([image(IMAGE_A)])), `Owner: See this\n[The owner attached this image: ${IMAGE_A}.]`);
+  assert.equal(line(owner([image(IMAGE_A), image(IMAGE_B)])), `Owner: See this\n[The owner attached these images: ${IMAGE_A}, ${IMAGE_B}.]`);
+  for (const images of [undefined, [], null, "x"]) assert.equal(line(owner(images)), "Owner: See this");
+});
+
+test("an image never adds its path or type to the history", () => {
+  const lines = conversationHistory([{ id: "m-1", role: "user", text: "See this", images: [{ id: IMAGE_A, type: "png", bytes: 5, file: "C:\\private\\x.png" }] }], 10_000).lines;
+  assert.equal(JSON.stringify(lines).includes("private"), false);
+  assert.equal(JSON.stringify(lines).includes("png"), false);
+});
+
+test("a proposal line says when the images were not attached to a task", () => {
+  const agent = (operations, state, results) => ({ id: "m-2", role: "agent", text: "Plan", status: "complete", proposal: { id: "p-0123456789ab", summary: "Add it", operations, state, results } });
+  const line = (message) => conversationHistory([message], 10_000).lines[0];
+  const create = { op: "create_task", text: "a", images: [IMAGE_A] };
+  const attach = { op: "attach_images", id: "T-4", images: [IMAGE_A] };
+  assert.match(line(agent([create], "partial", [{ ok: false, error: "limit", taskId: "T-9", part: "images" }])), /\[Proposal "Add it" with 1 operation\(s\): the owner applied it and it stopped at an operation that failed; created T-9; the images were not attached to T-9\.\]/u);
+  assert.match(line(agent([attach], "partial", [{ ok: false, error: "conflict", part: "images" }])), /failed; the images were not attached to T-4\.\]/u);
+  assert.match(line(agent([create, attach], "partial", [{ ok: true, taskId: "T-9" }, { ok: false, error: "limit", part: "images" }])), /created T-9; the images were not attached to T-4\.\]/u);
+  assert.equal(line(agent([attach], "partial", [{ ok: false, error: "not_found" }])).includes("not attached"), false, "an ordinary failure says nothing about images");
+  assert.equal(line(agent([create], "applied", [{ ok: true, taskId: "T-9" }])).includes("not attached"), false);
+  assert.equal(line(agent([create], "pending")).includes("not attached"), false);
+});
+
+test("the instructions teach the images: the create_task key, attach_images, the images section, and the rules for a task", () => {
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /"queue":false,"images":\["img-0123456789ab"\]\}/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /\{"op":"attach_images","id":"T-12","images":\["img-0123456789ab"\]\}/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /The <images> section lists the file of every image of this conversation that is still on this computer/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /\nImages on a task:\n/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Never invent one/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /A task holds at most four images\. A task that has started takes no image\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /\[image:<image id>\]/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /You cannot make, change, or fetch an image\./u);
+  assert.ok(AGENT_CHAT_INSTRUCTIONS.indexOf("attach_images") < AGENT_CHAT_INSTRUCTIONS.indexOf('{"op":"start_session"'));
+});

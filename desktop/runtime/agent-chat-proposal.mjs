@@ -4,8 +4,10 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session", "set_queue",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "attach_images", "start_session", "set_queue",
 ]);
+// The one operation that puts images the owner sent in the chat on a task that is already on the board.
+export const IMAGE_OPERATION = "attach_images";
 // The one operation that is not a board change: it asks the desktop to start a session for a task, and stands alone in its proposal.
 export const START_OPERATION = "start_session";
 // The one operation that turns the repository's queue on or off. It names the state the owner asked for, never a toggle,
@@ -21,6 +23,9 @@ export const START_FAILURES = Object.freeze([
 export const BOARD_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
 
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
+const IMAGE_ID = /^img-[0-9a-f]{12}$/u;
+// What one message of the owner, and one task, may hold.
+export const IMAGES_PER_OPERATION = 4;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u;
 const TEXT_LINES = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]*$/u;
@@ -41,6 +46,13 @@ function isPlainObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+/** A list of image IDs as a message or an operation names them: one to four, each once. Null when it is anything else. */
+export function chatImageIds(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > IMAGES_PER_OPERATION) return null;
+  if (!value.every((id) => typeof id === "string" && IMAGE_ID.test(id)) || new Set(value).size !== value.length) return null;
+  return [...value];
 }
 
 const only = (value, keys) => Object.keys(value).every((key) => keys.includes(key));
@@ -119,7 +131,7 @@ export function normalizeOperation(source) {
     return only(source, ["op", "name"]) && name ? { op, name } : null;
   }
   if (op === "create_task") {
-    if (!only(source, ["op", "text", "feature", "step", "queue", ...TASK_FIELDS])) return null;
+    if (!only(source, ["op", "text", "feature", "step", "queue", "images", ...TASK_FIELDS])) return null;
     const text = taskText(source.text);
     const parts = taskParts(source);
     if (!text || !parts) return null;
@@ -136,6 +148,11 @@ export function normalizeOperation(source) {
     }
     if (source.queue !== undefined && typeof source.queue !== "boolean") return null;
     if (source.queue === true) operation.queue = true;
+    if (source.images !== undefined && source.images !== null) {
+      const images = chatImageIds(source.images);
+      if (!images) return null;
+      operation.images = images;
+    }
     return operation;
   }
   if (op === QUEUE_OPERATION) return only(source, ["op", "on"]) && typeof source.on === "boolean" ? { op, on: source.on } : null;
@@ -165,6 +182,10 @@ export function normalizeOperation(source) {
     if (source.position === undefined || source.position === null) return { op, id, column };
     return Number.isInteger(source.position) && source.position >= 0 && source.position <= POSITION_LIMIT ? { op, id, column, position: source.position } : null;
   }
+  if (op === IMAGE_OPERATION) {
+    const images = chatImageIds(source.images);
+    return only(source, ["op", "id", "images"]) && images ? { op, id, images } : null;
+  }
   if (op === "set_step") {
     const at = step(source.step);
     return only(source, ["op", "id", "step"]) && at !== null ? { op, id, step: at } : null;
@@ -189,6 +210,15 @@ export function normalizeProposal(source) {
   // change is too: turning the queue on lets Pomegr start tasks by itself, so it is never approved beside a board change.
   if (operations.length > 1 && operations.some((operation) => operation.op === START_OPERATION || operation.op === QUEUE_OPERATION)) return null;
   return { summary, operations };
+}
+
+/** Every image a proposal names, each once. They are images the owner sent in the conversation, or the proposal is not offered. */
+export function proposalImages(proposal) {
+  const ids = new Set();
+  for (const operation of Array.isArray(proposal?.operations) ? proposal.operations : []) {
+    for (const id of Array.isArray(operation?.images) ? operation.images : []) ids.add(id);
+  }
+  return [...ids];
 }
 
 /** The queue state a proposal asks for (`true` is on), or null when it is not a queue proposal. */
@@ -273,9 +303,10 @@ function fullCompleteWhen(current, part) {
 /**
  * Runs an approved proposal, one fixed task action per operation, in order. It stops at the first operation that
  * fails; the ones after it answer `skipped`. `post(action, payload)` is the desktop's own task-action request and
- * answers `{ ok: true, board?, taskId? }` or `{ ok: false, error }`.
+ * answers `{ ok: true, board?, taskId? }` or `{ ok: false, error }`. `attach(taskId, imageId)` is the desktop's own
+ * image request: it stores one image the owner sent in the conversation on that task, and answers the same way.
  */
-export async function applyOperations(operations, { post, board }) {
+export async function applyOperations(operations, { post, board, attach }) {
   let facts = boardFacts(board);
   const results = [];
   const act = async (action, payload) => {
@@ -286,6 +317,16 @@ export async function applyOperations(operations, { post, board }) {
     return { answer: { ok: true }, taskId: taskId(answer.taskId) };
   };
   const openFeature = (name) => facts.features.find((feature) => feature.name === name && !feature.done) ?? null;
+  // Each image in order, stopping at the first one the task did not take. An image the task already holds is the outcome asked for.
+  const attachAll = async (id, images, held = []) => {
+    for (const imageId of images) {
+      if (held.includes(imageId)) continue;
+      let answer;
+      try { answer = typeof attach === "function" ? await attach(id, imageId) : null; } catch { answer = null; }
+      if (!isPlainObject(answer) || answer.ok !== true) return actionError(answer);
+    }
+    return { ok: true };
+  };
 
   for (const operation of operations) {
     if (results.some((result) => result.ok !== true)) { results.push(failure("skipped")); continue; }
@@ -309,6 +350,10 @@ export async function applyOperations(operations, { post, board }) {
       }
       const created = await act("create", payload);
       if (created.answer.ok !== true || !created.taskId) { results.push(created.answer.ok === true ? failure("unavailable") : created.answer); continue; }
+      if (operation.images) {
+        const attached = await attachAll(created.taskId, operation.images);
+        if (attached.ok !== true) { results.push({ ...attached, taskId: created.taskId, part: "images" }); continue; }
+      }
       if (operation.queue === true) {
         const queued = await act("queue_add", { id: created.taskId });
         if (queued.answer.ok !== true) { results.push({ ...queued.answer, taskId: created.taskId }); continue; }
@@ -331,6 +376,12 @@ export async function applyOperations(operations, { post, board }) {
       }
       // Every field already holds what the operation asks for.
       results.push(Object.keys(payload).length === 1 ? { ok: true } : (await act("update", payload)).answer);
+      continue;
+    }
+    if (op === IMAGE_OPERATION) {
+      const held = (Array.isArray(task.images) ? task.images : []).map((image) => image?.id).filter((id) => typeof id === "string");
+      const attached = await attachAll(operation.id, operation.images, held);
+      results.push(attached.ok === true ? attached : { ...attached, part: "images" });
       continue;
     }
     if (op === "move_task") {

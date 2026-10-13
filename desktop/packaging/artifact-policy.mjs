@@ -31,6 +31,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/bounded-lifecycle.mjs",
   "desktop/runtime/artifact-privacy.mjs",
   "desktop/runtime/agent-chat.mjs",
+  "desktop/runtime/agent-chat-images.mjs",
   "desktop/runtime/agent-chat-prompt.mjs",
   "desktop/runtime/agent-chat-proposal.mjs",
   "desktop/runtime/agent-chat-runner.mjs",

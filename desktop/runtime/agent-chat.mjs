@@ -7,8 +7,9 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
+import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { composePrompt } from "./agent-chat-prompt.mjs";
-import { applyOperations, extractProposal, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
+import { applyOperations, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
 import { runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
@@ -16,6 +17,9 @@ import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
 
 export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat";
+// The images the owner sends to Aril travel on a channel of their own, because they are bytes and not a JSON payload.
+export const AGENT_CHAT_IMAGE_CHANNEL = "pomegr:agent-chat-image";
+export const AGENT_CHAT_IMAGE_OPERATIONS = Object.freeze(["add", "read"]);
 export const AGENT_CHAT_OPERATIONS = Object.freeze(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
 export const AGENT_CHAT_ERRORS = Object.freeze(["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"]);
 export const AGENT_CHAT_REQUEST_MAX_BYTES = 17 * 1024;
@@ -32,6 +36,7 @@ const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_cre
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
 const MONITOR_TIMEOUT_MS = 10_000;
+const IMAGE_TIMEOUT_MS = 20_000;
 
 const MCP_WORKER = ["desktop", "workers", "agent-chat-mcp.cjs"];
 
@@ -84,6 +89,8 @@ export function createAgentChat(options = {}) {
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
   const store = options.store || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
     ? createAgentChatStore({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
+  const images = options.images || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
+    ? createAgentChatImages({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
   let disposed = false;
   // One turn at a time for the whole app: `{ repositoryId, conversationId, ... }` from the moment a send is accepted.
   let active = null;
@@ -130,6 +137,22 @@ export function createAgentChat(options = {}) {
     } catch { return UNAVAILABLE; }
   }
 
+  // One image the owner sent in the conversation, stored on a task through the monitor's own image route, as the Task
+  // form stores one. The bytes come from the chat's own file; the monitor checks the type, the bounds, and the task.
+  async function attachImage(repositoryId, conversation, taskId, imageId) {
+    const image = conversationImages(conversation.messages).find((candidate) => candidate.id === imageId);
+    if (!images || !image || !TASK_ID.test(String(taskId))) return refused("not_found");
+    try {
+      const bytes = await images.read(repositoryId, conversation.id, image);
+      if (!bytes) return refused("not_found");
+      const answer = await monitor(`/internal/tasks/image-add?${new URLSearchParams({ repositoryId, taskId, imageId })}`, {
+        method: "POST", headers: { "content-type": "application/octet-stream" }, body: Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+        signal: AbortSignal.timeout(options.imageTimeoutMs ?? IMAGE_TIMEOUT_MS),
+      });
+      return isPlainObject(answer) && answer.ok === true && answer.imageId === imageId ? { ok: true } : monitorRefusal(answer);
+    } catch { return UNAVAILABLE; }
+  }
+
   // An approved queue proposal: the desired state and nothing else, so no threshold or schedule rides along and a
   // repeated request never reverses the queue. The monitor judges it as it does for the Board's own control, and only
   // the desktop queue runner starts anything afterwards.
@@ -166,10 +189,13 @@ export function createAgentChat(options = {}) {
   async function finishTurn(turn, outcome) {
     const status = ["complete", "stopped", "timed_out"].includes(outcome?.status) ? outcome.status : "failed";
     const answer = typeof outcome?.text === "string" ? outcome.text : "";
-    const read = status === "complete" ? extractProposal(answer) : { text: visibleAnswer(answer), proposal: null, unreadable: false };
+    let read = status === "complete" ? extractProposal(answer) : { text: visibleAnswer(answer), proposal: null, unreadable: false };
     try {
       const conversation = await store.read(turn.repositoryId, turn.conversationId);
       if (!conversation) return;
+      // A proposal may name only images the owner sent in this conversation. One that names another is not offered.
+      const sent = new Set(conversationImages(conversation.messages).map((image) => image.id));
+      if (read.proposal && !proposalImages(read.proposal).every((id) => sent.has(id))) read = { text: read.text, proposal: null, unreadable: true };
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at, provider: turn.provider, model: turn.model, status };
       if (read.proposal) message.proposal = { id: newProposalId(), summary: read.proposal.summary, operations: read.proposal.operations, state: "pending" };
@@ -180,8 +206,11 @@ export function createAgentChat(options = {}) {
   }
 
   async function send(payload) {
-    if (!exactly(payload, ["repositoryId", "conversationId", "text", "provider", "model"])) return INVALID;
+    const withImages = isPlainObject(payload) && Object.hasOwn(payload, "images");
+    if (!exactly(payload, ["repositoryId", "conversationId", "text", "provider", "model", ...(withImages ? ["images"] : [])])) return INVALID;
     const { repositoryId, conversationId, provider, model } = payload;
+    const imageIds = withImages ? chatImageIds(payload.images) : [];
+    if (imageIds === null) return INVALID;
     const text = typeof payload.text === "string" ? payload.text.trim() : "";
     if (!REPOSITORY_ID.test(String(repositoryId)) || !(conversationId === null || (typeof conversationId === "string" && CONVERSATION_ID.test(conversationId)))
       || !text || text.length > MESSAGE_LENGTH || !MESSAGE_TEXT.test(text) || !PROVIDERS.has(provider)
@@ -196,23 +225,36 @@ export function createAgentChat(options = {}) {
       const existing = conversationId === null ? null : await store.read(repositoryId, conversationId);
       if (conversationId !== null && !existing) return refused("not_found");
       if (existing && existing.messages.length > MESSAGE_LIMIT - 2) return refused("limit");
+      const held = conversationImages(existing?.messages);
+      if (imageIds.length > 0 && !images) return UNAVAILABLE;
+      if (held.length + imageIds.length > CHAT_IMAGES_PER_CONVERSATION) return refused("limit");
       const [board, root] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId)]);
       if (!board || !root || disposed) return UNAVAILABLE;
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), messages: existing?.messages ?? [], message: text, now: now() });
-      if (!prompt) return INVALID;
       const conversation = existing ?? await store.create(repositoryId, { provider, model, title: conversationTitle(text) });
       if (!conversation) return refused("limit");
+      // A conversation that was made for this message is not kept when the message is refused.
+      const abandoned = async (answer) => {
+        if (!existing) { await store.remove(repositoryId, conversation.id); await images?.removeConversation(repositoryId, conversation.id); }
+        return answer;
+      };
+      // The images wait in the staged folder since the owner added them; the message that names them takes them.
+      const attached = imageIds.length > 0 ? await images.claim(repositoryId, conversation.id, imageIds) : [];
+      if (!attached) return abandoned(INVALID);
+      const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
+      if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
-      const next = { ...conversation, provider, model, updatedAt: at, messages: [...conversation.messages, { id: `m-${conversation.messages.length + 1}`, role: "user", text, at }] };
-      if (!await store.save(repositoryId, next)) {
-        if (!existing) await store.remove(repositoryId, conversation.id);
-        return UNAVAILABLE;
-      }
+      const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
+      const next = { ...conversation, provider, model, updatedAt: at, messages: [...conversation.messages, message] };
+      if (!await store.save(repositoryId, next)) return abandoned(UNAVAILABLE);
+      // The run may read the folder of this conversation's images, and nothing else outside the repository.
+      const newest = new Set(attached.map((image) => image.id));
+      const runImages = shown.length > 0 ? { folder: images.folder(repositoryId, conversation.id), files: shown.filter((image) => newest.has(image.id)).map((image) => image.file) } : null;
       const turn = { repositoryId, conversationId: conversation.id, provider, model, startedAt: at, activity: "starting", text: "", stop: () => {} };
       active = turn;
       started = true;
       const run = runTurn({
-        spawn, executable: command, provider, model, mcpServer, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        spawn, executable: command, provider, model, mcpServer, images: runImages, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
@@ -264,7 +306,28 @@ export function createAgentChat(options = {}) {
     if (!found) return INVALID;
     if (!found.conversation) return refused("not_found");
     if (active && active.repositoryId === payload.repositoryId && active.conversationId === payload.conversationId) return refused("busy");
-    return await store.remove(payload.repositoryId, payload.conversationId) ? { ok: true } : UNAVAILABLE;
+    if (!await store.remove(payload.repositoryId, payload.conversationId)) return UNAVAILABLE;
+    await images?.removeConversation(payload.repositoryId, payload.conversationId);
+    return { ok: true };
+  }
+
+  // The owner adds an image to a message that is not sent yet. Only its ID, type, and size go back.
+  async function addImage(payload) {
+    if (!exactly(payload, ["repositoryId", "bytes"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
+    const { bytes } = payload;
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0 || bytes.byteLength > CHAT_IMAGE_MAX_BYTES) return INVALID;
+    const image = await images.stage(payload.repositoryId, bytes);
+    return image ? { ok: true, image } : INVALID;
+  }
+
+  // The bytes of one image, only when a message of that conversation names it.
+  async function readImage(payload) {
+    const found = await located(payload, ["repositoryId", "conversationId", "imageId"]);
+    if (!found || typeof payload.imageId !== "string" || !CHAT_IMAGE_ID.test(payload.imageId)) return INVALID;
+    const image = conversationImages(found.conversation?.messages).find((candidate) => candidate.id === payload.imageId);
+    if (!image) return refused("not_found");
+    const bytes = await images.read(payload.repositoryId, payload.conversationId, image);
+    return bytes ? { ok: true, type: image.type, bytes } : refused("not_found");
   }
 
   // An approved start goes to the manual start of the Tasks page and to nothing else: the same start plan, gates, and
@@ -308,7 +371,10 @@ export function createAgentChat(options = {}) {
       } else if (approve) {
         const board = await readBoard(repositoryId);
         if (!board) return UNAVAILABLE;
-        const results = await applyOperations(message.proposal.operations, { board, post: (action, body) => taskAction(repositoryId, action, body) });
+        const results = await applyOperations(message.proposal.operations, {
+          board, post: (action, body) => taskAction(repositoryId, action, body),
+          attach: (taskId, imageId) => attachImage(repositoryId, found.conversation, taskId, imageId),
+        });
         proposal = { ...message.proposal, state: results.every((result) => result.ok === true) ? "applied" : "partial", results };
       }
       // The turn may have added a message meanwhile, so the newest stored conversation takes the outcome.
@@ -336,8 +402,18 @@ export function createAgentChat(options = {}) {
     try { return await handlers[operation](payload, origin); } catch { return UNAVAILABLE; }
   }
 
+  const imageHandlers = { add: addImage, read: readImage };
+
+  /** One image operation for the owner, from the desktop window or a paired device: `add` takes bytes, `read` answers them. */
+  async function image(operation, payload) {
+    if (typeof operation !== "string" || !Object.hasOwn(imageHandlers, operation) || !isPlainObject(payload)) return INVALID;
+    if (disposed || !store || !images) return UNAVAILABLE;
+    try { return await imageHandlers[operation](payload); } catch { return UNAVAILABLE; }
+  }
+
   return Object.freeze({
     handle,
+    image,
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
     dispose() { disposed = true; try { active?.stop?.(); } catch { /* already gone */ } },
   });
@@ -353,5 +429,10 @@ export function installAgentChatIpc(options = {}) {
     if (!isTrustedEvent(event)) return INVALID;
     try { return await chat.handle(operation, payload, { event }); } catch { return UNAVAILABLE; }
   });
-  return () => { ipcMain.removeHandler(AGENT_CHAT_CHANNEL); chat.dispose?.(); };
+  ipcMain.removeHandler(AGENT_CHAT_IMAGE_CHANNEL);
+  ipcMain.handle(AGENT_CHAT_IMAGE_CHANNEL, async (event, operation, payload) => {
+    if (!isTrustedEvent(event)) return INVALID;
+    try { return await chat.image?.(operation, payload) ?? UNAVAILABLE; } catch { return UNAVAILABLE; }
+  });
+  return () => { ipcMain.removeHandler(AGENT_CHAT_CHANNEL); ipcMain.removeHandler(AGENT_CHAT_IMAGE_CHANNEL); chat.dispose?.(); };
 }
