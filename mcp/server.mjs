@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from "node:url";
+import { tmpdir } from "node:os";
 import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
@@ -212,5 +213,10 @@ export function buildPomegrMcpServer(options = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  serveStdio(() => buildPomegrMcpServer());
+  const dataRoot = defaultAgentQueryDataRoot();
+  // A long-lived Windows cwd handle inside the plugin cache prevents Codex
+  // from backing up that cache on update. Tools bind through provider metadata
+  // and absolute data roots, so the stdio worker does not need that directory.
+  process.chdir(tmpdir());
+  serveStdio(() => buildPomegrMcpServer({ dataRoot }));
 }
