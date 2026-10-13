@@ -617,9 +617,8 @@ describe("Pomegr visual contract", () => {
     expect(modalNew).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*<CommandSplitAction label=\{[^\n]*"Create task"/);
     expect(modalNew).toMatch(/label: "Create and queue"[^]*label: "Create and start session"/);
     expect(modalNew).not.toMatch(/commandPrimaryAction|commandSecondaryAction/);
-    expect(readFileSync(join(process.cwd(), "DESIGN.md"), "utf8")).toMatch(/A split action is a composition of the Primary role\. It is not a seventh role/);
     expect(readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemView.tsx"), "utf8")).toMatch(/<CommandSplitAction label="Create task"/);
-    expect(designContract).toMatch(/^### Create and queue, create and start$/m);
+    expect(designContract).toMatch(/A split action is a composition of the Primary role\. It is not a seventh role[^]*^### Create and queue, create and start$/m);
     expect(modalNew).not.toMatch(/add another|Goes to Backlog/);
     // D5: mode edit has Save as its one primary; the resolutions, queue and start actions are Secondary.
     expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
