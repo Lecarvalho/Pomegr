@@ -1862,7 +1862,7 @@ so it reads nothing and says that issues are read in the desktop app.
   an issue is never promoted twice.
 - **Creating an issue from the Task modal.** In the new mode the modal reads the GitHub
   status once when it opens. When the repository can create issues it shows **Also create
-  a GitHub issue**, checked, with one line saying that the text is sent once and who can
+  a GitHub issue**, unchecked, with one line saying that the text is sent once and who can
   read it; otherwise the box is disabled with one fixed reason. **Create task** creates
   the task first and asks for the issue only after the task exists. If the issue fails,
   the modal closes on the created task, which has no chip. In the edit mode a task with

@@ -66,6 +66,12 @@ const checkbox = () => screen.queryByRole("checkbox", { name: "Also create a Git
 const createTaskButton = () => screen.getByRole("button", { name: /^Creat(e task|ing…)$/u });
 const issueButton = () => screen.queryByRole("button", { name: "Create GitHub issue" });
 
+async function check(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => expect(checkbox()).toBeEnabled());
+  await user.click(checkbox() as HTMLInputElement);
+  expect(checkbox()).toBeChecked();
+}
+
 async function fillAndCreate(user: ReturnType<typeof userEvent.setup>, text = "Fix the thing\n\nMore detail.") {
   await user.type(screen.getByRole("textbox", { name: "Task" }), text);
   await user.click(createTaskButton());
@@ -87,9 +93,9 @@ describe("New task, the checkbox", () => {
     await waitFor(() => expect(checkbox()).not.toBeNull());
   });
 
-  it("is checked by default with the helper when the account can create issues, and reads the status once", async () => {
+  it("is unchecked by default with the helper when the account can create issues, and reads the status once", async () => {
     render(newModal());
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await waitFor(() => expect(checkbox()).not.toBeChecked());
     expect(checkbox()).toBeEnabled();
     expect(checkbox()).toHaveAccessibleDescription(HELPER);
     expect(statusCalls()).toHaveLength(1);
@@ -115,7 +121,7 @@ describe("New task, the checkbox", () => {
   it("creates the task, then the issue from the new task's ID only", async () => {
     const user = userEvent.setup();
     render(newModal());
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await fillAndCreate(user);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(taskAction.mock.calls.filter((call) => call[1] === "create")).toHaveLength(1);
@@ -127,7 +133,7 @@ describe("New task, the checkbox", () => {
   it("sends no create when the box is unchecked", async () => {
     const user = userEvent.setup();
     render(newModal());
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await user.click(checkbox() as HTMLInputElement);
     expect(checkbox()).not.toBeChecked();
     await fillAndCreate(user);
@@ -140,7 +146,7 @@ describe("New task, the checkbox", () => {
     taskAction.mockResolvedValue({ ok: false, error: "limit" });
     const user = userEvent.setup();
     render(newModal());
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await fillAndCreate(user);
     expect(await screen.findByRole("alert")).toHaveTextContent("The board is full");
     expect(createCalls()).toHaveLength(0);
@@ -152,7 +158,7 @@ describe("New task, the checkbox", () => {
     taskAction.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
     render(newModal());
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await fillAndCreate(user);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(createCalls()).toHaveLength(0);
@@ -164,7 +170,7 @@ describe("New task, the checkbox", () => {
     taskIssues.mockImplementation((_repository, operation) => operation === "create" ? new Promise<GitHubAnswer>((resolve) => { finish = resolve; }) : Promise.resolve(CREATE_ISSUES));
     const user = userEvent.setup();
     render(newModal());
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await fillAndCreate(user);
     await waitFor(() => expect(createTaskButton()).toHaveTextContent("Creating…"));
     expect(createTaskButton()).toBeDisabled();
@@ -183,7 +189,7 @@ describe("New task, the checkbox", () => {
     taskIssues.mockImplementation(async (_repository, operation) => operation === "create" ? { ok: false, error: "failed" } : CREATE_ISSUES);
     const user = userEvent.setup();
     render(<TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example project" board={board} refresh={refresh} onCreated={onCreated} onClose={onClose} />);
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await fillAndCreate(user);
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onIssueFailed).not.toHaveBeenCalled();
@@ -194,7 +200,7 @@ describe("New task, the checkbox", () => {
     taskIssues.mockImplementation(async (_repository, operation) => operation === "create" ? { ok: false, error: "failed" } : CREATE_ISSUES);
     const user = userEvent.setup();
     const first = render(newModal());
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await fillAndCreate(user);
     await waitFor(() => expect(onIssueFailed).toHaveBeenCalledWith("T-62"));
     first.unmount();
@@ -230,7 +236,7 @@ describe("New task on the Tasks page, a failed issue", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const trigger = screen.getByRole("button", { name: "New task" });
     await user.click(trigger);
-    await waitFor(() => expect(checkbox()).toBeChecked());
+    await check(user);
     await fillAndCreate(user, "Fix the thing");
     const dialog = await screen.findByRole("dialog", { name: "Task" });
     expect(screen.queryByRole("dialog", { name: "New task" })).toBeNull();
