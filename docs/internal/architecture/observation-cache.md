@@ -3923,6 +3923,11 @@ reports, or checkpoints. No installation, upgrade, or policy edit runs automatic
   errors are discarded. Mutations serialize, retain the existing scope, and verify
   the resulting version from a fresh local check before returning a bounded outcome.
   Browser and LAN clients receive instructions and current normalized status only.
+- The Codex plugin MCP worker releases its plugin-cache working directory before
+  serving tools, so Windows permits the native CLI to back up and replace that cache
+  while the worker remains connected. Tool binding uses provider metadata and absolute
+  data roots. Workers started by an older plugin retain their original working directory
+  until the owner closes those coding sessions; Pomegr never stops them for an update.
 
 ## Diagnostics and acceptance
 

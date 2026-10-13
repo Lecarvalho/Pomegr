@@ -46,6 +46,10 @@ scope:
 
 ### Update the plugin
 
+On Windows, older Pomegr workers can hold the Codex plugin folder open and prevent an update.
+If the update fails with access denied, finish your active work and quit Codex, including terminal sessions.
+Run the update commands below before reopening Codex.
+
 Select **Update plugin** in the desktop app, or run the update yourself and start
 a new session. For Codex:
 

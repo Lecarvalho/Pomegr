@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { access, cp, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { access, cp, mkdtemp, mkdir, readFile, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -18,7 +18,7 @@ async function withTemporaryDirectory(run) {
   }
 }
 
-async function readMcpToolInventory(server, cwd) {
+async function readMcpToolInventory(server, cwd, whileConnected = async () => {}) {
   const child = spawn(process.execPath, [server], {
     cwd,
     env: { ...process.env, NODE_PATH: "" },
@@ -28,7 +28,7 @@ async function readMcpToolInventory(server, cwd) {
   let stderr = "";
 
   try {
-    return await new Promise((resolve, reject) => {
+    const tools = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`Timed out waiting for MCP tools/list. stderr: ${stderr}`)), 5_000);
       child.once("error", reject);
       child.once("exit", (code) => {
@@ -57,6 +57,8 @@ async function readMcpToolInventory(server, cwd) {
         { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
       ].map((request) => JSON.stringify(request)).join("\n")}\n`);
     });
+    await whileConnected();
+    return tools;
   } finally {
     child.stdin.end();
     if (child.exitCode === null) {
@@ -66,6 +68,21 @@ async function readMcpToolInventory(server, cwd) {
     }
   }
 }
+
+test("Codex plugin cache can be replaced while its MCP worker remains connected", async () => {
+  await withTemporaryDirectory(async (temporaryRoot) => {
+    const installedPlugin = path.join(temporaryRoot, "installed-pomegr");
+    const backup = path.join(temporaryRoot, "plugin-backup");
+    await cp(pluginRoot, installedPlugin, { recursive: true });
+    const tools = await readMcpToolInventory(path.join(installedPlugin, "mcp", "server.bundle.mjs"), installedPlugin, async () => {
+      // Codex backs up the cache with a directory rename before replacing it.
+      // Windows rejects this while a worker holds the cache as its cwd.
+      await rename(installedPlugin, backup);
+      await access(path.join(backup, ".codex-plugin", "plugin.json"));
+    });
+    assert.ok(tools.some((tool) => tool.name === "get_provider_health"));
+  });
+});
 
 test("Codex plugin hooks run under PowerShell after plugin-root expansion", { skip: process.platform !== "win32" }, async () => {
   await withTemporaryDirectory(async (temporaryRoot) => {
