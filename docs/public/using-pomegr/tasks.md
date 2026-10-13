@@ -633,7 +633,8 @@ started for them. Other devices see none of it.
   tab has a compact **Task** row whose heading opens the **Task** tab, the last
   tab. It is read-only. It shows the task text, the planned and observed model, the
   definition of done with each check's result, and the feature's tasks in the same
-  and next step. **Open on board** goes to the card. A session with no task has no
+  and next step. A long task text is cut to ten lines. Select **Show all** to read
+  the rest. **Open on board** goes to the card. A session with no task has no
   **Task** tab.
 - **Events.** The **Events** list on the **Overview** tab adds a row when the agent
   adds, removes, updates, or reports a task complete or blocked. The
