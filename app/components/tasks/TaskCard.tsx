@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from "react";
+import type { HTMLAttributes, MouseEvent } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { ParallelGlyph } from "./ParallelGlyph";
 import { TaskMoveBar, type CardMoves, type CardStepMove } from "./TaskMoveBar";
@@ -18,6 +18,9 @@ export type TaskCardMove = {
   onMove(kind: CardMoveKind): void;
   step?: CardStepMove;
 };
+
+/** The controls of a card that keep their own click: a click on one of them never opens the card. */
+const CARD_CONTROLS = "a, button, input, select, textarea, [role='combobox'], [role='listbox'], [role='option']";
 
 export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine, grouped = false, waiting, now }: {
   task: Task;
@@ -42,14 +45,25 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
   const feature = grouped ? null : featureLine;
   // The started session leads; the assigned sessions follow in the order they were assigned.
   const sessions = [...(task.session ? [task.session] : []), ...(task.assigned ?? [])];
-  const className = ["taskCard", grouped && "taskReadyCard", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone", dropLine === "before" && "isDropBefore", dropLine === "after" && "isDropAfter"].filter(Boolean).join(" ");
-  return <li className={className} data-task-id={task.id} data-task-state={task.state} draggable={move ? true : undefined} {...move?.drag}>
+  const className = ["taskCard", grouped && "taskReadyCard", onOpen && "isOpenable", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone", dropLine === "before" && "isDropBefore", dropLine === "after" && "isDropAfter"].filter(Boolean).join(" ");
+  // A click anywhere on the card opens it, as its title does; the title stays the opener that focus returns to. A press
+  // that moves is the browser's drag, which sends no click.
+  const openFromCard = onOpen && ((event: MouseEvent<HTMLLIElement>) => {
+    const card = event.currentTarget;
+    const opener = card.querySelector<HTMLElement>(".taskCardOpen");
+    // A list that a control of the card draws outside it still sends its clicks here.
+    if (!opener || !(event.target instanceof Element) || !card.contains(event.target)) return;
+    const control = event.target.closest(CARD_CONTROLS);
+    if (control && control !== opener) return;
+    onOpen(task, opener);
+  });
+  return <li className={className} data-task-id={task.id} data-task-state={task.state} draggable={move ? true : undefined} {...move?.drag} onClick={openFromCard}>
     <div className="taskCardTop">
       <TaskCardIds task={task} />
       <span className={`commandChip taskCardChip ${chip.tone}${chip.ink ? " isInk" : ""}`}>{chip.label}</span>
     </div>
     {onOpen
-      ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title} onClick={(event) => onOpen(task, event.currentTarget)}><span className="taskCardTitle">{heading}</span></button>
+      ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title}><span className="taskCardTitle">{heading}</span></button>
       : <p className="taskCardTitle" title={title}>{heading}</p>}
     {preview && preview.rest !== "" && !grouped && <p className="taskCardExcerpt"><TaskInlineText text={preview.rest} /></p>}
     <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />

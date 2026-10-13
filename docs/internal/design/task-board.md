@@ -263,7 +263,9 @@ The head actions appear in this order:
 - A backtick span in the title or the excerpt is drawn in the data font, without its backticks.
 - The tooltip of the title is the whole task text, or the session title.
 - A Done card's title is muted.
-- In the desktop app, the title is the Quiet role drawn as plain title text, with no underline on hover. It opens the task modal.
+- In the desktop app, the title is the Quiet role drawn as plain title text, with no underline and no fill on hover or press. It opens the task modal.
+- A click anywhere on a card that opens, except on another control of the card, opens the task modal too. Focus returns to the title.
+- A card that opens shows the pointer cursor.
 
 ### Content
 
@@ -325,7 +327,8 @@ Each row below the title shows only when it is set, in this order:
 
 ### Drag
 
-- Moving cards is a desktop-app action. A movable card shows the grab cursor.
+- Moving cards is a desktop-app action. A movable card that does not open shows the grab cursor.
+- A press that moves drags the card. A press that does not move is a click, which opens the card.
 - While a card is dragged over a lane, a **drop line** shows where it will land.
 - The drop line (`.taskCard.isDropBefore`, `.isDropAfter`) is a two-pixel `--command-ink` rule as wide as the card, in the gap between cards.
 - The line is before a card when the pointer is over the upper half of that card.
