@@ -503,24 +503,45 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 ### Task tab
 
 - The **Task** tab is last. It is listed only for a task session and is read-only.
-- The tab holds a task panel (flex `999 1 480px`) and a Feature aside.
+- The tab holds a task panel (flex `999 1 480px`, at most 960px) and a rail of panels (flex `1 1 300px`, at most 340px).
+- On phone, the task panel and the rail are full width, and the rail is under the panel.
+- Every field name in the tab is the 11px uppercase caption eyebrow in the muted color. Every value is ink.
+- The tab's only buttons are its **Show all** and **Show less** Text links, which change no task.
 
 The task panel holds these parts in order:
 
-- The head with the heading, the chip, and a muted “Started by Pomegr”. A Secondary **Open on board** is at the end of the head.
-- The task text.
-- Planned and Observed side by side. On phone, they are one column. Observed is amber when it differs.
-- A ruled **Definition of done** with the agent-reported status.
-- **Checks when the agent reports complete**, as 36px rows with a right-aligned result.
-- Any block reason.
+- The head with the heading and a muted “Started by Pomegr”. A Secondary **Open on board** is at the end of the head.
+- The head has no state chip. The session header shows the state.
+- Any block reason, in the error color under a **Block reason** eyebrow.
+- The Source line of a task promoted from an issue. See Issue chip above.
+- The task text in a well: the ground color, a one-pixel line, the 4px control radius, and 12px padding.
+- The first line of the text leads the well at 14px/500 when more text follows it.
+- The rest of the text is cut to ten lines, with a fade into the ground color while it is cut.
+- **Show all** is under a text that does not fit. **Show less** closes it again.
 
-| Check result | Color |
-| --- | --- |
-| Passed | Green |
-| Did not pass | Error |
-| Any other result | Muted |
+The rail holds these panels in order: **Complete when**, **Run**, and the Feature aside.
 
-The Feature aside is at most 480px. It holds these parts:
+The **Complete when** panel holds these parts:
+
+- The head with the heading, the outcome chip, and a muted summary such as “Not yet reported” or “1 check did not pass”.
+- The outcome chip shows only for Needs review, Stalled, Blocked by agent, and Done.
+- The checks, as 36px rows: a 14px glyph, the condition, and a right-aligned result.
+- A ruled **Definition of done**, cut to three lines, over the agent-reported status and its own **Show all**.
+- With no check and no definition of done, one muted sentence says that the agent reports when the task is complete.
+
+| Check result | Color | Glyph |
+| --- | --- | --- |
+| Passed, Holds now | Green | Tick |
+| Did not pass | Error | Cross |
+| Any other result | Muted | Ring |
+
+The **Run** panel holds these parts:
+
+- **Planned** and **Observed** as rows with an 88px label column.
+- Observed shows the model in the data font over a muted “Latest recorded for the main agent”.
+- Observed is amber when it differs, and its line ends with “differs from planned”.
+
+The Feature aside holds these parts:
 
 - The feature name as an ink Text link. It is a [feature link](#feature-link) to the feature the board holds the task in.
 - The data-font “n of m done”.

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionTaskReference } from "../../shared/session-catalog-contract";
 import type { Task, TaskBoard } from "../../shared/task-contract";
 
@@ -9,7 +9,7 @@ const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
 
 import { SessionTaskTab } from "../../app/components/dashboard/SessionTaskTab";
-import { checkRows, queueBlockedNote } from "../../app/components/tasks/session-task-model";
+import { checkRows, completionSummary, outcomeChip, queueBlockedNote, taskBrief } from "../../app/components/tasks/session-task-model";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const boardHref = `/tasks?repository=${repositoryId}`;
@@ -59,17 +59,72 @@ beforeEach(() => {
   setBoard(board());
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** jsdom lays nothing out, so a cut text is simulated: every clamped box reports more content than it shows. */
+function overflowClampedText() {
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(195);
+}
+
+const completePanel = () => screen.getByRole("region", { name: "Complete when" });
+const runPanel = () => screen.getByRole("region", { name: "Run" });
+
 describe("SessionTaskTab", () => {
-  it("draws the task panel: heading, start line, board link, text, planned and observed", () => {
+  it("draws the task panel: heading, start line, board link and text, with no state chip", () => {
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     const panel = screen.getByRole("region", { name: "Task T-14" });
     expect(within(panel).getByRole("heading", { name: "Task T-14" })).toBeInTheDocument();
     expect(panel).toHaveTextContent("Started by Pomegr");
     expect(within(panel).getByRole("link", { name: "Open on board" })).toHaveAttribute("href", boardHref);
     expect(within(panel).getByRole("link", { name: "Open on board" })).toHaveClass("commandSecondaryAction");
-    expect(panel).toHaveTextContent("Add the complete_task and block_task tools.");
-    expect(panel).toHaveTextContent("PlannedClaude Code · opus · high");
-    expect(panel).toHaveTextContent("Observedopus as the latest recorded for the main agent");
+    expect(panel.querySelector(".commandChip")).toBeNull();
+    // The first line leads and the rest follows, both inside the well.
+    const well = panel.querySelector(".sessionTaskWell") as HTMLElement;
+    expect(well.querySelector(".sessionTaskLead")).toHaveTextContent("Add the complete_task and block_task tools.");
+    expect(well.querySelector(".sessionTaskText")).toHaveTextContent("Bind each call to the session.");
+  });
+
+  it("leads with the first line only when more text follows it", () => {
+    expect(taskBrief("One line")).toEqual({ lead: null, body: "One line" });
+    expect(taskBrief("Title\n\nBody one\nBody two")).toEqual({ lead: "Title", body: "Body one\nBody two" });
+    setBoard(board({ tasks: [{ ...mine, text: "One line" }, ...siblings] }));
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    const panel = screen.getByRole("region", { name: "Task T-14" });
+    expect(panel.querySelector(".sessionTaskLead")).toBeNull();
+    expect(panel.querySelector(".sessionTaskText")).toHaveTextContent("One line");
+  });
+
+  it("draws no expander for a text that fits", () => {
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("cuts a long text and opens it with Show all", () => {
+    overflowClampedText();
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    const panel = screen.getByRole("region", { name: "Task T-14" });
+    const toggle = within(panel).getByRole("button", { name: "Show all" });
+    expect(toggle).toHaveClass("commandTextLink");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const clamp = panel.querySelector(".sessionTaskClamp") as HTMLElement;
+    expect(toggle).toHaveAttribute("aria-controls", clamp.id);
+    expect(clamp).toHaveClass("isClamped", "isCut");
+    fireEvent.click(toggle);
+    expect(within(panel).getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+    expect(clamp).not.toHaveClass("isClamped");
+    // The Definition of done has its own expander.
+    expect(within(completePanel()).getByRole("button", { name: "Show all" })).toBeInTheDocument();
+  });
+
+  it("draws the run panel: planned and observed as labelled rows", () => {
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    const terms = [...runPanel().querySelectorAll("dt")];
+    expect(terms.map((term) => term.textContent)).toEqual(["Planned", "Observed"]);
+    expect(terms.every((term) => term.classList.contains("sessionTaskEyebrow"))).toBe(true);
+    expect([...runPanel().querySelectorAll("dd")].map((value) => value.textContent)).toEqual(["Claude Code · opus · high", "opusLatest recorded for the main agent"]);
   });
 
   it("shows one source line for a task promoted from a GitHub issue: Source, the #N chip, then GitHub issue", () => {
@@ -101,42 +156,85 @@ describe("SessionTaskTab", () => {
     expect(document.querySelector(".sessionTaskSource")).toBeNull();
   });
 
-  it("is read only: no button, form field or IPC call", () => {
+  it("is read only: no form field, no IPC call, and no button but the text expanders", () => {
     const taskAction = vi.fn();
     const bridge = window as unknown as { pomegrDesktop?: unknown };
     bridge.pomegrDesktop = { taskAction };
+    overflowClampedText();
     const { container } = render(<SessionTaskTab task={reference} sessionId={sessionId} />);
-    expect(container.querySelector("button, input, textarea, select, form")).toBeNull();
+    expect(container.querySelector("input, textarea, select, form")).toBeNull();
+    const buttons = [...container.querySelectorAll("button")];
+    expect(buttons.every((button) => button.classList.contains("sessionTaskToggle"))).toBe(true);
+    for (const button of buttons) fireEvent.click(button);
     expect(taskAction).not.toHaveBeenCalled();
     bridge.pomegrDesktop = undefined;
   });
 
   it("shows the agent-judged condition as agent-reported, not yet reported, and every check waiting", () => {
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
-    const panel = screen.getByRole("region", { name: "Task T-14" });
+    const panel = completePanel();
     expect(panel).toHaveTextContent("Definition of done");
     expect(panel).toHaveTextContent("Both tools validate their input.");
     expect(panel).toHaveTextContent("Agent-reported. Not yet reported.");
     const rows = within(panel).getAllByRole("listitem");
     expect(rows.map((row) => row.textContent)).toEqual(["Pull request openWaiting for report", "Working tree cleanWaiting for report"]);
+    // No outcome yet: no chip, since the session header shows the state.
+    expect(panel.querySelector(".commandChip")).toBeNull();
+    expect(panel.querySelector(".sessionTaskFeatureHead")).toHaveTextContent("Complete whenNot yet reported");
+  });
+
+  it("marks each check with a decorative glyph in the tone of its result", () => {
+    const reported = { ...mine, state: "needs_review" as const, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }], blockReason: null } };
+    setBoard(board({ tasks: [reported, ...siblings] }));
+    render(<SessionTaskTab task={{ ...reference, state: "needs_review" }} sessionId={sessionId} />);
+    const glyphs = [...completePanel().querySelectorAll(".sessionTaskCheck > svg")];
+    expect(glyphs.map((glyph) => glyph.getAttribute("class"))).toEqual(["sessionTaskCheckGlyph is-passed", "sessionTaskCheckGlyph is-failed"]);
+    expect(glyphs.every((glyph) => glyph.getAttribute("aria-hidden") === "true")).toBe(true);
+  });
+
+  it("shows the outcome once, as a chip and a summary in the Complete when head", () => {
+    const report = { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }], blockReason: null };
+    setBoard(board({ tasks: [{ ...mine, state: "needs_review", report }, ...siblings] }));
+    render(<SessionTaskTab task={{ ...reference, state: "needs_review" }} sessionId={sessionId} />);
+    const head = completePanel().querySelector(".sessionTaskFeatureHead") as HTMLElement;
+    expect(within(head).getByText("Needs review")).toHaveClass("commandChip", "warning");
+    expect(head).toHaveTextContent("1 check did not pass");
+    expect(screen.getByRole("region", { name: "Task T-14" }).querySelector(".commandChip")).toBeNull();
+  });
+
+  it("words the outcome summary for each state", () => {
+    const passed = { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open" as const, passed: true }], blockReason: null };
+    expect(outcomeChip(mine)).toBeNull();
+    expect(completionSummary(mine)).toBe("Not yet reported");
+    expect(completionSummary({ ...mine, state: "needs_review", report: passed })).toBe("Every check passed");
+    expect(completionSummary({ ...mine, state: "needs_review", report: { ...passed, attention: "Look at this" } })).toBe("The agent asks for your attention");
+    expect(completionSummary({ ...mine, state: "blocked", report: { ...passed, results: [], blockReason: "No remote" } })).toBe("The agent cannot continue");
+    expect(completionSummary({ ...mine, state: "stalled" })).toBe("The session ended with no report");
+    expect(outcomeChip({ ...mine, state: "done" })).toEqual({ label: "Done", tone: "neutral" });
+    expect(completionSummary({ ...mine, state: "done" })).toBeNull();
   });
 
   it("omits the Definition of done when there is no own condition, and the checks when none are set", () => {
     setBoard(board({ tasks: [{ ...mine, completeWhen: { checks: [], own: null } }, ...siblings] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
-    const panel = screen.getByRole("region", { name: "Task T-14" });
+    const panel = completePanel();
     expect(panel).not.toHaveTextContent("Definition of done");
-    expect(panel).not.toHaveTextContent("Checks when the agent reports complete");
+    expect(within(panel).queryByRole("list")).not.toBeInTheDocument();
+    expect(panel).toHaveTextContent("No check is set. The agent reports when the task is complete.");
   });
 
   it("shows each check result, the failed count outcome and a block reason as plain text", () => {
     const reported = { ...mine, state: "needs_review" as const, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }], blockReason: "Cannot reach the remote." } };
     setBoard(board({ tasks: [reported, ...siblings] }));
     render(<SessionTaskTab task={{ ...reference, state: "needs_review" }} sessionId={sessionId} />);
-    const panel = screen.getByRole("region", { name: "Task T-14" });
+    const panel = completePanel();
     expect(within(panel).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openPassed", "Working tree cleanDid not pass"]);
     expect(panel).toHaveTextContent("Agent-reported. The agent reported it cannot continue.");
-    expect(panel).toHaveTextContent("Cannot reach the remote.");
+    // The block reason leads the task panel, above the task text.
+    const taskPanel = screen.getByRole("region", { name: "Task T-14" });
+    const reason = within(taskPanel).getByText("Cannot reach the remote.");
+    expect(reason).toHaveClass("sessionTaskBlocked");
+    expect(reason.compareDocumentPosition(taskPanel.querySelector(".sessionTaskWell") as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("labels Validated with the user as agent-reported, with no pass or fail", () => {
@@ -144,16 +242,14 @@ describe("SessionTaskTab", () => {
     const reported = { ...mine, completeWhen, state: "needs_review" as const, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open" as const, passed: true }], blockReason: null } };
     setBoard(board({ tasks: [reported, ...siblings] }));
     render(<SessionTaskTab task={{ ...reference, state: "needs_review" }} sessionId={sessionId} />);
-    const panel = screen.getByRole("region", { name: "Task T-14" });
-    expect(within(panel).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openPassed", "Validated with the userAgent-reported"]);
+    expect(within(completePanel()).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openPassed", "Validated with the userAgent-reported"]);
   });
 
   it("shows the monitor's reading of each check while the task waits for its report", () => {
     const session = { id: sessionId, title: null, state: "working", observedModel: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }] };
     setBoard(board({ tasks: [{ ...mine, session }, ...siblings] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
-    const panel = screen.getByRole("region", { name: "Task T-14" });
-    expect(within(panel).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openHolds now", "Working tree cleanNot yet"]);
+    expect(within(completePanel()).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openHolds now", "Working tree cleanNot yet"]);
   });
 
   it("keeps a reading out of a task that has an outcome or a report", () => {
@@ -215,15 +311,16 @@ describe("SessionTaskTab", () => {
   it("shows the Not set planned run, and no observed model before one is recorded", () => {
     setBoard(board({ tasks: [{ ...mine, run: { provider: null, model: null, effort: null }, session: { ...mine.session!, observedModel: null } }] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
-    const panel = screen.getByRole("region", { name: "Task T-14" });
-    expect(panel).toHaveTextContent("PlannedNot set");
-    expect(panel).toHaveTextContent("ObservedNot recorded yet");
+    expect(runPanel()).toHaveTextContent("PlannedNot set");
+    expect(runPanel()).toHaveTextContent("ObservedNot recorded yet");
   });
 
   it("flags an observed model that differs from the planned one", () => {
     setBoard(board({ tasks: [{ ...mine, session: { ...mine.session!, observedModel: "sonnet" } }] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
-    expect(screen.getByRole("region", { name: "Task T-14" })).toHaveTextContent("sonnet as the latest recorded for the main agent, differs from planned");
+    const observed = runPanel().querySelectorAll("dd")[1];
+    expect(observed).toHaveTextContent("sonnetLatest recorded for the main agent, differs from planned");
+    expect(observed).toHaveClass("isDiffers");
   });
 
   it.each([
@@ -236,7 +333,8 @@ describe("SessionTaskTab", () => {
     expect(panel).toHaveTextContent(sentence);
     expect(panel).toHaveTextContent("Done");
     expect(panel).toHaveTextContent("Task board v1 · step 2");
-    expect(panel).not.toHaveTextContent("Planned");
+    expect(screen.queryByRole("region", { name: "Run" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Complete when" })).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: "Open on board" })).toHaveAttribute("href", boardHref);
   });

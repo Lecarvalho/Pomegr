@@ -433,9 +433,10 @@
 .sessionTaskNote { flex: 1 1 100%; margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 
 .sessionTaskTab { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
-.sessionTaskTab > .sessionTaskPanel { flex: 999 1 480px; }
+.sessionTaskTab > .sessionTaskPanel { flex: 999 1 480px; max-width: 960px; }
+.sessionTaskTab[data-task-view="reduced"] > .sessionTaskPanel { max-width: none; }
 .sessionTaskPanel { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
-.sessionTaskSide { flex: 1 1 380px; max-width: 480px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.sessionTaskSide { flex: 1 1 300px; max-width: 340px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
 .sessionTaskSide .sessionTaskPanel { gap: var(--space-2); }
 .sessionTaskPanelHead, .sessionTaskFeatureHead { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .sessionTaskPanelHead { align-items: center; }
@@ -444,16 +445,33 @@
 .sessionTaskStarted { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .sessionTaskSpacer { flex: 1 1 0; }
 .sessionTaskSource { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.sessionTaskBlock, .sessionTaskChecks { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.sessionTaskBlock.isRuled, .sessionTaskChecks.isRuled, .sessionTaskRunFacts { padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
-.sessionTaskLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskBlock { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.sessionTaskBlock.isRuled { padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 .sessionTaskText { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.5 var(--font-ui); overflow-wrap: anywhere; white-space: pre-wrap; }
+.sessionTaskText.sessionTaskBlocked { color: var(--command-error); }
 .sessionTaskStatus { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.sessionTaskRunFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+/* The task text sits in a well on the ground tone, so it reads apart from the fields around it. */
+.sessionTaskWell { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding: var(--space-3); border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); }
+.sessionTaskLead { margin: 0; color: var(--command-ink); font: 500 var(--text-base)/1.5 var(--font-ui); overflow-wrap: anywhere; }
+.sessionTaskClamp { position: relative; min-width: 0; }
+.sessionTaskClamp.is-brief.isClamped { max-height: calc(var(--text-sm) * 1.5 * 10); overflow: hidden; }
+.sessionTaskClamp.is-own.isClamped { max-height: calc(var(--text-sm) * 1.5 * 3); overflow: hidden; }
+.sessionTaskClamp.isCut::after { content: ""; position: absolute; inset: auto 0 0 0; height: var(--space-6); background: linear-gradient(to bottom, transparent, var(--command-ground)); pointer-events: none; }
+.sessionTaskClamp.is-own.isCut::after { background: linear-gradient(to bottom, transparent, var(--command-panel)); }
+.sessionTaskFoot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }
+.sessionTaskFacts { margin: 0; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: var(--space-2) var(--space-3); align-items: baseline; }
+.sessionTaskFacts dt, .sessionTaskFacts dd { margin: 0; }
+.sessionTaskFacts dd { color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); overflow-wrap: anywhere; }
+.sessionTaskFacts dd code { font: 400 var(--text-xs)/1.4 var(--font-data); }
+.sessionTaskFacts dd small { display: block; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskFacts dd.isDiffers, .sessionTaskFacts dd.isDiffers small { color: var(--command-amber); }
 .sessionTaskFeatureLine { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .sessionTaskCheckList { margin: 0; padding: 0; list-style: none; }
-.sessionTaskCheck { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control-height); border-top: 1px solid var(--command-line); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
-.sessionTaskCheckResult { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskCheck { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: var(--space-2); align-items: center; min-height: var(--control-height); border-top: 1px solid var(--command-line); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskCheckGlyph { width: 14px; height: 14px; fill: none; stroke: var(--command-muted); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sessionTaskCheckGlyph.is-passed { stroke: var(--command-green); }
+.sessionTaskCheckGlyph.is-failed { stroke: var(--command-error); }
+.sessionTaskCheckResult { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .sessionTaskCheckResult.is-passed { color: var(--command-green); }
 .sessionTaskCheckResult.is-failed { color: var(--command-error); }
 
@@ -470,8 +488,7 @@
 .sessionTaskRow.isDone .sessionTaskRowTitle { color: var(--command-muted); }
 .sessionTaskBlockedNote { margin: 0; color: var(--command-error); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 @media (max-width: 760px) {
-  .sessionTaskRunFacts { grid-template-columns: minmax(0, 1fr); }
-  .sessionTaskSide { max-width: none; }
+  .sessionTaskTab > .sessionTaskPanel, .sessionTaskSide { max-width: none; }
 }
 
 /* Tasks home: what waits for the owner across boards, then one row for each repository's board. */

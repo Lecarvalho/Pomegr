@@ -634,7 +634,8 @@ started for them. Other devices see none of it.
 - **Session view.** The header shows the task, feature, and step. The task
   ID opens the **Task** tab, the last tab. It is read-only. It shows the task text, the planned and observed model, the
   definition of done with each check's result, and the feature's tasks in the same
-  and next step. **Open on board** goes to the card. A session with no task has no
+  and next step. A long task text is cut to ten lines. Select **Show all** to read
+  the rest. **Open on board** goes to the card. A session with no task has no
   **Task** tab. The feature name, in the header and on the **Task** tab, opens that
   repository's board with the feature chosen in the **Feature** filter. In the desktop
   app it also opens the feature's window. On a paired device, the filter is the view

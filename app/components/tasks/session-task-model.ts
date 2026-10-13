@@ -71,6 +71,36 @@ export function referenceChip(state: SessionTaskReference["state"]): { label: st
 
 const OUTCOME_STATES = new Set<Task["state"]>(["needs_review", "stalled", "blocked", "done"]);
 
+function failedCount(task: Task) {
+  return (task.report?.results ?? []).filter((result) => !result.passed).length;
+}
+
+/** The outcome chip of the Task tab. A task with no outcome draws none: the session header already shows its state. */
+export function outcomeChip(task: Task): { label: string; tone: "warning" | "neutral" } | null {
+  return OUTCOME_STATES.has(task.state) ? { label: taskStateLabels[task.state], tone: task.state === "done" ? "neutral" : "warning" } : null;
+}
+
+/** What the report says, next to the outcome chip. Null when the chip says it all. */
+export function completionSummary(task: Task): string | null {
+  if (task.report?.blockReason) return "The agent cannot continue";
+  if (task.state === "needs_review") {
+    const failed = failedCount(task);
+    if (failed > 0) return `${failed} ${failed === 1 ? "check" : "checks"} did not pass`;
+    if (task.report?.attention) return "The agent asks for your attention";
+    return (task.report?.results ?? []).length > 0 ? "Every check passed" : null;
+  }
+  if (task.state === "stalled") return "The session ended with no report";
+  return OUTCOME_STATES.has(task.state) ? null : "Not yet reported";
+}
+
+/** The first line leads the task text when more text follows it. */
+export function taskBrief(text: string): { lead: string | null; body: string } {
+  const trimmed = text.trim();
+  const split = trimmed.indexOf("\n");
+  const body = split === -1 ? "" : trimmed.slice(split).trim();
+  return body === "" ? { lead: null, body: trimmed } : { lead: trimmed.slice(0, split).trim(), body };
+}
+
 export function definitionStatus(task: Task): string {
   if (task.report) return task.report.blockReason !== null ? "Agent-reported. The agent reported it cannot continue." : "Agent-reported. The agent reported complete.";
   if (task.state === "stalled") return "Agent-reported. The session ended with no report.";
