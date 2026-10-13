@@ -394,9 +394,11 @@ function normalizeReport(row) {
   if (at === undefined || parsed === undefined || blockReason === undefined || parsed.length > TASK_CHECKS.length) return undefined;
   const results = [];
   for (const item of parsed) {
-    if (!isPlainObject(item) || !hasOnlyKeys(item, ["check", "passed"]) || typeof item.passed !== "boolean"
+    if (!isPlainObject(item) || !hasOnlyKeys(item, ["check", "passed", "unavailable"]) || typeof item.passed !== "boolean"
       || typeof item.check !== "string" || !TASK_CHECKS.includes(item.check)) return undefined;
-    results.push({ check: item.check, passed: item.passed });
+    // `unavailable` marks a condition Pomegr could not verify; it never accompanies a pass.
+    if (Object.hasOwn(item, "unavailable") && (item.unavailable !== true || item.passed)) return undefined;
+    results.push({ check: item.check, passed: item.passed, ...(item.unavailable === true ? { unavailable: true } : {}) });
   }
   return { at, results, blockReason, attention };
 }

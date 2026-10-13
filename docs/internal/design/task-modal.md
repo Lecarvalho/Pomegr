@@ -241,7 +241,8 @@ A card's title opens the task modal for one stored task.
 - A muted helper under that title links **Open session**.
 - An amber notice follows Run on when the observed model differs from the planned one.
 - The notice has an amber line, the amber-soft fill, and the words **Observed model differs**.
-- Complete when lists each checked condition's **Passed** (green) or **Not passed** (error) from the agent's report.
+- Complete when lists each checked condition's **Passed** (green), **Not passed** (error), or **Not verified** (muted) from the agent's report.
+- **Not verified** means that Pomegr had no current evidence for the condition; it never takes the error color.
 - The report line shows below each condition.
 - In the Feature fields, the folded list leaves out the open task.
 - In the Feature fields, each row leads with its step number.

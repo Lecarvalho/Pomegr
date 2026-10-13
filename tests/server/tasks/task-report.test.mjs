@@ -208,8 +208,8 @@ test("a failed or unknown check gives needs review with each result, and nothing
   startedTask(env, { checks: ["pr_open", "tree_clean", "commit_on_branch", "ci_passed"] });
   const response = await complete(env);
   const results = [
-    { check: "pr_open", passed: false }, { check: "tree_clean", passed: false },
-    { check: "commit_on_branch", passed: true }, { check: "ci_passed", passed: false },
+    { check: "pr_open", passed: false, unavailable: true }, { check: "tree_clean", passed: false },
+    { check: "commit_on_branch", passed: true }, { check: "ci_passed", passed: false, unavailable: true },
   ];
   assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results });
   assert.doesNotMatch(response.text, /SECRET|T-1|repo-/u);
@@ -232,7 +232,7 @@ test("facts that are missing or throw pass nothing and never fail the request", 
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
   context.after(() => new Promise((done) => server.close(done)));
   const response = await send(server.address().port, { path: COMPLETE, body: JSON.stringify({ sessionRef: SESSION }) });
-  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results: [{ check: "tree_clean", passed: false }] });
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results: [{ check: "tree_clean", passed: false, unavailable: true }] });
 });
 
 test("block stores the bounded reason and sets blocked", async (context) => {
@@ -557,7 +557,7 @@ test("a report is verified on a read made when it arrives, not on the older comm
 test("without the read the same report is judged on the stale committed facts: the listed pull request passes, the stale check status does not", async (context) => {
   const env = await setup(context, { facts: STALE });
   startedTask(env, { checks: ["pr_open", "ci_passed"] });
-  assert.deepEqual((await complete(env)).json.results, [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }]);
+  assert.deepEqual((await complete(env)).json.results, [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false, unavailable: true }]);
 });
 
 test("a condition the report's read finds false gives needs review", async (context) => {
