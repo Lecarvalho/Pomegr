@@ -274,6 +274,8 @@ A card's title opens the task modal for one stored task.
 - A task that needs review holds no queue, so its first action reads **Mark done**.
 - A linked task that has not reported offers **Mark done** and **Requeue task**.
 - A linked task that has not reported shows a line that neither action stops the session.
+- A **Mark done** that works closes the modal, under either of its names.
+- **Requeue task** keeps the modal open, because the task can be edited again.
 - Below the top row, from the left, comes the Quiet **Delete task**.
 - **Delete task** swaps in an inline confirmation.
 - The confirmation holds a Secondary delete and a Quiet Keep task. It uses no native dialog.
@@ -281,7 +283,8 @@ A card's title opens the task modal for one stored task.
 - **Remove from queue** is disabled on a queued task whose session has started.
 - **Start session** asks for a native confirmation in the desktop app, or a browser confirmation on a paired phone that names the task and says the session runs on the computer running Pomegr.
 - A paired phone's **Start in separate worktree** confirmation says that uncommitted changes are left out and remain untouched.
-- A paired phone's successful start says “Session started in a new terminal on the computer running Pomegr.”
+- A start that works closes the modal, from **Start session** or from **Start in separate worktree**.
+- A start that does not happen keeps the modal open with its start-status note.
 - The footer ends with the primary **Save**.
 - Footer action height follows the [Frame](#layout).
 

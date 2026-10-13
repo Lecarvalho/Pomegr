@@ -74,7 +74,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const unresolved = task.state === "needs_review" || task.state === "blocked" || task.state === "stalled";
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
   const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
-  const start = useTaskStart(repositoryId, task, board, dirty, refresh, followUp && "start" in followUp ? followUp.start : null);
+  const start = useTaskStart(repositoryId, task, board, dirty, refresh, onClose, followUp && "start" in followUp ? followUp.start : null);
   const images = useStoredImages(repositoryId, task);
   const imagesOffered = taskImagesAvailable();
   // A task that needs the user offers its resolutions instead of Start session.
@@ -166,7 +166,10 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     setFailure(null);
     const result = await (done ? resolveDesktopTaskDone(repositoryId, task.id) : requeueDesktopTask(repositoryId, task.id));
     setResolving(false);
-    if (result.ok) onChanged(); else setFailure(done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE);
+    if (!result.ok) { setFailure(done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE); return; }
+    onChanged();
+    // A task marked done needs nothing more from its modal. A requeued task can be edited again, so its modal stays.
+    if (done) onClose();
   };
 
   const changeAssignment = async (sessionId: string, assign: boolean) => {

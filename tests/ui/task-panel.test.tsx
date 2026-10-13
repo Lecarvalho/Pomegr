@@ -589,6 +589,7 @@ describe("Task modal resolutions", () => {
     expect(dialog.getByRole("button", { name: "Requeue task" })).toHaveClass("commandSecondaryAction");
     await user.click(dialog.getByRole("button", { name: "Mark done and resume queue" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-15" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
   });
 
   it("leads the footer of a task in review with Mark done and Requeue, before Delete", async () => {
@@ -609,6 +610,7 @@ describe("Task modal resolutions", () => {
     await user.click(done);
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-12" }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
   });
 
   it("requeues a task the agent blocked and shows its reason", async () => {
@@ -618,6 +620,9 @@ describe("Task modal resolutions", () => {
     expect(dialog.getByText(/Agent reported it cannot continue/)).toHaveTextContent("The schema needs a decision.");
     await user.click(dialog.getByRole("button", { name: "Requeue task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-14" }));
+    // A requeued task can be edited again, so its modal stays.
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Requeue task" })).toBeEnabled());
+    expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
   });
 
   it("offers the resolutions for a stalled task and for no other state", async () => {
@@ -646,11 +651,13 @@ describe("Task modal resolutions", () => {
     expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
     expect(dialog.getByText("The session has not reported. Mark done and Requeue do not stop it.")).toHaveClass("taskModalNote");
     expect(done.compareDocumentPosition(dialog.getByRole("button", { name: "Delete task" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await user.click(done);
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-20" }));
     await user.click(requeue);
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-20" }));
+    await waitFor(() => expect(done).toBeEnabled());
+    await user.click(done);
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-20" }));
     expect(taskAction).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
   });
 
   it("offers those two exits for every waiting state with a linked session, and for no task without one or with an outcome", async () => {
