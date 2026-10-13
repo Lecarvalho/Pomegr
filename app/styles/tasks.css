@@ -81,7 +81,6 @@
 .taskCard.isDone .taskCardTitle { color: var(--command-muted); }
 /* The title is the card's open control: the Quiet role drawn as plain title text. */
 .taskCardOpen.commandQuietAction { padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
-.taskCardOpen.commandQuietAction:hover:not(:disabled) .taskCardTitle { text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 761px) and (pointer: fine) { .taskCardOpen.commandQuietAction { min-height: 0; } }
 .taskCardRun { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .taskCardPlanned { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }

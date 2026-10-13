@@ -263,7 +263,7 @@ The head actions appear in this order:
 - A backtick span in the title or the excerpt is drawn in the data font, without its backticks.
 - The tooltip of the title is the whole task text, or the session title.
 - A Done card's title is muted.
-- In the desktop app, the title is the Quiet role drawn as plain title text, underlined on hover. It opens the task modal.
+- In the desktop app, the title is the Quiet role drawn as plain title text, with no underline on hover. It opens the task modal.
 
 ### Content
 

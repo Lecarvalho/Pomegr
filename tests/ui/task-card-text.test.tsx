@@ -75,4 +75,10 @@ describe("TaskCard text", () => {
     expect(styles).toMatch(/\.taskCardTitle \{[^}]*-webkit-line-clamp: 3; line-clamp: 3/);
     expect(styles).toMatch(/\.taskCardExcerpt \{[^}]*-webkit-line-clamp: 2; line-clamp: 2[^}]*color: var\(--command-muted\)/);
   });
+
+  it("adds no underline to the title or the excerpt on hover", () => {
+    const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    const underlined = styles.split("\n").filter((line) => /\.taskCard(Open|Title|Excerpt)\b/.test(line) && line.includes("text-decoration"));
+    expect(underlined).toEqual([]);
+  });
 });
