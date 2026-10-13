@@ -629,9 +629,8 @@ started for them. Other devices see none of it.
   [Sessions and agents](sessions-and-agents.md#find-a-session). A session that is
   assigned to tasks shows them after the word **Assigned**. A dash means that the
   session has no task.
-- **Session view.** The header shows the task, feature, and step. The **Overview**
-  tab has a compact **Task** row whose heading opens the **Task** tab, the last
-  tab. It is read-only. It shows the task text, the planned and observed model, the
+- **Session view.** The header shows the task, feature, and step. The task
+  ID opens the **Task** tab, the last tab. It is read-only. It shows the task text, the planned and observed model, the
   definition of done with each check's result, and the feature's tasks in the same
   and next step. **Open on board** goes to the card. A session with no task has no
   **Task** tab.

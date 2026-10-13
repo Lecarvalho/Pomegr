@@ -1848,9 +1848,9 @@ so it reads nothing and says that issues are read in the desktop app.
   from GitHub.
 - **The `#N` chip.** A task with a source shows a `#N` chip right after its ID on a board
   card and on a queue step card (`TaskIssueChip`: the shared outline chip with a circle-dot
-  glyph and the number in the data font). The session view's Task tab and Overview task
-  panel show one Source line: `Source`, the chip, then `GitHub issue`. They read
-  `Task.source` from a ready board only, and show no promote time because none is stored.
+  glyph and the number in the data font). The session view's Task tab shows one
+  Source line: `Source`, the chip, then `GitHub issue`. It reads
+  `Task.source` from a ready board only, and shows no promote time because none is stored.
   The chip is a label: Pomegr builds no link to an issue.
 - **Sessions list.** The Task cell prints the number as plain muted text after the task ID,
   with no chip, border, icon, or link, so the ID stays the one prominent identifier. The
@@ -2271,9 +2271,9 @@ fixed values.
   directory read for its own row (`session=<normalized session ID>`), so it gets the same
   reference, the same gate, and nothing on `/api/state` or a session domain. The scope is a
   session ID, not task data: it narrows the page for every client, and a client without
-  the marker still gets no `task` key. The header, the Overview task row, and the Task tab
+  the marker still gets no `task` key. The header and the Task tab
   then read the task itself from `GET /api/tasks` for the reference's repository
-  (`app/session-task-store.ts`, `app/components/dashboard/SessionTaskSummary.tsx`,
+  (`app/session-task-store.ts`, `app/components/dashboard/SessionTaskMeta.tsx`,
   `SessionTaskTab.tsx`). While that board is not ready they show only the reference's ID,
   state, feature, and step; the Source line comes from `Task.source` on a ready board, not
   from the reference. The Task tab is listed only once the reference is known, so it
