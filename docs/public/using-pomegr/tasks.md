@@ -56,7 +56,8 @@ there until its session starts.
    into it, and select **New task** under its last card. On a touch screen the
    action is always shown.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
-   field. A card shows this text until its session has a title, then the title.
+   field. A card shows the first sentence of this text as its title and the
+   start of the rest below it, until its session has a title, then the title.
 3. To show the agent a screenshot or a mock-up, paste an image into the text or
    select **Attach image**; see [Attach images](#attach-images).
 4. Set the optional fields below.

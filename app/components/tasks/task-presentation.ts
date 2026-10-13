@@ -80,6 +80,37 @@ export function taskCardTitle(task: Task) {
   return taskSessionTitle(task) ?? plainTaskText(task.text);
 }
 
+export type TaskTextPreview = { lead: string; rest: string };
+
+const LEAD_MIN = 24;
+const SENTENCE_START = /^[\p{Lu}\p{N}`"'“(\[*-]/u;
+
+/** The index after the first sentence of a line, outside a code span, or -1 when the line is one sentence. */
+function sentenceEnd(line: string): number {
+  let inCode = false;
+  for (let index = 0; index < line.length - 1; index += 1) {
+    const character = line[index];
+    if (character === "`") inCode = !inCode;
+    else if (!inCode && index >= LEAD_MIN && (character === "." || character === "!" || character === "?") && /\s/u.test(line[index + 1]) && SENTENCE_START.test(line.slice(index + 1).trimStart())) return index + 1;
+  }
+  return -1;
+}
+
+/** A task text as a card draws it: the first sentence of its first line, then the remaining text on one line. A heuristic split, not a summary. */
+export function taskTextPreview(text: string): TaskTextPreview {
+  const lines = plainTaskText(text).split(/\r?\n/u).map((line) => line.trim()).filter((line) => line !== "");
+  const first = (lines[0] ?? "").replace(/^#{1,6}\s+/u, "");
+  const end = sentenceEnd(first);
+  const lead = end === -1 ? first : first.slice(0, end);
+  const rest = [end === -1 ? "" : first.slice(end).trim(), ...lines.slice(1)].filter((line) => line !== "").join(" ");
+  return { lead, rest };
+}
+
+/** A line split at its backtick code spans: the odd entries are code. */
+export function inlineCodeParts(text: string): string[] {
+  return text.split(/`([^`]+)`/u);
+}
+
 export function taskSessionHref(sessionId: string): string | null {
   try {
     return `/sessions/${encodeSessionRoute(sessionId)}`;

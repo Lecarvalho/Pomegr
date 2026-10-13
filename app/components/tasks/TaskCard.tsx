@@ -8,7 +8,8 @@ import { TaskCardIds } from "./TaskIssueChip";
 import { TaskRunLine } from "./TaskRunLine";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { completeWhenSummary } from "./task-fields";
-import { taskCardTitle, taskChip } from "./task-presentation";
+import { TaskInlineText } from "./TaskInlineText";
+import { taskCardTitle, taskChip, taskSessionTitle, taskTextPreview } from "./task-presentation";
 import { startsParts } from "./task-schedule";
 
 export type TaskCardMove = {
@@ -33,6 +34,9 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
 }) {
   const chip = taskChip(task, nextQueued);
   const title = taskCardTitle(task);
+  // The task text reads as its first sentence and a muted excerpt; a session title stands alone.
+  const preview = taskSessionTitle(task) === null ? taskTextPreview(task.text) : null;
+  const heading = preview ? <TaskInlineText text={preview.lead} /> : title;
   const starts = startsParts(task, now);
   const summary = grouped ? null : completeWhenSummary(task.completeWhen);
   const feature = grouped ? null : featureLine;
@@ -45,8 +49,9 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
       <span className={`commandChip taskCardChip ${chip.tone}${chip.ink ? " isInk" : ""}`}>{chip.label}</span>
     </div>
     {onOpen
-      ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title} onClick={(event) => onOpen(task, event.currentTarget)}><span className="taskCardTitle">{title}</span></button>
-      : <p className="taskCardTitle" title={title}>{title}</p>}
+      ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title} onClick={(event) => onOpen(task, event.currentTarget)}><span className="taskCardTitle">{heading}</span></button>
+      : <p className="taskCardTitle" title={title}>{heading}</p>}
+    {preview && preview.rest !== "" && !grouped && <p className="taskCardExcerpt"><TaskInlineText text={preview.rest} /></p>}
     <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
     {starts && <p className="taskCardDetail taskCardStarts">Starts {starts.day} <span className="taskCardStartsTime">{starts.time}</span></p>}
     {waiting && <p className="taskCardWaiting">{waiting}</p>}
