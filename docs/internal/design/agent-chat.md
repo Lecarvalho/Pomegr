@@ -223,7 +223,8 @@ The task board is in [Task board design](task-board.md).
 - Each pending card has its own Primary, so a conversation may hold more than one.
 - After a successful apply, the board is read again.
 - The Primary of a session start reads **Start session**.
-- The footer line of a session start reads “Nothing starts until you select Start session. Pomegr asks you to confirm, then checks the start gates.”
+- The footer line of a session start reads “Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.”
+- **Start session** is the confirmation of the start, so no native dialog follows it.
 - On a paired device a session start has no Primary, only **Dismiss**.
 - On a paired device the footer line of a session start reads “Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.”
 

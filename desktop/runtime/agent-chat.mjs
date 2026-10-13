@@ -77,7 +77,7 @@ export function createAgentChat(options = {}) {
   const spawn = options.spawn || spawnChild;
   const now = options.now || (() => new Date());
   const runTurn = options.runTurn || runChatTurn;
-  // The desktop's manual start, behind its native confirmation: `(event, repositoryId, taskId)` answers `{ status }`.
+  // The desktop's manual start for a start the owner approved in the chat: `(event, repositoryId, taskId)` answers `{ status }`.
   const startTask = typeof options.startTask === "function" ? options.startTask : null;
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
   const store = options.store || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
@@ -251,9 +251,10 @@ export function createAgentChat(options = {}) {
     return await store.remove(payload.repositoryId, payload.conversationId) ? { ok: true } : UNAVAILABLE;
   }
 
-  // An approved start goes to the manual start of the Tasks page and to nothing else: the same native confirmation,
-  // start plan, gates, and launch slot. Only a launch answers the proposal; a start that was held or failed keeps it
-  // pending with the fixed status, so the owner may apply it again. Null when the owner cancelled the confirmation.
+  // An approved start goes to the manual start of the Tasks page and to nothing else: the same start plan, gates, and
+  // launch slot. The card's Start session is the owner's confirmation, so no native one follows. Only a launch answers
+  // the proposal; a start that was held or failed keeps it pending with the fixed status, so the owner may apply it
+  // again. Null when the start was cancelled (the app is closing), which stores nothing.
   async function startSession(event, repositoryId, taskId, proposal) {
     let status;
     try { status = (await startTask(event, repositoryId, taskId))?.status; } catch { status = "failed"; }
@@ -271,7 +272,7 @@ export function createAgentChat(options = {}) {
     if (!message) return refused("not_found");
     if (message.proposal.state !== "pending") return refused("conflict");
     const startTaskId = approve ? startProposalTask(message.proposal) : null;
-    // Only the desktop window starts a session from the chat: the confirmation is shown there, and a paired device has no such event.
+    // Only the desktop window starts a session from the chat: the start needs its trusted event, and a paired device has none.
     if (startTaskId && !origin?.event) return refused("desktop_only");
     if (startTaskId && !startTask) return UNAVAILABLE;
     const key = `${repositoryId}/${proposalId}`;

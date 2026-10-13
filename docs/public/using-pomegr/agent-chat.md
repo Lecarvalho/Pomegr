@@ -75,10 +75,9 @@ Ask Aril to start one task by its ID, for example "start T-63". Aril answers wit
 start proposal for that task. A start is always a proposal of its own.
 
 1. In the Pomegr desktop app, select **Start session** on the proposal, or **Dismiss**
-   to drop it. Nothing starts before that.
-2. Confirm "Start task T-63?". Pomegr then starts the task as **Start session** in the
-   task window does, with the same checks. See
-   [Start a session](tasks.md#start-a-session).
+   to drop it. Nothing starts before that, and Pomegr does not ask again.
+2. Pomegr starts the task as **Start session** in the task window does, with the same
+   checks. See [Start a session](tasks.md#start-a-session).
 3. Read the result on the proposal.
 
 | Result | What it means |

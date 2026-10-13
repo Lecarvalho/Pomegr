@@ -1631,8 +1631,8 @@ Starting is explicit and runs on the desktop computer.
 
 1. A manual start shows a native confirmation in the desktop app or a browser confirmation on the paired device.
    A start the owner applied from an agent-chat proposal in the desktop app is a manual
-   start: it shows the same native confirmation (see
-   [Agent chat: Session start](agent-chat.md#session-start)).
+   start whose confirmation is **Start session** on the proposal card: no native
+   confirmation follows (see [Agent chat: Session start](agent-chat.md#session-start)).
    The queue runner starts without a prompt
    only after the user turned the queue on.
 2. The runner opens a visible terminal window in the repository root, or in the task's
@@ -1732,10 +1732,11 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   only when the started session links.
 - The agent chat is a second caller of the same manual start (task T-72, 2026-10-12).
   When the owner applies a `start_session` proposal in the desktop window, desktop main
-  calls `start` with that window's event, the repository ID, and the task ID, and never
-  the separate-worktree argument. The trusted-frame check, the native confirmation, the
-  start plan, every refusal above, and the launch slot are the same, and the chat gets
-  back the same one fixed status. A paired device cannot apply such a proposal, and the
+  calls `startApproved` with that window's event, the repository ID, and the task ID,
+  and never a separate-worktree start. The trusted-frame check, the start plan, every
+  refusal above, and the launch slot are the same, and the chat gets back the same one
+  fixed status. It shows no native confirmation: the card's **Start session** is the
+  owner's confirmation (product-owner decision, 2026-10-12). A paired device cannot apply such a proposal, and the
   queue is not touched.
 - After a manual start answers `worktree_dirty`, the task modal shows **Open folder**. It
   calls the fixed channel `pomegr:task-worktree-open` with the repository ID and task ID
@@ -2035,7 +2036,7 @@ serves no other client.
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds, including queue on and off; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
-| `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status. The agent chat's applied start proposal calls the same handler in desktop main, with the event of its own trusted `pomegr:agent-chat` call and behind the same confirmation |
+| `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status. The agent chat's applied start proposal reaches the same starter in desktop main, with the event of its own trusted `pomegr:agent-chat` call; its confirmation is **Start session** on the proposal card, not the native one |
 | `POST /api/tasks/start` | A paired device through the desktop LAN gateway, behind confirmation on that device and repeated authorization checks | `{ repositoryId, taskId, confirmed: true, worktree?: true }`, at most 512 bytes; answers only `{ status }` from the IPC start allowlist; never forwards or exposes a start plan |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |

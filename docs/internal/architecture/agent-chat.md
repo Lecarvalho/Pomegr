@@ -25,7 +25,8 @@ panel; Aril reads the board, the repository's files, and Pomegr's observations, 
 answers. Aril never changes anything. It proposes board changes, and Pomegr applies a
 proposal only after the owner presses **Apply changes**. When the owner asks for it, Aril
 also proposes to start a session for one named task; Pomegr starts it through the manual
-start of the Tasks page, only after the owner applies that proposal in the desktop app
+start of the Tasks page, only after the owner selects **Start session** on that proposal
+in the desktop app
 (see [Session start](#session-start)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
@@ -209,11 +210,16 @@ Task T-72, 2026-10-12. It replaces the earlier rule that the chat starts no sess
   unreadable, so the owner never approves a start together with a board change.
 - **The owner applies it in the desktop window.** `apply` hands the trusted window event
   of the `pomegr:agent-chat` call, the repository ID, and the task ID to the manual start
-  (`start` of `createTaskStart` in `task-dispatch.mjs`), the handler behind
-  `pomegr:task-start`. The start then runs whole, as from the task window: the trusted-frame
-  check, the native confirmation that names the task, the start plan with every gate
-  ([Tasks: Starting a session](tasks.md#starting-a-session)), and the one launch slot that
-  manual and queued starts share. The chat adds no path of its own and skips none.
+  (`startApproved` of `createTaskStart` in `task-dispatch.mjs`). It is the start behind
+  `pomegr:task-start` without the native confirmation: the trusted-frame check, the start
+  plan with every gate ([Tasks: Starting a session](tasks.md#starting-a-session)), and
+  the one launch slot that manual and queued starts share. The chat adds no path of its
+  own.
+- **The card is the confirmation.** Product-owner decision of 2026-10-12, after trying
+  the first build: **Start session** on the proposal card, which names the task, is the
+  explicit confirmation of this start, and no native dialog follows it. It replaces the
+  rule of the same day that the native confirmation also showed. The start of the task
+  window keeps its native confirmation.
 - **A paired device cannot apply it.** A call through `POST /api/agent-chat` carries no
   window event. `apply` of a start then answers `desktop_only` before anything runs, and
   the proposal stays pending as it was, so the owner can apply it on the computer. A
@@ -231,8 +237,8 @@ Task T-72, 2026-10-12. It replaces the earlier rule that the chat starts no sess
   `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`, `gate_held`,
   `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`, `failed`,
   `worktree_dirty`, and `tree_dirty`. An answer outside the fixed statuses is stored as
-  `unavailable`, and a start that throws as `failed`. `cancelled` (the owner chose Cancel
-  in the native confirmation) stores nothing. A start proposal is never `partial`.
+  `unavailable`, and a start that throws as `failed`. `cancelled` stores nothing. A start
+  proposal is never `partial`.
 - **Another try.** A proposal whose start launched nothing stays pending, so the owner
   may apply it again, for example once a gate is clear. Each Apply is one request to the
   dispatcher. Pomegr never tries again by itself.
@@ -298,7 +304,7 @@ Desktop main keeps one JSON file per conversation:
 | --- | --- | --- |
 | `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session |
 | `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only` |
-| The manual start in desktop main (`createTaskStart().start`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
+| The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, and `queue_reorder`, for an approved proposal |
 | The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
@@ -378,8 +384,8 @@ never a session's.
 - Aril never changes the board. Only `apply` does, on the owner's answer, through the
   fixed task actions.
 - Aril never starts a session. Only `apply` of a start proposal does, from the desktop
-  window, through the manual start and behind its native confirmation and every start
-  gate. One Apply is at most one launch.
+  window, through the manual start and behind every start gate. The owner's **Start
+  session** on the card is its confirmation. One Apply is at most one launch.
 - The chat turns no queue on, changes no queue to get a start through, and never stops,
   attaches to, answers, approves, or steers anything in a session.
 - A start that was held, failed, or cancelled is never shown as started, and is never
@@ -413,16 +419,19 @@ never a session's.
 7. **Prompt injection.** Task text, issue text, and file content are data that an agent
    can still be misled by. The bounds are that the run cannot write, cannot reach another
    server, and cannot apply a proposal. The owner reads each proposal before it runs. A
-   misled Aril can at most propose a start: the launch still needs the owner's Apply in
-   the desktop window and the native confirmation that names the task.
+   misled Aril can at most propose a start: the launch still needs the owner's **Start
+   session** on the card in the desktop window, and the card names the task.
+   The renderer of the desktop window can send a message and apply the proposal that
+   answers it, so a start from the chat rests on the trusted window alone, where the
+   task window's start also has the native confirmation.
 8. **Start proposals from a live provider.** Probed on a device on 2026-10-12 with Claude
    Code 2.1.296 and Codex 0.162.1, on a synthetic board: for "start T-63" both wrote one
    valid `start_session` proposal. Claude Code also wrote none for a task with a session
    and none for a question about order. Codex was not asked those two. The probes started
-   no session and are deleted. The Apply of a start, the native confirmation, and the
-   launch are covered by tests with fakes. The product owner also applied a start
-   proposal in the desktop app on 2026-10-12 and the session launched. Which build that
-   was is not recorded, so limit 2 stands.
+   no session and are deleted. The Apply of a start and the launch are covered by tests
+   with fakes. The product owner also applied a start proposal in the desktop app on
+   2026-10-12 and the session launched; that build still showed the native confirmation.
+   Which build that was is not recorded, so limit 2 stands.
 9. **Separate worktree.** A start that only the repository's uncommitted changes hold
    answers `tree_dirty`. The chat offers no separate-worktree start; the task window
    does.

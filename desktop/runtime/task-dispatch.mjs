@@ -334,6 +334,13 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: true, separateWorktree: separateWorktree === true }, repositoryId, taskId);
   }
 
+  // A start the owner approved on a proposal card of the agent chat, in the trusted window. The card's Start session is
+  // the confirmation, so no native one follows; every other step of the manual start is the same.
+  async function startApproved(event, repositoryId, taskId) {
+    if (!isTrustedEvent(event)) return result("invalid");
+    return exclusive({ confirmRequired: false }, repositoryId, taskId);
+  }
+
   function startQueued(repositoryId, taskId) {
     return exclusive({ confirmRequired: false }, repositoryId, taskId);
   }
@@ -359,7 +366,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startQueued, startPaired, openWorktree, cleanWorktree, dispose() { disposed = true; } });
+  return Object.freeze({ start, startApproved, startQueued, startPaired, openWorktree, cleanWorktree, dispose() { disposed = true; } });
 }
 
 export function installTaskStartIpc(options = {}) {

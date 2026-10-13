@@ -91,8 +91,8 @@ These rules always apply:
   Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
   changes the board only through the fixed task actions, after the owner applies a
-  proposal. It starts a task's session only through the manual start and its
-  confirmation, after the owner applies a start proposal in the desktop app.
+  proposal. It starts a task's session only through the manual start, after the owner
+  confirms a start proposal in the desktop app.
 - Start processes with `execFile` or `spawn` and an argument array. Never put
   session-derived text into a command line or a path.
 - Never commit `.env`, transcripts, credentials, build output, or Wrangler state.

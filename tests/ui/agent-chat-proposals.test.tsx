@@ -240,7 +240,7 @@ describe("a proposed session start", () => {
     expect(startButton()).toHaveClass("commandPrimaryAction");
     expect(within(card()).queryByRole("button", { name: "Apply changes" })).toBeNull();
     expect(within(card()).getByRole("button", { name: "Dismiss" })).toHaveClass("commandQuietAction");
-    expect(within(card()).getByText("Nothing starts until you select Start session. Pomegr asks you to confirm, then checks the start gates.")).toBeInTheDocument();
+    expect(within(card()).getByText("Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.")).toBeInTheDocument();
     expect(card()).not.toHaveTextContent(/Session started/);
     expect(chat.calls("apply")).toEqual([]);
   });
@@ -338,7 +338,7 @@ describe("a proposed session start", () => {
     expect(card()).not.toHaveTextContent("private");
   });
 
-  it("changes nothing when the owner cancels the confirmation", async () => {
+  it("changes nothing when the desktop cancels the start", async () => {
     chat.startStatus = "cancelled";
     withStart();
     const person = user();

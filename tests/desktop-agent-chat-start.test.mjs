@@ -174,7 +174,7 @@ test("an answer outside the fixed statuses, or a start that throws, is a failed 
   }
 });
 
-test("cancelling the native confirmation changes nothing: no result, no state, and the owner may apply again", async (context) => {
+test("a cancelled start changes nothing: no result, no state, and the owner may apply again", async (context) => {
   const { starts, apply, proposal } = await startHarness(context, { statuses: ["cancelled"] });
   assert.deepEqual(await apply(), { ok: true });
   assert.deepEqual(await proposal(), startProposal());
@@ -208,7 +208,7 @@ test("the IPC bridge hands the window's own event to the chat, so only a trusted
   assert.deepEqual(starts, []);
   assert.deepEqual(await call(trusted, "apply", payload), { ok: true });
   assert.equal(starts.length, 1);
-  assert.equal(starts[0][0], trusted, "the event itself, for the manual start's own trust check and confirmation");
+  assert.equal(starts[0][0], trusted, "the event itself, for the manual start's own trust check");
   remove();
 });
 
@@ -239,16 +239,16 @@ async function dispatchHarness(context, { plan = () => ({ ok: true, plan: { task
     fetch: async (url, options) => { monitor.push({ route: url.split("/").pop(), body: JSON.parse(options.body) }); return json(url.endsWith("start-plan") ? plan(monitor) : { ok: true }); },
     spawn: (...args) => { spawns.push(args); return launcher(); },
   });
-  const h = await chatHarness(context, { startTask: (event, repository, taskId) => starter.start(event, repository, taskId) });
+  const h = await chatHarness(context, { startTask: (event, repository, taskId) => starter.startApproved(event, repository, taskId) });
   const conversation = await seed(h, { messages: withProposal(startProposal()) });
   const apply = (origin = desktop) => h.chat.handle("apply", { repositoryId, conversationId: conversation.id, proposalId }, origin);
-  return { h, monitor, spawns, confirmations, apply, proposal: () => storedProposal(h, conversation.id) };
+  return { h, starter, monitor, spawns, confirmations, apply, proposal: () => storedProposal(h, conversation.id) };
 }
 
-test("an applied start takes the manual path whole: one native confirmation, one start plan, one launch, and no queue action", async (context) => {
+test("an applied start takes the manual path with no second confirmation: one start plan, one launch, and no queue action", async (context) => {
   const d = await dispatchHarness(context);
   assert.deepEqual(await d.apply(), { ok: true });
-  assert.deepEqual(d.confirmations, [{ taskId: "T-3", separateWorktree: false }]);
+  assert.deepEqual(d.confirmations, [], "Start session on the card is the confirmation; no native dialog follows");
   assert.deepEqual(d.monitor, [{ route: "start-plan", body: { repositoryId, payload: { id: "T-3" } } }], "the plan is asked for the task alone: no worktree override, no queue or board action");
   assert.equal(d.spawns.length, 1);
   assert.equal(d.spawns[0][2].shell, false);
@@ -278,12 +278,22 @@ test("a held start that the owner applies again launches once the monitor lets i
   assert.equal((await d.proposal()).state, "applied");
 });
 
-test("the owner's Cancel in the native confirmation asks the monitor nothing and launches nothing", async (context) => {
+test("the task window's own start still asks its native confirmation, and a chat start never borrows that answer", async (context) => {
   const d = await dispatchHarness(context, { confirm: async () => false });
-  assert.deepEqual(await d.apply(), { ok: true });
-  assert.deepEqual(d.monitor, []);
+  assert.deepEqual(await d.starter.start(trusted, repositoryId, "T-3"), { status: "cancelled" });
+  assert.deepEqual(d.confirmations, [{ taskId: "T-3", separateWorktree: false }]);
   assert.deepEqual(d.spawns, []);
-  assert.deepEqual(await d.proposal(), startProposal());
+  assert.deepEqual(await d.apply(), { ok: true });
+  assert.equal(d.confirmations.length, 1);
+  assert.equal(d.spawns.length, 1);
+});
+
+test("a start refused while the app is closing launches nothing and is stored as not started", async (context) => {
+  const d = await dispatchHarness(context);
+  d.starter.dispose();
+  assert.deepEqual(await d.apply(), { ok: true });
+  assert.deepEqual(d.spawns, []);
+  assert.deepEqual((await d.proposal()).results, [{ ok: false, error: "not_started", start: "unavailable" }]);
 });
 
 test("an untrusted event that reaches the chat is refused by the manual start itself", async (context) => {
