@@ -280,6 +280,18 @@ test("queue_add refuses a task past the queue or already queued, and queue_remov
   assert.deepEqual(before.queue.order, ["T-2", "T-3"]);
 });
 
+test("queue_remove refuses a queued or scheduled task whose session has started", async (t) => {
+  const { store, databasePath } = await temporaryStore(t);
+  for (const [index, state] of ["queued", "scheduled"].entries()) {
+    addTask(store);
+    setState(databasePath, index + 1, state);
+    withRawDatabase(databasePath, (database) => database.prepare("UPDATE tasks SET session_id = ? WHERE repository_id = ? AND number = ?").run(`claude:session-${index + 1}`, REPOSITORY, index + 1));
+  }
+  const before = store.readBoard(REPOSITORY);
+  for (const id of ["T-1", "T-2"]) assert.deepEqual(unqueue(store, id), { ok: false, error: "conflict" }, id);
+  assert.deepEqual(store.readBoard(REPOSITORY), before);
+});
+
 test("the queue actions leave the stored queue status and its blocker as they are and start nothing", async (t) => {
   const { store, databasePath } = await temporaryStore(t);
   addTask(store);

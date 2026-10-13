@@ -2072,8 +2072,8 @@ serves no other client.
   `queued`, or `scheduled` with no linked session becomes `scheduled` with that time, in
   the place its card has in Ready or at the end of it; a task with a session or an outcome is `conflict`, and a
   time outside the bounds is `invalid`. An unknown task is `not_found`. `queue_remove`
-  takes exactly `{ id }`: a `queued` or `scheduled` task becomes `not_queued` and loses
-  its time; any other state is `conflict`. `resolve_requeue` clears the time too.
+  takes exactly `{ id }`: a `queued` or `scheduled` task with no linked session becomes
+  `not_queued` and loses its time; any other state, or a linked session, is `conflict`. `resolve_requeue` clears the time too.
   `queue_reorder` takes exactly `{ id, step }` with `step` an integer of at least 1. The task
   must exist (`not_found`), be in a feature, and not have started: state `not_queued`,
   `queued`, or `scheduled` with no linked session (otherwise `conflict`; a single

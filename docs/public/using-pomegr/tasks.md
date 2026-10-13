@@ -76,7 +76,8 @@ it was when it started, so a later change would not reach it. The task window th
 shows the fields read-only, without **Save**, and says "This task has started, so
 it cannot be changed." This applies from the start of the session on, and to a task
 that is in review, blocked, stalled, or done. **Requeue task** makes the task
-editable again until its next session starts. You can still move, delete, mark
+editable again until its next session starts. While a queued task is in progress,
+**Remove from queue** is unavailable. You can still move, delete, mark
 done, and requeue a started task.
 
 | Field | What it sets |

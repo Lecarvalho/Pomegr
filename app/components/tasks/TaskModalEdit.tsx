@@ -79,6 +79,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const showStart = start.available && !unresolved;
   const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
   const schedulable = waiting && task.session === null;
+  // A queued task whose session has started is in progress: it has left the queue, so Remove from queue does nothing for it.
+  const inProgress = task.session !== null && (task.state === "queued" || task.state === "scheduled");
   // A linked task with no report never resolves by itself, so the user can mark it done or requeue it.
   const awaitingReport = taskAwaitsReport(task);
   // The session works from the task as it was when it started, so a started task is read-only until it is requeued.
@@ -217,7 +219,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         : <button type="button" className="commandQuietAction" disabled={blocked} onClick={() => setConfirming(true)}>Delete task</button>}
       <span className="taskModalSpacer" aria-hidden="true" />
       {!confirming && <>
-        {waiting && <button type="button" className="commandSecondaryAction" disabled={queueing || dirty} onClick={() => void changeQueue(task.state === "not_queued")}>
+        {waiting && <button type="button" className="commandSecondaryAction" disabled={queueing || dirty || inProgress} onClick={() => void changeQueue(task.state === "not_queued")}>
           {task.state === "not_queued" ? "Add to queue" : "Remove from queue"}
         </button>}
         {showStart && <button type="button" className="commandSecondaryAction" disabled={start.disabled} onClick={() => void start.run()}>
