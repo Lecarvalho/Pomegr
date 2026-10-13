@@ -1,7 +1,8 @@
 import {
   AGENT_CHAT_BOUNDS,
   type AgentChatActivity, type AgentChatBoardOperation, type AgentChatConversationSummary, type AgentChatError, type AgentChatMessage,
-  type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatStartFailure, type AgentChatTurnStatus,
+  type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
+  type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
 import { plainTaskText, type Task } from "../../../shared/task-contract";
 import { repositoryRouteId } from "../repositories/repository-route";
@@ -183,6 +184,8 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Move ", { id: operation.id }, ` to step ${operation.step}`], details: [] };
     case "start_session":
       return { title: ["Start a session for ", { id: operation.id }], text: current(operation.id), details: [] };
+    case "set_queue":
+      return { title: [operation.on ? "Turn the queue on" : "Turn the queue off"], details: [] };
   }
 }
 
@@ -224,7 +227,24 @@ export function startProposalTask(proposal: Pick<AgentChatProposal, "operations"
   return proposal.operations.length === 1 && first.op === "start_session" ? first.id : null;
 }
 
+/** The queue state a proposal asks for (`true` is on), or null when it is not a queue proposal. */
+export function queueProposalState(proposal: Pick<AgentChatProposal, "operations">): boolean | null {
+  const [first] = proposal.operations;
+  return proposal.operations.length === 1 && first.op === "set_queue" ? first.on : null;
+}
+
+// What an accepted queue change left. A held queue is on and starts nothing, so it is not drawn as a success.
+const QUEUE_RESULT_LINES: Record<AgentChatQueueResult, OperationOutcome> = {
+  on: { text: "Queue turned on.", tone: "ok" },
+  blocked: { text: "Queue turned on. A stalled or blocked task holds it, so nothing starts until you resolve that task.", tone: "muted" },
+  off: { text: "Queue turned off.", tone: "ok" },
+};
+export const QUEUE_REFUSED = "Queue not changed. Pomegr refused this change.";
+export const QUEUE_UNANSWERED = "Queue not changed. Pomegr did not answer. Try again.";
+
 export function operationOutcome(operation: AgentChatBoardOperation, result: AgentChatOperationResult): OperationOutcome {
+  if ("queue" in result) return QUEUE_RESULT_LINES[result.queue] ?? QUEUE_RESULT_LINES.on;
+  if (operation.op === "set_queue" && !result.ok) return { text: result.error === "unavailable" ? QUEUE_UNANSWERED : QUEUE_REFUSED, tone: "error" };
   if ("start" in result) return result.ok ? { text: START_LAUNCHED, tone: "ok" } : { text: START_FAILURE_LINES[result.start] ?? START_FAILURE_LINES.failed, tone: "error" };
   if (result.ok) return { text: operation.op === "create_task" && result.taskId ? `Created ${result.taskId}` : "Done", tone: "ok" };
   if (result.taskId) return { text: `Created ${result.taskId}, but it could not be queued`, tone: "error" };
@@ -249,8 +269,26 @@ export const PROPOSAL_DELETE_NOTE = "Nothing changes until you apply. Deleting c
 export const START_PENDING_NOTE = "Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.";
 export const START_ELSEWHERE_NOTE = "Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.";
 
+export const QUEUE_ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, one step at a time, as each passes the start gates.";
+export const QUEUE_OFF_NOTE = "Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.";
+
+/** The words of the card's region, by what the proposal asks for. */
+export function proposalLabel(proposal: AgentChatProposal): string {
+  if (startProposalTask(proposal) !== null) return "Proposed session start";
+  return queueProposalState(proposal) !== null ? "Proposed queue change" : "Proposed board changes";
+}
+
+/** The card's one Primary, or null where the proposal cannot be applied: a session start outside the desktop window. */
+export function proposalPrimary(proposal: AgentChatProposal, startHere = false): string | null {
+  if (startProposalTask(proposal) !== null) return startHere ? "Start session" : null;
+  const queueOn = queueProposalState(proposal);
+  return queueOn === null ? "Apply changes" : queueOn ? "Turn queue on" : "Turn queue off";
+}
+
 /** `startHere` is true in the desktop window, the one place where a start proposal can be applied. */
 export function proposalNote(proposal: AgentChatProposal, startHere = false): string {
   if (startProposalTask(proposal) !== null) return startHere ? START_PENDING_NOTE : START_ELSEWHERE_NOTE;
+  const queueOn = queueProposalState(proposal);
+  if (queueOn !== null) return queueOn ? QUEUE_ON_NOTE : QUEUE_OFF_NOTE;
   return proposal.operations.some((operation) => operation.op === "delete_task") ? PROPOSAL_DELETE_NOTE : PROPOSAL_PENDING_NOTE;
 }

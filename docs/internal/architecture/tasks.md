@@ -675,7 +675,9 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   queue turned off. `queue_settings` with `{ on: true }` sets it to `running`, or to
   `blocked` with the lowest-numbered task that is stalled or blocked in
   `blockedBy` when one exists; `{ on: false }` sets it back to `idle`. Turning the queue
-  off never touches a running session. No other action turns the queue on, and the one
+  off never touches a running session. The agent chat sends this same action, with
+  `{ on }` alone, for a queue proposal the owner applied
+  (see [Agent chat: Queue change](agent-chat.md#queue-change)). No other action turns the queue on, and the one
   other write that turns it off is the end of a pause whose named task is gone (see
   **A pause ends with its task** below).
 - **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
@@ -1001,11 +1003,11 @@ installed plugin from before the rename sends; a body with both names is `invali
 
 | Condition | Verified by Pomegr |
 | --- | --- |
-| Pull request open | Committed pull-request state of the task branch |
+| Pull request open | Committed state of the session's pull requests, the ones its Repository tab lists |
 | Working tree clean | Committed repository state of the root or worktree |
 | Commit on task branch | Committed Git facts of the task branch |
-| Pull request merged | Committed pull-request state |
-| CI passed | Check status of the task branch's pull request, as last read by the monitor |
+| Pull request merged | Committed state of the same pull requests |
+| CI passed | Check status of the same pull requests, as last read by the monitor |
 | Validated with the user | Not verified; the agent validates the work with the user before it reports |
 | Own condition | Not verified; the agent judges it in its report |
 
@@ -1073,12 +1075,16 @@ installed plugin from before the rename sends; a body with both names is `invali
   - Commit on task branch: the branch is not the main branch and its base comparison
     shows a commit of its own, merged since or not.
   - Pull request open, Pull request merged: the ready pull-request block holds a pull
-    request whose head is the task branch in that state.
+    request in that state. The block is the one the session's Repository tab shows, so
+    the two always name the same pull requests (task T-88, 2026-10-12; it replaces the
+    earlier rule that only a pull request whose head is the recorded branch counted).
+    Its items are the pull requests the session created and those whose head is the
+    session's branch (`readPullRequests`); an item with no known state is not judged.
   - CI passed: the monitor's pull-request read (`server/repository/pull-requests.mjs`)
     asks gh for `statusCheckRollup` in the same call and normalizes it to one of
     `passed`, `failed`, `pending`, or `none`: any failed check gives `failed`, otherwise
     any unfinished check gives `pending`, and a pull request with no check gives `none`.
-    A missing or unrecognized list is unknown. The condition judges the task branch's
+    A missing or unrecognized list is unknown. The condition judges the block's
     open pull requests, or its merged ones when none is open, and passes only when each
     is `passed`. Pending, failed, no check, and no such pull request are not passed; a
     pull request whose status the monitor has not read is unknown. The status and the
@@ -1086,8 +1092,14 @@ installed plugin from before the rename sends; a body with both names is `invali
     a report's own pull-request read is what puts them there.
   - An unavailable or historical repository block, a missing base comparison, and a
     pull-request block that is not ready are unknown.
-- **A fact is judged only on a read made after the work it judges.** A condition never
-  passes on a fact older than the session's latest work that could have changed it. Each
+- **A fact is judged only on a read made after the work it judges.** Working tree
+  clean, Commit on task branch, and CI passed never pass
+  on a fact older than the session's latest work that could have changed it. Pull
+  request open and Pull request merged are the exception (task T-88, 2026-10-12): they
+  need a dated read and are not compared with the work, so the Task tab never says
+  "Not yet" for a pull request the Repository tab lists from that same read. A merged
+  pull request stays merged, and an open one that was closed since reads open only
+  until the next read, as it does in the Repository tab. Each
   fact carries the time it was read (`readAt`) and the latest work that could have
   changed it (`workAt`), epoch milliseconds from committed memory with no clock, Git,
   GitHub, or provider read. `verifyChecks` passes a fact only when its read time is a
@@ -1115,7 +1127,7 @@ installed plugin from before the rename sends; a body with both names is `invali
     execution task, because any shell command can dirty the tree. A file write ends at
     its call time plus its recorded wall duration, not at its call: a write that waited
     for approval changes the file later than it was called.
-    `commit_on_branch`, `pr_open`, `pr_merged`, and `ci_passed` are dated by the latest end
+    `commit_on_branch` and `ci_passed` are dated by the latest end
     of the session's finished `git`, `git_push`, and `pull_request` execution tasks. A task
     still running or finished at no known time, and a file write with no recorded
     result, make the matching facts unknown. A
@@ -1143,10 +1155,11 @@ installed plugin from before the rename sends; a body with both names is `invali
     report's verification is final.
   - Once a report or an outcome is recorded the board carries no reading, and the Task
     tab shows the report's own results ("Passed", "Did not pass") or "No report".
-  - The age rule applies to the reading, so a pull request the Repository tab
-    already lists reads "Not yet" until the pull-request read is later than the session's
-    latest Git, push, or pull-request command. A report made at that moment is judged
-    on its own read, so it can pass a condition the reading still shows as "Not yet".
+  - The age rule applies to the reading, so CI passed, Commit on task branch, and
+    Working tree clean read "Not yet" until their read is later than the session's
+    latest work. A report made at that moment is judged on its own read, so it can pass
+    a condition the reading still shows as "Not yet". A pull request the Repository tab
+    lists reads "Holds now" at once.
   - It carries pass or fail only: no fact, read time, work time, CI status, pull-request
     item, or path.
 - A report is verified once. A task whose condition did not pass but holds
@@ -1164,7 +1177,7 @@ installed plugin from before the rename sends; a body with both names is `invali
     commands (`gh pr checks`, `git status`) count as work for the reading too.
   - A running execution task of any kind (a dev server, for example) keeps `tree_clean`
     unknown while it runs, and a running Git, push, or pull-request task does the same for
-    the four other conditions.
+    Commit on task branch and CI passed.
   - Repository work is recognized only as a finished `git`, `git_push`, or `pull_request`
     execution task. A compound or generic shell command, or another tool, that changes
     the branch or a pull request is not counted, and only the newest retained execution
@@ -2014,7 +2027,10 @@ serves no other client.
 - **Agent chat.** A paired device also reaches the agent chat, through one route that
   the gateway answers itself. [Agent chat](agent-chat.md#boundaries) owns it. A session
   start that Aril proposed is applied only in the desktop app: the chat route refuses it
-  from a paired device, which keeps its own **Manual start** above.
+  from a paired device, which keeps its own **Manual start** above. A queue change that
+  Aril proposed can be applied on a paired device (task T-75, 2026-10-12): desktop main
+  then sends `queue_settings` with `{ on }`, the action of **Queue control** above, so
+  the chat route gives the device no queue authority it did not have.
 - **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
   `desktop`, `paired`, `absent`, or `pending` until the client knows which, so no control
   or note is drawn and then taken back. `sendTaskAction` uses the bridge when there is
@@ -2150,6 +2166,7 @@ serves no other client.
 ## Privacy
 
 - A paired device may send queue on and off through the existing authenticated task action route. Only the desktop queue runner launches sessions.
+- A paired device may also apply a queue proposal of the agent chat. Desktop main then sends the same `queue_settings` action with `{ on }` and nothing else, and the chat keeps only the state asked for and one fixed result.
 - A paired manual start sends only the repository ID, task ID, confirmation flag, and optional separate-worktree flag to the desktop gateway. Its answer exposes only a fixed start status. The private plan, prompt, filesystem paths, image files, credentials, and dispatch token stay on the desktop's existing private launch path.
 
 Task text, the own condition, and a feature's name, description, and app version are
@@ -2279,7 +2296,8 @@ fixed values.
   [Agent chat: Privacy](agent-chat.md#privacy). The chat changes the board only through
   the fixed task actions, after the owner applies a proposal. Of a session start it
   applied, the chat keeps the task ID and one fixed start status, and nothing of the
-  start plan.
+  start plan. Of a queue change it applied, the chat keeps the state asked for and one
+  fixed result, and nothing of the board.
 - The Sessions list and session view receive only the task ID, task state, feature name,
   step, and the number of the GitHub issue the task was promoted from. That is a
   deliberate widening of exposure (the issue number was added on 2026-10-09): the part

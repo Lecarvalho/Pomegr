@@ -5,7 +5,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
-import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, START_FAILURES, START_OPERATION } from "./agent-chat-proposal.mjs";
+import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION } from "./agent-chat-proposal.mjs";
 
 export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
 export const CONVERSATION_LIMIT = 50;
@@ -64,6 +64,8 @@ function storedResult(result) {
     if (result.ok) return result.start === "started" ? { ok: true, start: "started" } : null;
     return result.error === "not_started" && START_FAILURES.includes(result.start) ? { ok: false, error: "not_started", start: result.start } : null;
   }
+  // The outcome of a queue change the monitor accepted. One it refused is an ordinary failure.
+  if (result.queue !== undefined) return result.ok && QUEUE_RESULTS.includes(result.queue) ? { ok: true, queue: result.queue } : null;
   const taskId = typeof result.taskId === "string" && TASK_ID.test(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
   return typeof result.error === "string" && RESULT_ERRORS.has(result.error) ? { ok: false, error: result.error, ...taskId } : null;
@@ -78,6 +80,9 @@ function storedProposal(proposal) {
   const start = operations.some((operation) => operation.op === START_OPERATION);
   // A start stands alone, and it either launched (`applied`) or waits for the owner's next answer.
   if (start && (operations.length !== 1 || proposal.state === "partial")) return null;
+  // A queue change stands alone too, and it is `applied` only when the monitor accepted the state it asked for.
+  const queueOn = queueProposalState({ operations });
+  if (operations.some((operation) => operation.op === QUEUE_OPERATION) && (queueOn === null || proposal.state === "partial")) return null;
   const stored = { id: proposal.id, summary: proposal.summary, operations, state: proposal.state };
   if (proposal.results !== undefined) {
     if (!Array.isArray(proposal.results) || proposal.results.length !== operations.length) return null;
@@ -85,6 +90,9 @@ function storedProposal(proposal) {
     if (results.some((result) => result === null)) return null;
     if (results.some((result) => result.start !== undefined) !== start) return null;
     if (start && results[0].ok !== (proposal.state === "applied")) return null;
+    if (results.some((result) => result.queue !== undefined) && queueOn === null) return null;
+    if (queueOn !== null && (results[0].ok !== (proposal.state === "applied") || results[0].taskId !== undefined
+      || (results[0].ok && !(queueOn ? ["on", "blocked"] : ["off"]).includes(results[0].queue)))) return null;
     stored.results = results;
   }
   return stored;

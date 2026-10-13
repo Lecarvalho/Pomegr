@@ -82,9 +82,10 @@ function checkFacts(state, blocks, checkRead) {
   const comparison = repository.comparison;
   const branchCommits = repository.isMain === true ? false
     : comparison?.kind === "base" && Number.isSafeInteger(comparison.ahead) ? comparison.ahead > 0 || comparison.integrated === true : null;
+  // The session's pull requests are the ones its pull-request block lists: those it created and those of its branch.
   const pulls = blocks.pullRequests;
   const branchPulls = pulls?.status === "ready" && Array.isArray(pulls.items)
-    ? pulls.items.filter((item) => item?.headBranch === repository.branch && PULL_REQUEST_STATES.includes(item.state))
+    ? pulls.items.filter((item) => PULL_REQUEST_STATES.includes(item?.state))
     : null;
   const ci = branchPulls ? ciPassed(branchPulls, checkRead) : { value: null, readAt: null };
   const blockReadAt = timeOf(repository.readAt);

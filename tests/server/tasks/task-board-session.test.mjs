@@ -256,9 +256,9 @@ test("a waiting task carries the reading the report's rule gives for its checked
   assert.deepEqual(calls, [SESSION]);
   assert.deepEqual(filled.tasks[0].session, { ...UNKNOWN(SESSION), checks: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }] });
   assert.deepEqual(filled.tasks[0].session.checks, verifyChecks(["ci_passed", "pr_open"], OPEN_PULL));
-  // A fact read before the work that could have changed it is not a pass here either.
-  const stale = fillTaskSessions({ tasks: [waiting()] }, () => null, () => ({ ...OPEN_PULL, workAt: { repository: 30 } }));
-  assert.deepEqual(stale.tasks[0].session.checks.map((entry) => entry.passed), [false, false]);
+  // A check status read before the work that could have changed it is not a pass here either; the listed pull request still is.
+  const stale = fillTaskSessions({ tasks: [waiting()] }, () => null, () => ({ ...OPEN_PULL, ciPassed: true, workAt: { repository: 30 } }));
+  assert.deepEqual(stale.tasks[0].session.checks.map((entry) => entry.passed), [true, false]);
 });
 
 test("a task with a report, an outcome, or no checked condition carries no reading and reads no fact", () => {
@@ -450,6 +450,19 @@ test("the work times are the latest end of the session's finished commands and r
   assert.deepEqual(workAt(checkState({ executionTasks: [null, "x", 7], agents: [null, { executionTasks: "x" }], activity: { items: [null, 1] } })), { tree: null, repository: null });
 });
 
+test("the pull requests judged are the ones the session's block lists, on its branch or not", () => {
+  const states = (items, overrides) => checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock(items, overrides) }) })).pullRequestStates;
+  // A pull request the session created from another branch than the one recorded for it.
+  const created = { state: "open", headBranch: "tasks/T-64", url: pullUrl(1), association: "session" };
+  assert.deepEqual(states([created]), ["open"]);
+  assert.deepEqual(states([created, openPull(2, "merged")]), ["open", "merged"]);
+  // An item with no known state is not judged, and a block that is not ready is unknown.
+  assert.deepEqual(states([{ ...created, state: "unknown" }, null]), []);
+  assert.equal(states([created], { status: "unavailable" }), null);
+  const waitingOnCi = checkState({ session: checkSession({ pullRequests: pullBlock([created]) }), executionTasks: [task("pull_request", null, "running")] });
+  assert.equal(verifyChecks(["pr_open"], checkFacts(waitingOnCi))[0].passed, true, "a command still running does not hide the listed pull request");
+});
+
 test("a check judges a fact only when it was read after the work it judges", () => {
   const passes = (publicState) => Object.fromEntries(verifyChecks(TASK_CHECKS, checkFacts(publicState)).map((result) => [result.check, result.passed]));
   const stamped = (readAt, extra = {}) => checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(readAt) }) }), ...extra });
@@ -459,8 +472,8 @@ test("a check judges a fact only when it was read after the work it judges", () 
   // A repository block with no read stamp has no tree read time, so the tree is unknown.
   assert.deepEqual(passes(checkState()), { ...all, tree_clean: false, commit_on_branch: false });
   // A push that ended after the pull requests (6000) and the check status (7000) were read, but before the
-  // comparison (9000) was, leaves only the first two unknown.
-  const afterReads = { pr_open: false, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: false };
+  // comparison (9000) was, leaves only the check status unknown: the pull request is the one the block lists.
+  const afterReads = { pr_open: true, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: false };
   assert.deepEqual(passes(stamped(9_000, { executionTasks: [task("git_push", iso(7_500))] })), afterReads);
   assert.deepEqual(passes(stamped(9_000, { executionTasks: [task("git_push", iso(4_000))] })), all);
   // Any command after the tree was read, or a command still running, leaves the tree unknown.
@@ -596,10 +609,10 @@ test("the work times are those committed once the read has answered", async () =
     state = checkState({ executionTasks: gitDone(8_000) });
     return { repository: checkRepository({ readAt: iso(9_000) }), pullRequests: pullBlock([openPull()], { readAt: iso(9_000) }) };
   };
-  assert.equal(passes(await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: passedRead })).pr_open, true);
+  assert.equal(passes(await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: passedRead })).commit_on_branch, true);
   // A command still running when the read answered leaves its facts unknown.
   const running = { get: () => ({ publicState: checkState({ executionTasks: [task("git_push", null, "running")] }) }) };
-  assert.equal(passes(await readTaskCheckFacts(SESSION, { observationStore: running, readNow: async () => ({ repository: checkRepository({ readAt: iso(9_000) }), pullRequests: pullBlock([openPull()], { readAt: iso(9_000) }) }), checkRead: passedRead })).pr_open, false);
+  assert.equal(passes(await readTaskCheckFacts(SESSION, { observationStore: running, readNow: async () => ({ repository: checkRepository({ readAt: iso(9_000) }), pullRequests: pullBlock([openPull()], { readAt: iso(9_000) }) }), checkRead: passedRead })).commit_on_branch, false);
 });
 
 test("a read that answers nothing, throws, or passes its deadline is judged on the committed facts", async () => {

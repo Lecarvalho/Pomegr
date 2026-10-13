@@ -554,10 +554,10 @@ test("a report is verified on a read made when it arrives, not on the older comm
   assert.equal(taskOf(env).state, "needs_review");
 });
 
-test("without the read the same report is judged on the stale committed facts, and neither condition passes", async (context) => {
+test("without the read the same report is judged on the stale committed facts: the listed pull request passes, the stale check status does not", async (context) => {
   const env = await setup(context, { facts: STALE });
   startedTask(env, { checks: ["pr_open", "ci_passed"] });
-  assert.deepEqual((await complete(env)).json.results, [{ check: "pr_open", passed: false }, { check: "ci_passed", passed: false }]);
+  assert.deepEqual((await complete(env)).json.results, [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }]);
 });
 
 test("a condition the report's read finds false gives needs review", async (context) => {

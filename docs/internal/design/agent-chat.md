@@ -172,6 +172,8 @@ The task board is in [Task board design](task-board.md).
 - A pending proposal has no chip.
 - A session start that launched has the positive chip **Session started** in place of **Applied**.
 - The card is a region named “Proposed board changes”, or “Proposed session start” for a session start.
+- The card of a queue change is a region named “Proposed queue change”.
+- A queue change that was applied has the standard positive chip **Applied**.
 
 ### Operations
 
@@ -190,10 +192,13 @@ The task board is in [Task board design](task-board.md).
 | **Remove T-n from queue** | Nothing more |
 | **Move T-n to step n** | Nothing more |
 | **Start a session for T-n** | The board's current first line of that task in muted text |
+| **Turn the queue on** | Nothing more |
+| **Turn the queue off** | Nothing more |
 
 - The line of what is set holds “in feature · step n”, provider, model, and effort, “Complete when: PR open, CI passed”, and “then add to queue”.
 - **Update T-n** leaves the current first line out when the board does not hold the task.
 - **Start a session for T-n** is the only row of its card.
+- **Turn the queue on** or **Turn the queue off** is the only row of its card.
 
 ### Results
 
@@ -207,12 +212,18 @@ The task board is in [Task board design](task-board.md).
 | “Not run”, for an operation after the one that failed | Muted |
 | “Session started in a new terminal window.”, for a session start that launched | Green |
 | “Not started.” and one fixed sentence for the start status, for a session start that launched nothing | The error color |
+| “Queue turned on.” or “Queue turned off.”, for a queue change that was made | Green |
+| “Queue turned on. A stalled or blocked task holds it, so nothing starts until you resolve that task.” | Muted |
+| “Queue not changed. Pomegr refused this change.”, for a queue change the monitor refused | The error color |
+| “Queue not changed. Pomegr did not answer. Try again.”, for a queue change that did not reach the monitor | The error color |
 
 - A start that a gate held reads “Not started. A start gate held this task.”
 - While that card is pending, one muted 12px line follows with the Task modal's own held line, “This task is held: ...”, from the board's current gate readings.
 - The held line is left out when the board reads no hold now.
 - The other start sentences name Windows only, a missing command-line tool, a missing plugin, a task that could not be started, an unsupported provider, a task that no longer exists, another start under way, a start that could not be made, a dirty task worktree, and a dirty repository.
 - A session start that launched nothing keeps its result and stays pending.
+- A queue change that was not made keeps its result and stays pending.
+- No result of a queue change says that a task started.
 
 ### Footer
 
@@ -227,6 +238,11 @@ The task board is in [Task board design](task-board.md).
 - **Start session** is the confirmation of the start, so no native dialog follows it.
 - On a paired device a session start has no Primary, only **Dismiss**.
 - On a paired device the footer line of a session start reads “Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.”
+- The Primary of a queue change reads **Turn queue on** or **Turn queue off**, on a paired device too.
+- The Primary names the state the proposal asks for, never the opposite of the queue's current state.
+- The footer line of a queue change that turns the queue on reads “Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, one step at a time, as each passes the start gates.”
+- The footer line of a queue change that turns the queue off reads “Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.”
+- No native dialog follows the Primary of a queue change.
 
 ### Unreadable proposal
 
@@ -302,6 +318,7 @@ The task board is in [Task board design](task-board.md).
 - It renders the panel from invented conversations: empty, with a pending proposal holding all eight operations, with an answer being written, as the conversation list, with the notes under an answer and the unreadable-proposal notice, and with no repository.
 - It renders the proposal card pending, with a delete, in flight, applied, partly applied, with a task that was not found, with every result word, and dismissed.
 - It renders the session start proposed, held, failed, launched, and on a paired device.
+- It renders the queue change proposed for on and for off, on a paired device, turned on, turned on and held, turned off, and not changed.
 - It renders the composer with an error, over the limit, and while an answer is written elsewhere.
 - It renders the answer text, including HTML and a link shown as literal text.
 - The panel's own behavior (focus, Escape, the repository choice, polling, and the desktop bridge) is specified here but is not rendered there.

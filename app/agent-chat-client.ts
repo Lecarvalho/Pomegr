@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_PROPOSAL_ID_PATTERN,
-  AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES,
+  AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES,
   type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatConversation, type AgentChatConversationSummary,
   type AgentChatDoneResult, type AgentChatError, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
   type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSendResult, type AgentChatTurn,
@@ -67,6 +67,10 @@ function parseResult(value: unknown): AgentChatOperationResult | null {
     const start = AGENT_CHAT_START_FAILURES.find((status) => status === result.start);
     return start && result.error === "not_started" ? { ok: false, error: "not_started", start } : null;
   }
+  if (result.queue !== undefined) {
+    const queue = AGENT_CHAT_QUEUE_RESULTS.find((state) => state === result.queue);
+    return result.ok && queue ? { ok: true, queue } : null;
+  }
   const taskId = text(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
   return text(result.error) && result.error !== "not_started" ? { ok: false, error: result.error as Exclude<Extract<AgentChatOperationResult, { ok: false }>["error"], "not_started">, ...taskId } : null;
@@ -78,7 +82,8 @@ function parseProposal(value: unknown): AgentChatProposal | null {
     || !(AGENT_CHAT_PROPOSAL_STATES as readonly string[]).includes(proposal.state as string)) return null;
   const operations = proposal.operations.filter((entry): entry is AgentChatBoardOperation => {
     const operation = record(entry);
-    return Boolean(operation) && (AGENT_CHAT_BOARD_OPERATIONS as readonly string[]).includes(operation!.op as string);
+    return Boolean(operation) && (AGENT_CHAT_BOARD_OPERATIONS as readonly string[]).includes(operation!.op as string)
+      && (operation!.op !== "set_queue" || typeof operation!.on === "boolean");
   });
   if (operations.length !== proposal.operations.length) return null;
   const parsed: AgentChatProposal = { id: proposal.id, summary: proposal.summary, operations, state: proposal.state as AgentChatProposal["state"] };

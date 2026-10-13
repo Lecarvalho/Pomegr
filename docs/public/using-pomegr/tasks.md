@@ -105,11 +105,11 @@ with **PR open** and **Tree clean** checked.
 
 | Condition | Passes when |
 | --- | --- |
-| **PR open** | The pull request for the session's branch is open. |
+| **PR open** | A pull request that the session's Repository tab lists is open: one the session created, or one for its branch. |
 | **Tree clean** | Pomegr's record of the session's repository lists no uncommitted file. |
 | **Commit on branch** | The session's branch is not the main branch and has a commit of its own, merged since or not. |
 | **PR merged** | That pull request is merged. |
-| **CI passed** | Every check on the branch's pull request passed. Pending, failed, and missing checks do not pass. |
+| **CI passed** | Every check on that pull request passed. Pending, failed, and missing checks do not pass. |
 
 A sixth checkbox, **Validated with the user**, asks the agent to validate the work
 with you before it reports. Pomegr cannot observe that, so the agent judges it and
@@ -368,7 +368,9 @@ so the worktrees do not show as changes in the repository.
 The queue starts tasks without you. It is **Off** for every repository until you
 select **On** in the **Queue** switch of the Tasks header. Add a task with
 **Add to queue** in its task window. With the queue off, queued tasks start only when you start
-them. Turning it off never touches a running session.
+them. Turning it off never touches a running session. You can also ask Aril to turn the
+queue on or off: see
+[Turn the queue on or off from the chat](agent-chat.md#turn-the-queue-on-or-off-from-the-chat).
 
 The **Ready** column shows what runs when. Each step is headed **Parallel** or
 **One task**. Tasks with no feature appear under **Single tasks**. To change a

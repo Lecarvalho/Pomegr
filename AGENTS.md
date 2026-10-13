@@ -16,8 +16,9 @@ copying it here.
   depend on it.
 - In the desktop app and on a paired device, Pomegr also has an agent chat. The owner
   talks to Aril, an agent that reads the task board and Pomegr's observations and
-  proposes board changes and, when the owner asks, the start of one task's session. Aril
-  changes and starts nothing: the owner applies a proposal.
+  proposes board changes and, when the owner asks, the start of one task's session or
+  turning the repository's queue on or off. Aril changes and starts nothing: the owner
+  applies a proposal.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -92,7 +93,9 @@ These rules always apply:
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
   changes the board only through the fixed task actions, after the owner applies a
   proposal. It starts a task's session only through the manual start, after the owner
-  confirms a start proposal in the desktop app.
+  confirms a start proposal in the desktop app. It turns a queue on or off only through
+  the queue action of the Tasks page, with the state the proposal names, after the owner
+  applies a queue proposal in the desktop app or on a paired device.
 - Start processes with `execFile` or `spawn` and an argument array. Never put
   session-derived text into a command line or a path.
 - Never commit `.env`, transcripts, credentials, build output, or Wrangler state.

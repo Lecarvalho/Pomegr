@@ -10,12 +10,12 @@ const PASSING = Object.freeze({ treeClean: true, branchCommits: true, pullReques
 const passed = (results) => Object.fromEntries(results.map((result) => [result.check, result.passed]));
 const only = (check, facts) => passed(verifyChecks([check], facts))[check];
 
-// The entries of `readAt` and `workAt` that date each check.
+// The entries of `readAt` and `workAt` that date each check. A pull request's state is dated by its read alone.
 const DATED_BY = Object.freeze({
-  pr_open: { read: "pullRequests", work: "repository" },
+  pr_open: { read: "pullRequests", work: null },
   tree_clean: { read: "tree", work: "tree" },
   commit_on_branch: { read: "branch", work: "repository" },
-  pr_merged: { read: "pullRequests", work: "repository" },
+  pr_merged: { read: "pullRequests", work: null },
   ci_passed: { read: "ci", work: "repository" },
 });
 
@@ -72,7 +72,30 @@ test("CI passed needs a known passing check status", () => {
   assert.deepEqual(verifyChecks(["ci_passed"], { ciPassed: true, readAt: READ_AT, workAt: WORK_AT }), [{ check: "ci_passed", passed: true }]);
 });
 
-for (const [check, { read, work }] of Object.entries(DATED_BY)) {
+for (const [check, { read }] of Object.entries(DATED_BY).filter(([, dated]) => dated.work === null)) {
+  test(`${check} passes on the pull-request state of a dated read, whatever the session's work`, () => {
+    const facts = (readAt, workAt) => ({ ...PASSING, readAt: { ...READ_AT, ...readAt }, workAt: { ...WORK_AT, ...workAt } });
+    assert.equal(only(check, facts({}, {})), true, "fresh");
+
+    // The Repository tab lists the pull request from this same read, so later or running work does not hide it.
+    assert.equal(only(check, facts({ [read]: 999 }, {})), true, "read before the work");
+    for (const workAt of [{ repository: 2001 }, { repository: Number.POSITIVE_INFINITY, tree: Number.POSITIVE_INFINITY }, { repository: undefined }]) {
+      assert.equal(only(check, facts({}, workAt)), true, `work ${JSON.stringify(workAt)}`);
+    }
+    for (const workAt of [undefined, "1000", [], 1000]) assert.equal(only(check, { ...PASSING, workAt }), true, `workAt ${JSON.stringify(workAt)}`);
+
+    // No read time, or one that is not a finite number: unknown.
+    for (const bad of [null, undefined, "2000", Number.NaN, Number.POSITIVE_INFINITY, {}, true]) {
+      assert.equal(only(check, facts({ [read]: bad }, {})), false, `read time ${String(bad)}`);
+    }
+    for (const readAt of [undefined, null, "2000", [], {}]) assert.equal(only(check, { ...PASSING, readAt }), false, `readAt ${JSON.stringify(readAt)}`);
+
+    assert.equal(only(check, { ...PASSING, pullRequestStates: [] }), false, "failing value");
+    for (const other of Object.keys(READ_AT).filter((key) => key !== read)) assert.equal(only(check, facts({ [other]: null }, {})), true, `unrelated read time ${other}`);
+  });
+}
+
+for (const [check, { read, work }] of Object.entries(DATED_BY).filter(([, dated]) => dated.work !== null)) {
   test(`${check} passes only on a fact read at a known time that is not before the work it judges`, () => {
     const facts = (readAt, workAt) => ({ ...PASSING, readAt: { ...READ_AT, ...readAt }, workAt: { ...WORK_AT, ...workAt } });
 
@@ -115,12 +138,13 @@ test("the tree and the repository are dated by different work", () => {
   const facts = { ...PASSING, workAt: { tree: 3000, repository: 1000 } };
   assert.deepEqual(passed(verifyChecks(TASK_CHECKS, facts)), { pr_open: true, tree_clean: false, commit_on_branch: true, pr_merged: true, ci_passed: true });
   const repository = { ...PASSING, workAt: { tree: 1000, repository: 3000 } };
-  assert.deepEqual(passed(verifyChecks(TASK_CHECKS, repository)), { pr_open: false, tree_clean: true, commit_on_branch: false, pr_merged: false, ci_passed: false });
+  assert.deepEqual(passed(verifyChecks(TASK_CHECKS, repository)), { pr_open: true, tree_clean: true, commit_on_branch: false, pr_merged: true, ci_passed: false });
   const treeRead = { ...PASSING, readAt: { ...READ_AT, tree: null } };
   assert.deepEqual(passed(verifyChecks(TASK_CHECKS, treeRead)), { pr_open: true, tree_clean: false, commit_on_branch: true, pr_merged: true, ci_passed: true });
 });
 
 test("a report with a stale or undated fact does not complete a task", () => {
-  assert.equal(allChecksPassed(verifyChecks(TASK_CHECKS, { ...PASSING, readAt: { ...READ_AT, pullRequests: 999 } })), false);
+  assert.equal(allChecksPassed(verifyChecks(TASK_CHECKS, { ...PASSING, readAt: { ...READ_AT, ci: 999 } })), false);
+  assert.equal(allChecksPassed(verifyChecks(TASK_CHECKS, { ...PASSING, readAt: { ...READ_AT, pullRequests: null } })), false);
   assert.equal(allChecksPassed(verifyChecks(["tree_clean"], { treeClean: true, branchCommits: true, pullRequestStates: [], ciPassed: true })), false);
 });

@@ -110,7 +110,8 @@ function Panel({ state = "ready", conversation: shown = null, turn = null, pendi
 
 const START_SUMMARY = "Start a session for T-12.";
 const start = (state: AgentChatProposal["state"], results?: AgentChatOperationResult[]): AgentChatProposal => ({ id: "p-0123456789ac", summary: START_SUMMARY, operations: [{ op: "start_session", id: "T-12" }], state, ...(results ? { results } : {}) });
-const HELD_LINE = "This task is held: Claude Code is above 85% of the five-hour window.";
+const queue = (on: boolean, state: AgentChatProposal["state"], results?: AgentChatOperationResult[]): AgentChatProposal => ({ id: "p-0123456789ad", summary: on ? "Turn the queue on." : "Turn the queue off.", operations: [{ op: "set_queue", on }], state, ...(results ? { results } : {}) });
+const HELD_LINE ="This task is held: Claude Code is above 85% of the five-hour window.";
 
 function Card({ label, note, shown, busy = false, startHere = true, held = false }: { label: string; note?: string; shown: AgentChatProposal; busy?: boolean; startHere?: boolean; held?: boolean }) {
   return <Sample label={label} note={note}><div className="designSystemTaskFrame">
@@ -163,6 +164,13 @@ export function AgentChatSection() {
       <Card label="Session start, failed" shown={start("pending", [{ ok: false, error: "not_started", start: "plugin_missing" }])} />
       <Card label="Session start, launched" note="Only a launch the desktop confirmed settles the card." shown={start("applied", [{ ok: true, start: "started" }])} />
       <Card label="Session start, on a paired device" note="A phone cannot apply a start from the chat, so the card has no Primary." shown={start("pending")} startHere={false} />
+      <Card label="Queue change, on, proposed" note="A queue change is its own card with one row. The line under the actions says that Pomegr may then start tasks by itself." shown={queue(true, "pending")} />
+      <Card label="Queue change, off, proposed" shown={queue(false, "pending")} />
+      <Card label="Queue change, on a paired device" note="A phone can apply a queue change, so the card keeps its Primary." shown={queue(true, "pending")} startHere={false} />
+      <Card label="Queue change, turned on" shown={queue(true, "applied", [{ ok: true, queue: "on" }])} />
+      <Card label="Queue change, turned on and held" note="The queue is on, and a stalled or blocked task holds it, so the result is muted." shown={queue(true, "applied", [{ ok: true, queue: "blocked" }])} />
+      <Card label="Queue change, turned off" shown={queue(false, "applied", [{ ok: true, queue: "off" }])} />
+      <Card label="Queue change, not changed" note="The queue was not changed. The card stays open to another try, which asks for the same state." shown={queue(true, "pending", [{ ok: false, error: "unavailable" }])} />
     </div>
     <div className="designSystemGrid">
       <Sample label="Composer, error" note="One fixed line as an alert; the typed text stays.">

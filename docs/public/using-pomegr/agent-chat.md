@@ -1,6 +1,6 @@
 ---
 title: "Agent chat"
-description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, order the board, advise on models, and start a task's session. You approve every change and every start."
+description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, order the board, advise on models, start a task's session, and turn the queue on or off. You approve every change and every start."
 ---
 
 # Agent chat
@@ -8,8 +8,8 @@ description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, ord
 **Aril** is the agent built into Pomegr that helps you organize a repository's task
 board. You ask in a chat panel at the bottom right of the window. Aril reads the board,
 the repository's files, and what Pomegr observed, then answers. Aril never changes the
-board by itself: it proposes changes, and you apply them. Aril starts no session by
-itself either: it proposes the start, and you apply it.
+board by itself: it proposes changes, and you apply them. Aril starts no session and
+turns no queue on or off by itself either: it proposes that, and you apply it.
 
 ## Before you start
 
@@ -65,9 +65,10 @@ Pomegr stops at the first change that fails and does not run the ones after it. 
 for the rest once you know why it failed.
 
 A proposal can create a feature, create, update, delete, or move a task, add a task to
-the queue or remove it, and move a task to another step. It cannot turn the queue on or
-off, mark a task done, or requeue a task. Those stay with you, as described in
-[Tasks](tasks.md).
+the queue or remove it, and move a task to another step. It cannot mark a task done,
+requeue a task, or change the queue's threshold or schedule. Those stay with you, as
+described in [Tasks](tasks.md). Starting a session and turning the queue on or off are
+proposals of their own, described below.
 
 ## Start a session from the chat
 
@@ -97,6 +98,41 @@ session cannot start a second one.
 - To start in a separate worktree while the repository has uncommitted changes, use the
   task window.
 
+## Turn the queue on or off from the chat
+
+Ask Aril to turn this repository's queue on or off, for example "turn the queue on".
+Aril answers with a queue proposal that names the state you asked for. A queue change is
+always a proposal of its own.
+
+1. Select **Turn queue on** or **Turn queue off** on the proposal, or **Dismiss** to
+   drop it. Nothing changes before that. You can do this in the desktop app or on a
+   paired phone.
+2. Pomegr changes the queue as the **Queue** switch of the Tasks header does. See
+   [Run the queue](tasks.md#run-the-queue).
+3. Read the result on the proposal.
+
+| Result | What it means |
+| --- | --- |
+| **Queue turned on.** | The queue is on. Pomegr starts the queued tasks by itself, as described below. |
+| **Queue turned on.** and a line about a stalled or blocked task | The queue is on, but a task holds it. Resolve that task on the Board. |
+| **Queue turned off.** | The queue is off. No new task starts. Running sessions continue. |
+| **Queue not changed.** and a reason | Nothing changed. Select the same button again to try once more. |
+
+> **Caution:** Turning the queue on lets Pomegr start sessions without asking again. It
+> starts the queued tasks on the computer that runs Pomegr, one step at a time, while
+> Pomegr is open there. Read the **Ready** column before you turn the queue on.
+
+- Aril proposes a queue change only when you ask for one.
+- A proposal names **On** or **Off**. It never switches the queue to the opposite of
+  what it is, so applying it again cannot reverse the queue.
+- Every start still passes the same checks as on the Tasks page: the order and steps of
+  the queue, each task's own start time, the queue's schedule, and the
+  [start gates](tasks.md#start-gates).
+- Aril does not start the tasks and cannot tell you which ones will start. The Board
+  shows that.
+- Aril cannot change the usage threshold or the schedule of the queue. Set them on the
+  Tasks page.
+
 > **Caution:** Aril can be wrong. Its advice on models is a reading of the tasks
 > recorded on your board, not a measurement. Check a proposal before you apply it.
 
@@ -111,8 +147,9 @@ session cannot start a second one.
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without
   encryption, like the rest of phone access. Anyone who holds a paired phone can read
-  the conversations, send a message, and apply a proposal of board changes. A start that
-  Aril proposed can be applied only in the desktop app.
+  the conversations, send a message, and apply a proposal of board changes or a queue
+  change. Turning the queue on lets Pomegr start queued tasks on your computer. A start
+  that Aril proposed can be applied only in the desktop app.
 
 ## If the result is missing
 
@@ -127,4 +164,6 @@ session cannot start a second one.
 | Aril wrote a proposal that Pomegr could not read | Ask for the proposal again. Nothing was changed. |
 | A line says **No longer possible** or **Not found** | The board changed after Aril wrote the proposal. Ask again. |
 | A start proposal says **Not started.** | Read the reason on the proposal. [Start gates](tasks.md#start-gates) explains a held start. Select **Start session** again when it is gone. |
+| A queue proposal says **Queue not changed.** | Check that Pomegr shows **Local monitor**, then select the same button again. |
+| The queue is on and nothing starts | Open **Tasks**. A banner or a "Waiting:" line names what holds the queue. See [Run the queue](tasks.md#run-the-queue). |
 | A session can be started from this chat only in the Pomegr desktop app | Apply the start proposal in the desktop app, or start the task from its window. |
