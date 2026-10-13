@@ -361,12 +361,16 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     // A monitor from before every report went to Review still answers `done`.
     if (answer.state === "done") return "Task reported complete. Pomegr marked it done.";
     if (answer.state !== "needs_review") return null;
-    const failed = (Array.isArray(answer.results) ? answer.results : [])
-      .filter((entry) => entry && entry.passed === false && Object.hasOwn(CHECK_LABELS, entry.check)).map((entry) => CHECK_LABELS[entry.check]);
-    if (failed.length === 0) return input.attention !== undefined
+    const open = (Array.isArray(answer.results) ? answer.results : []).filter((entry) => entry && entry.passed === false && Object.hasOwn(CHECK_LABELS, entry.check));
+    // A monitor from before the two were told apart marks nothing `unavailable`.
+    const labels = (unavailable) => open.filter((entry) => (entry.unavailable === true) === unavailable).map((entry) => CHECK_LABELS[entry.check]).join(", ");
+    const failed = labels(false);
+    const unverified = labels(true);
+    if (open.length === 0) return input.attention !== undefined
       ? "Task reported complete. Pomegr put it in Review for the user's attention; do not report again."
       : "Task reported complete. Pomegr put it in Review; the user marks it done. Do not report again.";
-    return `Task reported complete, but Pomegr could not confirm: ${failed.length > 0 ? failed.join(", ") : "a checked condition"}. The task now needs the user's review; do not report again.`;
+    const parts = [failed && `these conditions did not pass: ${failed}`, unverified && `Pomegr could not verify: ${unverified} (it had no current evidence, which does not mean the condition failed)`].filter(Boolean);
+    return `Task reported complete, but ${parts.join("; and ")}. The task now needs the user's review; do not report again.`;
   }));
 
   const feature = async (tool, path, input, extra, body, done) => {

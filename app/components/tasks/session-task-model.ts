@@ -1,6 +1,6 @@
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
-import type { Task, TaskBoard, TaskCheck, TaskFeature, TaskRun } from "../../../shared/task-contract";
-import { AGENT_REPORTED_LABEL, CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, isAgentJudged, observedModelDiffers } from "./task-fields";
+import type { Task, TaskBoard, TaskCheck, TaskCheckOutcome, TaskFeature, TaskRun } from "../../../shared/task-contract";
+import { AGENT_REPORTED_LABEL, CHECK_LABELS, CHECK_OUTCOME_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, checkOutcome, isAgentJudged, observedModelDiffers } from "./task-fields";
 import { highestStep, featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
 
@@ -71,9 +71,11 @@ export function referenceChip(state: SessionTaskReference["state"]): { label: st
 
 const OUTCOME_STATES = new Set<Task["state"]>(["needs_review", "stalled", "blocked", "done"]);
 
-function failedCount(task: Task) {
-  return (task.report?.results ?? []).filter((result) => !result.passed).length;
+function outcomeCount(task: Task, outcome: TaskCheckOutcome) {
+  return (task.report?.results ?? []).filter((result) => checkOutcome(result) === outcome).length;
 }
+
+const checksOf = (count: number) => `${count} ${count === 1 ? "check" : "checks"}`;
 
 /** The outcome chip of the Task tab. A task with no outcome draws none: the session header already shows its state. */
 export function outcomeChip(task: Task): { label: string; tone: "warning" | "neutral" } | null {
@@ -84,8 +86,10 @@ export function outcomeChip(task: Task): { label: string; tone: "warning" | "neu
 export function completionSummary(task: Task): string | null {
   if (task.report?.blockReason) return "The agent cannot continue";
   if (task.state === "needs_review") {
-    const failed = failedCount(task);
-    if (failed > 0) return `${failed} ${failed === 1 ? "check" : "checks"} did not pass`;
+    const failed = outcomeCount(task, "failed");
+    const unverified = outcomeCount(task, "unavailable");
+    if (failed > 0) return unverified > 0 ? `${checksOf(failed)} did not pass, ${unverified} not verified` : `${checksOf(failed)} did not pass`;
+    if (unverified > 0) return `${checksOf(unverified)} not verified`;
     if (task.report?.attention) return "The agent asks for your attention";
     return (task.report?.results ?? []).length > 0 ? "Every check passed" : null;
   }
@@ -122,7 +126,9 @@ export function checkRows(task: Task): CheckRow[] {
     if (isAgentJudged(check)) return { check, label, result: AGENT_REPORTED_LABEL, tone: "waiting" };
     const found = task.report.results.find((entry) => entry.check === check);
     if (!found) return { check, label, result: "Not checked", tone: "waiting" };
-    return found.passed ? { check, label, result: "Passed", tone: "passed" } : { check, label, result: "Did not pass", tone: "failed" };
+    const outcome = checkOutcome(found);
+    if (outcome === "unavailable") return { check, label, result: CHECK_OUTCOME_LABELS.unavailable, tone: "waiting" };
+    return outcome === "passed" ? { check, label, result: "Passed", tone: "passed" } : { check, label, result: "Did not pass", tone: "failed" };
   });
 }
 

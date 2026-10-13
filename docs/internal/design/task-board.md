@@ -527,6 +527,7 @@ The rail holds these panels in order: **Complete when**, **Run**, and the Featur
 The **Complete when** panel holds these parts:
 
 - The head with the heading, the outcome chip, and a muted summary such as “Not yet reported” or “1 check did not pass”.
+- The summary counts unverified checks apart from failed ones: “2 checks not verified”, or “1 check did not pass, 1 not verified”.
 - The outcome chip shows only for Needs review, Stalled, Blocked by agent, and Done.
 - The checks, as 36px rows: a 14px glyph, the condition, and a right-aligned result.
 - A ruled **Definition of done**, cut to three lines, over the agent-reported status and its own **Show all**.
@@ -536,6 +537,7 @@ The **Complete when** panel holds these parts:
 | --- | --- | --- |
 | Passed, Holds now | Green | Tick |
 | Did not pass | Error | Cross |
+| Not verified | Muted | Ring |
 | Any other result | Muted | Ring |
 
 The **Run** panel holds these parts:
