@@ -191,10 +191,12 @@ type TaskBoard = {
 - `run.remoteControl` asks that the task's Claude Code session start with Remote
   Control on, so its owner can also reach it from another device (see
   [Starting a session](#starting-a-session)). It is one boolean, off when absent, and
-  valid alone. Codex has no Remote Control, so `true` on a Codex task is invalid, in
+  valid alone. Pomegr does not enable Remote Control for Codex tasks, so `true` on a Codex task is invalid, in
   the desktop actions and in `add_task` alike. Only the `create` and `update` actions
   and `add_task` set it; `update_task` only turns it off, when it moves a task to Codex. The `add_task` tool takes it as the optional input
   `remote_control`, a boolean and nothing else.
+  Codex offers [Remote access](https://developers.openai.com/blog/mastering-codex-remote-for-engineering), but its experimental CLI command manages a shared app-server daemon.
+  Pomegr does not start or pair that daemon; task forms hide the checkbox for Codex.
 - `run.keepWorktree` says that the task's own worktree and branch stay when the task is
   marked done. It is one boolean, on the run only when it is `true`: removing them is the
   default (task T-27, product-owner decision of 2026-10-11), and the task forms show it as

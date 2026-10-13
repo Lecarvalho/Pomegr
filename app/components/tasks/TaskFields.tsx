@@ -96,14 +96,14 @@ export function RunFields({ run, models, disabled, onChange }: { run: TaskRun; m
           onClick={() => { if (run.effort !== effort) onChange({ ...run, effort }); }}>{EFFORT_LABELS[effort]}</button>)}
       </div>
     </div>
-    <div className="newTaskField taskRemoteControl">
+    {remote && <div className="newTaskField taskRemoteControl">
       <div className="taskCheckRow">
-        <input id={remoteId} type="checkbox" checked={remote && run.remoteControl === true} disabled={disabled || !remote} aria-describedby={remoteHelperId}
+        <input id={remoteId} type="checkbox" checked={run.remoteControl === true} disabled={disabled} aria-describedby={remoteHelperId}
           onChange={(event) => onChange(withRemoteControl(run, event.currentTarget.checked))} />
         <label htmlFor={remoteId}>{REMOTE_CONTROL_LABEL}</label>
       </div>
-      <p id={remoteHelperId} className="newTaskHelper">{remote ? "Starts the session with Remote Control, so you can also open it on your phone." : "Claude Code only."}</p>
-    </div>
+      <p id={remoteHelperId} className="newTaskHelper">Starts the session with Remote Control, so you can also open it on your phone.</p>
+    </div>}
     <div className="newTaskField taskRemoveWorktree">
       <div className="taskCheckRow">
         <input id={removeId} type="checkbox" checked={run.keepWorktree !== true} disabled={disabled} aria-describedby={removeHelperId}
