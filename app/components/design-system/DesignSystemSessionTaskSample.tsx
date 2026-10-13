@@ -25,6 +25,6 @@ export function SessionTaskSection() {
     <div className="designSystemGrid">
       <Sample label="Table footnote" note="One muted line under the table, shown with the Task column."><SessionTaskNote /></Sample>
     </div>
-    <p className="designSystemNote">Not rendered here because they read the committed task board through the task store: the task line in the session header meta, the Task panel at the top of Overview, and the read-only Task tab, which both add a Source line (the #N chip and GitHub issue) for a task promoted from an issue. docs/internal/design/task-board.md specifies them.</p>
+    <p className="designSystemNote">Not rendered here because they read the committed task board through the task store: the task line in the session header meta and the read-only Task tab, which adds a Source line (the #N chip and GitHub issue) for a task promoted from an issue. docs/internal/design/task-board.md specifies them.</p>
   </Section>;
 }

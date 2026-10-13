@@ -32,16 +32,15 @@ function mount(directory: (sessionId: string) => unknown, tab?: string) {
 afterEach(() => { resetSessionDomainStoreForTests(); resetTasksStoreForTests(); vi.restoreAllMocks(); });
 
 describe("session view task surfaces", () => {
-  it("shows the task in the header, one task row on Overview, and Task as the last tab", async () => {
+  it("shows the task in the header, no task panel on Overview, and Task as the last tab", async () => {
     const { summary, fetchMock } = mount((id) => ({ sessions: [{ id, task: REFERENCE }], taskReadiness: "ready" }));
     await screen.findByRole("heading", { name: summary.session!.title });
     // The first tablist is the desktop one; the phone list keeps Task in its More menu.
     await screen.findAllByRole("tab", { name: "Task" });
     const tabs = screen.getAllByRole("tablist", { name: "Session sections" })[0];
     expect(within(tabs).getAllByRole("tab").at(-1)).toHaveTextContent("Task");
-    const taskLinks = screen.getAllByRole("link", { name: /T-14/u });
-    expect(taskLinks.length).toBeGreaterThanOrEqual(2); // header meta and the Overview row heading
-    for (const link of taskLinks) expect(link.getAttribute("href")).toMatch(/\?tab=task$/u);
+    expect(screen.getByRole("link", { name: /T-14/u }).getAttribute("href")).toMatch(/\?tab=task$/u); // the header meta alone
+    expect(screen.queryByRole("region", { name: /T-14/u })).not.toBeInTheDocument();
     expect(screen.getAllByText(/Task board v1/u).length).toBeGreaterThan(0);
     const own = fetchMock.mock.calls.map(([input]) => String(input)).find((url) => url.startsWith("/api/sessions?"))!;
     expect(new URLSearchParams(own.split("?")[1]).get("session")).toBe(summary.sessionId);

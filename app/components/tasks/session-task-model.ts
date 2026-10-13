@@ -4,7 +4,7 @@ import { AGENT_REPORTED_LABEL, CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REM
 import { highestStep, featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
 
-// Pure rules for the session view's task surfaces (the header meta, the Overview summary and the Task tab).
+// Pure rules for the session view's task surfaces (the header meta and the Task tab).
 
 export type ReducedReason = "loading" | "desktop_only" | "unavailable" | "missing";
 
@@ -69,37 +69,7 @@ export function referenceChip(state: SessionTaskReference["state"]): { label: st
   return { label: taskStateLabels[state], tone: state === "done" ? "neutral" : "warning" };
 }
 
-export function completeWhenParts(completeWhen: Task["completeWhen"]): string {
-  const parts = [
-    completeWhen.checks.length > 0 && `${completeWhen.checks.length} ${completeWhen.checks.length === 1 ? "check" : "checks"}`,
-    completeWhen.own !== null && "own condition",
-    "agent report",
-  ].filter(Boolean);
-  return parts.join(" + ");
-}
-
 const OUTCOME_STATES = new Set<Task["state"]>(["needs_review", "stalled", "blocked", "done"]);
-
-function failedCount(task: Task) {
-  return (task.report?.results ?? []).filter((result) => !result.passed).length;
-}
-
-export function reportOutcome(task: Task): string {
-  if (task.state === "done") return "Done";
-  if (task.state === "blocked") return "Blocked by agent";
-  if (task.state === "needs_review") {
-    const failed = failedCount(task);
-    if (failed > 0) return `Needs review, ${failed} ${failed === 1 ? "check" : "checks"} did not pass`;
-    if (task.report?.attention) return "Needs review, the agent asks for your attention";
-    return (task.report?.results ?? []).length > 0 ? "Needs review, every check passed" : "Needs review";
-  }
-  if (task.state === "stalled") return "Stalled, the session ended with no report";
-  return "not yet reported";
-}
-
-export function summaryCompleteWhen(task: Task): string {
-  return `${completeWhenParts(task.completeWhen)} · ${reportOutcome(task)}`;
-}
 
 export function definitionStatus(task: Task): string {
   if (task.report) return task.report.blockReason !== null ? "Agent-reported. The agent reported it cannot continue." : "Agent-reported. The agent reported complete.";

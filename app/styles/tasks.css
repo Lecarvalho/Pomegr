@@ -414,8 +414,8 @@
   .taskQueueSettingsAction.commandQuietAction, .taskQueueSettings .taskGateThreshold .commandSelectTrigger { min-height: 44px; }
 }
 
-/* Session view task surfaces (design contract D361-D380 and D397-D440): the header meta, the compact Overview panel and
-   the read-only Task tab. The panels are the shared .panel frame; every value is a token. */
+/* Session view task surfaces (design contract D361-D380 and D397-D440): the header meta and the read-only
+   Task tab. The panels are the shared .panel frame; every value is a token. */
 .sessionTaskMeta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .sessionTaskMetaGroup { display: inline-flex; align-items: center; gap: var(--space-1); }
 .sessionTaskMetaId { font: 400 var(--text-xs)/1.4 var(--font-data); }
@@ -424,19 +424,13 @@
 .sessionTaskMetaStep { font: 400 var(--text-xs)/1.4 var(--font-data); white-space: nowrap; }
 @media (min-width: 761px) { .sessionTaskMeta .commandTextLink { min-height: 0; } }
 
-.sessionTaskSummary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); }
-.sessionTaskHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
-.sessionTaskHeading code, .sessionTaskPanelHeading code { font-family: var(--font-data); font-weight: 500; }
-.sessionTaskHeading .panelHeadingLink { text-decoration: none; }
+.sessionTaskPanelHeading code { font-family: var(--font-data); font-weight: 500; }
 .sessionTaskCell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sessionTaskEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
 .sessionTaskValue { color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); overflow-wrap: anywhere; }
 .sessionTaskValue code, .sessionTaskFeatureLine code { font: 400 var(--text-xs)/1.4 var(--font-data); }
 .sessionTaskValue.isDiffers { color: var(--command-amber); }
-.sessionTaskSourceValue { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.sessionTaskBlocked { color: var(--command-error); }
 .sessionTaskNote { flex: 1 1 100%; margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.sessionTaskSummary .sessionTaskNote { flex: 1 1 240px; }
 
 .sessionTaskTab { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
 .sessionTaskTab > .sessionTaskPanel { flex: 999 1 480px; }

@@ -319,7 +319,6 @@ Each row below the title shows only when it is set, in this order:
 - Its accessible name is “GitHub issue #N”.
 - It shows right after the task ID on a card, on the Board.
 - It shows in the Source line of the Task tab (“Source”, the chip, “GitHub issue”).
-- It shows as the Source cell of the Overview Task panel.
 - It shows only for a task with a source.
 
 ## Moving cards
@@ -499,23 +498,7 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 - It then adds **Feature**, with the name as a [feature link](#feature-link) and the data-font “step n of N”.
 - The row uses muted 12px text.
 - The row stays on phone.
-
-### Overview Task panel
-
-- A **Task** panel opens the page, above Right now.
-- It is a `.panel` with 12px/16px padding in a wrapping row.
-- The panel heading link “Task T-14” goes to the Task tab. It is 16px/650, with the ID in the data font and a muted trailing chevron.
-- Next to the heading is an outcome chip.
-- The panel shows up to four cells. Each cell has an 11px caption eyebrow over a 13px value.
-
-| Cell | Value |
-| --- | --- |
-| **Feature** | The feature name. |
-| **Complete when** | “2 checks + agent report · not yet reported” |
-| **Model** | “Planned x · observed y”, with data-font identifiers. |
-| **Next** | The next step's task numbers, or “Queue blocked by T-n” in the error color. |
-
-- The Source cell of this panel shows the issue chip. See Issue chip above.
+- The Overview tab has no task panel. The header meta and the Task tab carry the task.
 
 ### Task tab
 
@@ -562,6 +545,6 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - The Sessions list Task cell.
 - Under **Assigned sessions**: the card's sessions line, the Task modal's Sessions block, and the Task cell of an assigned session.
 
-The session header meta, the Overview Task panel, and the Task tab read the board through the task store. This page specifies them, and `/design-system` does not render them.
+The session header meta and the Task tab read the board through the task store. This page specifies them, and `/design-system` does not render them.
 
 The Tasks home reads its summary through its own store. This page specifies it, and `/design-system` does not render it.
