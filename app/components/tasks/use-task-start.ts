@@ -45,11 +45,11 @@ function boardReason(task: Task, unsaved: boolean, now: number): string | null {
   return null;
 }
 
-export function useTaskStart(repositoryId: string, task: Task, board: TaskModalBoard, unsaved: boolean, refresh: () => Promise<void>) {
+export function useTaskStart(repositoryId: string, task: Task, board: TaskModalBoard, unsaved: boolean, refresh: () => Promise<void>, first: TaskStartStatus | null = null) {
   const access = useTaskEditAvailability();
   const available = access === "desktop" || access === "paired";
   const [pending, setPending] = useState(false);
-  const [answer, setAnswer] = useState<{ status: TaskStartStatus; mark: string } | null>(null);
+  const [answer, setAnswer] = useState<{ status: TaskStartStatus; mark: string } | null>(() => (first === null ? null : { status: first, mark: taskMark(task) }));
   const [folder, setFolder] = useState<TaskWorktreeOpenStatus | "opening" | null>(null);
   const inFlight = useRef(false);
   const now = useMinuteClock();

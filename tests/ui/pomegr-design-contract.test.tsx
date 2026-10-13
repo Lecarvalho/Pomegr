@@ -614,7 +614,12 @@ describe("Pomegr visual contract", () => {
     expect(existsSync(join(dir, "TaskPanel.tsx"))).toBe(false);
     expect(tasksStyles).not.toMatch(/\.(?:newTaskPanel|taskPanel)[A-Za-z]*/);
     // D4: mode new ends with a Quiet Cancel and the one primary Create task; no "create and add another".
-    expect(modalNew).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*className="commandPrimaryAction"[^\n]*Create task[^\n]*<\/button>/);
+    expect(modalNew).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*<CommandSplitAction label=\{[^\n]*"Create task"/);
+    expect(modalNew).toMatch(/label: "Create and queue"[^]*label: "Create and start session"/);
+    expect(modalNew).not.toMatch(/commandPrimaryAction|commandSecondaryAction/);
+    expect(readFileSync(join(process.cwd(), "DESIGN.md"), "utf8")).toMatch(/A split action is a composition of the Primary role\. It is not a seventh role/);
+    expect(readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemView.tsx"), "utf8")).toMatch(/<CommandSplitAction label="Create task"/);
+    expect(designContract).toMatch(/^### Create and queue, create and start$/m);
     expect(modalNew).not.toMatch(/add another|Goes to Backlog/);
     // D5: mode edit has Save as its one primary; the resolutions, queue and start actions are Secondary.
     expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);

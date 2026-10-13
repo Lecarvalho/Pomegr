@@ -30,7 +30,7 @@ const refresh = vi.fn(async () => {});
 const onCreated = vi.fn();
 const onChanged = vi.fn();
 const onClose = vi.fn();
-const onIssueFailed = vi.fn();
+const onFollowUpFailed = vi.fn();
 
 const board: TaskBoard = { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }] };
 
@@ -59,7 +59,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const newModal = () => <TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example project" board={board} refresh={refresh} onCreated={onCreated} onIssueFailed={onIssueFailed} onClose={onClose} />;
+const newModal = () => <TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example project" board={board} refresh={refresh} onCreated={onCreated} onFollowUpFailed={onFollowUpFailed} onClose={onClose} />;
 const editModal = (overrides: Partial<Task> = {}) => <TaskModal mode="edit" repositoryId={repositoryId} repositoryName="Example project" task={task(overrides)} board={board}
   refresh={refresh} onChanged={onChanged} onDeleted={vi.fn()} onClose={onClose} />;
 const checkbox = () => screen.queryByRole("checkbox", { name: "Also create a GitHub issue" }) as HTMLInputElement | null;
@@ -158,7 +158,7 @@ describe("New task, the checkbox", () => {
     expect(createCalls()).toHaveLength(0);
   });
 
-  it("shows Creating… while busy, and a failed issue hands the new task to onIssueFailed instead of closing, with the reason remembered", async () => {
+  it("shows Creating… while busy, and a failed issue hands the new task to onFollowUpFailed instead of closing, with the reason remembered", async () => {
     taskAction.mockResolvedValue({ ok: true, taskId: "T-61" });
     let finish: (value: GitHubAnswer) => void = () => {};
     taskIssues.mockImplementation((_repository, operation) => operation === "create" ? new Promise<GitHubAnswer>((resolve) => { finish = resolve; }) : Promise.resolve(CREATE_ISSUES));
@@ -170,15 +170,15 @@ describe("New task, the checkbox", () => {
     expect(createTaskButton()).toBeDisabled();
     expect(onClose).not.toHaveBeenCalled();
     finish({ ok: false, error: "not_signed_in" });
-    await waitFor(() => expect(onIssueFailed).toHaveBeenCalledWith("T-61"));
-    expect(onIssueFailed).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onFollowUpFailed).toHaveBeenCalledWith("T-61"));
+    expect(onFollowUpFailed).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
     expect(onCreated).toHaveBeenCalledTimes(1);
-    expect(onCreated.mock.invocationCallOrder[0]).toBeLessThan(onIssueFailed.mock.invocationCallOrder[0]);
+    expect(onCreated.mock.invocationCallOrder[0]).toBeLessThan(onFollowUpFailed.mock.invocationCallOrder[0]);
     expect(issueCreateFailure(repositoryId, "T-61")).toBe("not_signed_in");
   });
 
-  it("closes as before when a failed issue has no onIssueFailed to hand the task to", async () => {
+  it("closes as before when a failed issue has no onFollowUpFailed to hand the task to", async () => {
     taskAction.mockResolvedValue({ ok: true, taskId: "T-63" });
     taskIssues.mockImplementation(async (_repository, operation) => operation === "create" ? { ok: false, error: "failed" } : CREATE_ISSUES);
     const user = userEvent.setup();
@@ -186,7 +186,7 @@ describe("New task, the checkbox", () => {
     await waitFor(() => expect(checkbox()).toBeChecked());
     await fillAndCreate(user);
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(onIssueFailed).not.toHaveBeenCalled();
+    expect(onFollowUpFailed).not.toHaveBeenCalled();
   });
 
   it("opens the task's edit modal with the reason and offers the action again after a failed create", async () => {
@@ -196,7 +196,7 @@ describe("New task, the checkbox", () => {
     const first = render(newModal());
     await waitFor(() => expect(checkbox()).toBeChecked());
     await fillAndCreate(user);
-    await waitFor(() => expect(onIssueFailed).toHaveBeenCalledWith("T-62"));
+    await waitFor(() => expect(onFollowUpFailed).toHaveBeenCalledWith("T-62"));
     first.unmount();
     render(editModal({ id: "T-62" }));
     expect(screen.getByText("GitHub did not accept the issue. Try again.")).toHaveAttribute("role", "status");

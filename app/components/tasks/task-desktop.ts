@@ -240,3 +240,18 @@ export function featureFailureMessage(error: TaskActionError | "unavailable"): s
   if (error === "limit") return `The board holds ${TASK_BOUNDS.featuresPerRepository} features, the most it allows.`;
   return "The feature could not be created.";
 }
+
+// What a create that also queues or starts left undone, for the Task modal that then opens on the new task.
+export type CreateFollowUp = { start: TaskStartStatus } | { failure: string };
+const createFollowUps = new Map<string, CreateFollowUp>();
+
+export function rememberCreateFollowUp(repositoryId: string, taskId: string, followUp: CreateFollowUp): void {
+  createFollowUps.set(`${repositoryId}:${taskId}`, followUp);
+}
+
+export function takeCreateFollowUp(repositoryId: string, taskId: string): CreateFollowUp | null {
+  const key = `${repositoryId}:${taskId}`;
+  const followUp = createFollowUps.get(key) ?? null;
+  createFollowUps.delete(key);
+  return followUp;
+}

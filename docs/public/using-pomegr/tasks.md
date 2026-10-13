@@ -63,7 +63,17 @@ there until its session starts.
 4. Set the optional fields below.
 5. Select **Create task**. **Cancel** closes the window and writes nothing.
 
-The task lands in the first column and is not queued. To start from an open GitHub
+The arrow beside **Create task** opens two more ways to create the task:
+
+- **Create and queue** creates the task and adds it to the queue, at the end of
+  **Ready**.
+- **Create and start session** creates the task and starts its session at once,
+  after the same confirmation as **Start session**.
+
+If the task is created but cannot be queued or started, its task window opens and
+says why. The task is kept.
+
+With **Create task**, the task lands in the first column and is not queued. To start from an open GitHub
 issue, or to create an issue from a task, see [GitHub issues](github-issues.md).
 Select a card to open its
 task window, where your changes stay a draft until you select **Save**. **Save**
