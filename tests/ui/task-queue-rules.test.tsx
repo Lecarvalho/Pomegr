@@ -411,6 +411,15 @@ describe("Add to queue and Remove from queue", () => {
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_remove", { id: "T-9" }));
   });
 
+  it("disables Remove from queue on a task in progress", async () => {
+    // The card of a started task reads its session's title.
+    const dialog = await openModal("Column session");
+    const remove = dialog.getByRole("button", { name: "Remove from queue" });
+    expect(remove).toBeDisabled();
+    await userEvent.click(remove);
+    expect(taskAction).not.toHaveBeenCalled();
+  });
+
   it("shows one line when the monitor refuses", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const dialog = await openModal("Idea");
