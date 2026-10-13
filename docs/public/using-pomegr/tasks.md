@@ -56,7 +56,8 @@ there until its session starts.
    into it, and select **New task** under its last card. On a touch screen the
    action is always shown.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
-   field. A card shows this text until its session has a title, then the title.
+   field. A card shows the first sentence of this text as its title and the
+   start of the rest below it, until its session has a title, then the title.
 3. To show the agent a screenshot or a mock-up, paste an image into the text or
    select **Attach image**; see [Attach images](#attach-images).
 4. Set the optional fields below.
@@ -76,7 +77,8 @@ it was when it started, so a later change would not reach it. The task window th
 shows the fields read-only, without **Save**, and says "This task has started, so
 it cannot be changed." This applies from the start of the session on, and to a task
 that is in review, blocked, stalled, or done. **Requeue task** makes the task
-editable again until its next session starts. You can still move, delete, mark
+editable again until its next session starts. While a queued task is in progress,
+**Remove from queue** is unavailable. You can still move, delete, mark
 done, and requeue a started task.
 
 | Field | What it sets |
@@ -635,7 +637,10 @@ started for them. Other devices see none of it.
   definition of done with each check's result, and the feature's tasks in the same
   and next step. A long task text is cut to ten lines. Select **Show all** to read
   the rest. **Open on board** goes to the card. A session with no task has no
-  **Task** tab.
+  **Task** tab. The feature name, in the header and on the **Task** tab, opens that
+  repository's board with the feature chosen in the **Feature** filter. In the desktop
+  app it also opens the feature's window. On a paired device, the filter is the view
+  of the feature. If the feature was deleted, the whole board opens.
 - **Events.** The **Events** list on the **Overview** tab adds a row when the agent
   adds, removes, updates, or reports a task complete or blocked. The
   row names the agent and the time, not the task. It comes from the agent's own tool

@@ -14,6 +14,15 @@ const TASK_START_PATH = "/api/tasks/start";
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MAX_TASK_START_BODY_BYTES = 512;
+// A paired device's task images: answered here by desktop main, never forwarded to the web host.
+const TASK_IMAGE_ADD_PATH = "/api/tasks/image-add";
+const TASK_IMAGE_REMOVE_PATH = "/api/tasks/image-remove";
+const TASK_IMAGE_READ_PATH = "/api/tasks/image-read";
+const IMAGE_ID = /^img-[0-9a-f]{12}$/u;
+const MAX_TASK_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_TASK_IMAGE_REMOVE_BODY_BYTES = 512;
+const IMAGE_MEDIA_TYPES = Object.freeze({ png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" });
+const IMAGE_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unavailable"]);
 // The Pomegr agent chat of a paired device: answered here by desktop main, never forwarded upstream.
 const AGENT_CHAT_PATH = "/api/agent-chat";
 // The 16 KiB action payload plus its fixed envelope, as the monitor bounds it.
@@ -320,6 +329,72 @@ export async function startLanGateway(options = {}) {
     const token = cookieValue(request, cookieName);
     return Boolean(token && sessions.has(token));
   };
+  // One image operation of a paired device. The device's cookie, its own origin, and the bounds are checked here; the bytes
+  // go to the task store through desktop main and nothing else of the answer is passed on.
+  const serveTaskImage = async (request, response, url, operation) => {
+    const refuse = (error) => {
+      if (!active || suspended || response.destroyed) { if (!response.destroyed) fixed(response, 403); return; }
+      noStore(response);
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ ok: false, error }));
+    };
+    const declared = request.headers["content-length"];
+    const reading = operation === "read";
+    const limit = operation === "add" ? MAX_TASK_IMAGE_BYTES : MAX_TASK_IMAGE_REMOVE_BODY_BYTES;
+    const contentType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    if (request.headers["transfer-encoding"] !== undefined
+      || (reading ? declared !== undefined && declared !== "0"
+        : request.headers.origin !== origin || !/^\d+$/.test(String(declared ?? "")) || Number(declared) > limit
+          || contentType !== (operation === "add" ? "application/octet-stream" : "application/json"))) { fixed(response, 403); return; }
+    let input = null;
+    let bytes = null;
+    if (operation === "remove") {
+      if (url.search) { fixed(response, 403); return; }
+      const body = await readBoundedBody(request, limit);
+      if (body === null) { fixed(response, 400); return; }
+      try { input = JSON.parse(body.toString("utf8")); } catch { input = null; }
+      const valid = input && typeof input === "object" && !Array.isArray(input) && Object.keys(input).length === 3
+        && ["repositoryId", "taskId", "imageId"].every((key) => typeof input[key] === "string");
+      if (!valid) input = null;
+    } else {
+      const keys = [...url.searchParams.keys()].sort();
+      if (keys.join() === "imageId,repositoryId,taskId") input = Object.fromEntries(url.searchParams);
+      if (operation === "add") {
+        bytes = await readBoundedBody(request, limit);
+        if (bytes === null) { fixed(response, 400); return; }
+      }
+    }
+    if (!active || suspended || !authenticated(request)) { fixed(response, 403); return; }
+    if (!input || !REPOSITORY_ID.test(input.repositoryId) || !TASK_ID.test(input.taskId) || !IMAGE_ID.test(input.imageId)
+      || (bytes !== null && bytes.length === 0)) { refuse("invalid"); return; }
+    let answer = null;
+    try {
+      answer = typeof options.taskImage === "function"
+        ? await options.taskImage(input.repositoryId, operation, operation === "add"
+          ? { taskId: input.taskId, imageId: input.imageId, bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length) }
+          : { taskId: input.taskId, imageId: input.imageId })
+        : null;
+    } catch { answer = null; }
+    if (!active || suspended || !authenticated(request) || response.destroyed) { if (!response.destroyed) fixed(response, 403); return; }
+    if (answer?.ok === true && operation === "read") {
+      const mediaType = IMAGE_MEDIA_TYPES[answer.type];
+      if (mediaType && answer.bytes instanceof Uint8Array && answer.bytes.length > 0 && answer.bytes.length <= MAX_TASK_IMAGE_BYTES) {
+        noStore(response);
+        response.writeHead(200, { "Content-Type": mediaType, "Content-Length": String(answer.bytes.length) });
+        response.end(Buffer.from(answer.bytes));
+        return;
+      }
+      refuse("unavailable");
+      return;
+    }
+    if (answer?.ok === true) {
+      noStore(response);
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify(operation === "add" ? { ok: true, imageId: input.imageId } : { ok: true }));
+      return;
+    }
+    refuse(IMAGE_ERRORS.has(answer?.error) ? answer.error : "unavailable");
+  };
   const server = http.createServer({ maxHeaderSize: MAX_HEADER_BYTES }, async (request, response) => {
     const port = server.address()?.port;
     if (!Number.isInteger(port) || !active || !clientAllowed(request)) { fixed(response, 403); return; }
@@ -359,7 +434,10 @@ export async function startLanGateway(options = {}) {
     const agentChat = method === "POST" && pathname === AGENT_CHAT_PATH;
     const taskAction = method === "POST" && pathname === TASK_ACTION_PATH;
     const taskStart = method === "POST" && pathname === TASK_START_PATH;
-    if (method !== "GET" && method !== "HEAD" && !taskAction && !taskStart && !agentChat) { fixed(response, 405); return; }
+    const imageAdd = method === "POST" && pathname === TASK_IMAGE_ADD_PATH;
+    const imageRemove = method === "POST" && pathname === TASK_IMAGE_REMOVE_PATH;
+    const imageRead = method === "GET" && pathname === TASK_IMAGE_READ_PATH;
+    if (method !== "GET" && method !== "HEAD" && !taskAction && !taskStart && !agentChat && !imageAdd && !imageRemove) { fixed(response, 405); return; }
     if (!authenticated(request)) {
       if (pathname.startsWith("/api/")) { fixed(response, 401, "Unauthorized"); return; }
       if (acceptsHtml(request)) { noStore(response); response.writeHead(302, { Location: "/__pomegr/pair" }); response.end(); return; }
@@ -376,6 +454,10 @@ export async function startLanGateway(options = {}) {
         || (contentLength !== undefined && (!/^\d+$/.test(String(contentLength)) || Number(contentLength) !== 0));
       if (method !== "GET") { fixed(response, 405); return; }
       if (url.search || hasBody) { fixed(response, 403); return; }
+    }
+    if (imageAdd || imageRemove || imageRead) {
+      await serveTaskImage(request, response, url, imageAdd ? "add" : imageRemove ? "remove" : "read");
+      return;
     }
     let actionBody = null;
     if (taskAction || taskStart || agentChat) {

@@ -513,9 +513,10 @@ function addToQueue({ database, repositoryId, now }, payload) {
 function removeFromQueue({ database, repositoryId, now }, payload) {
   const input = normalizeQueueTaskPayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT state, session_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
-  if (task.state !== "queued" && task.state !== "scheduled") return { ok: false, error: "conflict" };
+  // A task with a linked session has left the queue already: it is in progress, and only Mark done or Requeue resolves it.
+  if ((task.state !== "queued" && task.state !== "scheduled") || (task.session_id ?? null) !== null) return { ok: false, error: "conflict" };
   preparedStatement(database, "UPDATE tasks SET state = 'not_queued', queue_position = NULL, scheduled_at = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, input.number);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(input.number));

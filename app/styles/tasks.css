@@ -74,7 +74,10 @@
 .taskIssueChip > svg { width: 11px; height: 11px; flex: 0 0 auto; }
 .taskCardChip { flex: 0 0 auto; white-space: nowrap; }
 .taskCardChip.isInk { color: var(--command-ink); }
-.taskCardTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskCardTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskCardTitle code, .taskCardExcerpt code { font: inherit; font-family: var(--font-data); }
+/* The text after the first sentence: two muted lines under the title. */
+.taskCardExcerpt { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskCard.isDone .taskCardTitle { color: var(--command-muted); }
 /* The title is the card's open control: the Quiet role drawn as plain title text. */
 .taskCardOpen.commandQuietAction { padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import { plainTaskText, type Task } from "../../../shared/task-contract";
-import { sessionTaskHref } from "../tasks/SessionTaskCell";
+import { sessionFeatureHref, sessionTaskHref } from "../tasks/SessionTaskCell";
 import {
   checkRows, completionSummary, definitionStatus, modelSummary, outcomeChip, plannedParts, queueBlockedNote, referenceChip, startedLine, stepLabel, taskBrief,
   type CheckRow, type SessionTaskFull, type TextPart,
@@ -38,11 +38,13 @@ function FeaturePanel({ task, model, sessionId, boardHref }: { task: SessionTask
   const headingId = useId();
   const name = model.feature?.name ?? task.feature;
   if (name === null || !model.progress) return null;
+  // The board's own feature of the task: the reference can name the one the task has since left.
+  const featureHref = sessionFeatureHref(task, model.task.featureId);
   return <aside aria-label="Feature">
     <section className="panel sessionTaskPanel" aria-labelledby={headingId}>
       <div className="sessionTaskFeatureHead">
         <h2 id={headingId} className="panelHeading sessionTaskPanelHeading">
-          {boardHref ? <Link className="commandTextLink sessionTaskFeatureLink" href={boardHref}>{name}</Link> : name}
+          {featureHref ? <Link className="commandTextLink sessionTaskFeatureLink" href={featureHref}>{name}</Link> : name}
         </h2>
         <span className="sessionTaskProgress"><code>{model.progress.done}</code> of <code>{model.progress.total}</code> done</span>
       </div>
