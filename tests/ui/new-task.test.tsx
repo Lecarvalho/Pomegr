@@ -290,12 +290,18 @@ describe("on a paired device", () => {
     access.mode = "lan";
   });
 
+  /** A paired device draws the rich-text Task field, which takes images: text lands in the DOM, then `input` fires. */
+  function typeRich(element: HTMLElement, text: string) {
+    element.append(text);
+    fireEvent.input(element);
+  }
+
   it("creates a task through the one paired route, with the fixed action and no board in the answer", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, taskId: "T-7" }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.getByText("Sessions start on the computer running Pomegr.")).toBeInTheDocument();
-    await user.type(await openPanel(user), "From a phone");
+    typeRich(await openPanel(user), "From a phone");
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -310,10 +316,10 @@ describe("on a paired device", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("Request unavailable", { status: 403 }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    await user.type(await openPanel(user), "Kept");
+    typeRich(await openPanel(user), "Kept");
     await user.click(createButton());
     expect(await screen.findByText("The task could not be saved.")).toBeInTheDocument();
-    expect(field().value).toBe("Kept");
+    expect(field().textContent).toBe("Kept");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 

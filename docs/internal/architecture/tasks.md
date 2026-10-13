@@ -1869,7 +1869,9 @@ so it reads nothing and says that issues are read in the desktop app.
 
 A task can hold images, so the owner can show the agent a screenshot or a mock-up
 (task T-25, 2026-10-10). They are user-authored content, the same data class as the
-task text, and they are a desktop feature: a browser neither sends nor receives one.
+task text, and they are a desktop and paired-device feature: a same-computer browser neither
+sends nor receives one. A paired device (task T-77, 2026-10-12) attaches, removes, and reads
+them through the gateway's own routes (see [Paired devices](#paired-devices)).
 
 - A task holds at most four images of at most 5 MiB each: PNG, JPEG, GIF, or WebP.
   `sniffImageType` in `server/tasks/task-images.mjs` decides the type from the leading
@@ -1983,8 +1985,19 @@ serves no other client.
   device what the desktop app has: the board it reads carries `Task.assigned`, its
   Sessions list carries `assignedTasks`, and `session_assign` and `session_unassign`
   are in the route's closed list (see [Assigned sessions](#assigned-sessions)).
-- **Desktop only.** Open folder, images, and GitHub issues
-  have no forwarded route. The device's Task field shows an image as its marker.
+- **Images.** The owner's request of 2026-10-12 (task T-77) lets a phone attach an image.
+  The gateway answers three routes itself with the device's cookie, and nothing of them reaches
+  the web host: `POST /api/tasks/image-add?repositoryId&taskId&imageId` (an
+  `application/octet-stream` body of at most 5 MiB, the gateway's own `Origin`, exactly those
+  three query keys), `POST /api/tasks/image-remove` (JSON `{ repositoryId, taskId, imageId }`,
+  at most 512 bytes, no query), and `GET /api/tasks/image-read` (the same three query keys).
+  Each hands the validated values to the same `createTaskImage` action as the desktop IPC
+  (`runPaired`, which skips only the trusted-window check, because the gateway has already
+  authenticated the device), so the monitor's image rules, bounds, and fixed errors apply
+  unchanged. An answer is `{ ok: true }`, `{ ok: true, imageId }`, `{ ok: false, error }` with
+  one of the fixed image errors, or the bytes with one of the four media types, `no-store`.
+- **Desktop only.** Open folder and GitHub issues have no forwarded route. A phone shows and
+  edits images as the same inline marker as the desktop form.
 - **Agent chat.** A paired device also reaches the agent chat, through one route that
   the gateway answers itself. [Agent chat](agent-chat.md#boundaries) owns it.
 - **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
