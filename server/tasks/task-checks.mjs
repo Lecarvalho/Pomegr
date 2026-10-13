@@ -7,12 +7,13 @@ const pullRequestStates = (facts) => (Array.isArray(facts.pullRequestStates)
   && facts.pullRequestStates.every((state) => TASK_PULL_REQUEST_STATES.includes(state)) ? facts.pullRequestStates : []);
 
 // Each rule returns true only for a known passing value.
+// A pull request's state has no `work`: it is the state the Repository tab lists, as of its dated read.
 const RULES = Object.freeze({
-  pr_open: { read: "pullRequests", work: "repository", value: (facts) => pullRequestStates(facts).includes("open") },
+  pr_open: { read: "pullRequests", work: null, value: (facts) => pullRequestStates(facts).includes("open") },
   tree_clean: { read: "tree", work: "tree", value: (facts) => facts.treeClean === true },
   // The task branch is not the main branch and holds a commit of its own, merged since or not.
   commit_on_branch: { read: "branch", work: "repository", value: (facts) => facts.branchCommits === true },
-  pr_merged: { read: "pullRequests", work: "repository", value: (facts) => pullRequestStates(facts).includes("merged") },
+  pr_merged: { read: "pullRequests", work: null, value: (facts) => pullRequestStates(facts).includes("merged") },
   // The checks of the task branch's pull request all passed.
   ci_passed: { read: "ci", work: "repository", value: (facts) => facts.ciPassed === true },
 });
@@ -22,6 +23,7 @@ const isRecord = (value) => value !== null && typeof value === "object" && !Arra
 function readAfterWork(facts, { read, work }) {
   const readAt = isRecord(facts.readAt) ? facts.readAt[read] : undefined;
   if (!Number.isFinite(readAt)) return false;
+  if (work === null) return true;
   const workAt = isRecord(facts.workAt) ? facts.workAt[work] : undefined;
   if (workAt === null) return true;
   return Number.isFinite(workAt) && readAt >= workAt;

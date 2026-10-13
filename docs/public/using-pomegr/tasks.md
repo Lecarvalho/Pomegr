@@ -105,11 +105,11 @@ with **PR open** and **Tree clean** checked.
 
 | Condition | Passes when |
 | --- | --- |
-| **PR open** | The pull request for the session's branch is open. |
+| **PR open** | A pull request that the session's Repository tab lists is open: one the session created, or one for its branch. |
 | **Tree clean** | Pomegr's record of the session's repository lists no uncommitted file. |
 | **Commit on branch** | The session's branch is not the main branch and has a commit of its own, merged since or not. |
 | **PR merged** | That pull request is merged. |
-| **CI passed** | Every check on the branch's pull request passed. Pending, failed, and missing checks do not pass. |
+| **CI passed** | Every check on that pull request passed. Pending, failed, and missing checks do not pass. |
 
 A sixth checkbox, **Validated with the user**, asks the agent to validate the work
 with you before it reports. Pomegr cannot observe that, so the agent judges it and

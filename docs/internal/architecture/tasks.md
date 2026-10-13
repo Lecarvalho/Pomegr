@@ -1001,11 +1001,11 @@ installed plugin from before the rename sends; a body with both names is `invali
 
 | Condition | Verified by Pomegr |
 | --- | --- |
-| Pull request open | Committed pull-request state of the task branch |
+| Pull request open | Committed state of the session's pull requests, the ones its Repository tab lists |
 | Working tree clean | Committed repository state of the root or worktree |
 | Commit on task branch | Committed Git facts of the task branch |
-| Pull request merged | Committed pull-request state |
-| CI passed | Check status of the task branch's pull request, as last read by the monitor |
+| Pull request merged | Committed state of the same pull requests |
+| CI passed | Check status of the same pull requests, as last read by the monitor |
 | Validated with the user | Not verified; the agent validates the work with the user before it reports |
 | Own condition | Not verified; the agent judges it in its report |
 
@@ -1073,12 +1073,16 @@ installed plugin from before the rename sends; a body with both names is `invali
   - Commit on task branch: the branch is not the main branch and its base comparison
     shows a commit of its own, merged since or not.
   - Pull request open, Pull request merged: the ready pull-request block holds a pull
-    request whose head is the task branch in that state.
+    request in that state. The block is the one the session's Repository tab shows, so
+    the two always name the same pull requests (task T-88, 2026-10-12; it replaces the
+    earlier rule that only a pull request whose head is the recorded branch counted).
+    Its items are the pull requests the session created and those whose head is the
+    session's branch (`readPullRequests`); an item with no known state is not judged.
   - CI passed: the monitor's pull-request read (`server/repository/pull-requests.mjs`)
     asks gh for `statusCheckRollup` in the same call and normalizes it to one of
     `passed`, `failed`, `pending`, or `none`: any failed check gives `failed`, otherwise
     any unfinished check gives `pending`, and a pull request with no check gives `none`.
-    A missing or unrecognized list is unknown. The condition judges the task branch's
+    A missing or unrecognized list is unknown. The condition judges the block's
     open pull requests, or its merged ones when none is open, and passes only when each
     is `passed`. Pending, failed, no check, and no such pull request are not passed; a
     pull request whose status the monitor has not read is unknown. The status and the
@@ -1086,8 +1090,14 @@ installed plugin from before the rename sends; a body with both names is `invali
     a report's own pull-request read is what puts them there.
   - An unavailable or historical repository block, a missing base comparison, and a
     pull-request block that is not ready are unknown.
-- **A fact is judged only on a read made after the work it judges.** A condition never
-  passes on a fact older than the session's latest work that could have changed it. Each
+- **A fact is judged only on a read made after the work it judges.** Working tree
+  clean, Commit on task branch, and CI passed never pass
+  on a fact older than the session's latest work that could have changed it. Pull
+  request open and Pull request merged are the exception (task T-88, 2026-10-12): they
+  need a dated read and are not compared with the work, so the Task tab never says
+  "Not yet" for a pull request the Repository tab lists from that same read. A merged
+  pull request stays merged, and an open one that was closed since reads open only
+  until the next read, as it does in the Repository tab. Each
   fact carries the time it was read (`readAt`) and the latest work that could have
   changed it (`workAt`), epoch milliseconds from committed memory with no clock, Git,
   GitHub, or provider read. `verifyChecks` passes a fact only when its read time is a
@@ -1115,7 +1125,7 @@ installed plugin from before the rename sends; a body with both names is `invali
     execution task, because any shell command can dirty the tree. A file write ends at
     its call time plus its recorded wall duration, not at its call: a write that waited
     for approval changes the file later than it was called.
-    `commit_on_branch`, `pr_open`, `pr_merged`, and `ci_passed` are dated by the latest end
+    `commit_on_branch` and `ci_passed` are dated by the latest end
     of the session's finished `git`, `git_push`, and `pull_request` execution tasks. A task
     still running or finished at no known time, and a file write with no recorded
     result, make the matching facts unknown. A
@@ -1143,10 +1153,11 @@ installed plugin from before the rename sends; a body with both names is `invali
     report's verification is final.
   - Once a report or an outcome is recorded the board carries no reading, and the Task
     tab shows the report's own results ("Passed", "Did not pass") or "No report".
-  - The age rule applies to the reading, so a pull request the Repository tab
-    already lists reads "Not yet" until the pull-request read is later than the session's
-    latest Git, push, or pull-request command. A report made at that moment is judged
-    on its own read, so it can pass a condition the reading still shows as "Not yet".
+  - The age rule applies to the reading, so CI passed, Commit on task branch, and
+    Working tree clean read "Not yet" until their read is later than the session's
+    latest work. A report made at that moment is judged on its own read, so it can pass
+    a condition the reading still shows as "Not yet". A pull request the Repository tab
+    lists reads "Holds now" at once.
   - It carries pass or fail only: no fact, read time, work time, CI status, pull-request
     item, or path.
 - A report is verified once. A task whose condition did not pass but holds
@@ -1164,7 +1175,7 @@ installed plugin from before the rename sends; a body with both names is `invali
     commands (`gh pr checks`, `git status`) count as work for the reading too.
   - A running execution task of any kind (a dev server, for example) keeps `tree_clean`
     unknown while it runs, and a running Git, push, or pull-request task does the same for
-    the four other conditions.
+    Commit on task branch and CI passed.
   - Repository work is recognized only as a finished `git`, `git_push`, or `pull_request`
     execution task. A compound or generic shell command, or another tool, that changes
     the branch or a pull request is not counted, and only the newest retained execution
