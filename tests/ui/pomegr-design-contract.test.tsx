@@ -7,6 +7,7 @@ import { FileHistoryPanel } from "../../app/components/repositories/FileHistoryP
 import { FileTree } from "../../app/components/repositories/FileTree";
 import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 import { StorageUsageBar } from "../../app/settings/StorageSettings";
+import { RunFields } from "../../app/components/tasks/TaskFields";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
@@ -40,6 +41,12 @@ const sessionFilePanelSource = readFileSync(join(process.cwd(), "app", "componen
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
 describe("Pomegr visual contract", () => {
+  it("omits the Remote Control row for Codex, including read-only tasks", () => {
+    const { container } = render(<RunFields run={{ provider: "codex", model: null, effort: "medium" }} models={{ claude: [], codex: [] }} disabled onChange={() => {}} />);
+    expect(screen.queryByRole("checkbox", { name: "Remote Control" })).not.toBeInTheDocument();
+    expect(container.querySelector(".taskRemoteControl")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Remove worktree and branch when done" })).toBeDisabled();
+  });
   it("keeps consecutive-event counts in a separate non-shrinking data column", () => {
     const styles = readFileSync(join(process.cwd(), "app", "styles", "session.css"), "utf8");
     expect(styles).toMatch(/\.sessionEventRow\.isGrouped\s*\{\s*grid-template-columns: 40px 16px minmax\(0, 1fr\) auto 12px/);

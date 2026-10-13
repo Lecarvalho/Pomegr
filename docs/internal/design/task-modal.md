@@ -143,8 +143,8 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - The checkbox uses the Complete when checkbox row.
 - One muted helper line reads “Starts the session with Remote Control, so you can also open it on your phone.”
 - The checkbox is unchecked by default.
-- Choosing a Codex entry in Run on clears and disables the checkbox.
-- With a Codex entry chosen, the helper reads “Claude Code only.”
+- Choosing a Codex entry in Run on clears the choice and hides the checkbox and its helper.
+- Returning to Claude Code shows the checkbox unchecked.
 - A card's run line and the session's Task tab add the plain words “Remote Control” after the effort when it is on.
 
 ### Remove worktree and branch when done

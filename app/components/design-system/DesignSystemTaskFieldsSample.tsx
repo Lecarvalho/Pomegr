@@ -53,7 +53,7 @@ export function TaskFieldsSection() {
       <Sample label="Remote Control, on" note="Checked for a task that starts Claude Code, named or by default. The started session can also be opened on a phone.">
         <RunFields run={remote} models={MODELS} onChange={setRemote} />
       </Sample>
-      <Sample label="Remote Control, unavailable" note="A Codex task has no Remote Control: the checkbox is cleared and disabled, with the one reason as its helper.">
+      <Sample label="Codex run" note="Pomegr does not enable Remote Control for Codex tasks, so the checkbox and helper are absent.">
         <RunFields run={codexRun} models={MODELS} onChange={setCodexRun} />
       </Sample>
       <Sample label="Complete when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">

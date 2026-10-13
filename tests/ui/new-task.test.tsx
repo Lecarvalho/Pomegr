@@ -433,18 +433,17 @@ describe("Run on, Effort and Complete when", () => {
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Use the default", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
-  it("sends Remote Control only when checked, and clears and disables it for Codex", async () => {
+  it("sends Remote Control only when checked, and clears and hides it for Codex", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "On my phone");
     expect(checkbox("Remote Control")).not.toBeChecked();
     await user.click(checkbox("Remote Control"));
     expect(checkbox("Remote Control")).toBeChecked();
-    // Codex has no Remote Control: choosing it drops the choice, and coming back does not restore it.
+    // Pomegr does not enable Remote Control for Codex; returning does not restore the choice.
     chooseCommandOption(runOn(), "codex:default");
-    expect(checkbox("Remote Control")).not.toBeChecked();
-    expect(checkbox("Remote Control")).toBeDisabled();
-    expect(screen.getByText("Claude Code only.")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Remote Control" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Claude Code only.")).not.toBeInTheDocument();
     chooseCommandOption(runOn(), "claude:default");
     expect(checkbox("Remote Control")).toBeEnabled();
     expect(checkbox("Remote Control")).not.toBeChecked();
