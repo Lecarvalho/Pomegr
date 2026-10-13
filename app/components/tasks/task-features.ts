@@ -109,6 +109,13 @@ export function featureLines(board: Pick<BoardShape, "features" | "tasks">): Rea
   return lines;
 }
 
+const FEATURE_ID_PATTERN = /^feat-[0-9a-f]{12}$/u;
+
+/** The `feature` parameter of the Tasks route: an opaque feature ID, or nothing. */
+export function featureRouteId(value: unknown) {
+  return typeof value === "string" && FEATURE_ID_PATTERN.test(value) ? value : undefined;
+}
+
 export type FeatureFilterValue = string;
 export const ALL_FEATURES = "all";
 export const WITHOUT_FEATURE = "none";

@@ -47,6 +47,7 @@ export const T6_WORKING = sampleTask("T-6", "Check the cache headers", {
 });
 export const T7_SCHEDULED = sampleTask("T-7", "Rotate the sample logs nightly", { state: "scheduled", scheduledAt: SAMPLE_FUTURE, run: { provider: "codex", model: null, effort: null } });
 export const T8_IDLE = sampleTask("T-8", "Rename the config key", { columnId: "col-backlog" });
+export const T11_LONG = sampleTask("T-11", "Show a row in the upload log when a job calls `retry_upload`. Today the log adds a row for `start_upload` and `cancel_upload` only, so a reader cannot see a retry.\n\n- Map `retry_upload` to a new `retried` action.\n- Cover it with a test.", { columnId: "col-backlog" });
 export const T9_ISSUE = sampleTask("T-10", "Retry a failed upload from the queue", { columnId: "col-backlog", source: { kind: "github_issue", number: 142 } });
 
 export const GATES_HELD: TaskGates = {

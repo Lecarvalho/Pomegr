@@ -1869,7 +1869,9 @@ so it reads nothing and says that issues are read in the desktop app.
 
 A task can hold images, so the owner can show the agent a screenshot or a mock-up
 (task T-25, 2026-10-10). They are user-authored content, the same data class as the
-task text, and they are a desktop feature: a browser neither sends nor receives one.
+task text, and they are a desktop and paired-device feature: a same-computer browser neither
+sends nor receives one. A paired device (task T-77, 2026-10-12) attaches, removes, and reads
+them through the gateway's own routes (see [Paired devices](#paired-devices)).
 
 - A task holds at most four images of at most 5 MiB each: PNG, JPEG, GIF, or WebP.
   `sniffImageType` in `server/tasks/task-images.mjs` decides the type from the leading
@@ -1983,8 +1985,19 @@ serves no other client.
   device what the desktop app has: the board it reads carries `Task.assigned`, its
   Sessions list carries `assignedTasks`, and `session_assign` and `session_unassign`
   are in the route's closed list (see [Assigned sessions](#assigned-sessions)).
-- **Desktop only.** Open folder, images, and GitHub issues
-  have no forwarded route. The device's Task field shows an image as its marker.
+- **Images.** The owner's request of 2026-10-12 (task T-77) lets a phone attach an image.
+  The gateway answers three routes itself with the device's cookie, and nothing of them reaches
+  the web host: `POST /api/tasks/image-add?repositoryId&taskId&imageId` (an
+  `application/octet-stream` body of at most 5 MiB, the gateway's own `Origin`, exactly those
+  three query keys), `POST /api/tasks/image-remove` (JSON `{ repositoryId, taskId, imageId }`,
+  at most 512 bytes, no query), and `GET /api/tasks/image-read` (the same three query keys).
+  Each hands the validated values to the same `createTaskImage` action as the desktop IPC
+  (`runPaired`, which skips only the trusted-window check, because the gateway has already
+  authenticated the device), so the monitor's image rules, bounds, and fixed errors apply
+  unchanged. An answer is `{ ok: true }`, `{ ok: true, imageId }`, `{ ok: false, error }` with
+  one of the fixed image errors, or the bytes with one of the four media types, `no-store`.
+- **Desktop only.** Open folder and GitHub issues have no forwarded route. A phone shows and
+  edits images as the same inline marker as the desktop form.
 - **Agent chat.** A paired device also reaches the agent chat, through one route that
   the gateway answers itself. [Agent chat](agent-chat.md#boundaries) owns it.
 - **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
@@ -2072,8 +2085,8 @@ serves no other client.
   `queued`, or `scheduled` with no linked session becomes `scheduled` with that time, in
   the place its card has in Ready or at the end of it; a task with a session or an outcome is `conflict`, and a
   time outside the bounds is `invalid`. An unknown task is `not_found`. `queue_remove`
-  takes exactly `{ id }`: a `queued` or `scheduled` task becomes `not_queued` and loses
-  its time; any other state is `conflict`. `resolve_requeue` clears the time too.
+  takes exactly `{ id }`: a `queued` or `scheduled` task with no linked session becomes
+  `not_queued` and loses its time; any other state, or a linked session, is `conflict`. `resolve_requeue` clears the time too.
   `queue_reorder` takes exactly `{ id, step }` with `step` an integer of at least 1. The task
   must exist (`not_found`), be in a feature, and not have started: state `not_queued`,
   `queued`, or `scheduled` with no linked session (otherwise `conflict`; a single
@@ -2261,7 +2274,8 @@ fixed values.
   reference, and `server/serving/session-directory-tasks.mjs` joins it onto a directory
   page when the page is served. It adds the ID of the repository whose board holds the
   task, so the task ID can link to that board (the session's own committed repository ID
-  can be missing or another one), and the opaque feature ID, which the Feature filter passes back. The
+  can be missing or another one), and the opaque feature ID, which the Feature filter passes back and a
+  session's feature link puts in the board address (task T-93, 2026-10-12; see below). The
   state is served only as `needs_review`, `stalled`, `blocked`, `done`, or null; the list
   draws a chip for Needs review, Stalled, and Done, and none for Blocked by agent. It also
   carries the nullable issue number (1 to 999999999) that `readTaskSource` in
@@ -2278,6 +2292,18 @@ fixed values.
   state, feature, and step; the Source line comes from `Task.source` on a ready board, not
   from the reference. The Task tab is listed only once the reference is known, so it
   is never shown and then removed; it mutates nothing.
+- A session's feature link is `/tasks?repository=<repositoryId>&feature=<featureId>`
+  (`sessionFeatureHref` in `app/components/tasks/SessionTaskCell.tsx`). The address carries
+  only the two opaque IDs the reference already holds, never a feature name. The Tasks page
+  validates both (`featureRouteId` in `app/components/tasks/task-features.ts`) and sends
+  neither to a new route: the board is the same `GET /api/tasks` read under the same gate.
+  - The desktop app opens the Feature modal, which reads the description and the app
+    version through `pomegr:task-feature` as it does from **Edit feature**.
+  - A paired device and a same-computer browser only choose the feature in the filter, from
+    the `{ id, name, done }` the board already serves them. They make no feature read, so
+    the description and the app version still never reach them.
+  - A feature ID the ready board does not hold opens nothing and reads nothing. The page
+    does not say whether the feature was deleted or belongs to another board.
 - A session's task reference is found by the session link, and its assigned tasks by
   the assignment rows, never by repository ID. The
   session catalog stores none of it: the catalog index only takes a bounded set of
@@ -2386,8 +2412,9 @@ Each item is owned by the product owner; none is implemented until they answer.
    Pomegr a read-only observer. Observation is read-only; the product now also starts
    sessions and has an [agent chat](agent-chat.md). No delivered change owned those files.
 4. **Board deep links.** The board has no address for one task, so
-   feature links and Open on board in the session view open the board only, and a task
-   ID on the Sessions list opens the board instead of the session's Task tab.
+   Open on board in the session view opens the board only, and a task
+   ID on the Sessions list opens the board instead of the session's Task tab. A feature has
+   an address since task T-93: a session's feature link opens it.
 5. **Session start outside Windows.** Other platforms answer the fixed
    `unsupported_platform` result until a launcher is validated for them.
 

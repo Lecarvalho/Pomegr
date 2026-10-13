@@ -153,7 +153,7 @@ export function createLanSharingController(options = {}) {
         handle = await startGateway({
           host: chosen.address, subnetMask: chosen.subnetMask,
           upstreamOrigin: options.upstreamOrigin, authorizationToken: options.authorizationToken, agentChat: options.agentChat,
-          taskStart: options.taskStart,
+          taskStart: options.taskStart, taskImage: options.taskImage,
           isNetworkAllowed, onChange: broadcast,
         });
         if (disposed || revision !== generation) { await closeGateway(handle); return snapshot(); }

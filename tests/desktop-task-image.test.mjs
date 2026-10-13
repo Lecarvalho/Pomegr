@@ -133,8 +133,8 @@ test("the bridge is one trusted-frame channel with a closed surface", async () =
   ].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:task-image", repositoryId, operation, payload\)/u);
   assert.match(preload, /new Set\(\["add", "remove", "read"\]\)/u);
-  assert.match(main, /installTaskImageIpc\(taskBridge\)/u);
-  assert.match(bridge, /if \(!isTrustedEvent\(event\)\) return INVALID;/u);
+  assert.match(main, /installTaskImageIpc\(\{ \.\.\.taskBridge, action: taskImage \}\)/u);
+  assert.match(bridge, /isTrustedEvent\(event\) \? execute\(repositoryId, operation, payload\) : Promise\.resolve\(INVALID\)/u);
   assert.match(bridge, /redirect: "error"/u);
   assert.doesNotMatch(bridge, /server\/|node:fs|console\.|writeFile/u);
 });
@@ -176,4 +176,12 @@ test("preload refuses a bad image call locally", async () => {
   assert.deepEqual(await exposed.taskImage(repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), { ok: true });
   assert.deepEqual(await exposed.taskImage(repositoryId, "read", { taskId: "T-7", imageId }), { ok: true });
   assert.deepEqual(invokes.map((call) => call.slice(0, 3)), [["pomegr:task-image", repositoryId, "add"], ["pomegr:task-image", repositoryId, "read"]]);
+});
+
+test("runPaired skips only the trusted-window check, with the same payload validation", async () => {
+  const h = harness(json({ ok: true, imageId }));
+  assert.deepEqual(await h.action.runPaired(repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), { ok: true, imageId });
+  assert.deepEqual(await h.action.runPaired("repo-bad", "add", { taskId: "T-7", imageId, bytes: PNG }), invalid);
+  assert.deepEqual(await h.action.runPaired(repositoryId, "add", { taskId: "T-7", imageId, bytes: new Uint8Array(0) }), invalid);
+  assert.deepEqual(await h.action.run({ trusted: false }, repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), invalid);
 });

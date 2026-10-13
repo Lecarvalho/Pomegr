@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
-import { sessionTaskHref } from "../tasks/SessionTaskCell";
+import { sessionFeatureHref } from "../tasks/SessionTaskCell";
 import { stepLabel } from "../tasks/session-task-model";
 import { useSessionTask } from "../tasks/use-session-task";
 
 export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference; taskHref: string | null }) {
   const { stepTotal } = useSessionTask(task);
-  const boardHref = sessionTaskHref(task);
+  const boardHref = sessionFeatureHref(task);
   return <span className="sessionTaskMeta">
     <span className="sessionTaskMetaGroup">
       <span>Task</span>

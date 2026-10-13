@@ -1,8 +1,10 @@
 "use client";
 
 import { TASK_BOUNDS, TASK_IMAGE_TYPES, type TaskImageType } from "../../../shared/task-contract";
+import { clientAccessMode } from "../../hooks/ClientAccessContext";
+import { getPairedTaskImage, postPairedTaskImageAdd, postPairedTaskImageRemove } from "./task-paired";
 
-// The renderer's only way to a task's images.
+// The renderer's only way to a task's images: the desktop bridge, or a paired device's fixed routes.
 
 export type TaskImageError = "invalid" | "not_found" | "limit" | "conflict" | "unavailable";
 export type TaskImageResult<Value> = ({ ok: true } & Value) | { ok: false; error: TaskImageError };
@@ -20,16 +22,28 @@ function imageBridge(): Bridge | undefined {
   return typeof bridge?.taskImage === "function" ? bridge as Bridge : undefined;
 }
 
+const pairedDevice = () => imageBridge() === undefined && clientAccessMode() === "lan";
+
 export function taskImagesAvailable(): boolean {
-  return imageBridge() !== undefined;
+  return imageBridge() !== undefined || pairedDevice();
 }
+
+/** The same operation over the paired device's routes; the answer has the bridge's shape. */
+function pairedCall(repositoryId: string, operation: Operation, payload: Record<string, unknown>): Promise<unknown> {
+  const { taskId, imageId } = payload as { taskId: string; imageId: string };
+  if (operation === "add") return postPairedTaskImageAdd(repositoryId, taskId, imageId, payload.bytes as Uint8Array);
+  if (operation === "remove") return postPairedTaskImageRemove(repositoryId, taskId, imageId);
+  return getPairedTaskImage(repositoryId, taskId, imageId).then((answer) => (answer.ok ? { ok: true, type: pairedType(answer.type), bytes: answer.bytes } : answer));
+}
+
+const pairedType = (mediaType: string | undefined) => TASK_IMAGE_TYPES.find((type) => MEDIA_TYPES[type] === mediaType);
 
 /** One bridge call. */
 async function call<Value>(repositoryId: string, operation: Operation, payload: Record<string, unknown>, parse: (answer: Record<string, unknown>) => Value | null): Promise<TaskImageResult<Value>> {
   const bridge = imageBridge();
-  if (!bridge) return { ok: false, error: "unavailable" };
+  if (!bridge && !pairedDevice()) return { ok: false, error: "unavailable" };
   try {
-    const answer: unknown = await bridge.taskImage(repositoryId, operation, payload);
+    const answer: unknown = bridge ? await bridge.taskImage(repositoryId, operation, payload) : await pairedCall(repositoryId, operation, payload);
     if (typeof answer === "object" && answer !== null && !Array.isArray(answer)) {
       const record = answer as Record<string, unknown>;
       if (record.ok === true) {
