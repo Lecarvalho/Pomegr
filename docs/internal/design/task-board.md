@@ -72,6 +72,7 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 ### Layout
 
 - The route is `/tasks?repository=<repositoryId>`. It is a root route. The repository detail's Tasks tab only links to it.
+- The route takes an optional `feature=<featureId>` beside the repository. A session's feature link adds it. See [Feature link](#feature-link).
 - The page is a composition of the existing roles, chips, and tokens. It adds no button role.
 - The page holds these parts in order: the shared page header, the **Queue status** banner, and then the Board.
 - The **Queue status** banner shows only while the queue is blocked or paused.
@@ -214,6 +215,18 @@ The head actions appear in this order:
 - The step clause names the lowest step with a task that has a session and is not done, and the feature's last step. With no such step, the line is the done count only.
 - **All** and **No feature** show no progress line.
 - While a filter is on, the desktop app's row then shows the line “Moving cards is off while a feature filter is on.”
+
+### Feature link
+
+- The address `/tasks?repository=<repositoryId>&feature=<featureId>` opens the board of that repository with that feature chosen in the feature filter.
+- The desktop app also opens the [Feature modal](task-modal.md#feature-modal) in mode Feature for that feature.
+- A paired device and a browser on the same computer open no modal. The chosen filter and its progress line are their view of the feature.
+- A client that gets the Desktop only notice gets only that notice.
+- The board answers the parameter once, when the board is ready and the client is known. A later board read opens nothing again.
+- A feature the board does not hold opens the whole board: the filter stays **All**, no modal opens, and no message is drawn.
+- A value that is not a feature ID is ignored the same way. The address is not rewritten.
+- A `feature` with no `repository` is ignored: the page is the Tasks home.
+- When that modal closes, focus returns to the feature filter's select.
 
 ### Capacity strip
 
@@ -483,7 +496,7 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 ### Session header meta
 
 - The meta row adds **Task**, with the ID as a Text link to the Task tab. On that tab, the ID is plain ink text.
-- It then adds **Feature**, with the name linked to the board and the data-font “step n of N”.
+- It then adds **Feature**, with the name as a [feature link](#feature-link) and the data-font “step n of N”.
 - The row uses muted 12px text.
 - The row stays on phone.
 
@@ -526,7 +539,7 @@ The task panel holds these parts in order:
 
 The Feature aside is at most 480px. It holds these parts:
 
-- The feature name as an ink Text link.
+- The feature name as an ink Text link. It is a [feature link](#feature-link) to the feature the board holds the task in.
 - The data-font “n of m done”.
 - **Same step as this session** and **Next** rows.
 - While the queue is blocked, one error-colored note.

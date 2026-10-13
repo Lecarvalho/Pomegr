@@ -8,16 +8,19 @@ import { CommandBreadcrumbSeparator, CommandEmpty, CommandPage, CommandSelect } 
 import { repositoryRouteId } from "../repositories/repository-route";
 import { TaskBoardPane } from "./TaskBoardPane";
 import { TaskBoardSkeleton } from "./TaskBoardView";
+import { featureRouteId } from "./task-features";
 import { TasksHome, TasksHomeSkeleton, taskBoardHref } from "./TasksHome";
 
 const SWITCHER_ID = "tasks-repository-switcher";
 const HOME_HREF = "/tasks";
 
-export function TasksPage({ initialRepositoryId }: { initialRepositoryId?: string }) {
+export function TasksPage({ initialRepositoryId, initialFeatureId }: { initialRepositoryId?: string; initialFeatureId?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { snapshot, loading, connected } = useRepositoryInventory();
   const requestedId = repositoryRouteId(searchParams.has("repository") ? searchParams.get("repository") : initialRepositoryId);
+  // A feature is named only beside its repository: the board of that repository opens it.
+  const requestedFeatureId = featureRouteId(searchParams.has("repository") ? searchParams.get("feature") : initialFeatureId) ?? null;
   const selected = requestedId ? snapshot.repositories.find((repository) => repository.id === requestedId) ?? null : null;
   const selectedId = selected?.id ?? null;
   // A repository the inventory does not list has no board: the page is the home, and the URL says so.
@@ -50,7 +53,7 @@ export function TasksPage({ initialRepositoryId }: { initialRepositoryId?: strin
   if (!selected) return <TasksHome repositories={snapshot.repositories} />;
 
   const options = snapshot.repositories.map((repository) => ({ value: repository.id, label: repository.displayName }));
-  return <TaskBoardPane key={selected.id} repositoryId={selected.id}
+  return <TaskBoardPane key={selected.id} repositoryId={selected.id} featureId={requestedFeatureId}
     breadcrumb={<><Link href={HOME_HREF}>Tasks</Link><CommandBreadcrumbSeparator /><span aria-current="page">{selected.displayName}</span></>}
     switcher={
       <CommandSelect className="tasksRepositorySwitcher" id={SWITCHER_ID} aria-label="Repository" options={options} value={selected.id}

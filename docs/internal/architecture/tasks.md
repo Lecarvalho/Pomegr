@@ -2261,7 +2261,8 @@ fixed values.
   reference, and `server/serving/session-directory-tasks.mjs` joins it onto a directory
   page when the page is served. It adds the ID of the repository whose board holds the
   task, so the task ID can link to that board (the session's own committed repository ID
-  can be missing or another one), and the opaque feature ID, which the Feature filter passes back. The
+  can be missing or another one), and the opaque feature ID, which the Feature filter passes back and a
+  session's feature link puts in the board address (task T-93, 2026-10-12; see below). The
   state is served only as `needs_review`, `stalled`, `blocked`, `done`, or null; the list
   draws a chip for Needs review, Stalled, and Done, and none for Blocked by agent. It also
   carries the nullable issue number (1 to 999999999) that `readTaskSource` in
@@ -2278,6 +2279,18 @@ fixed values.
   state, feature, and step; the Source line comes from `Task.source` on a ready board, not
   from the reference. The Task tab is listed only once the reference is known, so it
   is never shown and then removed; it mutates nothing.
+- A session's feature link is `/tasks?repository=<repositoryId>&feature=<featureId>`
+  (`sessionFeatureHref` in `app/components/tasks/SessionTaskCell.tsx`). The address carries
+  only the two opaque IDs the reference already holds, never a feature name. The Tasks page
+  validates both (`featureRouteId` in `app/components/tasks/task-features.ts`) and sends
+  neither to a new route: the board is the same `GET /api/tasks` read under the same gate.
+  - The desktop app opens the Feature modal, which reads the description and the app
+    version through `pomegr:task-feature` as it does from **Edit feature**.
+  - A paired device and a same-computer browser only choose the feature in the filter, from
+    the `{ id, name, done }` the board already serves them. They make no feature read, so
+    the description and the app version still never reach them.
+  - A feature ID the ready board does not hold opens nothing and reads nothing. The page
+    does not say whether the feature was deleted or belongs to another board.
 - A session's task reference is found by the session link, and its assigned tasks by
   the assignment rows, never by repository ID. The
   session catalog stores none of it: the catalog index only takes a bounded set of
@@ -2386,8 +2399,9 @@ Each item is owned by the product owner; none is implemented until they answer.
    Pomegr a read-only observer. Observation is read-only; the product now also starts
    sessions and has an [agent chat](agent-chat.md). No delivered change owned those files.
 4. **Board deep links.** The board has no address for one task, so
-   feature links and Open on board in the session view open the board only, and a task
-   ID on the Sessions list opens the board instead of the session's Task tab.
+   Open on board in the session view opens the board only, and a task
+   ID on the Sessions list opens the board instead of the session's Task tab. A feature has
+   an address since task T-93: a session's feature link opens it.
 5. **Session start outside Windows.** Other platforms answer the fixed
    `unsupported_platform` result until a launcher is validated for them.
 
