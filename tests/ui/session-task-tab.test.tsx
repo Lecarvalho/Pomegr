@@ -17,36 +17,36 @@ const sessionId = "claude:this-session";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
 
-const reference: SessionTaskReference = { id: "T-14", repositoryId, state: null, featureId: "feat-1", feature: "Task board v1", step: 2 };
+const reference: SessionTaskReference = { id: "T-14", repositoryId, state: null, featureId: "feat-1", feature: "Task board v1" };
 
 const mine = task(14, {
   text: "Add the complete_task and block_task tools.\nBind each call to the session.",
-  featureId: "feat-1", step: 2, state: "queued",
+  featureId: "feat-1", state: "queued", group: "grp-0123456789ab",
   run: { provider: "claude", model: "opus", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: "Both tools validate their input." },
   session: { id: sessionId, title: "Wire the tools", state: "working", observedModel: "opus" },
 });
 
 const siblings = [
-  task(12, { featureId: "feat-1", step: 1, state: "done", text: "Store and privacy rules" }),
-  task(13, { featureId: "feat-1", step: 2, state: "needs_review", text: "Queue gate", session: { id: "claude:other", title: "Queue auto-advance", state: "idle", observedModel: null } }),
-  task(15, { featureId: "feat-1", step: 3, state: "queued", text: "Run plan" }),
-  task(16, { featureId: "feat-1", step: 4, text: "Fourth step" }),
-  task(17, { featureId: "feat-1", step: 3, state: "done", text: "Parallel next" }),
+  task(12, { featureId: "feat-1", state: "done", text: "Store and privacy rules" }),
+  task(13, { featureId: "feat-1", group: "grp-0123456789ab", state: "queued", text: "Queue gate", session: { id: "claude:other", title: "Queue auto-advance", state: "idle", observedModel: null } }),
+  task(15, { featureId: "feat-1", state: "queued", text: "Run plan" }),
+  task(16, { featureId: "feat-1", text: "Fourth step" }),
+  task(17, { featureId: "feat-1", state: "done", text: "Parallel next" }),
 ];
 
 function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
   return {
     version: 1, readiness: "ready", repositoryId, columns: [{ id: "col-1", name: "Backlog", position: 0 }],
     features: [{ id: "feat-1", name: "Task board v1", done: false }],
-    tasks: [mine, ...siblings], queue: { status: "running", blockedBy: null, pauseReason: null, order: [] }, ...overrides,
+    tasks: [mine, ...siblings], queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-15", "T-16"] }, ...overrides,
   };
 }
 
@@ -280,20 +280,19 @@ describe("SessionTaskTab", () => {
     expect(checkRows({ ...mine, state: "stalled" }).map((row) => row.result)).toEqual(["No report", "No report"]);
   });
 
-  it("lists the feature with its progress, the same-step tasks and the next-step tasks", () => {
+  it("lists the feature with its progress, the tasks running with this session and the next task", () => {
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     const side = screen.getByRole("complementary", { name: "Feature" });
     expect(within(side).getByRole("link", { name: "Task board v1" })).toHaveAttribute("href", boardHref);
     expect(side).toHaveTextContent("2 of 6 done");
-    expect(side).toHaveTextContent("Same step as this session");
-    const sameStep = within(side).getAllByRole("list")[0];
-    expect(within(sameStep).getAllByRole("listitem").map((row) => row.getAttribute("data-task-id"))).toEqual(["T-13"]);
-    expect(within(sameStep).getByRole("link", { name: "Queue auto-advance" })).toHaveAttribute("href", "/sessions/claude-other");
-    expect(within(sameStep).getByText("Needs review")).toHaveClass("commandChip");
+    expect(side).toHaveTextContent("Running with this session");
+    const inGroup = within(side).getAllByRole("list")[0];
+    expect(within(inGroup).getAllByRole("listitem").map((row) => row.getAttribute("data-task-id"))).toEqual(["T-13"]);
+    expect(within(inGroup).getByRole("link", { name: "Queue auto-advance" })).toHaveAttribute("href", "/sessions/claude-other");
+    expect(within(inGroup).getByText("Idle")).toHaveClass("commandChip");
     const next = within(side).getAllByRole("list")[1];
-    expect(within(next).getAllByRole("listitem").map((row) => row.getAttribute("data-task-id"))).toEqual(["T-15", "T-17"]);
+    expect(within(next).getAllByRole("listitem").map((row) => row.getAttribute("data-task-id"))).toEqual(["T-15"]);
     expect(within(next).getByRole("link", { name: "Run plan" })).toHaveAttribute("href", boardHref);
-    expect(within(next).getByText("Done")).toHaveClass("commandChip");
     expect(side.querySelector(".sessionTaskBlockedNote")).toBeNull();
   });
 
@@ -307,21 +306,21 @@ describe("SessionTaskTab", () => {
   });
 
   it("explains a blocked queue under the Next rows", () => {
-    setBoard(board({ queue: { status: "blocked", blockedBy: "T-12", pauseReason: null, order: [] } }));
+    setBoard(board({ queue: { status: "blocked", blockedBy: "T-12", pauseReason: null, order: ["T-15"] } }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
-    expect(screen.getByRole("complementary", { name: "Feature" })).toHaveTextContent("Queue blocked by T-12. T-15, T-17 will not start when this session completes.");
+    expect(screen.getByRole("complementary", { name: "Feature" })).toHaveTextContent("Queue blocked by T-12. T-15 will not start when this session completes.");
   });
 
   it("words the blocked note for the cases where this task is the blocker or already done", () => {
-    const base = { task: mine, nextStep: [siblings[2]], queue: { blocked: true, by: "T-14" } };
+    const base = { task: mine, next: [siblings[2]], queue: { blocked: true, by: "T-14" } };
     expect(queueBlockedNote(base)).toBe("This task blocks the queue. T-15 will not start until it is resolved.");
     expect(queueBlockedNote({ ...base, task: { ...mine, state: "done" }, queue: { blocked: true, by: "T-12" } })).toBe("Queue blocked by T-12. T-15 will not start until it is resolved.");
-    expect(queueBlockedNote({ ...base, nextStep: [], queue: { blocked: true, by: "T-12" } })).toBe("Queue blocked by T-12.");
+    expect(queueBlockedNote({ ...base, next: [], queue: { blocked: true, by: "T-12" } })).toBe("Queue blocked by T-12.");
   });
 
   it("draws no feature panel for a task without a feature", () => {
-    setBoard(board({ tasks: [{ ...mine, featureId: null, step: null }] }));
-    render(<SessionTaskTab task={{ ...reference, featureId: null, feature: null, step: null }} sessionId={sessionId} />);
+    setBoard(board({ tasks: [{ ...mine, featureId: null }] }));
+    render(<SessionTaskTab task={{ ...reference, featureId: null, feature: null }} sessionId={sessionId} />);
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   });
 
@@ -349,7 +348,7 @@ describe("SessionTaskTab", () => {
     const panel = screen.getByRole("region", { name: "Task T-14" });
     expect(panel).toHaveTextContent(sentence);
     expect(panel).toHaveTextContent("Done");
-    expect(panel).toHaveTextContent("Task board v1 · step 2");
+    expect(panel).toHaveTextContent("Task board v1");
     expect(screen.queryByRole("region", { name: "Run" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Complete when" })).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
@@ -360,7 +359,7 @@ describe("SessionTaskTab", () => {
     setBoard(board({ readiness: "loading", tasks: [] }));
     const { container } = render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     expect(container.querySelector(".sessionTaskNote")).toBeNull();
-    expect(container).toHaveTextContent("Task board v1 · step 2");
+    expect(container).toHaveTextContent("Task board v1");
     expect(container).not.toHaveTextContent("Add the complete_task");
   });
 });

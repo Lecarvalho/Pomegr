@@ -1,4 +1,4 @@
-import type { Task, TaskBoard, TaskGateReason, TaskGates, TaskGateUsage, TaskProvider } from "../../../shared/task-contract";
+import { TASK_GATE_REASONS, type Task, type TaskBoard, type TaskGateReason, type TaskGates, type TaskGateUsage, type TaskProvider } from "../../../shared/task-contract";
 import { scheduleLabel } from "./task-schedule";
 
 export const PROVIDER_NAMES: Record<TaskProvider, string> = { claude: "Claude Code", codex: "Codex" };
@@ -13,10 +13,10 @@ export function usageReading(usage: TaskGateUsage): string | null {
 
 export type GateTone = "ok" | "error" | "muted";
 
-export function previousStepRow(gates: TaskGates): { text: string; tone: GateTone } {
+export function earlierTaskRow(gates: TaskGates): { text: string; tone: GateTone } {
   if (!gates.next) return { text: "No task queued", tone: "muted" };
   if (gates.next.blockedBy) return { text: `Blocked by ${gates.next.blockedBy}`, tone: "error" };
-  return { text: "Done", tone: "ok" };
+  return { text: "Finished", tone: "ok" };
 }
 
 export function providerStatusRow(gates: TaskGates): { text: string; tone: GateTone } {
@@ -37,7 +37,7 @@ export function reasonText(reason: TaskGateReason, gates: TaskGates | undefined,
   const at = (value: string | null | undefined) => (value ? scheduleLabel(value) : null);
   const provider = PROVIDER_NAMES[next.provider];
   switch (reason) {
-    case "previous_step": return next.blockedBy ? `step before it is not done (${next.blockedBy})` : "step before it is not done";
+    case "earlier_task": return next.blockedBy ? `${next.blockedBy} has not finished` : "an earlier task has not finished";
     case "usage_over": return gates ? `${provider} is above ${gates.threshold}% of the ${gates.usage[next.provider].fiveHourPercent === null ? "seven-day" : "five-hour"} window` : `${provider} is above its usage threshold`;
     case "usage_unknown": return `${provider} usage is not known yet`;
     case "provider_incident": return `${provider} reports an incident`;
@@ -65,6 +65,7 @@ export function heldStartLine(task: Task, queue: Pick<TaskBoard["queue"], "gates
   return `This task is held: ${reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}.`;
 }
 
+/** The Waiting line of the next task when a board carries no waits: the reasons the monitor gave for it. */
 export function waitingLine(queue: TaskBoard["queue"], taskId: string): string | null {
   const gates = queue.gates;
   if (queue.status !== "running" || !gates?.next || gates.next.taskId !== taskId || gates.next.reasons.length === 0) return null;

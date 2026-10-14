@@ -177,7 +177,7 @@ test("bounds follow the store validation", async (context) => {
   assert.deepEqual(added.at(-1).completeWhen, { checks: ["pr_open"], own: null }, "the older name lands in completeWhen");
 });
 
-test("feature attach by exact name at a new last step; an unknown feature creates nothing", async (context) => {
+test("feature attach by exact name, in no group; an unknown feature creates nothing", async (context) => {
   const store = await realStore(context);
   const { port } = await start(context, store);
   assert.equal(store.apply(REPOSITORY_ID, "feature_create", { name: "Checkout" }).ok, true);
@@ -185,7 +185,7 @@ test("feature attach by exact name at a new last step; an unknown feature create
   assert.equal((await add(port, { text: "two", feature: "Checkout" })).status, 200);
   const board = store.readBoard(REPOSITORY_ID);
   const featureId = board.features[0].id;
-  assert.deepEqual(board.tasks.map((task) => [task.featureId, task.step]), [[featureId, 1], [featureId, 2]]);
+  assert.deepEqual(board.tasks.map((task) => [task.featureId, task.group]), [[featureId, null], [featureId, null]]);
   reason(await add(port, { text: "three", feature: "checkout" }), 404, "feature_not_found");
   reason(await add(port, { text: "three", feature: "Nope" }), 404, "feature_not_found");
   assert.equal(store.readBoard(REPOSITORY_ID).features.length, 1);

@@ -1,7 +1,7 @@
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import type { Task, TaskBoard, TaskCheck, TaskCheckOutcome, TaskFeature, TaskRun } from "../../../shared/task-contract";
 import { AGENT_REPORTED_LABEL, CHECK_LABELS, CHECK_OUTCOME_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, checkOutcome, isAgentJudged, observedModelDiffers } from "./task-fields";
-import { highestStep, featureCounts } from "./task-features";
+import { featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
 
 // Pure rules for the session view's task surfaces (the header meta and the Task tab).
@@ -20,46 +20,42 @@ export type SessionTaskFull = {
   task: Task;
   feature: TaskFeature | null;
   progress: { done: number; total: number } | null;
-  sameStep: Task[];
-  nextStep: Task[];
+  /** The other tasks of this task's parallel group that are in the queue. */
+  inGroup: Task[];
+  /** The first task of the queue that belongs to this feature, when there is one. */
+  next: Task[];
   queue: { blocked: boolean; by: string | null };
 };
 
-export type SessionTaskModel = { stepTotal: number | null } & ({ kind: "reduced"; reason: ReducedReason; note: string | null } | SessionTaskFull);
+export type SessionTaskModel = { kind: "reduced"; reason: ReducedReason; note: string | null } | SessionTaskFull;
 
 function idNumber(id: string) {
   return Number(id.slice(2));
 }
 const byTaskNumber = (left: Task, right: Task) => idNumber(left.id) - idNumber(right.id);
 
-export function stepTotal(board: Pick<TaskBoard, "readiness" | "tasks">, featureId: string | null): number | null {
-  if (featureId === null || board.readiness !== "ready") return null;
-  return highestStep(board.tasks, featureId) || null;
-}
-
-export function stepLabel(step: number, total: number | null): string {
-  return total === null ? `step ${step}` : `step ${step} of ${Math.max(step, total)}`;
+function nextInFeature(board: TaskBoard, selfId: string, inFeature: readonly Task[]): Task[] {
+  const first = board.queue.order.find((id) => id !== selfId && inFeature.some((entry) => entry.id === id));
+  const task = inFeature.find((entry) => entry.id === first);
+  return task ? [task] : [];
 }
 
 export function sessionTaskModel(board: TaskBoard, reference: SessionTaskReference): SessionTaskModel {
-  const total = stepTotal(board, reference.featureId);
   if (board.readiness !== "ready") {
     const reason: ReducedReason = board.readiness;
-    return { stepTotal: total, kind: "reduced", reason, note: REDUCED_NOTES[reason] };
+    return { kind: "reduced", reason, note: REDUCED_NOTES[reason] };
   }
   const task = board.tasks.find((entry) => entry.id === reference.id);
-  if (!task) return { stepTotal: total, kind: "reduced", reason: "missing", note: REDUCED_NOTES.missing };
+  if (!task) return { kind: "reduced", reason: "missing", note: REDUCED_NOTES.missing };
   const featureId = task.featureId;
   const inFeature = featureId === null ? [] : board.tasks.filter((entry) => entry.featureId === featureId);
-  const step = task.step;
   return {
-    stepTotal: total,
     kind: "full",
     task,
     feature: featureId === null ? null : board.features.find((entry) => entry.id === featureId) ?? null,
     progress: featureId === null ? null : featureCounts(board, featureId),
-    sameStep: step === null ? [] : inFeature.filter((entry) => entry.step === step && entry.id !== task.id).sort(byTaskNumber),
-    nextStep: step === null ? [] : inFeature.filter((entry) => entry.step === step + 1).sort(byTaskNumber),
+    inGroup: task.group === null ? [] : board.tasks.filter((entry) => entry.group === task.group && entry.id !== task.id).sort(byTaskNumber),
+    next: nextInFeature(board, task.id, inFeature),
     queue: { blocked: board.queue.status === "blocked", by: board.queue.blockedBy },
   };
 }
@@ -151,8 +147,8 @@ export function modelSummary(task: Task): { planned: TextPart; observed: TextPar
   };
 }
 
-export function nextIds(nextStep: readonly Task[]): string {
-  const ids = nextStep.map((entry) => entry.id);
+export function nextIds(next: readonly Task[]): string {
+  const ids = next.map((entry) => entry.id);
   return ids.length > 3 ? `${ids.slice(0, 3).join(", ")} +${ids.length - 3}` : ids.join(", ");
 }
 
@@ -160,11 +156,11 @@ export function queueBlockedLine(by: string | null): string {
   return by === null ? "Queue blocked" : `Queue blocked by ${by}`;
 }
 
-export function queueBlockedNote(model: Pick<SessionTaskFull, "task" | "nextStep" | "queue">): string {
+export function queueBlockedNote(model: Pick<SessionTaskFull, "task" | "next" | "queue">): string {
   const lead = model.queue.by === model.task.id ? "This task blocks the queue." : `${queueBlockedLine(model.queue.by)}.`;
-  if (model.nextStep.length === 0) return lead;
+  if (model.next.length === 0) return lead;
   const tail = model.task.state === "done" || model.queue.by === model.task.id ? "until it is resolved" : "when this session completes";
-  return `${lead} ${nextIds(model.nextStep)} will not start ${tail}.`;
+  return `${lead} ${nextIds(model.next)} will not start ${tail}.`;
 }
 
 export function startedLine(task: Task): string | null {

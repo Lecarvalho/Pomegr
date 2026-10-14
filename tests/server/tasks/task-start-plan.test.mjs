@@ -263,21 +263,41 @@ test("token, digest, mint time and root never reach the board, other action resu
   }
 });
 
-test("the plan asks for a worktree only for a task of a step that holds more than one task", async (context) => {
+const queue = (env, ...ids) => ids.forEach((id) => assert.equal(env.store.apply(REPOSITORY_ID, "queue_add", { id }).ok, true));
+const group = (env, ...ids) => assert.equal(env.store.apply(REPOSITORY_ID, "queue_group", { ids }).ok, true);
+const worktree = async (env, id) => {
+  const { json } = await plan(env, { id });
+  assert.equal(json.plan.repositoryRoot, ROOT, "the plan names the root, never a worktree path");
+  return json.plan.worktree;
+};
+
+test("the plan asks for a worktree for each member of a group, also across features, and for no other card", async (context) => {
   const env = await setup(context);
-  const feature = env.store.apply(REPOSITORY_ID, "feature_create", { name: "Search" });
-  assert.equal(feature.ok, true);
-  const featureId = feature.board.features[0].id;
-  create(env, { featureId, step: 1 });
-  create(env, { featureId, step: 1 });
-  create(env, { featureId, step: 2 });
+  const first = env.store.apply(REPOSITORY_ID, "feature_create", { name: "Search" }).board.features[0].id;
+  const second = env.store.apply(REPOSITORY_ID, "feature_create", { name: "Billing" }).board.features[0].id;
+  create(env, { featureId: first });
+  create(env, { featureId: first });
+  create(env, { featureId: second });
+  create(env, { featureId: second });
   create(env, {});
-  // A step counts its tasks of any state, so a done sibling still means a worktree.
-  withDatabase(env.directory, (database) => database.prepare("UPDATE tasks SET state = 'done' WHERE number = 1").run());
-  const second = await plan(env, { id: "T-2" });
-  assert.equal(second.json.plan.worktree, true);
-  assert.equal(second.json.plan.repositoryRoot, ROOT, "the plan names the root, never a worktree path");
-  assert.equal((await plan(env, { id: "T-4" })).json.plan.worktree, false, "no feature");
-  // Step 1 is not done (T-2 only started), and a start made by hand is not held by step order.
-  assert.equal((await plan(env, { id: "T-3" })).json.plan.worktree, false, "alone in its step");
+  create(env, {});
+  queue(env, "T-1", "T-2", "T-3", "T-4", "T-5", "T-6");
+  // T-2 (Search), T-3 (Billing) and T-6 (no feature) run together; T-1, T-4 and T-5 stand alone.
+  group(env, "T-2", "T-3", "T-6");
+  const plans = {};
+  for (const id of ["T-1", "T-2", "T-3", "T-4", "T-5", "T-6"]) plans[id] = await worktree(env, id);
+  assert.deepEqual(plans, { "T-1": false, "T-2": true, "T-3": true, "T-4": false, "T-5": false, "T-6": true });
+});
+
+test("an ungrouped card of a feature runs in the root, whatever its siblings, and a member left alone does too", async (context) => {
+  const env = await setup(context);
+  const feature = env.store.apply(REPOSITORY_ID, "feature_create", { name: "Search" }).board.features[0].id;
+  for (let count = 0; count < 4; count += 1) create(env, { featureId: feature });
+  queue(env, "T-1", "T-2", "T-3", "T-4");
+  assert.equal(await worktree(env, "T-1"), false);
+  group(env, "T-3", "T-4");
+  assert.equal(await worktree(env, "T-2"), false, "its neighbors are a group, it is not");
+  // T-4 leaves the queue: T-3 is the only member in the queue and is no group.
+  assert.equal(env.store.apply(REPOSITORY_ID, "queue_remove", { id: "T-4" }).ok, true);
+  assert.equal(await worktree(env, "T-3"), false);
 });

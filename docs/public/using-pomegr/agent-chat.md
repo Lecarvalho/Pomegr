@@ -40,7 +40,7 @@ turns no queue on or off by itself either: it proposes that, and you apply it.
 Things you can ask:
 
 - "I have this feature. Create the tasks for it." Aril cuts the feature into parts and
-  proposes one feature with its tasks and steps. If the repository has an `acos` skill,
+  proposes one feature with its tasks in the order they should start. If the repository has an `acos` skill,
   Aril uses its sizing rules for the cut.
 - "Create this task", "Update T-12", or "Remove T-12".
 - "T-12 looks too big. How do I cut it?"
@@ -80,8 +80,8 @@ Pomegr stops at the first change that fails and does not run the ones after it. 
 for the rest once you know why it failed.
 
 A proposal can create a feature, create, update, delete, or move a task, add a task to
-the queue or remove it, move a task to another step, and put an image that you sent on a
-task. It cannot mark a task done,
+the queue or remove it, put queued tasks in a parallel group or take them out of one,
+and put an image that you sent on a task. It cannot mark a task done,
 requeue a task, or change the queue's threshold or schedule. Those stay with you, as
 described in [Tasks](tasks.md). Starting a session and turning the queue on or off are
 proposals of their own, described below.
@@ -135,14 +135,14 @@ always a proposal of its own.
 | **Queue not changed.** and a reason | Nothing changed. Select the same button again to try once more. |
 
 > **Caution:** Turning the queue on lets Pomegr start sessions without asking again. It
-> starts the queued tasks on the computer that runs Pomegr, one step at a time, while
+> starts the queued tasks on the computer that runs Pomegr, in Ready order, while
 > Pomegr is open there. Read the **Ready** column before you turn the queue on.
 
 - Aril proposes a queue change only when you ask for one.
 - A proposal names **On** or **Off**. It never switches the queue to the opposite of
   what it is, so applying it again cannot reverse the queue.
-- Every start still passes the same checks as on the Tasks page: the order and steps of
-  the queue, each task's own start time, the queue's schedule, and the
+- Every start still passes the same checks as on the Tasks page: the Ready order and parallel
+  groups of the queue, each task's own start time, the queue's schedule, and the
   [start gates](tasks.md#start-gates).
 - Aril does not start the tasks and cannot tell you which ones will start. The Board
   shows that.

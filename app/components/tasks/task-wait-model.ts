@@ -41,7 +41,6 @@ function clause(entry: WaitReason, task: WaitTask, queue: WaitQueue): string {
     case "queue_blocked": return tasks ? `the queue is blocked by ${tasks}` : "the queue is blocked";
     case "queue_paused": return tasks ? `the queue is paused at ${tasks}` : "the queue is paused";
     case "own_schedule": return "its start time has not come";
-    case "feature_first": return `feature tasks start first (${tasks})`;
     case "earlier_tasks": return `earlier tasks start first (${tasks})`;
     case "running_work": return `${tasks} ${runs(entry)} running`;
     case "unknown": return "the reason is not known yet";
@@ -67,10 +66,9 @@ function sentence(entry: WaitReason, task: WaitTask, queue: WaitQueue): string {
     case "queue_blocked": return tasks ? `The queue is blocked by ${tasks}. Nothing starts until that task is resolved.` : "The queue is blocked.";
     case "queue_paused": return tasks ? `The queue is paused at ${tasks}. Select On to retry.` : "The queue is paused.";
     case "own_schedule": return "Its own start time has not come.";
-    case "previous_step": return tasks ? `An earlier step of its feature is not done: ${tasks}.` : "An earlier step of its feature is not done.";
-    case "feature_first": return `Feature tasks start before single tasks, wherever the card is in Ready: ${tasks}.`;
-    case "earlier_tasks": return `These start first: ${tasks}.`;
-    case "running_work": return `${tasks} ${runs(entry)} running. The queue starts one step at a time.`;
+    case "earlier_task": return tasks ? `${tasks} has not finished.` : "An earlier task has not finished.";
+    case "earlier_tasks": return `These are above it in Ready and start first: ${tasks}.`;
+    case "running_work": return `${tasks} ${runs(entry)} running. The next card starts when that work is in Review or Done.`;
     case "before_queue_start": case "after_queue_stop": return `Schedule: ${gateText(entry, task, queue)}.`;
     case "unknown": return "The reason is not known yet.";
     default: return GATE_REASONS.has(entry.reason) ? `Start gate: ${gateText(entry, task, queue)}.` : "The reason is not known yet.";

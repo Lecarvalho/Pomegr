@@ -9,22 +9,21 @@ import type { FeatureEntry } from "./FeatureActions";
 import { FeatureFilter } from "./FeatureFilter";
 import { QueueBanner } from "./QueueBanner";
 import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
-import { ReadyNewStepZone, ReadyStepGroup } from "./ReadyStepGroup";
+import { ReadyGroup, ReadyLink, type ReadyGroupActions } from "./ReadyGroup";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskColumnHeader } from "./TaskColumnHeader";
-import { cardMove, readyColumnId, type CardMoveKind } from "./task-board-model";
-import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue, type FeatureLine } from "./task-features";
+import { cardMove, readyColumnId, readyUnits, waitsInQueue, type CardMoveKind } from "./task-board-model";
+import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue } from "./task-features";
 import { waitCardLine } from "./task-wait-model";
 import { useMinuteClock } from "./task-panel-hooks";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
-import { boardStepChoices, dropKey, isMovableQueueTask, newStepLabel, queueFeatures } from "./task-queue-model";
-import { readySegments, type ReadySegment } from "./task-ready-groups";
+import { idList, linkIds, readySegments, type ReadyParallelGroup, type ReadySegment } from "./task-ready-groups";
 import { useCardDrag, type CardDropLine, type ColumnDropHandlers } from "./use-card-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
 type OpenTask = (task: Task, opener: HTMLElement) => void;
 
-const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.";
+const FOOTNOTE = "Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.";
 
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 
@@ -64,13 +63,16 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
   const [announcement, setAnnouncement] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
-  const panels = useMemo(() => queueFeatures(board), [board]);
-  // A change of step is its own action: it moves no card.
-  const moveStep = (id: string, step: number) => {
-    setAnnouncement(`${id} moved to step ${step}.`);
-    void edits?.reorderQueueTask(id, step);
+  // A group change is its own action: the board reads the new groups from the monitor.
+  const groupCards = (ids: readonly string[]) => {
+    setAnnouncement(`${idList(ids)} run in parallel.`);
+    void edits?.groupTasks(ids);
   };
-  const drag = useCardDrag(board, (move) => { void edits?.moveTask(move); }, { columnId: readyId, panels, onStep: moveStep });
+  const ungroupCards = (ids: readonly string[], announcement: string) => {
+    setAnnouncement(announcement);
+    void edits?.ungroupTasks(ids);
+  };
+  const drag = useCardDrag(board, (move) => { void edits?.moveTask(move); }, { columnId: readyId, onJoin: (id, memberId) => groupCards([memberId, id]) });
   const signature = columns.map((column) => `${column.id}:${column.tasks.map((task) => task.id).join(",")}`).join("|");
   const settled = edits?.settled ?? 0;
 
@@ -108,22 +110,46 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
     setAnnouncement(column ? `${id} moved to ${column.name}, position ${Math.min(move.position, column.tasks.length) + 1}.` : "");
     void edits.moveTask(move);
   };
-  const stepControl = (id: string) => () => {
-    const card = cardOf(id);
-    return card?.querySelector<HTMLElement>(".taskMoveStep [role='combobox']") ?? card?.querySelector<HTMLElement>(".taskCardOpen") ?? null;
+  const openControl = (id: string) => () => cardOf(id)?.querySelector<HTMLElement>(".taskCardOpen") ?? null;
+  const groupMoveFor = (task: Task): TaskCardMove["group"] => {
+    if (!edits || task.group === null || !waitsInQueue(task)) return undefined;
+    return { onLeave: () => { restore.current = { find: openControl(task.id), settled: edits.settled }; ungroupCards([task.id], `${task.id} taken out of its parallel group.`); } };
   };
-  const stepMoveFor = (task: Task): TaskCardMove["step"] => {
-    const panel = isMovableQueueTask(task) ? panels.find((candidate) => candidate.feature.id === task.featureId) : undefined;
-    if (!edits || !panel) return undefined;
-    return { choices: boardStepChoices(panel, task), onMove: (step) => { restore.current = { find: stepControl(task.id), settled: edits.settled }; moveStep(task.id, step); } };
+  const groupControl = (memberId: string, kind: string) => () => {
+    const frame = cardOf(memberId)?.closest<HTMLElement>("[data-ready-group]");
+    return frame?.querySelector<HTMLElement>(`[data-group-move="${kind}"]:not(:disabled)`) ?? frame?.querySelector<HTMLElement>("[data-group-move]:not(:disabled)") ?? frame?.querySelector<HTMLElement>(".taskReadyUngroup") ?? null;
   };
+  const readyCards = columns.find((column) => column.id === readyId)?.tasks ?? [];
+  /** The move of a whole group one place up or down, past the card or the group beside it. */
+  const groupMove = (group: ReadyParallelGroup, kind: "up" | "down") => {
+    const units = readyUnits(readyCards);
+    const at = units.findIndex((unit) => unit.group === group.group && unit.tasks[0]?.id === group.tasks[0].id);
+    const beside = units[at + (kind === "up" ? -1 : 1)];
+    if (at < 0 || !beside || readyId === null) return null;
+    const start = readyCards.findIndex((task) => task.id === group.tasks[0].id);
+    return { id: group.tasks[0].id, columnId: readyId, position: kind === "up" ? start - beside.tasks.length : start + beside.tasks.length, group: "block" as const };
+  };
+  const groupActionsFor = (group: ReadyParallelGroup): ReadyGroupActions | undefined => edits && !filtered ? {
+    drag: drag.groupHandlers(group.tasks[0].id),
+    canMove: { up: groupMove(group, "up") !== null, down: groupMove(group, "down") !== null },
+    onMove: (kind) => {
+      const move = groupMove(group, kind);
+      if (!move) return;
+      restore.current = { find: groupControl(group.tasks[0].id, kind), settled: edits.settled };
+      setAnnouncement(`The parallel group of ${idList(group.tasks.map((task) => task.id))} moved ${kind}.`);
+      void edits.moveTask(move);
+    },
+    onUngroup: () => {
+      restore.current = { find: openControl(group.tasks[0].id), settled: edits.settled };
+      ungroupCards(group.tasks.map((task) => task.id), `${idList(group.tasks.map((task) => task.id))} no longer run in parallel.`);
+    },
+  } : undefined;
   const cardMoveFor = (task: Task): TaskCardMove | undefined => edits && !filtered ? {
     drag: drag.cardHandlers(task.id),
     available: Object.fromEntries(KINDS.map((kind) => [kind, cardMove(board, task.id, kind) !== null])) as TaskCardMove["available"],
     onMove: (kind) => moveCard(task.id, kind),
-    step: stepMoveFor(task),
+    group: groupMoveFor(task),
   } : undefined;
-  const zonePanel = panels.find((panel) => drag.overStep === dropKey(panel.feature.id, null));
 
   return <>
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
@@ -133,9 +159,9 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
     {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} entry={features} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
-        {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.order[0] ?? null}
-          ready={column.id === readyId ? { segments: readySegments(column.tasks, board), queue: board.queue, now, overStep: drag.overStep,
-            newStep: zonePanel && { featureId: zonePanel.feature.id, label: newStepLabel(zonePanel) } } : undefined}
+        {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.gates?.next?.taskId ?? board.queue.order[0] ?? null}
+          ready={column.id === readyId ? { segments: readySegments(column.tasks, board), queue: board.queue, tasks: board.tasks, now, overGroup: drag.overGroup,
+            groupActionsFor, onLink: edits && !filtered ? groupCards : undefined } : undefined}
           dropTarget={drag.overColumn === column.id} dropLine={drag.dropLine?.columnId === column.id ? drag.dropLine : undefined} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} newTask={index === 0 ? newTask : undefined} />)}
       </div>
     </div>}
@@ -144,20 +170,24 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
   </>;
 }
 
-/** The Ready lane's step groups, the queue their Waiting line reads, and the clock of their Starts line. */
+/** The Ready lane's parallel groups, the queue their Waiting line reads, and the clock of their Starts line. */
 export type ReadyLane = {
   segments: ReadySegment[];
   queue: TaskBoard["queue"];
+  /** The board's tasks: a Waiting line reads which card the monitor lists first belongs to which group. */
+  tasks?: readonly Task[];
   now?: number;
-  /** The step target under the dragged card, as a `dropKey`. */
-  overStep?: string | null;
-  /** The new-step zone, drawn after the last group of its feature while the dragged card is over that gap. */
-  newStep?: { featureId: string; label: string };
+  /** The group the dragged card would join. */
+  overGroup?: string | null;
+  /** The whole-group actions, in the desktop app or on a paired device. */
+  groupActionsFor?(group: ReadyParallelGroup): ReadyGroupActions | undefined;
+  /** Puts the waiting cards in one parallel group. Without it no "Run in parallel" is drawn. */
+  onLink?(ids: readonly string[]): void;
 };
 
 export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine, drop, cardMoveFor, newTask, ready }: {
   column: TaskColumnView;
-  lines: ReadonlyMap<string, FeatureLine>;
+  lines: ReadonlyMap<string, string>;
   nextId: string | null;
   onOpen?: OpenTask;
   dropTarget: boolean;
@@ -171,18 +201,27 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
 }) {
   const headingId = useId();
   const lastId = column.tasks.at(-1)?.id;
-  const card = (task: Task, grouped = false) => <TaskCard key={task.id} task={task} grouped={grouped} now={ready?.now} waiting={grouped && ready ? waitCardLine(ready.queue, task) : undefined}
+  // A held card of a group whose siblings started says so: the group keeps its turn until this card starts too.
+  const waiting = (task: Task, started: readonly string[]) => {
+    const line = ready && waitsInQueue(task) ? waitCardLine(ready.queue, task) : null;
+    return line && started.length > 0 && line.includes("Waiting:") ? `${line} · ${idList(started)} started` : line;
+  };
+  const card = (task: Task, started: readonly string[] = []) => <TaskCard key={task.id} task={task} compact={ready !== undefined && waitsInQueue(task)} now={ready?.now} waiting={waiting(task, started)}
     dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && task.id === lastId ? "after" : undefined}
     featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
-  const zoneAfter = ready?.newStep && ready.segments.findLast((segment) => segment.kind === "step" && segment.feature.id === ready.newStep?.featureId)?.key;
-  const group = (segment: Exclude<ReadySegment, { kind: "card" }>) => <Fragment key={segment.key}>
-    <ReadyStepGroup group={segment} renderCard={(task) => card(task, true)} stepTarget={segment.kind === "step" && ready?.overStep === dropKey(segment.feature.id, segment.step)} />
-    {ready?.newStep && segment.key === zoneAfter && <ReadyNewStepZone {...ready.newStep} />}
-  </Fragment>;
+  // Between two waiting cards, or groups, that sit next to each other: the action that makes them one group.
+  const segment = (current: ReadySegment, index: number) => {
+    const ids = ready?.onLink ? linkIds(ready.segments[index - 1], current) : null;
+    return <Fragment key={current.key}>
+      {ids && <ReadyLink ids={ids} onLink={() => ready?.onLink?.(ids)} />}
+      {current.kind === "card" ? card(current.task)
+        : <ReadyGroup group={current} renderCard={(task) => card(task, current.started)} joinTarget={ready?.overGroup === current.group} actions={ready?.groupActionsFor?.(current)} />}
+    </Fragment>;
+  };
   return <section className={`taskColumn${dropTarget ? " isDropTarget" : ""}`} data-column-id={column.id} aria-labelledby={headingId} {...drop}>
     <TaskColumnHeader column={column} headingId={headingId} taskCount={column.tasks.length} />
     {column.tasks.length > 0 && <ul className="taskColumnList">{ready
-      ? ready.segments.map((segment) => segment.kind === "card" ? card(segment.task) : group(segment))
+      ? ready.segments.map(segment)
       : column.tasks.map((task) => card(task))}</ul>}
     {newTask && <NewTaskAction {...newTask} />}
   </section>;

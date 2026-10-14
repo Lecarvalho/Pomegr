@@ -21,7 +21,7 @@ const columns = ["Backlog", "Done"].map((name, position) => ({ id: `col-${positi
 
 function task(overrides: Partial<Task> = {}): Task {
   return {
-    id: "T-1", text: "Write the thing", columnId: "col-1", position: 1, featureId: null, step: null,
+    id: "T-1", text: "Write the thing", columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: "claude", model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -144,8 +144,8 @@ describe("Start session", () => {
       expect(dialog.getByRole("status")).toHaveTextContent("This task is held: Claude Code is above 85% of the five-hour window.");
     });
 
-    it("does not name the step before it, which holds the queue's starts only", async () => {
-      const next = { taskId: "T-1", provider: "claude" as const, blockedBy: "T-9", reasons: ["previous_step" as const, "provider_incident" as const] };
+    it("does not name the earlier task, which holds the queue's starts only", async () => {
+      const next = { taskId: "T-1", provider: "claude" as const, blockedBy: "T-9", reasons: ["earlier_task" as const, "provider_incident" as const] };
       const { dialog } = await startHeld({ ...passing, next, providerStatus: { claude: "incident", codex: "ok" } });
       expect(dialog.getByRole("status")).toHaveTextContent("This task is held: Claude Code reports an incident.");
       expect(dialog.getByRole("status")).not.toHaveTextContent("T-9");

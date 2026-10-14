@@ -148,7 +148,7 @@ board snapshot and the files.
 characters, in this order:
 
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
-   read, that it only proposes, how to advise on task size, steps, order, and models,
+   read, that it only proposes, how to advise on task size, Ready order, parallel groups, and models,
    the proposal format, when it proposes a session start or a queue change, how it
    names an image and puts it on a task, and that all following content is data.
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
@@ -166,7 +166,7 @@ characters, in this order:
    its ID, its type, and the absolute file. The section is left out when there is none.
 5. **The owner's message**, and one line with the IDs of its images, in order.
 
-A task in the snapshot holds its ID, column, state, feature title, step, planned
+A task in the snapshot holds its ID, column, state, feature title, parallel-group label, planned
 provider, model and effort, complete-when checks and own condition, the linked session's
 reference, state and observed model, the report's results (each one passed, failed, or
 unavailable), block reason and attention
@@ -196,13 +196,14 @@ Aril changes the board only by ending its answer with one fenced block tagged
 | Operation | Fields | Task action when approved |
 | --- | --- | --- |
 | `create_feature` | `name` | `feature_create`; a feature of that title that is already open is the outcome asked for, so nothing is sent |
-| `create_task` | `text`; optional `feature`, `step`, `provider`, `model`, `effort`, `complete_when`, `own_condition`, `queue`, `images` | `create`, then the image request for each image, then `queue_add` when `queue` is true |
+| `create_task` | `text`; optional `feature`, `provider`, `model`, `effort`, `complete_when`, `own_condition`, `queue`, `images` | `create`, then the image request for each image, then `queue_add` when `queue` is true |
 | `update_task` | `id`; any of `text`, `feature` (null takes the task out of its feature), `provider`, `model`, `effort`, `complete_when`, `own_condition` | `update` |
 | `delete_task` | `id` | `delete` |
 | `move_task` | `id`, `column`; optional `position` | `move`; without a position the card goes last |
 | `queue_task` | `id` | `queue_add` |
 | `unqueue_task` | `id` | `queue_remove` |
-| `set_step` | `id`, `step` | `queue_reorder` |
+| `group_tasks` | `ids`, 2 to 16 distinct task IDs | `queue_group` with `{ ids }` |
+| `ungroup_tasks` | `ids`, 1 to 16 distinct task IDs | `queue_ungroup` with `{ ids }` |
 | `attach_images` | `id`, `images` | None. The image request for each image the task does not hold: see [An image on a task](#an-image-on-a-task) |
 | `start_session` | `id` | None. It is not a board change: see [Session start](#session-start) |
 | `set_queue` | `on`, a boolean | `queue_settings` with `{ on }`, sent on its own path: see [Queue change](#queue-change) |
@@ -216,6 +217,11 @@ Aril changes the board only by ending its answer with one fenced block tagged
 - The monitor validates every action as it does for the desktop app. The rules of
   [Tasks](tasks.md) hold: a started task is read-only, a waiting card stays in Ready,
   and a bound applies.
+- A group operation names only tasks that exist on the board when the proposal runs. A task
+  that the same proposal creates has no ID yet, so no placeholder is supported. A task of
+  the list that the board does not hold answers `not_found` without a request.
+- A parallel group is a label in the snapshot (`group A`, `group B`), numbered by the
+  lowest task number of each group. The opaque group ID never reaches the prompt.
 
 No operation marks a task done, requeues a task, changes a feature's title or
 description, deletes a feature, removes an image from a task, sets the queue's threshold
@@ -311,9 +317,9 @@ off, as the **Off | On** control of the Tasks page does.
   applier of board changes may send, and the chat has no path that sends a threshold or
   a schedule.
 - **Turning on may start sessions.** A queue that is on lets the desktop queue runner
-  start the queued tasks, one step at a time, with no further confirmation. The chat
+  start the queued tasks in Ready order, with no further confirmation. The chat
   starts none of them: only the runner does, on its next poll, through the dispatcher
-  the Tasks page uses. Every gate holds as it does there: the queue order and steps, a
+  the Tasks page uses. Every gate holds as it does there: the Ready order and parallel groups, a
   task's own state and start time, the queue's schedule, the provider's usage and status,
   the repository's working tree, the plugin, and the provider's command-line tool. The
   chat judges none of them and overrides none.
@@ -473,7 +479,7 @@ Desktop main keeps one JSON file per conversation:
 | `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
-| `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, and `queue_reorder`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
+| `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, and `queue_ungroup`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
 | The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
 

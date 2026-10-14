@@ -403,40 +403,37 @@ describe("Pomegr visual contract", () => {
     expect(designSystemStyles).toMatch(/\.designSystemRevealAdd \.taskColumnAdd \{ opacity: 1; \}/);
   });
 
-  it("draws the Ready lane's step groups with tokens, frames only a parallel group, and keeps grouping to Ready", () => {
-    // D6-D9: the frame is the strong line at the panel radius with no fill; an unframed group keeps the same inset.
-    expect(styles).toMatch(/\.taskReadyGroup \{[^}]*gap: 6px[^}]*padding: 0 6px[^}]*border: 1px solid transparent/);
-    expect(styles).toMatch(/\.taskReadyGroup\.isParallel \{ padding: 6px; border-color: var\(--command-line-strong\); border-radius: var\(--panel-radius\); \}/);
-    // The one fill is the step target's (D27).
-    expect(styles.replace(/\.taskReadyGroup\.isStepTarget \{[^}]*\}/, "")).not.toMatch(/\.taskReady[A-Za-z]*[^{]*\{[^}]*(?:background|transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
+  it("draws the Ready lane's parallel groups with tokens, frames each group, and keeps grouping to Ready", () => {
+    // The frame is the strong line at the panel radius with no fill. The join target is the one fill of the lane's groups.
+    expect(styles).toMatch(/\.taskReadyGroup \{[^}]*gap: 6px; padding: 6px; border: 1px solid var\(--command-line-strong\); border-radius: var\(--panel-radius\); \}/);
+    const unfilled = styles.replace(/\.taskReadyGroup\.isJoinTarget \{[^}]*\}/, "").replace(/\.taskReadyLinkAction\.commandQuietAction \{[^}]*\}/, "");
+    expect(unfilled).not.toMatch(/\.taskReady[A-Za-z]*[^{]*\{[^}]*(?:background|transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
     expect(styles).toMatch(/\.taskReadyCaption \{[^}]*justify-content: space-between[^}]*padding: 2px var\(--space-1\)/);
-    expect(styles).toMatch(/\.taskReadyStep \{[^}]*color: var\(--command-ink\); font: 400 var\(--text-xs\)/);
-    expect(styles).toMatch(/\.taskReadyFeature \{ color: var\(--command-muted\); \}/);
-    expect(styles).toMatch(/\.taskReadyStepName \{ font-weight: 650; \}/);
-    expect(styles).toMatch(/\.taskReadyMode \{[^}]*gap: var\(--space-1\); color: var\(--command-muted\); font: 400 var\(--text-caption\)/);
-    expect(styles).toMatch(/\.taskReadyMode\.isParallel \{ color: var\(--command-ink\); font-weight: 500; \}/);
-    expect(styles).toMatch(/\.taskReadyCount \{ font-family: var\(--font-data\); \}/);
-    // D10: the grouped card is the board card at compact padding, with the planned run at the caption size.
+    expect(styles).toMatch(/\.taskReadyMode \{[^}]*gap: var\(--space-1\); color: var\(--command-ink\); font: 500 var\(--text-caption\)/);
+    expect(styles).toMatch(/\.taskReadyStarted \{ color: var\(--command-muted\); font-weight: 400; \}/);
+    // The compact card is the board card at compact padding, with the planned run at the caption size.
     expect(styles).toMatch(/\.taskReadyCard \{ gap: 6px; padding: 10px var\(--space-3\); \}/);
-    expect(styles).toMatch(/\.taskReadyCard \.taskCardPlanned \{ font-size: var\(--text-caption\); \}/);
-    // D12-D13: the time and the task IDs take the data font; the glyph is 12px in the current color.
-    expect(styles).toMatch(/\.taskCardFeatureIds, \.taskCardStartsTime \{ font-family: var\(--font-data\); \}/);
-    expect(styles).toMatch(/\.taskCardFeature \{[^}]*gap: 6px/);
     expect(styles).toMatch(/\.taskParallelGlyph \{[^}]*width: 12px; height: 12px; \}/);
+    // The step vocabulary is gone from the styles and from the components, with the files that held it.
     const tasksComponents = join(process.cwd(), "app", "components", "tasks");
+    const folders = [tasksComponents, join(process.cwd(), "app", "components", "design-system"), join(process.cwd(), "app", "components", "dashboard")];
+    for (const name of ["isParallel", "isStepTarget", "taskReadyNewStep", "taskMoveStep", "taskReadyStep", "taskFeatureStep", "sessionTaskMetaStep"]) {
+      expect(styles, name).not.toContain(name);
+      for (const folder of folders) for (const file of readdirSync(folder).filter((entry) => /\.tsx?$/.test(entry))) expect(readFileSync(join(folder, file), "utf8"), `${file} ${name}`).not.toContain(name);
+    }
+    for (const file of ["task-queue-model.ts", "ReadyStepGroup.tsx"]) expect(existsSync(join(tasksComponents, file))).toBe(false);
     expect(readFileSync(join(tasksComponents, "ParallelGlyph.tsx"), "utf8")).toMatch(/stroke="currentColor" strokeWidth="1\.5"[^]*d="M4 2v8M8 2v8"/);
     // Only the Ready lane is handed groups.
     const view = readFileSync(join(tasksComponents, "TaskBoardView.tsx"), "utf8");
     expect(view).toMatch(/ready=\{column\.id === readyId \? \{ segments: readySegments\(column\.tasks, board\)/);
-    // D17: the page description.
     expect(readFileSync(join(tasksComponents, "TaskBoardPane.tsx"), "utf8")).toMatch(/<p>Work for this repository\. Ready is the queue: cards start from the top\.<\/p>/);
-    expect(designContract).toMatch(/### Ready step groups/);
-    expect(designContract).toMatch(/A \*\*parallel step group\*\* \(`\.taskReadyGroup\.isParallel`\) is a frame/);
-    expect(designContract).toMatch(/Groups are drawn in Ready only\./);
+    expect(designContract).toMatch(/### Ready parallel groups/);
+    expect(designContract).toMatch(/A \*\*parallel group\*\* \(`\.taskReadyGroup`\) is drawn in Ready only\./);
+    expect(designContract).toMatch(/adds “ · T-4 and T-5 started”/);
+    expect(designContract).toMatch(/A card behind a running task reads “Waiting: T-n is running”./);
     expect(designContract).toMatch(/The description reads “Work for this repository\. Ready is the queue: cards start from the top\.”/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
-    expect(sample).toMatch(/Ready lane, step groups/);
-    expect(sample).toMatch(/Card outside Ready, parallel step/);
+    for (const label of ["Ready lane, parallel group", "Ready lane, desktop app", "Ready lane, join target", "Ready lane, a member held", "Card outside Ready, feature line", "Card, desktop app, in a parallel group"]) expect(sample).toContain(`label="${label}"`);
   });
 
   it("puts every queue control on the Board: the strip's end, the Queue settings panel, the banner and the filter line", () => {
@@ -470,40 +467,42 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/\*\*Queue settings\*\* \(`\.taskQueueSettingsAction`\) is last in the strip/);
   });
 
-  it("changes a card's step on the Board with the shared step rule, tokens, and the shared select", () => {
-    // D27: the step group under the dragged card takes the panel fill and the lane's two-pixel strong-line border.
-    expect(styles).toMatch(/\.taskReadyGroup\.isStepTarget \{ border-color: var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); box-shadow: inset 0 0 0 1px var\(--command-line-strong\); \}/);
-    // D28: the new-step zone is a dashed ink border at the panel radius with centered 12px ink text.
-    expect(styles).toMatch(/\.taskReadyNewStep \{ padding: 10px var\(--space-3\); border: 1px dashed var\(--command-ink\); border-radius: var\(--panel-radius\); color: var\(--command-ink\); font: 400 var\(--text-xs\)\/1\.4 var\(--font-ui\); text-align: center; \}/);
-    // D30: the select is 32px high with 12px text, and the toolbar stays drawn while its list is open.
-    expect(styles).toMatch(/\.taskMoveStep \.commandSelectTrigger \{ min-height: var\(--control-compact\); font-size: var\(--text-xs\); \}/);
-    expect(styles).toMatch(/\(pointer: coarse\) \{ \.taskMoveStep \.commandSelectTrigger \{ min-height: 44px; \} \}/);
+  it("groups cards on the Board with the shared group actions, tokens, and the shared toolbar", () => {
+    // The group under a dragged waiting card takes the panel fill and the lane's two-pixel strong-line border.
+    expect(styles).toMatch(/\.taskReadyGroup\.isJoinTarget \{ background: var\(--command-panel\); box-shadow: inset 0 0 0 1px var\(--command-line-strong\); \}/);
+    // Run in parallel takes no room, is invisible until the lane is hovered or it holds focus, and is always drawn on a coarse pointer.
+    expect(styles).toMatch(/\.taskReadyLink \{[^}]*height: 0; margin-block: calc\(var\(--space-2\) \/ -2\);/);
+    expect(styles).toMatch(/\.taskReadyLinkAction\.commandQuietAction \{[^}]*min-height: 20px;[^}]*border: 1px solid var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); color: var\(--command-ink\); font-size: var\(--text-caption\); opacity: 0; \}/);
+    expect(styles).toMatch(/\.taskReadyLinkAction\.commandQuietAction \{ width: auto; min-height: 44px; opacity: 1; \}/);
+    expect(styles).toMatch(/\.taskReadyUngroup\.commandQuietAction, \.taskMoveLeave\.commandQuietAction \{ min-height: var\(--control-compact\); padding: 0 var\(--space-2\); color: var\(--command-ink\); font-size: var\(--text-xs\); text-decoration: underline;/);
+    expect(styles).toMatch(/\.taskReadyUngroup\.commandQuietAction, \.taskMoveLeave\.commandQuietAction \{ width: auto; min-height: 44px; \}/);
+    // The toolbar stays drawn while a menu inside the card is open.
     expect(styles).toMatch(/\.taskCard:not\(:has\(:focus-visible\)\):not\(:has\(\[aria-expanded="true"\]\)\) \.taskCardMoves \{ position: absolute;/);
-    // D31: a disabled option of the shared select is muted and never chosen.
+    // A disabled option of the shared select is muted and never chosen.
     expect(styles).toMatch(/\.commandSelectOption\[aria-disabled="true"\] \{ color: var\(--command-muted\); cursor: default; \}/);
     expect(designContract).toMatch(/\| Disabled option \| Muted text and the default cursor\./);
-    // D25: Requeue is the Quiet role at the compact control height, in ink.
     expect(styles).toMatch(/\.taskQueueBannerActions \.commandQuietAction \{ min-height: var\(--control-compact\); color: var\(--command-ink\); \}/);
-    const tasksComponents = join(process.cwd(), "app", "components", "tasks");
-    const read = (name: string) => readFileSync(join(tasksComponents, name), "utf8");
-    // The Board writes no second step rule: its targets and options come from `reorderTarget`, and a drop sends the `queue_reorder` action.
-    expect(read("use-card-drag.ts")).toMatch(/reorderTarget\(panel, task, step\)/);
-    expect(read("task-queue-model.ts")).toMatch(/export function boardStepChoices[^]*reorderTarget\(panel, task, candidate\.step\) === null\) continue;[^]*reorderTarget\(panel, task, null\)/);
-    expect(read("TaskBoardView.tsx")).toMatch(/void edits\?\.reorderQueueTask\(id, step\);/);
-    expect(read("TaskMoveBar.tsx")).toMatch(/<CommandSelect className="taskMoveStep" aria-label=\{`Move \$\{id\} to step`\} placeholder="Move to step…"/);
-    // D16: the footnote.
-    expect(read("TaskBoardView.tsx")).toMatch(/const FOOTNOTE = "Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.";/);
-    expect(designContract).toMatch(/### Changing a step/);
-    expect(designContract).toMatch(/the group \(`\.taskReadyGroup\.isStepTarget`\) takes the panel fill/);
-    expect(designContract).toMatch(/The zone has a one-pixel dashed `--command-ink` border, the panel radius, and 10px\/12px padding\./);
-    expect(designContract).toMatch(/A step cannot be inserted between two steps. No zone is drawn between two steps./);
-    expect(designContract).toMatch(/gains the \*\*Move to step…\*\* `CommandSelect` \(`\.taskMoveStep`\) after the four arrows/);
-    expect(designContract).toMatch(/reads “Step 1 · running”\. That option is disabled\./);
-    expect(designContract).toMatch(/“Drag a card to move it\. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.”/);
-    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
-    expect(sample).toMatch(/Card, desktop app, Move to step/);
-    expect(sample).toMatch(/Ready lane, step target/);
-    expect(sample).toMatch(/Ready lane, new-step zone/);
+    const read = (name: string) => readFileSync(join(process.cwd(), "app", "components", "tasks", name), "utf8");
+    // A group change is its own action: the board writes no group rule, and a drop sends the fixed actions.
+    expect(read("TaskBoardView.tsx")).toMatch(/void edits\?\.groupTasks\(ids\);/);
+    expect(read("TaskBoardView.tsx")).toMatch(/void edits\?\.ungroupTasks\(ids\);/);
+    expect(read("use-card-drag.ts")).toMatch(/group: "leave"/);
+    expect(read("use-card-drag.ts")).toMatch(/onJoin\(moved\.id, target\.join\.memberId\)/);
+    expect(read("TaskMoveBar.tsx")).toMatch(/className="commandQuietAction taskMoveLeave" data-group-leave="" aria-label=\{`Take \$\{id\} out of its parallel group`\}[^]*>Take out of group<\/button>/);
+    expect(read("ReadyGroup.tsx")).toMatch(/className="commandQuietAction taskReadyUngroup" onClick=\{actions\.onUngroup\}>Ungroup<\/button>/);
+    expect(read("ReadyGroup.tsx")).toMatch(/className="commandQuietAction taskReadyLinkAction" aria-label=\{`Run \$\{idList\(ids\)\} in parallel`\}/);
+    // The footnote.
+    expect(read("TaskBoardView.tsx")).toMatch(/const FOOTNOTE = "Drag a card to move it\. Ready starts from the top, one card at a time\. To run cards together, choose Run in parallel between them or drop a card on a group\. Drag a card out of a group to take it out\.";/);
+    expect(designContract).toMatch(/### Parallel groups/);
+    expect(designContract).toMatch(/\*\*Run in parallel\*\* \(`\.taskReadyLinkAction`\) is one \[Quiet\]\([^)]*\) action in the gap between two waiting cards, or groups, that sit next to each other\./);
+    expect(designContract).toMatch(/the group \(`\.taskReadyGroup\.isJoinTarget`\) takes the panel fill/);
+    expect(designContract).toMatch(/No drop line is drawn over a join target\./);
+    expect(designContract).toMatch(/Dragging a card of a group and dropping it outside the group's frame takes it out of the group\./);
+    expect(designContract).toMatch(/gains the Quiet \*\*Take out of group\*\* \(`\.taskMoveLeave`\) after the four arrows\./);
+    expect(designContract).toMatch(/Nothing moves while a feature filter is on\. No group changes then, and no \*\*Run in parallel\*\* is drawn\./);
+    expect(designContract).toMatch(/“T-4 and T-5 run in parallel\.”, “T-4 taken out of its parallel group\.”, or “T-4 and T-5 no longer run in parallel\.”/);
+    expect(designContract).not.toMatch(/Move to step|New step|Changing a step|Single tasks|One at a time/);
+    expect(designSystemStyles).toMatch(/\.designSystemRevealLink \.taskReadyLinkAction \{ opacity: 1; \}/);
   });
 
   it("draws the task modal frame as a modal dialog scrim with tokens only and documents its fields", () => {

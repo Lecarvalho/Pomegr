@@ -55,7 +55,7 @@ const board: TaskBoard = {
 
 function task(overrides: Partial<Task> = {}): Task {
   return {
-    id: "T-12", text: "Make the queue wait for the worktree.", columnId: "col-1", position: 1, featureId: null, step: null,
+    id: "T-12", text: "Make the queue wait for the worktree.", columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
     session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
@@ -218,8 +218,8 @@ describe("mode issue", () => {
   it("builds the patch from the draft alone", () => {
     expect(promotePatch(EMPTY_RUN, { checks: [], ownText: "  " }, NO_FEATURE_DRAFT)).toBeNull();
     expect(promotePatch(EMPTY_RUN, DEFAULT_COMPLETE_WHEN, NO_FEATURE_DRAFT)).toEqual({ completeWhen: { checks: ["pr_open", "tree_clean"], own: null } });
-    expect(promotePatch({ provider: "codex", model: null, effort: null }, { checks: [], ownText: "" }, { featureId: "feat-1", creating: false, name: "", step: 2 }))
-      .toEqual({ run: { provider: "codex", model: null, effort: null }, featureId: "feat-1", step: 2 });
+    expect(promotePatch({ provider: "codex", model: null, effort: null }, { checks: [], ownText: "" }, { featureId: "feat-1", creating: false, name: "" }))
+      .toEqual({ run: { provider: "codex", model: null, effort: null }, featureId: "feat-1" });
   });
 
   it("answers a conflict with Show new version, keeps the chosen fields, and promotes the new version", async () => {

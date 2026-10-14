@@ -23,7 +23,7 @@ test("the proposal contract constants are fixed", () => {
   assert.equal(PROPOSAL_FENCE, "pomegr-board");
   assert.equal(PROPOSAL_OPERATION_LIMIT, 40);
   assert.equal(PROPOSAL_SUMMARY_LIMIT, 300);
-  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "attach_images", "start_session", "set_queue"]);
+  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "attach_images", "start_session", "set_queue"]);
   assert.equal(IMAGES_PER_OPERATION, 4);
   assert.equal(IMAGE_OPERATION, "attach_images");
   assert.deepEqual([...BOARD_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
@@ -38,7 +38,8 @@ test("every operation is accepted in its minimal form and kept as written", () =
     [{ op: "move_task", id: "T-1", column: "Ready" }, { op: "move_task", id: "T-1", column: "Ready" }],
     [{ op: "queue_task", id: "T-1" }, { op: "queue_task", id: "T-1" }],
     [{ op: "unqueue_task", id: "T-1" }, { op: "unqueue_task", id: "T-1" }],
-    [{ op: "set_step", id: "T-1", step: 3 }, { op: "set_step", id: "T-1", step: 3 }],
+    [{ op: "group_tasks", ids: ["T-1", "T-2"] }, { op: "group_tasks", ids: ["T-1", "T-2"] }],
+    [{ op: "ungroup_tasks", ids: ["T-1"] }, { op: "ungroup_tasks", ids: ["T-1"] }],
     [{ op: "attach_images", id: "T-1", images: ["img-0123456789ab"] }, { op: "attach_images", id: "T-1", images: ["img-0123456789ab"] }],
     [{ op: "start_session", id: "T-1" }, { op: "start_session", id: "T-1" }],
     [{ op: "set_queue", on: false }, { op: "set_queue", on: false }],
@@ -49,18 +50,18 @@ test("every operation is accepted in its minimal form and kept as written", () =
 
 test("a full create_task is normalized: flat run and complete-when fields become partial objects", () => {
   const operation = normalizeOperation({
-    op: "create_task", text: "  Ship it  ", feature: " Auth ", step: 2, provider: "claude", model: "claude-opus-4-1[1m]", effort: "high",
+    op: "create_task", text: "  Ship it  ", feature: " Auth ", provider: "claude", model: "claude-opus-4-1[1m]", effort: "high",
     complete_when: ["tree_clean", "pr_open"], own_condition: " Changelog updated ", queue: true,
   });
   assert.deepEqual(operation, {
-    op: "create_task", text: "Ship it", feature: "Auth", step: 2, queue: true,
+    op: "create_task", text: "Ship it", feature: "Auth", queue: true,
     run: { provider: "claude", model: "claude-opus-4-1[1m]", effort: "high" },
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "Changelog updated" },
   });
 });
 
-test("queue false, a null feature, and a null step are dropped from create_task", () => {
-  assert.deepEqual(normalizeOperation({ op: "create_task", text: "x", queue: false, feature: null, step: null }), { op: "create_task", text: "x" });
+test("queue false and a null feature are dropped from create_task", () => {
+  assert.deepEqual(normalizeOperation({ op: "create_task", text: "x", queue: false, feature: null }), { op: "create_task", text: "x" });
 });
 
 test("only the run and complete-when parts that were written are kept", () => {
@@ -103,7 +104,7 @@ test("an operation outside the contract is refused", () => {
     ["__proto__ op", { op: "toString" }],
     ["extra key on feature", { op: "create_feature", name: "A", extra: 1 }], ["extra key on delete", { op: "delete_task", id: "T-1", force: true }],
     ["extra key on task", { op: "create_task", text: "x", path: "C:\\x" }], ["extra key on update", { op: "update_task", id: "T-1", text: "x", step: 1 }],
-    ["extra key on move", { op: "move_task", id: "T-1", column: "Ready", at: 1 }], ["extra key on step", { op: "set_step", id: "T-1", step: 1, feature: "A" }],
+    ["extra key on move", { op: "move_task", id: "T-1", column: "Ready", at: 1 }], ["extra key on group", { op: "group_tasks", ids: ["T-1", "T-2"], feature: "A" }], ["extra key on ungroup", { op: "ungroup_tasks", ids: ["T-1"], id: "T-1" }],
     ["id zero", { op: "delete_task", id: "T-0" }], ["id lower case", { op: "delete_task", id: "t-1" }], ["id with a space", { op: "delete_task", id: "T-1 " }],
     ["id with leading zero", { op: "delete_task", id: "T-01" }], ["id of ten digits", { op: "delete_task", id: "T-1234567890" }],
     ["id a number", { op: "delete_task", id: 1 }], ["id missing", { op: "queue_task" }], ["id path", { op: "unqueue_task", id: "../T-1" }],
@@ -120,10 +121,13 @@ test("an operation outside the contract is refused", () => {
     ["unknown check", { op: "create_task", text: "x", complete_when: ["lint"] }], ["checks not a list", { op: "create_task", text: "x", complete_when: "pr_open" }],
     ["own condition over 500", { op: "create_task", text: "x", own_condition: long(501) }], ["own condition a number", { op: "create_task", text: "x", own_condition: 5 }],
     ["own condition with NUL", { op: "update_task", id: "T-1", own_condition: "a\u0000" }],
-    ["step without a feature", { op: "create_task", text: "x", step: 1 }], ["step zero", { op: "create_task", text: "x", feature: "A", step: 0 }],
-    ["step 501", { op: "create_task", text: "x", feature: "A", step: 501 }], ["step fractional", { op: "create_task", text: "x", feature: "A", step: 1.5 }],
-    ["step a string", { op: "create_task", text: "x", feature: "A", step: "1" }], ["set_step zero", { op: "set_step", id: "T-1", step: 0 }],
-    ["set_step 501", { op: "set_step", id: "T-1", step: 501 }], ["set_step fractional", { op: "set_step", id: "T-1", step: 2.5 }], ["set_step missing", { op: "set_step", id: "T-1" }],
+    ["step on a task", { op: "create_task", text: "x", feature: "A", step: 1 }], ["set_step is removed", { op: "set_step", id: "T-1", step: 1 }],
+    ["group of one", { op: "group_tasks", ids: ["T-1"] }], ["group of 17", { op: "group_tasks", ids: Array.from({ length: 17 }, (_, i) => `T-${i + 1}`) }],
+    ["group with a repeated id", { op: "group_tasks", ids: ["T-1", "T-1"] }], ["group with a bad id", { op: "group_tasks", ids: ["T-1", "x"] }],
+    ["group ids not a list", { op: "group_tasks", ids: "T-1" }], ["group with id instead of ids", { op: "group_tasks", id: "T-1" }],
+    ["group with a placeholder", { op: "group_tasks", ids: ["T-1", "new-1"] }], ["group missing ids", { op: "group_tasks" }],
+    ["ungroup of none", { op: "ungroup_tasks", ids: [] }], ["ungroup of 17", { op: "ungroup_tasks", ids: Array.from({ length: 17 }, (_, i) => `T-${i + 1}`) }],
+    ["ungroup with a repeated id", { op: "ungroup_tasks", ids: ["T-1", "T-1"] }], ["ungroup with id instead of ids", { op: "ungroup_tasks", id: "T-1" }],
     ["queue not a boolean", { op: "create_task", text: "x", queue: "yes" }],
     ["negative position", { op: "move_task", id: "T-1", column: "Ready", position: -1 }], ["fractional position", { op: "move_task", id: "T-1", column: "Ready", position: 1.5 }],
     ["position over the limit", { op: "move_task", id: "T-1", column: "Ready", position: 100_001 }], ["position a string", { op: "move_task", id: "T-1", column: "Ready", position: "0" }],
@@ -142,10 +146,11 @@ test("the edges of every bound are accepted", () => {
   assert.ok(normalizeOperation({ op: "create_task", text: "line one\nline two\ttabbed\r\nline three" }));
   assert.ok(normalizeOperation({ op: "create_task", text: "x", own_condition: "a".repeat(500) }));
   assert.ok(normalizeOperation({ op: "create_task", text: "x", model: "a".repeat(120) }));
-  assert.ok(normalizeOperation({ op: "create_task", text: "x", feature: "a".repeat(80), step: 500 }));
+  assert.ok(normalizeOperation({ op: "create_task", text: "x", feature: "a".repeat(80) }));
   assert.ok(normalizeOperation({ op: "create_feature", name: "a".repeat(80) }));
   assert.ok(normalizeOperation({ op: "delete_task", id: "T-123456789" }));
-  assert.ok(normalizeOperation({ op: "set_step", id: "T-1", step: 1 }));
+  assert.ok(normalizeOperation({ op: "group_tasks", ids: Array.from({ length: 16 }, (_, i) => `T-${i + 1}`) }));
+  assert.ok(normalizeOperation({ op: "ungroup_tasks", ids: Array.from({ length: 16 }, (_, i) => `T-${i + 1}`) }));
 });
 
 test("a proposal needs a one-line summary and one to forty operations, and one bad operation rejects it all", () => {
@@ -289,17 +294,17 @@ test("create_task posts a create with the whole run and complete-when built from
   ]);
 });
 
-test("create_task resolves its feature by name on the current board and sends its step; queue adds a following queue_add", async () => {
+test("create_task resolves its feature by name on the current board; queue adds a following queue_add", async () => {
   const fake = monitor((action) => (action === "create" ? { ok: true, taskId: "T-11" } : { ok: true }));
-  const results = await apply([{ op: "create_task", text: "In a feature", feature: "Auth", step: 2, queue: true }], fake);
+  const results = await apply([{ op: "create_task", text: "In a feature", feature: "Auth", queue: true }], fake);
   assert.deepEqual(results, [{ ok: true, taskId: "T-11" }]);
   assert.deepEqual(fake.calls, [
-    { action: "create", payload: { text: "In a feature", featureId: "feat-1", step: 2 } },
+    { action: "create", payload: { text: "In a feature", featureId: "feat-1" } },
     { action: "queue_add", payload: { id: "T-11" } },
   ]);
   const joined = monitor((action) => (action === "create" ? { ok: true, taskId: "T-12" } : { ok: true }));
-  await apply([{ op: "create_task", text: "No step", feature: "Auth" }], joined);
-  assert.deepEqual(joined.calls, [{ action: "create", payload: { text: "No step", featureId: "feat-1" } }]);
+  await apply([{ op: "create_task", text: "No queue", feature: "Auth" }], joined);
+  assert.deepEqual(joined.calls, [{ action: "create", payload: { text: "No queue", featureId: "feat-1" } }]);
 });
 
 test("create_feature then a task that names it works, because the board of the first answer is used", async () => {
@@ -309,11 +314,11 @@ test("create_feature then a task that names it works, because the board of the f
     if (action === "create") return { ok: true, taskId: "T-20" };
     return { ok: true };
   });
-  const results = await apply([{ op: "create_feature", name: "Billing" }, { op: "create_task", text: "Invoice", feature: "Billing", step: 1 }], fake, boardOf());
+  const results = await apply([{ op: "create_feature", name: "Billing" }, { op: "create_task", text: "Invoice", feature: "Billing" }], fake, boardOf());
   assert.deepEqual(results, [{ ok: true }, { ok: true, taskId: "T-20" }]);
   assert.deepEqual(fake.calls, [
     { action: "feature_create", payload: { name: "Billing" } },
-    { action: "create", payload: { text: "Invoice", featureId: "feat-2", step: 1 } },
+    { action: "create", payload: { text: "Invoice", featureId: "feat-2" } },
   ]);
 });
 
@@ -427,17 +432,19 @@ test("move resolves the column by name and appends by default", async () => {
   assert.equal(none.calls.length, 0);
 });
 
-test("delete, queue, unqueue, and set_step map to their fixed task actions", async () => {
+test("delete, queue, unqueue, group, and ungroup map to their fixed task actions", async () => {
   const fake = monitor();
   const results = await apply([
-    { op: "delete_task", id: "T-3" }, { op: "queue_task", id: "T-4" }, { op: "unqueue_task", id: "T-5" }, { op: "set_step", id: "T-3", step: 4 },
+    { op: "delete_task", id: "T-3" }, { op: "queue_task", id: "T-4" }, { op: "unqueue_task", id: "T-5" },
+    { op: "group_tasks", ids: ["T-3", "T-4"] }, { op: "ungroup_tasks", ids: ["T-3"] },
   ], fake);
-  assert.deepEqual(results, Array(4).fill({ ok: true }));
+  assert.deepEqual(results, Array(5).fill({ ok: true }));
   assert.deepEqual(fake.calls, [
     { action: "delete", payload: { id: "T-3" } },
     { action: "queue_add", payload: { id: "T-4" } },
     { action: "queue_remove", payload: { id: "T-5" } },
-    { action: "queue_reorder", payload: { id: "T-3", step: 4 } },
+    { action: "queue_group", payload: { ids: ["T-3", "T-4"] } },
+    { action: "queue_ungroup", payload: { ids: ["T-3"] } },
   ]);
 });
 
@@ -445,14 +452,14 @@ test("an operation on a task that is not on the board is not_found without a req
   const fake = monitor();
   const results = await apply([
     { op: "update_task", id: "T-99", text: "x" }, { op: "delete_task", id: "T-99" }, { op: "move_task", id: "T-99", column: "Ready" },
-    { op: "queue_task", id: "T-99" }, { op: "unqueue_task", id: "T-99" }, { op: "set_step", id: "T-99", step: 1 },
+    { op: "queue_task", id: "T-99" }, { op: "unqueue_task", id: "T-99" }, { op: "group_tasks", ids: ["T-3", "T-99"] },
   ], fake);
   assert.equal(results[0].error, "not_found");
   assert.deepEqual(results.slice(1), Array(5).fill({ ok: false, error: "skipped" }));
   assert.equal(fake.calls.length, 0);
   for (const operation of [
     { op: "delete_task", id: "T-99" }, { op: "move_task", id: "T-99", column: "Ready" }, { op: "queue_task", id: "T-99" },
-    { op: "unqueue_task", id: "T-99" }, { op: "set_step", id: "T-99", step: 1 },
+    { op: "unqueue_task", id: "T-99" }, { op: "group_tasks", ids: ["T-3", "T-99"] }, { op: "ungroup_tasks", ids: ["T-99"] },
   ]) assert.deepEqual(await apply([operation], fake), [{ ok: false, error: "not_found" }], operation.op);
   assert.equal(fake.calls.length, 0);
 });

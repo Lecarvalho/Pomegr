@@ -111,7 +111,7 @@ export function FeatureModal(props: Props) {
     <FeatureFormFields ref={title} draft={draft} failure={failure} readOnly={busy || deleting}
       detailsDisabled={feature !== null && !(read.state === "ready" && synced)} readFailed={read.state === "failed"}
       onChange={(next) => { setDraft(next); if (failure === "duplicate") setFailure(null); }} />
-    {feature && counts && counts.total > 0 && <FeatureSiblings key={feature.id} board={board} featureId={feature.id} label="Tasks" steps
+    {feature && counts && counts.total > 0 && <FeatureSiblings key={feature.id} board={board} featureId={feature.id} label="Tasks"
       onOpenTask={props.mode === "edit" ? props.onOpenTask : undefined} />}
   </TaskModalFrame>;
 }

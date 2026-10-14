@@ -19,15 +19,15 @@ export function leavesReady(board: BoardShape, move: Pick<TaskMove, "id" | "colu
   return task !== undefined && waitsInQueue(task) && move.columnId !== readyColumnId(board);
 }
 
-function settledReady(cards: Task[], features: TaskBoard["features"]) {
-  const featureOrder = new Map(features.map((feature, index) => [feature.id, index]));
-  const placed = (task: Task) => task.featureId !== null && task.step !== null && featureOrder.has(task.featureId);
+/** The Ready lane as the monitor settles it: the waiting cards of each parallel group together, where its first card is. Every other card keeps its place. */
+function settledReady(cards: Task[]) {
   const waiting = cards.filter(waitsInQueue);
-  const inOrder = [
-    ...waiting.filter(placed).sort((left, right) => (featureOrder.get(left.featureId ?? "") ?? 0) - (featureOrder.get(right.featureId ?? "") ?? 0)
-      || (left.step ?? 0) - (right.step ?? 0) || Number(left.id.slice(2)) - Number(right.id.slice(2))),
-    ...waiting.filter((task) => !placed(task)),
-  ];
+  const placed = new Set<string>();
+  const inOrder: Task[] = [];
+  for (const task of waiting) {
+    if (placed.has(task.id)) continue;
+    for (const member of task.group === null ? [task] : waiting.filter((other) => other.group === task.group)) { placed.add(member.id); inOrder.push(member); }
+  }
   let next = 0;
   return cards.map((task) => waitsInQueue(task) ? inOrder[next++] : task);
 }
@@ -64,19 +64,53 @@ export function isNoopMove(board: BoardShape, move: TaskMove) {
   return current.columnId === move.columnId && current.index === Math.min(Math.max(move.position, 0), length);
 }
 
-/** The board as it reads once `move` is applied. */
-export function applyMove(board: TaskBoard, move: TaskMove): TaskBoard {
+/** The cards a move carries: the one card, or with `group: "block"` the waiting cards of its parallel group, in lane order. */
+function movingCards(board: BoardShape, move: TaskMove): Task[] {
   const moving = board.tasks.find((task) => task.id === move.id);
+  if (!moving) return [];
+  if (move.group !== "block" || !waitsInQueue(moving) || moving.group === null) return [moving];
+  const lane = taskColumns(board).find((column) => column.id === moving.columnId)?.tasks ?? [];
+  return lane.filter((task) => task.id === moving.id || (waitsInQueue(task) && task.group === moving.group));
+}
+
+/**
+ * The board as it reads once `move` is applied, by the monitor's rules: a grouped card that lands away from every
+ * other waiting card of its group, or is moved with `group: "leave"`, leaves the group, and each group's waiting
+ * cards stand together.
+ */
+export function applyMove(board: TaskBoard, move: TaskMove): TaskBoard {
+  const block = movingCards(board, move);
   const columns = taskColumns(board);
-  if (!moving || !columns.some((column) => column.id === move.columnId) || leavesReady(board, move)) return board;
+  if (block.length === 0 || !columns.some((column) => column.id === move.columnId) || leavesReady(board, move)) return board;
   const readyId = readyColumnId(board);
+  const carried = new Set(block.map((task) => task.id));
   const byId = new Map(board.tasks.map((task) => [task.id, task]));
   const placed = new Map<string, Task>();
   for (const column of columns) {
-    let cards = column.tasks.filter((task) => task.id !== move.id);
+    let cards = column.tasks.filter((task) => !carried.has(task.id));
     if (column.id === move.columnId) {
-      cards.splice(Math.min(Math.max(move.position, 0), cards.length), 0, moving);
-      if (column.id === readyId) cards = settledReady(cards, board.features);
+      cards.splice(Math.min(Math.max(move.position, 0), cards.length), 0, ...block);
+      const [moving] = block;
+      if (move.group !== "block" && moving.group !== null && waitsInQueue(moving)) {
+        const waiting = cards.filter(waitsInQueue);
+        const at = waiting.indexOf(moving);
+        const beside = [waiting[at - 1], waiting[at + 1]].some((other) => other !== undefined && other.group === moving.group);
+        if (move.group === "leave" || !beside) {
+          const left = { ...moving, group: null };
+          cards[cards.indexOf(moving)] = left;
+          byId.set(left.id, left);
+          placed.set(left.id, left);
+          // A group left with one card in the queue is no group.
+          const rest = board.tasks.filter((other) => other.id !== moving.id && other.group === moving.group);
+          if (rest.length === 1) {
+            const alone = { ...rest[0], group: null };
+            byId.set(alone.id, alone);
+            placed.set(alone.id, alone);
+            cards = cards.map((task) => task.id === alone.id ? alone : task);
+          }
+        }
+      }
+      if (column.id === readyId) cards = settledReady(cards);
     }
     cards.map((task) => task.id).forEach((id, position) => {
       const task = byId.get(id);
@@ -84,6 +118,20 @@ export function applyMove(board: TaskBoard, move: TaskMove): TaskBoard {
     });
   }
   return placed.size === 0 ? board : { ...board, tasks: board.tasks.map((task) => placed.get(task.id) ?? task) };
+}
+
+/** A unit of the Ready lane: the waiting cards of one parallel group that sit together, or one card. */
+export type ReadyUnit = { group: string | null; tasks: Task[] };
+
+export function readyUnits(cards: readonly Task[]): ReadyUnit[] {
+  const units: ReadyUnit[] = [];
+  for (const task of cards) {
+    const group = waitsInQueue(task) ? task.group : null;
+    const open = units.at(-1);
+    if (group !== null && open?.group === group) open.tasks.push(task);
+    else units.push({ group, tasks: [task] });
+  }
+  return units;
 }
 
 export type CardMoveKind = "up" | "down" | "left" | "right";
@@ -95,8 +143,18 @@ export function cardMove(board: BoardShape, id: string, kind: CardMoveKind): Tas
   if (columnIndex < 0) return null;
   const column = columns[columnIndex];
   const index = column.tasks.findIndex((task) => task.id === id);
-  if (kind === "up") return index > 0 ? { id, columnId: column.id, position: index - 1 } : null;
-  if (kind === "down") return index < column.tasks.length - 1 ? { id, columnId: column.id, position: index + 1 } : null;
+  if (kind === "up" || kind === "down") {
+    // In Ready a parallel group is one place in the order: a card steps inside its own group, and past a whole group outside it.
+    const units = column.id === readyColumnId(board) ? readyUnits(column.tasks) : column.tasks.map((task) => ({ group: null, tasks: [task] }));
+    const at = units.findIndex((unit) => unit.tasks.some((task) => task.id === id));
+    const inUnit = units[at].tasks.findIndex((task) => task.id === id);
+    if (kind === "up") {
+      if (inUnit > 0) return { id, columnId: column.id, position: index - 1 };
+      return at > 0 ? { id, columnId: column.id, position: index - units[at - 1].tasks.length } : null;
+    }
+    if (inUnit < units[at].tasks.length - 1) return { id, columnId: column.id, position: index + 1 };
+    return at < units.length - 1 ? { id, columnId: column.id, position: index + units[at + 1].tasks.length } : null;
+  }
   const target = columns[columnIndex + (kind === "left" ? -1 : 1)];
   return target && !leavesReady(board, { id, columnId: target.id }) ? { id, columnId: target.id, position: Math.min(index, target.tasks.length) } : null;
 }

@@ -3,17 +3,17 @@ import type { Task, TaskBoard, TaskFeature } from "../../../shared/task-contract
 
 type BoardShape = Pick<TaskBoard, "columns" | "features" | "tasks">;
 
-export type FeatureInput = { featureId?: string | null; step?: number | null };
+export type FeatureInput = { featureId?: string | null };
 
-export type FeatureDraft = { featureId: string | null; creating: boolean; name: string; step: number | null };
+export type FeatureDraft = { featureId: string | null; creating: boolean; name: string };
 
-export const NO_FEATURE_DRAFT: FeatureDraft = { featureId: null, creating: false, name: "", step: null };
+export const NO_FEATURE_DRAFT: FeatureDraft = { featureId: null, creating: false, name: "" };
 
 const NONE = "none";
 const NEW = "new";
 
-export function featureDraftFromTask(task: Pick<Task, "featureId" | "step">): FeatureDraft {
-  return { featureId: task.featureId, creating: false, name: "", step: task.featureId === null ? null : task.step };
+export function featureDraftFromTask(task: Pick<Task, "featureId">): FeatureDraft {
+  return { featureId: task.featureId, creating: false, name: "" };
 }
 
 export function featureSelectValue(draft: FeatureDraft): string {
@@ -21,8 +21,8 @@ export function featureSelectValue(draft: FeatureDraft): string {
 }
 
 export function featureDraftFromSelect(value: string, current: FeatureDraft): FeatureDraft {
-  if (value === NEW) return { featureId: null, creating: true, name: current.creating ? current.name : "", step: null };
-  if (value.startsWith("feature:")) return { featureId: value.slice("feature:".length), creating: false, name: "", step: null };
+  if (value === NEW) return { featureId: null, creating: true, name: current.creating ? current.name : "" };
+  if (value.startsWith("feature:")) return { featureId: value.slice("feature:".length), creating: false, name: "" };
   return NO_FEATURE_DRAFT;
 }
 
@@ -40,23 +40,10 @@ function idNumber(id: string) {
 
 const byIdNumber = (left: Task, right: Task) => idNumber(left.id) - idNumber(right.id);
 
-function stepsOf(tasks: readonly Task[], featureId: string) {
-  const steps = new Map<number, Task[]>();
-  for (const task of tasks) {
-    if (task.featureId !== featureId || task.step === null) continue;
-    steps.set(task.step, [...(steps.get(task.step) ?? []), task]);
-  }
-  return steps;
-}
-
-export function highestStep(tasks: readonly Task[], featureId: string): number {
-  return Math.max(0, ...stepsOf(tasks, featureId).keys());
-}
-
 export function featureCreateInput(draft: FeatureDraft, createdId: string | null): FeatureInput | undefined {
   const featureId = draft.creating ? createdId : draft.featureId;
   if (featureId === null) return undefined;
-  return { featureId, ...(!draft.creating && draft.step !== null && { step: draft.step }) };
+  return { featureId };
 }
 
 export function featureUpdateInput(draft: FeatureDraft, createdId: string | null = null): FeatureInput {
@@ -77,34 +64,27 @@ export function featureCounts(board: Pick<BoardShape, "tasks">, featureId: strin
   return { total: tasks.length, done: tasks.filter((task) => task.state === "done").length };
 }
 
-/** The filter row's line for a selected feature. A step is running while one of its tasks has a session and is not done. */
-export type FeatureProgress = { total: number; done: number; running: { step: number; of: number } | null };
+/** The filter row's line for a selected feature. A task is running while it has a session and no outcome. */
+export type FeatureProgress = { total: number; done: number; running: number };
 
 export function featureProgress(board: Pick<BoardShape, "features" | "tasks">, featureId: string): FeatureProgress | null {
   if (!board.features.some((feature) => feature.id === featureId)) return null;
-  const steps = stepsOf(board.tasks, featureId);
-  const running = [...steps.entries()].filter(([, tasks]) => tasks.some((task) => task.state !== "done" && task.session !== null)).map(([step]) => step);
-  return { ...featureCounts(board, featureId), running: running.length > 0 ? { step: Math.min(...running), of: Math.max(...steps.keys()) } : null };
+  const running = featureTasks(board, featureId).filter((task) => task.session !== null && (task.state === "not_queued" || task.state === "queued" || task.state === "scheduled")).length;
+  return { ...featureCounts(board, featureId), running };
 }
 
 export function featureSiblings(board: BoardShape, featureId: string, selfId?: string): Task[] {
   const order = boardOrder(board.columns);
-  return featureTasks(board, featureId).filter((task) => task.id !== selfId)
-    .sort((left, right) => (left.step ?? Infinity) - (right.step ?? Infinity) || order(left, right));
+  return featureTasks(board, featureId).filter((task) => task.id !== selfId).sort(order);
 }
 
-/** A card's feature line: "<feature> · step k of n", and the other tasks of its step, in any lane, when it has any. */
-export type FeatureLine = { text: string; parallelWith: string[] };
-
-export function featureLines(board: Pick<BoardShape, "features" | "tasks">): ReadonlyMap<string, FeatureLine> {
-  const lines = new Map<string, FeatureLine>();
-  for (const feature of board.features) {
-    const steps = stepsOf(board.tasks, feature.id);
-    const last = Math.max(0, ...steps.keys());
-    for (const [step, tasks] of steps) {
-      const ids = [...tasks].sort(byIdNumber).map((task) => task.id);
-      for (const task of tasks) lines.set(task.id, { text: `${feature.name} · step ${step} of ${last}`, parallelWith: ids.filter((id) => id !== task.id) });
-    }
+/** A card's feature line: the name of its feature. A feature gives a task context only, so the line holds nothing else. */
+export function featureLines(board: Pick<BoardShape, "features" | "tasks">): ReadonlyMap<string, string> {
+  const names = new Map(board.features.map((feature) => [feature.id, feature.name]));
+  const lines = new Map<string, string>();
+  for (const task of board.tasks) {
+    const name = task.featureId === null ? undefined : names.get(task.featureId);
+    if (name !== undefined) lines.set(task.id, name);
   }
   return lines;
 }

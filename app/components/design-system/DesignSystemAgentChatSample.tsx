@@ -21,13 +21,13 @@ const TASKS = [{ id: "T-12", text: "Log upload retries\nInclude the attempt numb
 
 const OPERATIONS: AgentChatBoardOperation[] = [
   { op: "create_feature", name: "Upload reliability" },
-  { op: "create_task", text: "Add retry with backoff to the upload client\nCover the 5xx and timeout cases.", feature: "Upload reliability", step: 1, run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: null }, queue: true },
+  { op: "create_task", text: "Add retry with backoff to the upload client\nCover the 5xx and timeout cases.", feature: "Upload reliability", run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: null }, queue: true },
   { op: "update_task", id: "T-12", text: "Show the retry count in the upload log", run: { effort: "high" }, feature: "Upload reliability" },
   { op: "delete_task", id: "T-14" },
   { op: "move_task", id: "T-15", column: "Review", position: 0 },
   { op: "queue_task", id: "T-16" },
   { op: "unqueue_task", id: "T-17" },
-  { op: "set_step", id: "T-18", step: 2 },
+  { op: "group_tasks", ids: ["T-18", "T-19", "T-20"] },
 ];
 
 const SUMMARY = "Cut the upload work into a feature with one new task, and tidy three others.";

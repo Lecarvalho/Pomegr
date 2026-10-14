@@ -35,7 +35,7 @@ const columns = ["Backlog", "Ready"].map((name, position) => ({ id: `col-${posit
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -46,11 +46,11 @@ const session = { id: "claude:abc", title: "Running", state: "working", observed
 // Retry telemetry holds three tasks, one done. Docs holds none. Single holds one.
 const features = [{ id: "f1", name: "Retry telemetry", done: false }, { id: "f2", name: "Docs", done: false }, { id: "f3", name: "Single", done: false }];
 const tasks = () => [
-  task(1, "Route", { featureId: "f1", step: 1, state: "done", session: { ...session, state: "closed" } }),
-  task(2, "Store", { featureId: "f1", step: 2 }),
-  task(3, "Columns", { featureId: "f1", step: 2, state: "queued" }),
+  task(1, "Route", { featureId: "f1", state: "done", session: { ...session, state: "closed" } }),
+  task(2, "Store", { featureId: "f1" }),
+  task(3, "Columns", { featureId: "f1", state: "queued" }),
   task(4, "Loose end"),
-  task(5, "Alone in a feature", { featureId: "f3", step: 1 }),
+  task(5, "Alone in a feature", { featureId: "f3" }),
 ];
 function boardOf(overrides: Partial<TaskBoard> = {}): TaskBoard {
   return { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, ...overrides };
@@ -64,7 +64,7 @@ function setBridge(bridge: unknown) {
 // What the board holds once feature f1 is deleted: its tasks stay, with no feature.
 const afterDelete = () => boardOf({
   features: features.filter((feature) => feature.id !== "f1"),
-  tasks: tasks().map((entry) => (entry.featureId === "f1" ? { ...entry, featureId: null, step: null } : entry)),
+  tasks: tasks().map((entry) => (entry.featureId === "f1" ? { ...entry, featureId: null } : entry)),
 });
 
 beforeEach(() => {
@@ -105,17 +105,17 @@ describe("the copy", () => {
 
   it("names the first task that has started and is not done, by ID, and none when only done or unstarted ones remain", () => {
     const held = [
-      task(9, "Later", { featureId: "f1", step: 2, session }),
-      task(7, "Earlier", { featureId: "f1", step: 1, state: "stalled" }),
-      task(2, "Done", { featureId: "f1", step: 1, state: "done", session }),
-      task(3, "Idle", { featureId: "f1", step: 1 }),
-      task(1, "Other feature", { featureId: "f2", step: 1, session }),
+      task(9, "Later", { featureId: "f1", session }),
+      task(7, "Earlier", { featureId: "f1", state: "stalled" }),
+      task(2, "Done", { featureId: "f1", state: "done", session }),
+      task(3, "Idle", { featureId: "f1" }),
+      task(1, "Other feature", { featureId: "f2", session }),
     ];
     expect(featureBlocker(held, "f1")?.id).toBe("T-7");
     expect(featureBlocker(held, "f2")?.id).toBe("T-1");
     expect(featureBlocker(held, "f9")).toBeNull();
     expect(featureBlocker(held.filter((entry) => entry.id === "T-2" || entry.id === "T-3"), "f1")).toBeNull();
-    expect(featureBlocker([task(4, "Needs review", { featureId: "f1", step: 1, state: "needs_review" })], "f1")?.id).toBe("T-4");
+    expect(featureBlocker([task(4, "Needs review", { featureId: "f1", state: "needs_review" })], "f1")?.id).toBe("T-4");
   });
 });
 
@@ -236,7 +236,7 @@ describe("after Delete feature", () => {
   it("focuses New task when the last feature goes and the filter row with it", async () => {
     const u = user();
     mock.board = boardOf({ features: [features[0]], tasks: tasks().filter((entry) => entry.featureId === "f1") });
-    refresh.mockImplementation(async () => { publish(boardOf({ features: [], tasks: tasks().filter((entry) => entry.featureId === "f1").map((entry) => ({ ...entry, featureId: null, step: null })) })); });
+    refresh.mockImplementation(async () => { publish(boardOf({ features: [], tasks: tasks().filter((entry) => entry.featureId === "f1").map((entry) => ({ ...entry, featureId: null })) })); });
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openEdit(u, "Retry telemetry (3)");
     await u.click(dialog.getByRole("button", { name: "Delete feature" }));

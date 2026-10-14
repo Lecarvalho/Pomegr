@@ -22,7 +22,7 @@ const setBridge = (bridge: unknown) => { (window as Window & { pomegrDesktop?: u
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-2", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-2", position: id, featureId: null, group: null,
     run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: [], own: null },
     state: "queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -38,15 +38,15 @@ const gates: TaskGates = {
 const queueOf = (waits: TaskQueueWait[], overrides: Partial<TaskQueue> = {}): TaskQueue =>
   ({ status: "running", blockedBy: null, pauseReason: null, order: [], gates, waits, ...overrides });
 
-/** The example: the single task T-63 sits at the top of Ready, and the feature work T-66 to T-69 starts before it. */
-const single = task(63, "Tidy the settings copy", { position: 0 });
-const featureTasks = [66, 67, 68, 69].map((id, index) => task(id, `Queue controls ${id}`, { featureId: FEATURE, step: Math.max(1, index), position: index + 1 }));
+/** The example: the feature cards T-66 to T-69 stand above the single task T-63 in Ready, so they start first. */
+const single = task(63, "Tidy the settings copy", { position: 4 });
+const featureTasks = [66, 67, 68, 69].map((id, index) => task(id, `Queue controls ${id}`, { featureId: FEATURE, position: index }));
 const exampleWaits: TaskQueueWait[] = [
-  { taskId: "T-63", place: 5, reasons: [because("feature_first", ["T-66", "T-67", "T-68", "T-69"])] },
+  { taskId: "T-63", place: 5, reasons: [because("earlier_tasks", ["T-66", "T-67", "T-68", "T-69"])] },
   { taskId: "T-66", place: 1, reasons: [] },
-  { taskId: "T-67", place: 2, reasons: [] },
-  { taskId: "T-68", place: 3, reasons: [because("previous_step", ["T-66"])] },
-  { taskId: "T-69", place: 4, reasons: [because("previous_step", ["T-66"])] },
+  { taskId: "T-67", place: 2, reasons: [because("earlier_tasks", ["T-66"])] },
+  { taskId: "T-68", place: 3, reasons: [because("earlier_tasks", ["T-66", "T-67"])] },
+  { taskId: "T-69", place: 4, reasons: [because("earlier_tasks", ["T-66", "T-67", "T-68"])] },
 ];
 function setBoard(queue: TaskQueue, tasks: Task[] = [single, ...featureTasks]) {
   const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [{ id: FEATURE, name: "Queue controls", done: false }], tasks, queue };
@@ -59,14 +59,14 @@ afterEach(() => { setBridge(undefined); vi.clearAllMocks(); });
 const cardText = (id: string) => document.querySelector(`[data-task-id="${id}"] .taskCardWaiting`)?.textContent ?? null;
 
 describe("the Waiting line of a card in Ready", () => {
-  it("says why the single task at the top of Ready is not next", () => {
+  it("says why a card behind earlier Ready cards of another feature is not next", () => {
     setBoard(queueOf(exampleWaits, { order: ["T-66", "T-67", "T-68", "T-69", "T-63"] }));
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(cardText("T-63")).toBe("5th in queue · Waiting: feature tasks start first (T-66, T-67, T-68 and 1 more)");
-    // The next task has no hold, so its chip alone says it is next; its step-mate shows only its place.
+    expect(cardText("T-63")).toBe("5th in queue · Waiting: earlier tasks start first (T-66, T-67, T-68 and 1 more)");
+    // The next task has no hold, so its chip alone says it is next.
     expect(cardText("T-66")).toBeNull();
-    expect(cardText("T-67")).toBe("2nd in queue");
-    expect(cardText("T-68")).toBe("3rd in queue · Waiting: step before it is not done (T-66)");
+    expect(cardText("T-67")).toBe("2nd in queue · Waiting: earlier tasks start first (T-66)");
+    expect(cardText("T-68")).toBe("3rd in queue · Waiting: earlier tasks start first (T-66, T-67)");
   });
 
   it("words a held start, a queue that is off or paused, scheduled work, and missing facts", () => {
@@ -78,6 +78,7 @@ describe("the Waiting line of a card in Ready", () => {
     expect(line([because("queue_blocked", ["T-2"])])).toBe("Waiting: the queue is blocked by T-2");
     expect(line([because("queue_blocked")])).toBe("Waiting: the queue is blocked");
     expect(line([because("running_work", ["T-5"])])).toBe("Waiting: T-5 is running");
+    expect(line([because("earlier_task", ["T-4"])])).toBe("Waiting: T-4 has not finished");
     expect(line([because("running_work", ["T-5", "T-6"])])).toBe("Waiting: T-5, T-6 are running");
     expect(line([because("before_queue_start")], 1, { schedule: { startAt: null, stopAfter: null } })).toBe("Waiting: the queue's start time has not come");
     expect(line([because("unknown")])).toBe("Waiting: the reason is not known yet");
@@ -105,7 +106,7 @@ describe("the Queue block of the task modal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Tidy the settings copy" }));
     const block = within(within(screen.getByRole("dialog", { name: "Task" })).getByRole("group", { name: "Queue" }));
     expect(block.getByText("5th to start")).toBeTruthy();
-    expect(block.getByText("Feature tasks start before single tasks, wherever the card is in Ready: T-66, T-67, T-68, T-69.")).toBeTruthy();
+    expect(block.getByText("These are above it in Ready and start first: T-66, T-67, T-68, T-69.")).toBeTruthy();
   });
 
   it("draws no block for a task that does not wait", async () => {
@@ -120,10 +121,11 @@ describe("the Queue block of the task modal", () => {
     expect(detail([because("queue_blocked", ["T-2"])])?.lines).toEqual(["The queue is blocked by T-2. Nothing starts until that task is resolved."]);
     expect(detail([because("queue_paused", ["T-3"])])?.lines).toEqual(["The queue is paused at T-3. Select On to retry."]);
     expect(detail([because("own_schedule")], null)).toEqual({ place: "Not in the start order yet", lines: ["Its own start time has not come."] });
-    expect(detail([because("previous_step", ["T-12"]), because("earlier_tasks", ["T-3", "T-4"], 2)], 4)).toEqual({
-      place: "4th to start", lines: ["An earlier step of its feature is not done: T-12.", "These start first: T-3, T-4 and 2 more."],
+    expect(detail([because("earlier_task", ["T-12"]), because("earlier_tasks", ["T-3", "T-4"], 2)], 4)).toEqual({
+      place: "4th to start", lines: ["T-12 has not finished.", "These are above it in Ready and start first: T-3, T-4 and 2 more."],
     });
-    expect(detail([because("running_work", ["T-5"])])?.lines).toEqual(["T-5 is running. The queue starts one step at a time."]);
+    expect(detail([because("running_work", ["T-5"])])?.lines).toEqual(["T-5 is running. The next card starts when that work is in Review or Done."]);
+    expect(detail([because("running_work", ["T-5", "T-6"])])?.lines).toEqual(["T-5, T-6 are running. The next card starts when that work is in Review or Done."]);
     expect(detail([because("usage_over"), because("provider_status_unknown"), because("tree_unknown")])?.lines).toEqual([
       "Start gate: Claude Code is above 85% of the five-hour window.", "Start gate: Claude Code status is not known yet.", "Start gate: the working tree state is not known yet.",
     ]);
@@ -159,7 +161,7 @@ describe("parseTaskBoard", () => {
   });
 
   it("keeps valid waits and drops them whole when one value is outside the contract", () => {
-    const valid = [{ taskId: "T-63", place: 1, reasons: [because("queue_off"), because("feature_first", ["T-66"], 2)] }, { taskId: "T-7", place: null, reasons: [] }];
+    const valid = [{ taskId: "T-63", place: 1, reasons: [because("queue_off"), because("earlier_tasks", ["T-66"], 2)] }, { taskId: "T-7", place: null, reasons: [] }];
     expect(parseTaskBoard(body(valid), repositoryId)?.queue.waits).toEqual(valid);
     expect(parseTaskBoard(body(valid.map((wait) => ({ ...wait, text: "secret" }))), repositoryId)?.queue.waits).toEqual(valid);
     for (const broken of [
@@ -167,9 +169,9 @@ describe("parseTaskBoard", () => {
       [{ ...valid[0], taskId: "63" }],
       [{ ...valid[0], place: 0 }],
       [{ ...valid[0], reasons: [because("git status failed" as TaskQueueWaitReason)] }],
-      [{ ...valid[0], reasons: [because("feature_first", ["C:/secret"])] }],
-      [{ ...valid[0], reasons: [because("feature_first", Array.from({ length: 9 }, (_, index) => `T-${index + 1}`))] }],
-      [{ ...valid[0], reasons: [because("feature_first", ["T-1"], -1)] }],
+      [{ ...valid[0], reasons: [because("earlier_tasks", ["C:/secret"])] }],
+      [{ ...valid[0], reasons: [because("earlier_tasks", Array.from({ length: 9 }, (_, index) => `T-${index + 1}`))] }],
+      [{ ...valid[0], reasons: [because("earlier_tasks", ["T-1"], -1)] }],
     ]) {
       const board = parseTaskBoard(body(broken), repositoryId);
       expect(board?.readiness).toBe("ready");

@@ -53,7 +53,7 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign";
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -124,10 +124,11 @@ export async function openDesktopTaskWorktree(repositoryId: string, id: string):
   }
 }
 
-export type TaskMove = { id: string; columnId: string; position: number };
+/** `group` says what a card of a parallel group does: "block" moves its whole group, "leave" takes the card out of it. */
+export type TaskMove = { id: string; columnId: string; position: number; group?: "block" | "leave" };
 
 export function moveDesktopTask(repositoryId: string, move: TaskMove): Promise<TaskActionResult> {
-  return sendTaskAction(repositoryId, "move", { id: move.id, columnId: move.columnId, position: move.position });
+  return sendTaskAction(repositoryId, "move", { id: move.id, columnId: move.columnId, position: move.position, ...(move.group ? { group: move.group } : {}) });
 }
 
 /** A name alone is the inline form's create; the Feature modal adds the two details it holds. */
@@ -176,8 +177,14 @@ export function removeDesktopQueueTask(repositoryId: string, id: string): Promis
   return sendTaskAction(repositoryId, "queue_remove", { id });
 }
 
-export function reorderDesktopQueueTask(repositoryId: string, id: string, step: number): Promise<TaskActionResult> {
-  return sendTaskAction(repositoryId, "queue_reorder", { id, step });
+/** Puts the waiting cards in one parallel group: the group of the first one, or a new group. */
+export function groupDesktopTasks(repositoryId: string, ids: readonly string[]): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_group", { ids: [...ids] });
+}
+
+/** Takes each waiting card out of its parallel group. */
+export function ungroupDesktopTasks(repositoryId: string, ids: readonly string[]): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_ungroup", { ids: [...ids] });
 }
 
 export function setDesktopQueue(repositoryId: string, on: boolean): Promise<TaskActionResult> {
@@ -219,7 +226,9 @@ export function createFailureMessage(error: TaskActionError | "unavailable"): st
 export const UPDATE_FAILURE_MESSAGE = "The change could not be saved.";
 export const DELETE_FAILURE_MESSAGE = "The task could not be deleted.";
 export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
-export const QUEUE_REORDER_FAILURE_MESSAGE = "The task could not be moved to that step.";
+export const QUEUE_GROUP_FAILURE_MESSAGE = "The cards could not be put in a parallel group.";
+export const QUEUE_GROUP_LIMIT_MESSAGE = "A parallel group holds at most 16 tasks.";
+export const QUEUE_UNGROUP_FAILURE_MESSAGE = "The parallel group could not be changed.";
 export const QUEUE_SETTINGS_FAILURE_MESSAGE = "The queue setting could not be changed.";
 export const GATE_THRESHOLD_FAILURE_MESSAGE = "The start threshold could not be changed.";
 export const QUEUE_SCHEDULE_FAILURE_MESSAGE = "The schedule could not be changed.";

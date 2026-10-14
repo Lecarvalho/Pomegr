@@ -5,6 +5,7 @@ import { moveTaskToRole } from "./task-columns.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { withTaskRemoteControl } from "./task-remote-control.mjs";
 import { taskSourceOf, withTaskSource } from "./task-source.mjs";
+import { taskRunsInGroup } from "./task-groups.mjs";
 import { withTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import { TASK_IMAGE_MARKER, isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
@@ -80,12 +81,8 @@ function taskNumber(payload, keys) {
 const loadRow = (database, repositoryId, number) =>
   withTaskKeepWorktree(database, withTaskRemoteControl(database, withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number))));
 
-function worktreeRequired(database, row) {
-  if ((row.feature_id ?? null) === null || (row.step ?? null) === null) return false;
-  const inStep = preparedStatement(database, "SELECT COUNT(*) AS count FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
-    .get(row.repository_id, row.feature_id, row.step);
-  return Number(inStep?.count) > 1;
-}
+// A member of a parallel group starts in its own worktree; every other task starts in the repository root.
+const worktreeRequired = (database, row) => taskRunsInGroup(database, row.repository_id, Number(row.number));
 
 const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_id ?? null) === null
   && !isLive(parseStoredDispatch(row.dispatch_token), now);

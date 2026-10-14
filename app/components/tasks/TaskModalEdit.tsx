@@ -118,7 +118,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         return;
       }
       // The feature exists now.
-      current = { ...draft, feature: { featureId: created.id, creating: false, name: "", step: null } };
+      current = { ...draft, feature: { featureId: created.id, creating: false, name: "" } };
       setFeature(current.feature);
     }
     const patch = taskDraftPatch(shown, current);

@@ -119,11 +119,6 @@
 .taskMove[data-move="up"] > svg { transform: rotate(-90deg); }
 .taskMove[data-move="down"] > svg { transform: rotate(90deg); }
 .taskMove[data-move="left"] > svg { transform: rotate(180deg); }
-/* Move to step: the step select, after the arrows, for a card of a feature that has not started. */
-.taskMoveStep { flex: 1 1 120px; display: grid; min-width: 0; }
-.taskMoveStep .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
-@media (max-width: 760px), (pointer: coarse) { .taskMoveStep .commandSelectTrigger { min-height: 44px; } }
-
 /* + New task (G53-G59): the Quiet role under the last card of the first lane only. It is invisible, not removed, until
    the lane is hovered or holds focus, so it stays reachable from the keyboard; a coarse pointer always sees it at 44px.
    No transition, so there is no motion to reduce. */
@@ -299,8 +294,6 @@
 .taskFeatureNum { font-family: var(--font-data); }
 .taskFeatureList { margin: 0; padding: 0 0 var(--space-2); list-style: none; font-size: var(--text-sm); }
 .taskFeatureItem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-compact); padding-block: var(--space-2); }
-.taskFeatureItem.hasStep { border-top: 1px solid var(--command-line); }
-.taskFeatureStep { flex: 0 0 20px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskFeatureId { flex: 0 0 40px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskFeatureTitle { flex: 1 1 auto; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .taskFeatureItem.isDone .taskFeatureTitle { color: var(--command-muted); }
@@ -316,30 +309,36 @@
 @media (max-width: 760px), (pointer: coarse) { .taskFeatureSelect .commandSelectTrigger { min-height: 44px; } }
 @media (max-width: 760px), (pointer: coarse) { .taskFeatureFilter .commandQuietAction { width: auto; } }
 .taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
-.taskCardFeature { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
-.taskCardFeature > span { min-width: 0; }
-.taskCardFeatureIds, .taskCardStartsTime { font-family: var(--font-data); }
+.taskCardFeature { overflow-wrap: anywhere; }
+.taskCardStartsTime { font-family: var(--font-data); }
 .taskParallelGlyph { flex: 0 0 auto; width: 12px; height: 12px; }
 
-/* Ready step groups: the waiting cards of the Ready lane under the caption of their feature step, or of Single tasks.
-   Only a step with two or more waiting cards draws the frame; the others keep its inset, so every card lines up. */
-.taskReadyGroup { display: flex; flex-direction: column; gap: 6px; padding: 0 6px; border: 1px solid transparent; }
-.taskReadyGroup.isParallel { padding: 6px; border-color: var(--command-line-strong); border-radius: var(--panel-radius); }
-.taskReadyCaption { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 2px var(--space-1); }
-.taskReadyStep { min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskReadyFeature { color: var(--command-muted); }
-.taskReadyStepName { font-weight: 650; }
-.taskReadyMode { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); white-space: nowrap; }
-.taskReadyMode.isParallel { color: var(--command-ink); font-weight: 500; }
+/* Parallel groups of the Ready lane: the waiting cards the owner put together, in a frame under one caption. Cards
+   that only sit next to each other draw no frame. A waiting card of Ready is the compact card, grouped or not. */
+.taskReadyGroup { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius); }
+.taskReadyGroup.isMovable { cursor: grab; }
+.taskReadyCaption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); padding: 2px var(--space-1); }
+.taskReadyMode { min-width: 0; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); color: var(--command-ink); font: 500 var(--text-caption)/1.4 var(--font-ui); }
+.taskReadyStarted { color: var(--command-muted); font-weight: 400; }
 .taskReadyCount { font-family: var(--font-data); }
+.taskReadyActions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); }
+.taskReadyUngroup.commandQuietAction, .taskMoveLeave.commandQuietAction { min-height: var(--control-compact); padding: 0 var(--space-2); color: var(--command-ink); font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 760px), (pointer: coarse) { .taskReadyUngroup.commandQuietAction, .taskMoveLeave.commandQuietAction { width: auto; min-height: 44px; } }
 .taskReadyCards { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; list-style: none; }
 .taskReadyCard { gap: 6px; padding: 10px var(--space-3); }
 .taskReadyCard .taskCardPlanned { font-size: var(--text-caption); }
-.taskReadyCard.isDropBefore::before { top: -5px; }
-/* Step targets: the step group under a dragged card of its feature takes the panel fill and the lane's two-pixel
-   drop border. The new-step zone is drawn only while the card is over the gap after the feature's last step. */
-.taskReadyGroup.isStepTarget { border-color: var(--command-line-strong); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: inset 0 0 0 1px var(--command-line-strong); }
-.taskReadyNewStep { padding: 10px var(--space-3); border: 1px dashed var(--command-ink); border-radius: var(--panel-radius); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); text-align: center; }
+.taskReadyCards > .taskReadyCard.isDropBefore::before { top: -5px; }
+/* Join target: the group under a dragged waiting card takes the panel fill and the lane's two-pixel drop border. */
+.taskReadyGroup.isJoinTarget { background: var(--command-panel); box-shadow: inset 0 0 0 1px var(--command-line-strong); }
+/* Run in parallel: one action in the gap between two waiting cards. It takes no room of its own, and like + New task
+   it stays in the tab order while it is not drawn. */
+.taskReadyLink { position: relative; z-index: 1; height: 0; margin-block: calc(var(--space-2) / -2); display: flex; align-items: center; justify-content: center; }
+.taskReadyLinkAction.commandQuietAction { gap: var(--space-1); min-height: 20px; padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius); background: var(--command-panel); color: var(--command-ink); font-size: var(--text-caption); opacity: 0; }
+.taskColumn:hover .taskReadyLinkAction, .taskReadyLinkAction:focus-visible { opacity: 1; }
+@media (max-width: 760px), (pointer: coarse) {
+  .taskReadyLink { height: auto; margin-block: 0; }
+  .taskReadyLinkAction.commandQuietAction { width: auto; min-height: 44px; opacity: 1; }
+}
 
 .taskCardChip.isInk { background: var(--command-panel-2); border-color: transparent; }
 /* Queue switch, banner and block rules (D30-D34, D108-D114, D178-D183). The switch is the Segmented role in the page
@@ -432,7 +431,6 @@
 .sessionTaskMetaId { font: 400 var(--text-xs)/1.4 var(--font-data); }
 .sessionTaskMetaId.isPlain { color: var(--command-ink); }
 .sessionTaskMetaFeature { font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.sessionTaskMetaStep { font: 400 var(--text-xs)/1.4 var(--font-data); white-space: nowrap; }
 @media (min-width: 761px) { .sessionTaskMeta .commandTextLink { min-height: 0; } }
 
 .sessionTaskPanelHeading code { font-family: var(--font-data); font-weight: 500; }

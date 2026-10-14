@@ -1,13 +1,11 @@
-// The pure queue rule: which queued task starts when, and how each feature's steps stand.
+// The pure queue rule: which queued task starts when. Ready order decides, and only a parallel group starts together.
 
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
-const SETTLED_STATES = new Set(["done", "needs_review"]);
+const QUEUE_STATES = new Set(["queued", "scheduled"]);
 
 const isRecord = (value) => value !== null && typeof value === "object";
 
 const taskNumber = (id) => (typeof id === "string" && TASK_ID.test(id) ? Number(id.slice(2)) : undefined);
-
-const isStep = (value) => Number.isSafeInteger(value) && value >= 1;
 
 export function taskIsDue(scheduledAt, at) {
   if (scheduledAt === null || scheduledAt === undefined) return true;
@@ -21,74 +19,33 @@ export function queueWindowHold(schedule, at) {
   return Number.isSafeInteger(startAt) && at < startAt ? "before_queue_start" : null;
 }
 
-export function orderQueue(tasks, features) {
-  const featureIds = [];
-  const known = new Set();
-  for (const feature of Array.isArray(features) ? features : []) {
-    if (!isRecord(feature) || typeof feature.id !== "string" || feature.id === "" || known.has(feature.id)) continue;
-    known.add(feature.id);
-    featureIds.push(feature.id);
-  }
-
+// The queue order and each task's parallel group. A group counts only while two or more of its tasks are in the queue,
+// waiting or in flight; a task left alone in one is an ordinary task.
+export function orderQueue(tasks) {
   const entries = [];
   const seen = new Set();
+  const sizes = new Map();
   for (const task of Array.isArray(tasks) ? tasks : []) {
     const number = isRecord(task) ? taskNumber(task.id) : undefined;
     if (number === undefined || seen.has(task.id)) continue;
     seen.add(task.id);
-    const placed = typeof task.featureId === "string" && known.has(task.featureId) && isStep(task.step);
+    const inQueue = QUEUE_STATES.has(task.state);
+    const group = inQueue && typeof task.group === "string" && task.group !== "" ? task.group : null;
+    if (group !== null) sizes.set(group, (sizes.get(group) ?? 0) + 1);
     entries.push({
       id: task.id,
       number,
-      featureId: placed ? task.featureId : null,
-      step: placed ? task.step : null,
+      group,
       queued: task.inFlight !== true && (task.state === "queued" || (task.state === "scheduled" && task.due === true)),
-      done: task.state === "done",
-      settled: SETTLED_STATES.has(task.state),
-      inFlight: task.inFlight === true,
       queuePosition: Number.isSafeInteger(task.queuePosition) ? task.queuePosition : null,
     });
   }
-  entries.sort((a, b) => a.number - b.number);
-
-  const byFeature = new Map(featureIds.map((id) => [id, new Map()]));
-  const singles = [];
-  for (const entry of entries) {
-    if (entry.featureId === null) {
-      if (entry.queued) singles.push(entry);
-      continue;
-    }
-    const stepsOfFeature = byFeature.get(entry.featureId);
-    if (!stepsOfFeature.has(entry.step)) stepsOfFeature.set(entry.step, []);
-    stepsOfFeature.get(entry.step).push(entry);
-  }
-
-  const order = [];
-  const held = [];
-  const steps = [];
-  for (const featureId of featureIds) {
-    const stepsOfFeature = byFeature.get(featureId);
-    const queuedOfFeature = [];
-    // A feature is held when a step before its first queued one holds a task that is not settled and not running:
-    // the queue will not start that task, so the feature's queued tasks wait behind everything else.
-    let stuck = false;
-    let isHeld = false;
-    for (const step of [...stepsOfFeature.keys()].sort((a, b) => a - b)) {
-      const inStep = stepsOfFeature.get(step);
-      steps.push({ featureId, step, taskIds: inStep.map((entry) => entry.id), done: inStep.every((entry) => entry.done), settled: inStep.every((entry) => entry.settled) });
-      const queuedInStep = inStep.filter((entry) => entry.queued);
-      if (queuedInStep.length > 0 && queuedOfFeature.length === 0) isHeld = stuck;
-      queuedOfFeature.push(...queuedInStep.map((entry) => entry.id));
-      if (inStep.some((entry) => !entry.settled && !entry.inFlight)) stuck = true;
-    }
-    (isHeld ? held : order).push(...queuedOfFeature);
-  }
+  const groups = new Map(entries.map((entry) => [entry.id, entry.group !== null && sizes.get(entry.group) > 1 ? entry.group : null]));
   const position = (entry) => entry.queuePosition ?? Number.POSITIVE_INFINITY;
-  singles.sort((a, b) => (position(a) === position(b) ? a.number - b.number : position(a) < position(b) ? -1 : 1));
-  for (const entry of singles) order.push(entry.id);
-  order.push(...held);
-
-  return { order, steps };
+  const order = entries.filter((entry) => entry.queued)
+    .sort((a, b) => (position(a) === position(b) ? a.number - b.number : position(a) < position(b) ? -1 : 1))
+    .map((entry) => entry.id);
+  return { order, groups };
 }
 
 // Outcomes that hold a running queue until the user resolves them.
@@ -108,32 +65,38 @@ export function queueWhenTurnedOn(tasks) {
   return blockedBy === null ? { status: "running", blockedBy: null } : { status: "blocked", blockedBy };
 }
 
-export function previousStepBlocker(taskId, tasks, features) {
+// The task in flight that a waiting task waits on: one that runs outside the task's own parallel group.
+export function earlierTaskBlocker(taskId, tasks) {
   const records = (Array.isArray(tasks) ? tasks : []).filter(isRecord);
-  const task = records.find((record) => record.id === taskId);
-  if (!task || !isStep(task.step)) return null;
-  const earlier = orderQueue(records, features).steps.find((entry) => entry.featureId === task.featureId && entry.step < task.step && !entry.settled);
-  return earlier?.taskIds.find((id) => !SETTLED_STATES.has(records.find((record) => record.id === id)?.state)) ?? null;
+  const { groups } = orderQueue(records);
+  if (!groups.has(taskId)) return null;
+  const group = groups.get(taskId);
+  let blocker = null;
+  for (const record of records) {
+    if (record.inFlight !== true || record.id === taskId || !groups.has(record.id) || (group !== null && groups.get(record.id) === group)) continue;
+    if (blocker === null || taskNumber(record.id) < taskNumber(blocker)) blocker = record.id;
+  }
+  return blocker;
 }
 
-// What a queue does next.
+// What a queue does next. The queue never passes the first waiting task of Ready: it starts that task, with the
+// waiting tasks of its parallel group when it has one. While tasks are in flight, only the waiting rest of their
+// own group may start.
 export function nextQueueStart(input) {
-  const { status, tasks, features } = isRecord(input) ? input : {};
+  const { status, tasks } = isRecord(input) ? input : {};
   if (status !== "running") return null;
   const records = (Array.isArray(tasks) ? tasks : []).filter(isRecord);
-  const { order, steps } = orderQueue(records, features);
+  const { order, groups } = orderQueue(records);
+  if (order.length === 0) return null;
   const byId = new Map();
   for (const task of records) if (!byId.has(task.id)) byId.set(task.id, task);
-  const stepOf = (id) => steps.find((entry) => entry.taskIds.includes(id)) ?? null;
 
-  if (order.length === 0) return null;
-  const flying = records.filter((task) => task.inFlight === true);
-  const current = stepOf(flying.length > 0 ? flying[0].id : order[0]);
-  if (flying.length > 0 && (current === null || flying.some((task) => stepOf(task.id) !== current))) return null;
-  const candidates = current === null ? [order[0]] : order.filter((id) => current.taskIds.includes(id));
+  const flying = records.filter((task) => task.inFlight === true && groups.has(task.id));
+  const group = groups.get(flying.length > 0 ? flying[0].id : order[0]) ?? null;
+  if (flying.length > 0 && (group === null || flying.some((task) => groups.get(task.id) !== group))) return null;
+  const candidates = group === null ? [order[0]] : order.filter((id) => groups.get(id) === group);
   if (candidates.length === 0) return null;
   const unlinked = candidates.find((id) => byId.get(id).unlinked === true);
   if (unlinked !== undefined) return { pause: unlinked };
-  if (current !== null && steps.some((entry) => entry.featureId === current.featureId && entry.step < current.step && !entry.settled)) return null;
   return { starts: candidates };
 }

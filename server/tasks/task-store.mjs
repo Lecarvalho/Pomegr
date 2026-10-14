@@ -19,14 +19,15 @@ import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { deleteFeatureDetails, findFeature, readFeature, writeFeatureDetails } from "./task-feature-details.mjs";
 import { deleteFeature } from "./task-feature-actions.mjs";
+import { groupTasks, markReadyGroupsMigrated, migrateStepGroups, pruneTaskGroups, readTaskGroups, ungroupTasks, writeTaskGroup } from "./task-groups.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
 import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl } from "./task-remote-control.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import { deleteTaskWorktreeCleanup, pendingWorktreeCleanups, readTaskKeepWorktree, readTaskKeepWorktrees, settleWorktreeCleanup, writeTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import {
-  DEFAULT_TASK_COLUMNS, IN_FLIGHT_STATES, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
-  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeFeatureUpdatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
+  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeFeatureUpdatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -163,6 +164,8 @@ function newOpaqueId(prefix) {
 function ensureRepository(database, repositoryId) {
   const inserted = preparedStatement(database, "INSERT OR IGNORE INTO repositories (repository_id, created_at) VALUES (?, ?)").run(repositoryId, Date.now());
   if (Number(inserted.changes) === 0) return;
+  // A new board never held steps, so it has nothing to bring to parallel groups.
+  markReadyGroupsMigrated(database, repositoryId);
   const insertColumn = preparedStatement(database, "INSERT INTO columns (id, repository_id, name, position) VALUES (?, ?, ?, ?)");
   const ids = DEFAULT_TASK_COLUMNS.map(() => newOpaqueId("col"));
   DEFAULT_TASK_COLUMNS.forEach((name, position) => insertColumn.run(ids[position], repositoryId, name, position));
@@ -186,9 +189,6 @@ function reserveTaskNumber(database, repositoryId, atLeast) {
 const featureExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM features WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
-const highestStep = (database, repositoryId, featureId) =>
-  Number(preparedStatement(database, "SELECT MAX(step) AS highest FROM tasks WHERE repository_id = ? AND feature_id = ?").get(repositoryId, featureId)?.highest ?? 0);
-
 // A feature is done when it has tasks and every one of them is done; only unfinished features take tasks.
 function featureIsDone(database, repositoryId, featureId) {
   const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ?")
@@ -196,14 +196,8 @@ function featureIsDone(database, repositoryId, featureId) {
   return Number(row.total) > 0 && Number(row.total) === Number(row.done);
 }
 
-const stepWithin = (requested, highest) =>
-  requested === null ? highest + 1 : requested >= 1 && requested <= highest + 1 ? requested : undefined;
-
-function renumberSteps(database, repositoryId, featureId) {
-  const steps = preparedStatement(database, "SELECT DISTINCT step FROM tasks WHERE repository_id = ? AND feature_id = ? ORDER BY step").all(repositoryId, featureId);
-  const update = preparedStatement(database, "UPDATE tasks SET step = ? WHERE repository_id = ? AND feature_id = ? AND step = ?");
-  steps.forEach((row, index) => { if (Number(row.step) !== index + 1) update.run(index + 1, repositoryId, featureId, Number(row.step)); });
-}
+// The schema requires a step for a task of a feature. Nothing reads it since steps went, so it is always 1.
+const storedStep = (featureId) => (featureId === null ? null : 1);
 
 function createTask({ database, repositoryId }, payload) {
   const input = normalizeCreatePayload(payload);
@@ -211,12 +205,9 @@ function createTask({ database, repositoryId }, payload) {
   ensureRepository(database, repositoryId);
   const count = Number(preparedStatement(database, "SELECT COUNT(*) AS n FROM tasks WHERE repository_id = ?").get(repositoryId).n);
   if (count >= TASK_BOUNDS.tasksPerRepository) return { ok: false, error: "limit" };
-  let step = null;
   if (input.featureId !== null) {
     if (!featureExists(database, repositoryId, input.featureId)) return { ok: false, error: "not_found" };
     if (featureIsDone(database, repositoryId, input.featureId)) return { ok: false, error: "conflict" };
-    step = stepWithin(input.step, highestStep(database, repositoryId, input.featureId));
-    if (step === undefined) return { ok: false, error: "invalid" };
   }
   const first = preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id LIMIT 1").get(repositoryId);
   if (!first) return { ok: false, error: "conflict" };
@@ -228,7 +219,7 @@ function createTask({ database, repositoryId }, payload) {
   preparedStatement(database, `INSERT INTO tasks (repository_id, number, text, column_id, position, run_provider, run_model, run_effort, checks, own_condition, created_at, updated_at, feature_id, step)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
-      JSON.stringify(input.completeWhen.checks), input.completeWhen.own, now, now, input.featureId, step);
+      JSON.stringify(input.completeWhen.checks), input.completeWhen.own, now, now, input.featureId, storedStep(input.featureId));
   if (input.run.remoteControl) writeTaskRemoteControl(database, repositoryId, number, true);
   if (input.run.keepWorktree) writeTaskKeepWorktree(database, repositoryId, number, true);
   reserveTaskNumber(database, repositoryId, number + 1);
@@ -272,30 +263,25 @@ function updateTask({ database, repositoryId, now }, payload) {
   if (placement.error) return { ok: false, error: placement.error };
   preparedStatement(database, `UPDATE tasks SET text = ?, run_provider = ?, run_model = ?, run_effort = ?, checks = ?, own_condition = ?, feature_id = ?, step = ?, updated_at = ?
     WHERE repository_id = ? AND number = ?`)
-    .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, placement.featureId, placement.step, Date.now(), repositoryId, input.number);
+    .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, placement.featureId, storedStep(placement.featureId), Date.now(), repositoryId, input.number);
   if (input.run) writeTaskRemoteControl(database, repositoryId, input.number, run.remoteControl);
   if (input.run) writeTaskKeepWorktree(database, repositoryId, input.number, run.keepWorktree === true);
-  for (const featureId of new Set([stored.feature_id, placement.featureId])) if (featureId) renumberSteps(database, repositoryId, featureId);
   return { ok: true };
 }
 
-// Where an update leaves the task.
+// The feature an update leaves the task in.
 function updatedPlacement(database, repositoryId, stored, input) {
-  const current = { featureId: stored.feature_id ?? null, step: stored.step ?? null };
-  if (input.featureId === undefined && input.step === undefined) return current;
-  const featureId = input.featureId === undefined ? current.featureId : input.featureId;
-  if (featureId === null) return input.featureId === null ? { featureId: null, step: null } : input.step == null ? current : { error: "invalid" };
-  if (!featureExists(database, repositoryId, featureId)) return { error: "not_found" };
-  const joining = featureId !== current.featureId;
-  if (joining && featureIsDone(database, repositoryId, featureId)) return { error: "conflict" };
-  const step = stepWithin(input.step ?? (joining ? null : current.step), highestStep(database, repositoryId, featureId));
-  return step === undefined ? { error: "invalid" } : { featureId, step };
+  const current = stored.feature_id ?? null;
+  if (input.featureId === undefined || input.featureId === current) return { featureId: current };
+  if (input.featureId === null) return { featureId: null };
+  if (!featureExists(database, repositoryId, input.featureId)) return { error: "not_found" };
+  return featureIsDone(database, repositoryId, input.featureId) ? { error: "conflict" } : { featureId: input.featureId };
 }
 
 function deleteTask({ database, repositoryId, now }, payload) {
   const input = normalizeDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT column_id, position, feature_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT column_id, position FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
   const reserved = nextTaskNumber(database, repositoryId);
   preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
@@ -305,11 +291,11 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskAdder(database, repositoryId, input.number);
   deleteTaskAssigned(database, repositoryId, input.number);
   writeTaskRemoteControl(database, repositoryId, input.number, false);
+  writeTaskGroup(database, repositoryId, input.number, null);
   deleteTaskWorktreeCleanup(database, repositoryId, input.number);
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
     .run(repositoryId, task.column_id, task.position);
-  if (task.feature_id) renumberSteps(database, repositoryId, task.feature_id);
   // A blocked or paused queue must not keep naming a task that is gone.
   releaseQueue(database, repositoryId);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(input.number));
@@ -406,7 +392,8 @@ function agentUpdateTask(context, payload) {
 const columnExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
-// A move changes only the task's column, position, and update time.
+// A move changes the task's column, position, and update time. A grouped card moves with its group ("block"), or
+// leaves it ("leave", and any move that lands it away from every other waiting card of its group).
 function moveTask({ database, repositoryId }, payload) {
   const input = normalizeMovePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
@@ -414,16 +401,30 @@ function moveTask({ database, repositoryId }, payload) {
   if (!task || !columnExists(database, repositoryId, input.columnId)) return { ok: false, error: "not_found" };
   const waits = (task.state === "queued" || task.state === "scheduled") && (task.session_id ?? null) === null;
   if (waits && input.columnId !== (readyColumnId(database, repositoryId) ?? input.columnId)) return { ok: false, error: "conflict" };
+  pruneTaskGroups(database, repositoryId);
+  const groups = readTaskGroups(database, repositoryId);
+  const group = waits ? groups.get(input.number) : undefined;
   const sourceColumnId = task.column_id;
   const before = taskNumbersInOrder(database, repositoryId, input.columnId);
-  const order = before.filter((number) => number !== input.number);
-  order.splice(Math.min(input.position, order.length), 0, input.number);
+  const waiting = new Set(preparedStatement(database, "SELECT number FROM tasks WHERE repository_id = ? AND state IN ('queued', 'scheduled') AND session_id IS NULL").all(repositoryId).map((row) => Number(row.number)));
+  const sibling = (number) => number !== input.number && waiting.has(number) && groups.get(number) === group;
+  // The cards that move: the one card, or the waiting cards of its group in the order they have.
+  const block = input.group === "block" && group !== undefined ? before.filter((number) => number === input.number || sibling(number)) : [input.number];
+  const moving = new Set(block);
+  const order = before.filter((number) => !moving.has(number));
+  order.splice(Math.min(input.position, order.length), 0, ...block);
   if (sourceColumnId !== input.columnId || before.join() !== order.join()) {
     preparedStatement(database, "UPDATE tasks SET column_id = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
       .run(input.columnId, Date.now(), repositoryId, input.number);
   }
   writeTaskOrder(database, repositoryId, order);
   if (sourceColumnId !== input.columnId) writeTaskOrder(database, repositoryId, taskNumbersInOrder(database, repositoryId, sourceColumnId));
+  if (group !== undefined && input.group !== "block") {
+    const cards = order.filter((number) => waiting.has(number));
+    const at = cards.indexOf(input.number);
+    const beside = [cards[at - 1], cards[at + 1]].some((number) => number !== undefined && sibling(number));
+    if (input.group === "leave" || !beside) writeTaskGroup(database, repositoryId, input.number, null);
+  }
   return { ok: true };
 }
 
@@ -475,27 +476,16 @@ function applyFeatureUpdate({ database, repositoryId }, input) {
   return { ok: true, featureId: stored.id };
 }
 
-// Only a feature with no task is deleted, so no task loses its feature or its step.
+// Only a feature with no task is deleted, so no task loses its feature.
 function agentDeleteFeature({ database, repositoryId }, payload) {
   const input = normalizeAgentFeatureDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   const stored = findFeature(database, repositoryId, input.feature);
   if (!stored) return { ok: false, error: "not_found" };
-  if (highestStep(database, repositoryId, stored.id) > 0) return { ok: false, error: "conflict" };
+  if (preparedStatement(database, "SELECT 1 FROM tasks WHERE repository_id = ? AND feature_id = ? LIMIT 1").get(repositoryId, stored.id) !== undefined) return { ok: false, error: "conflict" };
   preparedStatement(database, "DELETE FROM features WHERE repository_id = ? AND id = ?").run(repositoryId, stored.id);
   deleteFeatureDetails(database, repositoryId, stored.id);
   return { ok: true };
-}
-
-function stepCounts(database, repositoryId, featureId, step) {
-  const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
-    .get(repositoryId, featureId, step);
-  return { total: Number(row.total), done: Number(row.done) };
-}
-
-function stepIsDone(database, repositoryId, featureId, step) {
-  const { total, done } = stepCounts(database, repositoryId, featureId, step);
-  return total > 0 && total === done;
 }
 
 function addToQueue({ database, repositoryId, now }, payload) {
@@ -519,28 +509,8 @@ function removeFromQueue({ database, repositoryId, now }, payload) {
   if ((task.state !== "queued" && task.state !== "scheduled") || (task.session_id ?? null) !== null) return { ok: false, error: "conflict" };
   preparedStatement(database, "UPDATE tasks SET state = 'not_queued', queue_position = NULL, scheduled_at = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, input.number);
+  writeTaskGroup(database, repositoryId, input.number, null);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(input.number));
-  return { ok: true };
-}
-
-// Moves a queued task to another step of its own feature.
-function reorderQueuedTask({ database, repositoryId }, payload) {
-  const input = normalizeQueueReorderPayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT state, session_id, feature_id, step FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
-  if (!task) return { ok: false, error: "not_found" };
-  const started = !IN_FLIGHT_STATES.includes(task.state) || (task.session_id ?? null) !== null;
-  if (started || task.feature_id === null || task.feature_id === undefined) return { ok: false, error: "conflict" };
-  const highest = highestStep(database, repositoryId, task.feature_id);
-  if (stepWithin(input.step, highest) === undefined) return { ok: false, error: "invalid" };
-  const current = Number(task.step);
-  if (input.step === current || (input.step === highest + 1 && current === highest && stepCounts(database, repositoryId, task.feature_id, current).total === 1)) {
-    return { ok: true };
-  }
-  if (stepIsDone(database, repositoryId, task.feature_id, input.step)) return { ok: false, error: "conflict" };
-  preparedStatement(database, "UPDATE tasks SET step = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(input.step, Date.now(), repositoryId, input.number);
-  renumberSteps(database, repositoryId, task.feature_id);
   return { ok: true };
 }
 
@@ -548,7 +518,7 @@ function reorderQueuedTask({ database, repositoryId }, payload) {
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   feature_create: createFeature, feature_update: updateFeature, feature_delete: deleteFeature,
-  queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
+  queue_add: addToQueue, queue_remove: removeFromQueue, queue_group: groupTasks, queue_ungroup: ungroupTasks, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   session_assign: assignSession, session_unassign: unassignSession,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
@@ -586,9 +556,24 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     });
   }
 
+  // A group is whole only after both: memberships that no longer count go, then each group's cards stand together.
+  function settleGroupsAndReady(repositoryId) {
+    pruneTaskGroups(database, repositoryId);
+    settleReadyColumn(database, repositoryId, readTaskGroups(database, repositoryId));
+  }
+
+  const newGroupId = () => newOpaqueId("grp");
+
+  function migrateGroups(repositoryId) {
+    runTransaction(database, () => {
+      migrateStepGroups(database, repositoryId, newGroupId);
+      if (!projectBoard(repositoryId, loadRows(repositoryId), { at: now() })) throw new ActionRejected("conflict");
+    });
+  }
+
   function settleReady(repositoryId) {
     runTransaction(database, () => {
-      settleReadyColumn(database, repositoryId);
+      settleGroupsAndReady(repositoryId);
       if (!projectBoard(repositoryId, loadRows(repositoryId), { at: now() })) throw new ActionRejected("conflict");
     });
   }
@@ -608,13 +593,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const remoteControls = readTaskRemoteControls(database, repositoryId);
     const keepWorktrees = readTaskKeepWorktrees(database, repositoryId);
     const assignments = readTaskAssignments(database, repositoryId);
+    const groups = readTaskGroups(database, repositoryId);
     return {
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
-        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)), assigned_sessions: assignments.get(Number(row.number)) ?? [] })),
+        .map((row) => ({ ...row, group: groups.get(Number(row.number)) ?? null, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)), assigned_sessions: assignments.get(Number(row.number)) ?? [] })),
     };
   }
 
@@ -623,6 +609,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     try {
       for (const { repository_id: repositoryId } of preparedStatement(database, "SELECT repository_id FROM repositories").all()) {
         try { seedColumns(repositoryId); } catch { /* stays unavailable until it projects */ }
+        try { migrateGroups(repositoryId); } catch { /* brought to groups by the first action instead */ }
         try { settleReady(repositoryId); } catch { /* settled by the next action instead */ }
         try { runTransaction(database, () => releaseQueue(database, repositoryId)); } catch { /* released by the next resolution instead */ }
         try { runTransaction(database, () => releaseDanglingPause({ database, repositoryId, now })); } catch { /* served without the task's ID until the queue is turned on or off */ }
@@ -630,13 +617,13 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     } catch { /* the store is read again on the first board read */ }
   }
 
-  // `rows` are the stored rows the board was projected from: the waits read what a board does not carry, a live dispatch.
+  // `rows` are the stored rows the board was projected from: the gates and the waits read what a board does not carry, a live dispatch.
   const served = (board, rows, { resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) => {
     const at = now();
     // One board asks for its gate facts once, so the gates and the waits judge the same reading.
     let asked = null;
     const gateFacts = typeof resolveGateFacts === "function" ? (id) => (asked ??= { facts: resolveGateFacts(id) }).facts : null;
-    const gated = fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), resolveGateFacts: gateFacts, at });
+    const gated = fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), rows, resolveGateFacts: gateFacts, at });
     return fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at });
   };
 
@@ -682,12 +669,15 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     if (!database) return { ok: false, error: "conflict" };
     try {
       const board = runTransaction(database, () => {
-        if (repositoryExists(repositoryId)) reconcileColumns(repositoryId);
-        const result = handler({ database, repositoryId, ensureRepository, now, recentAdds }, payload);
+        if (repositoryExists(repositoryId)) {
+          reconcileColumns(repositoryId);
+          migrateStepGroups(database, repositoryId, newGroupId);
+        }
+        const result = handler({ database, repositoryId, ensureRepository, now, recentAdds, newGroupId }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
         added = typeof result.addKey === "string" ? { key: result.addKey, number: result.number } : null;
         featureId = typeof result.featureId === "string" ? result.featureId : null;
-        settleReadyColumn(database, repositoryId);
+        settleGroupsAndReady(repositoryId);
         // Only `create`, `agent_create`, and `promote_issue` answer the task they made.
         taskId = action === "promote_issue" || action === "create" || action === "agent_create" ? taskIdFromNumber(result.number) ?? null : null;
         // The write stands only if the whole board, the new row included, still projects.
@@ -749,9 +739,10 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     featureOf: (featureId) => readFeature({ database, repositoryId, feature: featureId }),
     imagePaths: (taskId) => taskImagePaths({ database, directory, repositoryId, taskId }),
     gatesHold: (taskId) => {
-      const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
+      const rows = loadRows(repositoryId);
+      const board = projectBoard(repositoryId, rows, { at: now() });
       if (!board) return true;
-      const gates = startGates({ database, repositoryId, board, taskId, resolveGateFacts, at: now(), manual: true });
+      const gates = startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at: now(), manual: true });
       if (gates.ok) return false;
       return gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty" ? "tree_dirty" : true;
     },

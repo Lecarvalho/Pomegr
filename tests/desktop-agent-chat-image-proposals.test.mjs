@@ -59,7 +59,7 @@ test("attach_images refuses every malformed form and any extra key", () => {
 test("images on any other operation are refused", () => {
   for (const source of [
     { op: "update_task", id: "T-1", text: "x", images: [A] }, { op: "delete_task", id: "T-1", images: [A] }, { op: "queue_task", id: "T-1", images: [A] },
-    { op: "move_task", id: "T-1", column: "Ready", images: [A] }, { op: "set_step", id: "T-1", step: 1, images: [A] }, { op: "start_session", id: "T-1", images: [A] },
+    { op: "move_task", id: "T-1", column: "Ready", images: [A] }, { op: "group_tasks", ids: ["T-1", "T-2"], images: [A] }, { op: "ungroup_tasks", ids: ["T-1"], images: [A] }, { op: "start_session", id: "T-1", images: [A] },
     { op: "create_feature", name: "x", images: [A] }, { op: "set_queue", on: true, images: [A] },
   ]) assert.equal(normalizeOperation(source), null, source.op);
 });

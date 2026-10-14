@@ -7,7 +7,7 @@ export const TASK_GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
 export const DEFAULT_TASK_GATE_THRESHOLD = 85;
 // Why a start is held, in the order they are reported.
 export const TASK_GATE_REASONS = Object.freeze([
-  "previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
+  "earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
   "before_queue_start", "after_queue_stop",
 ]);
 export const TASK_GATE_PROVIDER_FACTS = Object.freeze(["operational", "incident"]);
@@ -53,7 +53,7 @@ export function evaluateGates(task, facts, settings) {
   const status = provider === null ? "unknown" : readings.providerStatus[provider];
   const reasons = [];
   // A blocker that is not a task ID is still a blocker: the rule never drops a hold it was handed.
-  if (record.blockedBy !== null && record.blockedBy !== undefined) reasons.push("previous_step");
+  if (record.blockedBy !== null && record.blockedBy !== undefined) reasons.push("earlier_task");
   if (usage !== "ok") reasons.push(usage === "over" ? "usage_over" : "usage_unknown");
   if (status !== "ok") reasons.push(status === "incident" ? "provider_incident" : "provider_status_unknown");
   if (readings.workingTree !== "clean") reasons.push(readings.workingTree === "dirty" ? "tree_dirty" : "tree_unknown");

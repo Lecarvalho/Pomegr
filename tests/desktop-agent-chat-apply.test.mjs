@@ -16,14 +16,15 @@ const invalid = { ok: false, error: "invalid" };
 const unavailable = { ok: false, error: "unavailable" };
 const conversationId = "chat-0123456789ab";
 
-const SET_OF_ACTIONS = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder"];
+const SET_OF_ACTIONS = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup"];
 
 const everyKind = [
   { op: "create_feature", name: "Billing" },
-  { op: "create_task", text: "Invoice export", feature: "Billing", step: 1, queue: true, run: { provider: "claude", effort: "high" }, completeWhen: { checks: ["pr_open"] } },
+  { op: "create_task", text: "Invoice export", feature: "Billing", queue: true, run: { provider: "claude", effort: "high" }, completeWhen: { checks: ["pr_open"] } },
   { op: "update_task", id: "T-1", text: "Reworded" },
   { op: "move_task", id: "T-1", column: "Ready" },
-  { op: "set_step", id: "T-2", step: 2 },
+  { op: "group_tasks", ids: ["T-1", "T-2"] },
+  { op: "ungroup_tasks", ids: ["T-2"] },
   { op: "queue_task", id: "T-3" },
   { op: "unqueue_task", id: "T-3" },
   { op: "delete_task", id: "T-3" },
@@ -57,15 +58,16 @@ test("apply runs every kind of operation through the fixed task actions, in orde
   assert.equal(h.calls[0].init.method, "GET");
   const requests = h.actionCalls();
   assert.deepEqual(requests.map((call) => call.pathname.replace("/internal/tasks/", "")), [
-    "feature_create", "create", "queue_add", "update", "move", "queue_reorder", "queue_add", "queue_remove", "delete",
+    "feature_create", "create", "queue_add", "update", "move", "queue_group", "queue_ungroup", "queue_add", "queue_remove", "delete",
   ]);
   assert.deepEqual(requests.map((call) => call.body), [
     { repositoryId, payload: { name: "Billing" } },
-    { repositoryId, payload: { text: "Invoice export", run: { provider: "claude", model: null, effort: "high" }, completeWhen: { checks: ["pr_open"], own: null }, featureId: "feat-2", step: 1 } },
+    { repositoryId, payload: { text: "Invoice export", run: { provider: "claude", model: null, effort: "high" }, completeWhen: { checks: ["pr_open"], own: null }, featureId: "feat-2" } },
     { repositoryId, payload: { id: "T-9" } },
     { repositoryId, payload: { id: "T-1", text: "Reworded" } },
     { repositoryId, payload: { id: "T-1", columnId: "col-b", position: 100_000 } },
-    { repositoryId, payload: { id: "T-2", step: 2 } },
+    { repositoryId, payload: { ids: ["T-1", "T-2"] } },
+    { repositoryId, payload: { ids: ["T-2"] } },
     { repositoryId, payload: { id: "T-3" } },
     { repositoryId, payload: { id: "T-3" } },
     { repositoryId, payload: { id: "T-3" } },
@@ -81,7 +83,7 @@ test("apply runs every kind of operation through the fixed task actions, in orde
   }
   const proposal = await storedProposal(h, conversation.id);
   assert.equal(proposal.state, "applied");
-  assert.deepEqual(proposal.results, [{ ok: true }, { ok: true, taskId: "T-9" }, ...Array(6).fill({ ok: true })]);
+  assert.deepEqual(proposal.results, [{ ok: true }, { ok: true, taskId: "T-9" }, ...Array(7).fill({ ok: true })]);
   assert.deepEqual(proposal.operations, everyKind);
   assert.deepEqual(await h.handle("read", { repositoryId, conversationId: conversation.id }).then((view) => view.conversation.messages[1].proposal.state), "applied");
 });
@@ -499,7 +501,7 @@ test("every request the controller makes refuses redirects, is bounded in time, 
   assert.equal([...controller.matchAll(/fetchImpl\(/gu)].length, 1, "one function makes every request");
   assert.match(controller, /cache: "no-store", redirect: "error", signal: AbortSignal\.timeout\(/u);
   assert.match(controller, /\[DESKTOP_AUTH_HEADER\]: authorizationToken/u);
-  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder"\]\);/u);
+  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup"\]\);/u);
   for (const forbidden of ["queue_settings", "resolve_done", "resolve_requeue", "start", "image"]) assert.equal(new RegExp(`TASK_ACTIONS[^;]*"${forbidden}"`, "u").test(controller), false, forbidden);
   assert.match(controller, /if \(!TASK_ACTIONS\.has\(action\)\) return refused\("invalid"\);/u);
 });

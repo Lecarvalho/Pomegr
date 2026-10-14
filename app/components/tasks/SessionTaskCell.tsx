@@ -28,7 +28,7 @@ function TaskId({ task }: { task: SessionTaskReference }) {
 
 function TaskEntry({ task, omitFeature, assigned = false }: { task: SessionTaskReference; omitFeature: boolean; assigned?: boolean }) {
   const chip = sessionTaskChip(task.state);
-  const placed = task.feature !== null && task.step !== null;
+  const placed = task.feature !== null && !omitFeature;
   const issue = validIssueNumber(task.issue);
   return <>
     <span className="commandSessionTaskHead">
@@ -40,7 +40,7 @@ function TaskEntry({ task, omitFeature, assigned = false }: { task: SessionTaskR
       {chip && <span className={`commandChip ${chip.tone}`}>{chip.label}</span>}
       {assigned && <span className="commandSessionTaskFeature">Assigned</span>}
     </span>
-    {placed && <span className="commandSessionTaskFeature">{omitFeature ? `Step ${task.step}` : `${task.feature} · step ${task.step}`}</span>}
+    {placed && <span className="commandSessionTaskFeature">{task.feature}</span>}
   </>;
 }
 

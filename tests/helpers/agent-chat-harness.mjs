@@ -38,9 +38,9 @@ export function readyBoard() {
     features: [{ id: "feat-1", name: "Auth", done: false }],
     queue: { status: "idle", order: [] },
     tasks: [
-      { id: "T-1", text: "Existing task one", columnId: "col-a", state: "queued", featureId: "feat-1", step: 1, run: { provider: "claude", model: "claude-opus-4-1", effort: "high" }, completeWhen: { checks: ["pr_open"], own: null } },
-      { id: "T-2", text: "Existing task two", columnId: "col-a", state: "queued", featureId: "feat-1", step: 2, run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: [], own: null } },
-      { id: "T-3", text: "Existing task three", columnId: "col-b", state: "queued", featureId: null, step: null },
+      { id: "T-1", text: "Existing task one", columnId: "col-a", state: "queued", featureId: "feat-1", run: { provider: "claude", model: "claude-opus-4-1", effort: "high" }, completeWhen: { checks: ["pr_open"], own: null } },
+      { id: "T-2", text: "Existing task two", columnId: "col-a", state: "queued", featureId: "feat-1", run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: [], own: null } },
+      { id: "T-3", text: "Existing task three", columnId: "col-b", state: "queued", featureId: null },
     ],
   };
 }

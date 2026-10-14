@@ -56,7 +56,7 @@ test("the runtime constants equal the ones of the shared contract", async () => 
   assert.match(source, /imagesPerConversation:\s*40\b/u);
   assert.match(source, /imageBytes:\s*5 \* 1024 \* 1024/u);
   assert.match(source, /AGENT_CHAT_IMAGE_ID_PATTERN\s*=\s*\/\^img-\[0-9a-f\]\{12\}\$\/u/u);
-  assert.match(source, /"set_step", "attach_images", "start_session", "set_queue"/u);
+  assert.match(source, /"group_tasks", "ungroup_tasks", "attach_images", "start_session", "set_queue"/u);
   assert.match(source, /part\?: "images"/u);
 });
 

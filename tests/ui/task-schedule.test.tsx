@@ -29,7 +29,7 @@ const PAST = local(2020, 10, 9, 7);
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,

@@ -154,6 +154,15 @@ function changedFields(operation: Extract<AgentChatBoardOperation, { op: "update
   return fields;
 }
 
+// "T-4", "T-4 and T-5", or "T-4, T-5, and T-9", as title parts.
+function idList(ids: readonly string[]): Array<string | { id: string }> {
+  return ids.flatMap((id, index) => {
+    const part = { id };
+    if (index === 0) return [part];
+    if (ids.length === 2) return [" and ", part];
+    return [index === ids.length - 1 ? ", and " : ", ", part];
+  });
+}
 const imageCount = (count: number) => (count === 1 ? "1 image" : `${count} images`);
 
 export function describeOperation(operation: AgentChatBoardOperation, tasks: readonly BoardTask[]): OperationRow {
@@ -165,7 +174,7 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
     case "create_feature":
       return { title: ["Create feature"], text: { value: operation.name, whole: operation.name, muted: false }, details: [] };
     case "create_task": {
-      const place = [operation.feature ? `in ${operation.feature}` : null, operation.step !== undefined ? `step ${operation.step}` : null].filter(Boolean).join(" · ");
+      const place = operation.feature ? `in ${operation.feature}` : "";
       const details = [place, runParts(operation.run, true).join(" · "), checkParts(operation.completeWhen), operation.images ? `with ${imageCount(operation.images.length)}` : null, operation.queue === true ? "then add to queue" : null].filter(Boolean) as string[];
       return { title: ["Create task"], text: { value: firstLine(operation.text), whole: plainTaskText(operation.text), muted: false }, details: details.length > 0 ? [details.join(" · ")] : [], ...(operation.images ? { images: operation.images } : {}) };
     }
@@ -184,8 +193,10 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Add ", { id: operation.id }, " to queue"], details: [] };
     case "unqueue_task":
       return { title: ["Remove ", { id: operation.id }, " from queue"], details: [] };
-    case "set_step":
-      return { title: ["Move ", { id: operation.id }, ` to step ${operation.step}`], details: [] };
+    case "group_tasks":
+      return { title: ["Run ", ...idList(operation.ids), " in parallel"], details: [] };
+    case "ungroup_tasks":
+      return { title: ["Take ", ...idList(operation.ids), operation.ids.length === 1 ? " out of its parallel group" : " out of their parallel groups"], details: [] };
     case "attach_images":
       return { title: [`Attach ${imageCount(operation.images.length)} to `, { id: operation.id }], text: current(operation.id), details: [], images: operation.images };
     case "start_session":
@@ -286,7 +297,7 @@ export const PROPOSAL_DELETE_NOTE = "Nothing changes until you apply. Deleting c
 export const START_PENDING_NOTE = "Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.";
 export const START_ELSEWHERE_NOTE = "Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.";
 
-export const QUEUE_ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, one step at a time, as each passes the start gates.";
+export const QUEUE_ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, in Ready order, as each passes the start gates.";
 export const QUEUE_OFF_NOTE = "Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.";
 
 /** The words of the card's region, by what the proposal asks for. */

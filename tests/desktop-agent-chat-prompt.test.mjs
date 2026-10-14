@@ -25,7 +25,7 @@ const PRIVATE_ROOT = "C:\\Users\\tester\\private-repo";
 
 function fullTask(overrides = {}) {
   return {
-    id: "T-1", text: "Write the plan", columnId: "col-b", state: "needs_review", featureId: "feat-1", step: 2,
+    id: "T-1", text: "Write the plan", columnId: "col-b", state: "needs_review", featureId: "feat-1", group: "grp-0123456789ab",
     run: { provider: "claude", model: "claude-opus-4-1", effort: "high", remoteControl: true },
     completeWhen: { checks: ["pr_open", "bogus", "tree_clean"], own: "Changelog updated" },
     session: { id: "claude:abc-1", state: "ended", observedModel: "claude-opus-4-1[1m]", transcriptPath: `${PRIVATE_ROOT}\\t.jsonl` },
@@ -77,7 +77,7 @@ test("a task is mapped field by field, with names for its column and feature and
   assert.deepEqual(snapshot.columns, ["Backlog", "Ready"]);
   assert.deepEqual(snapshot.features, [{ name: "Auth", done: false }, { name: "Old", done: true }]);
   assert.deepEqual(snapshot.tasks, [{
-    id: "T-1", column: "Ready", state: "needs_review", feature: "Auth", step: 2,
+    id: "T-1", column: "Ready", state: "needs_review", feature: "Auth", group: "group A",
     provider: "claude", model: "claude-opus-4-1", effort: "high",
     complete_when: ["pr_open", "tree_clean"], own_condition: "Changelog updated",
     session: { ref: "claude:abc-1", state: "ended", observed_model: "claude-opus-4-1[1m]" },
@@ -87,10 +87,20 @@ test("a task is mapped field by field, with names for its column and feature and
   }]);
 });
 
+test("groups read as short labels in the order of their lowest task number, and an unknown group ID is dropped", () => {
+  const tasks = [
+    fullTask({ id: "T-5", group: "grp-bbbbbbbbbbbb" }), fullTask({ id: "T-2", group: "grp-aaaaaaaaaaaa" }),
+    fullTask({ id: "T-3", group: "grp-bbbbbbbbbbbb" }), fullTask({ id: "T-4", group: "not-a-group" }), fullTask({ id: "T-6", group: null }),
+  ];
+  const labels = Object.fromEntries(boardSnapshot(fullBoard({ tasks }), { now }).tasks.map((task) => [task.id, task.group ?? null]));
+  assert.deepEqual(labels, { "T-2": "group A", "T-3": "group B", "T-4": null, "T-5": "group B", "T-6": null });
+  assert.doesNotMatch(JSON.stringify(boardSnapshot(fullBoard({ tasks }), { now })), /grp-/u);
+});
+
 test("a task with no run, session, report, or source gets plain defaults and no optional keys", () => {
   const snapshot = boardSnapshot({ tasks: [{ id: "T-2", text: "Bare" }] }, { now });
   assert.deepEqual(snapshot.tasks, [{
-    id: "T-2", column: null, state: "", feature: null, step: null, provider: null, model: null, effort: null,
+    id: "T-2", column: null, state: "", feature: null, provider: null, model: null, effort: null,
     complete_when: [], own_condition: null, updated_at: "", text: "Bare",
   }]);
   assert.deepEqual(snapshot.queue, { status: "idle", order: [], blocked_by: null, start_threshold_percent: null, usage: { claude: null, codex: null } });
@@ -185,7 +195,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
     queue: { status: 5, order: "T-1", blockedBy: 7, gates: { threshold: "80", usage: { claude: 3, codex: [] } } },
     runModels: { codex: "gpt" },
     tasks: [{
-      id: "T-1", text: "ok", columnId: { x: 1 }, featureId: ["feat-2"], step: 1.5,
+      id: "T-1", text: "ok", columnId: { x: 1 }, featureId: ["feat-2"], group: { x: 1 },
       run: { provider: "gemini", model: "--evil flag", effort: 3 }, completeWhen: { checks: "pr_open", own: 5 },
       session: { id: 9, state: null, observedModel: "../private model" }, report: { results: "none", blockReason: 5, attention: {} },
       source: { number: "42" }, scheduledAt: 20260101, updatedAt: null,
@@ -200,7 +210,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
   assert.deepEqual(snapshot.models, { claude: [], codex: [] });
   const [first, second] = snapshot.tasks;
   assert.deepEqual(first, {
-    id: "T-1", column: null, state: "", feature: null, step: null, provider: null, model: null, effort: null, complete_when: [], own_condition: null,
+    id: "T-1", column: null, state: "", feature: null, provider: null, model: null, effort: null, complete_when: [], own_condition: null,
     session: { ref: "", state: "", observed_model: null }, report: { results: [], block_reason: null, attention: null }, updated_at: "", text: "ok",
   });
   assert.equal(second.provider, null);

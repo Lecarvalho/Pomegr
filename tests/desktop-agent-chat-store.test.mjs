@@ -36,7 +36,7 @@ const agentMessage = (index, extra = {}) => ({ id: `m-${index}`, role: "agent", 
 
 const everyOperation = [
   { op: "create_feature", name: "Auth" },
-  { op: "create_task", text: "Write it", feature: "Auth", step: 2, queue: true, run: { provider: "claude", model: "claude-opus-4-1", effort: "high" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: "Changelog" } },
+  { op: "create_task", text: "Write it", feature: "Auth", queue: true, run: { provider: "claude", model: "claude-opus-4-1", effort: "high" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: "Changelog" } },
   { op: "create_task", text: "Bare" },
   { op: "update_task", id: "T-1", text: "Rewrite", feature: null, run: { effort: "low" }, completeWhen: { own: null } },
   { op: "update_task", id: "T-2", feature: "Auth", run: { provider: "codex", model: null }, completeWhen: { checks: [] } },
@@ -45,7 +45,8 @@ const everyOperation = [
   { op: "move_task", id: "T-4", column: "In progress" },
   { op: "queue_task", id: "T-5" },
   { op: "unqueue_task", id: "T-5" },
-  { op: "set_step", id: "T-6", step: 3 },
+  { op: "group_tasks", ids: ["T-6", "T-7", "T-8"] },
+  { op: "ungroup_tasks", ids: ["T-6"] },
 ];
 
 function proposalWith(overrides = {}) {

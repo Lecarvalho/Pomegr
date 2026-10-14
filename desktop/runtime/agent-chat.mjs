@@ -31,7 +31,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
-const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder"]);
+const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);

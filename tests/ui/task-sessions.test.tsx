@@ -29,7 +29,7 @@ const second = session("two", "Second assigned", "needs_input");
 
 function task(overrides: Partial<Task> = {}): Task {
   return {
-    id: "T-1", text: "Task text", columnId: "col-1", position: 1, featureId: null, step: null,
+    id: "T-1", text: "Task text", columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -155,7 +155,7 @@ describe("TaskCard sessions line", () => {
 });
 
 describe("SessionTaskCell with assigned tasks", () => {
-  const ref = (id: string, state: SessionTaskReference["state"] = null): SessionTaskReference => ({ id, repositoryId, state, featureId: null, feature: null, step: null, issue: null });
+  const ref = (id: string, state: SessionTaskReference["state"] = null): SessionTaskReference => ({ id, repositoryId, state, featureId: null, feature: null, issue: null });
 
   it("reads a sole assigned task like a started one, with the muted word Assigned", () => {
     const { container } = render(<SessionTaskCell task={null} assigned={[ref("T-12", "needs_review")]} />);

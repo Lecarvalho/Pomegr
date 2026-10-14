@@ -73,7 +73,7 @@ describe("proposals", () => {
     expect(rows[1]).toHaveTextContent("Add retry with backoff to the upload client");
     expect(rows[1]).not.toHaveTextContent("Cover the 5xx");
     expect(rows[1].querySelector("[title]")?.getAttribute("title")).toBe("Add retry with backoff to the upload client\nCover the 5xx and timeout cases.");
-    expect(rows[1]).toHaveTextContent("in Upload reliability · step 1 · Claude Code · model-large · high · Complete when: PR open, CI passed · then add to queue");
+    expect(rows[1]).toHaveTextContent("in Upload reliability · Claude Code · model-large · high · Complete when: PR open, CI passed · then add to queue");
     expect(rows[2]).toHaveTextContent("Update T-12");
     expect(rows[2].querySelector("code.agentChatTaskId")).toHaveTextContent("T-12");
     // The board's current first line of that task, and only that line.
@@ -88,7 +88,7 @@ describe("proposals", () => {
     expect(rows[4]).toHaveTextContent("position 1");
     expect(rows[5]).toHaveTextContent("Add T-16 to queue");
     expect(rows[6]).toHaveTextContent("Remove T-17 from queue");
-    expect(rows[7]).toHaveTextContent("Move T-18 to step 2");
+    expect(rows[7]).toHaveTextContent("Run T-18, T-19, and T-20 in parallel");
     for (const row of rows) expect(row.querySelector(".agentChatOpResult")).toBeNull();
     expect(within(card()).getByRole("button", { name: "Apply changes" })).toHaveClass("commandPrimaryAction");
     expect(within(card()).getByRole("button", { name: "Dismiss" })).toHaveClass("commandQuietAction");
@@ -389,7 +389,7 @@ describe("a proposed queue change", () => {
     agentMessage("I propose the change.", { proposal: { ...proposalOf([{ op: "set_queue", on }], state, extra), summary: on ? "Turn the queue on." : "Turn the queue off." } }),
   ]));
   const card = () => within(log()).getByRole("region", { name: "Proposed queue change" });
-  const ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, one step at a time, as each passes the start gates.";
+  const ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, in Ready order, as each passes the start gates.";
   const OFF_NOTE = "Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.";
   const asPairedDevice = () => {
     setBridge(undefined);

@@ -21,11 +21,11 @@ async function linkedStore(context) {
   const env = await openTemporaryStore(context, "pomegr-task-link-");
   const board = createFeature(env.store, "Task board v1");
   const search = createFeature(env.store, "Search");
-  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: board, step: 1 });
-  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: board, step: 2 });
-  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: search, step: 1 });
+  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: board });
+  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: board });
+  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: search });
   createTask(env.store, REPOSITORY, { text: SECRET_TEXT });
-  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: search, step: 1 });
+  createTask(env.store, REPOSITORY, { text: SECRET_TEXT, featureId: search });
   startedTask(env.directory, 1, { session: session(1), state: "done" });
   startedTask(env.directory, 2, { session: session(2), state: "needs_review" });
   startedTask(env.directory, 3, { session: session(3), state: "queued" });
@@ -42,15 +42,15 @@ function catalog(count = 6) {
   return { serveSessionDirectory: (query) => inventory.directory(query), observationActive: () => true };
 }
 
-test("a session's task reference carries only the ID, repository, outcome state, feature, step and issue number", async (t) => {
+test("a session's task reference carries only the ID, repository, outcome state, feature and issue number", async (t) => {
   const { store, board, search } = await linkedStore(t);
   const references = store.sessionTasks([session(1), session(2), session(3), session(4), session(5), session(1), 7, null]);
   assert.deepEqual([...references], [
-    [session(1), { id: "T-1", repositoryId: REPOSITORY, state: "done", featureId: board, feature: "Task board v1", step: 1, issue: null }],
-    [session(2), { id: "T-2", repositoryId: REPOSITORY, state: "needs_review", featureId: board, feature: "Task board v1", step: 2, issue: null }],
+    [session(1), { id: "T-1", repositoryId: REPOSITORY, state: "done", featureId: board, feature: "Task board v1", issue: null }],
+    [session(2), { id: "T-2", repositoryId: REPOSITORY, state: "needs_review", featureId: board, feature: "Task board v1", issue: null }],
     // A state the session's own state already shows is served as null.
-    [session(3), { id: "T-3", repositoryId: REPOSITORY, state: null, featureId: search, feature: "Search", step: 1, issue: null }],
-    [session(4), { id: "T-4", repositoryId: REPOSITORY, state: "stalled", featureId: null, feature: null, step: null, issue: null }],
+    [session(3), { id: "T-3", repositoryId: REPOSITORY, state: null, featureId: search, feature: "Search", issue: null }],
+    [session(4), { id: "T-4", repositoryId: REPOSITORY, state: "stalled", featureId: null, feature: null, issue: null }],
   ]);
   assert.equal(JSON.stringify([...references]).includes(SECRET_TEXT), false);
 });
@@ -71,7 +71,7 @@ test("a task promoted from an issue carries only its issue number; a task with n
   const references = store.sessionTasks([session(1), session(2)]);
   assert.deepEqual([references.get(session(1)).issue, references.get(session(2)).issue], [null, 142]);
   // The number is the only thing read from the issue; the row has no title or body to select.
-  assert.deepEqual(Object.keys(references.get(session(2))).sort(), ["feature", "featureId", "id", "issue", "repositoryId", "state", "step"]);
+  assert.deepEqual(Object.keys(references.get(session(2))).sort(), ["feature", "featureId", "id", "issue", "repositoryId", "state"]);
 });
 
 test("a stored source that is not an issue number, or belongs to another repository's task, reads as null", async (t) => {
@@ -101,7 +101,7 @@ test("a feature's sessions and the feature groups read only linked tasks", async
 test("a feature name that no longer validates is served as no feature", async (t) => {
   const { store, directory, board } = await linkedStore(t);
   withDatabase(directory, (database) => database.prepare("UPDATE features SET name = ? WHERE id = ?").run("two\nlines", board));
-  assert.deepEqual(store.sessionTasks([session(1)]).get(session(1)), { id: "T-1", repositoryId: REPOSITORY, state: "done", featureId: null, feature: null, step: null, issue: null });
+  assert.deepEqual(store.sessionTasks([session(1)]).get(session(1)), { id: "T-1", repositoryId: REPOSITORY, state: "done", featureId: null, feature: null, issue: null });
   assert.equal(store.featureSessions(board), null);
   assert.equal(store.featureSessionGroups().labels.has(board), false);
 });
@@ -224,7 +224,7 @@ test("GET /api/sessions joins task references only for a marked same-computer re
   assert.deepEqual([grouped.body.groupBy, grouped.body.groups.length], ["feature", 2]);
   // One session's own row: the session view reads its task reference this way.
   const own = await read(`tasks=1&session=${encodeURIComponent(session(2))}&pageSize=1`);
-  assert.deepEqual([own.body.matchedCount, own.body.sessions.length, own.body.sessions[0].id, own.body.sessions[0].task.id, own.body.sessions[0].task.step], [1, 1, session(2), "T-2", 2]);
+  assert.deepEqual([own.body.matchedCount, own.body.sessions.length, own.body.sessions[0].id, own.body.sessions[0].task.id], [1, 1, session(2), "T-2"]);
   assert.equal((await read(`tasks=1&session=${encodeURIComponent(session(0))}`)).body.sessions[0].task, null);
   const unmarked = await read(`session=${encodeURIComponent(session(2))}`);
   assert.deepEqual([unmarked.body.taskReadiness, unmarked.body.sessions.length, "task" in unmarked.body.sessions[0]], ["desktop_only", 1, false]);
@@ -238,5 +238,5 @@ test("a task in another repository links by session, not by repository", async (
   const { store, directory } = await linkedStore(t);
   createTask(store, OTHER_REPOSITORY, { text: SECRET_TEXT });
   startedTask(directory, 1, { session: session(0), state: "done", repositoryId: OTHER_REPOSITORY });
-  assert.deepEqual(store.sessionTasks([session(0)]).get(session(0)), { id: "T-1", repositoryId: OTHER_REPOSITORY, state: "done", featureId: null, feature: null, step: null, issue: null });
+  assert.deepEqual(store.sessionTasks([session(0)]).get(session(0)), { id: "T-1", repositoryId: OTHER_REPOSITORY, state: "done", featureId: null, feature: null, issue: null });
 });

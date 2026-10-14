@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TaskBoard, TaskGateThreshold, TaskQueueSchedule } from "../../../shared/task-contract";
 import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
-  GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_REORDER_FAILURE_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE,
-  moveDesktopTask,
-  reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, type TaskActionResult, type TaskMove,
+  GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_GROUP_FAILURE_MESSAGE, QUEUE_GROUP_LIMIT_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_UNGROUP_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE,
+  groupDesktopTasks, moveDesktopTask,
+  requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, ungroupDesktopTasks, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
 const CONFIRM_FALLBACK_MS = 10_000;
@@ -19,7 +19,10 @@ export type TaskBoardEdits = {
   busy: boolean;
   settled: number;
   moveTask(move: TaskMove): Promise<boolean>;
-  reorderQueueTask(id: string, step: number): Promise<boolean>;
+  /** Puts the waiting cards in one parallel group: the group of the first one, or a new group. */
+  groupTasks(ids: readonly string[]): Promise<boolean>;
+  /** Takes each waiting card out of its parallel group. */
+  ungroupTasks(ids: readonly string[]): Promise<boolean>;
   setQueue(on: boolean): Promise<boolean>;
   setGateThreshold(threshold: TaskGateThreshold): Promise<boolean>;
   setQueueSchedule(schedule: TaskQueueSchedule): Promise<boolean>;
@@ -109,7 +112,8 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     busy: running > 0,
     settled,
     moveTask,
-    reorderQueueTask: useCallback((id: string, step: number) => waitedAction(() => reorderDesktopQueueTask(repositoryId, id, step), () => QUEUE_REORDER_FAILURE_MESSAGE), [waitedAction, repositoryId]),
+    groupTasks: useCallback((ids: readonly string[]) => waitedAction(() => groupDesktopTasks(repositoryId, ids), (error) => error === "limit" ? QUEUE_GROUP_LIMIT_MESSAGE : QUEUE_GROUP_FAILURE_MESSAGE), [waitedAction, repositoryId]),
+    ungroupTasks: useCallback((ids: readonly string[]) => waitedAction(() => ungroupDesktopTasks(repositoryId, ids), () => QUEUE_UNGROUP_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueue: useCallback((on: boolean) => waitedAction(() => setDesktopQueue(repositoryId, on), () => QUEUE_SETTINGS_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setGateThreshold: useCallback((threshold: TaskGateThreshold) => waitedAction(() => setDesktopGateThreshold(repositoryId, threshold), () => GATE_THRESHOLD_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueueSchedule: useCallback((schedule: TaskQueueSchedule) => waitedAction(() => setDesktopQueueSchedule(repositoryId, schedule), () => QUEUE_SCHEDULE_FAILURE_MESSAGE), [waitedAction, repositoryId]),

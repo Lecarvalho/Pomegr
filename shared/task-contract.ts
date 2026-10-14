@@ -48,7 +48,7 @@ export type TaskGateUsageStatus = "ok" | "over" | "unknown";
 export type TaskGateProviderStatus = "ok" | "incident" | "unknown";
 export type TaskGateWorkingTree = "clean" | "dirty" | "unknown";
 // Why a start is held.
-export type TaskGateReason = "previous_step" | "usage_over" | "usage_unknown" | "provider_incident" | "provider_status_unknown" | "tree_dirty" | "tree_unknown"
+export type TaskGateReason = "earlier_task" | "usage_over" | "usage_unknown" | "provider_incident" | "provider_status_unknown" | "tree_dirty" | "tree_unknown"
   | "before_queue_start" | "after_queue_stop";
 export type TaskGateUsage = { status: TaskGateUsageStatus; fiveHourPercent: number | null; sevenDayPercent: number | null };
 export type TaskGates = {
@@ -61,7 +61,7 @@ export type TaskGates = {
 
 // Why a waiting task has not started: the queue's own state, the task's own time, the work the queue starts first,
 // a start gate, or `unknown` when the committed facts name no reason.
-export type TaskQueueWaitReason = "queue_off" | "queue_blocked" | "queue_paused" | "own_schedule" | "feature_first" | "earlier_tasks" | "running_work" | TaskGateReason | "unknown";
+export type TaskQueueWaitReason = "queue_off" | "queue_blocked" | "queue_paused" | "own_schedule" | "earlier_tasks" | "running_work" | TaskGateReason | "unknown";
 // `place` is the task's place in the start order, from 1, or null while it is not in the order. A reason names at
 // most eight tasks of the same board; `more` counts the rest. No reason means the monitor knows no hold.
 export type TaskQueueWait = { taskId: string; place: number | null; reasons: { reason: TaskQueueWaitReason; taskIds: string[]; more: number }[] };
@@ -72,7 +72,7 @@ export type Task = {
   columnId: string;
   position: number;
   featureId: string | null;
-  step: number | null; // step >= 1
+  group: string | null; // "grp-<12 hex>": the parallel group of a task in the queue, while two or more tasks hold it
   run: TaskRun;
   completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
@@ -175,8 +175,8 @@ export const TASK_QUEUE_STATUSES: readonly TaskQueueStatus[] = ["idle", "running
 export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty"];
 export const TASK_GATE_THRESHOLDS: readonly TaskGateThreshold[] = [70, 85, 95];
 export const DEFAULT_TASK_GATE_THRESHOLD: TaskGateThreshold = 85;
-export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];
-export const TASK_QUEUE_WAIT_REASONS: readonly TaskQueueWaitReason[] = ["queue_off", "queue_blocked", "queue_paused", "own_schedule", "feature_first", "earlier_tasks", "running_work", ...TASK_GATE_REASONS, "unknown"];
+export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];
+export const TASK_QUEUE_WAIT_REASONS: readonly TaskQueueWaitReason[] = ["queue_off", "queue_blocked", "queue_paused", "own_schedule", "earlier_tasks", "running_work", ...TASK_GATE_REASONS, "unknown"];
 export const TASK_QUEUE_WAIT_TASK_LIMIT = 8;
 export const TASK_SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
 export const TASK_ACTION_ERRORS: readonly TaskActionError[] = ["invalid", "not_found", "limit", "conflict", "unsupported"];

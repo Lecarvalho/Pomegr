@@ -37,7 +37,7 @@ export function TaskFieldsSection() {
   const [unset, setUnset] = useState<TaskRun>(EMPTY_RUN);
   const [fresh, setFresh] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [startAt, setStartAt] = useState("02:00");
-  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "", step: 2 });
+  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "" });
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
   const modalTitleId = useId();
   const [modalText, setModalText] = useState("");
@@ -50,7 +50,7 @@ export function TaskFieldsSection() {
   const [codexRun, setCodexRun] = useState<TaskRun>({ ...DEFAULT_RUN, provider: "codex" });
   const [modalCompleteWhen, setModalCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean", "ci_passed", "user_validated"], ownText: "The store rejects a malformed record." });
-  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider. Remote Control is one checkbox under both, for a Claude Code session only. Effort is a four-way segmented control. Run on and Effort are required: a new task opens with both chosen, and neither can be cleared. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
+  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider. Remote Control is one checkbox under both, for a Claude Code session only. Effort is a four-way segmented control. Run on and Effort are required: a new task opens with both chosen, and neither can be cleared. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature is one select over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
         <RunFields run={run} models={MODELS} onChange={setRun} />
@@ -70,10 +70,10 @@ export function TaskFieldsSection() {
       <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed, Not passed or Not verified in one list. Not verified is muted: Pomegr had no current evidence, so the condition is neither passed nor failed. Validated with the user is judged by the agent, so it shows Agent-reported.">
         <CompleteWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
-      <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. A task that joins a feature takes a new last step; Move to step on its Board card changes it. The folded In this feature list counts the feature's tasks and opens on demand.">
+      <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. A feature gives a task context only, not an order. The folded In this feature list counts the feature's tasks and opens on demand.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} onChange={setPlaced} />
       </Sample>
-      <Sample label="Feature, in the Task modal" note="Given the open task, its siblings lead with their step number and the task itself is left out of the list.">
+      <Sample label="Feature, in the Task modal" note="Given the open task, its siblings are listed in board order and the task itself is left out of the list.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} selfId="T-3" onChange={setPlaced} />
       </Sample>
       <Sample label="New feature" note="New feature… reveals a one-line name in place; Enter or leaving the field commits it.">
@@ -88,8 +88,8 @@ export function TaskFieldsSection() {
       <Sample label="Task field as rich text, full and refused" note="A task holds four images, so Attach image is disabled. A file that cannot be attached is named by one fixed error line under the frame.">
         <TaskTextField value={fullText} onChange={setFullText} images={{ urls: SAMPLE_IMAGE_URLS, error: TASK_IMAGE_TYPE_MESSAGE, onAttach: noImages }} />
       </Sample>
-      <Sample label="Queue block, single task behind feature work" note="The Task modal of a task that waits in the queue starts its body with the Queue block: the label, the task's place in the start order in ink, then one muted line for each reason it has not started. Task IDs name the work that starts first.">
-        <TaskQueueWait detail={{ place: "5th to start", lines: ["Feature tasks start before single tasks, wherever the card is in Ready: T-66, T-67, T-68, T-69."] }} />
+      <Sample label="Queue block, task behind earlier cards" note="The Task modal of a task that waits in the queue starts its body with the Queue block: the label, the task's place in the start order in ink, then one muted line for each reason it has not started. Task IDs name the work that starts first.">
+        <TaskQueueWait detail={{ place: "5th to start", lines: ["These are above it in Ready and start first: T-66, T-67, T-68, T-69."] }} />
       </Sample>
       <Sample label="Queue block, queue off and a held start" note="A queue that is off is named first and is not a blocker. A start gate that holds is one line each; a reading that is missing says it is not known yet, never that it passed.">
         <TaskQueueWait detail={{ place: "Next to start", lines: ["The queue is off, so Pomegr starts no task by itself."] }} />

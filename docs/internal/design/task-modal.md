@@ -116,9 +116,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - New feature… reveals a one-line name field in place.
 - Enter or leaving the name field commits the name.
 - Escape cancels the name.
-- The forms have no Step field.
-- A task that joins a feature takes a new last step.
-- The Board moves a task to another step.
+- A feature gives a task context only. The forms have no step or order field.
 - Once a created feature is chosen, a folded **In this feature** disclosure appears.
 - The disclosure is a native `details` between two rules.
 - The disclosure summary is 44px high, with a muted chevron and a “n tasks · m done” count in data-font numbers.
@@ -243,7 +241,8 @@ A card's title opens the task modal for one stored task.
 - The place line (`.taskQueueWaitPlace`) is 13px ink: “Next to start”, “5th to start”, or “Not in the start order yet” for a scheduled task before its time.
 - The reason list (`.taskQueueWaitReasons`) is muted 12px text with a 4px gap, one sentence for each reason, with no bullet.
 - A reason names every task ID the board sent, at most eight, and then “and n more”.
-- A single task behind feature work reads “Feature tasks start before single tasks, wherever the card is in Ready: T-66, T-67, T-68, T-69.”
+- A task behind the cards above it reads “These are above it in Ready and start first: T-66, T-67, T-68, T-69.”
+- A task behind running work reads “T-5 is running. The next card starts when that work is in Review or Done.”
 - A queue that is off reads “The queue is off, so Pomegr starts no task by itself.” It is not worded as a blocker.
 - A blocked queue reads “The queue is blocked by T-2. Nothing starts until that task is resolved.” A paused queue reads “The queue is paused at T-3. Select On to retry.”
 - A held gate reads “Start gate: …” in the Start gates words. A queue time reads “Schedule: …”.
@@ -262,7 +261,7 @@ A card's title opens the task modal for one stored task.
 - The notice reads `**bold**` and `` `inline code` `` in the agent's words. A link stays the characters it was written with, and nothing navigates.
 - Inline code in the notice is the data font at 12px on an amber tint.
 - In the Feature fields, the folded list leaves out the open task.
-- In the Feature fields, each row leads with its step number.
+- In the Feature fields, the rows are in board order, and a row has no step number.
 - **Sessions** follows Complete when. It is a fieldset with the 12px/500 legend **Sessions**.
 - Sessions lists one ruled row for each session: the session Pomegr started first, then the assigned sessions in the order they were assigned.
 - A row holds the session title as a Text link to the session, over the muted 12px role “Started by Pomegr” or “Assigned”.
@@ -408,7 +407,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - If the read fails, the two fields stay disabled, and the line “The description and app version could not be read.” (`p.newTaskError`, `role="alert"`) follows them.
 - After the fields comes the folded **Tasks** list (`details.taskFeatureDetails`).
 - The summary is the chevron (`.taskFeatureChevron`), the label **Tasks** (`.taskFeatureLabel`), and the count “n tasks · d done” (`.taskFeatureCount`) with data-font numerals.
-- The list is the task modal's In this feature list. Each row leads with its step, its ID, its title button, and its state chip.
+- The list is the task modal's In this feature list. Each row has its ID, its title button, and its state chip.
 - A row's title button opens that task's modal in place of this one. The draft is discarded.
 - The footer is a Quiet **Delete feature**, a spacer, and the one primary **Save**. It has no **Cancel**.
 - **Save** is disabled until the draft differs from the stored feature, the title holds text, and no field is over its bound.
@@ -566,7 +565,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 ## Samples
 
 - `/design-system` renders the task fields, including Feature.
-- `/design-system` renders the Queue block for a single task behind feature work, a queue that is off, a held start, a scheduled task, and no known hold.
+- `/design-system` renders the Queue block for a task behind earlier cards, a queue that is off, a held start, a scheduled task, and no known hold.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
 - The mode new sample ends with the split action.
 - `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the delete confirmation, with Delete feature blocked by a started task, with the details not read, and with each failure line.
