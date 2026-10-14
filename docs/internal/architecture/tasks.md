@@ -2012,7 +2012,10 @@ them through the gateway's own routes (see [Paired devices](#paired-devices)).
 - Creating a GitHub issue from a task sends its text only, with `[image]` where the
   text holds a marker; no image and no image ID is sent. A promote makes a task
   with no image.
-- Not built: images on a card, an image from an agent (`add_task` is text only), and
+- The agent chat is the one other way an image reaches a task: an approved proposal
+  stores an image that the owner sent to Aril, through the same `image-add` route and
+  under the same rules ([Agent chat: An image on a task](agent-chat.md#an-image-on-a-task)).
+- Not built: images on a card, an image from an agent tool (`add_task` is text only), and
   a per-repository total. The store's worst case is 500 tasks of four 5 MiB images.
 
 ## Paired devices
@@ -2316,7 +2319,9 @@ fixed values.
   - The answers of the three routes carry only the image's ID, the bytes with one of
     four fixed media types, or one fixed error. The fixed errors are `invalid`,
     `not_found`, `limit`, `conflict`, and `unavailable`. No answer carries error text.
-  - A browser or LAN client never sends image bytes. Agents get no image tool.
+  - A browser or LAN client never sends image bytes. Agents get no image tool. The agent
+    chat sends the bytes of an image the owner gave it, from desktop main, for an
+    approved proposal only ([Agent chat: Privacy](agent-chat.md#privacy)).
   - Images never enter `/api/state`, a session domain, the Sessions list's task
     reference, a catalog, a checkpoint, a report, a log, a notification, or diagnostics.
 - The Search bar (the Ctrl K palette) searches the tasks of the board in view. This is a

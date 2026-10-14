@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_PROPOSAL_ID_PATTERN,
+  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_PROPOSAL_ID_PATTERN,
   AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES,
   type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatConversation, type AgentChatConversationSummary,
-  type AgentChatDoneResult, type AgentChatError, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
+  type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
   type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSendResult, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
+import { TASK_IMAGE_TYPES } from "../shared/task-contract";
 import { useClientAccess } from "./hooks/ClientAccessContext";
 
 // Client of the Pomegr agent chat. The desktop app owns the chat: this module only asks it, through the desktop
@@ -42,6 +43,7 @@ export function useAgentChatAvailability(): AgentChatAvailability {
 const record = (value: unknown): Json | null => (value !== null && typeof value === "object" && !Array.isArray(value) ? value as Json : null);
 const text = (value: unknown): value is string => typeof value === "string";
 const UNAVAILABLE = { ok: false, error: "unavailable" } as const;
+const NO_IMAGES: readonly AgentChatImage[] = [];
 
 async function request(operation: AgentChatOperationName, payload: Json): Promise<Json | null> {
   try {
@@ -73,7 +75,19 @@ function parseResult(value: unknown): AgentChatOperationResult | null {
   }
   const taskId = text(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
-  return text(result.error) && result.error !== "not_started" ? { ok: false, error: result.error as Exclude<Extract<AgentChatOperationResult, { ok: false }>["error"], "not_started">, ...taskId } : null;
+  const part = result.part === "images" ? { part: "images" as const } : {};
+  return text(result.error) && result.error !== "not_started" ? { ok: false, error: result.error as Exclude<Extract<AgentChatOperationResult, { ok: false }>["error"], "not_started">, ...taskId, ...part } : null;
+}
+
+const imageIds = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0 && value.length <= AGENT_CHAT_BOUNDS.imagesPerMessage
+  && value.every((id) => text(id) && AGENT_CHAT_IMAGE_ID_PATTERN.test(id));
+
+export function parseAgentChatImage(value: unknown): AgentChatImage | null {
+  const image = record(value);
+  const type = TASK_IMAGE_TYPES.find((candidate) => candidate === image?.type);
+  if (!image || !type || !text(image.id) || !AGENT_CHAT_IMAGE_ID_PATTERN.test(image.id) || typeof image.bytes !== "number" || !Number.isInteger(image.bytes)
+    || image.bytes < 1 || image.bytes > AGENT_CHAT_BOUNDS.imageBytes) return null;
+  return { id: image.id, type, bytes: image.bytes };
 }
 
 function parseProposal(value: unknown): AgentChatProposal | null {
@@ -83,7 +97,8 @@ function parseProposal(value: unknown): AgentChatProposal | null {
   const operations = proposal.operations.filter((entry): entry is AgentChatBoardOperation => {
     const operation = record(entry);
     return Boolean(operation) && (AGENT_CHAT_BOARD_OPERATIONS as readonly string[]).includes(operation!.op as string)
-      && (operation!.op !== "set_queue" || typeof operation!.on === "boolean");
+      && (operation!.op !== "set_queue" || typeof operation!.on === "boolean")
+      && (operation!.images === undefined ? operation!.op !== "attach_images" : imageIds(operation!.images));
   });
   if (operations.length !== proposal.operations.length) return null;
   const parsed: AgentChatProposal = { id: proposal.id, summary: proposal.summary, operations, state: proposal.state as AgentChatProposal["state"] };
@@ -97,7 +112,11 @@ function parseProposal(value: unknown): AgentChatProposal | null {
 function parseMessage(value: unknown): AgentChatMessage | null {
   const message = record(value);
   if (!message || !text(message.id) || !text(message.text) || !text(message.at)) return null;
-  if (message.role === "user") return { id: message.id, role: "user", text: message.text, at: message.at };
+  if (message.role === "user") {
+    // An image outside the contract is not drawn; the message keeps its text.
+    const images = (Array.isArray(message.images) ? message.images : []).map(parseAgentChatImage).filter((image): image is AgentChatImage => image !== null);
+    return { id: message.id, role: "user", text: message.text, at: message.at, ...(images.length > 0 ? { images } : {}) };
+  }
   if (message.role !== "agent" || (message.provider !== "claude" && message.provider !== "codex") || !(AGENT_CHAT_TURN_STATUSES as readonly string[]).includes(message.status as string)) return null;
   const parsed: AgentChatAgentMessage = {
     id: message.id, role: "agent", text: message.text, at: message.at, provider: message.provider,
@@ -148,8 +167,8 @@ export async function readAgentChat(repositoryId: string, conversationId: string
   return { ok: true, conversation, turn: answer!.turn === null || answer!.turn === undefined ? null : parseTurn(answer!.turn) };
 }
 
-export async function sendAgentChat(repositoryId: string, conversationId: string | null, message: string, provider: AgentChatProvider, model: string | null): Promise<AgentChatSendResult> {
-  const answer = await request("send", { repositoryId, conversationId, text: message, provider, model });
+export async function sendAgentChat(repositoryId: string, conversationId: string | null, message: string, provider: AgentChatProvider, model: string | null, images: readonly string[] = []): Promise<AgentChatSendResult> {
+  const answer = await request("send", { repositoryId, conversationId, text: message, provider, model, ...(images.length > 0 ? { images: [...images] } : {}) });
   return answer?.ok === true && text(answer.conversationId) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(answer.conversationId) ? { ok: true, conversationId: answer.conversationId } : failure(answer);
 }
 
@@ -177,6 +196,8 @@ export type AgentChatView = {
   turn: AgentChatTurn | null;
   /** The owner's message that was sent and is not in the stored conversation yet. */
   pendingMessage: string | null;
+  /** The images of that message. */
+  pendingImages: readonly AgentChatImage[];
   /** A turn runs in another conversation of this repository, so Send would answer busy. */
   runningElsewhere: boolean;
   /** The proposal whose Apply or Dismiss is in flight. */
@@ -184,7 +205,7 @@ export type AgentChatView = {
   /** Why the last operation was refused; cleared by the next one. */
   error: AgentChatError | null;
   open(conversationId: string | null): void;
-  send(message: string, provider: AgentChatProvider, model: string | null): Promise<boolean>;
+  send(message: string, provider: AgentChatProvider, model: string | null, images?: readonly AgentChatImage[]): Promise<boolean>;
   stop(): void;
   /** Answers true when the proposal ran, whole or in part, so the caller can read the board again. */
   apply(proposalId: string): Promise<boolean>;
@@ -205,6 +226,7 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
   const [conversation, setConversation] = useState<AgentChatConversation | null>(null);
   const [turn, setTurn] = useState<AgentChatTurn | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [pendingImages, setPendingImages] = useState<readonly AgentChatImage[]>([]);
   const [resolving, setResolving] = useState<string | null>(null);
   const [error, setError] = useState<AgentChatError | null>(null);
   const generation = useRef(0);
@@ -269,12 +291,13 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     setOpenId(conversationId);
   }, []);
 
-  const send = useCallback(async (message: string, provider: AgentChatProvider, model: string | null) => {
+  const send = useCallback(async (message: string, provider: AgentChatProvider, model: string | null, images: readonly AgentChatImage[] = []) => {
     if (repositoryId === null) return false;
     const at = generation.current;
     setError(null);
     setPendingMessage(message);
-    const answer = await sendAgentChat(repositoryId, openId, message, provider, model);
+    setPendingImages(images);
+    const answer = await sendAgentChat(repositoryId, openId, message, provider, model, images.map((image) => image.id));
     if (at !== generation.current) return false;
     if (!answer.ok) { setPendingMessage(null); setError(answer.error); return false; }
     chosen.current = true;
@@ -318,6 +341,6 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
   return {
     ready, conversations, conversation: conversation?.id === openId ? conversation : null, openId, runningId: running,
     turn: turn?.conversationId === openId ? turn : null,
-    pendingMessage, runningElsewhere: running !== null && running !== openId, resolving, error, open, send, stop, apply, dismiss, remove,
+    pendingMessage, pendingImages: pendingMessage === null ? NO_IMAGES : pendingImages, runningElsewhere: running !== null && running !== openId, resolving, error, open, send, stop, apply, dismiss, remove,
   };
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useAgentChat, type AgentChatAvailability } from "../../agent-chat-client";
 import { useTasks } from "../../tasks-store";
-import type { AgentChatProvider } from "../../../shared/agent-chat-contract";
+import { AGENT_CHAT_BOUNDS, type AgentChatImage, type AgentChatProvider } from "../../../shared/agent-chat-contract";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { DEFAULT_RUN, NO_MODELS, runFromSelectValue, runSelectOptions, runSelectValue } from "../tasks/task-fields";
 import { heldStartLine } from "../tasks/task-gates-model";
@@ -12,6 +12,7 @@ import { AgentChatComposer, type AgentChatComposerHandle } from "./AgentChatComp
 import { AgentChatPanelFrame, AgentChatHeader, AgentChatRepositoryRow } from "./AgentChatFrame";
 import { AgentChatHistory } from "./AgentChatHistory";
 import { AgentChatMessages, type AgentChatLogState } from "./AgentChatMessages";
+import { IMAGE_ADD_FAILURE_MESSAGE, IMAGE_TYPE_MESSAGE, acceptChatImageFiles, addAgentChatImage, conversationImageIds, useAgentChatImageUrls } from "./agent-chat-images";
 import { errorCopy } from "./agent-chat-presentation";
 
 type Shared = {
@@ -43,6 +44,12 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
   const [chosen, setChosen] = useState<ChosenRun | null>(null);
   const [sentProvider, setSentProvider] = useState<AgentChatProvider>(DEFAULT_RUN.provider ?? "claude");
   const [pin, setPin] = useState(0);
+  // The images of the message being written: the desktop app holds their bytes, this holds what it answered.
+  const [attached, setAttached] = useState<readonly AgentChatImage[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const shownImages = useMemo(() => [...conversationImageIds(view.conversation?.messages ?? []), ...view.pendingImages.map((image) => image.id)], [view.conversation, view.pendingImages]);
+  const { urls: imageUrls, remember } = useAgentChatImageUrls(repositoryId, view.conversation?.id ?? null, shownImages);
   const composer = useRef<AgentChatComposerHandle>(null);
   const wasAnswering = useRef(false);
 
@@ -68,8 +75,26 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
     setSentProvider(run.provider);
     setPin((current) => current + 1);
     setDraft("");
-    // A refused message stays in the field, so a failed send loses nothing the owner typed.
-    if (!await view.send(text, run.provider, run.model)) setDraft((current) => (current === "" ? text : current));
+    const images = attached;
+    setAttached([]);
+    setImageError(null);
+    // A refused message stays in the field with its images, so a failed send loses nothing the owner put in.
+    if (!await view.send(text, run.provider, run.model, images)) {
+      setDraft((current) => (current === "" ? text : current));
+      setAttached((current) => (current.length === 0 ? images : current));
+    }
+  };
+  const attach = async (files: File[]) => {
+    const { accepted, message } = acceptChatImageFiles(files, attached.length + uploading);
+    setImageError(message);
+    for (const file of accepted) {
+      setUploading((current) => current + 1);
+      const answer = await addAgentChatImage(repositoryId, new Uint8Array(await file.arrayBuffer()));
+      setUploading((current) => current - 1);
+      if (!answer.ok) { setImageError(answer.error === "invalid" ? IMAGE_TYPE_MESSAGE : IMAGE_ADD_FAILURE_MESSAGE); continue; }
+      remember(answer.image.id, file);
+      setAttached((current) => (current.length < AGENT_CHAT_BOUNDS.imagesPerMessage ? [...current, answer.image] : current));
+    }
   };
   const apply = async (proposalId: string) => { if (await view.apply(proposalId)) await refresh(); };
   const heldStart = (taskId: string) => {
@@ -92,13 +117,15 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
       {historyOpen
         ? <AgentChatHistory conversations={view.conversations} openId={view.openId} runningId={view.runningId}
           onOpen={(conversationId) => { view.open(conversationId); setHistoryOpen(false); }} onDelete={(conversationId) => { void view.remove(conversationId); }} />
-        : <AgentChatMessages state={logState} conversation={view.conversation} turn={view.turn} pendingMessage={view.pendingMessage} tasks={board.tasks}
+        : <AgentChatMessages state={logState} conversation={view.conversation} turn={view.turn} pendingMessage={view.pendingMessage} pendingImages={view.pendingImages} imageUrls={imageUrls} tasks={board.tasks}
           resolving={view.resolving} pinSignal={pin} startHere={availability === "desktop"} heldStart={heldStart} onSuggest={suggest} onApply={(proposalId) => { void apply(proposalId); }} onDismiss={(proposalId) => { void view.dismiss(proposalId); }} />}
     </div>
     <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop}
       runOptions={runOptions} runValue={runSelectValue({ provider: run.provider, model: run.model, effort: null })}
       onRunChange={(value) => { const next = runFromSelectValue(value, null); setChosen({ key, provider: next.provider ?? run.provider, model: next.model }); }}
       running={view.turn !== null} busy={view.pendingMessage !== null} runningElsewhere={view.runningElsewhere}
+      images={attached.map((image) => image.id)} imageUrls={imageUrls} uploading={uploading > 0} imageError={imageError}
+      onAttach={(files) => { void attach(files); }} onRemoveImage={(imageId) => { setImageError(null); setAttached((current) => current.filter((image) => image.id !== imageId)); }}
       error={view.error ? errorCopy(view.error, { provider: sentProvider, conversationOpen: view.openId !== null }) : null} />
   </>;
 }
