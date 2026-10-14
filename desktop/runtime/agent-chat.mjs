@@ -95,6 +95,9 @@ export function createAgentChat(options = {}) {
   // One turn at a time for the whole app: `{ repositoryId, conversationId, ... }` from the moment a send is accepted.
   let active = null;
   const applying = new Set();
+  // The follow-ups that wait for the one turn: `repositoryId/proposalId` to `{ repositoryId, conversationId, proposalId,
+  // provider, model, queuedAt }`. A proposal has at most one here, so a second answer to it replaces the first.
+  const followUps = new Map();
 
   async function monitor(pathname, init) {
     const response = await fetchImpl(`${monitorOrigin}${pathname}`, {
@@ -174,6 +177,68 @@ export function createAgentChat(options = {}) {
   }
 
   const turnOf = (repositoryId, conversationId) => (active && !active.reserved && active.repositoryId === repositoryId && active.conversationId === conversationId ? active : null);
+  const waitingOf = (repositoryId, conversationId) => [...followUps.values()].find((entry) => entry.repositoryId === repositoryId && entry.conversationId === conversationId) ?? null;
+
+  // The one turn is free again: the oldest follow-up that waits takes it.
+  function release(holder) {
+    if (active === holder) active = null;
+    startFollowUp();
+  }
+
+  // After the owner applied or dismissed a proposal, Aril answers once more in that conversation, with the outcome and
+  // a board read after it. The follow-up is a read-only run like any turn: it applies nothing, retries nothing, and its
+  // answer carries no proposal. Desktop main asks for it once per stored outcome, so no click, reconnect, or redraw of a
+  // client can ask for a second one.
+  function requestFollowUp(repositoryId, conversation, proposalId) {
+    if (disposed) return;
+    const key = `${repositoryId}/${proposalId}`;
+    followUps.delete(key);
+    followUps.set(key, { repositoryId, conversationId: conversation.id, proposalId, provider: conversation.provider, model: conversation.model, queuedAt: now().toISOString() });
+    startFollowUp();
+  }
+
+  function startFollowUp() {
+    if (active || disposed) return;
+    const [key, next] = followUps.entries().next().value ?? [];
+    if (!next) return;
+    followUps.delete(key);
+    const turn = {
+      repositoryId: next.repositoryId, conversationId: next.conversationId, provider: next.provider, model: next.model, followUp: next.proposalId,
+      startedAt: now().toISOString(), activity: "starting", text: "", stopped: false, stop: () => { turn.stopped = true; },
+    };
+    active = turn;
+    void runFollowUp(turn);
+  }
+
+  async function runFollowUp(turn) {
+    try {
+      const conversation = await store.read(turn.repositoryId, turn.conversationId);
+      const proposal = conversation?.messages.find((entry) => entry.role === "agent" && entry.proposal?.id === turn.followUp)?.proposal;
+      // The conversation is gone or full, or the app is closing: nothing is asked and nothing is stored.
+      if (!proposal || conversation.messages.length >= MESSAGE_LIMIT || disposed) return release(turn);
+      // No provider, no board, or no repository root: the follow-up is stored as failed. The proposal keeps its outcome.
+      const command = executable(turn.provider);
+      if (!command) return await finishTurn(turn, null);
+      const [board, root] = await Promise.all([readBoard(turn.repositoryId), repositoryRoot(turn.repositoryId)]);
+      if (disposed) return release(turn);
+      if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
+      if (!board || !root) return await finishTurn(turn, null);
+      const held = conversationImages(conversation.messages);
+      const shown = images && held.length > 0 ? await images.files(turn.repositoryId, conversation.id, held) : [];
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), messages: conversation.messages, followUp: proposal, images: shown, now: now() });
+      if (!prompt) return await finishTurn(turn, null);
+      if (disposed) return release(turn);
+      if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
+      const run = runTurn({
+        spawn, executable: command, provider: turn.provider, model: turn.model, mcpServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null,
+        cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        onText: (value) => { turn.text = value; },
+        onActivity: (value) => { turn.activity = value; },
+      });
+      turn.stop = run.stop;
+      void run.done.then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
+    } catch { await finishTurn(turn, null); }
+  }
 
   // A conversation that ends on the owner's message with no run behind it lost its answer (the app closed mid-turn).
   async function settled(repositoryId, conversation) {
@@ -198,11 +263,13 @@ export function createAgentChat(options = {}) {
       if (read.proposal && !proposalImages(read.proposal).every((id) => sent.has(id))) read = { text: read.text, proposal: null, unreadable: true };
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at, provider: turn.provider, model: turn.model, status };
+      // A follow-up reports an outcome and offers nothing: a block in it is taken out of the text and never stored.
+      if (turn.followUp) { message.followUp = turn.followUp; read = { text: read.text, proposal: null, unreadable: false }; }
       if (read.proposal) message.proposal = { id: newProposalId(), summary: read.proposal.summary, operations: read.proposal.operations, state: "pending" };
       if (read.unreadable) message.proposalUnreadable = true;
       await store.save(turn.repositoryId, { ...conversation, updatedAt: at, messages: [...conversation.messages, message] });
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
-    finally { if (active === turn) active = null; }
+    finally { release(turn); }
   }
 
   async function send(payload) {
@@ -264,7 +331,7 @@ export function createAgentChat(options = {}) {
     } catch {
       return UNAVAILABLE;
     } finally {
-      if (!started && active === reservation) active = null;
+      if (!started) release(reservation);
     }
   }
 
@@ -285,7 +352,9 @@ export function createAgentChat(options = {}) {
     if (!found) return INVALID;
     if (!found.conversation) return refused("not_found");
     const conversation = await settled(payload.repositoryId, found.conversation);
-    const turn = turnOf(payload.repositoryId, conversation.id);
+    // A follow-up that waits behind another turn reads as a turn that is starting, so the client keeps reading.
+    const waiting = waitingOf(payload.repositoryId, conversation.id);
+    const turn = turnOf(payload.repositoryId, conversation.id) ?? (waiting ? { conversationId: conversation.id, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, activity: "starting", text: "" } : null);
     return {
       ok: true, conversation,
       turn: turn ? { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, activity: turn.activity, text: visibleAnswer(turn.text) } : null,
@@ -296,8 +365,11 @@ export function createAgentChat(options = {}) {
     const found = await located(payload, ["repositoryId", "conversationId"]);
     if (!found) return INVALID;
     const turn = turnOf(payload.repositoryId, payload.conversationId);
-    if (!turn) return refused("not_found");
-    turn.stop();
+    if (turn) { turn.stop(); return { ok: true }; }
+    // Stop also takes back the follow-ups of this conversation that have not started.
+    const waiting = [...followUps].filter(([, entry]) => entry.repositoryId === payload.repositoryId && entry.conversationId === payload.conversationId);
+    if (waiting.length === 0) return refused("not_found");
+    for (const [key] of waiting) followUps.delete(key);
     return { ok: true };
   }
 
@@ -307,6 +379,7 @@ export function createAgentChat(options = {}) {
     if (!found.conversation) return refused("not_found");
     if (active && active.repositoryId === payload.repositoryId && active.conversationId === payload.conversationId) return refused("busy");
     if (!await store.remove(payload.repositoryId, payload.conversationId)) return UNAVAILABLE;
+    for (const [key, entry] of [...followUps]) if (entry.repositoryId === payload.repositoryId && entry.conversationId === payload.conversationId) followUps.delete(key);
     await images?.removeConversation(payload.repositoryId, payload.conversationId);
     return { ok: true };
   }
@@ -381,7 +454,10 @@ export function createAgentChat(options = {}) {
       const latest = await store.read(repositoryId, payload.conversationId);
       if (!latest) return refused("not_found");
       const saved = await store.save(repositoryId, { ...latest, updatedAt: now().toISOString(), messages: latest.messages.map((entry) => (entry.id === message.id ? { ...entry, proposal } : entry)) });
-      return saved ? { ok: true } : UNAVAILABLE;
+      if (!saved) return UNAVAILABLE;
+      // The outcome is stored; only then is Aril asked to answer it. A follow-up that cannot run changes none of it.
+      requestFollowUp(repositoryId, latest, proposalId);
+      return { ok: true };
     } finally {
       applying.delete(key);
     }
@@ -415,7 +491,7 @@ export function createAgentChat(options = {}) {
     handle,
     image,
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 

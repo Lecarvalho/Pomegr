@@ -8,7 +8,6 @@
 .tasksPageMeta p { margin: 0; }
 .tasksPageMeta .taskBoardNote { margin-top: var(--space-1); font-size: var(--text-xs); }
 .tasksPageBody { display: grid; gap: var(--space-4); }
-.tasksPageHeader + .tasksPageBody { margin-top: var(--space-4); }
 .tasksRepositorySwitcher { max-width: 240px; }
 .tasksRepositorySwitcher .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
 @media (max-width: 760px), (pointer: coarse) {

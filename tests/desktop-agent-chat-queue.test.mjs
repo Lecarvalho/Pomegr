@@ -103,7 +103,8 @@ test("applying on the desktop sends the canonical queue action once, with the de
   const [call] = h.actionCalls();
   assert.equal(call.init.method, "POST");
   assert.equal(call.init.headers[DESKTOP_AUTH_HEADER], token);
-  assert.equal(h.calls.length, 1, "no board read, no start plan, no other task action");
+  await h.followUp();
+  assert.deepEqual(h.calls.slice(1).map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root"], "no start plan and no other task action: only the reads of the follow-up come after");
   assert.deepEqual(await proposal(), { ...queueProposal(), state: "applied", results: [{ ok: true, queue: "on" }] });
 });
 
@@ -319,7 +320,7 @@ test("the next prompt tells Aril what the queue became, so no answer reports a c
   assert.match(line(queueProposal(true, { state: "applied", results: [{ ok: true, queue: "blocked" }] })), /\[Proposal to turn the queue on: the owner applied it and the queue is on, held by a stalled or blocked task\.\]/u);
   assert.match(line(queueProposal(false, { state: "applied", results: [{ ok: true, queue: "off" }] })), /\[Proposal to turn the queue off: the owner applied it and the queue is off\.\]/u);
   assert.match(line(queueProposal(true, { results: [{ ok: false, error: "unavailable" }] })), /\[Proposal to turn the queue on: the owner applied it and the queue was not changed \(unavailable\)\.\]/u);
-  assert.match(line(queueProposal(false, { state: "dismissed" })), /\[Proposal to turn the queue off: the owner dismissed it\.\]/u);
+  assert.match(line(queueProposal(false, { state: "dismissed" })), /\[Proposal to turn the queue off: the owner dismissed it, so none of it was applied\.\]/u);
   const prompt = composePrompt({ board: readyBoard(), repositoryName: "repo", messages: withProposal(queueProposal(true, { results: [{ ok: false, error: "conflict" }] })), message: "why?", now: new Date(stamp) });
   assert.match(prompt, /the queue was not changed \(conflict\)/u);
 });

@@ -123,6 +123,11 @@ function storedMessage(message) {
     stored.proposal = proposal;
   }
   if (message.proposalUnreadable === true) stored.proposalUnreadable = true;
+  // The answer Pomegr asked for after the owner applied or dismissed that proposal. It offers no proposal of its own.
+  if (message.followUp !== undefined) {
+    if (typeof message.followUp !== "string" || !PROPOSAL_ID.test(message.followUp) || stored.proposal || stored.proposalUnreadable) return null;
+    stored.followUp = message.followUp;
+  }
   return stored;
 }
 

@@ -115,6 +115,9 @@ export type AgentChatAgentMessage = {
   proposal?: AgentChatProposal;
   // The agent wrote a proposal the desktop could not read, so nothing is offered.
   proposalUnreadable?: boolean;
+  // The ID of the proposal this answer follows up: the desktop asked for it after the owner applied or dismissed that
+  // proposal, with no message of the owner before it. Such an answer never carries a proposal.
+  followUp?: string;
 };
 export type AgentChatMessage = AgentChatUserMessage | AgentChatAgentMessage;
 
