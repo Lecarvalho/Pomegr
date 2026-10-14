@@ -172,12 +172,12 @@ describe("workflow activity and agent tree view", () => {
     expect(occurrences[0]).toHaveTextContent("Claude reported changed tool definitions, and Pomegr matched the fixed Remote Control connection transition.");
     expect(occurrences[0]).toHaveTextContent("InferenceRemote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed)");
     expect(occurrences[0]).toHaveTextContent("cache.tools_changed.remote_control_connected");
-    expect(within(occurrences[0]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-tools-changed-remote-control-connected");
+    expect(within(occurrences[0]).getByRole("link", { name: "How cache refills work (opens in a new tab)" })).toHaveAttribute("href", "https://pomegr.com/docs/concepts/cache-reuse#spot-a-possible-full-refill");
     expect(occurrences[1]).toHaveTextContent("message history changed");
     expect(occurrences[1].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:02:00.000Z");
     expect(occurrences[1]).toHaveTextContent("Tool use and its result were followed by a provider task notification and the directly resumed request.");
     expect(occurrences[1]).toHaveTextContent("cache.messages_changed.post_tool_notification_resume");
-    expect(within(occurrences[1]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-messages-changed-post-tool-notification-resume");
+    expect(within(occurrences[1]).getByRole("link", { name: "How cache refills work (opens in a new tab)" })).toHaveAttribute("href", "https://pomegr.com/docs/concepts/cache-reuse#spot-a-possible-full-refill");
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Cache refill evidence" })).not.toBeInTheDocument();
@@ -222,7 +222,7 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).toHaveTextContent("92% → 4% cache read");
     expect(popover).toHaveTextContent("InferencePossible cache refill.");
     expect(popover).toHaveTextContent("No positive cache-write evidence, so a refill and its cause cannot be confirmed.");
-    within(popover).getAllByRole("link", { name: "Open signal definition (opens in a new tab)" }).forEach((link) => expect(link).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-read-reuse-dropped"));
+    within(popover).getAllByRole("link", { name: "How cache refills work (opens in a new tab)" }).forEach((link) => expect(link).toHaveAttribute("href", "https://pomegr.com/docs/concepts/cache-reuse#drops-without-a-recorded-write"));
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Possible cache refill evidence" })).not.toBeInTheDocument();
   });
@@ -246,7 +246,7 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).toHaveTextContent("91% → 6% cache read");
     expect(popover).toHaveTextContent("A model change was recorded between these requests. A refill and its cause cannot be confirmed.");
     expect(popover).not.toHaveTextContent("Possible cache refill.");
-    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-read-reuse-dropped-model-change");
+    expect(within(popover).getByRole("link", { name: "How cache refills work (opens in a new tab)" })).toHaveAttribute("href", "https://pomegr.com/docs/concepts/cache-reuse#drops-without-a-recorded-write");
   });
 
   it("keeps mixed cache-read-drop counts neutral in tree accessibility labels", () => {
@@ -312,7 +312,7 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).toHaveTextContent("Partial refill observed 1 time.");
     expect(popover).toHaveTextContent("Five-minute cache likely expired; 5m elapsed since the preceding request.");
     expect(popover).toHaveTextContent("cache.lifetime_elapsed_partial_refill");
-    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", expect.stringMatching(/#cache-lifetime-elapsed-partial-refill$/));
+    expect(within(popover).getByRole("link", { name: "How cache refills work (opens in a new tab)" })).toHaveAttribute("href", "https://pomegr.com/docs/concepts/cache-reuse#spot-a-possible-full-refill");
     expect(popover).not.toHaveTextContent(/full refill|anthropics\/claude-code/i);
   });
 
@@ -329,7 +329,7 @@ describe("workflow activity and agent tree view", () => {
     const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
     expect(popover).toHaveTextContent("Providertool definitions changed");
     expect(popover).toHaveTextContent("cache.provider_diagnosed_refill");
-    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", expect.stringMatching(/#cache-provider-diagnosed-refill$/));
+    expect(within(popover).getByRole("link", { name: "How cache refills work (opens in a new tab)" })).toHaveAttribute("href", "https://pomegr.com/docs/concepts/cache-reuse#spot-a-possible-full-refill");
     expect(popover).not.toHaveTextContent(/full|infer/i);
     unmount();
 
@@ -362,7 +362,8 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).toHaveTextContent("Inferencetool definitions loaded after a tool search (8 added)");
     expect(popover).toHaveTextContent("Claude reported changed tool definitions, and Pomegr saw new tool definitions recorded after a tool search.");
     expect(popover).toHaveTextContent("cache.tools_changed.deferred_definitions_loaded");
-    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", expect.stringMatching(/#cache-tools-changed-deferred-definitions-loaded$/));
+    expect(within(popover).getByRole("link", { name: "How cache refills work (opens in a new tab)" })).toHaveAttribute("href", "https://pomegr.com/docs/concepts/cache-reuse#spot-a-possible-full-refill");
+    expect(within(popover).getByRole("link", { name: "anthropics/claude-code#83756 (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/anthropics/claude-code/issues/83756");
     expect(popover).not.toHaveTextContent(/RemoteTrigger|PushNotification|ListAgents|Remote Control|likely changed/);
     unmount();
 

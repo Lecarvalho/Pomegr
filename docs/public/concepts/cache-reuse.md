@@ -69,7 +69,8 @@ evidence. Each explanation is labeled by its source:
     tool definitions, and the next request reported changed tool definitions. For
     example, "tool definitions loaded after a tool search (8 added)". It gives a
     count, not tool names, and it does not prove the new definitions caused the
-    refill.
+    refill. The popover links the related upstream issue,
+    [anthropics/claude-code#83756](https://github.com/anthropics/claude-code/issues/83756).
 
 A refill whose reason the provider recorded, but which still read part of the
 prompt from cache, is marked **Provider-diagnosed refill**. It is not a

@@ -1,6 +1,7 @@
 import type { CacheLifetimeInference, CacheMessageChangeSequence, CacheRefillOccurrence, CacheRefillProviderStatus, CacheRefillReason } from "./monitor-contract";
 
-export const SIGNAL_DICTIONARY_DOCUMENT_URL = "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md";
+export const CACHE_REFILL_DOCUMENTATION_URL = "https://pomegr.com/docs/concepts/cache-reuse#spot-a-possible-full-refill";
+export const CACHE_READ_DROP_DOCUMENTATION_URL = "https://pomegr.com/docs/concepts/cache-reuse#drops-without-a-recorded-write";
 
 export type CacheSignalDefinition = {
   code: string;
@@ -8,13 +9,14 @@ export type CacheSignalDefinition = {
   href: string;
   observed: string;
   impact: string;
+  upstreamIssue?: { label: string; href: string };
 };
 
 function definition(code: string, anchor: string, observed: string): CacheSignalDefinition {
   return {
     code,
     anchor,
-    href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#${anchor}`,
+    href: CACHE_REFILL_DOCUMENTATION_URL,
     observed,
     impact: "The request also met Pomegr's possible full-refill thresholds.",
   };
@@ -46,7 +48,7 @@ export const CACHE_REFILL_REASON_SIGNAL_DEFINITIONS: Record<CacheRefillReason, C
 export const CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION: CacheSignalDefinition = {
   code: "cache.provider_diagnosed_refill",
   anchor: "cache-provider-diagnosed-refill",
-  href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-provider-diagnosed-refill`,
+  href: CACHE_REFILL_DOCUMENTATION_URL,
   observed: "The provider named this reason for the rewrite.",
   impact: "Part of the prefix was reused; counted separately.",
 };
@@ -54,7 +56,7 @@ export const CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION: CacheSignalDefin
 export const CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION: CacheSignalDefinition = {
   code: "cache.lifetime_elapsed_partial_refill",
   anchor: "cache-lifetime-elapsed-partial-refill",
-  href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-lifetime-elapsed-partial-refill`,
+  href: CACHE_REFILL_DOCUMENTATION_URL,
   observed: "Pomegr found that the preceding request's resolved cache-lifetime threshold had elapsed.",
   impact: "Part of the prefix was reused; counted separately.",
 };
@@ -81,11 +83,14 @@ export const CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS = {
     "cache-tools-changed-remote-control-connected",
     "Claude reported changed tool definitions, and Pomegr matched the fixed Remote Control connection transition.",
   ),
-  deferred_definitions_loaded: definition(
-    "cache.tools_changed.deferred_definitions_loaded",
-    "cache-tools-changed-deferred-definitions-loaded",
-    "Claude reported changed tool definitions, and Pomegr saw new tool definitions recorded after a tool search.",
-  ),
+  deferred_definitions_loaded: {
+    ...definition(
+      "cache.tools_changed.deferred_definitions_loaded",
+      "cache-tools-changed-deferred-definitions-loaded",
+      "Claude reported changed tool definitions, and Pomegr saw new tool definitions recorded after a tool search.",
+    ),
+    upstreamIssue: { label: "anthropics/claude-code#83756", href: "https://github.com/anthropics/claude-code/issues/83756" },
+  },
 } as const;
 
 export const DEFERRED_DEFINITION_COUNT_CAP = 64;
@@ -99,7 +104,7 @@ export const CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS: Record<CacheMessageChangeS
   post_tool_task_notification_resume: {
     code: "cache.messages_changed.post_tool_notification_resume",
     anchor: "cache-messages-changed-post-tool-notification-resume",
-    href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-messages-changed-post-tool-notification-resume`,
+    href: CACHE_REFILL_DOCUMENTATION_URL,
     observed: "Tool use and its result were followed by a provider task notification and the directly resumed request.",
     impact: "The request also met Pomegr's possible full-refill thresholds.",
   },
@@ -109,7 +114,7 @@ export function cacheReadReuseDroppedSignalDefinition(): CacheSignalDefinition {
   return {
     code: "cache.read_reuse_dropped",
     anchor: "cache-read-reuse-dropped",
-    href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-read-reuse-dropped`,
+    href: CACHE_READ_DROP_DOCUMENTATION_URL,
     observed: "Pomegr observed a comparable cache-read share drop.",
     impact: "No positive cache-write evidence was recorded.",
   };
@@ -119,7 +124,7 @@ export function cacheReadReuseDroppedModelChangeSignalDefinition(): CacheSignalD
   return {
     code: "cache.read_reuse_dropped.model_change",
     anchor: "cache-read-reuse-dropped-model-change",
-    href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-read-reuse-dropped-model-change`,
+    href: CACHE_READ_DROP_DOCUMENTATION_URL,
     observed: "Cache reuse dropped across a model change.",
     impact: "A refill and its cause cannot be confirmed.",
   };
