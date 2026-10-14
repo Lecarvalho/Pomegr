@@ -1,7 +1,7 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TaskCard } from "../../app/components/tasks/TaskCard";
 import { inlineCodeParts, taskTextPreview } from "../../app/components/tasks/task-presentation";
 import type { Task } from "../../shared/task-contract";
@@ -80,5 +80,48 @@ describe("TaskCard text", () => {
     const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
     const underlined = styles.split("\n").filter((line) => /\.taskCard(Open|Title|Excerpt)\b/.test(line) && line.includes("text-decoration"));
     expect(underlined).toEqual([]);
+  });
+});
+
+describe("TaskCard open", () => {
+  const session = { id: "claude:s1", title: null, state: "working", observedModel: null } as Task["session"];
+  const move = { drag: {}, available: { up: true, down: true, left: false, right: true }, onMove: vi.fn() };
+
+  it("opens from a click anywhere on the card, with the title as the opener", () => {
+    const onOpen = vi.fn();
+    const subject = task({ text: LONG, session });
+    const { container } = render(<ul><TaskCard task={subject} onOpen={onOpen} move={move} /></ul>);
+    const opener = screen.getByRole("button", { name: /Show a row in the Events list/ });
+    const card = container.querySelector(".taskCard") as HTMLElement;
+    expect(card).toHaveClass("isOpenable");
+    expect(card).toHaveAttribute("draggable", "true");
+
+    for (const target of [card, container.querySelector(".taskCardExcerpt"), container.querySelector(".taskCardChip"), opener]) {
+      onOpen.mockClear();
+      fireEvent.click(target as HTMLElement);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+      expect(onOpen).toHaveBeenCalledWith(subject, opener);
+    }
+  });
+
+  it("leaves a click on another control of the card to that control", () => {
+    const onOpen = vi.fn();
+    const { container } = render(<ul><TaskCard task={task({ session })} onOpen={onOpen} move={move} /></ul>);
+    fireEvent.click(container.querySelector(".taskCardLink") as HTMLElement);
+    for (const control of container.querySelectorAll(".taskCardMoves button")) fireEvent.click(control);
+    expect(container.querySelectorAll(".taskCardMoves button").length).toBeGreaterThan(0);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("opens nothing on a card with no open action", () => {
+    const { container } = render(<ul><TaskCard task={task()} /></ul>);
+    expect(container.querySelector(".taskCard")).not.toHaveClass("isOpenable");
+    expect(container.querySelector(".taskCardOpen")).toBeNull();
+  });
+
+  it("draws the title with no fill on hover or press, and the pointer cursor on a card that opens", () => {
+    const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    expect(styles).toContain(".taskCardOpen.commandQuietAction:hover:not(:disabled), .taskCardOpen.commandQuietAction:active:not(:disabled) { padding: 0; justify-content: flex-start; background: transparent;");
+    expect(styles).toContain(".taskCard.isOpenable { cursor: pointer; }");
   });
 });
