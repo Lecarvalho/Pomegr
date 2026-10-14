@@ -1,6 +1,6 @@
 ---
 title: "Introduction to Pomegr"
-description: "Take a look inside Pomegr and see how it helps you follow your coding agents at work."
+description: "Take a look inside Pomegr and see how it helps you follow your coding agents at work and plan tasks for them."
 ---
 
 # Introduction to Pomegr
@@ -85,6 +85,26 @@ menu, or set **Color theme** under **Settings → Appearance**. See
 Keep working in your coding tool. Pomegr observes existing session records without
 controlling your agents or putting prompts, responses, and credentials in the
 dashboard.
+
+## Plan work for your agents
+
+In the desktop app, **Tasks** gives each repository a task board. A task is work you
+want a coding agent to do, and Pomegr starts a Claude Code or Codex session for it
+when you select **Start session**, or when you turn on the queue. The queue starts
+cards from the top of **Ready**, one after another. Cards in a **Parallel** group
+start together, each in a Git worktree of its own. See [Tasks](../using-pomegr/tasks.md).
+
+**Aril** is the chat panel at the bottom right of the window. It reads the board, the
+repository's files, and what Pomegr observed, then proposes changes, such as tasks
+cut from a feature. Nothing changes until you select **Apply changes**, and Aril
+starts a session or turns the queue on or off only through a proposal you apply. See
+[Agent chat](../using-pomegr/agent-chat.md).
+
+After a start, Pomegr only observes the session: it never stops, attaches to,
+answers, or approves anything in a running session. Sessions always run on the
+computer running Pomegr. A paired phone can change tasks and apply Aril's proposals,
+but Aril's start proposals are applied in the desktop app. Observing sessions works
+the same whether or not you use tasks.
 
 ## Know what the numbers can tell you
 
