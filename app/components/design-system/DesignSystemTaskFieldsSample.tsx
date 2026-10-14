@@ -7,6 +7,7 @@ import { FeatureModalSamples } from "./DesignSystemFeatureModalSample";
 import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
+import { TaskReportNote } from "../tasks/TaskReportNote";
 import { CompleteWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
 import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_COMPLETE_WHEN, DEFAULT_RUN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
@@ -150,7 +151,7 @@ function TaskModalEditSamples() {
         </TaskModalChrome>
       </div>
     </Sample>
-    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Complete when shows each checked condition's outcome from the agent's report, and the agent's own attention line when it gave one.">
+    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Complete when shows each checked condition's outcome from the agent's report. The agent's own attention line, when it gave one, sits in an amber notice (.taskReportNotice) under the muted report line, with its bold and inline code formatted.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={reviewId} title="Task" subtitle="pomegr · in Review" onClose={noop}
           titleExtra={<>
@@ -172,7 +173,7 @@ function TaskModalEditSamples() {
           </div>
           <TaskTextField value={STORED_TEXT} onChange={noop} />
           <CompleteWhenField draft={reviewed} results={RESULTS} ownNote="Agent-reported" onDraftChange={noop}
-            footnote={<span className="newTaskHelper taskCompleteWhenNote">Agent reported complete and asks for your attention: The retry budget of five is a guess; confirm it.</span>} />
+            footnote={<TaskReportNote report={{ at: "", blockReason: null, attention: "The retry budget of **five** is a guess; confirm `RETRY_BUDGET` before merging." }} />} />
         </TaskModalChrome>
       </div>
     </Sample>
