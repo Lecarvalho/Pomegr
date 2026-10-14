@@ -49,6 +49,21 @@ Things you can ask:
   the planned and observed models, the outcome, and each checked condition. It can also
   read a session's report.
 
+### Send an image
+
+You can show Aril a screenshot or a mock-up.
+
+1. Select **Attach image**, paste an image into the message field, or drop one on it.
+   The image shows above the **Run on** menu. **Remove image** takes it out again.
+2. Type what you want Aril to do with it, and press Enter.
+
+A message holds up to four images: PNG, JPEG, GIF, or WebP, up to 5 MB each. A message
+with an image still needs text. A conversation holds up to 40 images.
+
+Ask "create a task for this" or "attach this to T-12". Aril then proposes the task with
+the image, or the image for a task that has not started. The proposal shows each image,
+and the session that runs the task gets the image. A task holds up to four images.
+
 **Minimize** closes the panel and keeps the conversation. **New conversation** starts an
 empty one. **Conversations** lists the saved ones and lets you delete one.
 
@@ -65,7 +80,8 @@ Pomegr stops at the first change that fails and does not run the ones after it. 
 for the rest once you know why it failed.
 
 A proposal can create a feature, create, update, delete, or move a task, add a task to
-the queue or remove it, and move a task to another step. It cannot mark a task done,
+the queue or remove it, move a task to another step, and put an image that you sent on a
+task. It cannot mark a task done,
 requeue a task, or change the queue's threshold or schedule. Those stay with you, as
 described in [Tasks](tasks.md). Starting a session and turning the queue on or off are
 proposals of their own, described below.
@@ -139,16 +155,20 @@ always a proposal of its own.
 ## Understand what is kept and sent
 
 - **Kept on this computer.** Pomegr saves every conversation in its private data folder
-  until you delete it. Each repository holds up to 50 conversations.
+  until you delete it, with the images you sent in it. Each repository holds up to 50
+  conversations. An image that Aril puts on a task is a copy: it stays on the task when
+  you delete the conversation.
 - **Sent to the provider.** Each message sends the conversation and the board to the
   provider you chose, through your own coding tool. The board includes the text of your
-  tasks. Aril may also send file content and session evidence that it reads.
+  tasks. Aril may also send file content and session evidence that it reads. The images
+  you sent in the conversation go to the provider too, and the prompt names the folder
+  where Pomegr keeps them.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without
   encryption, like the rest of phone access. Anyone who holds a paired phone can read
-  the conversations, send a message, and apply a proposal of board changes or a queue
-  change. Turning the queue on lets Pomegr start queued tasks on your computer. A start
+  the conversations and their images, send a message or an image, and apply a proposal
+  of board changes or a queue change. Turning the queue on lets Pomegr start queued tasks on your computer. A start
   that Aril proposed can be applied only in the desktop app.
 
 ## If the result is missing
@@ -163,6 +183,9 @@ always a proposal of its own.
 | Aril could not be reached | Check that Pomegr shows **Local monitor**, then send again. |
 | Aril wrote a proposal that Pomegr could not read | Ask for the proposal again. Nothing was changed. |
 | A line says **No longer possible** or **Not found** | The board changed after Aril wrote the proposal. Ask again. |
+| A line says **Not attached.** | Read the reason on the line. A task that has started takes no image, and a task holds up to four. |
+| A line says a task was created, but its images could not be attached | Open the task and put the image in again, if the task has not started. |
+| The image could not be attached | Check that Pomegr shows **Local monitor**, then add the image again. |
 | A start proposal says **Not started.** | Read the reason on the proposal. [Start gates](tasks.md#start-gates) explains a held start. Select **Start session** again when it is gone. |
 | A queue proposal says **Queue not changed.** | Check that Pomegr shows **Local monitor**, then select the same button again. |
 | The queue is on and nothing starts | Open **Tasks**. A banner or a "Waiting:" line names what holds the queue. See [Run the queue](tasks.md#run-the-queue). |

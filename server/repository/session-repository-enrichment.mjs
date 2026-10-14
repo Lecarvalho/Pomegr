@@ -77,20 +77,23 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
 
   async function refresh(entry, input, { fresh = false } = {}) {
     if (!input.root) return false;
-    let repository; let resolvedRoot;
+    let repository; let resolvedRoot; let reportOnly = false;
     const readStartedAt = now();
     try {
       const forbiddenRoots = Object.values(providerFolders?.folders || {}).filter(Boolean);
       let acquired = await gitReader(input.root, { forbiddenRoots });
       if (fresh && Number.isFinite(acquired?._readStartedAt) && acquired._readStartedAt < readStartedAt) acquired = await gitReader(input.root, { forbiddenRoots });
       const { _repositoryRoot: root = null, _readStartedAt: inspectionStartedAt, _statusUnknown: statusUnknown = false, ...publicRepository } = acquired;
-      if ((!input.exactRoot && (!root || !path.isAbsolute(root))) || (input.exactRoot && !sameRoot(root, input.root))
-        || !publicRepository.available || (input.anyBranch ? !publicRepository.branch : publicRepository.branch !== input.branch)) {
+      const rootMatches = input.exactRoot ? sameRoot(root, input.root) : Boolean(root && path.isAbsolute(root));
+      const onBranch = input.anyBranch ? Boolean(publicRepository.branch) : publicRepository.branch === input.branch;
+      // Git answered for the bound root on another branch: the working tree left the session's recorded branch.
+      const branchChanged = rootMatches && Boolean(publicRepository.available) && !onBranch;
+      // A report is judged on the branch the bound root has when it arrives; that read is the report's alone.
+      reportOnly = fresh && branchChanged && typeof publicRepository.branch === "string" && publicRepository.branch !== "";
+      if (!reportOnly && (!rootMatches || !publicRepository.available || !onBranch)) {
         if (entry.generation === input.generation) {
           entry.checked = true;
-          // Git answered for the bound root on another branch: the working tree left the session's recorded branch.
-          const rootMatches = input.exactRoot ? sameRoot(root, input.root) : Boolean(root && path.isAbsolute(root));
-          entry.unavailableReason = rootMatches && publicRepository.available ? "branch_changed" : null;
+          entry.unavailableReason = branchChanged ? "branch_changed" : null;
         }
         return false;
       }
@@ -101,6 +104,8 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     let pullRequests;
     try { pullRequests = await pullRequestReader([], { cwd: input.root, branch: repository.branch, historical: false, sessionCreations: input.sessionCreations, ...(fresh ? { fresh: true } : {}) }); }
     catch { pullRequests = unavailablePullRequests(); }
+    // It replaces nothing the session shows: the Repository tab keeps saying that the branch changed.
+    if (reportOnly) return entry.generation === input.generation ? { repository, pullRequests } : true;
     const refreshedAt = now();
     let commitsInSession = entry.commitsInSession ?? null; let sessionCommitPaths = null; let sessionCommitChanges = null; let commitTimes = null;
     if (repository.available && resolvedRoot) {

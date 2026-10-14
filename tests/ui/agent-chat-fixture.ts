@@ -49,6 +49,39 @@ export class FakeChat {
   /** The next `send` answers only when this resolves. */
   hold: Promise<void> | null = null;
   readonly agentChat = vi.fn((operation: string, payload: Json) => this.handle(operation, payload));
+  /** The bytes of each image the desktop holds, by ID. */
+  readonly images = new Map<string, { type: string; bytes: Uint8Array }>();
+  private imageCounter = 0;
+  /** The next `add` answers this refusal. */
+  refuseImage: "invalid" | "not_found" | "unavailable" | null = null;
+  /** The next `add` answers only when this resolves. */
+  holdImage: Promise<void> | null = null;
+  readonly agentChatImage = vi.fn((operation: string, payload: Json) => this.handleImage(operation, payload));
+
+  /** Keeps bytes under an ID without an `add`, as if an earlier message had sent them. */
+  storeImage(id: string, bytes: Uint8Array, type = "png") {
+    this.images.set(id, { type, bytes });
+    return { id, type, bytes: bytes.byteLength };
+  }
+
+  private async handleImage(operation: string, payload: Json): Promise<Json> {
+    if (operation === "add") {
+      if (this.holdImage) await this.holdImage;
+      if (this.refuseImage) return { ok: false, error: this.refuseImage };
+      const bytes = payload.bytes as Uint8Array;
+      this.imageCounter += 1;
+      const id = `img-${this.imageCounter.toString(16).padStart(12, "0")}`;
+      const type = bytes[0] === 0xff ? "jpeg" : bytes[0] === 0x47 ? "gif" : "png";
+      return { ok: true, image: this.storeImage(id, bytes, type) };
+    }
+    if (operation === "read") {
+      const stored = this.images.get(String(payload.imageId));
+      const conversation = this.conversation(String(payload.repositoryId), String(payload.conversationId));
+      const named = conversation?.messages.some((message) => message.role === "user" && ((message.images as Json[] | undefined) ?? []).some((image) => image.id === payload.imageId));
+      return stored && named ? { ok: true, type: stored.type, bytes: stored.bytes } : { ok: false, error: "not_found" };
+    }
+    return { ok: false, error: "invalid" };
+  }
 
   seed(repositoryId: string, ...conversations: StoredConversation[]) {
     const map = this.byRepository.get(repositoryId) ?? new Map<string, StoredConversation>();
@@ -102,9 +135,12 @@ export class FakeChat {
         const map = this.byRepository.get(repositoryId) ?? new Map<string, StoredConversation>();
         this.byRepository.set(repositoryId, map);
         const text = String(payload.text);
+        const imageIds = Array.isArray(payload.images) ? payload.images.map(String) : [];
+        if (imageIds.some((id) => !this.images.has(id))) return { ok: false, error: "invalid" };
         const target = stored ?? conversationOf(this.counter += 1, [], { title: text.slice(0, 80), provider: payload.provider as "claude" | "codex", model: (payload.model as string | null) ?? null });
         map.set(target.id, target);
-        target.messages.push(userMessage(text, `m-${target.messages.length + 1}`));
+        const images = imageIds.map((id) => ({ id, type: this.images.get(id)!.type, bytes: this.images.get(id)!.bytes.byteLength }));
+        target.messages.push({ ...userMessage(text, `m-${target.messages.length + 1}`), ...(images.length > 0 ? { images } : {}) });
         target.updatedAt = "2026-10-11T11:00:00.000Z";
         this.turn = { repositoryId, conversationId: target.id, startedAt: AT, provider: String(payload.provider), model: (payload.model as string | null) ?? null, activity: "thinking", text: "" };
         return { ok: true, conversationId: target.id };
@@ -197,7 +233,7 @@ export function installHarness(): FakeChat {
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
   harness.chat = new FakeChat();
-  setBridge({ agentChat: harness.chat.agentChat });
+  setBridge({ agentChat: harness.chat.agentChat, agentChatImage: harness.chat.agentChatImage });
   setInventory([[REPO_A, "pomegr"]]);
   harness.board = boardOf();
   harness.refresh.mockClear();

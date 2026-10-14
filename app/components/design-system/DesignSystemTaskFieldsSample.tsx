@@ -7,6 +7,7 @@ import { FeatureModalSamples } from "./DesignSystemFeatureModalSample";
 import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
+import { TaskReportNote } from "../tasks/TaskReportNote";
 import { CompleteWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
 import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_COMPLETE_WHEN, DEFAULT_RUN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
@@ -17,7 +18,7 @@ import { Sample, Section } from "./DesignSystemKit";
 import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
 
 const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] } as const;
-const RESULTS = new Map([["pr_open", false], ["tree_clean", true]] as const);
+const RESULTS = new Map([["pr_open", "failed"], ["tree_clean", "passed"], ["ci_passed", "unavailable"]] as const);
 const noop = () => undefined;
 const CREATE_FOLLOW_UPS = [
   { value: "queue", label: "Create and queue", detail: "Goes to the end of Ready." },
@@ -46,7 +47,7 @@ export function TaskFieldsSection() {
   const [remote, setRemote] = useState<TaskRun>({ ...DEFAULT_RUN, remoteControl: true });
   const [codexRun, setCodexRun] = useState<TaskRun>({ ...DEFAULT_RUN, provider: "codex" });
   const [modalCompleteWhen, setModalCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
-  const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean", "user_validated"], ownText: "The store rejects a malformed record." });
+  const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean", "ci_passed", "user_validated"], ownText: "The store rejects a malformed record." });
   return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider. Remote Control is one checkbox under both, for a Claude Code session only. Effort is a four-way segmented control. Run on and Effort are required: a new task opens with both chosen, and neither can be cleared. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
@@ -64,7 +65,7 @@ export function TaskFieldsSection() {
       <Sample label="Complete when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">
         <CompleteWhenField draft={fresh} onDraftChange={setFresh} />
       </Sample>
-      <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list. Validated with the user is judged by the agent, so it shows Agent-reported.">
+      <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed, Not passed or Not verified in one list. Not verified is muted: Pomegr had no current evidence, so the condition is neither passed nor failed. Validated with the user is judged by the agent, so it shows Agent-reported.">
         <CompleteWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
       <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. A task that joins a feature takes a new last step; Move to step on its Board card changes it. The folded In this feature list counts the feature's tasks and opens on demand.">
@@ -150,7 +151,7 @@ function TaskModalEditSamples() {
         </TaskModalChrome>
       </div>
     </Sample>
-    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Complete when shows each checked condition's outcome from the agent's report, and the agent's own attention line when it gave one.">
+    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Complete when shows each checked condition's outcome from the agent's report. The agent's own attention line, when it gave one, sits in an amber notice (.taskReportNotice) under the muted report line, with its bold and inline code formatted.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={reviewId} title="Task" subtitle="pomegr · in Review" onClose={noop}
           titleExtra={<>
@@ -172,7 +173,7 @@ function TaskModalEditSamples() {
           </div>
           <TaskTextField value={STORED_TEXT} onChange={noop} />
           <CompleteWhenField draft={reviewed} results={RESULTS} ownNote="Agent-reported" onDraftChange={noop}
-            footnote={<span className="newTaskHelper taskCompleteWhenNote">Agent reported complete and asks for your attention: The retry budget of five is a guess; confirm it.</span>} />
+            footnote={<TaskReportNote report={{ at: "", blockReason: null, attention: "The retry budget of **five** is a guess; confirm `RETRY_BUDGET` before merging." }} />} />
         </TaskModalChrome>
       </div>
     </Sample>

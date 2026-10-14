@@ -1,4 +1,5 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
+import { inlineMarkdown } from "../inline-markdown";
 
 // A small, safe renderer for Aril's answers. It builds React elements from text and nothing else: no HTML string is
 // ever set, a link or an image is shown as the literal characters it was written with, and nothing navigates.
@@ -63,34 +64,20 @@ export function parseBlocks(source: string): Block[] {
   return blocks;
 }
 
-const INLINE = /`([^`\n]+)`|\*\*([^*\n]+?)\*\*/gu;
-
-function inline(text: string, allowBold: boolean): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  let last = 0;
-  for (const match of text.matchAll(INLINE)) {
-    if (!allowBold && match[1] === undefined) continue;
-    if (match.index > last) nodes.push(text.slice(last, match.index));
-    if (match[1] !== undefined) nodes.push(<code key={match.index} className="agentChatInlineCode">{match[1]}</code>);
-    else nodes.push(<strong key={match.index}>{inline(match[2], false)}</strong>);
-    last = match.index + match[0].length;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
+const inline = (text: string) => inlineMarkdown(text, "agentChatInlineCode");
 
 export function AgentChatMarkdown({ text }: { text: string }) {
   const blocks = useMemo(() => parseBlocks(text), [text]);
   return <div className="agentChatMarkdown">
     {blocks.map((block, index) => {
       switch (block.kind) {
-        case "heading": return <p key={index} className="agentChatMdHeading">{inline(block.text, true)}</p>;
+        case "heading": return <p key={index} className="agentChatMdHeading">{inline(block.text)}</p>;
         case "code": return <pre key={index} className="agentChatCode"><code>{block.text}</code></pre>;
         case "list": {
-          const items = block.items.map((item, itemIndex) => <li key={itemIndex}>{inline(item, true)}</li>);
+          const items = block.items.map((item, itemIndex) => <li key={itemIndex}>{inline(item)}</li>);
           return block.ordered ? <ol key={index} start={block.start}>{items}</ol> : <ul key={index}>{items}</ul>;
         }
-        case "paragraph": return <p key={index}>{inline(block.text, true)}</p>;
+        case "paragraph": return <p key={index}>{inline(block.text)}</p>;
       }
     })}
   </div>;

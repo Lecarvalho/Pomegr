@@ -153,6 +153,15 @@ describe("parseTaskBoard", () => {
     expect(parsed?.queue).toEqual({ status: "idle", blockedBy: null, pauseReason: null, order: [] });
   });
 
+  it("keeps a result Pomegr could not verify, and rejects the mark on a pass or with another value", () => {
+    const reported = (results: unknown[]) => parseTaskBoard(board({ tasks: [task({ report: { at: "2026-10-08T11:00:00.000Z", results: results as never, blockReason: null } })] }), repositoryId);
+    expect(reported([{ check: "pr_open", passed: false, unavailable: true }, { check: "tree_clean", passed: false }])?.tasks[0].report?.results)
+      .toEqual([{ check: "pr_open", passed: false, unavailable: true }, { check: "tree_clean", passed: false }]);
+    for (const bad of [{ check: "pr_open", passed: true, unavailable: true }, { check: "pr_open", passed: false, unavailable: false }, { check: "pr_open", passed: false, unavailable: "yes" }]) {
+      expect(reported([bad])?.tasks ?? []).toEqual([]);
+    }
+  });
+
   it("keeps a task's GitHub issue source, reads a missing key as none, and rejects anything else", () => {
     const parsed = parseTaskBoard(board({ tasks: [task({ source: { kind: "github_issue", number: 142 } }), task({ id: "T-2", source: null })] }), repositoryId);
     expect(parsed?.tasks.map((entry) => entry.source)).toEqual([{ kind: "github_issue", number: 142 }, null]);

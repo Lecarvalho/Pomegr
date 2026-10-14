@@ -133,6 +133,10 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     // Complete when, reported, and the edit modal sample that needs review each show the agent report's outcomes.
     expect(within(section).getAllByText("Not passed")).toHaveLength(2);
     expect(within(section).getAllByText("Passed")).toHaveLength(2);
+    // A condition Pomegr could not verify is muted: it takes neither result color.
+    const unverified = within(section).getAllByText("Not verified");
+    expect(unverified.length).toBeGreaterThan(0);
+    for (const note of unverified) expect(note.className).toBe("taskCheckResult");
     expect(fetchSpy).not.toHaveBeenCalled();
   }, 40_000);
 

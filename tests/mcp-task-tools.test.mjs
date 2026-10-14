@@ -349,10 +349,10 @@ test("complete_task reports the state and names only the conditions Pomegr could
   assert.equal(passed.content[0].text, "Task reported complete. Pomegr put it in Review; the user marks it done. Do not report again.");
 
   const review = setup({ answer: { ok: true, state: "needs_review", results: [
-    { check: "pr_open", passed: false }, { check: "tree_clean", passed: true }, { check: "ci_passed", passed: false }, { check: "made_up", passed: false },
+    { check: "pr_open", passed: false }, { check: "tree_clean", passed: true }, { check: "ci_passed", passed: false, unavailable: true }, { check: "made_up", passed: false },
   ] } });
   assert.equal((await review.tools.complete_task.handler({})).content[0].text,
-    "Task reported complete, but Pomegr could not confirm: Pull request open, CI passed. The task now needs the user's review; do not report again.");
+    "Task reported complete, but these conditions did not pass: Pull request open; and Pomegr could not verify: CI passed (it had no current evidence, which does not mean the condition failed). The task now needs the user's review; do not report again.");
 
   // The attention line is the only thing the tool adds to the body, and Review is then what the agent asked for.
   const noted = setup({ answer: { ok: true, state: "needs_review", results: [{ check: "pr_open", passed: true }] } });
@@ -360,7 +360,7 @@ test("complete_task reports the state and names only the conditions Pomegr could
     "Task reported complete. Pomegr put it in Review for the user's attention; do not report again.");
   assert.deepEqual(noted.calls, [{ pathname: TASK_COMPLETE_PATH, body: { sessionRef: "claude:x", attention: "Confirm the retry limit" } }]);
   const both = setup({ answer: { ok: true, state: "needs_review", results: [{ check: "pr_open", passed: false }] } });
-  assert.match((await both.tools.complete_task.handler({ attention: "Confirm the retry limit" })).content[0].text, /could not confirm: Pull request open/u);
+  assert.match((await both.tools.complete_task.handler({ attention: "Confirm the retry limit" })).content[0].text, /^Task reported complete, but these conditions did not pass: Pull request open\. The task/u);
 });
 
 test("the report tools map every refusal to fixed text and never echo the monitor's answer", async () => {

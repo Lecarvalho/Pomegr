@@ -426,6 +426,18 @@ choose one of two actions. In the desktop app, the banner also offers them, as
 > task window though the condition now holds. Choose **Mark
 > done**; Pomegr does not repeat the check.
 
+Each checked condition shows one of three results in the task window:
+
+| Result | Meaning |
+| --- | --- |
+| **Passed** | Pomegr read the repository and the condition holds. |
+| **Not passed** | Pomegr read the repository and the condition does not hold. |
+| **Not verified** | Pomegr had no current reading. The condition is not known to fail. |
+
+**Not verified** appears, for example, when Pomegr cannot read the session's
+repository, or when a command of the session still runs. Look at the pull request
+yourself, then choose **Mark done** or **Requeue task**.
+
 Every task an agent reports complete needs review, whether its conditions passed
 or not: only you mark a task done. A task that needs review does not stop the queue. Its work is finished: the card
 waits in **Review**, the next queued task starts, and a later step of the same
@@ -534,7 +546,7 @@ want to approve each deletion. In Claude Code's auto mode no prompt appears: Cla
 Code decides by itself and can, rarely, refuse one of these calls. If that happens,
 add a permission rule for the tool in your Claude Code settings. A task takes one report per start; a second report changes
 nothing. A report always leaves the task in **Needs review**, with each checked
-condition's pass or fail; you choose **Mark done**. When no condition is checked, the
+condition's result; you choose **Mark done**. When no condition is checked, the
 report rests on the agent's word, not a check. A session that ends
 without a report leaves the task **Stalled**, but only once Pomegr has established
 the session's end, for example a **Closed** session or a **Stopped** Claude Code
@@ -543,7 +555,7 @@ it may still be able to report, so **Stopped** alone does not stall a Codex task
 stalls only once Pomegr sees that Codex no longer holds the session (Windows). An
 **Idle** or **Open** session never stalls a task. A stalled task leaves that state
 only through **Mark done and resume queue** or **Requeue task**. Pomegr keeps only
-each condition's pass or fail, the block reason, and the attention line, never command
+each condition's result, the block reason, and the attention line, never command
 output or diffs.
 
 ### Tasks an agent can change

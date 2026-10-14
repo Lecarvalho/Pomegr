@@ -3363,6 +3363,9 @@ keeps the private reason `branch_changed`. The repository domain serves it as
 `unavailableReason: "branch_changed" | null`, only for a live view that shows no repository,
 through a projection side channel like `gitObserved`; it never rides on `session.repository`
 or `/api/state`, and no branch name accompanies it. Any other mismatch serves `null`.
+A `complete_task` report is the one read that accepts the other branch: it judges the
+bound root on the branch it has and commits nothing, so this state and its reason stay
+(see [Tasks](tasks.md#completion)).
 The `touchedFiles` block is session evidence, not live Git state: the
 session Repository tab lists Touched here for a linked repository whether or not a
 repository is available, and offers the working-tree segments only when one is.
