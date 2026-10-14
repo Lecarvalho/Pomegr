@@ -5,7 +5,7 @@ import test from "node:test";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import {
   REPOSITORY, SESSION, createTask, metaValue, openTemporaryStore, pauseReasonKey, queueRow, queueSettings, queueTask, setMeta, setQueueRow,
-  startedTask, updateTask, passingGates,
+  startedTask, updateTask, passingGates, storedQueue,
 } from "./queue-test-support.mjs";
 
 const OWN_REASONS = ["worktree_dirty", "session_not_linked"];
@@ -19,14 +19,14 @@ async function pausedAtFirst(context, reason) {
   assert.equal(queueSettings(store, true).ok, true);
   setQueueRow(directory, "paused", "T-1");
   if (reason !== null) setMeta(directory, pauseReasonKey(), reason);
-  assert.deepEqual(store.readBoard(REPOSITORY).queue, { status: "paused", blockedBy: "T-1", pauseReason: reason, order: ["T-1", "T-2"] });
+  assert.deepEqual(storedQueue(store.readBoard(REPOSITORY).queue), { status: "paused", blockedBy: "T-1", pauseReason: reason, order: ["T-1", "T-2"] });
   return opened;
 }
 
 const apply = (store, action, id) => {
   const result = store.apply(REPOSITORY, action, { id });
   assert.equal(result.ok, true, action);
-  return result.board.queue;
+  return storedQueue(result.board.queue);
 };
 
 test("deleting the task a pause names clears the pause: the queue runs again when the cause was the task's own", async (context) => {
@@ -107,12 +107,12 @@ test("a store that already holds a pause at a deleted task never serves its ID, 
     queueTask(store, "T-1");
     setQueueRow(directory, "paused", "T-7");
     setMeta(directory, pauseReasonKey(), reason);
-    assert.deepEqual(store.readBoard(REPOSITORY).queue, { status: "paused", blockedBy: null, pauseReason: reason, order: ["T-1"] });
+    assert.deepEqual(storedQueue(store.readBoard(REPOSITORY).queue), { status: "paused", blockedBy: null, pauseReason: reason, order: ["T-1"] });
 
     const reopened = openTaskStore({ directory });
     const { queue } = reopened.readBoard(REPOSITORY);
     reopened.close();
-    assert.deepEqual(queue, { status, blockedBy: null, pauseReason: null, order: ["T-1"] }, reason);
+    assert.deepEqual(storedQueue(queue), { status, blockedBy: null, pauseReason: null, order: ["T-1"] }, reason);
     assert.deepEqual(queueRow(directory), { queue_status: status, queue_blocked_by: null });
     assert.equal(metaValue(directory, pauseReasonKey()), null);
   }
@@ -123,5 +123,5 @@ test("opening a store leaves a pause at a task that exists", async (context) => 
   const reopened = openTaskStore({ directory });
   const { queue } = reopened.readBoard(REPOSITORY);
   reopened.close();
-  assert.deepEqual(queue, { status: "paused", blockedBy: "T-1", pauseReason: "worktree_dirty", order: ["T-1", "T-2"] });
+  assert.deepEqual(storedQueue(queue), { status: "paused", blockedBy: "T-1", pauseReason: "worktree_dirty", order: ["T-1", "T-2"] });
 });

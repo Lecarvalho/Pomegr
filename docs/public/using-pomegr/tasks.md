@@ -401,10 +401,40 @@ step, see [Queued cards stay in Ready](#queued-cards-stay-in-ready).
   queue or mark it done.
 - **Started tasks.** A task whose session has started is no longer shown as next or
   as waiting. It keeps its state and shows its session's state, and later steps
-  wait for it. While a task with no feature is running, the queue starts nothing,
-  even when the Board still marks the next single task **Queued · next**.
+  wait for it. While a task with no feature is running, the queue starts nothing.
+  The next single task still reads **Queued · next**, and its card says which task
+  it waits for.
 - **Timing.** The desktop app asks for the next start every 15 seconds, so the
   queue works only while Pomegr is open.
+
+### See why a queued task has not started
+
+Each waiting card in **Ready** says where it stands and what it waits for. A card past
+the first place opens with its place, such as "5th in queue". Then "Waiting:" lists each
+reason. Open the card to read the same reasons in full under **Queue**, with every task
+that starts first.
+
+| The card says | What it means |
+| --- | --- |
+| feature tasks start first (T-66, T-67, …) | The task has no feature. Every queued feature task starts before a single task, wherever its card is in **Ready**. |
+| earlier tasks start first (T-3, …) | Those tasks are before it: single tasks above its card, or the tasks of a feature the board lists earlier. |
+| step before it is not done (T-12) | An earlier step of its feature has a task that is not done or in review. |
+| T-5 is running | A started task holds the queue until it reports. |
+| the queue is off | You have not turned the queue on. Nothing is wrong. |
+| the queue is blocked by T-2 | That task stalled or was blocked by its agent. Resolve it first. |
+| the queue is paused at T-3 | A start failed. See [When the queue stops](#when-the-queue-stops). |
+| a start gate, such as "the working tree has uncommitted changes" | A [start gate](#start-gates) holds the start. |
+| the queue starts Oct 9, 22:00 | The queue's own start or stop time holds it. |
+| the reason is not known yet | Pomegr has no fact that explains the wait. It never assumes that a gate passed. |
+
+Moving a single task to the top of **Ready** puts it first among the single tasks only.
+It does not put it ahead of feature tasks. To run it sooner, start it by hand with
+**Start session**, or attach it to a feature step that runs earlier.
+
+A scheduled task shows its time on the **Starts** line. A reading that Pomegr has not
+observed yet reads "not known yet" and holds the start, like a failed gate. The task
+window of the next task reads "Nothing known holds it." when Pomegr knows no hold: the
+queue starts it at its next check, while the desktop app is open.
 
 ### When the queue stops
 
@@ -470,7 +500,8 @@ task and one of these reasons. Fix it, then select **On** again to retry.
 
 Before every start, manual or queued, Pomegr judges four start gates from
 facts it has already observed. **Queue settings** on the Board lists each reading, and a held
-queued task shows "Waiting:" with the reasons. A missing, stale, or partial
+queued task shows "Waiting:" with the reasons (see
+[See why a queued task has not started](#see-why-a-queued-task-has-not-started)). A missing, stale, or partial
 reading is unknown, and unknown holds a start exactly like a failed gate.
 
 | Gate | A start proceeds only when |

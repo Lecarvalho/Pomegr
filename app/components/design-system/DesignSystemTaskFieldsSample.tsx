@@ -6,6 +6,7 @@ import { FeatureFields } from "../tasks/FeatureFields";
 import { FeatureModalSamples } from "./DesignSystemFeatureModalSample";
 import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
+import { TaskQueueWait } from "../tasks/TaskQueueWait";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
 import { TaskReportNote } from "../tasks/TaskReportNote";
 import { CompleteWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
@@ -13,6 +14,7 @@ import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_COMPLETE_WHEN, DEFAULT_RUN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
 import type { TaskIssue } from "../tasks/task-issues-desktop";
+import { NO_KNOWN_HOLD } from "../tasks/task-wait-model";
 import type { TaskRun } from "../../../shared/task-contract";
 import { Sample, Section } from "./DesignSystemKit";
 import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
@@ -85,6 +87,17 @@ export function TaskFieldsSection() {
       </Sample>
       <Sample label="Task field as rich text, full and refused" note="A task holds four images, so Attach image is disabled. A file that cannot be attached is named by one fixed error line under the frame.">
         <TaskTextField value={fullText} onChange={setFullText} images={{ urls: SAMPLE_IMAGE_URLS, error: TASK_IMAGE_TYPE_MESSAGE, onAttach: noImages }} />
+      </Sample>
+      <Sample label="Queue block, single task behind feature work" note="The Task modal of a task that waits in the queue starts its body with the Queue block: the label, the task's place in the start order in ink, then one muted line for each reason it has not started. Task IDs name the work that starts first.">
+        <TaskQueueWait detail={{ place: "5th to start", lines: ["Feature tasks start before single tasks, wherever the card is in Ready: T-66, T-67, T-68, T-69."] }} />
+      </Sample>
+      <Sample label="Queue block, queue off and a held start" note="A queue that is off is named first and is not a blocker. A start gate that holds is one line each; a reading that is missing says it is not known yet, never that it passed.">
+        <TaskQueueWait detail={{ place: "Next to start", lines: ["The queue is off, so Pomegr starts no task by itself."] }} />
+        <TaskQueueWait detail={{ place: "Next to start", lines: ["Start gate: Claude Code is above 85% of the five-hour window.", "Start gate: the working tree state is not known yet."] }} />
+      </Sample>
+      <Sample label="Queue block, scheduled and no known hold" note="A scheduled task before its own time has no place in the start order yet. A task with no known hold says so and claims nothing more.">
+        <TaskQueueWait detail={{ place: "Not in the start order yet", lines: ["Its own start time has not come."] }} />
+        <TaskQueueWait detail={{ place: "Next to start", lines: [NO_KNOWN_HOLD] }} />
       </Sample>
       <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel and a task's own start time.">
         <div className="taskGateField">

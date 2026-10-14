@@ -45,6 +45,7 @@ they never import observation internals beyond the shared value primitives.
 
 The pure rule modules take plain records and return plain values, with no store,
 route, or Git access: `orderQueue(tasks, features)` in `task-queue.mjs`,
+`explainQueueWaits(input)` in `task-queue-waits.mjs`,
 `verifyChecks(checks, facts)` in `task-checks.mjs`, and
 `evaluateGates(task, facts, settings)` in `task-gates.mjs`. Composition code
 gathers the committed facts they judge; they never acquire evidence.
@@ -155,6 +156,10 @@ type TaskBoard = {
       workingTree: "clean" | "dirty" | "unknown";
       next: { taskId: string; provider: "claude" | "codex"; blockedBy: string | null; reasons: TaskGateReason[] } | null;
     };
+    waits?: {                              // absent when no task waits, and from an older monitor
+      taskId: string; place: number | null;
+      reasons: { reason: TaskQueueWaitReason; taskIds: string[]; more: number }[];
+    }[];
   };
   runModels?: { codex: { id: string; label: string | null }[] };  // at most 64; empty when no catalog is committed; absent from an older monitor
 };
@@ -221,6 +226,10 @@ type TaskBoard = {
   next task its provider, the earlier task it waits on, and the fixed reasons that hold
   it. It never carries a path, a reset time, an incident name, a changed file, or error
   text.
+- `queue.waits` says, for each task that waits in the queue, where it stands in the start
+  order and why it has not started (see [Why a task waits](#why-a-task-waits)): a task
+  ID, a place, fixed reasons, and for a reason the IDs of at most eight tasks of the
+  same board. It adds no task content, path, time, percentage, or error text.
 - A feature is `done` when every task attached to it is done. Only unfinished
   features are offered when attaching a task. A board feature is `{ id, name, done }`:
   `name` is the feature's title, and its description and app version are not on the
@@ -818,6 +827,67 @@ and only one step at a time. Every start first passes the [start gates](#start-g
     does not come after the start time. A stored time that is sent back unchanged is kept
     even when it has passed, so the other time can still be edited.
 
+### Why a task waits
+
+Task T-73, 2026-10-13. The owner could not tell from a card why a queued task had not
+started: a single task moved to the top of Ready still waits behind every feature task,
+and nothing said so. Every board that leaves the monitor now carries `queue.waits`, one
+entry for each task that waits: a task whose state is Queued or Scheduled and that has
+not started (no linked session and no live dispatch).
+
+- **One rule, no second order.** The pure `explainQueueWaits` in
+  `server/tasks/task-queue-waits.mjs` reads the order and the steps from `orderQueue`,
+  the next start from `nextQueueStart`, and the earlier step from `previousStepBlocker`.
+  It orders nothing itself. `fillQueueWaits` in `task-queue-advance.mjs` hands it the
+  stored rows as the queue runner reads them (`queueRecord`), so a live dispatch counts
+  as started here as it does for a start.
+- **Place.** `place` is the task's place in `queue.order`, from 1. It is null for a task
+  that is not in the order: a scheduled task before its own time.
+- **Reasons.** `reasons` lists every reason that holds, in the order of the table. Each
+  is `{ reason, taskIds, more }`: `taskIds` names at most eight tasks, in start order,
+  and `more` counts the ones left out. A reason that names no task has an empty list.
+
+| Reason | Holds when | Names |
+| --- | --- | --- |
+| `queue_off` | The queue's status is `idle` | Nothing |
+| `queue_blocked` | The queue's status is `blocked` | The task in `blockedBy`, when the board holds it |
+| `queue_paused` | The queue's status is `paused` | The task in `blockedBy`, when the board holds it |
+| `own_schedule` | The task is scheduled and its own time has not come | Nothing |
+| `previous_step` | An earlier step of its feature is not settled | The task `previousStepBlocker` names |
+| `feature_first` | The task has no feature, and feature tasks are before it in the order | Those feature tasks |
+| `earlier_tasks` | Other tasks are before it in the order: single tasks above its card, or another feature's tasks | Those tasks |
+| `running_work` | Tasks in flight outside its own step hold the queue | Those tasks |
+| A [start gate](#start-gates) reason, `before_queue_start`, or `after_queue_stop` | The queue runs, the task is one `nextQueueStart` would start now, and `startGates` or `queueWindowHold` holds it | Nothing |
+| `unknown` | The committed facts name none of the reasons above | Nothing |
+
+- **Off is not a blocker.** `queue_off` says only that the owner has not turned the
+  queue on. `queue_blocked` and `queue_paused` are confirmed: a task stalled, was blocked
+  by its agent, or failed to start. A queue that is not running still lists the work
+  that starts before the task, so the owner sees the order before turning it on.
+- **Gates are judged for a start only.** A start gate holds a start, so only a task the
+  running queue would start now carries a gate reason. A task behind other work carries
+  that work, and a queue that is off, blocked, or paused carries no gate reason.
+- **The tasks of its own step are not ahead of a task.** They start with it. The earlier
+  steps of its own feature are `previous_step`, never `earlier_tasks`.
+- **Unknown is never a pass.** A gate with no fact is `usage_unknown`,
+  `provider_status_unknown`, or `tree_unknown`, as for a start. A runtime without the gate
+  lookup reads all three, because it holds every start. A waiting task with no reason at
+  all has an empty list: the monitor knows no hold, and the page says exactly that. The
+  rule answers `unknown` when a task is neither startable nor behind anything it can
+  name, such as a task whose expired start is about to pause the queue.
+- **A reading, never a state.** The waits are computed on each read from the store and
+  the committed gate facts, like `queue.gates`. Nothing is stored, no card moves, no
+  priority changes, and nothing starts. One board asks for its gate facts once, so the
+  gates and the waits judge the same reading.
+- **Serving.** `GET /api/tasks` rebuilds the list field by field (`projectWaits` in
+  `server/serving/task-routes.mjs`) and drops it whole when one value is outside the
+  contract. The client validates it the same way (`parseWaits` in `app/tasks-store.ts`)
+  and words it in `app/components/tasks/task-wait-model.ts`, which orders nothing.
+- **Shown.** A waiting card of Ready adds its place and a Waiting line, and the Task
+  modal of a waiting task starts with a Queue block.
+  [Task board design](../design/task-board.md#ready-step-groups) and
+  [Task modal design](../design/task-modal.md#body) own how they look.
+
 ## Tasks home
 
 Task T-54, validated by the product owner on 2026-10-11. The Tasks home is the page a
@@ -975,7 +1045,8 @@ show **Unknown** whenever the status is `unknown`, even when a retained seven-da
 What a held gate does:
 
 - **Queue.** `queue-next` does not answer the start. Nothing is written, so the task
-  waits and no state is shown and later retracted; `queue.gates.next.reasons` says why.
+  waits and no state is shown and later retracted; `queue.gates.next.reasons` says why,
+  and so does the task's entry in `queue.waits` (see [Why a task waits](#why-a-task-waits)).
 - **Manual start.** `start-plan` answers the fixed `gate_held` before a token is minted,
   after the refusals that precede it (`not_startable`, `unsupported_provider`,
   `unavailable`, `plugin_missing`). The answer names no gate. The renderer names the
@@ -2453,6 +2524,21 @@ fixed values.
   - The started session registers itself with the owner's Claude account. The session,
     with the task text in its prompt, is then reachable from the owner's other devices,
     as any Remote Control session is.
+- Why a task waits is a reading of the board (task T-73, 2026-10-13). This is a
+  deliberate widening of what `GET /api/tasks` serves, under that route's gate, to a
+  same-computer client or a paired device.
+  - `queue.waits` carries, for a waiting task, its ID, its place in the start order as a
+    whole number or null, and fixed reasons from one list. A reason names at most eight
+    task IDs of the same board and a count of the rest.
+  - `running_work` is the one new fact: which tasks have started and hold the queue. A
+    board already shows a linked task's session; a task whose start has not linked yet
+    is now named as running too, by its ID only. The dispatch token and its time never
+    leave the store.
+  - It never carries task text, a feature name, a session ID, a path, a usage
+    percentage, a reset time, an incident name, a changed file, or error text.
+  - It never enters `/api/state`, a session domain, the Sessions list's task reference,
+    the Tasks home, the agent chat's prompt, a catalog, a checkpoint, a report, a log, a
+    notification, or diagnostics. It is never stored.
 - `runModels` never carries entitlement, a hidden ID, an alias ID, or a raw catalog row.
 - A worktree path stays in desktop main. It never enters the monitor, the task store,
   browser state, a log, or a report. It is built there from the repository root the
@@ -2508,16 +2594,17 @@ Each item is owned by the product owner; none is implemented until they answer.
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
 rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
 above now describe the fixed behavior. The first run on a device, on 2026-10-09, found
-three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. One item remains open, and the maintainer owns it. A sixth (a held manual start did not say which gate holds) closed on 2026-10-10: the modal names the holding gates from the board's readings, and step order no longer holds a manual start. The stated limits of the age rule for complete-when conditions are listed under
+three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. The last item closed on 2026-10-13 and is kept below for its record. A sixth (a held manual start did not say which gate holds) closed on 2026-10-10: the modal names the holding gates from the board's readings, and step order no longer holds a manual start. The stated limits of the age rule for complete-when conditions are listed under
 [Completion](#completion).
 
 1. **A started task without a feature holds every start, but `queue.gates.next` does not
-   say so.** A started task with no feature is a step of its own that holds the queue,
-   yet `queue.gates.next` still names the next queued single task with no hold reason, so
-   the Board shows **Queued · next** on a task that does not start. A pinned test
-   keeps this behavior. A fixed reason such as `task_running` would widen the
-   [Privacy](#privacy) section, so it is not added until the product owner
-   decides.
+   say so.** Closed by task T-73 on 2026-10-13. A started task with no feature is a step
+   of its own that holds the queue. `queue.gates.next` still names the next queued single
+   task with no hold reason, and a pinned test keeps that. The task's entry in
+   `queue.waits` now carries `running_work` with the started task's ID, so its card says
+   "Waiting: T-n is running" under **Queued · next** (see
+   [Why a task waits](#why-a-task-waits)). The [Privacy](#privacy) section lists the
+   reason.
 
 Proven on a device on 2026-10-09 (Windows, Claude Code, plugin 0.9.0): a started session
 opens as the user's own Claude Code, in the repository root and in a new task worktree;

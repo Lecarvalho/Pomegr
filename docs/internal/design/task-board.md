@@ -180,7 +180,18 @@ The head actions appear in this order:
 - A grouped card shows the ID and chip, the title, the provider badge with “model · effort” at 11px, and its Starts or Waiting line.
 - A grouped card shows no Complete when line and no feature line. Its caption carries the feature and the step.
 - The card the monitor lists first keeps the chip **Queued · next**.
-- That card adds one muted 12px “Waiting: …” line while a gate holds it and the queue is on.
+- A grouped card adds one muted 12px wait line (`.taskCardWaiting`) from the monitor's reading of why it has not started.
+- The line of a card past the first place opens with its place in the start order, such as “5th in queue”.
+- Then comes “Waiting: ” and one clause for each reason, joined by “; ”. A place and a reason are joined by “ · ”.
+- A clause names at most three task IDs and then “and n more”.
+- The line of a single task behind feature work reads “5th in queue · Waiting: feature tasks start first (T-66, T-67, T-68 and 1 more)”.
+- A queue that is off reads “the queue is off”. A blocked or paused queue names its task: “the queue is blocked by T-2”, “the queue is paused at T-3”.
+- A held gate reads as on the Start gates section, and a missing reading reads “not known yet”. It never reads as passed.
+- A reason the monitor cannot name reads “the reason is not known yet”.
+- The line has no tone: it is muted for every reason, and the Queue status banner carries a blocked or paused queue.
+- A scheduled card's own time is its Starts line. The wait line does not repeat it.
+- The first card with no known hold draws no wait line. Its chip says that it is next.
+- A board that sends no waits keeps the earlier line: “Waiting: …” on the next card while a gate holds it and the queue is on.
 - The drop line and the move toolbar work on a grouped card as on any card.
 - A waiting card of a feature changes step here. See [Changing a step](#changing-a-step).
 
@@ -562,7 +573,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - The cards in every state.
 - Column headers.
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
-- The Ready lane with its step groups, and a card outside Ready in a parallel step.
+- The Ready lane with its step groups and the wait line of each waiting card, and a card outside Ready in a parallel step.
 - The Ready lane with a step target and with the new-step zone, and a card with its Move to step select.
 - The feature filter and the capacity strip, with the strip's Board form.
 - Whole boards in their browser and desktop forms.
