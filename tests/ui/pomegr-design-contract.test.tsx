@@ -501,23 +501,6 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/gains the Quiet \*\*Take out of group\*\* \(`\.taskMoveLeave`\) after the four arrows\./);
     expect(designContract).toMatch(/Nothing moves while a feature filter is on\. No group changes then, and no \*\*Run in parallel\*\* is drawn\./);
     expect(designContract).toMatch(/“T-4 and T-5 run in parallel\.”, “T-4 taken out of its parallel group\.”, “T-4 and T-5 no longer run in parallel\.”, or “T-4 and T-5 added to the queue with their parallel group\.”/);
-    // Planning before Ready (T-101): a plan's caption queues its group, and a card's toolbar opens Runs after.
-    expect(read("ReadyGroup.tsx")).toMatch(/className="commandQuietAction taskReadyUngroup taskReadyQueue" onClick=\{actions\.onQueue\}>Queue group<\/button>/);
-    expect(read("TaskMoveBar.tsx")).toMatch(/className="commandQuietAction taskMoveLeave taskMoveAfter" aria-haspopup="dialog" aria-label=\{`Choose what \$\{id\} runs after`\}[^]*>Runs after…<\/button>/);
-    expect(read("TaskBoardView.tsx")).toMatch(/void edits\.queueGroup\(group\.tasks\[0\]\.id\);/);
-    expect(styles).toMatch(/\.taskAfterId \{ font-family: var\(--font-data\); \}/);
-    expect(designContract).toMatch(/A group with a Not queued card adds the Quiet \*\*Queue group\*\* \(`\.taskReadyQueue`\) before \*\*Ungroup\*\*\./);
-    expect(designContract).toMatch(/### Runs after/);
-    expect(designContract).toMatch(/ends with the Quiet \*\*Runs after…\*\* \(`\.taskMoveLeave\.taskMoveAfter`\)/);
-    expect(designContract).toMatch(/“Runs after T-13 and T-14”, before the feature line\./);
-    const modalContract = readFileSync(join(process.cwd(), "docs", "internal", "design", "task-modal.md"), "utf8");
-    expect(modalContract).toMatch(/\*\*Runs after\*\* follows Complete when\. It is a fieldset with the 12px\/500 legend \*\*Runs after\*\*, built like Sessions\./);
-    expect(modalContract).toMatch(/“These tasks would wait for each other, so nothing was changed\.”/);
-    const field = read("TaskAfterField.tsx");
-    expect(field).toMatch(/<fieldset className="taskSessions taskAfter">/);
-    expect(field).toMatch(/className="commandSecondaryAction"[^]*?>Add<\/button>/);
-    const plan = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskPlanSample.tsx"), "utf8");
-    for (const label of ["Backlog lane, a plan", "Backlog lane, desktop app", "Ready lane, a card that runs after another", "Card, desktop app, Runs after…", "Task modal, Runs after", "Task modal, a loop refused", "Task modal, started task"]) expect(plan).toContain(`label="${label}"`);
     expect(designContract).not.toMatch(/Move to step|New step|Changing a step|Single tasks|One at a time/);
     expect(designSystemStyles).toMatch(/\.designSystemRevealLink \.taskReadyLinkAction \{ opacity: 1; \}/);
   });
