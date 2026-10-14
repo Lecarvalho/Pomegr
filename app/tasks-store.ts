@@ -68,7 +68,9 @@ function validTask(value: unknown): value is Task {
     const result = record(entry);
     return Boolean(result) && CHECKS.has(result!.check as TaskCheck) && typeof result!.passed === "boolean";
   };
-  const results = report ? listOf(report.results, CHECKS.size, validResult) : [];
+  // A report's result may also say that the condition could not be verified; a pass never does.
+  const validOutcome = (entry: unknown): entry is Json => validResult(entry) && (entry.unavailable === undefined || (entry.unavailable === true && entry.passed === false));
+  const results = report ? listOf(report.results, CHECKS.size, validOutcome) : [];
   const reading = session && session.checks !== undefined ? listOf(session.checks, CHECKS.size, validResult) : [];
   const checks = listOf(completeWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
   const validAssigned = (entry: unknown): entry is Json => {

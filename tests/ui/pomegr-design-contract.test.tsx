@@ -730,7 +730,7 @@ describe("Pomegr visual contract", () => {
     expect(chatStyles).toMatch(/\.agentChatPanel \{[^}]*position: fixed; z-index: 85;[^}]*width: min\(420px, calc\(100vw - 2 \* var\(--space-4\)\)\); height: min\(640px, calc\(100dvh - 92px\)\);[^}]*border: 1px solid var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); box-shadow: var\(--command-overlay-shadow\); animation: agentChatIn \.14s ease-out/);
     expect(chatStyles).toMatch(/\.agentChatPanel\[hidden\] \{ display: none; \}/);
     expect(chatStyles).toMatch(/@media \(max-width: 760px\) \{\s*\.agentChatPanel \{ inset: 0; width: auto; height: auto;[^}]*border: 0; border-radius: 0; box-shadow: none; \}/);
-    expect(chatStyles).toMatch(/@media \(max-width: 760px\), \(pointer: coarse\) \{\s*\.agentChatLauncher, \.agentChatField[^{]*\{ min-height: 44px; \}/);
+    expect(chatStyles).toMatch(/@media \(max-width: 760px\), \(pointer: coarse\) \{\s*(?:\.agentChat(?:Attach|ImagePicture)[^\n]*\n\s*)*\.agentChatLauncher, \.agentChatField[^{]*\{ min-height: 44px; \}/);
     expect(chatStyles).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.agentChatPanel \{ animation: none; \}/);
     // Only the two floating surfaces take the overlay shadow.
     const shadowed = [...chatStyles.replace(/\/\*[^]*?\*\//g, "").matchAll(/([^{}]+)\{[^{}]*box-shadow: var\(--command-overlay-shadow\)/g)].map(([, selector]) => selector.trim());
@@ -753,7 +753,7 @@ describe("Pomegr visual contract", () => {
     expect(chatStyles).toMatch(/\.agentChatMdHeading \{ font: 650 var\(--text-sm\)\/1\.4 var\(--font-ui\); \}/);
 
     // Every button is one of the six roles, but for the launcher (shell chrome) and the conversation row, as documented. No native select, and no markup from a string.
-    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatHistory.tsx", "AgentChatMarkdown.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx"].map(read).join("\n");
+    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatHistory.tsx", "AgentChatImages.tsx", "AgentChatMarkdown.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx"].map(read).join("\n");
     expect(sources).not.toMatch(/<select|dangerouslySetInnerHTML|innerHTML/);
     const tags = [...sources.matchAll(/<button\b[^>]*>/g)].map(([tag]) => tag);
     expect(tags.length).toBeGreaterThanOrEqual(12);
@@ -773,7 +773,7 @@ describe("Pomegr visual contract", () => {
     // AppShell mounts the dock once, after the shell, and the design-system reference draws every part from static data.
     expect(readFileSync(join(process.cwd(), "app", "components", "AppShell.tsx"), "utf8")).toMatch(/<\/CommandCenterShell>\s*<AgentChatDock \/>/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemAgentChatSample.tsx"), "utf8");
-    for (const label of ["Launcher", "Launcher, answering", "Launcher, new answer", "Panel, empty", "Panel, proposal", "Panel, answer being written", "Panel, conversations", "Panel, no repository", "Proposal, pending", "Proposal, applied", "Proposal, partly applied", "Proposal, every result word", "Composer, error", "Composer, over the limit", "Answer text"]) {
+    for (const label of ["Launcher", "Launcher, answering", "Launcher, new answer", "Panel, empty", "Panel, proposal", "Panel, images", "Proposal, images, pending", "Composer, images", "Composer, uploading image", "Composer, image error", "Panel, answer being written", "Panel, conversations", "Panel, no repository", "Proposal, pending", "Proposal, applied", "Proposal, partly applied", "Proposal, every result word", "Composer, error", "Composer, over the limit", "Answer text"]) {
       expect(sample).toContain(`label="${label}"`);
     }
     expect(designSystemStyles).toMatch(/\.designSystemChatGrid \{ grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 420px\), 1fr\)\); \}/);

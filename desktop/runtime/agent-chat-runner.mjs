@@ -1,6 +1,6 @@
 // One chat turn is one headless run of the owner's own provider CLI, signed in as the owner. The run is read-only:
 // it gets a fixed argument list, the prompt on stdin, and no way to ask for a permission. Nothing the owner typed
-// reaches a command line or a path.
+// reaches a command line or a path. The images of a conversation are files desktop main named itself.
 
 export const TURN_TIMEOUT_MS = 10 * 60_000;
 export const STDOUT_LINE_LIMIT = 4 * 1024 * 1024;
@@ -25,14 +25,34 @@ function validServer(server) {
 
 const tomlString = (value) => JSON.stringify(value);
 
+const IMAGES_PER_MESSAGE = 4;
+const IMAGE_FILE = /^img-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/u;
+// A drive path or a rooted path, without a trailing separator.
+const ABSOLUTE_FOLDER = /^(?:[A-Za-z]:[\\/]|[\\/]).*[^\\/]$/u;
+
+// The image folder of one conversation and the image files of the newest message, as desktop main built them: an
+// absolute, normalized folder, and files that sit directly in it under the fixed image name. Anything else is no image.
+function validImages(images) {
+  const folder = images !== null && typeof images === "object" ? images.folder : null;
+  if (typeof folder !== "string" || !ABSOLUTE_FOLDER.test(folder) || /[\u0000-\u001f"]/u.test(folder) || /(?:^|[\\/])\.\.?(?:[\\/]|$)/u.test(folder)) return null;
+  const files = Array.isArray(images.files) ? images.files : [];
+  if (files.length > IMAGES_PER_MESSAGE || new Set(files).size !== files.length) return null;
+  const inFolder = (file) => typeof file === "string" && file.length > folder.length + 1 && file.startsWith(folder)
+    && /[\\/]/u.test(file[folder.length]) && IMAGE_FILE.test(file.slice(folder.length + 1));
+  return files.every(inFolder) ? { folder, files: [...files] } : null;
+}
+
 /**
- * The fixed arguments of one turn. Only a validated model identifier and the desktop's own MCP server vary.
- * The run sees the repository's files and Pomegr's read tools, and nothing else: no user settings, hooks, plugins,
- * or other MCP servers, no tool that writes, and no way to wait for an approval.
+ * The fixed arguments of one turn. Only a validated model identifier, the desktop's own MCP server, and the
+ * desktop's own image folder and files vary.
+ * The run sees the repository's files, the images the owner sent in this conversation, and Pomegr's read tools, and
+ * nothing else: no user settings, hooks, plugins, or other MCP servers, no tool that writes, and no way to wait for
+ * an approval.
  */
-export function chatArguments(provider, model = null, mcpServer = null) {
+export function chatArguments(provider, model = null, mcpServer = null, images = null) {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
   const server = validServer(mcpServer) ? { command: mcpServer.command, args: [...mcpServer.args], env: { ...mcpServer.env } } : null;
+  const shown = validImages(images);
   if (provider === "claude") {
     return [
       "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
@@ -43,6 +63,8 @@ export function chatArguments(provider, model = null, mcpServer = null) {
       "--tools", CLAUDE_FILE_TOOLS.join(","),
       "--allowedTools", [...CLAUDE_FILE_TOOLS, ...POMEGR_READ_TOOLS.map((name) => `mcp__${MCP_SERVER_NAME}__${name}`)].join(","),
       ...(chosen ? ["--model", chosen] : []),
+      // Restricted mode confines Read to the working directories: this adds the folder that holds the conversation's images.
+      ...(shown ? ["--add-dir", shown.folder] : []),
     ];
   }
   if (provider === "codex") {
@@ -56,6 +78,8 @@ export function chatArguments(provider, model = null, mcpServer = null) {
       ] : []),
       ...(chosen ? ["--model", chosen] : []),
       "-",
+      // The image flag takes a list of values, so it follows the prompt marker: before it, it would swallow the marker.
+      ...(shown && shown.files.length > 0 ? ["--image", ...shown.files] : []),
     ];
   }
   return null;
@@ -153,8 +177,8 @@ export function createTurnReader(provider, { onText = () => {}, onActivity = () 
  * Starts one turn and answers `{ status, text }` when the run ends: `complete`, `failed`, `timed_out`, or `stopped`.
  * `stop()` ends Pomegr's own headless run; it is never a session the owner started.
  */
-export function runChatTurn({ spawn, executable, provider, model = null, mcpServer = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
-  const args = chatArguments(provider, model, mcpServer);
+export function runChatTurn({ spawn, executable, provider, model = null, mcpServer = null, images = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
+  const args = chatArguments(provider, model, mcpServer, images);
   let child = null;
   let stopped = false;
   let timedOut = false;

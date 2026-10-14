@@ -179,6 +179,37 @@ test("the agent chat bridge is one trusted-frame channel and its provider run is
   assert.doesNotMatch(store, /fetch\(|https?:\/\//u);
 });
 
+test("the agent chat image bridge is a trusted-frame channel of its own, validated in the preload and answered by desktop main only", async () => {
+  const [preload, main, bridge, images, gateway] = await Promise.all([
+    "../desktop/runtime/preload.cjs", "../desktop/runtime/shell-main.mjs", "../desktop/runtime/agent-chat.mjs",
+    "../desktop/runtime/agent-chat-images.mjs", "../desktop/runtime/lan-gateway.mjs",
+  ].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
+  // The preload refuses everything but the two operations with exactly their keys, before anything reaches the main process.
+  assert.match(preload, /agentChatImage\(operation, payload\) \{/u);
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat-image", operation, payload\)/u);
+  assert.match(preload, /const AGENT_CHAT_CONVERSATION_ID = \/\^chat-\[0-9a-f\]\{12\}\$\/u;/u);
+  assert.match(preload, /valid && operation === "add"[\s\S]{0,200}Object\.keys\(payload\)\.length === 2 && payload\.bytes instanceof Uint8Array && payload\.bytes\.byteLength > 0 && payload\.bytes\.byteLength <= TASK_IMAGE_MAX_BYTES/u);
+  assert.match(preload, /valid && operation === "read"[\s\S]{0,300}Object\.keys\(payload\)\.length === 3[\s\S]{0,200}AGENT_CHAT_CONVERSATION_ID\.test\(payload\.conversationId\)[\s\S]{0,120}TASK_IMAGE_ID\.test\(payload\.imageId\)/u);
+  assert.match(preload, /\} else valid = false;\s+if \(!valid\) return Promise\.resolve\(\{ ok: false, error: "invalid" \}\);/u);
+  assert.equal([...preload.matchAll(/"pomegr:agent-chat-image"/gu)].length, 1, "one place invokes the channel");
+  // Desktop main registers one channel with the trusted-frame check and hands the gateway the same controller operation.
+  assert.match(bridge, /export const AGENT_CHAT_IMAGE_CHANNEL = "pomegr:agent-chat-image"/u);
+  assert.match(bridge, /export const AGENT_CHAT_IMAGE_OPERATIONS = Object\.freeze\(\["add", "read"\]\)/u);
+  assert.match(bridge, /ipcMain\.handle\(AGENT_CHAT_IMAGE_CHANNEL, async \(event, operation, payload\) => \{\s+if \(!isTrustedEvent\(event\)\) return INVALID;/u);
+  assert.match(bridge, /ipcMain\.removeHandler\(AGENT_CHAT_IMAGE_CHANNEL\); chat\.dispose\?\.\(\)/u);
+  assert.match(main, /agentChatImage: \(operation, payload\) => agentChat\.image\(operation, payload\)/u);
+  assert.equal([...main.matchAll(/agentChat\.image\(/gu)].length, 1);
+  // The images are private files of desktop main: no network, no process, no shell, no path from the caller.
+  assert.doesNotMatch(images, /fetch\(|https?:\/\/|spawn|exec|console\.|server\/|shell/u);
+  assert.match(images, /flag: "wx", mode: 0o600/u);
+  assert.match(images, /const inRepository = \(repositoryId\) => typeof repositoryId === "string" && REPOSITORY_ID\.test\(repositoryId\);/u);
+  assert.match(images, /const located = \(repositoryId, conversationId\) => inRepository\(repositoryId\) && typeof conversationId === "string" && CONVERSATION_ID\.test\(conversationId\);/u);
+  // The gateway answers the two routes itself and forwards nothing of them.
+  assert.match(gateway, /const AGENT_CHAT_IMAGE_ADD_PATH = "\/api\/agent-chat\/image-add";/u);
+  assert.match(gateway, /const AGENT_CHAT_IMAGE_READ_PATH = "\/api\/agent-chat\/image-read";/u);
+  assert.match(gateway, /if \(chatImageAdd \|\| chatImageRead\) \{\s+await serveChatImage\(request, response, url, chatImageAdd \? "add" : "read"\);\s+return;/u);
+});
+
 test("artifact privacy scans extracted payloads and the exact final publish allowlist", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-artifact-security-"));
   const extracted = path.join(root, "extracted");

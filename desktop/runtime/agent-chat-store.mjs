@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
+import { normalizeChatImages } from "./agent-chat-images.mjs";
 import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION } from "./agent-chat-proposal.mjs";
 
 export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
@@ -68,7 +69,10 @@ function storedResult(result) {
   if (result.queue !== undefined) return result.ok && QUEUE_RESULTS.includes(result.queue) ? { ok: true, queue: result.queue } : null;
   const taskId = typeof result.taskId === "string" && TASK_ID.test(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
-  return typeof result.error === "string" && RESULT_ERRORS.has(result.error) ? { ok: false, error: result.error, ...taskId } : null;
+  // `part` says that the operation failed at an image: the task was created, or is there, and the image was not attached.
+  if (result.part !== undefined && result.part !== "images") return null;
+  const part = result.part === "images" ? { part: "images" } : {};
+  return typeof result.error === "string" && RESULT_ERRORS.has(result.error) ? { ok: false, error: result.error, ...taskId, ...part } : null;
 }
 
 function storedProposal(proposal) {
@@ -100,7 +104,16 @@ function storedProposal(proposal) {
 
 function storedMessage(message) {
   if (!isPlainObject(message) || typeof message.id !== "string" || !MESSAGE_ID.test(message.id) || !instant(message.at)) return null;
-  if (message.role === "user") return bounded(message.text, MESSAGE_LENGTH) ? { id: message.id, role: "user", text: message.text, at: message.at } : null;
+  if (message.role === "user") {
+    if (!bounded(message.text, MESSAGE_LENGTH)) return null;
+    const stored = { id: message.id, role: "user", text: message.text, at: message.at };
+    if (message.images !== undefined) {
+      const images = normalizeChatImages(message.images);
+      if (!images) return null;
+      stored.images = images;
+    }
+    return stored;
+  }
   if (message.role !== "agent" || !bounded(message.text, ANSWER_LENGTH, { empty: true }) || !PROVIDERS.has(message.provider)
     || !(message.model === null || (typeof message.model === "string" && MODEL.test(message.model))) || !TURN_STATUSES.has(message.status)) return null;
   const stored = { id: message.id, role: "agent", text: message.text, at: message.at, provider: message.provider, model: message.model, status: message.status };

@@ -615,7 +615,8 @@ describe("Task modal resolutions", () => {
     setBoard([reviewTask, blockedTask]);
     const { user, dialog } = await open("Task text 14");
     expect(dialog.getByText("Blocked by agent")).toHaveClass("commandChip");
-    expect(dialog.getByText(/Agent reported it cannot continue/)).toHaveTextContent("The schema needs a decision.");
+    expect(dialog.getByText(/Agent reported it cannot continue/).textContent).toMatch(/^Agent reported it cannot continue \(.+\):$/u);
+    expect(dialog.getByText("The schema needs a decision.")).toHaveClass("taskReportNotice");
     await user.click(dialog.getByRole("button", { name: "Requeue task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-14" }));
   });
@@ -698,12 +699,18 @@ describe("Task modal resolutions", () => {
   it("shows the agent's attention line as the agent's own words, for a task every check of which passed", async () => {
     setBoard([task(19, { text: "Finished with a note", state: "needs_review", completeWhen: { checks: ["pr_open"], own: null },
       session: { id: "claude:abc129", title: null, state: "closed", observedModel: null },
-      report: { at: "2026-10-08T12:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "The retry limit is a guess; confirm it." } })]);
+      report: { at: "2026-10-08T12:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "The retry limit of **five** is a guess; confirm `RETRY_LIMIT` and [the PR](https://example.test)." } })]);
     const { dialog } = await open("Finished with a note");
     expect(dialog.getByText("Needs review")).toHaveClass("commandChip", "warning");
     expect(dialog.getByText("Passed")).toHaveClass("isPassed");
     const line = dialog.getByText(/Agent reported complete/u);
-    expect(line.textContent).toMatch(/^Agent reported complete \(.+\) and asks for your attention: The retry limit is a guess; confirm it\.$/u);
+    expect(line.textContent).toMatch(/^Agent reported complete \(.+\) and asks for your attention:$/u);
+    // The agent's words stand apart in the notice, with bold and inline code formatted and a link left as written.
+    const notice = line.parentElement!.querySelector(".taskReportNotice") as HTMLElement;
+    expect(notice).toHaveTextContent("The retry limit of five is a guess; confirm RETRY_LIMIT and [the PR](https://example.test).");
+    expect(within(notice).getByText("five").tagName).toBe("STRONG");
+    expect(within(notice).getByText("RETRY_LIMIT")).toHaveClass("taskReportCode");
+    expect(notice.querySelector("a")).toBeNull();
     expect(dialog.getByRole("button", { name: "Mark done" })).toBeInTheDocument();
   });
 
@@ -732,6 +739,7 @@ describe("task field styles", () => {
     expect(rule(".taskRunRow")).toMatch(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*align-items: end;[^}]*gap: var\(--space-4\)/);
     expect(styles).toMatch(/\.taskEffort > button \{ min-height: var\(--control-height\); \}/);
     expect(rule(".taskModelNotice")).toMatch(/border: 1px solid var\(--command-amber\)[^}]*border-radius: var\(--control-radius\)[^}]*background: var\(--color-amber-soft\)/);
+    expect(rule(".taskReportNotice")).toMatch(/border: 1px solid var\(--command-amber\)[^}]*background: var\(--color-amber-soft\)[^}]*color: var\(--command-ink\)[^}]*400 var\(--text-sm\)/);
     expect(rule(".taskChecks")).toMatch(/display: flex; flex-wrap: wrap; gap: var\(--space-1\) var\(--space-4\)/);
     expect(rule(".taskCheckRow")).toMatch(/display: inline-flex;[^}]*gap: var\(--space-2\);[^}]*min-height: 28px/);
     expect(rule('.taskCheckRow input[type="checkbox"]')).toMatch(/width: 16px; height: 16px;[^}]*accent-color: var\(--command-brand\)/);

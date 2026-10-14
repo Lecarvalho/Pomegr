@@ -371,3 +371,84 @@ test("a conversation outside the contract does not normalize", () => {
     ["message id of seven digits", { ...good, messages: [{ ...userMessage(1), id: "m-1234567" }] }],
   ]) assert.equal(normalizeConversation(value), null, rule);
 });
+
+const IMAGE_A = { id: "img-0123456789ab", type: "png", bytes: 11 };
+const IMAGE_B = { id: "img-ba9876543210", type: "webp", bytes: 4096 };
+
+test("an owner message keeps its images as { id, type, bytes } and nothing else, and an agent message keeps none", () => {
+  const dirty = conversationOf("chat-0123456789ab", [
+    { ...userMessage(1), images: [{ ...IMAGE_A, file: "C:\\private\\a.png", path: "x" }, IMAGE_B] },
+    agentMessage(2, { images: [IMAGE_A] }),
+  ]);
+  const clean = normalizeConversation(dirty);
+  assert.deepEqual(clean.messages[0].images, [IMAGE_A, IMAGE_B]);
+  assert.deepEqual(Object.keys(clean.messages[0]).sort(), ["at", "id", "images", "role", "text"]);
+  assert.equal(JSON.stringify(clean).includes("private"), false);
+  assert.equal(Object.hasOwn(clean.messages[1], "images"), false);
+  const plain = normalizeConversation(conversationOf("chat-0123456789ab"));
+  assert.equal(Object.hasOwn(plain.messages[0], "images"), false);
+});
+
+test("an owner message with images outside the contract makes the conversation invalid", () => {
+  const withImages = (images) => normalizeConversation(conversationOf("chat-0123456789ab", [{ ...userMessage(1), images }]));
+  assert.ok(withImages([IMAGE_A]));
+  assert.ok(withImages(["a", "b", "c", "d"].map((_, index) => ({ ...IMAGE_A, id: `img-00000000000${index}` }))), "four images");
+  const long = Array.from({ length: 5 }, (_, index) => ({ ...IMAGE_A, id: `img-00000000000${index}` }));
+  const refused = [
+    null, [], long, [IMAGE_A, IMAGE_A], "img", {}, [null], ["img-0123456789ab"], [{ ...IMAGE_A, id: "img-x" }], [{ ...IMAGE_A, id: "IMG-0123456789AB" }], [{ ...IMAGE_A, type: "svg" }],
+    [{ ...IMAGE_A, type: "jpg" }], [{ ...IMAGE_A, bytes: 0 }], [{ ...IMAGE_A, bytes: -3 }], [{ ...IMAGE_A, bytes: 2.5 }], [{ ...IMAGE_A, bytes: "11" }], [{ ...IMAGE_A, bytes: 5 * 1024 * 1024 + 1 }],
+    [{ id: IMAGE_A.id, type: "png" }],
+  ];
+  for (const images of refused) assert.equal(withImages(images), null, JSON.stringify(images));
+});
+
+test("the store saves a message with images, reads it back, and refuses a bad image list without changing the file", async (context) => {
+  const { store, directory } = await workspace(context);
+  const created = await store.create(repositoryId, { provider: "claude", model: null, title: "Plan" });
+  const good = { ...created, messages: [{ ...userMessage(1), images: [IMAGE_A, IMAGE_B] }, agentMessage(2)] };
+  assert.equal(await store.save(repositoryId, good), true);
+  assert.deepEqual(await createAgentChatStore({ directory }).read(repositoryId, created.id), good);
+  const onDisk = await fs.readFile(fileOf(directory, created.id), "utf8");
+  assert.equal(await store.save(repositoryId, { ...good, messages: [{ ...userMessage(1), images: [] }, agentMessage(2)] }), false);
+  assert.equal(await store.save(repositoryId, { ...good, messages: [{ ...userMessage(1), images: [IMAGE_A, IMAGE_A] }, agentMessage(2)] }), false);
+  assert.equal(await fs.readFile(fileOf(directory, created.id), "utf8"), onDisk);
+  assert.deepEqual(await store.read(repositoryId, created.id), good);
+});
+
+test("a stored result keeps part images only on a failure, and refuses any other part", () => {
+  const withResult = (result) => normalizeConversation(conversationOf("chat-0123456789ab", [userMessage(1), agentMessage(2, { proposal: proposalWith({ operations: [{ op: "delete_task", id: "T-1" }], results: [result], state: "partial" }) })]));
+  const results = (conversation) => conversation.messages[1].proposal.results;
+  assert.deepEqual(results(withResult({ ok: false, error: "limit", taskId: "T-9", part: "images" })), [{ ok: false, error: "limit", taskId: "T-9", part: "images" }]);
+  assert.deepEqual(results(withResult({ ok: false, error: "conflict", part: "images" })), [{ ok: false, error: "conflict", part: "images" }]);
+  assert.deepEqual(results(withResult({ ok: false, error: "unavailable", part: "images" })), [{ ok: false, error: "unavailable", part: "images" }]);
+  assert.deepEqual(results(withResult({ ok: false, error: "limit", taskId: "T-9" })), [{ ok: false, error: "limit", taskId: "T-9" }], "no part is no part");
+  assert.deepEqual(results(withResult({ ok: true, taskId: "T-9", part: "images" })), [{ ok: true, taskId: "T-9" }], "a success has no part");
+  for (const part of ["docs", "image", "IMAGES", "", null, 5, ["images"], {}]) assert.equal(withResult({ ok: false, error: "limit", part }), null, String(part));
+  assert.equal(withResult({ ok: false, part: "images" }), null, "an error is still required");
+  assert.equal(withResult({ ok: false, error: "teapot", part: "images" }), null);
+});
+
+test("a proposal with images round-trips: images on create_task and attach_images are kept as written", async (context) => {
+  const operations = [
+    { op: "create_task", text: "Match the mock-up", queue: true, images: [IMAGE_A.id, IMAGE_B.id] },
+    { op: "attach_images", id: "T-4", images: [IMAGE_B.id] },
+  ];
+  const proposal = proposalWith({ operations, results: [{ ok: false, error: "limit", taskId: "T-9", part: "images" }, { ok: false, error: "skipped" }] });
+  const conversation = conversationOf("chat-0123456789ab", [{ ...userMessage(1), images: [IMAGE_A, IMAGE_B] }, agentMessage(2, { proposal })]);
+  assert.deepEqual(normalizeConversation(conversation), conversation);
+  const { store, directory } = await workspace(context);
+  const created = await store.create(repositoryId, { provider: "claude", model: "claude-opus-4-1", title: "A title" });
+  const saved = { ...conversation, id: created.id, createdAt: created.createdAt, updatedAt: created.updatedAt };
+  assert.equal(await store.save(repositoryId, saved), true);
+  assert.deepEqual(await createAgentChatStore({ directory }).read(repositoryId, created.id), saved);
+});
+
+test("a stored proposal with a bad image list in an operation makes the conversation invalid", () => {
+  const withOperation = (operation) => normalizeConversation(conversationOf("chat-0123456789ab", [userMessage(1), agentMessage(2, { proposal: proposalWith({ operations: [operation], results: undefined, state: "pending" }) })]));
+  assert.ok(withOperation({ op: "attach_images", id: "T-1", images: [IMAGE_A.id] }));
+  for (const operation of [
+    { op: "attach_images", id: "T-1", images: [] }, { op: "attach_images", id: "T-1" }, { op: "attach_images", id: "T-1", images: [IMAGE_A.id, IMAGE_A.id] },
+    { op: "attach_images", id: "T-1", images: ["img-x"] }, { op: "create_task", text: "x", images: [] }, { op: "create_task", text: "x", images: [IMAGE_A.id, IMAGE_A.id] },
+    { op: "attach_images", id: "T-1", images: [IMAGE_A.id], extra: true },
+  ]) assert.equal(withOperation(operation), null, JSON.stringify(operation));
+});

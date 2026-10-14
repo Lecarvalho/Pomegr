@@ -3,10 +3,10 @@
 import { useId, useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref } from "react";
 import { TaskImageAttach, TaskRichText, type TaskFieldImages, type TaskRichTextHandle } from "./TaskImages";
 import { TASK_IMAGE_HELPER } from "./task-images-desktop";
-import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, type TaskCheckOutcome, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  AGENT_REPORTED_LABEL, CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, REMOVE_WORKTREE_LABEL, canRemoteControl, isAgentJudged, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withKeepWorktree, withRemoteControl,
+  AGENT_REPORTED_LABEL, CHECK_OUTCOME_CLASSES, CHECK_OUTCOME_LABELS, CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, REMOVE_WORKTREE_LABEL, canRemoteControl, isAgentJudged, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withKeepWorktree, withRemoteControl,
   type CompleteWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
@@ -117,7 +117,7 @@ export function RunFields({ run, models, disabled, onChange }: { run: TaskRun; m
 
 export function CompleteWhenField({ draft, results, ownNote, footnote, disabled, onDraftChange, onCommit }: {
   draft: CompleteWhenDraft;
-  results?: ReadonlyMap<TaskCheck, boolean>;
+  results?: ReadonlyMap<TaskCheck, TaskCheckOutcome>;
   ownNote?: string | null;
   footnote?: ReactNode;
   disabled?: boolean;
@@ -135,7 +135,7 @@ export function CompleteWhenField({ draft, results, ownNote, footnote, disabled,
         return <div className="taskCheckRow" key={check}>
           <input id={id} type="checkbox" checked={draft.checks.includes(check)} disabled={disabled} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
           <label htmlFor={id}>{CHECK_SHORT_LABELS[check]}</label>
-          {result !== undefined && <span className={`taskCheckResult ${result ? "isPassed" : "isFailed"}`}>{result ? "Passed" : "Not passed"}</span>}
+          {result !== undefined && <span className={`taskCheckResult${CHECK_OUTCOME_CLASSES[result]}`}>{CHECK_OUTCOME_LABELS[result]}</span>}
           {results !== undefined && isAgentJudged(check) && draft.checks.includes(check) && <span className="taskCheckResult">{AGENT_REPORTED_LABEL}</span>}
         </div>;
       })}

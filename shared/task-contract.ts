@@ -23,7 +23,10 @@ export type TaskSource = { kind: "github_issue"; number: number };
 export type TaskImageType = "png" | "jpeg" | "gif" | "webp";
 // One image attached to a task: an opaque ID, its fixed type, and its size in bytes.
 export type TaskImage = { id: string; type: TaskImageType; bytes: number };
-export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null; attention?: string | null };
+// `unavailable` is present only when true: Pomegr had no current evidence, so the condition is neither passed nor failed.
+export type TaskCheckResult = { check: TaskCheck; passed: boolean; unavailable?: boolean };
+export type TaskCheckOutcome = "passed" | "failed" | "unavailable";
+export type TaskReport = { at: string; results: TaskCheckResult[]; blockReason: string | null; attention?: string | null };
 export type TaskQueue = {
   status: TaskQueueStatus;
   blockedBy: string | null;

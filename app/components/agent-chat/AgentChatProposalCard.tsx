@@ -1,8 +1,11 @@
 import type { AgentChatProposal } from "../../../shared/agent-chat-contract";
 import type { Task } from "../../../shared/task-contract";
+import { AgentChatImageStrip } from "./AgentChatImages";
+import type { AgentChatImageUrls } from "./agent-chat-images";
 import { describeOperation, operationOutcome, proposalChip, proposalLabel, proposalNote, proposalPrimary, type OperationTitlePart } from "./agent-chat-presentation";
 
 type BoardTask = Pick<Task, "id" | "text">;
+const NO_URLS: AgentChatImageUrls = new Map();
 
 function Title({ parts }: { parts: OperationTitlePart[] }) {
   return <>{parts.map((part, index) => (typeof part === "string"
@@ -16,9 +19,11 @@ function Title({ parts }: { parts: OperationTitlePart[] }) {
  * try while no session launched. `heldStart` names the gates that hold a task now, from the board's own readings.
  * A queue change is its own card too. It can be applied on a paired device, and it stays open while the queue was not changed.
  */
-export function AgentChatProposalCard({ proposal, tasks, busy, startHere = false, heldStart, onApply, onDismiss }: {
+export function AgentChatProposalCard({ proposal, tasks, imageUrls = NO_URLS, busy, startHere = false, heldStart, onApply, onDismiss }: {
   proposal: AgentChatProposal;
   tasks: readonly BoardTask[];
+  /** The images of the conversation, so a row that names one shows it. */
+  imageUrls?: AgentChatImageUrls;
   busy: boolean;
   startHere?: boolean;
   heldStart?(taskId: string): string | null;
@@ -43,6 +48,7 @@ export function AgentChatProposalCard({ proposal, tasks, busy, startHere = false
           <p className="agentChatOpTitle"><Title parts={row.title} /></p>
           {row.text && row.text.value !== "" && <p className={`agentChatOpText${row.text.muted ? " isMuted" : ""}`} title={row.text.whole}>{row.text.value}</p>}
           {row.details.map((detail) => <p key={detail} className="agentChatOpDetail">{detail}</p>)}
+          {row.images && <AgentChatImageStrip imageIds={row.images} urls={imageUrls} label="Images for this task" />}
           {row.warning && <p className="agentChatOpWarning">{row.warning}</p>}
           {outcome && <p className={`agentChatOpResult is-${outcome.tone}`}>{outcome.text}</p>}
           {held && <p className="agentChatOpDetail">{held}</p>}

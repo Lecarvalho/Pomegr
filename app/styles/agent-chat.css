@@ -108,6 +108,15 @@
 .agentChatError { color: var(--command-error); }
 .agentChatNote { color: var(--command-muted); }
 
+/* Images the owner sends: small pictures under a message, in a proposal row, and above the composer's row. */
+.agentChatImages { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; }
+.agentChatImage { position: relative; display: inline-flex; }
+.agentChatImagePicture { display: block; width: 72px; height: 72px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); object-fit: cover; }
+.agentChatImageRemove { position: absolute; top: var(--space-1); right: var(--space-1); width: 24px; height: 24px; border: 1px solid var(--command-line-strong); background: var(--command-panel); }
+.agentChatImageRemove:hover:not(:disabled) { background: var(--command-panel-2); }
+.agentChatAttach { flex: 0 0 auto; }
+.agentChatOp > .agentChatImages { margin-top: var(--space-2); }
+
 /* Saved conversations. A row opens one; its Icon action asks inline before deleting. */
 .agentChatHistory { flex: 1 1 auto; min-height: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
 .agentChatEyebrow { margin: 0; color: var(--command-faint); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
@@ -131,6 +140,8 @@
   .agentChatMessage.isOwner { max-width: 92%; }
 }
 @media (max-width: 760px), (pointer: coarse) {
+  .agentChatAttach, .agentChatImageRemove { width: 44px; height: 44px; }
+  .agentChatImagePicture { width: 96px; height: 96px; }
   .agentChatLauncher, .agentChatField, .agentChatHistoryOpen, .agentChatRepository .commandSelectTrigger, .agentChatRun .commandSelectTrigger { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -36,8 +36,9 @@ export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogS
 const PULL_REQUEST_STATES = ["open", "merged", "closed"];
 
 function ciPassed(items, checkRead) {
-  const judged = ["open", "merged"].map((state) => items.filter((item) => item.state === state)).find((list) => list.length > 0);
-  if (!judged) return { value: false, readAt: null };
+  const judged = ["open", "merged"].map((state) => items.filter((item) => item?.state === state)).find((list) => list.length > 0);
+  // No open or merged pull request is a known answer of the pull-request read, unless a listed one has no known state.
+  if (!judged) return items.some((item) => !PULL_REQUEST_STATES.includes(item?.state)) ? { value: null, readAt: null } : { value: false, readAt: Number.POSITIVE_INFINITY };
   const reads = judged.map((item) => checkRead(item.url));
   if (reads.some((read) => !read || !Number.isFinite(read.readAt))) return { value: null, readAt: null };
   return { value: reads.every((read) => read.status === "passed"), readAt: Math.min(...reads.map((read) => read.readAt)) };
@@ -84,9 +85,7 @@ function checkFacts(state, blocks, checkRead) {
     : comparison?.kind === "base" && Number.isSafeInteger(comparison.ahead) ? comparison.ahead > 0 || comparison.integrated === true : null;
   // The session's pull requests are the ones its pull-request block lists: those it created and those of its branch.
   const pulls = blocks.pullRequests;
-  const branchPulls = pulls?.status === "ready" && Array.isArray(pulls.items)
-    ? pulls.items.filter((item) => PULL_REQUEST_STATES.includes(item?.state))
-    : null;
+  const branchPulls = pulls?.status === "ready" && Array.isArray(pulls.items) ? pulls.items : null;
   const ci = branchPulls ? ciPassed(branchPulls, checkRead) : { value: null, readAt: null };
   const blockReadAt = timeOf(repository.readAt);
   const pullsReadAt = timeOf(pulls?.readAt);
@@ -94,7 +93,7 @@ function checkFacts(state, blocks, checkRead) {
   return {
     treeClean: Array.isArray(repository.files) ? repository.files.length === 0 : null,
     branchCommits,
-    pullRequestStates: branchPulls ? branchPulls.map((item) => item.state) : null,
+    pullRequestStates: branchPulls ? branchPulls.map((item) => (PULL_REQUEST_STATES.includes(item?.state) ? item.state : "unknown")) : null,
     ciPassed: ci.value,
     readAt: {
       tree: blockReadAt,

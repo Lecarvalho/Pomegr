@@ -58,10 +58,10 @@ test("electron-builder includes every required desktop runtime module", async ()
   assert.deepEqual(missing, [], "Required runtime modules must be included in electron-builder's file list");
 });
 
-test("the agent chat's five runtime files and its MCP worker are packaged, and its MCP sources are not shipped as modules", async () => {
+test("the agent chat's six runtime files and its MCP worker are packaged, and its MCP sources are not shipped as modules", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const packaged = new Set(packageJson.build.files);
-  const runtimeFiles = ["agent-chat.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs"].map((name) => `desktop/runtime/${name}`);
+  const runtimeFiles = ["agent-chat.mjs", "agent-chat-images.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs"].map((name) => `desktop/runtime/${name}`);
   const worker = "desktop/workers/agent-chat-mcp.cjs";
   for (const file of [...runtimeFiles, worker]) {
     assert.ok(DESKTOP_RUNTIME_FILES.includes(file), `${file} is in the runtime allowlist`);
@@ -72,7 +72,7 @@ test("the agent chat's five runtime files and its MCP worker are packaged, and i
   assert.ok(WORKER_BUNDLE_FILES.includes(worker), "the MCP worker is unpacked with the other worker bundles");
   assert.deepEqual(WORKER_BUNDLE_FILES.filter((file) => file.includes("agent-chat")), [worker]);
   assert.equal(DESKTOP_RUNTIME_FILES.some((file) => file.startsWith("mcp/")), false, "the MCP sources are bundled into the worker, not packaged");
-  assert.equal(DESKTOP_RUNTIME_FILES.filter((file) => file.includes("agent-chat")).length, 6);
+  assert.equal(DESKTOP_RUNTIME_FILES.filter((file) => file.includes("agent-chat")).length, 7);
   assert.doesNotThrow(() => assertPackagedApplicationFiles([...REQUIRED_FILES]));
 });
 
