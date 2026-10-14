@@ -170,6 +170,8 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandMain { min-width: 0; grid-column: 2; grid-row: 2; padding: 32px 32px 40px; overflow: auto; background: var(--command-ground); }
 .commandView { width: min(1480px, 100%); margin: 0 auto; }
 .commandPageHeader { min-height: 60px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 16px 24px; }
+/* One gap between the header and the first panel of every page. */
+.commandView > .commandPageHeader + * { margin-top: var(--space-4); }
 .commandPageTitleBlock { min-width: 0; }
 .commandPageHeader h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui); letter-spacing: -.025em; }
 .commandPageMeta { max-width: 66ch; margin: 7px 0 0; color: var(--command-muted); font-size: var(--text-base); line-height: 1.55; }
@@ -255,7 +257,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandEmptyState { margin: 14px 0; padding: 26px; border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandSessionConnection { display: inline-flex; align-items: center; gap: 7px; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); text-transform: none; letter-spacing: 0; }
 .commandSessionView { width: min(1400px, 100%); margin: 0 auto; }
-.commandSettingsLayout { margin-top: 14px; display: grid; grid-template-columns: 210px minmax(0, 1fr); border: 1px solid var(--command-line); background: var(--command-panel); }
+.commandSettingsLayout { display: grid; grid-template-columns: 210px minmax(0, 1fr); border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandSettingsNav { padding: 10px; border-right: 1px solid var(--command-line); }
 .commandSettingsNav button { width: 100%; min-height: 38px; padding: 0 10px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; font-size: var(--text-xs); text-align: left; }
 .commandSettingsNav button:hover, .commandSettingsNav button.active { background: var(--command-panel-2); color: var(--command-ink); }
