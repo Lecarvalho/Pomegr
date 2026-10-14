@@ -53,7 +53,7 @@ describe("Start session", () => {
     expect((await openModal(user)).getByRole("button", { name: "Start session" })).toHaveClass("commandSecondaryAction");
   });
 
-  it("sends exactly the two IDs once, shows Starting... and ignores a double click", async () => {
+  it("sends exactly the two IDs once, shows Starting... and ignores a double click, then closes the modal", async () => {
     let resolve!: (value: unknown) => void;
     taskStart.mockReturnValue(new Promise((r) => { resolve = r; }));
     const user = userEvent.setup();
@@ -64,10 +64,9 @@ describe("Start session", () => {
     expect(taskStart).toHaveBeenCalledWith(repositoryId, "T-1");
     expect(dialog.getByRole("button", { name: "Starting…" })).toBeDisabled();
     resolve({ status: "started" });
-    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
-    expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal window.");
-    expect(dialog.queryByText(/Running|Live/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Session started in a new terminal window.")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -229,14 +228,15 @@ describe("Start session", () => {
     expect(taskAction).not.toHaveBeenCalled();
   });
 
-  describe("after a start", () => {
+  describe("after a start that did not happen", () => {
     const linked = { session: { id: "s", title: "Write the thing", state: "idle" as const, observedModel: null } };
     async function startThen(...changes: Partial<Task>[]) {
+      taskStart.mockResolvedValueOnce({ status: "plugin_missing" });
       const user = userEvent.setup();
       const view = render(<TaskBoardPane repositoryId={repositoryId} />);
       const dialog = await openModal(user);
       await user.click(dialog.getByRole("button", { name: "Start session" }));
-      await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal window."));
+      await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Install or update the Pomegr plugin"));
       for (const change of changes) {
         setBoard(task(change));
         view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
@@ -248,7 +248,7 @@ describe("Start session", () => {
       const { dialog } = await startThen(linked);
       expect(dialog.getByRole("status")).toHaveTextContent("A session is already linked to this task.");
       expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
-      expect(dialog.queryByText("Session started in a new terminal window.")).not.toBeInTheDocument();
+      expect(dialog.queryByText(/Install or update the Pomegr plugin/u)).not.toBeInTheDocument();
     });
 
     it.each([
@@ -270,7 +270,7 @@ describe("Start session", () => {
 
     it("stays locked while the board shows the task unchanged", async () => {
       const { user, dialog } = await startThen({}, { updatedAt: "2026-10-08T10:05:00.000Z" });
-      expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal window.");
+      expect(dialog.getByRole("status")).toHaveTextContent("Install or update the Pomegr plugin");
       expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
       await user.click(dialog.getByRole("button", { name: "Start session" }));
       expect(taskStart).toHaveBeenCalledTimes(1);
@@ -414,7 +414,7 @@ describe("Start in separate worktree after a dirty repository", () => {
     expect(dialog.queryByRole("button", { name: "Start in separate worktree" })).not.toBeInTheDocument();
   });
 
-  it("is a secondary action that asks the desktop for the same start with the fixed mark", async () => {
+  it("is a secondary action that asks the desktop for the same start with the fixed mark, and closes the modal once it starts", async () => {
     const { user, dialog } = await startHeld();
     expect(taskStart.mock.calls).toEqual([[repositoryId, "T-1"]]);
     const separate = dialog.getByRole("button", { name: "Start in separate worktree" });
@@ -422,9 +422,8 @@ describe("Start in separate worktree after a dirty repository", () => {
     expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
     taskStart.mockResolvedValueOnce({ status: "started" });
     await user.click(separate);
-    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal window."));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
     expect(taskStart.mock.calls).toEqual([[repositoryId, "T-1"], [repositoryId, "T-1", true]]);
-    expect(dialog.queryByRole("button", { name: "Start in separate worktree" })).not.toBeInTheDocument();
   });
 
   it("stays offered when the owner cancels the confirmation", async () => {
@@ -451,7 +450,7 @@ describe("paired phone starts", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
-  it("confirms on the phone and sends one bounded start, with no native bridge", async () => {
+  it("confirms on the phone and sends one bounded start, with no native bridge, then closes the modal", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openModal(user);
@@ -464,8 +463,8 @@ describe("paired phone starts", () => {
       body: JSON.stringify({ repositoryId, taskId: "T-1", confirmed: true }),
     });
     expect(taskStart).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
     expect(refresh).toHaveBeenCalledTimes(1);
-    expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal on the computer running Pomegr.");
   });
 
   it("cancels without a request and leaves the task startable", async () => {

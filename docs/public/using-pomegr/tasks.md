@@ -267,7 +267,7 @@ task: see [Start a session from the chat](agent-chat.md#start-a-session-from-the
    phone, confirm in the phone's browser; no click on the PC is needed.
 2. A visible terminal window opens on the computer running Pomegr, in the repository, or in the task's worktree
    (see below), running Claude Code or Codex with the model and effort you chose.
-   The task window says "Session started in a new terminal window."
+   The task window closes.
 3. When the plugin in that session reports in, the task links to the session. The
    card then shows **Open session** and the session's state.
 
@@ -414,8 +414,8 @@ until you resolve that task; sessions already running continue. Open the task an
 choose one of two actions. In the desktop app, the banner also offers them, as
 **Mark done and resume** and **Requeue T-n**.
 
-- **Mark done and resume queue** accepts the task as done and keeps its report and
-  session link.
+- **Mark done and resume queue** accepts the task as done, keeps its report and
+  session link, and closes the task window.
 - **Requeue task** puts it back in the queue as **Queued** with its card last in
   **Ready**, clears its
   report and session link, and lets a new session report once more.
