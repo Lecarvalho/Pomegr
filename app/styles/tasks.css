@@ -546,13 +546,16 @@
   .taskHomeTable, .taskHomeTable tbody { display: block; }
   .taskHomeTable thead { display: none; }
   .taskHomeTable tbody tr { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-3) var(--space-4); }
-  .taskHomeTable tbody th, .taskHomeTable tbody td { padding: 0; }
-  .taskHomeTable tbody th { grid-column: 1 / 5; min-width: 0; }
-  .taskHomeTable tbody td:nth-child(2) { grid-column: 5; justify-self: end; }
-  .taskHomeTable tbody td.taskHomeNumber { display: flex; flex-direction: column; text-align: left; }
-  .taskHomeTable tbody td.taskHomeNumber::before { content: attr(data-label); color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .taskHomeTable tbody th, .taskHomeTable tbody td, .taskHomeTable tbody th:first-child, .taskHomeTable tbody td:last-child { padding: 0; }
+  .taskHomeTable tbody th { grid-column: 1 / 3; min-width: 0; }
+  .taskHomeTable tbody td:nth-child(2) { grid-column: 3 / -1; align-self: center; justify-self: end; white-space: nowrap; }
+  .taskHomeTable tbody td:nth-child(2) .commandChip { white-space: nowrap; }
+  .taskHomeTable tbody td.taskHomeNumber { display: flex; flex-direction: column; justify-content: space-between; text-align: left; }
+  .taskHomeTable tbody td.taskHomeNumber::before { content: attr(data-label); color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); overflow-wrap: anywhere; }
   .taskHomeTable tbody td.taskHomeChanged { grid-column: 1 / -1; flex-direction: row; gap: var(--space-2); }
   .taskHomeBoardLink { min-height: 44px; display: flex; align-items: center; }
+  /* The floating Aril launcher (44px high, 16px off the edge) never covers the last panel. */
+  .taskHome { padding-bottom: calc(44px + var(--space-4) + var(--space-4) + env(safe-area-inset-bottom)); }
 }
 
 /* Runs after (T-101): the ID of a task in the Runs after rows. The card line reuses the muted wait line. */

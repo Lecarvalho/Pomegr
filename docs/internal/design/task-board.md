@@ -66,6 +66,10 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 - At 760px and narrower, each board row is a card: the name and the queue chip, then the five counts under their caption labels, then the last change.
 - The table header is not drawn there. Each count carries its column name as its label.
 - The repository link is at least 44px tall there.
+- The queue chip sits on the name's row, right-aligned, and never wraps.
+- A count caption wraps rather than truncates, and the counts stay on one line across the card.
+- The name and its detail line share the left edge of the counts and of the last change.
+- The page ends with clearance under its last panel, so the Aril launcher never covers a card.
 
 ## Tasks page
 
