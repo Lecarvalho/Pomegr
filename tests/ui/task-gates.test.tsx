@@ -27,7 +27,6 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   };
 }
 
-const waiting = (id: string) => ({ id, group: null, run: { provider: null, model: null, effort: null } });
 const gates = (overrides: Partial<TaskGates> = {}): TaskGates => ({
   threshold: 85,
   usage: { claude: { status: "ok", fiveHourPercent: 62, sevenDayPercent: 31 }, codex: { status: "ok", fiveHourPercent: 18, sevenDayPercent: 9 } },
@@ -178,13 +177,13 @@ describe("waitingLine", () => {
   it("words every reason", () => {
     const reasons: TaskGateReason[] = ["earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown"];
     const next = { taskId: "T-1", provider: "claude" as const, blockedBy: "T-12", reasons };
-    expect(waitingLine(queue("running", next), waiting("T-1"))).toBe("Waiting: T-12 has not finished; Claude Code is above 70% of the five-hour window; Claude Code usage is not known yet; Claude Code reports an incident; Claude Code status is not known yet; the working tree has uncommitted changes; the working tree state is not known yet");
+    expect(waitingLine(queue("running", next), "T-1")).toBe("Waiting: T-12 has not finished; Claude Code is above 70% of the five-hour window; Claude Code usage is not known yet; Claude Code reports an incident; Claude Code status is not known yet; the working tree has uncommitted changes; the working tree state is not known yet");
   });
 
   it("is null for another task, no reasons, or a queue that is not running", () => {
     const next = { taskId: "T-1", provider: "codex" as const, blockedBy: null, reasons: [] as TaskGateReason[] };
-    expect(waitingLine(queue("running", next), waiting("T-1"))).toBeNull();
-    expect(waitingLine(queue("running", { ...next, reasons: ["tree_dirty"] }), waiting("T-2"))).toBeNull();
-    expect(waitingLine(queue("paused", { ...next, reasons: ["tree_dirty"] }), waiting("T-1"))).toBeNull();
+    expect(waitingLine(queue("running", next), "T-1")).toBeNull();
+    expect(waitingLine(queue("running", { ...next, reasons: ["tree_dirty"] }), "T-2")).toBeNull();
+    expect(waitingLine(queue("paused", { ...next, reasons: ["tree_dirty"] }), "T-1")).toBeNull();
   });
 });

@@ -88,3 +88,6 @@ export function startedTask(directory, number, { mintedAt = null, session = null
     dispatch_token: mintedAt === null ? null : dispatchMintedAt(mintedAt), session_id: session, ...(state === undefined ? {} : { state }),
   }, repositoryId);
 }
+
+/** The queue as stored: its waits are a reading of the board, covered by task-queue-waits.test.mjs. */
+export const storedQueue = ({ waits: _waits, ...queue }) => queue;

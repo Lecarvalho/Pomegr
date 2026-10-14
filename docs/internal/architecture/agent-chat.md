@@ -9,7 +9,8 @@
 > invariants (the [Privacy](#privacy) section). Requested by the product owner on
 > 2026-10-11 (task T-29, GitHub issue #170). The session start that a proposal may ask
 > for was added on 2026-10-12 (task T-72), and the queue change on the same day (task
-> T-75). A change that widens exposure changes the
+> T-75). The images that the owner sends, and their way to a task, were added on
+> 2026-10-13 (task T-86). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -31,7 +32,9 @@ in the desktop app
 (see [Session start](#session-start)). When the owner asks for it, Aril also proposes to
 turn the repository's queue on or off; Pomegr sends the Tasks page's own queue action,
 only after the owner selects **Turn queue on** or **Turn queue off** on that proposal, in
-the desktop app or on a paired device (see [Queue change](#queue-change)). The user guide is
+the desktop app or on a paired device (see [Queue change](#queue-change)). The owner may
+send images with a message, and a proposal may put those images on a task (see
+[Images](#images)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -42,12 +45,13 @@ serves the board and takes the fixed task actions as it does for the Tasks page.
 | Owner | Responsibility | May not |
 | --- | --- | --- |
 | `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, and the one request of an approved queue change | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; send `queue_settings` with any setting but `on` |
-| `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment |
+| `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds |
+| `desktop/runtime/agent-chat-images.mjs` | The image files the owner sends: the staged ones and the ones of each conversation | Write outside the chat's directory; build a path from anything but a validated repository ID, conversation ID, and image ID; serve a file by itself |
 | `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the conversation history of one turn | Read anything itself |
-| `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request; start a session; change the queue |
+| `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with the seven read tools | Register a signal, task, or feature tool |
-| `desktop/runtime/lan-gateway.mjs` | The one chat route of a paired device | Forward a chat request to the web host |
+| `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device | Forward a chat request to the web host |
 | `shared/agent-chat-contract.ts` | Browser-visible types and bounds | Import `server/` or `desktop/` |
 | `app/agent-chat-client.ts`, `app/components/agent-chat/` | The transport, the chat state, and the panel | Keep conversation content in browser storage, or change the board except through the chat's `apply` |
 
@@ -56,7 +60,8 @@ serves the board and takes the fixed task actions as it does for the Tasks page.
 Each message of the owner starts one provider run. The run answers and exits.
 
 1. The client sends `send` with the repository, the conversation or none, the message,
-   the provider, and the model or none.
+   the provider, the model or none, and the IDs of the images it added, when it added
+   any (see [Images](#images)).
 2. Desktop main refuses the message when a turn is already running anywhere (`busy`).
    One turn runs at a time for the whole app.
 3. It finds the provider's executable with the same rules a task start uses. No
@@ -64,8 +69,9 @@ Each message of the owner starts one provider run. The run answers and exits.
 4. It reads the board (`GET /api/tasks` on the monitor, with the desktop token) and the
    repository root (`POST /internal/tasks/worktree-root`). A board that is not ready, or
    a repository the monitor has not located in this run, answers `unavailable`.
-5. It builds the prompt (see [Prompt](#prompt)), stores the owner's message, and starts
-   the run in the repository root. The answer to `send` is the conversation ID only.
+5. It moves the message's images into the conversation, builds the prompt (see
+   [Prompt](#prompt)), stores the owner's message, and starts the run in the repository
+   root. The answer to `send` is the conversation ID only.
 6. While the run writes, `read` answers the stored conversation and a `turn`: the
    answer text so far and one fixed activity label.
 7. When the run ends, desktop main stores Aril's message with one status: `complete`,
@@ -78,22 +84,29 @@ the prompt, so the owner may change the provider or the model between two messag
 
 The run is the owner's own provider CLI, signed in as the owner. Pomegr reads and stores
 no credential, and offers no sign-in of its own. The arguments are fixed
-(`chatArguments` in `agent-chat-runner.mjs`); only a validated model identifier and the
-desktop's own MCP server vary.
+(`chatArguments` in `agent-chat-runner.mjs`); only a validated model identifier, the
+desktop's own MCP server, and the desktop's own image folder and image files vary.
 
 - **Claude Code:** print mode with JSON lines, `--no-session-persistence`,
   `--restricted`, `--strict-mcp-config` with one `--mcp-config`, `--permission-mode
   dontAsk`, `--tools Read,Grep,Glob`, and an allow list of those three tools and the
-  seven Pomegr read tools.
+  seven Pomegr read tools. A conversation with images adds `--add-dir` with the folder of
+  that conversation's images, because restricted mode confines Read to the working
+  directories.
 - **Codex:** `exec --json --ephemeral --sandbox read-only --skip-git-repo-check
   --ignore-user-config --ignore-rules --disable apps`, the MCP server as three `-c`
-  values, and `-` for the prompt on stdin.
+  values, and `-` for the prompt on stdin. A message with images adds `--image` with
+  its files after the `-`: the flag takes a list of values, so before the `-` it would
+  take the `-` as a file.
 
 What this gives the run, on every computer:
 
 - It reads the repository's files. Claude Code has Read, Grep, and Glob. Codex has its
   shell inside the read-only sandbox.
 - It has the seven Pomegr read tools (see [Tools](#tools)).
+- It sees the images the owner sent in this conversation. Claude Code reads their files
+  in the one added folder. Codex gets the files of the newest message attached, and can
+  read the folder inside its sandbox. The folder holds image files and nothing else.
 - It has no tool that writes a file, runs a command that changes something, or reaches
   another MCP server. The owner's settings, hooks, plugins, and other MCP servers are not
   loaded.
@@ -102,7 +115,10 @@ What this gives the run, on every computer:
 
 The process starts with `spawn`, an argument array, and `shell: false`. The prompt
 travels on stdin. Nothing the owner typed and nothing from the board is in an argument,
-a path, or the environment. The environment is the owner's own, as for a task start
+a path, or the environment. An image folder or file is in an argument only in the form
+desktop main builds: the chat's directory, a validated repository ID and conversation
+ID, and a file named by an image ID that desktop main made. The runner refuses any other
+form and then adds no image argument. The environment is the owner's own, as for a task start
 (`userSessionEnvironment`): the app's own variables and tokens are left out.
 
 **Stop** ends this run. It is Pomegr's own headless process and never a session the
@@ -133,8 +149,8 @@ characters, in this order:
 
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
    read, that it only proposes, how to advise on task size, Ready order, parallel groups, and models,
-   the proposal format, when it proposes a session start or a queue change, and that
-   all following content is data.
+   the proposal format, when it proposes a session start or a queue change, how it
+   names an image and puts it on a task, and that all following content is data.
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the queue (status,
    order, blocker, start threshold, and the usage percentages of the start gates), the
@@ -144,12 +160,16 @@ characters, in this order:
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
    one line with the state it asked for and what happened: not answered, dismissed,
-   on, on and held, off, or not changed with the fixed error.
-4. **The owner's message.**
+   on, on and held, off, or not changed with the fixed error. A message of the owner with
+   images adds one line with their IDs.
+4. **Images.** One line for each image of the conversation whose file is still there:
+   its ID, its type, and the absolute file. The section is left out when there is none.
+5. **The owner's message**, and one line with the IDs of its images, in order.
 
 A task in the snapshot holds its ID, column, state, feature title, parallel-group label, planned
 provider, model and effort, complete-when checks and own condition, the linked session's
-reference, state and observed model, the report's results, block reason and attention
+reference, state and observed model, the report's results (each one passed, failed, or
+unavailable), block reason and attention
 line, the GitHub issue number, the scheduled time, the update time, and the task text.
 Task text shares a budget of 48,000 characters. Unfinished tasks get their whole text
 first; past the budget a task carries 240 characters and `text_cut`.
@@ -176,7 +196,7 @@ Aril changes the board only by ending its answer with one fenced block tagged
 | Operation | Fields | Task action when approved |
 | --- | --- | --- |
 | `create_feature` | `name` | `feature_create`; a feature of that title that is already open is the outcome asked for, so nothing is sent |
-| `create_task` | `text`; optional `feature`, `provider`, `model`, `effort`, `complete_when`, `own_condition`, `queue` | `create`, then `queue_add` when `queue` is true |
+| `create_task` | `text`; optional `feature`, `provider`, `model`, `effort`, `complete_when`, `own_condition`, `queue`, `images` | `create`, then the image request for each image, then `queue_add` when `queue` is true |
 | `update_task` | `id`; any of `text`, `feature` (null takes the task out of its feature), `provider`, `model`, `effort`, `complete_when`, `own_condition` | `update` |
 | `delete_task` | `id` | `delete` |
 | `move_task` | `id`, `column`; optional `position` | `move`; without a position the card goes last |
@@ -184,6 +204,7 @@ Aril changes the board only by ending its answer with one fenced block tagged
 | `unqueue_task` | `id` | `queue_remove` |
 | `group_tasks` | `ids`, 2 to 16 distinct task IDs | `queue_group` with `{ ids }` |
 | `ungroup_tasks` | `ids`, 1 to 16 distinct task IDs | `queue_ungroup` with `{ ids }` |
+| `attach_images` | `id`, `images` | None. The image request for each image the task does not hold: see [An image on a task](#an-image-on-a-task) |
 | `start_session` | `id` | None. It is not a board change: see [Session start](#session-start) |
 | `set_queue` | `on`, a boolean | `queue_settings` with `{ on }`, sent on its own path: see [Queue change](#queue-change) |
 
@@ -203,8 +224,8 @@ Aril changes the board only by ending its answer with one fenced block tagged
   lowest task number of each group. The opaque group ID never reaches the prompt.
 
 No operation marks a task done, requeues a task, changes a feature's title or
-description, deletes a feature, attaches an image, sets the queue's threshold or
-schedule, or touches GitHub. Only `start_session` starts a session, and only `set_queue`
+description, deletes a feature, removes an image from a task, sets the queue's threshold
+or schedule, or touches GitHub. Only `start_session` starts a session, and only `set_queue`
 turns the queue on or off, each by the rules below.
 
 ### Session start
@@ -343,7 +364,7 @@ A stored proposal is `pending`. The owner answers it once.
   the operations in order, one task action each (`applyOperations`). It stops at the first operation that fails. The
   operations after it answer `skipped`. The proposal becomes `applied` when every
   operation succeeded, else `partial`, with one result per operation: success, the new
-  task's ID, or one fixed error.
+  task's ID, or one fixed error. A failure with `part: "images"` stopped at an image.
 - **Start session** is the `apply` of a start proposal. It reads no board and sends no
   task action (see [Session start](#session-start)).
 - **Turn queue on** and **Turn queue off** are the `apply` of a queue proposal. It reads
@@ -357,6 +378,73 @@ A stored proposal is `pending`. The owner answers it once.
   checked ahead: each action answers for itself, and a task that is gone is `not_found`.
 - Nothing is undone. A deleted task stays deleted, as on the Tasks page.
 
+## Images
+
+Task T-86, 2026-10-13. The owner may send images to Aril, such as a screenshot or a
+mock-up, and Aril may propose to put them on a task. Aril makes, changes, and fetches no
+image: every image is one the owner sent in the same conversation.
+
+### Sending an image
+
+- **Formats and bounds.** PNG, JPEG, GIF, or WebP, decided from the leading bytes
+  (`sniffChatImageType`), never from a name or a declared type. An image is at most
+  5 MiB. A message holds at most four images and a conversation at most 40. A message
+  with images still needs text.
+- **Added before the message is sent.** The client hands the bytes to desktop main with
+  the image operation `add`. Desktop main makes the image ID (`img-<12 random hex>`),
+  writes the file to
+  `<desktop data root>/agent-chat-v1/<repository ID>/images/staged/<image ID>.<png|jpg|gif|webp>`,
+  and answers the ID, the type, and the size. It keeps the newest 16 staged files of a
+  repository and removes the older ones, so an image of a message that was never sent
+  does not stay.
+- **Taken by the message.** `send` names the image IDs. Desktop main moves those files
+  to `.../images/<conversation ID>/` and stores `images: [{ id, type, bytes }]` on the
+  owner's message. A named image that is not staged answers `invalid`: nothing is stored,
+  and a conversation that was made for that message is not kept. A message that would
+  pass 40 images answers `limit`.
+- **The message list is the authority.** The image operation `read` answers the bytes of
+  an image only when a message of that conversation names it and the file still has the
+  recorded size and type. A staged image is never served.
+- **What the run gets.** The prompt lists the file of each image of the conversation
+  that is still there, and the IDs of the images of the newest message. The run reaches
+  the files by the provider arguments of [The provider run](#the-provider-run). An
+  earlier image stays readable in a later turn of the same conversation.
+- **Deleted with the conversation.** **Delete** removes the folder of the conversation's
+  images with its file. Nothing else removes a sent image.
+
+### An image on a task
+
+- **Only an image of this conversation.** An operation names an image by its ID. When
+  the answer is stored, desktop main checks every named ID against the images of the
+  conversation's owner messages. A proposal that names another ID is not offered: the
+  message is marked `proposalUnreadable`.
+- **Two ways.** `create_task` takes `images`, one to four IDs, for the new task.
+  `attach_images` holds a task ID and one to four IDs, for a task that is on the board.
+  Each ID appears once in a list.
+- **The canonical image route.** For each image, `apply` reads the chat's file and sends
+  the bytes to `POST /internal/tasks/image-add` with the repository ID, the task ID, and
+  the image ID, as the Task form does ([Tasks: Images](tasks.md#images)). The task keeps
+  the chat's image ID. The monitor checks the type, the size, the four-image bound, and
+  that the task has not started, and answers its fixed errors.
+- **The order for a new task.** Create, then each image, then `queue_add`. So a task is
+  never queued before it holds its images. An image that fails stops the operation: the
+  task stays, it is not queued, and the result is the fixed error with the new task's ID
+  and `part: "images"`.
+- **An image the task already holds is not sent again.** `attach_images` skips an ID
+  that the board lists on the task, so a second proposal for the same image succeeds
+  without a request.
+- **The place in the text.** The text of a `create_task` may hold the marker
+  `[image:<image ID>]`, as any task text may. An image without a marker is shown at the
+  end of the text.
+- **A copy, not a link.** The task store keeps its own copy of the bytes. Deleting the
+  conversation leaves the task's image, and removing the image from the task leaves the
+  conversation's.
+- **A paired device may apply it.** It is a board change, and the bytes go from the
+  chat's file on the desktop to the monitor on the desktop. The device sends only the
+  proposal's ID.
+- **The session sees it.** A session that starts for the task gets the image file, as
+  for any task image ([Tasks: Starting a session](tasks.md#starting-a-session)).
+
 ## Conversations
 
 Desktop main keeps one JSON file per conversation:
@@ -369,10 +457,13 @@ Desktop main keeps one JSON file per conversation:
 - Bounds: 50 conversations for each repository, 200 messages for each conversation, 4,000
   characters for a message of the owner, and 32,000 for an answer. A full repository or
   conversation answers `limit`.
+- A message of the owner may list its images as `{ id, type, bytes }`. The file never
+  holds image bytes or a path: the images are files of their own (see [Images](#images)).
 - A write replaces the file whole, through a temporary file and a rename.
 - A file outside the contract, of another version, or over the size bound is never
   listed and never overwritten.
-- Nothing deletes a conversation except the owner's **Delete** (`delete`). Storage
+- Nothing deletes a conversation except the owner's **Delete** (`delete`), which also
+  removes the folder of its images. Storage
   retention and the prune cycle of the observation store do not touch this directory.
 - A conversation that ends on the owner's message with no run behind it lost its answer:
   the app closed during the turn. The next read adds one answer with the status
@@ -383,10 +474,13 @@ Desktop main keeps one JSON file per conversation:
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session |
+| `pomegr:agent-chat-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add` and `read`. `add`: a repository ID and the image bytes (a `Uint8Array` of at most 5 MiB); answers the image's ID, type, and size. `read`: a repository ID, a conversation ID, and an image ID; answers the type and the bytes. No answer carries a path |
+| `POST /api/agent-chat/image-add` and `GET /api/agent-chat/image-read` on the LAN gateway | A paired device only | The same two operations, answered in desktop main and never forwarded. `image-add` takes the bytes as an `application/octet-stream` body of at most 5 MiB with the repository ID as its only query key. `image-read` takes the repository ID, the conversation ID, and the image ID as its only query keys, and answers the bytes with one of the four media types, `no-store` |
 | `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, and `queue_ungroup`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
+| `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
 | The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
 
 The operations and their payloads, each with `repositoryId`:
@@ -395,7 +489,7 @@ The operations and their payloads, each with `repositoryId`:
 | --- | --- | --- |
 | `list` | none | The conversations (ID, title, update time, message count) and the conversation being answered, or null |
 | `read` | `conversationId` | The conversation and the running `turn` or null |
-| `send` | `conversationId` or null, `text`, `provider`, `model` or null | The conversation ID |
+| `send` | `conversationId` or null, `text`, `provider`, `model` or null; optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
 | `stop` | `conversationId` | Nothing more |
 | `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer |
 | `delete` | `conversationId` | Nothing more |
@@ -405,12 +499,19 @@ A refusal is `{ ok: false, error }` with one of `invalid`, `not_found`, `busy`, 
 is `invalid`. `desktop_only` answers only the `apply` of a session start that did not
 come from the desktop window.
 
+- An image operation refuses with `{ ok: false, error }` and one of `invalid`,
+  `not_found`, and `unavailable`. The two paired-device image routes take a request
+  under the checks of the task image routes ([Tasks: Paired devices](tasks.md#paired-devices)):
+  the session cookie, the gateway's own `Origin` and a declared length for the POST, the
+  exact query keys, and no body for the GET.
 - The paired-device route takes the POST only with the session cookie, the gateway's own
   `Origin`, a JSON content type, no query, and a declared body of at most 17 KiB, like
   the task-action route. A same-computer browser and the development server have no chat
   route, so the panel is not drawn there.
 - The preload exposes `agentChat(operation, payload)`. It refuses an unknown operation
-  or a payload without a repository ID before any call.
+  or a payload without a repository ID before any call. It exposes
+  `agentChatImage(operation, payload)` too, and refuses a payload outside the exact shape
+  of `add` or `read`.
 - A `turn` carries the conversation ID, the start time, the provider, the model, the
   answer text so far, and one activity: `starting`, `thinking`, `reading_files`,
   `reading_sessions`, `reading_usage`, or `writing`. The label is chosen from the tool's
@@ -422,11 +523,18 @@ The conversation is a new data class: text the owner wrote and text the agent wr
 is the one place where Pomegr shows a prompt and a response, and they are the chat's own,
 never a session's.
 
-- **Where it lives.** In the conversation files under the desktop data root, and in
-  desktop main's memory. Not in the monitor, the task store, the observation store, a
+- **Images are part of it.** An image the owner sends is the owner's own content, of the
+  same data class as the message it belongs to. It is kept as a file under the chat's
+  directory, and a conversation file lists only its ID, type, and size.
+- **Where it lives.** In the conversation files and the image files under the desktop
+  data root, and in desktop main's memory. Not in the monitor, the task store, the observation store, a
   checkpoint, a report, a log, a notification, or diagnostics.
 - **Who gets it.** The trusted renderer through `pomegr:agent-chat`, and a paired device
-  through `POST /api/agent-chat`. No GET serves it. A same-computer browser gets nothing.
+  through `POST /api/agent-chat`. No GET serves it, except the one GET that answers a
+  paired device the bytes of an image of a conversation. A same-computer browser gets nothing.
+  Image bytes cross only the `pomegr:agent-chat-image` channel and the two paired-device
+  image routes. The renderer draws an image from an object URL of its own page and
+  revokes it when the panel leaves.
   The renderer keeps it in memory only; browser storage holds only the ID of the
   repository chosen last.
 - **What reaches the provider.** Each turn sends the prompt to the provider the owner
@@ -436,13 +544,25 @@ never a session's.
   widening: before the chat, a task's text reached a provider only in the prompt of its
   own session. The run can also read the repository's files and call the seven read
   tools, so file content and normalized session evidence can reach the provider in the
-  same run, as they can in any session the owner starts in that folder.
-- **What never enters a prompt.** Credentials, tokens, the desktop token, a repository
-  ID, a path other than the working directory the process starts in, task images, and
-  the description or app version of a feature.
+  same run, as they can in any session the owner starts in that folder. The images the
+  owner sent in the conversation reach the provider too: the run reads their files. This
+  is the widening of 2026-10-13 (task T-86). The prompt names the absolute file of each
+  image, so the path of the chat's image folder under the desktop data root, which holds
+  the user's folder name, reaches the provider. A task's session has had the path of its
+  task's image folder in the same way.
+- **What never enters a prompt.** Credentials, tokens, the desktop token, a path other
+  than the working directory the process starts in and the files of the conversation's
+  images, the images of a task, an image of another conversation, and the description or
+  app version of a feature. A repository ID and a conversation ID enter it only as parts
+  of an image's file.
 - **What Pomegr keeps of the run.** The final answer text and the status. Tool calls,
   tool results, reasoning, usage, cost, and provider errors are read past and dropped.
   The provider's stderr is not read.
+- **What an image on a task sends.** An approved proposal sends the bytes of the named
+  images from the chat's files to the monitor on the same computer, with the desktop
+  token, and nowhere else. The task store then keeps its own copy under
+  [Tasks: Privacy](tasks.md#privacy). The stored result of the operation holds a fixed
+  error and never a path, a file name, or image content.
 - **What Pomegr keeps of a session start.** The task ID of the proposal and one fixed
   start status, in the conversation file. Nothing of the start plan reaches the chat: no
   prompt, repository root, worktree path, image file, dispatch token, or launcher output.
@@ -454,8 +574,9 @@ never a session's.
 - **Paired devices.** The gateway serves plain HTTP on the local network, so the
   conversation and the session cookie cross it unencrypted, as task content does.
   Whoever holds a paired device's cookie can read the conversations, send a message
-  (which spends the owner's provider allowance in a read-only run), and apply a
-  proposal of board changes or a queue change. It cannot apply a session start from
+  (which spends the owner's provider allowance in a read-only run), add an image, read
+  the images of a conversation, and apply a proposal of board changes or a queue change.
+  Image bytes cross the local network unencrypted too. It cannot apply a session start from
   the chat. Applying a queue change that turns the queue on lets the desktop start the
   queued tasks, which the same holder can already do through `POST /api/tasks/action`
   ([Tasks: Paired devices](tasks.md#paired-devices)). The card's Primary is an
@@ -472,6 +593,10 @@ never a session's.
   conversation.
 - Aril never changes the board. Only `apply` does, on the owner's answer, through the
   fixed task actions.
+- Aril puts no image on a task. Only `apply` does, with an image the owner sent in the
+  same conversation, through the monitor's own image route and under its bounds.
+- A proposal that names an image the conversation does not hold is never offered.
+- An image is served only when a message of its conversation names it.
 - Aril never starts a session. Only `apply` of a start proposal does, from the desktop
   window, through the manual start and behind every start gate. The owner's **Start
   session** on the card is its confirmation. One Apply is at most one launch.
@@ -540,6 +665,25 @@ never a session's.
 11. **A paused queue.** The snapshot carries the queue's status and blocker but not its
     pause reason, so Aril can say that the queue is paused and that turning it on is the
     retry, and cannot say why the start failed. The Tasks page shows the reason.
+
+12. **Images from a live provider.** Probed on a device on 2026-10-13 with Claude Code
+    2.1.296 and Codex 0.162.1, on a synthetic board with one image of a single colour.
+    Both providers named the colour, so both saw the image: Claude Code through
+    `--add-dir` and Read, Codex through `--image` after the `-`. For "create a task
+    about this image" and "attach this image to T-7", Codex wrote a valid proposal with
+    the image's ID each time. Claude Code, on its smallest model, wrote a valid proposal
+    in three of four runs; one run wrote a block that Pomegr could not read, and the
+    cause was not recorded. The probes are deleted. The Apply of an image, the stored
+    results, and the two paired-device image routes are covered by tests with fakes. An
+    image sent from a paired phone, and an image attached through an installed build,
+    are not proven on a device.
+13. **Earlier images on Codex.** Codex gets only the images of the newest message
+    attached. An earlier image is a listed file that Codex may open inside its sandbox;
+    whether it does was not probed.
+14. **No image without text.** A message that holds only an image is refused, and the
+    panel does not offer it.
+15. **Task images in the snapshot.** The snapshot does not say which images a task
+    holds. Aril learns that a task is full only from the result of an applied proposal.
 
 ## Change and verify
 

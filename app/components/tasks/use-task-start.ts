@@ -12,7 +12,8 @@ import { scheduleLabel, waitsForOwnTime } from "./task-schedule";
 // Start session for one task.
 
 const LINES: Record<TaskStartStatus, string | null> = {
-  started: "Session started in a new terminal window.",
+  // A start that worked closes its opener, so it has no line.
+  started: null,
   cancelled: null,
   unsupported_platform: "Starting sessions is available on Windows only.",
   cli_missing: "The provider's command-line tool was not found on this computer.",
@@ -28,7 +29,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   tree_dirty: "This repository has uncommitted changes. Commit or discard them, or start the task in a separate worktree, which leaves them out.",
   worktree_dirty: "This task's worktree has uncommitted changes. Pomegr never removes them. Open the folder to commit or discard them, then try again.",
 };
-const FINAL = new Set<TaskStartStatus>(["started", "unsupported_platform", "cli_missing", "plugin_missing", "unsupported_provider"]);
+const FINAL = new Set<TaskStartStatus>(["unsupported_platform", "cli_missing", "plugin_missing", "unsupported_provider"]);
 
 function taskMark(task: Task): string {
   return `${task.id}
@@ -45,7 +46,7 @@ function boardReason(task: Task, unsaved: boolean, now: number): string | null {
   return null;
 }
 
-export function useTaskStart(repositoryId: string, task: Task, board: TaskModalBoard, unsaved: boolean, refresh: () => Promise<void>, first: TaskStartStatus | null = null) {
+export function useTaskStart(repositoryId: string, task: Task, board: TaskModalBoard, unsaved: boolean, refresh: () => Promise<void>, onStarted: () => void, first: TaskStartStatus | null = null) {
   const access = useTaskEditAvailability();
   const available = access === "desktop" || access === "paired";
   const [pending, setPending] = useState(false);
@@ -69,15 +70,19 @@ export function useTaskStart(repositoryId: string, task: Task, board: TaskModalB
     setFolder(null);
     const mark = taskMark(task);
     const status = await startDesktopTask(repositoryId, task.id, separateWorktree);
+    // A start that worked needs nothing more from its opener: it closes while the board reads the task again.
+    if (status === "started") {
+      void refresh().catch(() => {});
+      onStarted();
+      return;
+    }
     inFlight.current = false;
     setPending(false);
     setAnswer({ status: separateWorktree && status === "cancelled" ? "tree_dirty" : status, mark });
     // A held start is named from the board's gate readings, so the line is drawn from fresh ones.
-    if (status === "started" || status === "gate_held") await refresh().catch(() => {});
+    if (status === "gate_held") await refresh().catch(() => {});
   };
-  const pairedLine = access !== "paired" ? null : result === "started"
-    ? "Session started in a new terminal on the computer running Pomegr."
-    : result === "cli_missing" ? "The provider's command-line tool was not found on the computer running Pomegr."
+  const pairedLine = access !== "paired" ? null : result === "cli_missing" ? "The provider's command-line tool was not found on the computer running Pomegr."
     : result === "worktree_dirty" ? "This task's worktree has uncommitted changes. Commit or discard them on the computer running Pomegr, then try again." : null;
   const resultLine = result === null ? null : pairedLine ?? (result === "gate_held" ? heldStartLine(task, board.queue) : null) ?? LINES[result];
   const line = pending ? null : locked ? resultLine : reason ?? resultLine;

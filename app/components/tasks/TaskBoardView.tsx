@@ -14,7 +14,7 @@ import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskColumnHeader } from "./TaskColumnHeader";
 import { cardMove, readyColumnId, readyUnits, waitsInQueue, type CardMoveKind } from "./task-board-model";
 import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue } from "./task-features";
-import { waitingLine } from "./task-gates-model";
+import { waitCardLine } from "./task-wait-model";
 import { useMinuteClock } from "./task-panel-hooks";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
 import { idList, linkIds, readySegments, type ReadyParallelGroup, type ReadySegment } from "./task-ready-groups";
@@ -201,8 +201,12 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
 }) {
   const headingId = useId();
   const lastId = column.tasks.at(-1)?.id;
-  const card = (task: Task, started: readonly string[] = []) => <TaskCard key={task.id} task={task} compact={ready !== undefined && waitsInQueue(task)} now={ready?.now}
-    waiting={ready && waitsInQueue(task) ? waitingLine(ready.queue, task, ready.tasks, started) : undefined}
+  // A held card of a group whose siblings started says so: the group keeps its turn until this card starts too.
+  const waiting = (task: Task, started: readonly string[]) => {
+    const line = ready && waitsInQueue(task) ? waitCardLine(ready.queue, task) : null;
+    return line && started.length > 0 && line.includes("Waiting:") ? `${line} · ${idList(started)} started` : line;
+  };
+  const card = (task: Task, started: readonly string[] = []) => <TaskCard key={task.id} task={task} compact={ready !== undefined && waitsInQueue(task)} now={ready?.now} waiting={waiting(task, started)}
     dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && task.id === lastId ? "after" : undefined}
     featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
   // Between two waiting cards, or groups, that sit next to each other: the action that makes them one group.

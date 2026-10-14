@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { createAgentChat } from "../../desktop/runtime/agent-chat.mjs";
+import { createAgentChatImages } from "../../desktop/runtime/agent-chat-images.mjs";
 import { AGENT_CHAT_DIRECTORY, createAgentChatStore } from "../../desktop/runtime/agent-chat-store.mjs";
 
 export const repositoryId = "repo-0123456789abcdef01234567";
@@ -49,7 +50,8 @@ export function storedFiles(directory) {
   const found = {};
   if (!existsSync(directory)) return found;
   for (const repository of readdirSync(directory)) {
-    for (const name of readdirSync(path.join(directory, repository))) found[`${repository}/${name}`] = JSON.parse(readFileSync(path.join(directory, repository, name), "utf8"));
+    // The images folder holds image files, not conversations.
+    for (const name of readdirSync(path.join(directory, repository)).filter((entry) => entry !== "images")) found[`${repository}/${name}`] = JSON.parse(readFileSync(path.join(directory, repository, name), "utf8"));
   }
   return found;
 }
@@ -76,13 +78,18 @@ export async function chatHarness(context, overrides = {}) {
   const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pomegr-agent-chat-"));
   context.after(() => fs.rm(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   const directory = path.join(dataRoot, AGENT_CHAT_DIRECTORY);
-  const state = { board: readyBoard(), rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), gate: null, fetchError: null, calls: [] };
+  const state = { board: readyBoard(), rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), imageAdd: (call) => ({ ok: true, imageId: call.query.imageId }), gate: null, fetchError: null, calls: [] };
   const { viaDataRoot = false, files = [claudeExecutable, codexExecutable, mcpScript], ...rest } = overrides;
   let tick = 0;
   const now = () => new Date(Date.parse(stamp) + (tick += 1000));
   const fetchImpl = async (url, init = {}) => {
     const parsed = new URL(url);
-    const call = { url, pathname: parsed.pathname, search: parsed.search, init, body: typeof init.body === "string" ? JSON.parse(init.body) : null };
+    // A JSON body is parsed; a binary body (an image) is kept as a copy of its bytes, with its query and content type.
+    const binary = init.body instanceof Uint8Array ? new Uint8Array(init.body) : null;
+    const call = {
+      url, pathname: parsed.pathname, search: parsed.search, init, body: typeof init.body === "string" ? JSON.parse(init.body) : null,
+      query: Object.fromEntries(parsed.searchParams), bytes: binary, contentType: init.headers?.["content-type"] ?? null,
+    };
     state.calls.push(call);
     if (state.fetchError) throw state.fetchError;
     if (init.method === "GET" && parsed.pathname === "/api/tasks") {
@@ -90,10 +97,13 @@ export async function chatHarness(context, overrides = {}) {
       return json(state.board);
     }
     if (parsed.pathname === "/internal/tasks/worktree-root") return json(state.rootAnswer);
+    // The monitor's image route: `state.imageAdd(call)` answers it, and by default takes every image.
+    if (parsed.pathname === "/internal/tasks/image-add") return json(await state.imageAdd(call));
     const action = parsed.pathname.replace("/internal/tasks/", "");
-    return json(await state.actions(action, call.body?.payload, call.body));
+    return json(await state.actions(action, call.body?.payload, call.body, call));
   };
   const store = createAgentChatStore({ directory, now });
+  const images = createAgentChatImages({ directory });
   const { runs, runTurn: startRun } = fakeRuns();
   // What is on disk at the moment a turn starts: the owner's message must already be stored.
   const runTurn = (options) => {
@@ -106,17 +116,19 @@ export async function chatHarness(context, overrides = {}) {
     fetch: fetchImpl, monitorOrigin: origin, authorizationToken: token, environment: { ...sourceEnvironment }, platform: "win32",
     fileExists: (file) => files.includes(file), now, runTurn, spawn,
     executable: desktopExecutable, unpackedRoot,
-    ...(viaDataRoot ? { dataRoot } : { store }),
+    ...(viaDataRoot ? { dataRoot } : { store, images }),
     ...rest,
   });
   const calls = state.calls;
   return {
-    chat, state, runs, calls, dataRoot, directory, store, spawn, now,
+    chat, state, runs, calls, dataRoot, directory, store, images, spawn, now,
+    image: (operation, payload) => chat.image(operation, payload),
     handle: (operation, payload) => chat.handle(operation, payload),
     /** The stored conversations as a new process would read them from disk. */
     reload: () => createAgentChatStore({ directory }),
     requests: (predicate = () => true) => calls.filter(predicate),
-    actionCalls: () => calls.filter((call) => call.pathname.startsWith("/internal/tasks/") && call.pathname !== "/internal/tasks/worktree-root"),
+    imageCalls: () => calls.filter((call) => call.pathname === "/internal/tasks/image-add"),
+    actionCalls: () => calls.filter((call) => call.pathname.startsWith("/internal/tasks/") && call.pathname !== "/internal/tasks/worktree-root" && call.pathname !== "/internal/tasks/image-add"),
   };
 }
 
@@ -160,3 +172,17 @@ export const pendingProposal = (overrides = {}) => ({
 });
 
 export const withProposal = (proposal = pendingProposal(), extra = {}) => [userMessage(1), agentMessage(2, { text: "Here is a plan.", proposal, ...extra })];
+
+// Leading bytes of each image type the chat accepts, followed by a marker so a test can tell two images apart.
+const withTail = (head, marker) => Uint8Array.from([...head, ...[marker, marker + 1, marker + 2]]);
+export const pngBytes = (marker = 1) => withTail([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], marker);
+export const jpegBytes = (marker = 1) => withTail([0xff, 0xd8, 0xff, 0xe0], marker);
+export const gifBytes = (marker = 1) => withTail([0x47, 0x49, 0x46, 0x38, 0x39, 0x61], marker);
+export const webpBytes = (marker = 1) => withTail([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50], marker);
+
+/** Adds one image through the chat's own image operation and answers its `{ id, type, bytes }`. */
+export async function addImage(h, bytes = pngBytes(), repository = repositoryId) {
+  const answer = await h.image("add", { repositoryId: repository, bytes });
+  if (answer.ok !== true) throw new Error("The image was refused.");
+  return answer.image;
+}

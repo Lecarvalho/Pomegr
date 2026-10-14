@@ -349,7 +349,7 @@ function fakeIpc() {
   };
 }
 
-test("the IPC bridge registers the one channel, refuses an untrusted frame, and removes itself", async () => {
+test("the IPC bridge registers the chat and image channels, refuses an untrusted frame, and removes itself", async () => {
   const { handlers, order, ipcMain } = fakeIpc();
   const trusted = { trusted: true };
   const calls = [];
@@ -357,8 +357,8 @@ test("the IPC bridge registers the one channel, refuses an untrusted frame, and 
   const chat = { handle: async (...args) => { calls.push(args); return { ok: true, conversations: [], running: null }; }, dispose() { disposed += 1; } };
   const remove = installAgentChatIpc({ ipcMain, isTrustedEvent: (event) => event?.trusted === true, chat });
   assert.equal(AGENT_CHAT_CHANNEL, "pomegr:agent-chat");
-  assert.deepEqual([...handlers.keys()], ["pomegr:agent-chat"]);
-  assert.deepEqual(order, [["remove", "pomegr:agent-chat"], ["handle", "pomegr:agent-chat"]]);
+  assert.deepEqual([...handlers.keys()], ["pomegr:agent-chat", "pomegr:agent-chat-image"]);
+  assert.deepEqual(order, [["remove", "pomegr:agent-chat"], ["handle", "pomegr:agent-chat"], ["remove", "pomegr:agent-chat-image"], ["handle", "pomegr:agent-chat-image"]]);
   const call = handlers.get("pomegr:agent-chat");
   for (const event of [{}, undefined, null, { trusted: false }, "trusted"]) assert.deepEqual(await call(event, "list", { repositoryId }), invalid);
   assert.equal(calls.length, 0, "an untrusted frame never reaches the chat");
@@ -367,7 +367,7 @@ test("the IPC bridge registers the one channel, refuses an untrusted frame, and 
   remove();
   assert.equal(handlers.size, 0);
   assert.equal(disposed, 1);
-  assert.deepEqual(order.at(-1), ["remove", "pomegr:agent-chat"]);
+  assert.deepEqual(order.slice(-2), [["remove", "pomegr:agent-chat"], ["remove", "pomegr:agent-chat-image"]]);
 });
 
 test("every frame is untrusted unless the bridge is told how to trust one", async () => {
@@ -451,7 +451,7 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-images.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {
@@ -480,6 +480,7 @@ test("the chat's runtime files are a closed surface: no console, no shell, no ex
   }
   assert.deepEqual([...sources.get("agent-chat-store.mjs").matchAll(/from\s+"(node:[^"]+)"/gu)].map((match) => match[1]).sort(), ["node:crypto", "node:fs/promises", "node:path"]);
   for (const pure of ["agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs"]) assert.doesNotMatch(sources.get(pure), /from\s+"node:/u, `${pure} touches no node module`);
+  assert.deepEqual([...sources.get("agent-chat-images.mjs").matchAll(/from\s+"(node:[^"]+|\.\/[^"]+)"/gu)].map((match) => match[1]).sort(), ["./agent-chat-proposal.mjs", "node:crypto", "node:fs/promises", "node:path"]);
   assert.doesNotMatch(sources.get("agent-chat-runner.mjs"), /\bimport\b/u);
   assert.doesNotMatch(sources.get("agent-chat-proposal.mjs"), /\bimport\b/u);
 });
@@ -509,11 +510,12 @@ test("the chat is wired once into the shell, the LAN gateway, and the preload", 
   const [main, preload, sharing] = await Promise.all(["shell-main.mjs", "preload.cjs", "lan-sharing.mjs"].map(sourceOf));
   assert.match(main, /installAgentChatIpc\(\{ \.\.\.taskBridge, chat: agentChat \}\)/u);
   // A paired device's call carries no origin, so it can never start a session from the chat.
-  assert.match(main, /agentChat: \(operation, payload\) => agentChat\.handle\(operation, payload\), taskStart:/u);
+  assert.match(main, /agentChat: \(operation, payload\) => agentChat\.handle\(operation, payload\), agentChatImage: \(operation, payload\) => agentChat\.image\(operation, payload\), taskStart:/u);
   assert.match(main, /createAgentChat\(\{\s+monitorOrigin: privateMonitorOrigin, authorizationToken,/u);
   assert.match(main, /startTask: \(event, repositoryId, taskId\) => taskStarter\.startApproved\(event, repositoryId, taskId\) \}\);/u);
   assert.equal([...main.matchAll(/createAgentChat\(/gu)].length, 1);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat", operation, payload\)/u);
   assert.match(preload, /new Set\(\["list", "read", "send", "stop", "apply", "dismiss", "delete"\]\)/u);
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat-image", operation, payload\)/u);
   assert.match(sharing, /agentChat: options\.agentChat/u);
 });

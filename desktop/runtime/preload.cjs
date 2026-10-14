@@ -17,6 +17,7 @@ const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
 const TASK_FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
 const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const TASK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const AGENT_CHAT_CONVERSATION_ID = /^chat-[0-9a-f]{12}$/u;
 const ISSUE_DIGEST = /^[a-f0-9]{64}$/u;
 const ISSUE_TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const HOME_UPDATE_ID =/^[a-z0-9][a-z0-9-]{0,63}$/u;
@@ -165,6 +166,19 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
       return Promise.resolve({ ok: false, error: "invalid" });
     }
     return ipcRenderer.invoke("pomegr:agent-chat", operation, payload);
+  },
+  agentChatImage(operation, payload) {
+    const plain = payload && typeof payload === "object" && !Array.isArray(payload)
+      && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);
+    let valid = plain && typeof payload.repositoryId === "string" && REPOSITORY_ID.test(payload.repositoryId);
+    if (valid && operation === "add") {
+      valid = Object.keys(payload).length === 2 && payload.bytes instanceof Uint8Array && payload.bytes.byteLength > 0 && payload.bytes.byteLength <= TASK_IMAGE_MAX_BYTES;
+    } else if (valid && operation === "read") {
+      valid = Object.keys(payload).length === 3 && typeof payload.conversationId === "string" && AGENT_CHAT_CONVERSATION_ID.test(payload.conversationId)
+        && typeof payload.imageId === "string" && TASK_IMAGE_ID.test(payload.imageId);
+    } else valid = false;
+    if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
+    return ipcRenderer.invoke("pomegr:agent-chat-image", operation, payload);
   },
   taskStart(repositoryId, taskId, separateWorktree) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)

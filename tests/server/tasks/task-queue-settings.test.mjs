@@ -4,7 +4,7 @@ import { TASK_DISPATCH_UNBOUND_TTL_MS } from "../../../server/tasks/task-dispatc
 import { TASK_STORE_SCHEMA_VERSION } from "../../../server/tasks/task-store.mjs";
 import {
   OTHER_REPOSITORY, REPOSITORY, SESSION, START_TIME, createTask, metaValue, openTemporaryStore, pauseReasonKey, queueRow, queueSettings, queueTask,
-  setMeta, setQueueRow, startedTask, storedDispatch, updateTask, withDatabase, passingGates,
+  setMeta, setQueueRow, startedTask, storedDispatch, updateTask, withDatabase, passingGates, storedQueue,
 } from "./queue-test-support.mjs";
 
 const EXPIRED = START_TIME - TASK_DISPATCH_UNBOUND_TTL_MS - 1;
@@ -14,7 +14,7 @@ test("the queue is off by default and a fresh board names no pause reason", asyn
   const { store } = await openTemporaryStore(context);
   createTask(store);
   queueTask(store, "T-1");
-  assert.deepEqual(store.readBoard(REPOSITORY).queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-1"] });
+  assert.deepEqual(storedQueue(store.readBoard(REPOSITORY).queue), { status: "idle", blockedBy: null, pauseReason: null, order: ["T-1"] });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
 });
 
@@ -25,7 +25,7 @@ test("turning the queue on runs it, and turning it on again changes nothing", as
   queueTask(store, "T-2");
   const first = queueSettings(store, true);
   assert.equal(first.ok, true);
-  assert.deepEqual(first.board.queue, { status: "running", blockedBy: null, pauseReason: null, order: ["T-2"] });
+  assert.deepEqual(storedQueue(first.board.queue), { status: "running", blockedBy: null, pauseReason: null, order: ["T-2"] });
   const stored = withDatabase(directory, (database) => database.prepare("SELECT number, updated_at FROM tasks ORDER BY number").all().map((row) => ({ ...row })));
   const again = queueSettings(store, true);
   assert.deepEqual(again.board, first.board);
@@ -110,7 +110,7 @@ test("turning the queue on clears an expired start that never reported a session
 
   const result = queueSettings(store, true);
   assert.equal(result.ok, true);
-  assert.deepEqual({ ...result.board.queue, order: undefined }, { status: "running", blockedBy: null, pauseReason: null, order: undefined });
+  assert.deepEqual({ ...storedQueue(result.board.queue), order: undefined }, { status: "running", blockedBy: null, pauseReason: null, order: undefined });
   assert.equal(storedDispatch(directory, 1), null);
   assert.equal(storedDispatch(directory, 2), `${"ab".repeat(32)}:${LIVE}`);
   assert.equal(storedDispatch(directory, 3), `${"ab".repeat(32)}:${EXPIRED}`);
@@ -164,7 +164,7 @@ test("turning the queue on after a pause clears the reason from meta and resumes
   setMeta(directory, pauseReasonKey(), "cli_missing");
   assert.equal(store.readBoard(REPOSITORY).queue.pauseReason, "cli_missing");
   const on = queueSettings(store, true);
-  assert.deepEqual(on.board.queue, { status: "running", blockedBy: null, pauseReason: null, order: ["T-1"] });
+  assert.deepEqual(storedQueue(on.board.queue), { status: "running", blockedBy: null, pauseReason: null, order: ["T-1"] });
   assert.equal(metaValue(directory, pauseReasonKey()), null);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [{ repositoryId: REPOSITORY, taskId: "T-1" }] });
 });

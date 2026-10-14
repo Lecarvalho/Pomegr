@@ -265,7 +265,7 @@ test("GET /api/tasks serves the gates from the runtime lookup, and queue-next an
 
   const held = await board();
   assert.equal(held.status, 200);
-  assert.deepEqual(Object.keys(held.json.queue), ["status", "blockedBy", "pauseReason", "order", "gates"]);
+  assert.deepEqual(Object.keys(held.json.queue), ["status", "blockedBy", "pauseReason", "order", "gates", "waits"]);
   assert.deepEqual(Object.keys(held.json.queue.gates), ["threshold", "usage", "providerStatus", "workingTree", "next"]);
   assert.equal(held.json.queue.gates.workingTree, "dirty");
   assert.deepEqual(held.json.queue.gates.next, { taskId: "T-1", provider: "claude", blockedBy: null, reasons: ["tree_dirty"] });

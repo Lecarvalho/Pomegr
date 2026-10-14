@@ -23,7 +23,10 @@ export type TaskSource = { kind: "github_issue"; number: number };
 export type TaskImageType = "png" | "jpeg" | "gif" | "webp";
 // One image attached to a task: an opaque ID, its fixed type, and its size in bytes.
 export type TaskImage = { id: string; type: TaskImageType; bytes: number };
-export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null; attention?: string | null };
+// `unavailable` is present only when true: Pomegr had no current evidence, so the condition is neither passed nor failed.
+export type TaskCheckResult = { check: TaskCheck; passed: boolean; unavailable?: boolean };
+export type TaskCheckOutcome = "passed" | "failed" | "unavailable";
+export type TaskReport = { at: string; results: TaskCheckResult[]; blockReason: string | null; attention?: string | null };
 export type TaskQueue = {
   status: TaskQueueStatus;
   blockedBy: string | null;
@@ -32,6 +35,8 @@ export type TaskQueue = {
   schedule?: TaskQueueSchedule;
   // The start gates as the monitor last judged them.
   gates?: TaskGates;
+  // Why each task that waits in the queue has not started; absent when none waits.
+  waits?: TaskQueueWait[];
 };
 
 export type TaskQueueSchedule = { startAt: string | null; stopAfter: string | null };
@@ -53,6 +58,13 @@ export type TaskGates = {
   workingTree: TaskGateWorkingTree;
   next: { taskId: string; provider: TaskProvider; blockedBy: string | null; reasons: TaskGateReason[] } | null;
 };
+
+// Why a waiting task has not started: the queue's own state, the task's own time, the work the queue starts first,
+// a start gate, or `unknown` when the committed facts name no reason.
+export type TaskQueueWaitReason = "queue_off" | "queue_blocked" | "queue_paused" | "own_schedule" | "earlier_tasks" | "running_work" | TaskGateReason | "unknown";
+// `place` is the task's place in the start order, from 1, or null while it is not in the order. A reason names at
+// most eight tasks of the same board; `more` counts the rest. No reason means the monitor knows no hold.
+export type TaskQueueWait = { taskId: string; place: number | null; reasons: { reason: TaskQueueWaitReason; taskIds: string[]; more: number }[] };
 
 export type Task = {
   id: string; // "T-<n>", monotonic per repository
@@ -164,6 +176,8 @@ export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_m
 export const TASK_GATE_THRESHOLDS: readonly TaskGateThreshold[] = [70, 85, 95];
 export const DEFAULT_TASK_GATE_THRESHOLD: TaskGateThreshold = 85;
 export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];
+export const TASK_QUEUE_WAIT_REASONS: readonly TaskQueueWaitReason[] = ["queue_off", "queue_blocked", "queue_paused", "own_schedule", "earlier_tasks", "running_work", ...TASK_GATE_REASONS, "unknown"];
+export const TASK_QUEUE_WAIT_TASK_LIMIT = 8;
 export const TASK_SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
 export const TASK_ACTION_ERRORS: readonly TaskActionError[] = ["invalid", "not_found", "limit", "conflict", "unsupported"];
 export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In progress", "Review", "Done"];

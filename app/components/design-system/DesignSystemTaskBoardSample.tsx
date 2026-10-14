@@ -95,7 +95,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Ready lane, parallel group" note="Ready is the queue's lane: its waiting cards start from the top, one at a time, whatever their feature. Only the cards the owner put in a parallel group run together. The group is a strong-line frame under the parallel glyph and the count of its members that still wait. Two cards that only sit next to each other draw no frame. A waiting card is compact and names its feature.">
+      <Sample label="Ready lane, parallel group" note="Ready is the queue's lane: its waiting cards start from the top, one at a time, whatever their feature. Only the cards the owner put in a parallel group run together. The group is a strong-line frame under the parallel glyph and the count of its members that still wait. Two cards that only sit next to each other draw no frame. A waiting card is compact and names its feature. It adds one muted line: its place in the start order past the first, then Waiting with each reason it has not started.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={READY_LANE} /></div></Frame>
       </Sample>
       <Sample label="Ready lane, desktop app" note="The caption adds the two Icon arrows that move the whole group and the Quiet Ungroup. Between two waiting cards, the Quiet Run in parallel puts them in one group. It is drawn while the lane is hovered or the action holds focus, and always on a coarse pointer. Here it is forced visible.">

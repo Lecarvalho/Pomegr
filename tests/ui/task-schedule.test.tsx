@@ -35,7 +35,6 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
-const waiting = (id: string) => ({ id, group: null, run: { provider: null, model: null, effort: null } });
 const gates = (next: TaskGates["next"]): TaskGates => ({
   threshold: 85,
   usage: { claude: { status: "ok", fiveHourPercent: 10, sevenDayPercent: 10 }, codex: { status: "ok", fiveHourPercent: 10, sevenDayPercent: 10 } },
@@ -129,10 +128,10 @@ describe("schedule time helpers", () => {
   it("words the queue's own schedule as a reason the next task waits", () => {
     const queue = (reasons: NonNullable<TaskGates["next"]>["reasons"], schedule?: TaskBoard["queue"]["schedule"]): TaskBoard["queue"] =>
       ({ status: "running", blockedBy: null, pauseReason: null, order: ["T-1"], schedule, gates: gates({ taskId: "T-1", provider: "claude", blockedBy: null, reasons }) });
-    expect(waitingLine(queue(["before_queue_start"], { startAt: local(2026, 10, 9, 2), stopAfter: null }), waiting("T-1"))).toBe("Waiting: the queue starts Oct 9, 02:00");
-    expect(waitingLine(queue(["after_queue_stop"], { startAt: null, stopAfter: local(2026, 10, 9, 7) }), waiting("T-1"))).toBe("Waiting: the queue stopped starting tasks Oct 9, 07:00");
-    expect(waitingLine(queue(["tree_dirty", "after_queue_stop"]), waiting("T-1"))).toBe("Waiting: the working tree has uncommitted changes; the queue's stop time has passed");
-    expect(waitingLine(queue(["before_queue_start"]), waiting("T-1"))).toBe("Waiting: the queue's start time has not come");
+    expect(waitingLine(queue(["before_queue_start"], { startAt: local(2026, 10, 9, 2), stopAfter: null }), "T-1")).toBe("Waiting: the queue starts Oct 9, 02:00");
+    expect(waitingLine(queue(["after_queue_stop"], { startAt: null, stopAfter: local(2026, 10, 9, 7) }), "T-1")).toBe("Waiting: the queue stopped starting tasks Oct 9, 07:00");
+    expect(waitingLine(queue(["tree_dirty", "after_queue_stop"]), "T-1")).toBe("Waiting: the working tree has uncommitted changes; the queue's stop time has passed");
+    expect(waitingLine(queue(["before_queue_start"]), "T-1")).toBe("Waiting: the queue's start time has not come");
   });
 });
 

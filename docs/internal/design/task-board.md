@@ -177,10 +177,21 @@ The head actions appear in this order:
 - When members started, the left part adds “ · T-4 and T-5 started” (11px/400, muted), with the IDs in the data font, by number.
 - The parallel glyph is 12px: two vertical 1.5px strokes in the current color. It is hidden from assistive technology.
 - The card the monitor names as next keeps the chip **Queued · next**: a waiting card of the group that runs, otherwise the top waiting card.
-- A waiting card adds one muted 12px “Waiting: …” line while a gate holds it and the queue is on.
-- That card reads the monitor's reasons. A waiting card of that card's group reads the same reasons with its own provider's capacity and status.
-- A card that waits on a running task reads “Waiting: T-n has not finished”.
+- A waiting card adds one muted 12px wait line (`.taskCardWaiting`) from the monitor's reading of why it has not started.
+- The line of a card past the first place opens with its place in the start order, such as “5th in queue”.
+- Then comes “Waiting: ” and one clause for each reason, joined by “; ”. A place and a reason are joined by “ · ”.
+- A clause names at most three task IDs and then “and n more”.
+- A card behind the cards above it reads “3rd in queue · Waiting: earlier tasks start first (T-2, T-3)”.
+- A card behind a running task reads “Waiting: T-n is running”.
+- The cards of a card's own group are never named as ahead of it or as running before it.
 - A held member of a group whose siblings started ends its line “ · T-4 started”.
+- A queue that is off reads “the queue is off”. A blocked or paused queue names its task: “the queue is blocked by T-2”, “the queue is paused at T-3”.
+- A held gate reads as on the Start gates section, and a missing reading reads “not known yet”. It never reads as passed.
+- A reason the monitor cannot name reads “the reason is not known yet”.
+- The line has no tone: it is muted for every reason, and the Queue status banner carries a blocked or paused queue.
+- A scheduled card's own time is its Starts line. The wait line does not repeat it.
+- The next card with no known hold draws no wait line. Its chip says that it is next.
+- A board that sends no waits keeps the earlier line: “Waiting: …” on the next card while a gate holds it and the queue is on.
 - The drop line and the move toolbar work on a card of a group as on any card.
 - The owner changes a group in the desktop app or on a paired device. See [Parallel groups](#parallel-groups).
 
@@ -531,6 +542,7 @@ The rail holds these panels in order: **Complete when**, **Run**, and the Featur
 The **Complete when** panel holds these parts:
 
 - The head with the heading, the outcome chip, and a muted summary such as “Not yet reported” or “1 check did not pass”.
+- The summary counts unverified checks apart from failed ones: “2 checks not verified”, or “1 check did not pass, 1 not verified”.
 - The outcome chip shows only for Needs review, Stalled, Blocked by agent, and Done.
 - The checks, as 36px rows: a 14px glyph, the condition, and a right-aligned result.
 - A ruled **Definition of done**, cut to three lines, over the agent-reported status and its own **Show all**.
@@ -540,6 +552,7 @@ The **Complete when** panel holds these parts:
 | --- | --- | --- |
 | Passed, Holds now | Green | Tick |
 | Did not pass | Error | Cross |
+| Not verified | Muted | Ring |
 | Any other result | Muted | Ring |
 
 The **Run** panel holds these parts:
@@ -565,7 +578,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - The cards in every state.
 - Column headers.
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
-- The Ready lane with a parallel group, in its browser and desktop forms, and a card outside Ready with its feature line.
+- The Ready lane with a parallel group and the wait line of each waiting card, in its browser and desktop forms, and a card outside Ready with its feature line.
 - The Ready lane with a join target and with a held member, and a card with its Take out of group action.
 - The feature filter and the capacity strip, with the strip's Board form.
 - Whole boards in their browser and desktop forms.

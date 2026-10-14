@@ -66,9 +66,9 @@ test("Validated with the user is judged by the agent and gets no result", () => 
 });
 
 test("CI passed needs a known passing check status", () => {
-  for (const ciPassed of [null, false]) {
-    assert.deepEqual(verifyChecks(["ci_passed"], { ...PASSING, pullRequestStates: ["merged"], ciPassed }), [{ check: "ci_passed", passed: false }]);
-  }
+  const judged = (ciPassed) => verifyChecks(["ci_passed"], { ...PASSING, pullRequestStates: ["merged"], ciPassed });
+  assert.deepEqual(judged(false), [{ check: "ci_passed", passed: false }]);
+  assert.deepEqual(judged(null), [{ check: "ci_passed", passed: false, unavailable: true }]);
   assert.deepEqual(verifyChecks(["ci_passed"], { ciPassed: true, readAt: READ_AT, workAt: WORK_AT }), [{ check: "ci_passed", passed: true }]);
 });
 

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Task, TaskBoard, TaskGateReason, TaskGates } from "../../shared/task-contract";
+import { render } from "@testing-library/react";
+import type { Task, TaskBoard, TaskGateReason, TaskGates, TaskQueueWait } from "../../shared/task-contract";
 import { applyMove, cardMove, readyUnits } from "../../app/components/tasks/task-board-model";
 import { groupDesktopTasks, moveDesktopTask, ungroupDesktopTasks } from "../../app/components/tasks/task-desktop";
+import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
 import { waitingLine } from "../../app/components/tasks/task-gates-model";
+import { waitCardLine } from "../../app/components/tasks/task-wait-model";
 import { taskColumns } from "../../app/components/tasks/task-presentation";
 import { GROUP_A, GROUP_B, READY, board, gates, repositoryId } from "./task-group-fixtures";
 
@@ -103,47 +106,76 @@ describe("cardMove inside Ready", () => {
 });
 
 describe("waitingLine", () => {
-  const byId = (id: string): Task => board().tasks.find((item) => item.id === id) as Task;
   const reasons: TaskGateReason[] = ["earlier_task", "usage_over", "tree_dirty"];
   const queue = (overrides: Parameters<typeof gates>[1] = {}, next: NonNullable<TaskGates["next"]> = { taskId: "T-1", provider: "claude", blockedBy: "T-9", reasons }): TaskBoard["queue"] =>
     ({ status: "running", blockedBy: null, pauseReason: null, order: READY, gates: gates(next, overrides) });
-  const all = board().tasks;
+  const over = { usage: { claude: { status: "over" as const, fiveHourPercent: 91, sevenDayPercent: 10 }, codex: { status: "ok" as const, fiveHourPercent: 1, sevenDayPercent: 1 } } };
 
-  it("reads the monitor's reasons on the first task, with the earlier task by number", () => {
-    const over = { usage: { claude: { status: "over" as const, fiveHourPercent: 91, sevenDayPercent: 10 }, codex: { status: "ok" as const, fiveHourPercent: 1, sevenDayPercent: 1 } } };
-    expect(waitingLine(queue(over), byId("T-1"), all)).toBe("Waiting: T-9 has not finished; Claude Code is above 85% of the five-hour window; the working tree has uncommitted changes");
+  it("reads the monitor's reasons on the next task, with the earlier task by number", () => {
+    expect(waitingLine(queue(over), "T-1")).toBe("Waiting: T-9 has not finished; Claude Code is above 85% of the five-hour window; the working tree has uncommitted changes");
     const unnamed = { taskId: "T-1", provider: "claude" as const, blockedBy: null, reasons: ["earlier_task" as const] };
-    expect(waitingLine(queue({}, unnamed), byId("T-1"), all)).toBe("Waiting: an earlier task has not finished");
+    expect(waitingLine(queue({}, unnamed), "T-1")).toBe("Waiting: an earlier task has not finished");
   });
 
-  it("reads the hold of a waiting sibling's own provider, not the first task's", () => {
-    const sibling = { ...byId("T-2"), run: { provider: "codex" as const, model: null, effort: null } };
-    const held = { providerStatus: { claude: "ok" as const, codex: "incident" as const } };
-    // Claude is over for the first task, but the sibling runs on Codex: only its earlier-task and tree holds, and Codex's incident.
-    const over = { ...held, usage: { claude: { status: "over" as const, fiveHourPercent: 91, sevenDayPercent: 10 }, codex: { status: "ok" as const, fiveHourPercent: 1, sevenDayPercent: 1 } } };
-    expect(waitingLine(queue(over), sibling, all)).toBe("Waiting: T-9 has not finished; Codex reports an incident; the working tree has uncommitted changes");
-    expect(waitingLine(queue(over), byId("T-2"), all)).toBe("Waiting: T-9 has not finished; Claude Code is above 85% of the five-hour window; the working tree has uncommitted changes");
-  });
-
-  it("is null for a sibling whose own provider holds nothing and no other reason applies", () => {
-    const only = { taskId: "T-1", provider: "claude" as const, blockedBy: null, reasons: ["usage_over" as const] };
-    const over = { usage: { claude: { status: "over" as const, fiveHourPercent: 91, sevenDayPercent: 10 }, codex: { status: "ok" as const, fiveHourPercent: 1, sevenDayPercent: 1 } } };
-    const sibling = { ...byId("T-2"), run: { provider: "codex" as const, model: null, effort: null } };
-    expect(waitingLine(queue(over, only), sibling, all)).toBeNull();
-  });
-
-  it("ends with the members that started", () => {
-    expect(waitingLine(queue(), byId("T-1"), all, ["T-3"])).toBe("Waiting: T-9 has not finished; Claude Code is above 85% of the five-hour window; the working tree has uncommitted changes · T-3 started");
-    expect(waitingLine(queue(), byId("T-2"), all, ["T-3", "T-12"])).toMatch(/ · T-3, T-12 started$/);
-    expect(waitingLine(queue(), byId("T-2"), all)).not.toMatch(/started/);
-  });
-
-  it("reads nothing for a card of another group, a card of no group, or a queue that is not running", () => {
-    expect(waitingLine(queue(), byId("T-8"), all)).toBeNull();
-    expect(waitingLine(queue(), byId("T-4"), all)).toBeNull();
-    expect(waitingLine({ ...queue(), status: "paused" }, byId("T-1"), all)).toBeNull();
-    expect(waitingLine({ ...queue(), gates: undefined }, byId("T-1"), all)).toBeNull();
+  it("reads nothing for another card, no reasons, or a queue that is not running", () => {
+    expect(waitingLine(queue(), "T-2")).toBeNull();
+    expect(waitingLine(queue(), "T-8")).toBeNull();
+    expect(waitingLine({ ...queue(), status: "paused" }, "T-1")).toBeNull();
+    expect(waitingLine({ ...queue(), gates: undefined }, "T-1")).toBeNull();
     expect(GROUP_B).not.toBe(GROUP_A);
+  });
+});
+
+describe("waitCardLine in a parallel group", () => {
+  const wait = (taskId: string, place: number | null, entries: TaskQueueWait["reasons"]): TaskQueueWait => ({ taskId, place, reasons: entries });
+  const queue = (waits: TaskQueueWait[]): TaskBoard["queue"] => ({ status: "running", blockedBy: null, pauseReason: null, order: READY, gates: gates(null), waits });
+  const byId = (id: string): Task => board().tasks.find((item) => item.id === id) as Task;
+
+  it("reads a member of the running group by its own gate reasons, and its siblings by theirs", () => {
+    const waits = [
+      wait("T-1", 1, [{ reason: "usage_over", taskIds: [], more: 0 }]),
+      wait("T-2", 2, [{ reason: "tree_dirty", taskIds: [], more: 0 }]),
+    ];
+    expect(waitCardLine(queue(waits), byId("T-1"))).toBe("Waiting: Claude Code is above 85% of the five-hour window");
+    expect(waitCardLine(queue(waits), byId("T-2"))).toBe("2nd in queue · Waiting: the working tree has uncommitted changes");
+  });
+
+  it("never lists a sibling of its own group as ahead of the card", () => {
+    const waits = [wait("T-8", 3, []), wait("T-9", 4, [{ reason: "earlier_tasks", taskIds: ["T-1", "T-2", "T-4"], more: 0 }])];
+    expect(waitCardLine(queue(waits), byId("T-8"))).toBe("3rd in queue");
+    expect(waitCardLine(queue(waits), byId("T-9"))).toBe("4th in queue · Waiting: earlier tasks start first (T-1, T-2, T-4)");
+    expect(waitCardLine(queue(waits), byId("T-9"))).not.toContain("T-8");
+  });
+
+  it("reads null for a card with no wait when the monitor sent waits", () => {
+    expect(waitCardLine(queue([]), byId("T-6"))).toBeNull();
+  });
+});
+
+describe("the started suffix of a waiting group card", () => {
+  const next = { taskId: "T-1", provider: "claude" as const, blockedBy: null, reasons: ["usage_over" as const] };
+  const open = (waits?: TaskQueueWait[]) => board({ queue: { status: "running", blockedBy: null, pauseReason: null, order: READY, waits, gates: gates(next, { usage: { claude: { status: "over", fiveHourPercent: 91, sevenDayPercent: 10 }, codex: { status: "ok", fiveHourPercent: 1, sevenDayPercent: 1 } } }) } });
+  const line = (id: string) => document.querySelector(`[data-task-id="${id}"] .taskCardWaiting`)?.textContent ?? null;
+
+  it("ends a Waiting line with the members that started", () => {
+    const waits: TaskQueueWait[] = [
+      { taskId: "T-1", place: 1, reasons: [{ reason: "usage_over", taskIds: [], more: 0 }] },
+      { taskId: "T-2", place: 2, reasons: [{ reason: "tree_dirty", taskIds: [], more: 0 }] },
+      { taskId: "T-4", place: 3, reasons: [{ reason: "earlier_tasks", taskIds: ["T-1", "T-2"], more: 0 }] },
+    ];
+    render(<TaskBoardView board={open(waits)} />);
+    expect(line("T-1")).toBe("Waiting: Claude Code is above 85% of the five-hour window · T-3 started");
+    expect(line("T-2")).toBe("2nd in queue · Waiting: the working tree has uncommitted changes · T-3 started");
+    // A card outside the group names no started member.
+    expect(line("T-4")).toBe("3rd in queue · Waiting: earlier tasks start first (T-1, T-2)");
+    expect(line("T-4")).not.toMatch(/started/);
+  });
+
+  it("adds no suffix to a card with no Waiting line", () => {
+    const waits: TaskQueueWait[] = [{ taskId: "T-1", place: 1, reasons: [] }, { taskId: "T-2", place: 2, reasons: [] }];
+    render(<TaskBoardView board={open(waits)} />);
+    expect(line("T-1")).toBeNull();
+    expect(line("T-2")).toBe("2nd in queue");
   });
 });
 

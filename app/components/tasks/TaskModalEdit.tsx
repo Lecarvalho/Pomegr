@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Task, TaskCheck } from "../../../shared/task-contract";
-import { sessionListTime } from "../../dashboard-utils";
+import type { Task, TaskCheck, TaskCheckOutcome } from "../../../shared/task-contract";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateRow } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { TaskModalSource } from "./TaskModalPromote";
+import { TaskQueueWait } from "./TaskQueueWait";
+import { TaskReportNote } from "./TaskReportNote";
 import { CompleteWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { TaskSessionsField } from "./TaskSessionsField";
@@ -16,7 +17,7 @@ import {
   RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask,
   UNASSIGN_FAILURE_MESSAGE, assignDesktopTaskSession, resolveDesktopTaskDone, takeCreateFollowUp, unassignDesktopTaskSession, updateDesktopTask,
 } from "./task-desktop";
-import { observedModelDiffers } from "./task-fields";
+import { checkOutcome, observedModelDiffers } from "./task-fields";
 import { taskImagesAvailable } from "./task-images-desktop";
 import { taskIssuesAvailable } from "./task-issues-desktop";
 import { featureDraftFromTask, type FeatureDraft } from "./task-features";
@@ -30,15 +31,9 @@ import { useFeatureCreation } from "./use-feature-creation";
 import { shownTaskText, useStoredImages } from "./use-task-images";
 import { SESSION_CANDIDATES_SHOWN, useTaskSessionCandidates } from "./use-task-session-candidates";
 import { useTaskStart } from "./use-task-start";
+import { waitDetail } from "./task-wait-model";
 
 const STALLED_NOTE = "The session ended with no report.";
-
-function reportLine(report: NonNullable<Task["report"]>) {
-  // The time sits in parentheses.
-  const time = Number.isFinite(Date.parse(report.at)) ? <> (<time dateTime={report.at}>{sessionListTime(report.at)}</time>)</> : null;
-  if (report.blockReason !== null) return <>Agent reported it cannot continue{time}: {report.blockReason}</>;
-  return report.attention ? <>Agent reported complete{time} and asks for your attention: {report.attention}</> : <>Agent reported complete{time}.</>;
-}
 
 export function TaskModalEdit({ repositoryId, repositoryName, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose }: {
   repositoryId: string;
@@ -72,9 +67,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
 
   const chip = taskChip(task, task.id === board.queue?.order[0]);
   const unresolved = task.state === "needs_review" || task.state === "blocked" || task.state === "stalled";
-  const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
-  const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
-  const start = useTaskStart(repositoryId, task, board, dirty, refresh, followUp && "start" in followUp ? followUp.start : null);
+  const results = useMemo(() => new Map<TaskCheck, TaskCheckOutcome>((task.report?.results ?? []).map((entry) => [entry.check, checkOutcome(entry)])), [task.report]);
+  const start = useTaskStart(repositoryId, task, board, dirty, refresh, onClose, followUp && "start" in followUp ? followUp.start : null);
   const images = useStoredImages(repositoryId, task);
   const imagesOffered = taskImagesAvailable();
   // A task that needs the user offers its resolutions instead of Start session.
@@ -93,6 +87,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
   const columnName = board.columns.find((column) => column.id === task.columnId)?.name ?? null;
   const blocked = saving || deleting;
+  // Why a task that waits in the queue has not started, as the monitor judged it.
+  const queueWait = waitDetail(board.queue, task);
   // A done task takes no report, so it takes no new session. The sessions it holds can still be unassigned.
   const assigned = useMemo(() => task.assigned ?? [], [task.assigned]);
   const listed = useTaskSessionCandidates(repositoryId, task.state !== "done");
@@ -166,7 +162,10 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     setFailure(null);
     const result = await (done ? resolveDesktopTaskDone(repositoryId, task.id) : requeueDesktopTask(repositoryId, task.id));
     setResolving(false);
-    if (result.ok) onChanged(); else setFailure(done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE);
+    if (!result.ok) { setFailure(done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE); return; }
+    onChanged();
+    // A task marked done needs nothing more from its modal. A requeued task can be edited again, so its modal stays.
+    if (done) onClose();
   };
 
   const changeAssignment = async (sessionId: string, assign: boolean) => {
@@ -233,6 +232,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     {issueNumber !== null && <TaskModalSource number={issueNumber} caption="GitHub issue" />}
     {issueOffered && <IssueCreateRow repositoryId={repositoryId} taskId={task.id} unsaved={dirty} saveFirst={saveLine || confirming ? null : SAVE_FIRST_LINE}
       onChanged={onChanged} />}
+    {queueWait && <TaskQueueWait detail={queueWait} />}
     {(sessionTitle !== null || hasSessionLink) && <div className="taskModalSession">
       {sessionTitle !== null && <p className="taskModalSessionTitle">{sessionTitle}</p>}
       <span className="newTaskHelper">
@@ -254,7 +254,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     </div>
     <CompleteWhenField draft={draft.completeWhen} results={task.report ? results : undefined}
       ownNote={task.report && draft.completeWhen.ownText.trim() !== "" && task.completeWhen.own !== null ? "Agent-reported" : null}
-      footnote={outcomeNote ? <span className="newTaskHelper taskCompleteWhenNote">{outcomeNote}</span> : undefined} disabled={locked}
+      footnote={task.report ? <TaskReportNote report={task.report} /> : task.state === "stalled" ? <span className="newTaskHelper taskCompleteWhenNote">{STALLED_NOTE}</span> : undefined} disabled={locked}
       onDraftChange={setCompleteWhen} />
     <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} busy={assigning || blocked} error={assignError}
       onAssign={(sessionId) => void changeAssignment(sessionId, true)} onUnassign={(sessionId) => void changeAssignment(sessionId, false)} />

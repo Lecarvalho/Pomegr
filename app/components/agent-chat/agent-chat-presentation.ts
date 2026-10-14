@@ -121,6 +121,8 @@ export type OperationRow = {
   /** A first line of task text, clamped to two lines; the whole text is its tooltip. */
   text?: { value: string; whole: string; muted: boolean };
   details: string[];
+  /** The images the operation puts on its task, drawn under the details. */
+  images?: string[];
   warning?: string;
 };
 
@@ -161,6 +163,7 @@ function idList(ids: readonly string[]): Array<string | { id: string }> {
     return [index === ids.length - 1 ? ", and " : ", ", part];
   });
 }
+const imageCount = (count: number) => (count === 1 ? "1 image" : `${count} images`);
 
 export function describeOperation(operation: AgentChatBoardOperation, tasks: readonly BoardTask[]): OperationRow {
   const current = (id: string) => {
@@ -172,8 +175,8 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Create feature"], text: { value: operation.name, whole: operation.name, muted: false }, details: [] };
     case "create_task": {
       const place = operation.feature ? `in ${operation.feature}` : "";
-      const details = [place, runParts(operation.run, true).join(" · "), checkParts(operation.completeWhen), operation.queue === true ? "then add to queue" : null].filter(Boolean) as string[];
-      return { title: ["Create task"], text: { value: firstLine(operation.text), whole: plainTaskText(operation.text), muted: false }, details: details.length > 0 ? [details.join(" · ")] : [] };
+      const details = [place, runParts(operation.run, true).join(" · "), checkParts(operation.completeWhen), operation.images ? `with ${imageCount(operation.images.length)}` : null, operation.queue === true ? "then add to queue" : null].filter(Boolean) as string[];
+      return { title: ["Create task"], text: { value: firstLine(operation.text), whole: plainTaskText(operation.text), muted: false }, details: details.length > 0 ? [details.join(" · ")] : [], ...(operation.images ? { images: operation.images } : {}) };
     }
     case "update_task": {
       const details: string[] = [];
@@ -194,6 +197,8 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Run ", ...idList(operation.ids), " in parallel"], details: [] };
     case "ungroup_tasks":
       return { title: ["Take ", ...idList(operation.ids), operation.ids.length === 1 ? " out of its parallel group" : " out of their parallel groups"], details: [] };
+    case "attach_images":
+      return { title: [`Attach ${imageCount(operation.images.length)} to `, { id: operation.id }], text: current(operation.id), details: [], images: operation.images };
     case "start_session":
       return { title: ["Start a session for ", { id: operation.id }], text: current(operation.id), details: [] };
     case "set_queue":
@@ -213,6 +218,16 @@ const FAILURE_WORDS: Record<Extract<AgentChatOperationResult, { ok: false }>["er
   skipped: "Not run",
   not_started: "Not started",
 };
+
+// An image that was not put on a task that is already on the board. The task keeps what it had.
+const IMAGE_FAILURE_LINES: Partial<Record<keyof typeof FAILURE_WORDS, string>> = {
+  limit: `Not attached. A task holds at most ${AGENT_CHAT_BOUNDS.imagesPerMessage} images.`,
+  conflict: "Not attached. This task has started, so it takes no image.",
+  not_found: "Not attached. The image is no longer on this computer.",
+  invalid: "Not attached. The image could not be read.",
+  unavailable: "Not attached. Pomegr did not answer.",
+};
+const IMAGE_NOT_ATTACHED = "Not attached.";
 
 export const START_LAUNCHED = "Session started in a new terminal window.";
 
@@ -259,6 +274,7 @@ export function operationOutcome(operation: AgentChatBoardOperation, result: Age
   if (operation.op === "set_queue" && !result.ok) return { text: result.error === "unavailable" ? QUEUE_UNANSWERED : QUEUE_REFUSED, tone: "error" };
   if ("start" in result) return result.ok ? { text: START_LAUNCHED, tone: "ok" } : { text: START_FAILURE_LINES[result.start] ?? START_FAILURE_LINES.failed, tone: "error" };
   if (result.ok) return { text: operation.op === "create_task" && result.taskId ? `Created ${result.taskId}` : "Done", tone: "ok" };
+  if (result.part === "images") return { text: result.taskId ? `Created ${result.taskId}, but its images could not be attached` : IMAGE_FAILURE_LINES[result.error] ?? IMAGE_NOT_ATTACHED, tone: "error" };
   if (result.taskId) return { text: `Created ${result.taskId}, but it could not be queued`, tone: "error" };
   return { text: FAILURE_WORDS[result.error] ?? FAILURE_WORDS.unavailable, tone: result.error === "skipped" ? "muted" : "error" };
 }

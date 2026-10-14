@@ -32,12 +32,13 @@ export function workingTreeRow(gates: TaskGates): { text: string; tone: GateTone
   return { text: "Unknown", tone: "muted" };
 }
 
-function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<TaskGates["next"]>, schedule: TaskBoard["queue"]["schedule"]): string {
+/** One start-gate hold in words. Without the gate readings it names no threshold. */
+export function reasonText(reason: TaskGateReason, gates: TaskGates | undefined, next: Pick<NonNullable<TaskGates["next"]>, "provider" | "blockedBy">, schedule: TaskBoard["queue"]["schedule"]): string {
   const at = (value: string | null | undefined) => (value ? scheduleLabel(value) : null);
   const provider = PROVIDER_NAMES[next.provider];
   switch (reason) {
     case "earlier_task": return next.blockedBy ? `${next.blockedBy} has not finished` : "an earlier task has not finished";
-    case "usage_over": return `${provider} is above ${gates.threshold}% of the ${gates.usage[next.provider].fiveHourPercent === null ? "seven-day" : "five-hour"} window`;
+    case "usage_over": return gates ? `${provider} is above ${gates.threshold}% of the ${gates.usage[next.provider].fiveHourPercent === null ? "seven-day" : "five-hour"} window` : `${provider} is above its usage threshold`;
     case "usage_unknown": return `${provider} usage is not known yet`;
     case "provider_incident": return `${provider} reports an incident`;
     case "provider_status_unknown": return `${provider} status is not known yet`;
@@ -64,32 +65,10 @@ export function heldStartLine(task: Task, queue: Pick<TaskBoard["queue"], "gates
   return `This task is held: ${reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}.`;
 }
 
-/** The reasons that hold a provider's start, read from the gates the board serves. */
-function providerHolds(gates: TaskGates, provider: TaskProvider): TaskGateReason[] {
-  const usage = gates.usage[provider].status;
-  const status = gates.providerStatus[provider];
-  return [
-    ...(usage === "ok" ? [] : [usage === "over" ? "usage_over" as const : "usage_unknown" as const]),
-    ...(status === "ok" ? [] : [status === "incident" ? "provider_incident" as const : "provider_status_unknown" as const]),
-  ];
-}
-
-/**
- * The Waiting line of a card. The task the monitor lists first reads the reasons the monitor gave. A waiting card of
- * that task's parallel group starts with it, so it reads the same reasons with its own provider's capacity and
- * status. `started` names the members of the group that already run, so a held member says that its siblings went on.
- */
-export function waitingLine(queue: TaskBoard["queue"], task: Pick<Task, "id" | "run" | "group">, tasks: readonly Pick<Task, "id" | "group">[] = [], started: readonly string[] = []): string | null {
+/** The Waiting line of the next task when a board carries no waits: the reasons the monitor gave for it. */
+export function waitingLine(queue: TaskBoard["queue"], taskId: string): string | null {
   const gates = queue.gates;
-  if (queue.status !== "running" || !gates?.next) return null;
-  const first = gates.next;
-  const sibling = first.taskId !== task.id && task.group !== null && tasks.some((other) => other.id === first.taskId && other.group === task.group);
-  if (first.taskId !== task.id && !sibling) return null;
-  const provider = task.run.provider ?? "claude";
-  const own = new Set<TaskGateReason>(["usage_over", "usage_unknown", "provider_incident", "provider_status_unknown"]);
-  const next = sibling ? { ...first, taskId: task.id, provider, reasons: [...first.reasons.filter((reason) => !own.has(reason)), ...providerHolds(gates, provider)] } : first;
-  if (next.reasons.length === 0) return null;
-  const order = TASK_GATE_REASONS.filter((reason) => next.reasons.includes(reason));
-  const siblings = started.length > 0 ? ` · ${started.join(", ")} started` : "";
-  return `Waiting: ${order.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}${siblings}`;
+  if (queue.status !== "running" || !gates?.next || gates.next.taskId !== taskId || gates.next.reasons.length === 0) return null;
+  const next = gates.next;
+  return `Waiting: ${next.reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}`;
 }

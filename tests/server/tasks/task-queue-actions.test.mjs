@@ -6,6 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
+const storedQueue = ({ waits: _waits, ...queue }) => queue;
+
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
 const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
@@ -78,7 +80,7 @@ test("queue_add queues a task at the end and lists it in the order", async (t) =
   const first = queue(store, "T-3");
   assert.equal(first.ok, true);
   assert.equal(taskOf(first.board, "T-3").state, "queued");
-  assert.deepEqual(first.board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
+  assert.deepEqual(storedQueue(first.board.queue), { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
   const second = queue(store, "T-1");
   assert.deepEqual(second.board.queue.order, ["T-3", "T-1"]);
   // The cards went to Ready as they were queued; no private position is stored.
@@ -286,7 +288,7 @@ test("the queue actions leave the stored queue status and its blocker as they ar
   addTask(store);
   addTask(store);
   withRawDatabase(databasePath, (database) => database.prepare("UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = 'T-2' WHERE repository_id = ?").run(REPOSITORY));
-  assert.deepEqual(queue(store, "T-1").board.queue, { status: "blocked", blockedBy: "T-2", pauseReason: null, order: ["T-1"] });
+  assert.deepEqual(storedQueue(queue(store, "T-1").board.queue), { status: "blocked", blockedBy: "T-2", pauseReason: null, order: ["T-1"] });
   assert.deepEqual(unqueue(store, "T-1").board.queue, { status: "blocked", blockedBy: "T-2", pauseReason: null, order: [] });
   for (const task of store.readBoard(REPOSITORY).tasks) assert.deepEqual([task.session, task.report, task.scheduledAt], [null, null, null]);
 });
@@ -336,7 +338,7 @@ test("the served board carries the order as task IDs and no private queue field"
   assert.equal(store.apply(REPOSITORY, "queue_group", { ids: ["T-4", "T-2"] }).ok, true);
   for (const board of [store.readBoard(REPOSITORY)]) {
     const wire = JSON.parse(JSON.stringify(board));
-    assert.deepEqual(Object.keys(wire.queue).toSorted(), ["blockedBy", "order", "pauseReason", "status"]);
+    assert.deepEqual(Object.keys(wire.queue).toSorted(), ["blockedBy", "order", "pauseReason", "status", "waits"]);
     assert.ok(wire.queue.order.every((id) => /^T-[1-9][0-9]*$/u.test(id)));
     assert.equal(new Set(wire.queue.order).size, wire.queue.order.length);
     for (const task of wire.tasks) assert.deepEqual(Object.keys(task).toSorted(), TASK_KEYS);

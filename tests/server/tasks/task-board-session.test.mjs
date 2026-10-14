@@ -412,9 +412,9 @@ test("each check fact carries the time it was read, from committed memory alone"
   assert.deepEqual([undated.ciPassed, undated.readAt.ci], [null, null]);
   const unstampedBlock = checkFacts(unstamped);
   assert.deepEqual([unstampedBlock.ciPassed, unstampedBlock.readAt.ci], [true, null]);
-  // No judged pull request is a known "not passed" that rests on no read.
+  // No judged pull request is a known "not passed" that rests on the pull-request read.
   const none = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([]) }) }));
-  assert.deepEqual([none.ciPassed, none.readAt.ci], [false, null]);
+  assert.deepEqual([none.ciPassed, none.readAt.ci], [false, 6_000]);
 });
 
 test("the work times are the latest end of the session's finished commands and recorded file changes", () => {
@@ -456,8 +456,8 @@ test("the pull requests judged are the ones the session's block lists, on its br
   const created = { state: "open", headBranch: "tasks/T-64", url: pullUrl(1), association: "session" };
   assert.deepEqual(states([created]), ["open"]);
   assert.deepEqual(states([created, openPull(2, "merged")]), ["open", "merged"]);
-  // An item with no known state is not judged, and a block that is not ready is unknown.
-  assert.deepEqual(states([{ ...created, state: "unknown" }, null]), []);
+  // An item with no known state is listed as unknown, and a block that is not ready is unknown.
+  assert.deepEqual(states([{ ...created, state: "unknown" }, null]), ["unknown", "unknown"]);
   assert.equal(states([created], { status: "unavailable" }), null);
   const waitingOnCi = checkState({ session: checkSession({ pullRequests: pullBlock([created]) }), executionTasks: [task("pull_request", null, "running")] });
   assert.equal(verifyChecks(["pr_open"], checkFacts(waitingOnCi))[0].passed, true, "a command still running does not hide the listed pull request");

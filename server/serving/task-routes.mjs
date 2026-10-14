@@ -33,6 +33,10 @@ export const GATE_REASONS = Object.freeze([
   "earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
   "before_queue_start", "after_queue_stop",
 ]);
+// Why a waiting task has not started (`server/tasks/task-queue-waits.mjs`).
+export const WAIT_REASONS = Object.freeze(["queue_off", "queue_blocked", "queue_paused", "own_schedule", "earlier_tasks", "running_work", ...GATE_REASONS, "unknown"]);
+export const WAIT_TASK_LIMIT = 8;
+const WAIT_LIMIT = 500;
 const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const GATE_PROVIDERS = Object.freeze(["claude", "codex"]);
 const GATE_USAGE_STATUSES = Object.freeze(["ok", "over", "unknown"]);
@@ -90,6 +94,25 @@ export function projectGates(gates) {
   return { threshold: gates.threshold, usage, providerStatus, workingTree: gates.workingTree, next };
 }
 
+// Rebuilds the waits field by field, and drops them whole when one value is outside the contract.
+export function projectWaits(waits) {
+  if (!Array.isArray(waits) || waits.length === 0 || waits.length > WAIT_LIMIT) return undefined;
+  const taskId = (value) => typeof value === "string" && TASK_ID_PATTERN.test(value);
+  const projected = [];
+  for (const wait of waits) {
+    if (!isPlainObject(wait) || !taskId(wait.taskId) || !(wait.place === null || (Number.isSafeInteger(wait.place) && wait.place >= 1 && wait.place <= WAIT_LIMIT))
+      || !Array.isArray(wait.reasons) || wait.reasons.length > WAIT_REASONS.length) return undefined;
+    const reasons = [];
+    for (const entry of wait.reasons) {
+      if (!isPlainObject(entry) || !WAIT_REASONS.includes(entry.reason) || !Array.isArray(entry.taskIds) || entry.taskIds.length > WAIT_TASK_LIMIT
+        || !entry.taskIds.every(taskId) || !Number.isSafeInteger(entry.more) || entry.more < 0 || entry.more > WAIT_LIMIT) return undefined;
+      reasons.push({ reason: entry.reason, taskIds: [...entry.taskIds], more: entry.more });
+    }
+    projected.push({ taskId: wait.taskId, place: wait.place, reasons });
+  }
+  return projected;
+}
+
 export function projectSchedule(schedule) {
   if (!isPlainObject(schedule)) return undefined;
   const instant = (value) => value === null || (typeof value === "string" && INSTANT_PATTERN.test(value) && Number.isFinite(Date.parse(value)));
@@ -114,10 +137,11 @@ function projectBoard(repositoryId, board, runModels) {
   }
   const gates = projectGates(board.queue.gates);
   const schedule = projectSchedule(board.queue.schedule);
+  const waits = projectWaits(board.queue.waits);
   return {
     version: 1, readiness: board.readiness, repositoryId,
     columns: board.columns, features: board.features, tasks: board.tasks.map(projectTask),
-    queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}) },
+    queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}), ...(waits ? { waits } : {}) },
     runModels: projectRunModels(runModels),
   };
 }

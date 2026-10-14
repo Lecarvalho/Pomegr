@@ -7,7 +7,7 @@ import test from "node:test";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { TASK_ACTIONS } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
-import { removeDirectory, setQueueRow, setMeta, pauseReasonKey, withDatabase } from "./queue-test-support.mjs";
+import { removeDirectory, setQueueRow, setMeta, pauseReasonKey, withDatabase, storedQueue } from "./queue-test-support.mjs";
 import { GATE_FACTS } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
@@ -203,7 +203,7 @@ test("queue-pause pauses a running queue and answers only ok", async (context) =
   assert.equal(response.headers["cache-control"], "no-store");
   assert.deepEqual(response.json, { ok: true });
   assert.deepEqual(touched, ["resolveTaskGateFacts"]);
-  const queue = store.readBoard(REPOSITORY_ID).queue;
+  const queue = storedQueue(store.readBoard(REPOSITORY_ID).queue);
   assert.deepEqual(queue, { status: "paused", blockedBy: "T-1", pauseReason: "plugin_missing", order: ["T-1"] });
   // Already paused, and a queue that was never on, change nothing and still answer ok.
   assert.deepEqual((await queuePause(port, { id: "T-1", reason: "cli_missing" })).json, { ok: true });
@@ -257,13 +257,13 @@ test("GET /api/tasks carries the pause reason and never a next start, and a GET 
   await action(port, "queue_settings", { on: true });
   const query = `/api/tasks?repositoryId=${REPOSITORY_ID}`;
   const running = await send(port, { method: "GET", path: query, headers: withToken });
-  assert.deepEqual(running.json.queue, { status: "running", blockedBy: null, pauseReason: null, order: ["T-1"] });
+  assert.deepEqual(storedQueue(running.json.queue), { status: "running", blockedBy: null, pauseReason: null, order: ["T-1"] });
 
   await queuePause(port, { id: "T-1", reason: "unsupported_platform" });
   const paused = await send(port, { method: "GET", path: query, headers: withToken });
   assert.equal(paused.status, 200);
-  assert.deepEqual(paused.json.queue, { status: "paused", blockedBy: "T-1", pauseReason: "unsupported_platform", order: ["T-1"] });
-  assert.deepEqual(Object.keys(paused.json.queue).toSorted(), ["blockedBy", "order", "pauseReason", "status"]);
+  assert.deepEqual(storedQueue(paused.json.queue), { status: "paused", blockedBy: "T-1", pauseReason: "unsupported_platform", order: ["T-1"] });
+  assert.deepEqual(Object.keys(paused.json.queue).toSorted(), ["blockedBy", "order", "pauseReason", "status", "waits"]);
 
   // Whatever the store hands the route, only the contract's queue keys leave it.
   setQueueRow(directory, "idle", null, REPOSITORY_ID);

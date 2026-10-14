@@ -259,6 +259,23 @@ describe("SessionTaskTab", () => {
     expect(checkRows({ ...mine, session, state: "needs_review", report }).map((row) => row.result)).toEqual(["Did not pass", "Not checked"]);
   });
 
+  it("tells a condition Pomegr could not verify from one that did not pass", () => {
+    const at = "2026-10-09T10:00:00.000Z";
+    const unverified = { at, results: [{ check: "pr_open" as const, passed: false, unavailable: true }, { check: "tree_clean" as const, passed: false, unavailable: true }], blockReason: null };
+    const mixed = { at, results: [{ check: "pr_open" as const, passed: false }, { check: "tree_clean" as const, passed: false, unavailable: true }], blockReason: null };
+    expect(checkRows({ ...mine, state: "needs_review", report: mixed }).map((row) => [row.result, row.tone])).toEqual([["Did not pass", "failed"], ["Not verified", "waiting"]]);
+    expect(completionSummary({ ...mine, state: "needs_review", report: unverified })).toBe("2 checks not verified");
+    expect(completionSummary({ ...mine, state: "needs_review", report: { ...unverified, results: unverified.results.slice(1) } })).toBe("1 check not verified");
+    expect(completionSummary({ ...mine, state: "needs_review", report: mixed })).toBe("1 check did not pass, 1 not verified");
+    setBoard(board({ tasks: [{ ...mine, state: "needs_review", report: mixed }, ...siblings] }));
+    render(<SessionTaskTab task={{ ...reference, state: "needs_review" }} sessionId={sessionId} />);
+    const [failed, unknown] = within(completePanel()).getAllByRole("listitem");
+    expect(failed.querySelector(".sessionTaskCheckResult")).toHaveClass("is-failed");
+    expect(unknown).toHaveTextContent("Working tree cleanNot verified");
+    expect(unknown.querySelector(".sessionTaskCheckResult")).toHaveClass("is-waiting");
+    expect(unknown.querySelector(".sessionTaskCheckResult")).not.toHaveClass("is-failed");
+  });
+
   it("does not wait forever for a report that will not come", () => {
     expect(checkRows({ ...mine, state: "stalled" }).map((row) => row.result)).toEqual(["No report", "No report"]);
   });

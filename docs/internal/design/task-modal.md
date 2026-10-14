@@ -235,12 +235,31 @@ A card's title opens the task modal for one stored task.
 - The row holds the 12px/500 label **Source**, the issue chip, and the muted caption “GitHub issue”.
 - The block shows no promoted-at time, because none is stored.
 - The text of a promoted task stays editable like any task's.
+- A task that waits in the queue follows with the **Queue** block (`.taskQueueWait`), a group named “Queue”.
+- The block shows only for a Queued or Scheduled task that has not started and that the board's waits list.
+- The block is a 4px-gap column: the 12px/500 ink label **Queue**, the place line, and the reason list.
+- The place line (`.taskQueueWaitPlace`) is 13px ink: “Next to start”, “5th to start”, or “Not in the start order yet” for a scheduled task before its time.
+- The reason list (`.taskQueueWaitReasons`) is muted 12px text with a 4px gap, one sentence for each reason, with no bullet.
+- A reason names every task ID the board sent, at most eight, and then “and n more”.
+- A task behind the cards above it reads “These are above it in Ready and start first: T-66, T-67, T-68, T-69.”
+- A task behind running work reads “T-5 is running. The next card starts when that work is in Review or Done.”
+- A queue that is off reads “The queue is off, so Pomegr starts no task by itself.” It is not worded as a blocker.
+- A blocked queue reads “The queue is blocked by T-2. Nothing starts until that task is resolved.” A paused queue reads “The queue is paused at T-3. Select On to retry.”
+- A held gate reads “Start gate: …” in the Start gates words. A queue time reads “Schedule: …”.
+- A missing reading reads “not known yet”, and a reason the monitor cannot name reads “The reason is not known yet.”
+- A task with no known hold reads “Nothing known holds it. The queue starts it at its next check.”
+- The block is text only. It has no tone, no control, and no link, and it changes nothing.
 - A task whose title comes from its session follows with that title.
 - A muted helper under that title links **Open session**.
 - An amber notice follows Run on when the observed model differs from the planned one.
 - The notice has an amber line, the amber-soft fill, and the words **Observed model differs**.
-- Complete when lists each checked condition's **Passed** (green) or **Not passed** (error) from the agent's report.
-- The report line shows below each condition.
+- Complete when lists each checked condition's **Passed** (green), **Not passed** (error), or **Not verified** (muted) from the agent's report.
+- **Not verified** means that Pomegr had no current evidence for the condition; it never takes the error color.
+- The report line shows below the conditions, in the muted helper style.
+- An attention line or a block reason follows the report line in an amber notice: an amber line, the amber-soft fill, and 13px text in the text color.
+- The report line ends with a colon when the notice follows, and with a period when it does not.
+- The notice reads `**bold**` and `` `inline code` `` in the agent's words. A link stays the characters it was written with, and nothing navigates.
+- Inline code in the notice is the data font at 12px on an amber tint.
 - In the Feature fields, the folded list leaves out the open task.
 - In the Feature fields, the rows are in board order, and a row has no step number.
 - **Sessions** follows Complete when. It is a fieldset with the 12px/500 legend **Sessions**.
@@ -272,6 +291,8 @@ A card's title opens the task modal for one stored task.
 - A task that needs review holds no queue, so its first action reads **Mark done**.
 - A linked task that has not reported offers **Mark done** and **Requeue task**.
 - A linked task that has not reported shows a line that neither action stops the session.
+- A **Mark done** that works closes the modal, under either of its names.
+- **Requeue task** keeps the modal open, because the task can be edited again.
 - Below the top row, from the left, comes the Quiet **Delete task**.
 - **Delete task** swaps in an inline confirmation.
 - The confirmation holds a Secondary delete and a Quiet Keep task. It uses no native dialog.
@@ -279,7 +300,8 @@ A card's title opens the task modal for one stored task.
 - **Remove from queue** is disabled on a queued task whose session has started.
 - **Start session** asks for a native confirmation in the desktop app, or a browser confirmation on a paired phone that names the task and says the session runs on the computer running Pomegr.
 - A paired phone's **Start in separate worktree** confirmation says that uncommitted changes are left out and remain untouched.
-- A paired phone's successful start says “Session started in a new terminal on the computer running Pomegr.”
+- A start that works closes the modal, from **Start session** or from **Start in separate worktree**.
+- A start that does not happen keeps the modal open with its start-status note.
 - The footer ends with the primary **Save**.
 - Footer action height follows the [Frame](#layout).
 
@@ -543,6 +565,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 ## Samples
 
 - `/design-system` renders the task fields, including Feature.
+- `/design-system` renders the Queue block for a task behind earlier cards, a queue that is off, a held start, a scheduled task, and no known hold.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
 - The mode new sample ends with the split action.
 - `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the delete confirmation, with Delete feature blocked by a started task, with the details not read, and with each failure line.

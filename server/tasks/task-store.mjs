@@ -9,7 +9,7 @@ import { fillTaskSessions } from "./task-board.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, readyColumnId, reconcileFixedColumns, seedColumnRoles, settleReadyColumn, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
-import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
+import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -617,8 +617,15 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     } catch { /* the store is read again on the first board read */ }
   }
 
-  const served = (board, { resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) =>
-    fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), rows: loadRows(board.repositoryId), resolveGateFacts, at: now() });
+  // `rows` are the stored rows the board was projected from: the gates and the waits read what a board does not carry, a live dispatch.
+  const served = (board, rows, { resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) => {
+    const at = now();
+    // One board asks for its gate facts once, so the gates and the waits judge the same reading.
+    let asked = null;
+    const gateFacts = typeof resolveGateFacts === "function" ? (id) => (asked ??= { facts: resolveGateFacts(id) }).facts : null;
+    const gated = fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), rows, resolveGateFacts: gateFacts, at });
+    return fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at });
+  };
 
   function readBoard(repositoryId, resolvers = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
@@ -626,8 +633,9 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     if (!database) return emptyBoard(repositoryId, "unavailable");
     try {
       seedColumns(repositoryId);
-      const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
-      return board ? served(board, resolvers) : emptyBoard(repositoryId, "unavailable");
+      const rows = loadRows(repositoryId);
+      const board = projectBoard(repositoryId, rows, { at: now() });
+      return board ? served(board, rows, resolvers) : emptyBoard(repositoryId, "unavailable");
     } catch {
       return emptyBoard(repositoryId, "unavailable");
     }
@@ -673,14 +681,15 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         // Only `create`, `agent_create`, and `promote_issue` answer the task they made.
         taskId = action === "promote_issue" || action === "create" || action === "agent_create" ? taskIdFromNumber(result.number) ?? null : null;
         // The write stands only if the whole board, the new row included, still projects.
-        const projected = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
+        const rows = loadRows(repositoryId);
+        const projected = projectBoard(repositoryId, rows, { at: now() });
         if (!projected) throw new ActionRejected("conflict");
-        return projected;
+        return { projected, rows };
       });
       // An agent's add is remembered only once it has committed, so a rolled-back add is never answered as made.
       if (added) recentAdds.remember(added.key, added.number);
       if (action === "delete" || action === "agent_remove") removeTaskImageFiles(directory, repositoryId, payload?.id);
-      return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }), ...(featureId === null ? {} : { featureId }) };
+      return { ok: true, board: served(board.projected, board.rows, resolvers), ...(taskId === null ? {} : { taskId }), ...(featureId === null ? {} : { featureId }) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }

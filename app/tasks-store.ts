@@ -2,8 +2,8 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import {
-  TASK_COLUMN_ROLES, TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, createEmptyTaskBoard,
-  type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskState,
+  TASK_COLUMN_ROLES, TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, TASK_QUEUE_WAIT_REASONS, TASK_QUEUE_WAIT_TASK_LIMIT, createEmptyTaskBoard,
+  type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskQueueWait, type TaskQueueWaitReason, type TaskState,
 } from "../shared/task-contract";
 
 // Client for the committed task board (GET /api/tasks).
@@ -69,7 +69,9 @@ function validTask(value: unknown): value is Task {
     const result = record(entry);
     return Boolean(result) && CHECKS.has(result!.check as TaskCheck) && typeof result!.passed === "boolean";
   };
-  const results = report ? listOf(report.results, CHECKS.size, validResult) : [];
+  // A report's result may also say that the condition could not be verified; a pass never does.
+  const validOutcome = (entry: unknown): entry is Json => validResult(entry) && (entry.unavailable === undefined || (entry.unavailable === true && entry.passed === false));
+  const results = report ? listOf(report.results, CHECKS.size, validOutcome) : [];
   const reading = session && session.checks !== undefined ? listOf(session.checks, CHECKS.size, validResult) : [];
   const checks = listOf(completeWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
   const validAssigned = (entry: unknown): entry is Json => {
@@ -132,6 +134,28 @@ function parseGates(value: unknown): TaskGates | undefined {
   return { threshold: gates.threshold as TaskGateThreshold, usage: readings, providerStatus: statuses, workingTree: gates.workingTree as TaskGates["workingTree"], next };
 }
 
+const WAIT_REASONS = new Set<string>(TASK_QUEUE_WAIT_REASONS);
+const taskId = (entry: unknown): entry is string => typeof entry === "string" && TASK_ID_PATTERN.test(entry);
+
+/** The waits as served, or none when one value is outside the contract. */
+function parseWaits(value: unknown): TaskQueueWait[] | undefined {
+  const entries = listOf(value, LIMITS.tasks, (entry): entry is Json => record(entry) !== null);
+  if (!entries || entries.length === 0) return undefined;
+  const waits: TaskQueueWait[] = [];
+  for (const wait of entries) {
+    const reasons = listOf(wait.reasons, WAIT_REASONS.size, (entry): entry is Json => record(entry) !== null);
+    if (!reasons || !taskId(wait.taskId) || !(wait.place === null || (count(wait.place, 1) && wait.place <= LIMITS.tasks))) return undefined;
+    const parsed: TaskQueueWait["reasons"] = [];
+    for (const entry of reasons) {
+      const taskIds = listOf(entry.taskIds, TASK_QUEUE_WAIT_TASK_LIMIT, taskId);
+      if (!taskIds || typeof entry.reason !== "string" || !WAIT_REASONS.has(entry.reason) || !count(entry.more, 0) || entry.more > LIMITS.tasks) return undefined;
+      parsed.push({ reason: entry.reason as TaskQueueWaitReason, taskIds, more: entry.more });
+    }
+    waits.push({ taskId: wait.taskId, place: wait.place, reasons: parsed });
+  }
+  return waits;
+}
+
 function parseSchedule(value: unknown): TaskQueueSchedule | undefined {
   const schedule = record(value);
   if (!schedule) return undefined;
@@ -162,9 +186,10 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   const pauseReason = queue.status === "paused" && typeof queue.pauseReason === "string" && PAUSE_REASONS.has(queue.pauseReason) ? queue.pauseReason as TaskQueuePauseReason : null;
   const gates = parseGates(queue.gates);
   const schedule = parseSchedule(queue.schedule);
+  const waits = parseWaits(queue.waits);
   return {
     version: 1, readiness, repositoryId, columns, features, tasks,
-    queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, pauseReason, order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}) },
+    queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, pauseReason, order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}), ...(waits ? { waits } : {}) },
     runModels: parseRunModels(body.runModels),
   };
 }

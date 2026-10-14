@@ -150,8 +150,8 @@ describe("the Ready lane's parallel groups", () => {
     const { unmount } = render(<TaskBoardView board={open("running")} />);
     expect(card("T-1").querySelector(".taskCardChip")).toHaveTextContent("Queued · next");
     expect(card("T-1").querySelector(".taskCardWaiting")?.textContent).toBe("Waiting: Claude Code is above 85% of the five-hour window · T-3 started");
-    // A waiting sibling of the first task reads its own provider's hold: Claude Code is over.
-    expect(card("T-2").querySelector(".taskCardWaiting")?.textContent).toBe("Waiting: Claude Code is above 85% of the five-hour window · T-3 started");
+    // Without the monitor's waits only the next task reads the gates; its sibling reads nothing of its own.
+    expect(card("T-2").querySelector(".taskCardWaiting")).toBeNull();
     expect(card("T-4").querySelector(".taskCardWaiting")).toBeNull();
     expect(card("T-8").querySelector(".taskCardWaiting")).toBeNull();
     unmount();

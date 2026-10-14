@@ -81,10 +81,29 @@ function Wide({ label, note, children }: { label: string; note?: string; childre
   return <div className="designSystemGrid"><Sample label={label} note={note}><div className="designSystemTaskFrame">{children}</div></Sample></div>;
 }
 
-function SampleComposer({ initial = "", ...rest }: { initial?: string; running?: boolean; error?: string | null; runningElsewhere?: boolean; busy?: boolean; disabled?: boolean }) {
+// Two invented images: a 1×1 GIF as an inline `data:` URL. The second has no URL, so it draws as a pending frame.
+const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+const IMAGE_ONE = "img-000000000001";
+const IMAGE_TWO = "img-000000000002";
+const IMAGE_URLS = new Map([[IMAGE_ONE, PIXEL], [IMAGE_TWO, PIXEL]]);
+const PENDING_URLS = new Map([[IMAGE_ONE, PIXEL]]);
+const sentImage = (id: string) => ({ id, type: "gif" as const, bytes: 43 });
+const IMAGE_OPERATIONS: AgentChatBoardOperation[] = [
+  { op: "create_task", text: "Fix the upload dialog layout", images: [IMAGE_ONE] },
+  { op: "attach_images", id: "T-12", images: [IMAGE_TWO] },
+];
+const IMAGE_PROPOSAL = proposal("pending", undefined, IMAGE_OPERATIONS);
+const IMAGE_FAILED = proposal("partial", [{ ok: true, taskId: "T-19" }, { ok: false, error: "limit", part: "images" }], IMAGE_OPERATIONS);
+const WITH_IMAGES = conversation([
+  { id: "m-1", role: "user", text: "The upload dialog looks wrong in both of these. Can you make a task for the first one and add the second to T-12?", at: AT, images: [sentImage(IMAGE_ONE), sentImage(IMAGE_TWO)] },
+  agent("m-2", "I would create one task with the first image and attach the second to T-12.", { proposal: IMAGE_PROPOSAL }),
+]);
+
+function SampleComposer({ initial = "", ...rest }: { initial?: string; running?: boolean; error?: string | null; runningElsewhere?: boolean; busy?: boolean; disabled?: boolean; images?: string[]; imageUrls?: Map<string, string>; uploading?: boolean; imageError?: string | null }) {
   const [value, setValue] = useState(initial);
   return <AgentChatComposer value={value} onChange={setValue} onSend={noop} onStop={noop} runOptions={RUN_OPTIONS} runValue={runSelectValue(DEFAULT_RUN)} onRunChange={noop}
-    running={rest.running ?? false} busy={rest.busy ?? false} runningElsewhere={rest.runningElsewhere ?? false} error={rest.error ?? null} disabled={rest.disabled} />;
+    running={rest.running ?? false} busy={rest.busy ?? false} runningElsewhere={rest.runningElsewhere ?? false} error={rest.error ?? null} disabled={rest.disabled}
+    images={rest.images} imageUrls={rest.imageUrls} uploading={rest.uploading} imageError={rest.imageError} onAttach={noop} onRemoveImage={noop} />;
 }
 
 function Panel({ state = "ready", conversation: shown = null, turn = null, pending = null, repositories = false, history = false, children }: {
@@ -102,7 +121,7 @@ function Panel({ state = "ready", conversation: shown = null, turn = null, pendi
     <div className="agentChatBody">
       {history
         ? <AgentChatHistory conversations={HISTORY} openId={HISTORY[0].id} runningId={null} onOpen={noop} onDelete={noop} />
-        : <AgentChatMessages state={state} conversation={shown} turn={turn} pendingMessage={pending} tasks={TASKS} resolving={null} onSuggest={noop} onApply={noop} onDismiss={noop} />}
+        : <AgentChatMessages state={state} conversation={shown} turn={turn} pendingMessage={pending} imageUrls={IMAGE_URLS} tasks={TASKS} resolving={null} onSuggest={noop} onApply={noop} onDismiss={noop} />}
     </div>
     {children}
   </AgentChatPanelFrame>;
@@ -115,7 +134,7 @@ const HELD_LINE ="This task is held: Claude Code is above 85% of the five-hour w
 
 function Card({ label, note, shown, busy = false, startHere = true, held = false }: { label: string; note?: string; shown: AgentChatProposal; busy?: boolean; startHere?: boolean; held?: boolean }) {
   return <Sample label={label} note={note}><div className="designSystemTaskFrame">
-    <AgentChatProposalCard proposal={shown} tasks={TASKS} busy={busy} startHere={startHere} heldStart={held ? () => HELD_LINE : undefined} onApply={noop} onDismiss={noop} />
+    <AgentChatProposalCard proposal={shown} tasks={TASKS} imageUrls={IMAGE_URLS} busy={busy} startHere={startHere} heldStart={held ? () => HELD_LINE : undefined} onApply={noop} onDismiss={noop} />
   </div></Sample>;
 }
 
@@ -141,6 +160,9 @@ export function AgentChatSection() {
       </Sample>
       <Sample label="Panel, notes under an answer" note="A failed answer, a timed-out answer, and a proposal that could not be read.">
         <Panel conversation={NOTES}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, images" note="The owner's message shows its images under the text. A proposal row that names an image shows it too.">
+        <Panel conversation={WITH_IMAGES}><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, no repository" note="The composer is disabled until a repository is observed.">
         <AgentChatPanelFrame isStatic>
@@ -172,7 +194,20 @@ export function AgentChatSection() {
       <Card label="Queue change, turned off" shown={queue(false, "applied", [{ ok: true, queue: "off" }])} />
       <Card label="Queue change, not changed" note="The queue was not changed. The card stays open to another try, which asks for the same state." shown={queue(true, "pending", [{ ok: false, error: "unavailable" }])} />
     </div>
+    <div className="designSystemGrid designSystemChatGrid">
+      <Card label="Proposal, images, pending" note="A task created with an image, and an image attached to T-12. The strip is labelled Images for this task." shown={IMAGE_PROPOSAL} />
+      <Card label="Proposal, an image not attached" note="The task was created, and the attach stopped at its limit. The line is fixed, by error." shown={IMAGE_FAILED} />
+    </div>
     <div className="designSystemGrid">
+      <Sample label="Composer, images" note="Two attached images above the row. The second has not arrived yet, so it is an empty frame of the same size.">
+        <div className="designSystemTaskFrame"><SampleComposer initial="Which one is wrong?" images={[IMAGE_ONE, IMAGE_TWO]} imageUrls={PENDING_URLS} /></div>
+      </Sample>
+      <Sample label="Composer, uploading image" note="Send is disabled while an image is on its way to the desktop app.">
+        <div className="designSystemTaskFrame"><SampleComposer initial="Which one is wrong?" images={[IMAGE_ONE]} imageUrls={IMAGE_URLS} uploading /></div>
+      </Sample>
+      <Sample label="Composer, image error" note="One fixed line as an alert; the images already attached stay.">
+        <div className="designSystemTaskFrame"><SampleComposer initial="Which one is wrong?" images={[IMAGE_ONE]} imageUrls={IMAGE_URLS} imageError="An image can be at most 5 MB." /></div>
+      </Sample>
       <Sample label="Composer, error" note="One fixed line as an alert; the typed text stays.">
         <div className="designSystemTaskFrame"><SampleComposer initial="Which task should run first?" error="Aril is already answering. Wait for it to finish." /></div>
       </Sample>

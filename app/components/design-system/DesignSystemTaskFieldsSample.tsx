@@ -6,18 +6,21 @@ import { FeatureFields } from "../tasks/FeatureFields";
 import { FeatureModalSamples } from "./DesignSystemFeatureModalSample";
 import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
+import { TaskQueueWait } from "../tasks/TaskQueueWait";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
+import { TaskReportNote } from "../tasks/TaskReportNote";
 import { CompleteWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
 import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_COMPLETE_WHEN, DEFAULT_RUN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
 import type { TaskIssue } from "../tasks/task-issues-desktop";
+import { NO_KNOWN_HOLD } from "../tasks/task-wait-model";
 import type { TaskRun } from "../../../shared/task-contract";
 import { Sample, Section } from "./DesignSystemKit";
 import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
 
 const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] } as const;
-const RESULTS = new Map([["pr_open", false], ["tree_clean", true]] as const);
+const RESULTS = new Map([["pr_open", "failed"], ["tree_clean", "passed"], ["ci_passed", "unavailable"]] as const);
 const noop = () => undefined;
 const CREATE_FOLLOW_UPS = [
   { value: "queue", label: "Create and queue", detail: "Goes to the end of Ready." },
@@ -46,7 +49,7 @@ export function TaskFieldsSection() {
   const [remote, setRemote] = useState<TaskRun>({ ...DEFAULT_RUN, remoteControl: true });
   const [codexRun, setCodexRun] = useState<TaskRun>({ ...DEFAULT_RUN, provider: "codex" });
   const [modalCompleteWhen, setModalCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
-  const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean", "user_validated"], ownText: "The store rejects a malformed record." });
+  const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean", "ci_passed", "user_validated"], ownText: "The store rejects a malformed record." });
   return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider. Remote Control is one checkbox under both, for a Claude Code session only. Effort is a four-way segmented control. Run on and Effort are required: a new task opens with both chosen, and neither can be cleared. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature is one select over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
@@ -64,7 +67,7 @@ export function TaskFieldsSection() {
       <Sample label="Complete when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">
         <CompleteWhenField draft={fresh} onDraftChange={setFresh} />
       </Sample>
-      <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list. Validated with the user is judged by the agent, so it shows Agent-reported.">
+      <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed, Not passed or Not verified in one list. Not verified is muted: Pomegr had no current evidence, so the condition is neither passed nor failed. Validated with the user is judged by the agent, so it shows Agent-reported.">
         <CompleteWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
       <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. A feature gives a task context only, not an order. The folded In this feature list counts the feature's tasks and opens on demand.">
@@ -84,6 +87,17 @@ export function TaskFieldsSection() {
       </Sample>
       <Sample label="Task field as rich text, full and refused" note="A task holds four images, so Attach image is disabled. A file that cannot be attached is named by one fixed error line under the frame.">
         <TaskTextField value={fullText} onChange={setFullText} images={{ urls: SAMPLE_IMAGE_URLS, error: TASK_IMAGE_TYPE_MESSAGE, onAttach: noImages }} />
+      </Sample>
+      <Sample label="Queue block, task behind earlier cards" note="The Task modal of a task that waits in the queue starts its body with the Queue block: the label, the task's place in the start order in ink, then one muted line for each reason it has not started. Task IDs name the work that starts first.">
+        <TaskQueueWait detail={{ place: "5th to start", lines: ["These are above it in Ready and start first: T-66, T-67, T-68, T-69."] }} />
+      </Sample>
+      <Sample label="Queue block, queue off and a held start" note="A queue that is off is named first and is not a blocker. A start gate that holds is one line each; a reading that is missing says it is not known yet, never that it passed.">
+        <TaskQueueWait detail={{ place: "Next to start", lines: ["The queue is off, so Pomegr starts no task by itself."] }} />
+        <TaskQueueWait detail={{ place: "Next to start", lines: ["Start gate: Claude Code is above 85% of the five-hour window.", "Start gate: the working tree state is not known yet."] }} />
+      </Sample>
+      <Sample label="Queue block, scheduled and no known hold" note="A scheduled task before its own time has no place in the start order yet. A task with no known hold says so and claims nothing more.">
+        <TaskQueueWait detail={{ place: "Not in the start order yet", lines: ["Its own start time has not come."] }} />
+        <TaskQueueWait detail={{ place: "Next to start", lines: [NO_KNOWN_HOLD] }} />
       </Sample>
       <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel and a task's own start time.">
         <div className="taskGateField">
@@ -150,7 +164,7 @@ function TaskModalEditSamples() {
         </TaskModalChrome>
       </div>
     </Sample>
-    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Complete when shows each checked condition's outcome from the agent's report, and the agent's own attention line when it gave one.">
+    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Complete when shows each checked condition's outcome from the agent's report. The agent's own attention line, when it gave one, sits in an amber notice (.taskReportNotice) under the muted report line, with its bold and inline code formatted.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={reviewId} title="Task" subtitle="pomegr · in Review" onClose={noop}
           titleExtra={<>
@@ -172,7 +186,7 @@ function TaskModalEditSamples() {
           </div>
           <TaskTextField value={STORED_TEXT} onChange={noop} />
           <CompleteWhenField draft={reviewed} results={RESULTS} ownNote="Agent-reported" onDraftChange={noop}
-            footnote={<span className="newTaskHelper taskCompleteWhenNote">Agent reported complete and asks for your attention: The retry budget of five is a guess; confirm it.</span>} />
+            footnote={<TaskReportNote report={{ at: "", blockReason: null, attention: "The retry budget of **five** is a guess; confirm `RETRY_BUDGET` before merging." }} />} />
         </TaskModalChrome>
       </div>
     </Sample>

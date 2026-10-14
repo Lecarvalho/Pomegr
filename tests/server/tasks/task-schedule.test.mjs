@@ -6,7 +6,7 @@ import { nextQueueStart, orderQueue, queueWindowHold, taskIsDue } from "../../..
 import { TASK_SCHEDULE_HORIZON_MS, normalizeQueueAddPayload, normalizeQueueSchedule } from "../../../server/tasks/task-record.mjs";
 import {
   FACTS, REPOSITORY, SESSION, createTask, metaValue, openTemporaryStore, passingGates, queueRow, queueSettings, queueTask, setMeta,
-  startedTask, updateTask, withDatabase,
+  startedTask, updateTask, withDatabase, storedQueue,
 } from "./queue-test-support.mjs";
 
 const MINUTE = 60_000;
@@ -198,7 +198,7 @@ test("a queue with a start time starts nothing before it, and one with a stop ti
   const stopAfter = clock.now + 7 * HOUR;
   const set = schedule(store, iso(startAt), iso(stopAfter));
   assert.equal(set.ok, true);
-  assert.deepEqual(set.board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-1", "T-2"], schedule: { startAt: iso(startAt), stopAfter: iso(stopAfter) } });
+  assert.deepEqual(storedQueue(set.board.queue), { status: "idle", blockedBy: null, pauseReason: null, order: ["T-1", "T-2"], schedule: { startAt: iso(startAt), stopAfter: iso(stopAfter) } });
   assert.equal(metaValue(directory, `queue_start_at:${REPOSITORY}`), String(startAt));
   assert.equal(metaValue(directory, `queue_stop_after:${REPOSITORY}`), String(stopAfter));
   assert.equal(queueSettings(store, true).ok, true);

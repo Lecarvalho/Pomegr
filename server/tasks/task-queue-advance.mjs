@@ -3,6 +3,7 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { DEFAULT_TASK_GATE_THRESHOLD, evaluateGates, normalizeGateThreshold, queueGates } from "./task-gates.mjs";
 import { earlierTaskBlocker, nextQueueStart, queueWhenTurnedOn, queueWindowHold, taskIsDue } from "./task-queue.mjs";
+import { explainQueueWaits } from "./task-queue-waits.mjs";
 import { isRepositoryId, isTaskId, normalizeQueueSchedule, projectBoard, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 // The reasons the desktop may report.
@@ -75,6 +76,22 @@ export function fillQueueGates({ database, board, rows, resolveGateFacts, at }) 
   const hold = gates.next ? queueWindowHold(readQueueSchedule(database, board.repositoryId), at) : null;
   if (hold) gates.next = { ...gates.next, reasons: [...gates.next.reasons, hold] };
   return { ...board, queue: { ...board.queue, gates } };
+}
+
+// Why each waiting task has not started (task-queue-waits.mjs). A task the running queue would start now is judged by
+// the start gates and the queue's window, the rules its start obeys; a queue that is not running says only that.
+export function fillQueueWaits({ database, board, rows, resolveGateFacts, at }) {
+  if (board?.readiness !== "ready" || !Array.isArray(rows?.tasks)) return board;
+  const { repositoryId } = board;
+  const running = board.queue.status === "running";
+  const hold = running ? queueWindowHold(readQueueSchedule(database, repositoryId), at) : null;
+  const waits = explainQueueWaits({ status: board.queue.status, blockedBy: board.queue.blockedBy, tasks: queueRecords(rows, at) })
+    .map(({ candidate = false, ...wait }) => {
+      if (!candidate || !running) return wait;
+      const held = [...startGates({ database, repositoryId, board, rows, taskId: wait.taskId, resolveGateFacts, at }).reasons, ...(hold ? [hold] : [])];
+      return { ...wait, reasons: [...wait.reasons, ...held.map((reason) => ({ reason, taskIds: [], more: 0 }))] };
+    });
+  return waits.length === 0 ? board : { ...board, queue: { ...board.queue, waits } };
 }
 
 function pauseRunningQueue(database, repositoryId, taskId, reason) {

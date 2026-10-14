@@ -115,6 +115,7 @@ The task board is in [Task board design](task-board.md).
 
 - The owner's message is a block at the right, at most 85% wide.
 - The owner's message has the raised fill (`--command-panel-2`), the control radius, and 13px text, with its line breaks kept.
+- The images of the owner's message follow its text as an image strip named “Images you sent”. See [Image strip](#image-strip).
 - Aril's message is full width with no fill.
 - Aril's message starts with a head line of the 12px/600 name and a muted data-font caption “provider · model”.
 - The caption reads “Claude Code · default model” when no model was chosen.
@@ -128,9 +129,22 @@ The task board is in [Task board design](task-board.md).
 | “This answer took too long and was stopped.” |
 | “Pomegr closed before this answer was finished.” |
 
+### Image strip
+
+- `AgentChatImageStrip` is a list (`.agentChatImages`) that wraps, with an 8px gap.
+- The image strip draws the images in the order the owner added them.
+- A picture (`.agentChatImagePicture`) is 72px square, cropped to cover, with a one-pixel `--command-line-strong` border, the control radius, and the canvas fill.
+- A picture is 96px square at 760px and narrower and on coarse pointers.
+- The alternative text of a picture is “Image n”.
+- An image whose bytes have not arrived is an empty frame of the same size with the same name, so nothing moves when the picture arrives.
+- A picture opens nothing and cannot be dragged.
+- The image strip is drawn in three places: under an owner message, in a proposal row, and in the composer.
+- Only the composer's image strip has a remove action.
+
 ### While a turn runs
 
 - The pending message of the owner is drawn once, and never again when it reaches the stored conversation.
+- The pending message shows its images from the files the owner added, so they do not load again.
 - An agent block then holds the partial text.
 - The agent block is in an `aria-live="off"` wrapper, so the log announces each stored message and not each chunk.
 - A `role="status"` line holds one fixed word.
@@ -192,11 +206,14 @@ The task board is in [Task board design](task-board.md).
 | **Remove T-n from queue** | Nothing more |
 | **Run T-n, T-n, and T-n in parallel** | Nothing more |
 | **Take T-n out of its parallel group** | Nothing more |
+| **Attach n images to T-n** | The board's current first line of that task in muted text, and the image strip named “Images for this task” |
 | **Start a session for T-n** | The board's current first line of that task in muted text |
 | **Turn the queue on** | Nothing more |
 | **Turn the queue off** | Nothing more |
 
 - The line of what is set holds “in feature”, provider, model, and effort, “Complete when: PR open, CI passed”, and “then add to queue”.
+- The line of what is set of **Create task** adds “with 1 image” or “with n images”, and the image strip follows it.
+- **Attach n images to T-n** reads “Attach 1 image to T-n” for one image.
 - **Update T-n** leaves the current first line out when the board does not hold the task.
 - **Start a session for T-n** is the only row of its card.
 - **Turn the queue on** or **Turn the queue off** is the only row of its card.
@@ -210,6 +227,8 @@ The task board is in [Task board design](task-board.md).
 | “Done”, or “Created T-n” for a new task | Green |
 | “Not valid”, “Not found”, “Board is full”, “No longer possible”, “Not supported”, or “Pomegr did not answer” | The error color |
 | “Created T-n, but it could not be queued”, for a task that was created and could not be queued | The error color |
+| “Created T-n, but its images could not be attached”, for a task that was created and did not take an image | The error color |
+| “Not attached.” and one fixed sentence, for an image that a task on the board did not take | The error color |
 | “Not run”, for an operation after the one that failed | Muted |
 | “Session started in a new terminal window.”, for a session start that launched | Green |
 | “Not started.” and one fixed sentence for the start status, for a session start that launched nothing | The error color |
@@ -222,6 +241,7 @@ The task board is in [Task board design](task-board.md).
 - While that card is pending, one muted 12px line follows with the Task modal's own held line, “This task is held: ...”, from the board's current gate readings.
 - The held line is left out when the board reads no hold now.
 - The other start sentences name Windows only, a missing command-line tool, a missing plugin, a task that could not be started, an unsupported provider, a task that no longer exists, another start under way, a start that could not be made, a dirty task worktree, and a dirty repository.
+- The sentences after “Not attached.” name a task that holds four images, a task that has started, an image that is no longer on this computer, an image that could not be read, and no answer from Pomegr.
 - A session start that launched nothing keeps its result and stays pending.
 - A queue change that was not made keeps its result and stays pending.
 - No result of a queue change says that a task started.
@@ -262,8 +282,11 @@ The task board is in [Task board design](task-board.md).
 | --- | --- |
 | Alert line | One `role="alert"` line of fixed words for the last refused operation, in error-colored text, never a fill |
 | Busy line | The muted line “Aril is answering in another conversation.”, while that is so |
+| Image alert line | One `role="alert"` line of fixed words for the last image that was not added |
 | Message field | A `textarea` named “Message Aril” with the placeholder “Ask about this board…” |
-| Action row | The **Run on** `CommandSelect`, the counter, and the Secondary **Send** |
+| Image strip | The images of the message being written, named “Images to send”, each with a **Remove image n** Icon action |
+| Adding line | The muted `role="status"` line “Adding image…”, while an image is on its way to the desktop app |
+| Action row | The **Attach image** Icon action, the **Run on** `CommandSelect`, the counter, and the Secondary **Send** |
 
 - The message field has 13px text, and is one row that grows to six and then scrolls.
 - The message field has a one-pixel `--command-line-strong` border, the control radius, the panel fill, and the shared focus ring.
@@ -273,14 +296,33 @@ The task board is in [Task board design](task-board.md).
 - The counter is muted data-font text that reads “n / 4,000”.
 - The counter appears only past 3,600 and takes the error color past 4,000.
 
+### Images
+
+- **Attach image** is an Icon action with the `plus` glyph that opens the file chooser for PNG, JPEG, GIF, and WebP.
+- **Attach image** keeps the focus in the message field.
+- **Attach image** is disabled with no repository and when the message holds four images.
+- An image pasted into the message field is attached, and no text is pasted then.
+- An image dropped on the composer is attached, and a dropped file is never opened or typed as its path.
+- **Remove image n** is a 24px Icon action at the top right of its picture, with the panel fill and a one-pixel `--command-line-strong` border.
+- **Remove image n** is 44px at 760px and narrower and on coarse pointers.
+- An image that is not accepted is not sent to the desktop app.
+
+| Fixed words of the image alert line | When |
+| --- | --- |
+| “Only PNG, JPEG, GIF and WebP images can be attached.” | The file is another type, or the desktop app found no image in it |
+| “An image can be at most 5 MB.” | The file is empty or over the bound |
+| “A message holds at most 4 images.” | The message holds four |
+| “The image could not be attached.” | The desktop app did not answer |
+
 ### Keys and Send
 
 - Enter sends.
 - Shift+Enter makes a new line.
 - The key that confirms an IME composition never sends.
-- **Send** is disabled for an empty or over-long message, while a message is on its way, while an answer is written elsewhere, and with no repository.
+- **Send** is disabled for an empty or over-long message, while a message or an image is on its way, while an answer is written elsewhere, and with no repository.
+- A message that holds only images cannot be sent.
 - While an answer is written in the open conversation, the Secondary **Stop** takes the place of **Send**.
-- A message that was refused stays in the field.
+- A message that was refused stays in the field, with its images.
 
 ### Fixed words of the alert line
 

@@ -256,7 +256,7 @@ task: see [Start a session from the chat](agent-chat.md#start-a-session-from-the
    phone, confirm in the phone's browser; no click on the PC is needed.
 2. A visible terminal window opens on the computer running Pomegr, in the repository, or in the task's worktree
    (see below), running Claude Code or Codex with the model and effort you chose.
-   The task window says "Session started in a new terminal window."
+   The task window closes.
 3. When the plugin in that session reports in, the task links to the session. The
    card then shows **Open session** and the session's state.
 
@@ -421,10 +421,36 @@ The **Ready** column shows what runs when. It reads top to bottom, and a frame m
   Cards of its own group still start.
 - **Started tasks.** A task whose session has started is no longer shown as next or
   as waiting. It keeps its state and shows its session's state. While it runs, a
-  waiting card outside its group reads "Waiting: T-n has not finished", and the queue
-  starts nothing else.
+  waiting card outside its group says which task is running, and the queue starts
+  nothing else.
 - **Timing.** The desktop app asks for the next start every 15 seconds, so the
   queue works only while Pomegr is open.
+
+### See why a queued task has not started
+
+Each waiting card in **Ready** says where it stands and what it waits for. A card past
+the first place opens with its place, such as "5th in queue". Then "Waiting:" lists each
+reason. Open the card to read the same reasons in full under **Queue**, with every task
+that starts first.
+
+| The card says | What it means |
+| --- | --- |
+| earlier tasks start first (T-3, …) | Those cards are above it in **Ready**, so they start first. The cards of its own parallel group are not listed: they start with it. |
+| T-5 is running | A started task, or a parallel group that runs, holds the queue until it is in **Review** or **Done**. |
+| the queue is off | You have not turned the queue on. Nothing is wrong. |
+| the queue is blocked by T-2 | That task stalled or was blocked by its agent. Resolve it first. |
+| the queue is paused at T-3 | A start failed. See [When the queue stops](#when-the-queue-stops). |
+| a start gate, such as "the working tree has uncommitted changes" | A [start gate](#start-gates) holds the start. |
+| the queue starts Oct 9, 22:00 | The queue's own start or stop time holds it. |
+| the reason is not known yet | Pomegr has no fact that explains the wait. It never assumes that a gate passed. |
+
+To run a task sooner, move its card up in **Ready**, or start it by hand with
+**Start session**.
+
+A scheduled task shows its time on the **Starts** line. A reading that Pomegr has not
+observed yet reads "not known yet" and holds the start, like a failed gate. The task
+window of the next task reads "Nothing known holds it." when Pomegr knows no hold: the
+queue starts it at its next check, while the desktop app is open.
 
 ### When the queue stops
 
@@ -434,8 +460,8 @@ until you resolve that task; sessions already running continue. Open the task an
 choose one of two actions. In the desktop app, the banner also offers them, as
 **Mark done and resume** and **Requeue T-n**.
 
-- **Mark done and resume queue** accepts the task as done and keeps its report and
-  session link.
+- **Mark done and resume queue** accepts the task as done, keeps its report and
+  session link, and closes the task window.
 - **Requeue task** puts it back in the queue as **Queued** with its card last in
   **Ready**, clears its
   report and session link, and lets a new session report once more.
@@ -445,6 +471,18 @@ choose one of two actions. In the desktop app, the banner also offers them, as
 > as CI that finishes after the agent reported, still reads **Not passed** in the
 > task window though the condition now holds. Choose **Mark
 > done**; Pomegr does not repeat the check.
+
+Each checked condition shows one of three results in the task window:
+
+| Result | Meaning |
+| --- | --- |
+| **Passed** | Pomegr read the repository and the condition holds. |
+| **Not passed** | Pomegr read the repository and the condition does not hold. |
+| **Not verified** | Pomegr had no current reading. The condition is not known to fail. |
+
+**Not verified** appears, for example, when Pomegr cannot read the session's
+repository, or when a command of the session still runs. Look at the pull request
+yourself, then choose **Mark done** or **Requeue task**.
 
 Every task an agent reports complete needs review, whether its conditions passed
 or not: only you mark a task done. A task that needs review does not stop the queue. Its work is finished: the card
@@ -478,7 +516,8 @@ task and one of these reasons. Fix it, then select **On** again to retry.
 
 Before every start, manual or queued, Pomegr judges four start gates from
 facts it has already observed. **Queue settings** on the Board lists each reading, and a held
-queued task shows "Waiting:" with the reasons. A missing, stale, or partial
+queued task shows "Waiting:" with the reasons (see
+[See why a queued task has not started](#see-why-a-queued-task-has-not-started)). A missing, stale, or partial
 reading is unknown, and unknown holds a start exactly like a failed gate.
 
 | Gate | A start proceeds only when |
@@ -572,7 +611,7 @@ want to approve each deletion. In Claude Code's auto mode no prompt appears: Cla
 Code decides by itself and can, rarely, refuse one of these calls. If that happens,
 add a permission rule for the tool in your Claude Code settings. A task takes one report per start; a second report changes
 nothing. A report always leaves the task in **Needs review**, with each checked
-condition's pass or fail; you choose **Mark done**. When no condition is checked, the
+condition's result; you choose **Mark done**. When no condition is checked, the
 report rests on the agent's word, not a check. A session that ends
 without a report leaves the task **Stalled**, but only once Pomegr has established
 the session's end, for example a **Closed** session or a **Stopped** Claude Code
@@ -581,7 +620,7 @@ it may still be able to report, so **Stopped** alone does not stall a Codex task
 stalls only once Pomegr sees that Codex no longer holds the session (Windows). An
 **Idle** or **Open** session never stalls a task. A stalled task leaves that state
 only through **Mark done and resume queue** or **Requeue task**. Pomegr keeps only
-each condition's pass or fail, the block reason, and the attention line, never command
+each condition's result, the block reason, and the attention line, never command
 output or diffs.
 
 ### Tasks an agent can change
