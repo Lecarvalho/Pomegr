@@ -2,12 +2,12 @@
 // from the queue rule and never orders anything itself.
 
 import { TASK_GATE_REASONS } from "./task-gates.mjs";
-import { nextQueueStart, orderQueue } from "./task-queue.mjs";
+import { nextQueueStart, orderQueue, waitsForTasks } from "./task-queue.mjs";
 
-// Why a waiting task has not started: the queue's own state, the task's own time, the work the queue starts first,
+// Why a waiting task has not started: the queue's own state, the task's own time, the tasks it runs after, the work the queue starts first,
 // a start gate, or `unknown` when the committed facts name no reason.
 export const TASK_QUEUE_WAIT_REASONS = Object.freeze([
-  "queue_off", "queue_blocked", "queue_paused", "own_schedule", "earlier_tasks", "running_work", ...TASK_GATE_REASONS, "unknown",
+  "queue_off", "queue_blocked", "queue_paused", "own_schedule", "runs_after", "earlier_tasks", "running_work", ...TASK_GATE_REASONS, "unknown",
 ]);
 // A reason names at most this many tasks; `more` counts the rest.
 export const TASK_QUEUE_WAIT_TASK_LIMIT = 8;
@@ -52,7 +52,11 @@ export function explainQueueWaits(input) {
     const wait = { taskId: task.id, place: index < 0 ? null : index + 1, reasons: [...standing] };
     waits.push(wait);
     if (index < 0) {
-      wait.reasons.push(because(task.state === "scheduled" ? "own_schedule" : "unknown"));
+      const early = task.state === "scheduled" && task.due !== true;
+      const after = waitsForTasks(task);
+      if (early) wait.reasons.push(because("own_schedule"));
+      if (after) wait.reasons.push(because("runs_after", task.waitsFor));
+      if (!early && !after) wait.reasons.push(because("unknown"));
       continue;
     }
     if (starts.has(task.id)) {

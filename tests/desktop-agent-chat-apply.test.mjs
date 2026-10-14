@@ -501,7 +501,7 @@ test("every request the controller makes refuses redirects, is bounded in time, 
   assert.equal([...controller.matchAll(/fetchImpl\(/gu)].length, 1, "one function makes every request");
   assert.match(controller, /cache: "no-store", redirect: "error", signal: AbortSignal\.timeout\(/u);
   assert.match(controller, /\[DESKTOP_AUTH_HEADER\]: authorizationToken/u);
-  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup"\]\);/u);
+  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set"\]\);/u);
   for (const forbidden of ["queue_settings", "resolve_done", "resolve_requeue", "start", "image"]) assert.equal(new RegExp(`TASK_ACTIONS[^;]*"${forbidden}"`, "u").test(controller), false, forbidden);
   assert.match(controller, /if \(!TASK_ACTIONS\.has\(action\)\) return refused\("invalid"\);/u);
 });
@@ -518,4 +518,17 @@ test("the chat is wired once into the shell, the LAN gateway, and the preload", 
   assert.match(preload, /new Set\(\["list", "read", "send", "stop", "apply", "dismiss", "delete"\]\)/u);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat-image", operation, payload\)/u);
   assert.match(sharing, /agentChat: options\.agentChat/u);
+});
+
+test("an applied set_after sends after_set with the list, and a task the board does not hold answers not_found without a request", async (context) => {
+  const h = await chatHarness(context);
+  acceptAll(h);
+  const conversation = await seed(h, { messages: withProposal(pendingProposal({ operations: [{ op: "set_after", id: "T-2", after: ["T-1"] }] })) });
+  assert.deepEqual(await apply(h, conversation.id), { ok: true });
+  assert.deepEqual(h.actionCalls().map((call) => [call.pathname, call.body]), [["/internal/tasks/after_set", { repositoryId, payload: { id: "T-2", after: ["T-1"] } }]]);
+  const second = await seed(h, { id: "chat-0123456789ac", messages: withProposal(pendingProposal({ operations: [{ op: "set_after", id: "T-2", after: ["T-99"] }] })) });
+  const before = h.actionCalls().length;
+  await apply(h, second.id);
+  assert.equal(h.actionCalls().length, before);
+  assert.deepEqual((await storedProposal(h, second.id)).results, [{ ok: false, error: "not_found" }]);
 });

@@ -12,7 +12,9 @@ export type CardMoves = Record<CardMoveKind, boolean>;
 /** What a waiting card of a parallel group can do beside moving: leave the group. */
 export type CardGroupMove = { onLeave(): void };
 
-export function TaskMoveBar({ id, available, onMove, group }: { id: string; available: CardMoves; onMove(kind: CardMoveKind): void; group?: CardGroupMove }) {
+export function TaskMoveBar({ id, available, onMove, group, onAfter }: { id: string; available: CardMoves; onMove(kind: CardMoveKind): void; group?: CardGroupMove;
+  /** Opens the task modal at its Runs after field. */
+  onAfter?(opener: HTMLElement): void }) {
   const enabled = KINDS.filter((kind) => available[kind]);
   const [current, setCurrent] = useState<CardMoveKind | null>(null);
   const stop = current && available[current] ? current : enabled[0];
@@ -38,6 +40,8 @@ export function TaskMoveBar({ id, available, onMove, group }: { id: string; avai
         <CommandIcon name="arrow" />
       </button>;
     })}
+    {onAfter && <button type="button" className="commandQuietAction taskMoveLeave taskMoveAfter" aria-haspopup="dialog" aria-label={`Choose what ${id} runs after`} tabIndex={-1}
+      onClick={(event) => onAfter(event.currentTarget)}>Runs after…</button>}
     {group && <button type="button" className="commandQuietAction taskMoveLeave" data-group-leave="" aria-label={`Take ${id} out of its parallel group`} tabIndex={-1} onClick={group.onLeave}>Take out of group</button>}
   </div>;
 }

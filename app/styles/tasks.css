@@ -555,3 +555,6 @@
   .taskHomeTable tbody td.taskHomeChanged { grid-column: 1 / -1; flex-direction: row; gap: var(--space-2); }
   .taskHomeBoardLink { min-height: 44px; display: flex; align-items: center; }
 }
+
+/* Runs after (T-101): the ID of a task in the Runs after rows. The card line reuses the muted wait line. */
+.taskAfterId { font-family: var(--font-data); }

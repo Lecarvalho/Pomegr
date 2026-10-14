@@ -7,7 +7,7 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
-import { hasFixedColumns, readColumnRoles, readyColumnId, reconcileFixedColumns, seedColumnRoles, settleReadyColumn, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
+import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
@@ -19,7 +19,9 @@ import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { deleteFeatureDetails, findFeature, readFeature, writeFeatureDetails } from "./task-feature-details.mjs";
 import { deleteFeature } from "./task-feature-actions.mjs";
-import { groupTasks, markReadyGroupsMigrated, migrateStepGroups, pruneTaskGroups, readTaskGroups, ungroupTasks, writeTaskGroup } from "./task-groups.mjs";
+import { deleteTaskAfter, readTaskAfter, setTaskAfter } from "./task-after.mjs";
+import { moveTask, queueGroupCards } from "./task-card-moves.mjs";
+import { groupTasks, markReadyGroupsMigrated, migrateStepGroups, pruneTaskGroups, readTaskGroups, settleGroupLanes, ungroupTasks, writeTaskGroup } from "./task-groups.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
 import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl } from "./task-remote-control.mjs";
@@ -27,7 +29,7 @@ import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } fr
 import { deleteTaskWorktreeCleanup, pendingWorktreeCleanups, readTaskKeepWorktree, readTaskKeepWorktrees, settleWorktreeCleanup, writeTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
-  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeFeatureUpdatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeFeatureUpdatePayload,  normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -292,6 +294,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskAssigned(database, repositoryId, input.number);
   writeTaskRemoteControl(database, repositoryId, input.number, false);
   writeTaskGroup(database, repositoryId, input.number, null);
+  deleteTaskAfter(database, repositoryId, input.number);
   deleteTaskWorktreeCleanup(database, repositoryId, input.number);
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
@@ -389,45 +392,6 @@ function agentUpdateTask(context, payload) {
   return result.ok || result.error === "invalid" ? result : { ok: false, error: "not_found" };
 }
 
-const columnExists = (database, repositoryId, id) =>
-  preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
-
-// A move changes the task's column, position, and update time. A grouped card moves with its group ("block"), or
-// leaves it ("leave", and any move that lands it away from every other waiting card of its group).
-function moveTask({ database, repositoryId }, payload) {
-  const input = normalizeMovePayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT column_id, state, session_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
-  if (!task || !columnExists(database, repositoryId, input.columnId)) return { ok: false, error: "not_found" };
-  const waits = (task.state === "queued" || task.state === "scheduled") && (task.session_id ?? null) === null;
-  if (waits && input.columnId !== (readyColumnId(database, repositoryId) ?? input.columnId)) return { ok: false, error: "conflict" };
-  pruneTaskGroups(database, repositoryId);
-  const groups = readTaskGroups(database, repositoryId);
-  const group = waits ? groups.get(input.number) : undefined;
-  const sourceColumnId = task.column_id;
-  const before = taskNumbersInOrder(database, repositoryId, input.columnId);
-  const waiting = new Set(preparedStatement(database, "SELECT number FROM tasks WHERE repository_id = ? AND state IN ('queued', 'scheduled') AND session_id IS NULL").all(repositoryId).map((row) => Number(row.number)));
-  const sibling = (number) => number !== input.number && waiting.has(number) && groups.get(number) === group;
-  // The cards that move: the one card, or the waiting cards of its group in the order they have.
-  const block = input.group === "block" && group !== undefined ? before.filter((number) => number === input.number || sibling(number)) : [input.number];
-  const moving = new Set(block);
-  const order = before.filter((number) => !moving.has(number));
-  order.splice(Math.min(input.position, order.length), 0, ...block);
-  if (sourceColumnId !== input.columnId || before.join() !== order.join()) {
-    preparedStatement(database, "UPDATE tasks SET column_id = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
-      .run(input.columnId, Date.now(), repositoryId, input.number);
-  }
-  writeTaskOrder(database, repositoryId, order);
-  if (sourceColumnId !== input.columnId) writeTaskOrder(database, repositoryId, taskNumbersInOrder(database, repositoryId, sourceColumnId));
-  if (group !== undefined && input.group !== "block") {
-    const cards = order.filter((number) => waiting.has(number));
-    const at = cards.indexOf(input.number);
-    const beside = [cards[at - 1], cards[at + 1]].some((number) => number !== undefined && sibling(number));
-    if (input.group === "leave" || !beside) writeTaskGroup(database, repositoryId, input.number, null);
-  }
-  return { ok: true };
-}
-
 function insertFeature(database, repositoryId, name) {
   ensureRepository(database, repositoryId);
   const stored = preparedStatement(database, "SELECT name, created_at FROM features WHERE repository_id = ?").all(repositoryId);
@@ -494,10 +458,13 @@ function addToQueue({ database, repositoryId, now }, payload) {
   const task = preparedStatement(database, "SELECT state, session_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
   const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
-  if (input.at === null ? task.state !== "not_queued" && task.state !== "scheduled" : !waiting || (task.session_id ?? null) !== null) return { ok: false, error: "conflict" };
-  preparedStatement(database, "UPDATE tasks SET state = ?, scheduled_at = ?, queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(input.at === null ? "queued" : "scheduled", input.at, Date.now(), repositoryId, input.number);
-  return { ok: true };
+  if (!input.block && (input.at === null ? task.state !== "not_queued" && task.state !== "scheduled" : !waiting || (task.session_id ?? null) !== null)) return { ok: false, error: "conflict" };
+  const queue = preparedStatement(database, "UPDATE tasks SET state = ?, scheduled_at = ?, queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?");
+  if (!input.block) {
+    queue.run(input.at === null ? "queued" : "scheduled", input.at, Date.now(), repositoryId, input.number);
+    return { ok: true };
+  }
+  return queueGroupCards({ database, repositoryId, now }, input.number, queue);
 }
 
 function removeFromQueue({ database, repositoryId, now }, payload) {
@@ -520,7 +487,7 @@ const ACTIONS = Object.freeze({
   feature_create: createFeature, feature_update: updateFeature, feature_delete: deleteFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_group: groupTasks, queue_ungroup: ungroupTasks, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
-  session_assign: assignSession, session_unassign: unassignSession,
+  session_assign: assignSession, session_unassign: unassignSession, after_set: setTaskAfter,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
   promote_issue: promoteIssue, record_issue: recordIssue,
   agent_create: agentCreateTask, agent_remove: agentRemoveTask, agent_update: agentUpdateTask,
@@ -560,6 +527,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   function settleGroupsAndReady(repositoryId) {
     pruneTaskGroups(database, repositoryId);
     settleReadyColumn(database, repositoryId, readTaskGroups(database, repositoryId));
+    settleGroupLanes(database, repositoryId, now());
   }
 
   const newGroupId = () => newOpaqueId("grp");
@@ -594,13 +562,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const keepWorktrees = readTaskKeepWorktrees(database, repositoryId);
     const assignments = readTaskAssignments(database, repositoryId);
     const groups = readTaskGroups(database, repositoryId);
+    const after = readTaskAfter(database, repositoryId);
     return {
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
-        .map((row) => ({ ...row, group: groups.get(Number(row.number)) ?? null, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)), assigned_sessions: assignments.get(Number(row.number)) ?? [] })),
+        .map((row) => ({ ...row, group: groups.get(Number(row.number)) ?? null, after: after.get(Number(row.number)) ?? [], source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)), assigned_sessions: assignments.get(Number(row.number)) ?? [] })),
     };
   }
 

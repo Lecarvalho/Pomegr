@@ -15,12 +15,13 @@ export type TaskCardMove = {
   available: CardMoves;
   onMove(kind: CardMoveKind): void;
   group?: CardGroupMove;
+  onAfter?(opener: HTMLElement): void;
 };
 
 /** The controls of a card that keep their own click: a click on one of them never opens the card. */
 const CARD_CONTROLS = "a, button, input, select, textarea, [role='combobox'], [role='listbox'], [role='option']";
 
-export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine, compact = false, waiting, now }: {
+export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine, compact = false, waiting, after, now }: {
   task: Task;
   /** The name of the task's feature. */
   featureLine?: string | null;
@@ -31,6 +32,8 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
   /** A card that waits in Ready: compact, with no excerpt and no Complete when line. */
   compact?: boolean;
   waiting?: string | null;
+  /** The muted line of a card that is not waiting in the queue and still runs after an unfinished task. */
+  after?: string | null;
   /** The clock the Starts line names "today" from. */
   now?: number;
 }) {
@@ -67,6 +70,7 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
     <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
     {starts && <p className="taskCardDetail taskCardStarts">Starts {starts.day} <span className="taskCardStartsTime">{starts.time}</span></p>}
     {waiting && <p className="taskCardWaiting">{waiting}</p>}
+    {!waiting && after && <p className="taskCardWaiting taskCardAfter">{after}</p>}
     {summary && <p className="taskCardDetail">{summary}</p>}
     {featureLine && <p className="taskCardDetail taskCardFeature">{featureLine}</p>}
     {sessions.length > 0 && <p className="taskCardDetail taskCardSessions">
@@ -74,6 +78,6 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
       {sessions.length > 1 && <span>+{sessions.length - 1} more</span>}
       {task.session === null && <span>Assigned</span>}
     </p>}
-    {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} group={move.group} />}
+    {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} group={move.group} onAfter={move.onAfter} />}
   </li>;
 }

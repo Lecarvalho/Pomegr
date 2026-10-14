@@ -165,15 +165,17 @@ The head actions appear in this order:
 - A waiting card of Ready is the compact card (`.taskReadyCard`): the board card at 10px/12px padding with a 6px gap.
 - A compact card shows the ID and chip, the title, the provider badge with “model · effort” at 11px, its Starts or Waiting line, and its feature line.
 - A compact card shows no excerpt and no Complete when line.
-- A **parallel group** (`.taskReadyGroup`) is drawn in Ready only. It holds the waiting cards that share one group and sit together.
+- A **parallel group** (`.taskReadyGroup`) is drawn in Backlog and Ready only. It holds the cards that share one group, have not started, and sit together.
+- In Backlog a group is a plan: its cards are Not queued and keep their full card. The frame, caption, and count are the same as in Ready.
+- A Not queued card of Ready is a planned card too: it is drawn in its group's frame like a waiting card.
 - Only the owner makes a group. Two cards that sit next to each other draw no frame and run one after the other.
 - A group may hold cards of different features and cards with no feature.
 - The frame is a one-pixel `--command-line-strong` border with the panel radius, 6px padding, a 6px gap, and no fill.
 - The grouping reads only the lane's card order and each task's group. It reorders no card and stores no value.
-- A card that does not wait, between two waiting cards of one group, splits the frame into two.
+- A card that has started, between two cards of one group, splits the frame into two.
 - The caption (`.taskReadyCaption`) is the first row, with 2px/4px padding and its two parts at the ends. It wraps when narrow.
 - The left part is the parallel glyph, a 4px gap, and “Parallel · n” (11px/500, ink), with the count in the data font.
-- The count is the number of members that still wait. A member that started is not counted.
+- The count is the number of members that have not started. A member that started is not counted.
 - When members started, the left part adds “ · T-4 and T-5 started” (11px/400, muted), with the IDs in the data font, by number.
 - The parallel glyph is 12px: two vertical 1.5px strokes in the current color. It is hidden from assistive technology.
 - The card the monitor names as next keeps the chip **Queued · next**: a waiting card of the group that runs, otherwise the top waiting card.
@@ -183,6 +185,7 @@ The head actions appear in this order:
 - A clause names at most three task IDs and then “and n more”.
 - A card behind the cards above it reads “3rd in queue · Waiting: earlier tasks start first (T-2, T-3)”.
 - A card behind a running task reads “Waiting: T-n is running”.
+- A card that runs after an unfinished task reads “Waiting: runs after T-21, which is not done”. It has no place in the order, so its line has no place.
 - The cards of a card's own group are never named as ahead of it or as running before it.
 - A held member of a group whose siblings started ends its line “ · T-4 started”.
 - A queue that is off reads “the queue is off”. A blocked or paused queue names its task: “the queue is blocked by T-2”, “the queue is paused at T-3”.
@@ -288,6 +291,8 @@ Each row below the title shows only when it is set, in this order:
 - The muted **Starts** line of a scheduled task, until its session is linked. It reads “Starts today 22:00”, or “Starts Oct 9, 22:00” on another day, with the time in the data font.
 - One muted **Complete when** line.
 - The feature line: the name of the task's feature, and nothing else.
+- A card that is not waiting in the queue and runs after an unfinished task adds one muted 12px line (`.taskCardWaiting.taskCardAfter`), “Runs after T-13 and T-14”, before the feature line.
+- The line names only the tasks that are not Done. A card whose tasks are all Done draws no line.
 - The sessions line: **Open session**, a Text link that is not stretched, for the first session.
 - The first session is the one Pomegr started, or else the first assigned session.
 - When the task has more sessions, the muted “+N more” follows the link.
@@ -363,38 +368,50 @@ Each row below the title shows only when it is set, in this order:
 
 ### Parallel groups
 
-- The owner puts waiting cards of Ready in a parallel group, and takes them out, in the desktop app or on a paired device.
-- **Run in parallel** (`.taskReadyLinkAction`) is one [Quiet](../../../DESIGN.md#buttons) action in the gap between two waiting cards, or groups, that sit next to each other.
+- The owner puts cards of Backlog or Ready that have not started in a parallel group, and takes them out, in the desktop app or on a paired device.
+- **Run in parallel** (`.taskReadyLinkAction`) is one [Quiet](../../../DESIGN.md#buttons) action in the gap between two cards that have not started, or groups, that sit next to each other in Backlog or Ready.
 - It has the parallel glyph and the label, 11px ink on the panel fill, with a one-pixel `--command-line-strong` border and the panel radius. It is 20px tall.
 - It takes no room of its own (`.taskReadyLink`). It is invisible (opacity 0, never `display: none`, so it stays keyboard-reachable) until the lane is hovered or the action holds focus.
 - On a coarse pointer and at 760px and narrower it is always visible, 44px tall, in a row of its own.
 - Pressing it puts the cards of both sides in one group: the group one side already has, the upper side's first, or a new one.
-- It is not drawn beside a card that does not wait, or when both sides together would hold more than 16 tasks.
+- It is not drawn beside a card that has started, or when both sides together would hold more than 16 tasks.
 - Its accessible name is “Run T-4 and T-5 in parallel”.
-- While a waiting card is dragged over a group it is not in, the group (`.taskReadyGroup.isJoinTarget`) takes the panel fill.
+- While a card that has not started is dragged over a group it is not in, the group (`.taskReadyGroup.isJoinTarget`) takes the panel fill.
 - That group also takes a two-pixel border, drawn as an inset one-pixel ring, in `--command-line-strong`.
 - Dropping the card on the group puts it in that group, after the group's last waiting card. No drop line is drawn over a join target.
-- A card that does not wait never joins a group. Over a group it draws the drop line of a card move.
+- A card that has started never joins a group. Over a group it draws the drop line of a card move.
 - Dragging a card of a group and dropping it outside the group's frame takes it out of the group. It lands where the drop line is.
 - Dropping it inside its own frame reorders it in the group.
-- The frame of a group is draggable from its caption and its padding. The whole group then moves as one block.
+- The frame of a group is draggable from its caption and its padding. The whole group then moves as one block, also from Backlog to Ready.
+- A group with a queued card cannot be dragged out of Ready.
 - The caption's toolbar (`.taskReadyActions`) holds two [Icon](../../../DESIGN.md#buttons) arrows, “Move the group up” and “Move the group down”, and the Quiet **Ungroup**.
 - An arrow moves the group past the card, or the whole group, beside it. An arrow that cannot move is disabled.
-- **Ungroup** (`.taskReadyUngroup`) takes every waiting card out of the group. The cards keep their places.
+- A group with a Not queued card adds the Quiet **Queue group** (`.taskReadyQueue`) before **Ungroup**.
+- **Queue group** queues every Not queued card of the group. The group's cards move to the end of Ready in the order they had.
+- Queueing one card of a group from its Task modal brings the group's other cards to Ready beside it. They stay Not queued.
+- **Ungroup** (`.taskReadyUngroup`) takes every card of the group out of it. The cards keep their places.
 - The move toolbar of a waiting card of a group gains the Quiet **Take out of group** (`.taskMoveLeave`) after the four arrows.
 - **Take out of group** takes that card out. Its accessible name is “Take T-n out of its parallel group”.
 - A card taken out keeps its place. A card that stood between two cards that stay in the group lands right after the group.
-- **Ungroup** and **Take out of group** are 32px high with 12px underlined ink. They are 44px high on phone and coarse pointers.
+- **Queue group**, **Ungroup**, and **Take out of group** are 32px high with 12px underlined ink. They are 44px high on phone and coarse pointers.
 - The up and down arrows of a card step inside its group. At the group's edge they take the card out, past the card or group beside it.
 - The up and down arrows of a card outside a group step past a whole group.
 - A group left with one card is no group: its frame goes.
 - Nothing moves while a feature filter is on. No group changes then, and no **Run in parallel** is drawn.
-- After a change, a status line reads “T-4 and T-5 run in parallel.”, “T-4 taken out of its parallel group.”, or “T-4 and T-5 no longer run in parallel.”
+- After a change, a status line reads “T-4 and T-5 run in parallel.”, “T-4 taken out of its parallel group.”, “T-4 and T-5 no longer run in parallel.”, or “T-4 and T-5 added to the queue with their parallel group.”
+
+### Runs after
+
+- The move toolbar of a card that has not started ends with the Quiet **Runs after…** (`.taskMoveLeave.taskMoveAfter`), after **Take out of group**.
+- **Runs after…** is 32px high with 12px underlined ink, 44px high on phone and coarse pointers. It has `aria-haspopup="dialog"`.
+- Its accessible name is “Choose what T-n runs after”.
+- It opens the Task modal with focus on the Runs after select. See [Task modal design](task-modal.md#body).
+- A browser on the same computer draws the Runs after line and no action.
 - A browser on the same computer draws the frames and captions and no action.
 
 ### Copy
 
-- A muted 12px footnote under the board reads “Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.”
+- A muted 12px footnote under the board reads “Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, in Backlog or Ready, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.”
 
 ## Queue
 
@@ -580,6 +597,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
 - The Ready lane with a parallel group and the wait line of each waiting card, in its browser and desktop forms, and a card outside Ready with its feature line.
 - The Ready lane with a join target and with a held member, and a card with its Take out of group action.
+- Under **Planning and runs after**: the Backlog lane with a plan, in its browser and desktop forms, the Ready lane with a card that runs after an unfinished task, and a card with its Runs after… action.
 - The feature filter and the capacity strip, with the strip's Board form.
 - Whole boards in their browser and desktop forms.
 - Under **Queue controls**: the queue switch (off, on, busy), the banner (blocked, paused, browser), and the Queue settings panel (desktop app, browser).

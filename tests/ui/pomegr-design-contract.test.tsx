@@ -423,12 +423,12 @@ describe("Pomegr visual contract", () => {
     }
     for (const file of ["task-queue-model.ts", "ReadyStepGroup.tsx"]) expect(existsSync(join(tasksComponents, file))).toBe(false);
     expect(readFileSync(join(tasksComponents, "ParallelGlyph.tsx"), "utf8")).toMatch(/stroke="currentColor" strokeWidth="1\.5"[^]*d="M4 2v8M8 2v8"/);
-    // Only the Ready lane is handed groups.
+    // Only the Backlog and Ready lanes, where the owner plans and queues, are handed groups.
     const view = readFileSync(join(tasksComponents, "TaskBoardView.tsx"), "utf8");
-    expect(view).toMatch(/ready=\{column\.id === readyId \? \{ segments: readySegments\(column\.tasks, board\)/);
+    expect(view).toMatch(/ready=\{laneIds\.includes\(column\.id\) \? \{ segments: readySegments\(column\.tasks, board\)/);
     expect(readFileSync(join(tasksComponents, "TaskBoardPane.tsx"), "utf8")).toMatch(/<p>Work for this repository\. Ready is the queue: cards start from the top\.<\/p>/);
     expect(designContract).toMatch(/### Ready parallel groups/);
-    expect(designContract).toMatch(/A \*\*parallel group\*\* \(`\.taskReadyGroup`\) is drawn in Ready only\./);
+    expect(designContract).toMatch(/A \*\*parallel group\*\* \(`\.taskReadyGroup`\) is drawn in Backlog and Ready only\./);
     expect(designContract).toMatch(/adds “ · T-4 and T-5 started”/);
     expect(designContract).toMatch(/A card behind a running task reads “Waiting: T-n is running”./);
     expect(designContract).toMatch(/The description reads “Work for this repository\. Ready is the queue: cards start from the top\.”/);
@@ -492,15 +492,32 @@ describe("Pomegr visual contract", () => {
     expect(read("ReadyGroup.tsx")).toMatch(/className="commandQuietAction taskReadyUngroup" onClick=\{actions\.onUngroup\}>Ungroup<\/button>/);
     expect(read("ReadyGroup.tsx")).toMatch(/className="commandQuietAction taskReadyLinkAction" aria-label=\{`Run \$\{idList\(ids\)\} in parallel`\}/);
     // The footnote.
-    expect(read("TaskBoardView.tsx")).toMatch(/const FOOTNOTE = "Drag a card to move it\. Ready starts from the top, one card at a time\. To run cards together, choose Run in parallel between them or drop a card on a group\. Drag a card out of a group to take it out\.";/);
+    expect(read("TaskBoardView.tsx")).toMatch(/const FOOTNOTE = "Drag a card to move it\. Ready starts from the top, one card at a time\. To run cards together, in Backlog or Ready, choose Run in parallel between them or drop a card on a group\. Drag a card out of a group to take it out\.";/);
     expect(designContract).toMatch(/### Parallel groups/);
-    expect(designContract).toMatch(/\*\*Run in parallel\*\* \(`\.taskReadyLinkAction`\) is one \[Quiet\]\([^)]*\) action in the gap between two waiting cards, or groups, that sit next to each other\./);
+    expect(designContract).toMatch(/\*\*Run in parallel\*\* \(`\.taskReadyLinkAction`\) is one \[Quiet\]\([^)]*\) action in the gap between two cards that have not started, or groups, that sit next to each other in Backlog or Ready\./);
     expect(designContract).toMatch(/the group \(`\.taskReadyGroup\.isJoinTarget`\) takes the panel fill/);
     expect(designContract).toMatch(/No drop line is drawn over a join target\./);
     expect(designContract).toMatch(/Dragging a card of a group and dropping it outside the group's frame takes it out of the group\./);
     expect(designContract).toMatch(/gains the Quiet \*\*Take out of group\*\* \(`\.taskMoveLeave`\) after the four arrows\./);
     expect(designContract).toMatch(/Nothing moves while a feature filter is on\. No group changes then, and no \*\*Run in parallel\*\* is drawn\./);
-    expect(designContract).toMatch(/“T-4 and T-5 run in parallel\.”, “T-4 taken out of its parallel group\.”, or “T-4 and T-5 no longer run in parallel\.”/);
+    expect(designContract).toMatch(/“T-4 and T-5 run in parallel\.”, “T-4 taken out of its parallel group\.”, “T-4 and T-5 no longer run in parallel\.”, or “T-4 and T-5 added to the queue with their parallel group\.”/);
+    // Planning before Ready (T-101): a plan's caption queues its group, and a card's toolbar opens Runs after.
+    expect(read("ReadyGroup.tsx")).toMatch(/className="commandQuietAction taskReadyUngroup taskReadyQueue" onClick=\{actions\.onQueue\}>Queue group<\/button>/);
+    expect(read("TaskMoveBar.tsx")).toMatch(/className="commandQuietAction taskMoveLeave taskMoveAfter" aria-haspopup="dialog" aria-label=\{`Choose what \$\{id\} runs after`\}[^]*>Runs after…<\/button>/);
+    expect(read("TaskBoardView.tsx")).toMatch(/void edits\.queueGroup\(group\.tasks\[0\]\.id\);/);
+    expect(styles).toMatch(/\.taskAfterId \{ font-family: var\(--font-data\); \}/);
+    expect(designContract).toMatch(/A group with a Not queued card adds the Quiet \*\*Queue group\*\* \(`\.taskReadyQueue`\) before \*\*Ungroup\*\*\./);
+    expect(designContract).toMatch(/### Runs after/);
+    expect(designContract).toMatch(/ends with the Quiet \*\*Runs after…\*\* \(`\.taskMoveLeave\.taskMoveAfter`\)/);
+    expect(designContract).toMatch(/“Runs after T-13 and T-14”, before the feature line\./);
+    const modalContract = readFileSync(join(process.cwd(), "docs", "internal", "design", "task-modal.md"), "utf8");
+    expect(modalContract).toMatch(/\*\*Runs after\*\* follows Complete when\. It is a fieldset with the 12px\/500 legend \*\*Runs after\*\*, built like Sessions\./);
+    expect(modalContract).toMatch(/“These tasks would wait for each other, so nothing was changed\.”/);
+    const field = read("TaskAfterField.tsx");
+    expect(field).toMatch(/<fieldset className="taskSessions taskAfter">/);
+    expect(field).toMatch(/className="commandSecondaryAction"[^]*?>Add<\/button>/);
+    const plan = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskPlanSample.tsx"), "utf8");
+    for (const label of ["Backlog lane, a plan", "Backlog lane, desktop app", "Ready lane, a card that runs after another", "Card, desktop app, Runs after…", "Task modal, Runs after", "Task modal, a loop refused", "Task modal, started task"]) expect(plan).toContain(`label="${label}"`);
     expect(designContract).not.toMatch(/Move to step|New step|Changing a step|Single tasks|One at a time/);
     expect(designSystemStyles).toMatch(/\.designSystemRevealLink \.taskReadyLinkAction \{ opacity: 1; \}/);
   });

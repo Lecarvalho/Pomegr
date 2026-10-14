@@ -48,6 +48,7 @@ import { EventsRailSection } from "./DesignSystemEventsSample";
 import { HomeUpdateSection } from "./DesignSystemHomeUpdateSample";
 import { TaskFieldsSection } from "./DesignSystemTaskFieldsSample";
 import { TaskBoardSection } from "./DesignSystemTaskBoardSample";
+import { TaskPlanSection } from "./DesignSystemTaskPlanSample";
 import { QueueControlsSection, TaskGatesSection } from "./DesignSystemTaskGatesSample";
 import { PromoteIssuesSection } from "./DesignSystemPromoteIssuesSample";
 import { GitHubSettingsSection } from "./DesignSystemGitHubSettingsSample";
@@ -92,6 +93,7 @@ export function DesignSystemView() {
     <HomeUpdateSection />
     <TaskFieldsSection />
     <TaskBoardSection />
+    <TaskPlanSection />
     <QueueControlsSection />
     <TaskGatesSection />
     <SessionTaskSection />

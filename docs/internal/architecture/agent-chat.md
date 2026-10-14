@@ -166,7 +166,8 @@ characters, in this order:
    its ID, its type, and the absolute file. The section is left out when there is none.
 5. **The owner's message**, and one line with the IDs of its images, in order.
 
-A task in the snapshot holds its ID, column, state, feature title, parallel-group label, planned
+A task in the snapshot holds its ID, column, state, feature title, parallel-group label, the IDs
+of the tasks it runs after (`runs_after`, absent when none), planned
 provider, model and effort, complete-when checks and own condition, the linked session's
 reference, state and observed model, the report's results (each one passed, failed, or
 unavailable), block reason and attention
@@ -204,6 +205,7 @@ Aril changes the board only by ending its answer with one fenced block tagged
 | `unqueue_task` | `id` | `queue_remove` |
 | `group_tasks` | `ids`, 2 to 16 distinct task IDs | `queue_group` with `{ ids }` |
 | `ungroup_tasks` | `ids`, 1 to 16 distinct task IDs | `queue_ungroup` with `{ ids }` |
+| `set_after` | `id`, and `after`, 0 to 8 distinct task IDs other than `id` | `after_set` with `{ id, after }` |
 | `attach_images` | `id`, `images` | None. The image request for each image the task does not hold: see [An image on a task](#an-image-on-a-task) |
 | `start_session` | `id` | None. It is not a board change: see [Session start](#session-start) |
 | `set_queue` | `on`, a boolean | `queue_settings` with `{ on }`, sent on its own path: see [Queue change](#queue-change) |
@@ -222,6 +224,8 @@ Aril changes the board only by ending its answer with one fenced block tagged
   the list that the board does not hold answers `not_found` without a request.
 - A parallel group is a label in the snapshot (`group A`, `group B`), numbered by the
   lowest task number of each group. The opaque group ID never reaches the prompt.
+- `set_after` names only tasks that exist on the board when the proposal runs, like a group
+  operation. The monitor refuses a list that would make tasks wait for each other.
 
 No operation marks a task done, requeues a task, changes a feature's title or
 description, deletes a feature, removes an image from a task, sets the queue's threshold
@@ -479,7 +483,7 @@ Desktop main keeps one JSON file per conversation:
 | `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
-| `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, and `queue_ungroup`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
+| `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, `queue_ungroup`, and `after_set`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
 | The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
 
@@ -540,7 +544,8 @@ never a session's.
 - **What reaches the provider.** Each turn sends the prompt to the provider the owner
   chose, through the owner's CLI. That prompt holds the owner's messages, Aril's earlier
   answers, and the board snapshot: task text, own conditions, feature titles, block
-  reasons, attention lines, session references, and model names. This is a deliberate
+  reasons, attention lines, session references, model names, and the task IDs each task
+  runs after (task T-101). This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
   own session. The run can also read the repository's files and call the seven read
   tools, so file content and normalized session evidence can reach the provider in the

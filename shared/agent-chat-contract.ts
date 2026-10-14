@@ -55,13 +55,14 @@ export type AgentChatBoardOperation =
   | { op: "unqueue_task"; id: string }
   | { op: "group_tasks"; ids: string[] }
   | { op: "ungroup_tasks"; ids: string[] }
+  | { op: "set_after"; id: string; after: string[] }
   | { op: "attach_images"; id: string; images: string[] }
   | { op: "start_session"; id: string }
   | { op: "set_queue"; on: boolean };
 
 export type AgentChatBoardOperationName = AgentChatBoardOperation["op"];
 export const AGENT_CHAT_BOARD_OPERATIONS: readonly AgentChatBoardOperationName[] = [
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "attach_images", "start_session", "set_queue",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue",
 ];
 
 // What an approved queue change left: on, on and held by a stalled or blocked task, or off.

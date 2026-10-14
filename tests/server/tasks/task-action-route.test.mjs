@@ -16,7 +16,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -198,7 +198,8 @@ test("queue_add, queue_group, queue_ungroup, and queue_remove travel through the
   assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-2" }, { port }), 409, "conflict");
   assertFixedError(await action("queue_add", REPOSITORY_ID, { id: "T-9" }, { port }), 404, "not_found");
   assertFixedError(await action("queue_group", REPOSITORY_ID, { ids: ["T-1"] }, { port }), 400, "invalid");
-  assertFixedError(await action("queue_group", REPOSITORY_ID, { ids: ["T-1", "T-2"] }, { port }), 409, "conflict");
+  // Two cards that are not queued, in Ready, are a plan: they group without being queued.
+  assert.equal((await action("queue_group", REPOSITORY_ID, { ids: ["T-1", "T-2"] }, { port })).status, 200);
   assertFixedError(await action("queue_group", REPOSITORY_ID, { ids: ["T-1", "T-9"] }, { port }), 404, "not_found");
   assertFixedError(await action("queue_ungroup", REPOSITORY_ID, { ids: [] }, { port }), 400, "invalid");
   assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-1", text: SECRET_TEXT }, { port }), 400, "invalid");

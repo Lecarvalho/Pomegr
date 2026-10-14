@@ -53,7 +53,7 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign";
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign" | "after_set";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -187,6 +187,16 @@ export function ungroupDesktopTasks(repositoryId: string, ids: readonly string[]
   return sendTaskAction(repositoryId, "queue_ungroup", { ids: [...ids] });
 }
 
+/** Queues every card of the task's parallel group that is not queued yet, in the order the plan holds. */
+export function queueDesktopGroup(repositoryId: string, id: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_add", { id, group: "block" });
+}
+
+/** Replaces what the task runs after; an empty list clears it. */
+export function setDesktopTaskAfter(repositoryId: string, id: string, after: readonly string[]): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "after_set", { id, after: [...after] });
+}
+
 export function setDesktopQueue(repositoryId: string, on: boolean): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_settings", { on });
 }
@@ -235,6 +245,7 @@ export const QUEUE_SCHEDULE_FAILURE_MESSAGE = "The schedule could not be changed
 export const TASK_SCHEDULE_FAILURE_MESSAGE = "The start time could not be saved.";
 export const TASK_SCHEDULE_INVALID_MESSAGE = "Choose a time from now up to a year ahead.";
 export const QUEUE_ADD_FAILURE_MESSAGE = "The task could not be added to the queue.";
+export const QUEUE_GROUP_ADD_FAILURE_MESSAGE = "The group could not be added to the queue.";
 export const QUEUE_REMOVE_FAILURE_MESSAGE = "The task could not be removed from the queue.";
 export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done.";
 export const REQUEUE_FAILURE_MESSAGE = "The task could not be requeued.";

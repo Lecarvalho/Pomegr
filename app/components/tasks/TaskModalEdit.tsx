@@ -11,10 +11,12 @@ import { TaskReportNote } from "./TaskReportNote";
 import { CompleteWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { TaskSessionsField } from "./TaskSessionsField";
+import { TaskAfterField } from "./TaskAfterField";
+import { AFTER_FAILURE_MESSAGE, AFTER_LOOP_MESSAGE, afterMakesLoop, afterStartLine, unfinishedAfter } from "./task-after-model";
 import { TaskStartTimeField } from "./TaskStartTimeField";
 import {
   ASSIGN_FAILURE_MESSAGE, ASSIGN_LIMIT_MESSAGE, DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE,
-  RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask,
+  RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask, setDesktopTaskAfter,
   UNASSIGN_FAILURE_MESSAGE, assignDesktopTaskSession, resolveDesktopTaskDone, takeCreateFollowUp, unassignDesktopTaskSession, updateDesktopTask,
 } from "./task-desktop";
 import { checkOutcome, observedModelDiffers } from "./task-fields";
@@ -35,7 +37,7 @@ import { waitDetail } from "./task-wait-model";
 
 const STALLED_NOTE = "The session ended with no report.";
 
-export function TaskModalEdit({ repositoryId, repositoryName, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose }: {
+export function TaskModalEdit({ repositoryId, repositoryName, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose, focus }: {
   repositoryId: string;
   repositoryName: string | null;
   task: Task;
@@ -45,6 +47,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   onChanged(): void;
   onDeleted(): void;
   onClose(): void;
+  /** The board's Runs after… opened the modal: its select takes focus. */
+  focus?: "after";
 }) {
   const models = useTaskModelOptions(board.runModels);
   const shown = useMemo(() => ({ ...task, text: shownTaskText(task.text, task.images) }), [task]);
@@ -60,6 +64,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const [resolving, setResolving] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [afterBusy, setAfterBusy] = useState(false);
+  const [afterError, setAfterError] = useState<string | null>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const saveInFlight = useRef(false);
   const createFeature = useFeatureCreation(repositoryId, board, refresh);
@@ -94,7 +100,9 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const listed = useTaskSessionCandidates(repositoryId, task.state !== "done");
   const candidates = useMemo(() => listed?.filter((candidate) => candidate.id !== task.session?.id && !assigned.some((session) => session.id === candidate.id)).slice(0, SESSION_CANDIDATES_SHOWN),
     [listed, task.session, assigned]);
-  const startLine = showStart && start.line !== SAVE_FIRST_LINE ? start.line : null;
+  // A task that runs after an unfinished task never starts, by hand or by the queue.
+  const afterHold = showStart ? afterStartLine(unfinishedAfter(task, board.tasks)) : null;
+  const startLine = showStart && start.line !== SAVE_FIRST_LINE ? start.line ?? afterHold : null;
   // Only a task that has not started can hold a draft.
   const saveLine = dirty && !confirming && startLine === null;
   const folderOffered = showStart && start.folder.offered;
@@ -178,6 +186,16 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     else setAssignError(!assign ? UNASSIGN_FAILURE_MESSAGE : result.error === "limit" ? ASSIGN_LIMIT_MESSAGE : ASSIGN_FAILURE_MESSAGE);
   };
 
+  const changeAfter = async (after: string[]) => {
+    if (afterBusy) return;
+    setAfterError(null);
+    if (afterMakesLoop(board.tasks, task.id, after)) { setAfterError(AFTER_LOOP_MESSAGE); return; }
+    setAfterBusy(true);
+    const result = await setDesktopTaskAfter(repositoryId, task.id, after);
+    setAfterBusy(false);
+    if (result.ok) onChanged(); else setAfterError(result.error === "conflict" && afterMakesLoop(board.tasks, task.id, after) ? AFTER_LOOP_MESSAGE : AFTER_FAILURE_MESSAGE);
+  };
+
   const remove = async () => {
     if (deleting) return;
     setDeleting(true);
@@ -223,7 +241,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {waiting && <button type="button" className="commandSecondaryAction" disabled={queueing || dirty || inProgress} onClick={() => void changeQueue(task.state === "not_queued")}>
           {task.state === "not_queued" ? "Add to queue" : "Remove from queue"}
         </button>}
-        {showStart && <button type="button" className="commandSecondaryAction" disabled={start.disabled} onClick={() => void start.run()}>
+        {showStart && <button type="button" className="commandSecondaryAction" disabled={start.disabled || afterHold !== null} onClick={() => void start.run()}>
           {start.pending ? "Starting…" : "Start session"}
         </button>}
         {!locked && <button type="button" className="commandPrimaryAction" disabled={!canSave || saving} onClick={() => void save()}>Save</button>}
@@ -256,6 +274,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
       ownNote={task.report && draft.completeWhen.ownText.trim() !== "" && task.completeWhen.own !== null ? "Agent-reported" : null}
       footnote={task.report ? <TaskReportNote report={task.report} /> : task.state === "stalled" ? <span className="newTaskHelper taskCompleteWhenNote">{STALLED_NOTE}</span> : undefined} disabled={locked}
       onDraftChange={setCompleteWhen} />
+    <TaskAfterField task={task} tasks={board.tasks} columnName={(columnId) => board.columns.find((column) => column.id === columnId)?.name ?? null}
+      editable={!locked} busy={afterBusy || blocked} error={afterError} focusSelect={focus === "after"} onChange={(after) => void changeAfter(after)} />
     <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} busy={assigning || blocked} error={assignError}
       onAssign={(sessionId) => void changeAssignment(sessionId, true)} onUnassign={(sessionId) => void changeAssignment(sessionId, false)} />
     {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}

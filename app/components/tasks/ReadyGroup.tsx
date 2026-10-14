@@ -9,10 +9,12 @@ export type ReadyGroupActions = {
   drag: { onDragStart(event: DragEvent<HTMLLIElement>): void; onDragEnd(): void };
   canMove: { up: boolean; down: boolean };
   onMove(kind: "up" | "down"): void;
+  /** Queues the group's cards that are not queued yet. Absent when every card is queued. */
+  onQueue?(): void;
   onUngroup(): void;
 };
 
-/** One parallel group of the Ready lane: its caption, then its waiting cards in the lane's own order. */
+/** One parallel group of the Backlog or Ready lane: its caption, then its cards that have not started, in the lane's own order. */
 export function ReadyGroup({ group, renderCard, joinTarget = false, actions }: {
   group: ReadyParallelGroup;
   renderCard(task: Task): ReactNode;
@@ -34,6 +36,7 @@ export function ReadyGroup({ group, renderCard, joinTarget = false, actions }: {
           aria-label={`Move the group ${kind}`} title={`Move the group ${kind}`} disabled={!actions.canMove[kind]} onClick={() => actions.onMove(kind)}>
           <CommandIcon name="arrow" />
         </button>)}
+        {actions.onQueue && <button type="button" className="commandQuietAction taskReadyUngroup taskReadyQueue" onClick={actions.onQueue}>Queue group</button>}
         <button type="button" className="commandQuietAction taskReadyUngroup" onClick={actions.onUngroup}>Ungroup</button>
       </span>}
     </div>

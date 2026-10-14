@@ -16,6 +16,7 @@ export const TASK_BOUNDS = Object.freeze({
   modelIdentifierLength: 120,
   imagesPerTask: 4,
   imageBytes: 5 * 1024 * 1024,
+  afterPerTask: 8,
 });
 export const TASK_IMAGE_MARKER = /\[image:(img-[0-9a-f]{12})\]/gu;
 
@@ -40,7 +41,7 @@ export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
-  "session_assign", "session_unassign",
+  "session_assign", "session_unassign", "after_set",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -315,10 +316,12 @@ function instantOf(value) {
 // A time the user sets now: not behind the clock (beyond a small tolerance) and inside the horizon.
 const settableAt = (time, at) => time >= at - SCHEDULE_PAST_TOLERANCE_MS && time <= at + TASK_SCHEDULE_HORIZON_MS;
 
+// `queue_add` carries `{ id }`, `{ id, at }` for a start time, or `{ id, group: "block" }` to queue the task's whole group.
 export function normalizeQueueAddPayload(value, now) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "at"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "at", "group"])) return undefined;
   const number = taskNumberFromId(value.id);
   if (number === undefined) return undefined;
+  if (value.group !== undefined) return value.group === "block" && value.at === undefined ? { number, at: null, block: true } : undefined;
   if (value.at === undefined || value.at === null) return { number, at: null };
   const at = instantOf(value.at);
   return at === undefined || !settableAt(at, now) ? undefined : { number, at };
@@ -432,6 +435,8 @@ export function normalizeStoredTask(row) {
   const featureId = row.feature_id ?? null;
   // The store attaches the stored group (task-groups.mjs); `projectBoard` keeps it only while the group counts.
   const group = typeof row.group === "string" && TASK_GROUP_ID.test(row.group) ? row.group : null;
+  // The store attaches what the task runs after (task-after.mjs); `projectBoard` keeps the tasks that are on the board.
+  const after = (Array.isArray(row.after) ? row.after : []).filter((number) => Number.isSafeInteger(number) && number >= 1).map(taskIdFromNumber);
   const sessionId = row.session_id ?? null;
   const issueNumber = row.source_issue ?? null;
   const source = Number.isSafeInteger(issueNumber) && issueNumber >= 1 && issueNumber <= 999_999_999 ? { kind: "github_issue", number: issueNumber } : null;
@@ -445,7 +450,7 @@ export function normalizeStoredTask(row) {
     .filter((entry) => typeof entry === "string" && SESSION_ID.test(entry) && entry !== sessionId)
     .map((entry) => ({ id: entry, title: null, state: "unknown", observedModel: null }));
   return {
-    id, text, columnId: row.column_id, position, featureId, group, run,
+    id, text, columnId: row.column_id, position, featureId, group, ...(after.length > 0 ? { after } : {}), run,
     completeWhen: { checks, own },
     state: row.state,
     scheduledAt,
@@ -485,6 +490,13 @@ export function rowInFlight(row, at) {
   return at !== undefined && dispatchStanding(row.dispatch_token, at) === "live";
 }
 
+// A membership of a parallel group counts for a task in the queue, waiting or in flight, and for a planned task: one
+// that is not queued, has not started, and whose card is in Backlog or Ready (a column with no role).
+export function groupMemberCounts(row, inUnroledColumn) {
+  if (row.state === "queued" || row.state === "scheduled") return true;
+  return row.state === "not_queued" && (row.session_id ?? null) === null && inUnroledColumn === true;
+}
+
 // A task has started once a session is linked, a dispatch is live, or it holds an outcome. Only a requeue makes it editable again.
 export function rowStarted(row, at) {
   return (row.session_id ?? null) !== null || !IN_FLIGHT_STATES.includes(row.state) || dispatchStanding(row.dispatch_token, at) === "live";
@@ -516,15 +528,29 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   for (const task of projectedTasks) {
     if (task.featureId !== null) doneByFeature.set(task.featureId, (doneByFeature.get(task.featureId) ?? true) && task.state === "done");
   }
-  // The queue order carries task IDs only. A task keeps its group only while two or more tasks of it are in the queue.
-  const { order, groups } = orderQueue(
+  // A task runs after the tasks that are on the board; one that is gone holds nothing.
+  const states = new Map(projectedTasks.map((task) => [task.id, task.state]));
+  for (const task of projectedTasks) {
+    if (task.after === undefined) continue;
+    const kept = task.after.filter((id) => states.has(id));
+    if (kept.length > 0) task.after = kept;
+    else delete task.after;
+  }
+  // The queue order carries task IDs only. A task that waits for an unfinished task it runs after is not in it.
+  const { order } = orderQueue(
     projectedTasks.map((task, index) => ({
       id: task.id, group: task.group, state: task.state, queuePosition: task.position,
       due: task.state === "scheduled" && at !== undefined && taskIsDue(tasks[index].scheduled_at ?? null, at),
       inFlight: rowInFlight(tasks[index], at),
+      waitsFor: (task.after ?? []).filter((id) => states.get(id) !== "done"),
     })),
   );
-  for (const task of projectedTasks) task.group = groups.get(task.id) ?? null;
+  // A task keeps its group only while two or more of its members count: in the queue, or planned (task-groups.mjs).
+  const unrolled = new Set(projectedColumns.filter((column) => column.role === null).map((column) => column.id));
+  const counts = (task, index) => groupMemberCounts(tasks[index], unrolled.has(task.columnId));
+  const sizes = new Map();
+  projectedTasks.forEach((task, index) => { if (task.group !== null && counts(task, index)) sizes.set(task.group, (sizes.get(task.group) ?? 0) + 1); });
+  projectedTasks.forEach((task, index) => { if (task.group !== null && (!counts(task, index) || sizes.get(task.group) < 2)) task.group = null; });
   const startAt = optionalIsoTime(repository.start_at) ?? null;
   const stopAfter = optionalIsoTime(repository.stop_after) ?? null;
   return {

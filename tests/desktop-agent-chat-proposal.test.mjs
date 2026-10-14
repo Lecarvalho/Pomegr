@@ -23,7 +23,7 @@ test("the proposal contract constants are fixed", () => {
   assert.equal(PROPOSAL_FENCE, "pomegr-board");
   assert.equal(PROPOSAL_OPERATION_LIMIT, 40);
   assert.equal(PROPOSAL_SUMMARY_LIMIT, 300);
-  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "attach_images", "start_session", "set_queue"]);
+  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue"]);
   assert.equal(IMAGES_PER_OPERATION, 4);
   assert.equal(IMAGE_OPERATION, "attach_images");
   assert.deepEqual([...BOARD_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
@@ -40,6 +40,7 @@ test("every operation is accepted in its minimal form and kept as written", () =
     [{ op: "unqueue_task", id: "T-1" }, { op: "unqueue_task", id: "T-1" }],
     [{ op: "group_tasks", ids: ["T-1", "T-2"] }, { op: "group_tasks", ids: ["T-1", "T-2"] }],
     [{ op: "ungroup_tasks", ids: ["T-1"] }, { op: "ungroup_tasks", ids: ["T-1"] }],
+    [{ op: "set_after", id: "T-2", after: ["T-1"] }, { op: "set_after", id: "T-2", after: ["T-1"] }],
     [{ op: "attach_images", id: "T-1", images: ["img-0123456789ab"] }, { op: "attach_images", id: "T-1", images: ["img-0123456789ab"] }],
     [{ op: "start_session", id: "T-1" }, { op: "start_session", id: "T-1" }],
     [{ op: "set_queue", on: false }, { op: "set_queue", on: false }],
@@ -522,4 +523,14 @@ test("an empty list of operations answers an empty list and sends nothing", asyn
   const fake = monitor();
   assert.deepEqual(await applyOperations([], { post: fake.post, board: boardOf() }), []);
   assert.equal(fake.calls.length, 0);
+});
+
+test("set_after takes 0 to 8 distinct task IDs, never the task itself", () => {
+  assert.deepEqual(normalizeOperation({ op: "set_after", id: "T-3", after: [] }), { op: "set_after", id: "T-3", after: [] });
+  const eight = Array.from({ length: 8 }, (_, index) => `T-${index + 10}`);
+  assert.deepEqual(normalizeOperation({ op: "set_after", id: "T-3", after: eight }), { op: "set_after", id: "T-3", after: eight });
+  for (const after of [["T-3"], ["T-1", "T-1"], [...eight, "T-30"], ["t-1"], "T-1", undefined]) {
+    assert.equal(normalizeOperation({ op: "set_after", id: "T-3", after }), null, JSON.stringify(after));
+  }
+  assert.equal(normalizeOperation({ op: "set_after", id: "T-3", after: ["T-1"], extra: true }), null);
 });

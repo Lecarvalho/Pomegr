@@ -95,8 +95,14 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   `task_group:<repositoryId>:<taskId>` with the group ID (`grp-<12 hex>`) as the value
   (`server/tasks/task-groups.mjs`). A row exists only while the task counts as a member
   of a group (see [Parallel groups](#parallel-groups)). It goes in the write that deletes
-  the task, and `pruneTaskGroups` removes the rows of a task that left the queue and of a
-  task left alone in its group.
+  the task, and `pruneTaskGroups` removes the rows of a task whose membership no longer
+  counts and of a task left alone in its group.
+- What a task runs after is kept there too, under `task_after:<repositoryId>:<taskId>`
+  with a JSON list of 1 to 8 task IDs of the same board as the value
+  (`server/tasks/task-after.mjs`, task T-101). The row exists only while the list is not
+  empty. The write that deletes a task removes its own row and takes its ID out of every
+  other list, so no list names a task that is gone (see [Runs after](#runs-after)). A
+  stored list outside the contract reads as no list.
 - Whether a repository was brought from feature steps to parallel groups is kept there
   too, under `ready_groups:<repositoryId>` with the fixed value `1`. A repository that
   the store creates is marked at creation (see
@@ -134,7 +140,8 @@ type Task = {
   text: string;
   columnId: string; position: number;
   featureId: string | null;
-  group: string | null;       // "grp-<12 hex>": the parallel group of a task in the queue, or null
+  group: string | null;       // "grp-<12 hex>": the parallel group of a task that has not finished its turn, or null
+  after?: string[];           // the tasks of the same board it runs after; absent means none
   run: { provider: "claude" | "codex" | null; model: string | null; effort: "low" | "medium" | "high" | "xhigh" | null;
     remoteControl?: boolean;                           // Claude Code only; absent from an older monitor, which means off
     keepWorktree?: boolean };                          // present only when on; absent means the worktree is removed when done
@@ -231,9 +238,14 @@ type TaskBoard = {
   the Ready column read in this same order.
 - `group` is the opaque ID of the task's parallel group, or `null` (see
   [Parallel groups](#parallel-groups)). It replaces the earlier `step`, which no contract
-  carries any more. It is not null only while two or more tasks that are in the queue
-  (Queued or Scheduled, waiting or in flight) share the group, so a task left alone in its
-  group reads `null`. It holds no task content.
+  carries any more. It is not null only while two or more members whose membership counts
+  share the group: tasks in the queue (Queued or Scheduled, waiting or in flight) and
+  planned tasks (Not queued, not started, with the card in Backlog or Ready). A task left
+  alone in its group reads `null`. It holds no task content.
+- `after` lists the IDs of the tasks of the same board the task runs after, in the order
+  the owner set them (see [Runs after](#runs-after)). It is absent when the task runs after
+  none, and it never names a task that is not on the board. It holds no task content: the
+  board already serves each named task.
 - `queue.pauseReason` is one fixed value, set only while the queue is `paused`. It says why
   a start the queue made did not succeed and never carries a path, command, or error text.
   `worktree_dirty` says that a requeued task's own worktree holds uncommitted changes.
@@ -447,9 +459,11 @@ Scheduled and no session is linked. For every such task:
 - **Parallel groups stand together.** After every action the store settles Ready
   (`settleReadyColumn(database, repositoryId, groups)` in `server/tasks/task-columns.mjs`,
   called by `apply` after `pruneTaskGroups`): the waiting cards of each parallel group
-  take the places they hold together, where the group's first waiting card is. No other
-  card is reordered, and a card that is not in the queue keeps its place (see
-  [Parallel groups](#parallel-groups)).
+  take the places they hold together, where the group's first waiting card is. Then
+  `settleGroupLanes` in `server/tasks/task-groups.mjs` stands the cards of each group that
+  have not started together in one lane: Ready when one of them is there, otherwise the
+  lane of the first, at the place of that lane's first member. No other card is
+  reordered (see [Parallel groups](#parallel-groups)).
 - **The order is the standing one.** A scheduled task that is not due and a dispatched
   task that has not linked keep their place among the waiting cards, although neither is
   in `queue.order` at that moment. The clock therefore never moves a card.
@@ -537,8 +551,9 @@ A feature is context. It has a title, a description, and an app version, and it 
 tasks for the owner (see [Feature context](#feature-context)). It has no order: no step,
 no priority, no gate, and no held state. The queue starts tasks in Ready order, whatever
 their feature. The only way to make tasks run at the same time is a parallel group.
-There is no depends-on system: no task is made to wait for another except by its place
-in Ready and by its group.
+A task waits for another only by its place in Ready, by its group, and by what it runs
+after (task T-101, see [Runs after](#runs-after)). T-94 left the dependency out; T-101 adds
+it as one more hold on a start, on top of the same order and groups.
 
 ### Parallel groups
 
@@ -548,17 +563,24 @@ same time, each in its own worktree (`server/tasks/task-groups.mjs`).
 - **Identity.** A group is an opaque ID, `grp-<12 hex>`, made by the store when the first
   `queue_group` needs a new one. It is derived from no task text, session, or path. It is
   kept per task in `meta` (see [Store](#store)) and served as `Task.group`.
-- **It counts only in the queue.** A group counts while two or more of its tasks are in
-  the queue: state Queued or Scheduled, waiting or in flight. A task in Needs review,
-  Stalled, Blocked by agent, Done, or Not queued is no member. A group left with one
-  member in the queue is no group. `pruneTaskGroups` clears the memberships that no
-  longer count, after every action and before a move reads them, and the board projection
-  serves `group` only for a group of two or more (`orderQueue` reports each task's
-  effective group).
-- **Joining.** `queue_group` puts 2 to 16 waiting cards into one group (see
-  [Boundaries](#boundaries)). The joining cards take the group of the first listed card
-  that is in one, or a new group, and land right after the last waiting card of that
-  group in Ready, in the first card's column. The started members of a group whose
+- **Who counts.** A membership counts for a task in the queue, state Queued or
+  Scheduled, waiting or in flight, and for a planned task: state Not queued, no linked
+  session, and its card in Backlog or Ready (`groupMemberCounts` in
+  `server/tasks/task-record.mjs`). A task in Needs review, Stalled, Blocked by agent, or
+  Done, a Not queued task started by hand, and a planned card moved to a column with a
+  role are no member. A group left with one member that counts is no group.
+  `pruneTaskGroups` clears the memberships that no longer count, after every action and
+  before a move reads them, and the board projection serves `group` only for a group of
+  two or more.
+- **Only the queue's members start together.** `orderQueue` counts only the members in the
+  queue: a planned member is no candidate and holds nothing, and a member alone in the
+  queue starts on its own, in the repository root. A planned member that is queued later,
+  while the members in the queue run, starts with them, in its own worktree.
+- **Joining.** `queue_group` puts 2 to 16 cards that have not started into one group (see
+  [Boundaries](#boundaries)): waiting cards and planned cards alike. The joining cards take
+  the group of the first listed card that is in one, or a new group, and land right after
+  the last card of that group in its column: Ready when any member is in the queue,
+  otherwise the first listed card's column. The started members of a group whose
   waiting cards all join go with them. A group holds at most 16 members.
 - **Leaving.** `queue_ungroup` takes cards out of their group. A card that stood between
   two cards that stay in the group lands right after the group, because the group's cards
@@ -568,9 +590,9 @@ same time, each in its own worktree (`server/tasks/task-groups.mjs`).
   the group, and one that lands beside a sibling stays in it. `queue_remove`, `delete`,
   and `resolve_requeue` take the task out of its group. A group is not a lasting
   structure: it ends when its members leave the queue.
-- **Moving a group.** `move` with `group: "block"` moves the card's whole group of
-  waiting cards together to `position`, counted after the group leaves, in the order the
-  cards had.
+- **Moving a group.** `move` with `group: "block"` moves the cards of the card's group
+  that have not started together to `position` in any column, counted after the group
+  leaves, in board order. A block with a waiting card sent out of Ready answers `conflict`.
 - **Release rule.** A group releases the next Ready work when every member is in Review
   or Done, or has left the queue. Until then the queue starts only waiting members of the
   group (see **Next start** under [Queue](#queue)).
@@ -582,7 +604,62 @@ same time, each in its own worktree (`server/tasks/task-groups.mjs`).
   until it reports. It leaves the group when it reaches Needs review, Stalled, Blocked
   by agent, or Done, or when it is requeued.
 - **Not a dependency.** A group says "start these together". It orders no task after
-  another and gates nothing on a task's result.
+  another and gates nothing on a task's result; [Runs after](#runs-after) does that.
+
+### Planning before Ready
+
+Task T-101, approved by the product owner on 2026-10-14. The owner arranges cards in
+Backlog the way Ready reads, before any card is queued.
+
+- **One after another is card order.** The order of the cards in Backlog is the plan, as
+  the order of Ready is the start order. No second order is stored.
+- **Together is a group.** A group of planned cards is the same group as in Ready: the
+  same ID, limit, frame, and actions. Cards that only sit next to each other make no group.
+- **The plan moves whole.** Dragging a group's frame moves its cards that have not started
+  as one block. `queue_add` with `{ id, group: "block" }` (**Queue group**) queues every
+  card of the task's group that is not queued yet, and puts the group's cards at the end of
+  Ready in the order they had (`queueGroupCards` in `server/tasks/task-card-moves.mjs`).
+- **Queueing one member brings the plan.** `queue_add` of one planned member queues that
+  member only. Its card goes to Ready, and the group's other cards follow it there, still
+  Not queued, because a group stands together in one lane.
+- **A card queued by itself lands last in Ready**, as before. The order of cards queued one
+  at a time is the order they were queued.
+- **Editable until a member starts.** The owner changes or clears a plan with the same
+  actions as in Ready. A member that started cannot be taken out (`conflict`).
+- **Nothing to migrate.** A board from before T-101 holds no planned membership, because
+  `pruneTaskGroups` removed every membership outside the queue. Its groups, tasks, columns,
+  places, sessions, reports, and queue membership stay as they are.
+
+## Runs after
+
+Task T-101, approved by the product owner on 2026-10-14. The owner says that a task runs
+after other tasks of the same board: it never starts until each of them is Done or deleted.
+
+- **A hold, not an order.** A task that runs after an unfinished task is not in
+  `queue.order` and is no candidate for a start, like a scheduled task before its time. It
+  keeps its card place and holds nothing behind it: the queue starts the cards after it.
+  Once every task it runs after is Done or deleted, it starts at its place by the
+  [Queue](#queue) rule. The one ordering rule stays `orderQueue`.
+- **Done or deleted frees it.** Review is not enough: only the owner's Mark done frees a
+  task. A deleted task is taken out of every list in the write that deletes it.
+- **Every start.** The queue never starts the task, and `start-plan` answers `gate_held`
+  for a manual start (`startGates` in `server/tasks/task-queue-advance.mjs`). It is judged
+  before the start gates and is no start gate.
+- **Explained like the other holds.** `queue.waits` carries `runs_after` with the
+  unfinished tasks (see [Why a task waits](#why-a-task-waits)).
+- **Any two tasks of a board.** In any column, with or without a feature, in the same
+  group or not. A task runs after at most 8 tasks.
+- **Set by `after_set`.** `{ id, after }` replaces the list; an empty list clears it (see
+  [Boundaries](#boundaries)). A task that has started takes no list (`conflict`), because
+  its session started from the task as it was.
+- **A loop is refused.** A list that would make tasks wait for each other, directly or
+  through other tasks, answers `conflict` and writes nothing. The Task modal says one fixed
+  line: “These tasks would wait for each other, so nothing was changed.”
+- **A group member that waits** holds nothing for its group, like a scheduled member that
+  is not due. Its siblings start without it, and it starts in its group's turn when it is
+  free.
+- **Running sessions are not touched.** A list changes no session, starts nothing, and
+  stops nothing.
 
 ### Worktrees
 
@@ -749,7 +826,8 @@ its parallel group. Every start first passes the [start gates](#start-gates).
   are in the order of their cards in the Ready column, top first (`Task.position`; a tie
   orders by task number as a number, T-2 before T-10), one ID per task. It is the order
   the cards read in Ready (see [Queued cards stay in Ready](#queued-cards-stay-in-ready)),
-  so the Board and the Queue view always show one order. A task's feature has no part in it. `orderQueue(tasks)`
+  so the Board and the Queue view always show one order. A task's feature has no part in it. A task that
+  runs after an unfinished task is not in it (see [Runs after](#runs-after)). `orderQueue(tasks)`
   returns `{ order, groups }`: `order` is that list, and `groups` maps each task ID to its
   effective parallel group or null. A task in another state is not in the order, even
   when it belongs to a queued task's group. A task that
@@ -931,7 +1009,8 @@ not started (no linked session and no live dispatch).
   stored rows as the queue runner reads them (`queueRecord`), so a live dispatch counts
   as started here as it does for a start.
 - **Place.** `place` is the task's place in `queue.order`, from 1. It is null for a task
-  that is not in the order: a scheduled task before its own time.
+  that is not in the order: a scheduled task before its own time, and a task that runs
+  after an unfinished task.
 - **Reasons.** `reasons` lists every reason that holds, in the order of the table. Each
   is `{ reason, taskIds, more }`: `taskIds` names at most eight tasks, in start order,
   and `more` counts the ones left out. A reason that names no task has an empty list.
@@ -942,6 +1021,7 @@ not started (no linked session and no live dispatch).
 | `queue_blocked` | The queue's status is `blocked` | The task in `blockedBy`, when the board holds it |
 | `queue_paused` | The queue's status is `paused` | The task in `blockedBy`, when the board holds it |
 | `own_schedule` | The task is scheduled and its own time has not come | Nothing |
+| `runs_after` | The task runs after tasks that are on the board and not Done | Those tasks |
 | `earlier_tasks` | Tasks outside its own parallel group are before it in the order: the cards above it in Ready | Those tasks |
 | `running_work` | Tasks in flight outside its own parallel group hold the queue | Those tasks |
 | A [start gate](#start-gates) reason, `before_queue_start`, or `after_queue_stop` | The queue runs, the task is one `nextQueueStart` would start now, and `startGates` or `queueWindowHold` holds it | Nothing |
@@ -1018,7 +1098,8 @@ it looks.
 
 Before every start, manual or queued, the pure `evaluateGates(task, facts, settings)` in
 `task-gates.mjs` judges committed facts and returns the fixed reasons a start cannot
-proceed. A start needs all of the following.
+proceed. A task that runs after an unfinished task is held before the gates, by every
+start (see [Runs after](#runs-after)). A start needs all of the following.
 
 1. No earlier task is in flight outside the task's own parallel group (`earlier_task`
    otherwise). The board names the lowest-numbered task in flight that is not in the
@@ -2281,7 +2362,7 @@ serves no other client.
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `feature_update`, `feature_delete`, `queue_add`,
   `queue_remove`, `queue_group`, `queue_ungroup`, `queue_settings`, `resolve_done`,
-  `resolve_requeue`, `session_assign`, and `session_unassign`. Any other action name is refused: `invalid` from the preload, desktop
+  `resolve_requeue`, `session_assign`, `session_unassign`, and `after_set`. Any other action name is refused: `invalid` from the preload, desktop
   main, and the route, and `unsupported` from the store itself. That includes the removed
   `column_create`, `column_rename`, `column_reorder`, `column_delete`, `column_role`, and
   `queue_reorder`. Built so far: `create` with `{ text, run?, completeWhen? }`, `update` with
@@ -2296,12 +2377,12 @@ serves no other client.
   that waits in the queue sent to another column than Ready answers `conflict`. Task
   positions stay dense after every action. `group` is `"block"` or `"leave"`, and any
   other value is `invalid`. With `"block"`, a card in a parallel group moves with the
-  waiting cards of its group, in the order they have, to `position` counted after
-  the block leaves; a card in no group moves alone. With `"leave"`, a grouped waiting
-  card leaves its group and lands at `position`. Without `group`, a grouped waiting card
-  that lands away from every other waiting card of its group leaves the group, and one
-  that lands beside a sibling stays in it (a reorder inside the group). Only a waiting
-  card has a group in a move.
+  cards of its group that have not started, in board order, to `position` counted after
+  the block leaves; a card in no group moves alone, and a block with a waiting card sent
+  out of Ready is `conflict`. With `"leave"`, a grouped card leaves its group and lands at
+  `position`. Without `group`, a grouped card that lands away from every other card of its
+  group that has not started leaves the group, and one that lands beside a sibling stays in
+  it (a reorder inside the group). Only a card that has not started has a group in a move.
   `feature_create` takes `{ name, description?, appVersion? }` (the name is one line of 1
   to 80 characters, the description at most 2000, the app version one line of at most 40;
   an absent or blank one is none); a
@@ -2323,7 +2404,11 @@ serves no other client.
   feature has started and is not done, and otherwise detaches the feature's tasks and
   deletes it (see [Feature context](#feature-context)). The desktop actions have no
   feature reorder.
-  `queue_add` takes `{ id }` and, optionally, `at`, an instant written as
+  `queue_add` takes `{ id }`, `{ id, group: "block" }`, or `{ id, at }`. With
+  `group: "block"`, every card of the task's group that has not started and is not queued
+  becomes `queued`, and the group's cards take the end of Ready in the order they had; a
+  task in no such group is `conflict` (see [Planning before Ready](#planning-before-ready)).
+  `at` is an instant written as
   `2026-10-09T02:00:00.000Z`. Without `at`, a task in state `not_queued` becomes `queued`
   with its card in Ready (last when it comes from another column), and a `scheduled` task becomes `queued` in the place it has and
   loses its time; any other state is `conflict`. With `at`, a task in state `not_queued`,
@@ -2333,10 +2418,12 @@ serves no other client.
   takes exactly `{ id }`: a `queued` or `scheduled` task with no linked session becomes
   `not_queued`, loses its time, and leaves its parallel group; any other state, or a linked session, is `conflict`. `resolve_requeue` clears the time and the group too.
   `queue_group` takes exactly `{ ids }`: 2 to 16 distinct task IDs, otherwise `invalid`.
-  Each must exist (`not_found`) and be a waiting card: state `queued` or `scheduled`, no
-  linked session, and no live dispatch (otherwise `conflict`). The cards join the group
+  Each must exist (`not_found`) and have not started: a waiting card (state `queued` or
+  `scheduled`) or a planned card (state `not_queued`, card in Backlog or Ready), with no
+  linked session and no live dispatch (otherwise `conflict`). The cards join the group
   of the first listed card that is in one, or a new group when none is, and land right
-  after the last waiting card of that group in Ready. A group that gives every waiting
+  after the last card of that group in its column: Ready when a member is in the queue,
+  otherwise the first listed card's column. A group that gives every waiting
   card away this way sends its members that already started along, so they stay in one
   turn with those cards. A group that would hold more than 16 members
   answers `limit`. Repeating the action changes nothing and answers ok.
@@ -2344,7 +2431,12 @@ serves no other client.
   Each listed task leaves its group. It keeps its place, or lands right after the group
   when it stood between two cards that stay in it. A task in no group changes
   nothing and answers ok, an unknown task is `not_found`, and a grouped member that
-  already started answers `conflict`, which writes nothing. The four queue actions start
+  already started answers `conflict`, which writes nothing.
+  `after_set` takes exactly `{ id, after }`: `after` lists 0 to 8 distinct task IDs, never
+  the task itself, otherwise `invalid`. An unknown task, listed or not, is `not_found`. A
+  task that has started is `conflict`, and so is a list that would make tasks wait for each
+  other. The list replaces the stored one, and an empty list clears it (see
+  [Runs after](#runs-after)). It starts and stops nothing. The four queue actions start
   no session and leave the stored queue status as it is,
   except `queue_remove` of the task a pause names, which ends that pause (see
   [Queue](#queue)). `resolve_done` and
@@ -2516,6 +2608,18 @@ fixed values.
   ID. The start gate block names the earlier task by its task ID only
   (`queue.gates.next.blockedBy`), as it did before; no gate reason, answer, or other
   field names a group. The `queue-next` answer holds task IDs and carries no group.
+- What a task runs after is a list of task IDs of the same board (task T-101,
+  2026-10-14), set by the owner and stored in the task store's `meta`. It is served as
+  `Task.after` on `GET /api/tasks`, under that route's gate, to a same-computer client or a
+  paired device, and in the `runs_after` reason of `queue.waits`. The `after_set` payload
+  carries task IDs only, from the desktop app or a paired device, and its answer is the
+  board. The agent chat reads it in its board snapshot as `runs_after` and proposes it as
+  `set_after` (see [Agent chat](agent-chat.md#privacy)). It never enters `/api/state`, the
+  Sessions list's task reference, a session domain, a catalog, a checkpoint, a report, a
+  log, a notification, diagnostics, an MCP tool, or a session's prompt.
+- A planned group (task T-101) is the same opaque `Task.group` as above, served the same
+  way. Planning stores no other value: the plan's order is the card order the board
+  already serves.
 - They never enter `/api/state`, session catalogs, reports, logs, notifications,
   diagnostics, pipeline-operations logs, or observation checkpoints, and no pipeline
   stage reads them.
@@ -2674,8 +2778,11 @@ fixed values.
 - Ready order is the start order. The queue never starts a card ahead of the first
   waiting card of Ready, except the waiting members of that card's own parallel group, and
   it starts nothing while a task outside the group is in flight.
-- A group exists only while two or more of its tasks are in the queue. A write that
-  leaves one member removes the membership in the same transaction.
+- A group exists only while two or more of its members count: in the queue, or planned in
+  Backlog or Ready. A write that leaves one member removes the membership in the same
+  transaction.
+- A task that runs after a task that is not Done never starts, by the queue or by hand,
+  and holds nothing behind it. No list makes tasks wait for each other.
 - A migration of feature steps starts, relaunches, and steers no session, deletes no
   task, and stands only if the board projects.
 

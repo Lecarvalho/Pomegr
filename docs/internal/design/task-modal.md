@@ -243,6 +243,7 @@ A card's title opens the task modal for one stored task.
 - A reason names every task ID the board sent, at most eight, and then “and n more”.
 - A task behind the cards above it reads “These are above it in Ready and start first: T-66, T-67, T-68, T-69.”
 - A task behind running work reads “T-5 is running. The next card starts when that work is in Review or Done.”
+- A task that runs after an unfinished task reads “It runs after T-13 and T-14, which are not done. It can start when they are Done.”
 - A queue that is off reads “The queue is off, so Pomegr starts no task by itself.” It is not worded as a blocker.
 - A blocked queue reads “The queue is blocked by T-2. Nothing starts until that task is resolved.” A paused queue reads “The queue is paused at T-3. Select On to retry.”
 - A held gate reads “Start gate: …” in the Start gates words. A queue time reads “Schedule: …”.
@@ -262,7 +263,20 @@ A card's title opens the task modal for one stored task.
 - Inline code in the notice is the data font at 12px on an amber tint.
 - In the Feature fields, the folded list leaves out the open task.
 - In the Feature fields, the rows are in board order, and a row has no step number.
-- **Sessions** follows Complete when. It is a fieldset with the 12px/500 legend **Sessions**.
+- **Runs after** follows Complete when. It is a fieldset with the 12px/500 legend **Runs after**, built like Sessions.
+- Runs after lists one ruled row for each task the task runs after, in the order they were added.
+- A row holds the task's title over the muted 12px role “T-13 · Backlog”, with the ID in the data font.
+- A row ends with that task's state chip and the Quiet **Remove**. Its accessible name is “Remove T-13”.
+- Under the rows is one wrapping row: a select of the board's other tasks that are not Done and not listed, and the Secondary **Add**.
+- Each option reads “T-13 · title”. The placeholder is “Choose a task”, or “No other open task on this board” when it has no option.
+- With 8 rows the select is disabled and reads “It runs after 8 tasks, the most it can”.
+- One muted helper line follows: “This task starts only when every task here is Done or deleted. Pomegr starts and stops nothing for it.”
+- A list that would make tasks wait for each other is refused with the one error line “These tasks would wait for each other, so nothing was changed.”
+- Any other failure reads “The change could not be saved.”
+- Add and Remove save by themselves. They are not part of the draft.
+- A task that has started draws the rows only, with no Remove and no select. With no row it draws no Runs after block.
+- Opened from the card's **Runs after…**, the select takes focus.
+- **Sessions** follows Runs after. It is a fieldset with the 12px/500 legend **Sessions**.
 - Sessions lists one ruled row for each session: the session Pomegr started first, then the assigned sessions in the order they were assigned.
 - A row holds the session title as a Text link to the session, over the muted 12px role “Started by Pomegr” or “Assigned”.
 - A session with no title reads “Untitled session”.
@@ -298,6 +312,7 @@ A card's title opens the task modal for one stored task.
 - The confirmation holds a Secondary delete and a Quiet Keep task. It uses no native dialog.
 - Then a spacer, a Secondary **Add to queue** or **Remove from queue**, and a Secondary **Start session**.
 - **Remove from queue** is disabled on a queued task whose session has started.
+- While the task runs after an unfinished task, **Start session** is disabled and the top row's note reads “It runs after T-13, which is not done, so it cannot start yet.”
 - **Start session** asks for a native confirmation in the desktop app, or a browser confirmation on a paired phone that names the task and says the session runs on the computer running Pomegr.
 - A paired phone's **Start in separate worktree** confirmation says that uncommitted changes are left out and remain untouched.
 - A start that works closes the modal, from **Start session** or from **Start in separate worktree**.
@@ -566,6 +581,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 
 - `/design-system` renders the task fields, including Feature.
 - `/design-system` renders the Queue block for a task behind earlier cards, a queue that is off, a held start, a scheduled task, and no known hold.
+- `/design-system` renders the Runs after block with rows, with the loop line, and read-only for a started task.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
 - The mode new sample ends with the split action.
 - `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the delete confirmation, with Delete feature blocked by a started task, with the details not read, and with each failure line.
