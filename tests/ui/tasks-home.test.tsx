@@ -138,4 +138,12 @@ describe("Tasks home styles", () => {
     expect(styles).toMatch(/\.commandChip\.taskHomeQueueOn\s*\{\s*color:\s*var\(--command-ink\);\s*\}/);
     expect(styles).toMatch(/@media \(max-width: 760px\) \{[^@]*\.taskHomeTable thead\s*\{\s*display:\s*none/);
   });
+
+  it("keeps the queue chip on one line, the captions whole, the name aligned, and clears the launcher on phone", () => {
+    const phone = styles.slice(styles.lastIndexOf("@media (max-width: 760px)"));
+    expect(phone).toMatch(/td:nth-child\(2\) \.commandChip\s*\{[^}]*white-space:\s*nowrap/);
+    expect(phone).toMatch(/td\.taskHomeNumber::before\s*\{(?![^}]*text-overflow)[^}]*overflow-wrap:\s*anywhere/);
+    expect(phone).toMatch(/tbody th:first-child[^{]*\{\s*padding:\s*0/);
+    expect(phone).toMatch(/\.taskHome\s*\{\s*padding-bottom:\s*calc\(44px/);
+  });
 });
