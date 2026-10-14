@@ -93,13 +93,13 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="See what happened in a session"
-          summary="A session's Overview now lists its events, newest first."
-          description="A session's Overview now lists its events, newest first: agents starting and finishing, signals, user messages, resource peaks, commits, and pull requests."
+          title="Plan and start work from Tasks"
+          summary="Each repository has a Tasks board, and Aril helps you fill it."
+          description="Each repository now has a Tasks board. Order the cards in Ready, put the ones that start together in a parallel group, and start a session yourself or let the queue start them. Aril, the agent chat, reads the board and proposes changes that you apply."
           highlights={[
-            "Select an event to open the tab that holds its evidence.",
-            "The list covers retained evidence, not the complete session history.",
-            "Commits are observed in Git and never attributed to an agent. User messages appear for Claude Code sessions only.",
+            "Ask Aril to cut a feature into tasks, or send it an image, then select Apply changes. Aril follows up on what changed.",
+            "Tasks and Aril work in the desktop app and on a paired phone. Starting sessions works on Windows only.",
+            "Aril changes nothing by itself, and after a session starts Pomegr only observes it.",
           ]}
           illustration={<HomeUpdateIllustration />}
           autoOpen={!updateSeen}

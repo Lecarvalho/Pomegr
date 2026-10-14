@@ -17,7 +17,7 @@ const sessions: SessionSummary[] = [
 
 // Seeds the current update as already seen, so only the auto-open test starts with the dialog open.
 function seed(pins: object[] = [], lastViewedSessionId: string | null = null) {
-  window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins, lastViewedSessionId, seenUpdateId: "session-events-v1" }));
+  window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins, lastViewedSessionId, seenUpdateId: "tasks-and-aril-v1" }));
 }
 function home(rows = sessions, state: { loading?: boolean; connected?: boolean } = {}) {
   return render(<SessionCatalogProvider sessions={rows} {...state}><HomeDashboard /></SessionCatalogProvider>);
@@ -36,7 +36,7 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     const view = home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "See what happened in a session" })).toBeInTheDocument();
+    expect(within(update).getByRole("heading", { name: "Plan and start work from Tasks" })).toBeInTheDocument();
     expect(within(update).queryByRole("link")).not.toBeInTheDocument();
     const navigation = screen.getByRole("region", { name: "Sessions" });
     expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -45,7 +45,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({
       version: 1, pins: [{ kind: "session", id: sessions[0].id }],
-      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "session-events-v1", seenUpdateId: "session-events-v1",
+      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "tasks-and-aril-v1", seenUpdateId: "tasks-and-aril-v1",
     });
     view.unmount();
     home();
@@ -53,7 +53,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("link", { name: "Build Home · Pomegr · Codex" })).toBeInTheDocument();
     act(() => {
       window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({
-        version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "session-files-and-resources-v1",
+        version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "session-events-v1",
       }));
       window.dispatchEvent(new StorageEvent("storage", { key: HOME_PREFERENCES_STORAGE_KEY }));
     });
@@ -66,7 +66,7 @@ describe("personal Home", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     const trigger = screen.getByRole("button", { name: "See what’s new" });
     await user.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "See what happened in a session" });
+    const dialog = screen.getByRole("dialog", { name: "Plan and start work from Tasks" });
     expect(within(dialog).getAllByRole("listitem")).toHaveLength(3);
     await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -76,15 +76,15 @@ describe("personal Home", () => {
     await user.click(screen.getByRole("button", { name: "Got it" }));
     expect(screen.queryByRole("heading", { name: "What’s new" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
-    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!).dismissedUpdateId).toBe("session-events-v1");
+    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!).dismissedUpdateId).toBe("tasks-and-aril-v1");
   });
 
   it("opens the update dialog by itself once per announcement, even after Close or a reload", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
     const view = home();
-    const dialog = await screen.findByRole("dialog", { name: "See what happened in a session" });
-    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [], lastViewedSessionId: null, seenUpdateId: "session-events-v1" });
+    const dialog = await screen.findByRole("dialog", { name: "Plan and start work from Tasks" });
+    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [], lastViewedSessionId: null, seenUpdateId: "tasks-and-aril-v1" });
     await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     view.unmount();
@@ -119,7 +119,7 @@ describe("personal Home", () => {
     await user.click(screen.getByText("Add pins"));
     await user.click(screen.getByRole("button", { name: "Pin Build Home" }));
     expect(screen.getByRole("list", { name: "Pinned destinations" })).toHaveTextContent("Build Home");
-    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [{ kind: "session", id: "codex:build-home" }], lastViewedSessionId: null, seenUpdateId: "session-events-v1" });
+    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [{ kind: "session", id: "codex:build-home" }], lastViewedSessionId: null, seenUpdateId: "tasks-and-aril-v1" });
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.getByText("Add pins")).toHaveFocus();
     view.unmount();
