@@ -13,7 +13,7 @@ const RETRY_DELAY_MS = 5_000;
 const READY_DELAY_MS = 10_000;
 
 const TASK_GROUP_ID = /^grp-[0-9a-f]{12}$/u;
-const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64, issueNumber: 999_999_999, assignedSessions: 16 };
+const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64, issueNumber: 999_999_999, assignedSessions: 16, after: 8 };
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const SINGLE_LINE = /^[^\u0000-\u001f]*$/u;
 
@@ -79,6 +79,8 @@ function validTask(value: unknown): value is Task {
     return Boolean(assigned) && text(assigned!.id, LIMITS.label) && nullableText(assigned!.title, LIMITS.label) && text(assigned!.state, 40) && nullableText(assigned!.observedModel, LIMITS.model);
   };
   if (task.assigned !== undefined && listOf(task.assigned, LIMITS.assignedSessions, validAssigned) === null) return false;
+  // What the task runs after: absent, or one to eight task IDs of the same board.
+  if (task.after !== undefined && !(listOf(task.after, LIMITS.after, taskId)?.length)) return false;
   return typeof task.id === "string" && /^T-[1-9]\d*$/u.test(task.id)
     && text(task.text, LIMITS.text) && text(task.columnId, LIMITS.label) && count(task.position, 0)
     && (task.featureId === null || text(task.featureId, LIMITS.label)) && (task.group === null || (typeof task.group === "string" && TASK_GROUP_ID.test(task.group)))

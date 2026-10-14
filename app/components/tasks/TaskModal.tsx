@@ -18,7 +18,7 @@ type Shared = {
 export type TaskModalProps = Shared & (
   | { mode: "new"; onCreated(): void; onFollowUpFailed?: (taskId: string) => void }
   | { mode: "issue"; issue: TaskIssue; onReload(): Promise<void>; onPromoted(taskId: string): void }
-  | { mode: "edit"; task: Task; onOpenTask?: (task: Task, opener: HTMLElement) => void; onChanged(): void; onDeleted(): void }
+  | { mode: "edit"; task: Task; onOpenTask?: (task: Task, opener: HTMLElement) => void; onChanged(): void; onDeleted(): void; focus?: "after" }
 );
 
 export function TaskModal(props: TaskModalProps) {
@@ -33,9 +33,9 @@ export function TaskModal(props: TaskModalProps) {
         onReload={onReload} onPromoted={onPromoted} onClose={onClose} />;
     }
     case "edit": {
-      const { repositoryId, repositoryName, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose } = props;
+      const { repositoryId, repositoryName, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose, focus } = props;
       return <TaskModalEdit repositoryId={repositoryId} repositoryName={repositoryName} task={task} board={board} refresh={refresh}
-        onOpenTask={onOpenTask} onChanged={onChanged} onDeleted={onDeleted} onClose={onClose} />;
+        onOpenTask={onOpenTask} onChanged={onChanged} onDeleted={onDeleted} onClose={onClose} focus={focus} />;
     }
   }
 }

@@ -22,7 +22,7 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.";
+const FOOTNOTE = "Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, in Backlog or Ready, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
@@ -518,13 +518,15 @@ describe("optimistic move", () => {
 describe("keyboard moves", () => {
   const bar = (id: string) => within(screen.getByRole("toolbar", { name: `Move ${id}` }));
 
-  it("gives each card a toolbar of four named actions, disabled where the card cannot go", () => {
+  it("gives each card a toolbar of four named actions, disabled where the card cannot go, and Runs after", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const t2 = bar("T-2");
     expect(t2.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-      "Move T-2 up", "Move T-2 down", "Move T-2 to the previous column", "Move T-2 to the next column",
+      "Move T-2 up", "Move T-2 down", "Move T-2 to the previous column", "Move T-2 to the next column", "Choose what T-2 runs after",
     ]);
-    for (const button of t2.getAllByRole("button")) expect(button).toHaveClass("commandIconAction");
+    for (const button of t2.getAllByRole("button").slice(0, 4)) expect(button).toHaveClass("commandIconAction");
+    expect(t2.getByRole("button", { name: "Choose what T-2 runs after" })).toHaveClass("commandQuietAction", "taskMoveAfter");
+    expect(t2.getByRole("button", { name: "Choose what T-2 runs after" })).toHaveAttribute("aria-haspopup", "dialog");
     expect(t2.getByRole("button", { name: "Move T-2 up" })).toBeEnabled();
     expect(t2.getByRole("button", { name: "Move T-2 to the previous column" })).toBeDisabled();
     expect(bar("T-1").getByRole("button", { name: "Move T-1 up" })).toBeDisabled();
@@ -546,11 +548,13 @@ describe("keyboard moves", () => {
     expect(screen.getByRole("button", { name: "Move T-2 down" })).toHaveFocus();
     // The disabled previous-column action is skipped, and the ends wrap.
     await user.keyboard("{End}");
-    expect(screen.getByRole("button", { name: "Move T-2 to the next column" })).toHaveFocus();
-    await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("button", { name: "Move T-2 up" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Choose what T-2 runs after" })).toHaveFocus();
     await user.keyboard("{ArrowLeft}");
     expect(screen.getByRole("button", { name: "Move T-2 to the next column" })).toHaveFocus();
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(screen.getByRole("button", { name: "Move T-2 up" })).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("button", { name: "Choose what T-2 runs after" })).toHaveFocus();
     await user.keyboard("{Home}");
     expect(screen.getByRole("button", { name: "Move T-2 up" })).toHaveFocus();
     // The last control used is the toolbar's tab stop.

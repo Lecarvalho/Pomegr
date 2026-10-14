@@ -197,6 +197,10 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Run ", ...idList(operation.ids), " in parallel"], details: [] };
     case "ungroup_tasks":
       return { title: ["Take ", ...idList(operation.ids), operation.ids.length === 1 ? " out of its parallel group" : " out of their parallel groups"], details: [] };
+    case "set_after":
+      return operation.after.length === 0
+        ? { title: [{ id: operation.id }, " no longer runs after another task"], text: current(operation.id), details: [] }
+        : { title: [{ id: operation.id }, " runs after ", ...idList(operation.after)], text: current(operation.id), details: ["It starts only when every one of them is Done or deleted."] };
     case "attach_images":
       return { title: [`Attach ${imageCount(operation.images.length)} to `, { id: operation.id }], text: current(operation.id), details: [], images: operation.images };
     case "start_session":

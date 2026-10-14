@@ -135,7 +135,7 @@ describe("the page header", () => {
 describe("the Board footnote", () => {
   it("reads the drag rule, with Run in parallel and the group drop, in the desktop app", () => {
     renderBoard();
-    expect(screen.getByText("Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.")).toHaveClass("taskBoardFootnote");
+    expect(screen.getByText("Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, in Backlog or Ready, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.")).toHaveClass("taskBoardFootnote");
   });
 
   it("is not drawn without the desktop bridge", () => {

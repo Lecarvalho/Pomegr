@@ -72,8 +72,9 @@ describe("linkIds", () => {
     expect(linkIds(four, five)).toEqual(["T-4", "T-5"]);
     expect(linkIds(six, groupB)).toEqual(["T-6", "T-8", "T-9"]);
     expect(linkIds(groupA, groupB)).toEqual(["T-1", "T-2", "T-8", "T-9"]);
-    expect(linkIds(five, seven)).toBeNull();
-    expect(linkIds(seven, six)).toBeNull();
+    // T-7 is not queued: a planned card in Ready groups like a waiting one.
+    expect(linkIds(five, seven)).toEqual(["T-5", "T-7"]);
+    expect(linkIds(seven, six)).toEqual(["T-7", "T-6"]);
   });
 
   it("is null without a segment on a side", () => {

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TaskBoard, TaskGateThreshold, TaskQueueSchedule } from "../../../shared/task-contract";
 import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
-  GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_GROUP_FAILURE_MESSAGE, QUEUE_GROUP_LIMIT_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_UNGROUP_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE,
-  groupDesktopTasks, moveDesktopTask,
+  GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_GROUP_ADD_FAILURE_MESSAGE, QUEUE_GROUP_FAILURE_MESSAGE, QUEUE_GROUP_LIMIT_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_UNGROUP_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE,
+  groupDesktopTasks, moveDesktopTask, queueDesktopGroup,
   requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, ungroupDesktopTasks, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
@@ -23,6 +23,8 @@ export type TaskBoardEdits = {
   groupTasks(ids: readonly string[]): Promise<boolean>;
   /** Takes each waiting card out of its parallel group. */
   ungroupTasks(ids: readonly string[]): Promise<boolean>;
+  /** Queues every card of the task's parallel group that is not queued yet, in the order of the plan. */
+  queueGroup(id: string): Promise<boolean>;
   setQueue(on: boolean): Promise<boolean>;
   setGateThreshold(threshold: TaskGateThreshold): Promise<boolean>;
   setQueueSchedule(schedule: TaskQueueSchedule): Promise<boolean>;
@@ -113,6 +115,7 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     settled,
     moveTask,
     groupTasks: useCallback((ids: readonly string[]) => waitedAction(() => groupDesktopTasks(repositoryId, ids), (error) => error === "limit" ? QUEUE_GROUP_LIMIT_MESSAGE : QUEUE_GROUP_FAILURE_MESSAGE), [waitedAction, repositoryId]),
+    queueGroup: useCallback((id: string) => waitedAction(() => queueDesktopGroup(repositoryId, id), () => QUEUE_GROUP_ADD_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     ungroupTasks: useCallback((ids: readonly string[]) => waitedAction(() => ungroupDesktopTasks(repositoryId, ids), () => QUEUE_UNGROUP_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueue: useCallback((on: boolean) => waitedAction(() => setDesktopQueue(repositoryId, on), () => QUEUE_SETTINGS_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setGateThreshold: useCallback((threshold: TaskGateThreshold) => waitedAction(() => setDesktopGateThreshold(repositoryId, threshold), () => GATE_THRESHOLD_FAILURE_MESSAGE), [waitedAction, repositoryId]),

@@ -338,9 +338,9 @@ next card only after that task has reported and is in **Review** or **Done**. To
 cards at the same time, put them in a parallel group. The queue then starts the whole
 group together, one task after another in the same check.
 
-- **Run in parallel.** In **Ready**, between two waiting cards, select **Run in
-  parallel**. The two cards, or their groups, become one group.
-- **Add a card to a group.** Drop a waiting card onto a group.
+- **Run in parallel.** In **Backlog** or **Ready**, between two cards that have not
+  started, select **Run in parallel**. The two cards, or their groups, become one group.
+- **Add a card to a group.** Drop a card that has not started onto a group.
 - **A group.** A frame marked **Parallel · 3** holds the cards that start together.
   The number counts the members still waiting. Once members have started, the caption
   adds, for example, "· T-4 and T-5 started". A group holds up to 16 cards.
@@ -360,9 +360,45 @@ group together, one task after another in the same check.
 - **A group lasts while it has work.** When a member reaches **Review**, **Blocked by
   agent**, **Stalled**, or **Done**, or leaves the queue, it is no longer in the group.
   A group with only one task left is no group.
-- **No dependencies.** A group means "start these together". Pomegr has no way to say that
-  one task waits for another's result. Put the later card below the earlier one in
-  **Ready** instead.
+- **A group is not a dependency.** A group means "start these together". To make a task
+  wait for another task's result, use [Runs after](#run-a-task-after-another).
+
+### Plan in Backlog
+
+You can arrange cards in **Backlog** before you queue any of them, the same way **Ready**
+reads.
+
+- **One after another.** The order of the cards in **Backlog** is your plan.
+- **Together.** Select **Run in parallel** between two cards, or drop a card on a group.
+  The frame and the caption are the same as in **Ready**. Cards that only sit next to each
+  other are not a group.
+- **Queue group.** On the caption of a group, select **Queue group**. Every card of the
+  group joins the queue and moves to the end of **Ready**, in the order it had.
+- **Queue one card of a group.** The card joins the queue and moves to **Ready**. The other
+  cards of its group move with it and stay **Not queued** until you queue them.
+- **Move the whole plan.** Drag a group's frame to **Ready**. The cards keep their group
+  and are not queued.
+- **Change it.** Ungroup, take a card out, or reorder at any time. Once a member has
+  started, you cannot take that member out.
+
+## Run a task after another
+
+Say that a task runs after other tasks when it must not start before their work is
+accepted.
+
+- **Set it.** Open the task and use **Runs after**: choose a task and select **Add**. On
+  the Board, select **Runs after…** in a card's move actions to open the same field.
+- **Any task of the board.** The tasks can be in any column, with or without a feature. A
+  task can run after up to 8 tasks.
+- **What it does.** The task never starts until every task it runs after is **Done**, or
+  deleted. **Review** is not enough. Neither the queue nor **Start session** starts it.
+- **It does not reorder the queue.** The queue passes a waiting task and starts the cards
+  after it. When the task is free, it starts at its place in **Ready**.
+- **The card says so.** A card reads "Runs after T-13 and T-14", and a queued card reads
+  "Waiting: runs after T-13, which is not done".
+- **No loops.** A choice that would make tasks wait for each other is refused with "These
+  tasks would wait for each other, so nothing was changed."
+- **Remove it** with **Remove** on the row. A task that has started cannot be changed.
 
 ### Worktrees for parallel tasks
 
@@ -436,6 +472,7 @@ that starts first.
 | The card says | What it means |
 | --- | --- |
 | earlier tasks start first (T-3, …) | Those cards are above it in **Ready**, so they start first. The cards of its own parallel group are not listed: they start with it. |
+| runs after T-13, which is not done | It [runs after](#run-a-task-after-another) that task. It starts once that task is **Done** or deleted. |
 | T-5 is running | A started task, or a parallel group that runs, holds the queue until it is in **Review** or **Done**. |
 | the queue is off | You have not turned the queue on. Nothing is wrong. |
 | the queue is blocked by T-2 | That task stalled or was blocked by its agent. Resolve it first. |

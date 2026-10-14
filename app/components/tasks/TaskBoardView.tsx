@@ -12,18 +12,19 @@ import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
 import { ReadyGroup, ReadyLink, type ReadyGroupActions } from "./ReadyGroup";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskColumnHeader } from "./TaskColumnHeader";
-import { cardMove, readyColumnId, readyUnits, waitsInQueue, type CardMoveKind } from "./task-board-model";
+import { cardMove, notStarted, planLaneIds, readyUnits, waitsInQueue, type CardMoveKind } from "./task-board-model";
+import { afterCardLine } from "./task-after-model";
 import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue } from "./task-features";
 import { waitCardLine } from "./task-wait-model";
 import { useMinuteClock } from "./task-panel-hooks";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
-import { idList, linkIds, readySegments, type ReadyParallelGroup, type ReadySegment } from "./task-ready-groups";
+import { idList, linkIds, plannedIds, readySegments, type ReadyParallelGroup, type ReadySegment } from "./task-ready-groups";
 import { useCardDrag, type CardDropLine, type ColumnDropHandlers } from "./use-card-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
-type OpenTask = (task: Task, opener: HTMLElement) => void;
+type OpenTask = (task: Task, opener: HTMLElement, focus?: "after") => void;
 
-const FOOTNOTE = "Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.";
+const FOOTNOTE = "Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, in Backlog or Ready, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.";
 
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 
@@ -56,7 +57,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
   const allColumns = taskColumns(board);
   const columns = filtered ? allColumns.map((column) => ({ ...column, tasks: column.tasks.filter((task) => matchesFeatureFilter(task, filter)) })) : allColumns;
   const lines = useMemo(() => featureLines(board), [board]);
-  const readyId = readyColumnId(board);
+  const afterLines = useMemo(() => new Map(board.tasks.map((task) => [task.id, afterCardLine(task, board.tasks)])), [board]);
+  const laneIds = planLaneIds(board);
   const now = useMinuteClock();
   const scroller = useRef<HTMLDivElement>(null);
   const restore = useRef<Restore | null>(null);
@@ -72,7 +74,7 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
     setAnnouncement(announcement);
     void edits?.ungroupTasks(ids);
   };
-  const drag = useCardDrag(board, (move) => { void edits?.moveTask(move); }, { columnId: readyId, onJoin: (id, memberId) => groupCards([memberId, id]) });
+  const drag = useCardDrag(board, (move) => { void edits?.moveTask(move); }, { columnIds: laneIds, onJoin: (id, memberId) => groupCards([memberId, id]) });
   const signature = columns.map((column) => `${column.id}:${column.tasks.map((task) => task.id).join(",")}`).join("|");
   const settled = edits?.settled ?? 0;
 
@@ -112,22 +114,23 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
   };
   const openControl = (id: string) => () => cardOf(id)?.querySelector<HTMLElement>(".taskCardOpen") ?? null;
   const groupMoveFor = (task: Task): TaskCardMove["group"] => {
-    if (!edits || task.group === null || !waitsInQueue(task)) return undefined;
+    if (!edits || task.group === null || !notStarted(task)) return undefined;
     return { onLeave: () => { restore.current = { find: openControl(task.id), settled: edits.settled }; ungroupCards([task.id], `${task.id} taken out of its parallel group.`); } };
   };
   const groupControl = (memberId: string, kind: string) => () => {
     const frame = cardOf(memberId)?.closest<HTMLElement>("[data-ready-group]");
     return frame?.querySelector<HTMLElement>(`[data-group-move="${kind}"]:not(:disabled)`) ?? frame?.querySelector<HTMLElement>("[data-group-move]:not(:disabled)") ?? frame?.querySelector<HTMLElement>(".taskReadyUngroup") ?? null;
   };
-  const readyCards = columns.find((column) => column.id === readyId)?.tasks ?? [];
-  /** The move of a whole group one place up or down, past the card or the group beside it. */
+  /** The move of a whole group one place up or down in its lane, past the card or the group beside it. */
   const groupMove = (group: ReadyParallelGroup, kind: "up" | "down") => {
-    const units = readyUnits(readyCards);
+    const lane = columns.find((column) => column.tasks.some((task) => task.id === group.tasks[0].id));
+    if (!lane) return null;
+    const units = readyUnits(lane.tasks);
     const at = units.findIndex((unit) => unit.group === group.group && unit.tasks[0]?.id === group.tasks[0].id);
     const beside = units[at + (kind === "up" ? -1 : 1)];
-    if (at < 0 || !beside || readyId === null) return null;
-    const start = readyCards.findIndex((task) => task.id === group.tasks[0].id);
-    return { id: group.tasks[0].id, columnId: readyId, position: kind === "up" ? start - beside.tasks.length : start + beside.tasks.length, group: "block" as const };
+    if (at < 0 || !beside) return null;
+    const start = lane.tasks.findIndex((task) => task.id === group.tasks[0].id);
+    return { id: group.tasks[0].id, columnId: lane.id, position: kind === "up" ? start - beside.tasks.length : start + beside.tasks.length, group: "block" as const };
   };
   const groupActionsFor = (group: ReadyParallelGroup): ReadyGroupActions | undefined => edits && !filtered ? {
     drag: drag.groupHandlers(group.tasks[0].id),
@@ -139,6 +142,11 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
       setAnnouncement(`The parallel group of ${idList(group.tasks.map((task) => task.id))} moved ${kind}.`);
       void edits.moveTask(move);
     },
+    ...(plannedIds(group).length > 0 ? { onQueue: () => {
+      restore.current = { find: openControl(group.tasks[0].id), settled: edits.settled };
+      setAnnouncement(`${idList(plannedIds(group))} added to the queue with their parallel group.`);
+      void edits.queueGroup(group.tasks[0].id);
+    } } : {}),
     onUngroup: () => {
       restore.current = { find: openControl(group.tasks[0].id), settled: edits.settled };
       ungroupCards(group.tasks.map((task) => task.id), `${idList(group.tasks.map((task) => task.id))} no longer run in parallel.`);
@@ -149,6 +157,7 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
     available: Object.fromEntries(KINDS.map((kind) => [kind, cardMove(board, task.id, kind) !== null])) as TaskCardMove["available"],
     onMove: (kind) => moveCard(task.id, kind),
     group: groupMoveFor(task),
+    ...(onOpenTask && notStarted(task) ? { onAfter: (opener: HTMLElement) => onOpenTask(task, opener, "after") } : {}),
   } : undefined;
 
   return <>
@@ -159,8 +168,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
     {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} entry={features} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
-        {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.gates?.next?.taskId ?? board.queue.order[0] ?? null}
-          ready={column.id === readyId ? { segments: readySegments(column.tasks, board), queue: board.queue, tasks: board.tasks, now, overGroup: drag.overGroup,
+        {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} afterLines={afterLines} nextId={board.queue.gates?.next?.taskId ?? board.queue.order[0] ?? null}
+          ready={laneIds.includes(column.id) ? { segments: readySegments(column.tasks, board), queue: board.queue, tasks: board.tasks, now, overGroup: drag.overGroup,
             groupActionsFor, onLink: edits && !filtered ? groupCards : undefined } : undefined}
           dropTarget={drag.overColumn === column.id} dropLine={drag.dropLine?.columnId === column.id ? drag.dropLine : undefined} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} newTask={index === 0 ? newTask : undefined} />)}
       </div>
@@ -185,9 +194,11 @@ export type ReadyLane = {
   onLink?(ids: readonly string[]): void;
 };
 
-export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine, drop, cardMoveFor, newTask, ready }: {
+export function TaskColumn({ column, lines, afterLines, nextId, onOpen, dropTarget, dropLine, drop, cardMoveFor, newTask, ready }: {
   column: TaskColumnView;
   lines: ReadonlyMap<string, string>;
+  /** The Runs after line of each card that still runs after an unfinished task. */
+  afterLines?: ReadonlyMap<string, string | null>;
   nextId: string | null;
   onOpen?: OpenTask;
   dropTarget: boolean;
@@ -196,7 +207,7 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
   drop?: ColumnDropHandlers;
   cardMoveFor(task: Task): TaskCardMove | undefined;
   newTask?: NewTaskEntry;
-  /** Set for the Ready lane only: no other lane groups its cards. */
+  /** Set for the Backlog and Ready lanes, where the owner plans and queues: no other lane groups its cards. */
   ready?: ReadyLane;
 }) {
   const headingId = useId();
@@ -208,7 +219,7 @@ export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, dropLine
   };
   const card = (task: Task, started: readonly string[] = []) => <TaskCard key={task.id} task={task} compact={ready !== undefined && waitsInQueue(task)} now={ready?.now} waiting={waiting(task, started)}
     dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && task.id === lastId ? "after" : undefined}
-    featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
+    featureLine={lines.get(task.id)} after={afterLines?.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
   // Between two waiting cards, or groups, that sit next to each other: the action that makes them one group.
   const segment = (current: ReadySegment, index: number) => {
     const ids = ready?.onLink ? linkIds(ready.segments[index - 1], current) : null;

@@ -4,6 +4,7 @@ import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { DEFAULT_TASK_GATE_THRESHOLD, evaluateGates, normalizeGateThreshold, queueGates } from "./task-gates.mjs";
 import { earlierTaskBlocker, nextQueueStart, queueWhenTurnedOn, queueWindowHold, taskIsDue } from "./task-queue.mjs";
 import { explainQueueWaits } from "./task-queue-waits.mjs";
+import { unfinishedAfter } from "./task-after.mjs";
 import { isRepositoryId, isTaskId, normalizeQueueSchedule, projectBoard, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 // The reasons the desktop may report.
@@ -61,7 +62,9 @@ export function startGates({ database, repositoryId, board, rows, taskId, resolv
   const gates = evaluateGates({ provider: startProvider(task), blockedBy: manual ? null : earlierTaskBlocker(taskId, queueRecords(rows, at)) },
     gateFacts(resolveGateFacts, repositoryId), { threshold: readGateThreshold(database, repositoryId) });
   const early = task.state === "scheduled" && task.scheduledAt !== null && !taskIsDue(Date.parse(task.scheduledAt), at);
-  return early ? { ok: false, reasons: gates.reasons, early: true } : gates;
+  // A task that runs after an unfinished task never starts, by the queue or by hand.
+  const after = (task.after ?? []).some((id) => board.tasks.some((other) => other.id === id && other.state !== "done"));
+  return early || after ? { ok: false, reasons: gates.reasons, early: true, ...(after ? { after: true } : {}) } : gates;
 }
 
 export function fillQueueGates({ database, board, rows, resolveGateFacts, at }) {
@@ -171,12 +174,13 @@ export function releaseDanglingPause({ database, repositoryId, now }) {
   if (found === undefined) endPause(database, repositoryId, now());
 }
 
-function queueRecord(row, at) {
+function queueRecord(row, at, states) {
   const standing = dispatchStanding(row.dispatch_token, at);
   const linked = (row.session_id ?? null) !== null;
   return {
     id: taskIdFromNumber(Number(row.number)),
     group: row.group ?? null,
+    waitsFor: unfinishedAfter(row.after, states).map(taskIdFromNumber),
     state: row.state,
     queuePosition: row.position ?? null,
     due: row.state === "scheduled" && taskIsDue(row.scheduled_at ?? null, at),
@@ -185,7 +189,11 @@ function queueRecord(row, at) {
   };
 }
 
-const queueRecords = (rows, at) => (rows?.tasks ?? []).map((row) => queueRecord(row, at));
+const queueRecords = (rows, at) => {
+  const tasks = rows?.tasks ?? [];
+  const states = new Map(tasks.map((row) => [Number(row.number), row.state]));
+  return tasks.map((row) => queueRecord(row, at, states));
+};
 
 // Which tasks the running queues start now.
 export function nextQueueStarts({ database, transaction, loadRows, resolveGateFacts, now }) {

@@ -56,10 +56,13 @@ test("queue_group answers not_found for an unknown or foreign task and conflict 
   createTask(store, REPOSITORY);
   createTask(store, OTHER_REPOSITORY);
   queueTask(store, "T-1", OTHER_REPOSITORY);
+  // A card that is not queued is planned only in Backlog or Ready, columns with no role.
+  const inProgress = store.readBoard(REPOSITORY).columns.find((column) => column.name === "In progress").id;
+  assert.equal(store.apply(REPOSITORY, "move", { id: "T-4", columnId: inProgress, position: 0 }).ok, true);
   const before = store.readBoard(REPOSITORY);
   assert.deepEqual(group(store, "T-1", "T-9"), { ok: false, error: "not_found" });
   assert.deepEqual(store.apply(OTHER_REPOSITORY, "queue_group", { ids: ["T-1", "T-2"] }), { ok: false, error: "not_found" });
-  // T-4 is not queued.
+  // T-4 is not queued and its card is in In progress.
   assert.deepEqual(group(store, "T-1", "T-4"), { ok: false, error: "conflict" });
   assert.deepEqual(group(store, "T-4", "T-1"), { ok: false, error: "conflict" });
   // A card with a linked session, a live dispatch, an outcome, or a stall is not waiting.

@@ -94,6 +94,25 @@ export function inertEdits(board: TaskBoard): TaskBoardEdits {
   const none = async () => false;
   return {
     board, failure: null, busy: false, settled: 0, moveTask: none,
-    groupTasks: none, ungroupTasks: none, setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none,
+    groupTasks: none, ungroupTasks: none, queueGroup: none, setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none,
   };
 }
+
+// Planning before Ready: a parallel group of cards that are not queued yet, in Backlog, and tasks that run after others.
+export const SAMPLE_PLAN_GROUP_ID = "grp-abcdef012345";
+const P12 = sampleTask("T-12", "Add the export schema", { columnId: "col-backlog", run: { provider: "claude", model: "model-large", effort: "medium" } });
+const P13 = sampleTask("T-13", "Export to CSV", { columnId: "col-backlog", group: SAMPLE_PLAN_GROUP_ID, run: { provider: "claude", model: "model-small", effort: "medium" } });
+const P14 = sampleTask("T-14", "Export to JSON", { columnId: "col-backlog", group: SAMPLE_PLAN_GROUP_ID, run: { provider: "codex", model: null, effort: "medium" } });
+export const P15_AFTER = sampleTask("T-15", "Document the export formats", { columnId: "col-backlog", after: ["T-13", "T-14"], run: { provider: "claude", model: "model-small", effort: "low" } });
+const P16 = sampleTask("T-16", "Tidy the settings copy", { columnId: "col-backlog" });
+const P21 = sampleTask("T-21", "Write the new parser", { columnId: "col-progress", state: "queued", run: { provider: "claude", model: "model-large", effort: "high" }, session: session("t21", "New parser", "working") });
+export const P9_WAITING = sampleTask("T-9", "Switch the importer to the new parser", { state: "queued", after: ["T-21"], run: { provider: "claude", model: "model-large", effort: "high" } });
+const P10 = sampleTask("T-10", "Fix the date filter", { state: "queued", run: { provider: "claude", model: "model-small", effort: "medium" } });
+const WAITS_PLAN: TaskQueueWait[] = [
+  { taskId: "T-9", place: null, reasons: [{ reason: "runs_after", taskIds: ["T-21"], more: 0 }] },
+  { taskId: "T-10", place: 1, reasons: [{ reason: "running_work", taskIds: ["T-21"], more: 0 }] },
+];
+export const BOARD_PLAN: TaskBoard = {
+  ...base, features: [], queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-10"], gates: GATES_OPEN, waits: WAITS_PLAN },
+  tasks: [...place([P12, P13, P14, P15_AFTER, P16]), ...place([P9_WAITING, P10]), { ...P21, position: 0 }],
+};

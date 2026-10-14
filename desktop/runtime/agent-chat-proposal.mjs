@@ -4,7 +4,7 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "attach_images", "start_session", "set_queue",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue",
 ]);
 // The one operation that puts images the owner sent in the chat on a task that is already on the board.
 export const IMAGE_OPERATION = "attach_images";
@@ -119,6 +119,9 @@ function taskParts(source) {
 }
 
 // The distinct task IDs of a group operation, in the order written, or null when the list is outside `min` to `GROUP_LIMIT`.
+// A task runs after at most this many tasks, the monitor's bound.
+const AFTER_LIMIT = 8;
+
 function taskIds(value, min) {
   if (!Array.isArray(value) || value.length < min || value.length > GROUP_LIMIT) return null;
   const ids = value.map(taskId);
@@ -160,6 +163,11 @@ export function normalizeOperation(source) {
   }
   const id = taskId(source.id);
   if (!id) return null;
+  if (op === "set_after") {
+    // An empty list clears what the task runs after.
+    const after = Array.isArray(source.after) && source.after.length === 0 ? [] : taskIds(source.after, 1);
+    return only(source, ["op", "id", "after"]) && after && after.length <= AFTER_LIMIT && !after.includes(id) ? { op, id, after } : null;
+  }
   if (op === "update_task") {
     if (!only(source, ["op", "id", "text", "feature", ...TASK_FIELDS])) return null;
     const parts = taskParts(source);
@@ -361,6 +369,11 @@ export async function applyOperations(operations, { post, board, attach }) {
     if (op === "group_tasks" || op === "ungroup_tasks") {
       if (!operation.ids.every((id) => facts.tasks.has(id))) { results.push(failure("not_found")); continue; }
       results.push((await act(op === "group_tasks" ? "queue_group" : "queue_ungroup", { ids: operation.ids })).answer);
+      continue;
+    }
+    if (op === "set_after") {
+      if (![operation.id, ...operation.after].every((id) => facts.tasks.has(id))) { results.push(failure("not_found")); continue; }
+      results.push((await act("after_set", { id: operation.id, after: operation.after })).answer);
       continue;
     }
     const task = facts.tasks.get(operation.id);

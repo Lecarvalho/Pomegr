@@ -4,7 +4,7 @@ import { validModelIdentifier, validModelLabel } from "../../shared/model-notifi
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
-  "session_assign", "session_unassign",
+  "session_assign", "session_unassign", "after_set",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 // The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
@@ -34,7 +34,7 @@ export const GATE_REASONS = Object.freeze([
   "before_queue_start", "after_queue_stop",
 ]);
 // Why a waiting task has not started (`server/tasks/task-queue-waits.mjs`).
-export const WAIT_REASONS = Object.freeze(["queue_off", "queue_blocked", "queue_paused", "own_schedule", "earlier_tasks", "running_work", ...GATE_REASONS, "unknown"]);
+export const WAIT_REASONS = Object.freeze(["queue_off", "queue_blocked", "queue_paused", "own_schedule", "runs_after", "earlier_tasks", "running_work", ...GATE_REASONS, "unknown"]);
 export const WAIT_TASK_LIMIT = 8;
 const WAIT_LIMIT = 500;
 const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;

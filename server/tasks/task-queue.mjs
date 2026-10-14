@@ -1,4 +1,5 @@
-// The pure queue rule: which queued task starts when. Ready order decides, and only a parallel group starts together.
+// The pure queue rule: which queued task starts when. Ready order decides, only a parallel group starts together, and a
+// task that runs after an unfinished task waits out of the order.
 
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const QUEUE_STATES = new Set(["queued", "scheduled"]);
@@ -19,6 +20,9 @@ export function queueWindowHold(schedule, at) {
   return Number.isSafeInteger(startAt) && at < startAt ? "before_queue_start" : null;
 }
 
+// Whether a task still waits for a task it runs after that is not Done: it may not start, by the queue or by hand.
+export const waitsForTasks = (task) => isRecord(task) && Array.isArray(task.waitsFor) && task.waitsFor.length > 0;
+
 // The queue order and each task's parallel group. A group counts only while two or more of its tasks are in the queue,
 // waiting or in flight; a task left alone in one is an ordinary task.
 export function orderQueue(tasks) {
@@ -36,7 +40,8 @@ export function orderQueue(tasks) {
       id: task.id,
       number,
       group,
-      queued: task.inFlight !== true && (task.state === "queued" || (task.state === "scheduled" && task.due === true)),
+      // A task that runs after an unfinished task is not a candidate, like a scheduled task before its time.
+      queued: task.inFlight !== true && !waitsForTasks(task) && (task.state === "queued" || (task.state === "scheduled" && task.due === true)),
       queuePosition: Number.isSafeInteger(task.queuePosition) ? task.queuePosition : null,
     });
   }

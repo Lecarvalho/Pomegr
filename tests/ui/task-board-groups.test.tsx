@@ -1,6 +1,6 @@
 import { createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TaskBoard } from "../../shared/task-contract";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
 import { GROUP_A, GROUP_B, board, edits, withReady } from "./task-group-fixtures";
@@ -18,17 +18,17 @@ function open(value: TaskBoard = board(), props: { featureSelection?: { id: stri
 }
 
 describe("Run in parallel", () => {
-  it("is drawn between adjacent waiting cards and groups, and not next to a card that does not wait", () => {
+  it("is drawn between adjacent cards and groups that have not started, a planned card included", () => {
     open();
-    expect(links()).toEqual(["T-1 T-2 T-4", "T-4 T-5", "T-6 T-8 T-9"]);
+    // T-7 is not queued: it is a plan in Ready, so it takes part like a waiting card.
+    expect(links()).toEqual(["T-1 T-2 T-4", "T-4 T-5", "T-5 T-7", "T-7 T-6", "T-6 T-8 T-9"]);
     const link = screen.getAllByRole("button", { name: /in parallel$/ })[1];
     expect(link).toHaveTextContent("Run in parallel");
     expect(link).toHaveAccessibleName("Run T-4 and T-5 in parallel");
     expect(link).toHaveClass("commandQuietAction", "taskReadyLinkAction");
     expect(link.closest("li")).toHaveClass("taskReadyLink");
-    // T-5 / T-7 and T-7 / T-6 sit next to a card that does not wait.
-    expect(card("T-7").previousElementSibling).not.toHaveClass("taskReadyLink");
-    expect(card("T-7").nextElementSibling).not.toHaveClass("taskReadyLink");
+    expect(card("T-7").previousElementSibling).toHaveClass("taskReadyLink");
+    expect(card("T-7").nextElementSibling).toHaveClass("taskReadyLink");
   });
 
   it("is drawn neither without edits nor while a feature filter is on", () => {
@@ -205,13 +205,13 @@ describe("dragging in Ready", () => {
     expect(actions.groupTasks).not.toHaveBeenCalled();
   });
 
-  it("never joins a card that does not wait: not queued in Ready, or already started", () => {
+  it("joins a planned card that is not queued, and never a card that already started", () => {
     const actions = open();
-    const notQueued = drag(card("T-7"), frame(GROUP_B));
-    expect(frame(GROUP_B)).not.toHaveClass("isJoinTarget");
-    notQueued.drop();
-    expect(actions.groupTasks).not.toHaveBeenCalled();
-    expect(actions.moveTask).toHaveBeenLastCalledWith({ id: "T-7", columnId: "col-2", position: 7 });
+    const planned = drag(card("T-7"), frame(GROUP_B));
+    expect(frame(GROUP_B)).toHaveClass("isJoinTarget");
+    planned.drop();
+    expect(actions.groupTasks).toHaveBeenLastCalledWith(["T-8", "T-7"]);
+    vi.mocked(actions.groupTasks).mockClear();
     const started = drag(card("T-3"), frame(GROUP_B));
     expect(frame(GROUP_B)).not.toHaveClass("isJoinTarget");
     started.drop();
@@ -227,6 +227,6 @@ describe("dragging in Ready", () => {
 
   it("reads the footnote about running cards together", () => {
     open();
-    expect(screen.getByText(/To run cards together, choose Run in parallel between them or drop a card on a group\./)).toHaveClass("taskBoardFootnote");
+    expect(screen.getByText(/To run cards together, in Backlog or Ready, choose Run in parallel between them or drop a card on a group\./)).toHaveClass("taskBoardFootnote");
   });
 });

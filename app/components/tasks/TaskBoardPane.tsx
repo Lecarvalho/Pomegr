@@ -18,7 +18,7 @@ import { taskSearchItems } from "./task-search";
 import { useTaskBoardEdits } from "./use-task-board-edits";
 import { useTaskIssuesAvailability } from "./use-promote-issues";
 
-type OpenModal = { kind: "new" } | { kind: "task"; id: string } | { kind: "newFeature" } | { kind: "feature"; id: string } | null;
+type OpenModal = { kind: "new" } | { kind: "task"; id: string; focus?: "after" } | { kind: "newFeature" } | { kind: "feature"; id: string } | null;
 
 export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadcrumb }: { repositoryId: string; featureId?: string | null; switcher?: ReactNode; breadcrumb?: ReactNode }) {
   const headingId = useId();
@@ -68,7 +68,7 @@ export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadc
   }), []);
   // The feature's opener stays the opener, so closing the task returns to where the owner started.
   const openFromFeature = useCallback((task: Task) => setModal({ kind: "task", id: task.id }), []);
-  const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setModal({ kind: "task", id: task.id }); }, []);
+  const openCard = useCallback((task: Task, element: HTMLElement, focus?: "after") => { opener.current = element; setModal({ kind: "task", id: task.id, ...(focus ? { focus } : {}) }); }, []);
   // A feature named by the address, such as by a session's feature link, is answered once, when the board and the client are known.
   // The filter chooses it in any client, and the desktop app also opens its modal. A feature the board does not hold opens nothing.
   if (featureId !== null && answered !== featureId && ready && access !== "pending") {
@@ -114,7 +114,7 @@ export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadc
       <TaskBoardView board={board} reveal={reveal} featureSelection={featureSelection} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
         newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} features={desktop ? featureEntry : undefined} />
       {editable && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onFollowUpFailed={openCreated} onClose={close} />}
-      {editable && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
+      {editable && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} focus={modal?.kind === "task" ? modal.focus : undefined} />}
       {desktop && modal?.kind === "newFeature" && <FeatureModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} onCreated={changed} onClose={close} />}
       {desktop && openFeature && <FeatureModal key={openFeature.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} board={board} feature={openFeature}
         onOpenTask={openFromFeature} onChanged={changed} onDeleted={featureDeleted} onClose={close} />}
