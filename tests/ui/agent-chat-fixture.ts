@@ -48,6 +48,8 @@ export class FakeChat {
   queueAnswer: { status: string } | { error: string } = { status: "running" };
   /** The next `send` answers only when this resolves. */
   hold: Promise<void> | null = null;
+  /** True makes an answered proposal start Aril's follow-up, as the desktop does: a turn with no message of the owner. */
+  followUps = false;
   readonly agentChat = vi.fn((operation: string, payload: Json) => this.handle(operation, payload));
   /** The bytes of each image the desktop holds, by ID. */
   readonly images = new Map<string, { type: string; bytes: Uint8Array }>();
@@ -111,6 +113,11 @@ export class FakeChat {
     this.turn = null;
   }
 
+  private answered(repositoryId: string, stored: StoredConversation): Json {
+    if (this.followUps) this.turn = { repositoryId, conversationId: stored.id, startedAt: AT, provider: stored.provider, model: stored.model, activity: "starting", text: "" };
+    return { ok: true };
+  }
+
   private summaries(repositoryId: string) {
     return [...(this.byRepository.get(repositoryId)?.values() ?? [])]
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
@@ -162,17 +169,17 @@ export class FakeChat {
           if (this.refuse === "desktop_only") return { ok: false, error: "desktop_only" };
           if (this.startStatus === "started") Object.assign(proposal, { state: "applied", results: [{ ok: true, start: "started" }] });
           else if (this.startStatus !== "cancelled") Object.assign(proposal, { state: "pending", results: [{ ok: false, error: "not_started", start: this.startStatus }] });
-          return { ok: true };
+          return this.answered(repositoryId, stored);
         }
         // A queue change is answered by the monitor: only an accepted one settles it, and a refused one stays pending.
         if (operation === "apply" && operations.length === 1 && operations[0].op === "set_queue") {
           if ("error" in this.queueAnswer) Object.assign(proposal, { state: "pending", results: [{ ok: false, error: this.queueAnswer.error }] });
           else Object.assign(proposal, { state: "applied", results: [{ ok: true, queue: operations[0].on !== true ? "off" : this.queueAnswer.status === "blocked" ? "blocked" : "on" }] });
-          return { ok: true };
+          return this.answered(repositoryId, stored);
         }
         if (operation === "apply") Object.assign(proposal, { state: "applied", results: operations.map((entry) => (entry.op === "create_task" ? { ok: true, taskId: "T-19" } : { ok: true })) });
         else proposal.state = "dismissed";
-        return { ok: true };
+        return this.answered(repositoryId, stored);
       }
       case "delete":
         if (!stored) return { ok: false, error: "not_found" };

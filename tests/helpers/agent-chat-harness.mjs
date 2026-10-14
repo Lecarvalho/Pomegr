@@ -120,8 +120,17 @@ export async function chatHarness(context, overrides = {}) {
     ...rest,
   });
   const calls = state.calls;
+  // After an Apply or a Dismiss, Pomegr asks Aril for one follow-up: a run whose prompt ends with the outcome.
+  const followUps = () => runs.filter((run) => run.options.prompt.includes("</proposal_outcome>"));
+  const followUp = () => until(() => followUps().find((run) => !run.answered) ?? null);
   return {
-    chat, state, runs, calls, dataRoot, directory, store, images, spawn, now,
+    chat, state, runs, calls, dataRoot, directory, store, images, spawn, now, followUps, followUp,
+    /** Answers the follow-up that runs or is about to, and waits until it is stored. */
+    async finishFollowUp(conversationId, outcome = { status: "complete", text: "Noted." }, repository = repositoryId) {
+      const run = await followUp();
+      run.answered = true;
+      return finishTurn({ handle: (operation, payload) => chat.handle(operation, payload) }, run, outcome, conversationId, repository);
+    },
     image: (operation, payload) => chat.image(operation, payload),
     handle: (operation, payload) => chat.handle(operation, payload),
     /** The stored conversations as a new process would read them from disk. */

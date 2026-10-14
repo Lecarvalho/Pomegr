@@ -10,7 +10,8 @@
 > 2026-10-11 (task T-29, GitHub issue #170). The session start that a proposal may ask
 > for was added on 2026-10-12 (task T-72), and the queue change on the same day (task
 > T-75). The images that the owner sends, and their way to a task, were added on
-> 2026-10-13 (task T-86). A change that widens exposure changes the
+> 2026-10-13 (task T-86), and the follow-up after an answered proposal on the same day
+> (task T-95). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -34,7 +35,9 @@ turn the repository's queue on or off; Pomegr sends the Tasks page's own queue a
 only after the owner selects **Turn queue on** or **Turn queue off** on that proposal, in
 the desktop app or on a paired device (see [Queue change](#queue-change)). The owner may
 send images with a message, and a proposal may put those images on a task (see
-[Images](#images)). The user guide is
+[Images](#images)). After the owner applies or dismisses a proposal, Aril writes one
+follow-up about the outcome without another message of the owner (see
+[Follow-up](#follow-up)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -44,7 +47,7 @@ serves the board and takes the fixed task actions as it does for the Tasks page.
 
 | Owner | Responsibility | May not |
 | --- | --- | --- |
-| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, and the one request of an approved queue change | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; send `queue_settings` with any setting but `on` |
+| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, and the one request of an approved queue change | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; send `queue_settings` with any setting but `on` |
 | `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds |
 | `desktop/runtime/agent-chat-images.mjs` | The image files the owner sends: the staged ones and the ones of each conversation | Write outside the chat's directory; build a path from anything but a validated repository ID, conversation ID, and image ID; serve a file by itself |
 | `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the conversation history of one turn | Read anything itself |
@@ -57,7 +60,9 @@ serves the board and takes the fixed task actions as it does for the Tasks page.
 
 ## One turn
 
-Each message of the owner starts one provider run. The run answers and exits.
+Each message of the owner starts one provider run. The run answers and exits. An Apply
+or a Dismiss that was stored starts one too, for Aril's follow-up (see
+[Follow-up](#follow-up)); it takes the same one turn and the same provider run.
 
 1. The client sends `send` with the repository, the conversation or none, the message,
    the provider, the model or none, and the IDs of the images it added, when it added
@@ -150,7 +155,8 @@ characters, in this order:
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
    read, that it only proposes, how to advise on task size, Ready order, parallel groups, and models,
    the proposal format, when it proposes a session start or a queue change, how it
-   names an image and puts it on a task, and that all following content is data.
+   names an image and puts it on a task, how it follows up an answered proposal, and
+   that all following content is data.
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the queue (status,
    order, blocker, start threshold, and the usage percentages of the start gates), the
@@ -162,9 +168,14 @@ characters, in this order:
    one line with the state it asked for and what happened: not answered, dismissed,
    on, on and held, off, or not changed with the fixed error. A message of the owner with
    images adds one line with their IDs.
+   An answer that is a follow-up is marked as one. A proposal of board changes that
+   stopped also says how many operations succeeded, which one failed with which fixed
+   error, and how many were not applied.
 4. **Images.** One line for each image of the conversation whose file is still there:
    its ID, its type, and the absolute file. The section is left out when there is none.
-5. **The owner's message**, and one line with the IDs of its images, in order.
+5. **The owner's message**, and one line with the IDs of its images, in order. A
+   follow-up has no message of the owner: its prompt ends with the outcome record and
+   one fixed request instead (see [Follow-up](#follow-up)).
 
 A task in the snapshot holds its ID, column, state, feature title, parallel-group label, planned
 provider, model and effort, complete-when checks and own condition, the linked session's
@@ -377,6 +388,76 @@ A stored proposal is `pending`. The owner answers it once.
 - A proposal can be stale when the board changed after Aril wrote it. Nothing is
   checked ahead: each action answers for itself, and a task that is gone is `not_found`.
 - Nothing is undone. A deleted task stays deleted, as on the Tasks page.
+- Every answer that was stored asks Aril for one follow-up (see [Follow-up](#follow-up)).
+
+### Follow-up
+
+Task T-95, 2026-10-13. After the owner applies or dismisses a proposal, Aril answers
+once more in the same conversation, so the owner reads what happened without sending
+another message.
+
+- **Desktop main asks, once per stored outcome.** `resolve` stores the outcome first and
+  then asks for the follow-up. No client asks for it: the panel only reads. So a second
+  click, a client that reconnects, and a panel that draws again cannot make a second
+  one. A second answer to a proposal that is not `pending` answers `conflict`, and one
+  that arrives while the first runs answers `busy`; neither stores anything, so neither
+  asks.
+- **An answer that stored nothing asks for nothing.** That is an Apply that answers
+  `unavailable` because the board could not be read, `desktop_only`, `conflict`,
+  `busy`, `not_found`, and a start the dispatcher cancelled.
+- **A start or a queue change that was not made is an outcome too.** Its proposal stays
+  `pending` with the fixed result, and each Apply of the owner is followed up once.
+- **It is a turn like any other.** The same provider run, with the provider and model
+  the conversation used last. It has no tool that writes. `read` answers its `turn`,
+  **Stop** ends it, and a message of the owner sent meanwhile answers `busy`.
+- **The outcome record.** `proposalOutcome` in `agent-chat-prompt.mjs` builds it from the
+  stored proposal: the kind (`board_changes`, `session_start`, or `queue_change`), the
+  proposal's summary, one of the five outcomes below, and for board changes one row for
+  each operation with its number, its name, the task IDs it names, the feature title or
+  the column it wrote, and `succeeded`, `failed` with the fixed error, or `not_applied`.
+  A new task that was created before its operation failed is named under `created`.
+- **The board is read again.** The follow-up reads `GET /api/tasks` after the outcome
+  was stored, so the snapshot of its prompt shows the board as the apply left it.
+- **The request is fixed.** One sentence that the owner sent no message and that the
+  answer is short and carries no proposal block, then one fixed text for the kind and
+  the outcome. It tells Aril what is confirmed and what is not.
+
+| Outcome | When |
+| --- | --- |
+| `applied` | Every operation succeeded; the session launched; the monitor accepted the queue state |
+| `partial` | At least one operation changed the board, and then one failed. The operations after it were not applied |
+| `refused` | Nothing was changed: the monitor refused the first operation or the queue change with a fixed error, or a start gate or the task's state held the start |
+| `failed` | Nothing is confirmed: the monitor did not answer (`unavailable`), or the start could not be made (`failed`, `unavailable`) |
+| `dismissed` | The owner declined the proposal. No operation was applied |
+
+- **Truthful by instruction and by record.** The instructions tell Aril to report only
+  what the outcome and the snapshot confirm, and never a failed or not applied operation
+  as done. A queued task and a queue that is on are not a session: Aril says that a
+  session started only when the outcome says Pomegr launched it, or the snapshot shows a
+  session on the task.
+- **A dismissal is not a failure.** The request says that the owner declined the
+  proposal and that nothing was applied, and asks for one sentence. The instructions
+  tell Aril not to ask why, not to offer a variant, and not to propose it again unless
+  the owner asks. The stored proposal is `dismissed`, and every later prompt says so in
+  its conversation line.
+- **It changes nothing and offers nothing.** A follow-up sends no task action, retries no
+  operation, starts no session, and changes no queue: it is a read-only run. Its answer
+  never carries a proposal. A block in it is taken out of the text and not stored, so a
+  follow-up leaves nothing to apply and never causes another follow-up.
+- **What is stored.** One agent message with `followUp`, the ID of the proposal it
+  answers, and the status of the run. A message with `followUp` and a proposal is
+  outside the stored contract.
+- **A turn that already runs.** The follow-up waits for the one turn, in memory, oldest
+  first. The proposal's outcome is stored at once and the board is usable meanwhile.
+  `read` of its conversation answers a `turn` that is `starting` while it waits, so the
+  client keeps reading. **Stop** in that conversation takes a waiting follow-up back,
+  and deleting the conversation drops it.
+- **A provider that cannot answer.** With no provider CLI, no board, or no repository
+  root, and for a run that fails, the follow-up is stored as one message with the status
+  `failed` and no text. The proposal keeps its outcome, and nothing is tried again.
+- **Not asked.** A conversation that is gone or holds 200 messages gets no follow-up.
+  A follow-up that waits when the app closes is not written later: the outcome is in the
+  conversation, and the next turn reads it.
 
 ## Images
 
@@ -459,6 +540,8 @@ Desktop main keeps one JSON file per conversation:
   conversation answers `limit`.
 - A message of the owner may list its images as `{ id, type, bytes }`. The file never
   holds image bytes or a path: the images are files of their own (see [Images](#images)).
+- An answer of Aril may hold `followUp`, the ID of the proposal it follows up (see
+  [Follow-up](#follow-up)). Such an answer has no message of the owner before it.
 - A write replaces the file whole, through a temporary file and a rename.
 - A file outside the contract, of another version, or over the size bound is never
   listed and never overwritten.
@@ -491,7 +574,7 @@ The operations and their payloads, each with `repositoryId`:
 | `read` | `conversationId` | The conversation and the running `turn` or null |
 | `send` | `conversationId` or null, `text`, `provider`, `model` or null; optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
 | `stop` | `conversationId` | Nothing more |
-| `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer |
+| `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again, and that read may answer the `turn` of the follow-up. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer |
 | `delete` | `conversationId` | Nothing more |
 
 A refusal is `{ ok: false, error }` with one of `invalid`, `not_found`, `busy`, `limit`,
@@ -538,7 +621,13 @@ never a session's.
   The renderer keeps it in memory only; browser storage holds only the ID of the
   repository chosen last.
 - **What reaches the provider.** Each turn sends the prompt to the provider the owner
-  chose, through the owner's CLI. That prompt holds the owner's messages, Aril's earlier
+  chose, through the owner's CLI. A follow-up is a turn: an Apply or a Dismiss sends one
+  prompt to the provider the conversation used last, with no message of the owner. This
+  is the widening of 2026-10-13 (task T-95): until then only a message started a run.
+  The prompt of a follow-up holds what any prompt holds, and the outcome record: the
+  proposal's summary, the operation names, the task IDs, a feature title and a column
+  name the proposal wrote, and fixed result words. It holds no task text beyond the
+  snapshot's, no path, and no error text. That prompt holds the owner's messages, Aril's earlier
   answers, and the board snapshot: task text, own conditions, feature titles, block
   reasons, attention lines, session references, and model names. This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
@@ -567,6 +656,9 @@ never a session's.
   start status, in the conversation file. Nothing of the start plan reaches the chat: no
   prompt, repository root, worktree path, image file, dispatch token, or launcher output.
   A paired device that reads the conversation sees that status like the rest of it.
+- **What Pomegr keeps of a follow-up.** The answer text, the status, and the ID of the
+  proposal it follows, in the conversation file. The outcome record is built for the
+  prompt from the stored proposal and is not kept by itself.
 - **What Pomegr keeps of a queue change.** The state the proposal asked for and one
   fixed result, in the conversation file: `on`, `blocked`, `off`, or a fixed error. No
   task ID, blocker, pause reason, gate reading, or board content is kept with it, and
@@ -576,6 +668,8 @@ never a session's.
   Whoever holds a paired device's cookie can read the conversations, send a message
   (which spends the owner's provider allowance in a read-only run), add an image, read
   the images of a conversation, and apply a proposal of board changes or a queue change.
+  An Apply or a Dismiss from the device starts the follow-up run as one from the desktop
+  does, so it spends that allowance too, as a message already can.
   Image bytes cross the local network unencrypted too. It cannot apply a session start from
   the chat. Applying a queue change that turns the queue on lets the desktop start the
   queued tasks, which the same holder can already do through `POST /api/tasks/action`
@@ -614,6 +708,12 @@ never a session's.
   proposal.
 - A failed apply changes nothing further and reports each operation. Pomegr retries
   nothing by itself.
+- A follow-up is asked for once per stored outcome, by desktop main only. It applies no
+  proposal, retries no operation, starts and steers no session, changes no queue, and
+  carries no proposal.
+- A follow-up that cannot run, or whose run fails, changes nothing of the proposal's
+  stored outcome and never blocks the board.
+- A dismissed proposal is never reported as a failure, and nothing of it is applied.
 - When the monitor, the store, or the provider CLI is unavailable, the chat answers a
   fixed refusal. The board, the queue, and observation continue.
 - Missing evidence is not success: a tool that answers unavailable is reported by Aril
@@ -684,6 +784,20 @@ never a session's.
     panel does not offer it.
 15. **Task images in the snapshot.** The snapshot does not say which images a task
     holds. Aril learns that a task is full only from the result of an applied proposal.
+
+16. **Follow-ups from a live provider.** Not probed. That desktop main asks once, what
+    the prompt holds for each outcome, what is stored, the waiting behind a running
+    turn, and a provider that cannot answer are covered by tests with fakes. Whether
+    Claude Code and Codex keep a follow-up short, write no block in it, and say nothing
+    beyond the outcome and the snapshot is not proven on a device.
+17. **A follow-up costs a run.** Every Apply and every Dismiss starts one provider run
+    with the board in its prompt, a dismissal included. The chat has no setting that
+    turns follow-ups off.
+18. **A waiting follow-up is not kept.** A follow-up that waits for another turn lives in
+    memory. Closing the app before it starts loses it; the proposal's outcome stays.
+19. **A session that links later.** A start that launched is followed up at once, before
+    the session reports in, so the snapshot of that follow-up usually shows no session
+    on the task yet. The request tells Aril that the launch is the only confirmed fact.
 
 ## Change and verify
 

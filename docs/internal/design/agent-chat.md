@@ -121,6 +121,9 @@ The task board is in [Task board design](task-board.md).
 - The caption reads “Claude Code · default model” when no model was chosen.
 - The answer follows as Markdown.
 - An answer that did not complete ends with one muted line of fixed words.
+- Aril's follow-up after an applied or dismissed proposal is drawn as any message of Aril, with no message of the owner before it.
+- A follow-up draws no proposal card.
+- A follow-up that could not be written is drawn as an answer that did not complete, with the same fixed words.
 
 | Fixed words of an answer that did not complete |
 | --- |
@@ -148,6 +151,9 @@ The task board is in [Task board design](task-board.md).
 - An agent block then holds the partial text.
 - The agent block is in an `aria-live="off"` wrapper, so the log announces each stored message and not each chunk.
 - A `role="status"` line holds one fixed word.
+- After **Apply changes**, **Start session**, a queue Primary, or **Dismiss**, the agent block of the follow-up is drawn the same way, with no pending message.
+- A follow-up that waits for an answer in another conversation reads “Starting…”.
+- The panel asks for no follow-up: it reads the turn that the desktop app started.
 - The fixed word is “Starting…”, “Thinking…”, “Reading repository files…”, “Reading sessions…”, “Reading usage limits…”, or “Writing…”.
 
 ### Loading and empty states
@@ -254,6 +260,7 @@ The task board is in [Task board design](task-board.md).
 - The line adds “Deleting cannot be undone.” when the proposal deletes a task.
 - Each pending card has its own Primary, so a conversation may hold more than one.
 - After a successful apply, the board is read again.
+- After an Apply or a Dismiss that was stored, the conversation is read until Aril's follow-up is stored.
 - The Primary of a session start reads **Start session**.
 - The footer line of a session start reads “Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.”
 - **Start session** is the confirmation of the start, so no native dialog follows it.
@@ -322,6 +329,7 @@ The task board is in [Task board design](task-board.md).
 - **Send** is disabled for an empty or over-long message, while a message or an image is on its way, while an answer is written elsewhere, and with no repository.
 - A message that holds only images cannot be sent.
 - While an answer is written in the open conversation, the Secondary **Stop** takes the place of **Send**.
+- **Stop** also ends a follow-up, and takes back one that has not started.
 - A message that was refused stays in the field, with its images.
 
 ### Fixed words of the alert line

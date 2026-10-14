@@ -192,8 +192,10 @@ test("apply of a create with images posts create, then one image request per ima
   const setup = await proposed(h, [pngBytes(1), jpegBytes(2), gifBytes(3)], (images) => [{ op: "create_task", text: "Match the mock-up", queue: true, images: images.map((image) => image.id) }]);
   const before = h.calls.length;
   assert.deepEqual(await applyProposal(h, setup), { ok: true });
+  // The two requests after the apply are the reads of the follow-up Pomegr then asks of Aril.
+  await h.followUp();
   const made = h.calls.slice(before);
-  assert.deepEqual(made.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/create", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/queue_add"]);
+  assert.deepEqual(made.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/create", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/queue_add", "/api/tasks", "/internal/tasks/worktree-root"]);
   const sentBytes = [pngBytes(1), jpegBytes(2), gifBytes(3)];
   setup.images.forEach((image, index) => {
     const call = made[2 + index];
@@ -283,7 +285,7 @@ test("attach_images puts the images on a task of the board and stores the propos
   const setup = await proposed(h, [pngBytes(1), gifBytes(2)], (images) => [{ op: "attach_images", id: "T-1", images: images.map((image) => image.id) }]);
   const before = h.calls.length;
   assert.deepEqual(await applyProposal(h, setup), { ok: true });
-  const calls = h.calls.slice(before).filter((call) => call.pathname.startsWith("/internal/"));
+  const calls = h.calls.slice(before).filter((call) => call.pathname.startsWith("/internal/") && call.pathname !== "/internal/tasks/worktree-root");
   assert.deepEqual(calls.map((call) => [call.pathname, call.query.taskId, call.query.imageId]), setup.images.map((image) => ["/internal/tasks/image-add", "T-1", image.id]));
   assert.deepEqual(calls.map((call) => call.bytes), [pngBytes(1), gifBytes(2)]);
   assert.equal(h.actionCalls().length, 0, "no task action ran");
@@ -297,6 +299,7 @@ test("attach_images does not send an image the board's task already holds", asyn
   const setup = await proposed(h, [pngBytes(1), gifBytes(2)], (images) => [{ op: "attach_images", id: "T-1", images: images.map((image) => image.id) }]);
   h.state.board.tasks[0].images = [{ id: setup.images[0].id, type: "png", bytes: setup.images[0].bytes }];
   await applyProposal(h, setup);
+  await h.finishFollowUp(setup.conversationId);
   assert.deepEqual(h.imageCalls().map((call) => call.query.imageId), [setup.images[1].id]);
   const all = await proposed(h, [pngBytes(3)], ([a]) => [{ op: "attach_images", id: "T-2", images: [a.id] }]);
   h.state.board.tasks[1].images = [{ id: all.images[0].id, type: "png", bytes: all.images[0].bytes }];
@@ -378,6 +381,7 @@ test("the next turn's prompt says the images were not attached to the task, and 
   h.state.imageAdd = () => ({ ok: false, error: "limit" });
   const setup = await proposed(h, [pngBytes(1)], ([a]) => [{ op: "create_task", text: "x", images: [a.id] }]);
   await applyProposal(h, setup);
+  await h.finishFollowUp(setup.conversationId);
   await send(h, { conversationId: setup.conversationId, text: "Did it work?" });
   assert.match(h.runs.at(-1).options.prompt, /\[Proposal "Put the images on a task" with 1 operation\(s\): [^\]]*created T-9; the images were not attached to T-9[^\]]*\]/u);
 
@@ -385,6 +389,7 @@ test("the next turn's prompt says the images were not attached to the task, and 
   takeEverything(ok);
   const good = await proposed(ok, [pngBytes(1)], ([a]) => [{ op: "create_task", text: "x", images: [a.id] }]);
   await applyProposal(ok, good);
+  await ok.finishFollowUp(good.conversationId);
   await send(ok, { conversationId: good.conversationId, text: "Did it work?" });
   assert.doesNotMatch(ok.runs.at(-1).options.prompt, /images were not attached/u);
 
@@ -392,6 +397,7 @@ test("the next turn's prompt says the images were not attached to the task, and 
   attach.state.imageAdd = () => ({ ok: false, error: "conflict" });
   const only = await proposed(attach, [pngBytes(1)], ([a]) => [{ op: "attach_images", id: "T-3", images: [a.id] }]);
   await applyProposal(attach, only);
+  await attach.finishFollowUp(only.conversationId);
   await send(attach, { conversationId: only.conversationId, text: "And now?" });
   assert.match(attach.runs.at(-1).options.prompt, /the images were not attached to T-3/u);
 });

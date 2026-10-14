@@ -128,6 +128,38 @@ describe("proposals", () => {
     expect(chat.calls("read").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("reads Aril's follow-up after an Apply or a Dismiss until it is stored, and asks for the answer once", async () => {
+    for (const [button, operation, text] of [["Apply changes", "apply", "T-19 is on the board."], ["Dismiss", "dismiss", "Understood, the board stays as it is."]] as const) {
+      chat.followUps = true;
+      withProposal();
+      const person = user();
+      const view = render(<AgentChatDock />);
+      await openPanel(person);
+      await person.click(within(card()).getByRole("button", { name: button }));
+      await settle();
+      // The follow-up is a turn of its own: no message of the owner is drawn for it, and Stop takes the place of Send.
+      expect(within(log()).getByRole("status")).toHaveTextContent("Starting…");
+      expect(within(log()).getAllByRole("article", { name: "You" })).toHaveLength(1);
+      expect(within(panel()).getByRole("button", { name: "Stop" })).toBeInTheDocument();
+      chat.write("T-19", "writing");
+      await settle(500);
+      expect(within(log()).getByRole("status")).toHaveTextContent("Writing…");
+      chat.finish(text, "complete", { followUp: PROPOSAL_ID });
+      await settle(500);
+      expect(within(log()).getByText(text)).toBeInTheDocument();
+      expect(within(log()).queryByRole("status")).toBeNull();
+      expect(within(log()).getAllByRole("article", { name: "Aril" })).toHaveLength(2);
+      // Drawing again and reading again ask for nothing more: the desktop asked Aril once, when it stored the outcome.
+      view.rerender(<AgentChatDock />);
+      await settle(1500);
+      expect(chat.calls(operation)).toHaveLength(1);
+      expect(chat.calls("send")).toHaveLength(0);
+      view.unmount();
+      removeHarness();
+      chat = installHarness();
+    }
+  });
+
   it("keeps both actions disabled and the card busy while the answer is in flight", async () => {
     withProposal();
     const person = user();

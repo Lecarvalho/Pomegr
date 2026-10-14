@@ -24,9 +24,10 @@ turns no queue on or off by itself either: it proposes that, and you apply it.
 - **Have a repository.** Aril works on one repository's board. Pomegr lists a repository
   once it observed a session there.
 
-> **Note:** Each message starts one read-only run of the coding tool. The run can read
-> files and Pomegr's observations. It cannot write a file, run a command that changes
-> something, or use your other tools and plugins.
+> **Note:** Each message starts one read-only run of the coding tool. So does each
+> proposal you apply or dismiss, for Aril's follow-up. The run can read files and
+> Pomegr's observations. It cannot write a file, run a command that changes something,
+> or use your other tools and plugins.
 
 ## Ask Aril
 
@@ -78,6 +79,25 @@ list of the changes, one line each.
 
 Pomegr stops at the first change that fails and does not run the ones after it. Ask Aril
 for the rest once you know why it failed.
+
+### Read Aril's follow-up
+
+After you apply or dismiss a proposal, Aril answers once more by itself. You do not
+need to send a message.
+
+- **After you apply.** Aril says what changed, what failed, and what Pomegr did not run.
+  It reads the board again first.
+- **After you dismiss.** Aril acknowledges it in a line. Nothing was changed, and Aril
+  does not propose the same thing again unless you ask.
+- **After a start or a queue change.** Aril says what Pomegr confirmed. A task in the
+  queue, or a queue that is on, is not a running session. Check **Sessions** or the
+  Board for that.
+
+The follow-up changes nothing: it applies no proposal, tries nothing again, and starts
+no session. It carries no proposal of its own. Select **Stop** to end it early.
+
+The result beside each line of the proposal is Pomegr's own record. Trust it over the
+follow-up when they differ.
 
 A proposal can create a feature, create, update, delete, or move a task, add a task to
 the queue or remove it, put queued tasks in a parallel group or take them out of one,
@@ -159,7 +179,9 @@ always a proposal of its own.
   conversations. An image that Aril puts on a task is a copy: it stays on the task when
   you delete the conversation.
 - **Sent to the provider.** Each message sends the conversation and the board to the
-  provider you chose, through your own coding tool. The board includes the text of your
+  provider you chose, through your own coding tool. Applying or dismissing a proposal
+  sends them once more, with the result of the proposal, for Aril's follow-up. That run
+  uses the provider and model of the conversation's last message. The board includes the text of your
   tasks. Aril may also send file content and session evidence that it reads. The images
   you sent in the conversation go to the provider too, and the prompt names the folder
   where Pomegr keeps them.
@@ -168,7 +190,8 @@ always a proposal of its own.
 - **On a paired device.** The conversation crosses your local network without
   encryption, like the rest of phone access. Anyone who holds a paired phone can read
   the conversations and their images, send a message or an image, and apply a proposal
-  of board changes or a queue change. Turning the queue on lets Pomegr start queued tasks on your computer. A start
+  of board changes or a queue change. Applying or dismissing a proposal there also runs
+  Aril's follow-up on your computer. Turning the queue on lets Pomegr start queued tasks on your computer. A start
   that Aril proposed can be applied only in the desktop app.
 
 ## If the result is missing
@@ -181,6 +204,8 @@ always a proposal of its own.
 | This answer took too long and was stopped | Ask a narrower question. A run may take ten minutes. |
 | Aril is already answering | Wait for the running answer, or select **Stop** in its conversation. |
 | Aril could not be reached | Check that Pomegr shows **Local monitor**, then send again. |
+| No follow-up after you applied or dismissed a proposal | Aril was answering in another conversation, so the follow-up waits for it. If Pomegr closed meanwhile, ask Aril what happened: the result is saved. |
+| The follow-up says that Aril could not finish | The proposal's result is saved and shown on its lines. Check the coding tool as for any answer. |
 | Aril wrote a proposal that Pomegr could not read | Ask for the proposal again. Nothing was changed. |
 | A line says **No longer possible** or **Not found** | The board changed after Aril wrote the proposal. Ask again. |
 | A line says **Not attached.** | Read the reason on the line. A task that has started takes no image, and a task holds up to four. |

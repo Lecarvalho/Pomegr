@@ -91,7 +91,8 @@ test("applying on the desktop starts exactly one session through the manual star
   const { h, starts, apply, proposal } = await startHarness(context);
   assert.deepEqual(await apply(), { ok: true });
   assert.deepEqual(starts, [[trusted, repositoryId, "T-3"]], "the trusted window event, the repository, and the task: no path, text, or flag");
-  assert.deepEqual(h.calls, [], "the chat itself asks the monitor nothing: no queue action, no task action, no board change");
+  await h.followUp();
+  assert.deepEqual(h.calls.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root"], "the chat sends the monitor no queue action, no task action, and no board change: only the reads of the follow-up");
   assert.deepEqual(await proposal(), { ...startProposal(), state: "applied", results: [{ ok: true, start: "started" }] });
 });
 
@@ -256,7 +257,8 @@ test("an applied start takes the manual path with no second confirmation: one st
   assert.deepEqual(await d.apply(), { ok: false, error: "conflict" });
   assert.equal(d.spawns.length, 1, "exactly one session");
   assert.equal(d.monitor.length, 1);
-  assert.deepEqual(d.h.calls, []);
+  await d.h.followUp();
+  assert.deepEqual(d.h.actionCalls(), [], "the follow-up after the launch only reads");
 });
 
 test("the monitor's own refusals hold the start: a gate, a missing plugin, and a task that is not startable launch nothing", async (context) => {
@@ -332,7 +334,7 @@ test("the next prompt tells Aril what happened to the start, so no answer report
   assert.match(line(startProposal()), /\[Proposal to start a session for T-3: the owner has not answered it yet\.\]/u);
   assert.match(line(startProposal({ state: "applied", results: [{ ok: true, start: "started" }] })), /\[Proposal to start a session for T-3: the owner applied it and Pomegr launched a session for the task\.\]/u);
   assert.match(line(startProposal({ results: [{ ok: false, error: "not_started", start: "gate_held" }] })), /\[Proposal to start a session for T-3: the owner applied it and no session started \(gate_held\)\.\]/u);
-  assert.match(line(startProposal({ state: "dismissed" })), /\[Proposal to start a session for T-3: the owner dismissed it\.\]/u);
+  assert.match(line(startProposal({ state: "dismissed" })), /\[Proposal to start a session for T-3: the owner dismissed it, so none of it was applied\.\]/u);
   const prompt = composePrompt({ board: readyBoard(), repositoryName: "repo", messages: withProposal(startProposal({ results: [{ ok: false, error: "not_started", start: "tree_dirty" }] })), message: "why?", now: new Date(stamp) });
   assert.match(prompt, /no session started \(tree_dirty\)/u);
 });
