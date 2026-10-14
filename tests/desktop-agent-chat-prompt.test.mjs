@@ -256,9 +256,9 @@ test("an agent answer in the history notes an unfinished status, an unreadable p
   assert.match(line(agent({ proposalUnreadable: true })), /Pomegr could not read the proposal block of this answer, so nothing was offered to the owner\./u);
   const proposal = (state, results) => agent({ proposal: { id: "p-0123456789ab", summary: "Add two tasks", operations: [{ op: "create_task", text: "a" }, { op: "create_task", text: "b" }], state, ...(results ? { results } : {}) } });
   assert.match(line(proposal("pending")), /\[Proposal "Add two tasks" with 2 operation\(s\): the owner has not answered it yet\.\]/u);
-  assert.match(line(proposal("dismissed")), /: the owner dismissed it\.\]/u);
+  assert.match(line(proposal("dismissed")), /: the owner dismissed it, so none of it was applied\.\]/u);
   assert.match(line(proposal("applied", [{ ok: true, taskId: "T-7" }, { ok: true, taskId: "T-8" }])), /: the owner applied it; created T-7, T-8\.\]/u);
-  assert.match(line(proposal("partial", [{ ok: true }, { ok: false, error: "conflict" }])), /: the owner applied it and it stopped at an operation that failed\.\]/u);
+  assert.match(line(proposal("partial", [{ ok: true }, { ok: false, error: "conflict" }])), /: the owner applied it and it stopped at an operation that failed; 1 operation\(s\) succeeded, operation 2 failed \(conflict\), 0 were not applied\.\]/u);
   assert.equal(line(proposal("partial", [{ ok: true }, { ok: false, error: "conflict" }])).includes("created"), false);
   assert.match(line(proposal("unknown")), /the owner has not answered it yet/u);
 });
@@ -388,8 +388,8 @@ test("a proposal line says when the images were not attached to a task", () => {
   const line = (message) => conversationHistory([message], 10_000).lines[0];
   const create = { op: "create_task", text: "a", images: [IMAGE_A] };
   const attach = { op: "attach_images", id: "T-4", images: [IMAGE_A] };
-  assert.match(line(agent([create], "partial", [{ ok: false, error: "limit", taskId: "T-9", part: "images" }])), /\[Proposal "Add it" with 1 operation\(s\): the owner applied it and it stopped at an operation that failed; created T-9; the images were not attached to T-9\.\]/u);
-  assert.match(line(agent([attach], "partial", [{ ok: false, error: "conflict", part: "images" }])), /failed; the images were not attached to T-4\.\]/u);
+  assert.match(line(agent([create], "partial", [{ ok: false, error: "limit", taskId: "T-9", part: "images" }])), /\[Proposal "Add it" with 1 operation\(s\): the owner applied it and it stopped at an operation that failed; 0 operation\(s\) succeeded, operation 1 failed \(limit\), 0 were not applied; created T-9; the images were not attached to T-9\.\]/u);
+  assert.match(line(agent([attach], "partial", [{ ok: false, error: "conflict", part: "images" }])), /were not applied; the images were not attached to T-4\.\]/u);
   assert.match(line(agent([create, attach], "partial", [{ ok: true, taskId: "T-9" }, { ok: false, error: "limit", part: "images" }])), /created T-9; the images were not attached to T-4\.\]/u);
   assert.equal(line(agent([attach], "partial", [{ ok: false, error: "not_found" }])).includes("not attached"), false, "an ordinary failure says nothing about images");
   assert.equal(line(agent([create], "applied", [{ ok: true, taskId: "T-9" }])).includes("not attached"), false);

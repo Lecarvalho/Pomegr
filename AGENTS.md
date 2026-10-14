@@ -91,6 +91,8 @@ These rules always apply:
   sessions and never stops, attaches to, answers, or approves work in a running session.
   Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
+  starts one for each message of the owner, and one for the follow-up after the owner
+  applies or dismisses a proposal. A follow-up applies, retries, and proposes nothing. It
   changes the board only through the fixed task actions, after the owner applies a
   proposal. It puts an image on a task only through the task image route, with an image
   the owner sent in that conversation, after the owner applies a proposal. It starts a

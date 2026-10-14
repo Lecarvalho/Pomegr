@@ -154,11 +154,12 @@ test("an unknown proposal or conversation is not_found, and a bad identifier is 
   assert.equal((await storedProposal(h, conversation.id)).state, "pending");
 });
 
-test("dismiss stores dismissed and posts nothing, not even a board read", async (context) => {
+test("dismiss stores dismissed and posts nothing: the follow-up after it only reads", async (context) => {
   const h = await chatHarness(context);
   const conversation = await seed(h, { messages: withProposal() });
   assert.deepEqual(await dismiss(h, conversation.id), { ok: true });
-  assert.equal(h.calls.length, 0);
+  await h.followUp();
+  assert.deepEqual(h.calls.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root"]);
   const proposal = await storedProposal(h, conversation.id);
   assert.deepEqual(proposal, { ...pendingProposal(), state: "dismissed" });
   assert.equal(Object.hasOwn(proposal, "results"), false);
@@ -266,13 +267,15 @@ test("no answer of any operation holds the desktop token or the repository root"
   await record("list", { repositoryId });
   await record("read", { repositoryId, conversationId: seeded.id });
   await record("apply", { repositoryId, conversationId: seeded.id, proposalId: "p-0123456789ab" });
+  await h.finishFollowUp(seeded.id);
   await record("dismiss", { repositoryId, conversationId: dismissable.id, proposalId: "p-aaaaaaaaaaaa" });
+  await h.finishFollowUp(dismissable.id);
   const started = await record("send", { repositoryId, conversationId: null, text: "Question", provider: "claude", model: null });
   await record("read", { repositoryId, conversationId: started.conversationId });
-  h.runs[0].options.onText(`Looking at ${"files"}.`);
+  h.runs.at(-1).options.onText(`Looking at ${"files"}.`);
   await record("read", { repositoryId, conversationId: started.conversationId });
   await record("stop", { repositoryId, conversationId: started.conversationId });
-  await finishTurn(h, h.runs[0], { status: "stopped", text: "Cut" }, started.conversationId);
+  await finishTurn(h, h.runs.at(-1), { status: "stopped", text: "Cut" }, started.conversationId);
   await record("read", { repositoryId, conversationId: started.conversationId });
   await record("delete", { repositoryId, conversationId: started.conversationId });
   await record("list", { repositoryId });

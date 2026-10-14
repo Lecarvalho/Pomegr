@@ -125,6 +125,7 @@ function parseMessage(value: unknown): AgentChatMessage | null {
   const proposal = message.proposal === undefined ? null : parseProposal(message.proposal);
   if (proposal) parsed.proposal = proposal;
   if (message.proposalUnreadable === true || (message.proposal !== undefined && !proposal)) parsed.proposalUnreadable = true;
+  if (text(message.followUp) && AGENT_CHAT_PROPOSAL_ID_PATTERN.test(message.followUp)) parsed.followUp = message.followUp;
   return parsed;
 }
 
@@ -318,7 +319,11 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     const answer = await (approve ? applyAgentChatProposal : dismissAgentChatProposal)(repositoryId, openId, proposalId);
     const latest = await readAgentChat(repositoryId, openId);
     if (at !== generation.current) return false;
-    if (latest.ok) setConversation(latest.conversation);
+    if (latest.ok) {
+      setConversation(latest.conversation);
+      // The desktop asks Aril for a follow-up once the outcome is stored. It is a turn like any other, so it is read until it ends.
+      if (latest.turn) { setTurn(latest.turn); setRunning(openId); }
+    }
     if (!answer.ok) setError(answer.error);
     setResolving(null);
     return answer.ok;
