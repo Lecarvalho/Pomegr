@@ -201,6 +201,8 @@ test("desktop navigation denies webviews and unexpected origins while opening ap
   const approvedExternalUrls = [
     "https://github.com/Lecarvalho/pomegr/blob/main/LICENSE",
     "https://github.com/openai/codex/issues/35300",
+    "https://github.com/anthropics/claude-code/issues/82563",
+    "https://github.com/anthropics/claude-code/issues/83756",
     "https://github.com/PomegrHQ/pomegr/pull/42",
     "https://status.claude.com/",
     "https://status.claude.com/incidents/code",
@@ -208,6 +210,8 @@ test("desktop navigation denies webviews and unexpected origins while opening ap
     "https://status.openai.com/incidents/native-issue-42",
     "https://pomegr.com/docs",
     "https://pomegr.com/docs/concepts/cache-reuse#cache-lifetime-and-elapsed-time",
+    "https://pomegr.com/docs/concepts/cache-reuse#spot-a-possible-full-refill",
+    "https://pomegr.com/docs/concepts/cache-reuse#drops-without-a-recorded-write",
   ];
   for (const url of approvedExternalUrls) {
     assert.deepEqual(openHandler({ url }), { action: "deny" });
@@ -216,6 +220,7 @@ test("desktop navigation denies webviews and unexpected origins while opening ap
     "https://example.com/private",
     "https://github.com.evil.invalid/Lecarvalho/pomegr",
     "https://github.com/other-owner/other-repository",
+    "https://github.com/anthropics/claude-code/issues/1",
     "https://github.com/other-owner/other-repository/pull/0",
     "https://github.com/other-owner/other-repository/pull/42/files",
     "https://status.openai.com.evil.invalid/incidents/native-issue-42",

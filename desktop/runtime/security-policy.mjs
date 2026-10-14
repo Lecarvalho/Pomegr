@@ -33,7 +33,12 @@ const POMEGR_DOCS_PATHNAME = new RegExp(`^${POMEGR_DOCS_PATH}(?:/(?:${POMEGR_DOC
 // Heading anchors are lowercase GitHub-style slugs; the fragment never leaves the browser.
 const POMEGR_DOCS_FRAGMENT = /^#[a-z0-9_-]{1,128}$/;
 const MAX_EXTERNAL_URL_LENGTH = 512;
-const CODEX_CACHE_ISSUE_PATH = "/openai/codex/issues/35300";
+// Upstream issues that fixed in-app evidence text links to.
+const UPSTREAM_ISSUE_PATHS = Object.freeze([
+  "/openai/codex/issues/35300",
+  "/anthropics/claude-code/issues/82563",
+  "/anthropics/claude-code/issues/83756",
+]);
 const GITHUB_PULL_REQUEST_PATH = /^\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\/pull\/[1-9]\d{0,9}$/;
 const PROVIDER_STATUS_PATH = /^\/(?:incidents\/[A-Za-z0-9_-]{1,128}\/?)?$/;
 
@@ -73,7 +78,7 @@ export function isAllowedExternalUrl(value) {
   if (url.pathname === POMEGR_GITHUB_PATH_PREFIX || url.pathname.startsWith(`${POMEGR_GITHUB_PATH_PREFIX}/`)) return true;
   if (url.search) return false;
   const pathname = url.pathname.replace(/\/$/, "");
-  return pathname === CODEX_CACHE_ISSUE_PATH || GITHUB_PULL_REQUEST_PATH.test(pathname);
+  return UPSTREAM_ISSUE_PATHS.includes(pathname) || GITHUB_PULL_REQUEST_PATH.test(pathname);
 }
 
 export function secureBrowserWindowOptions({ preloadPath, browserSession, windowState }) {

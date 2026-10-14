@@ -16,6 +16,8 @@ import {
 describe("signal dictionary", () => {
   it("keeps the public cache sequence code and document anchor aligned", () => {
     const document = fs.readFileSync(path.join(process.cwd(), "docs", "internal", "architecture", "signal-dictionary.md"), "utf8");
+    const publicGuide = fs.readFileSync(path.join(process.cwd(), "docs", "public", "concepts", "cache-reuse.md"), "utf8");
+    const publicHeadings = [...publicGuide.matchAll(/^## (.+)$/gm)].map(([, heading]) => heading.trim().toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-"));
     const definitions = [
       CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION,
       CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION,
@@ -32,7 +34,8 @@ describe("signal dictionary", () => {
     ];
 
     for (const definition of definitions) {
-      expect(definition.href).toBe(`https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#${definition.anchor}`);
+      expect(definition.href).toMatch(/^https:\/\/pomegr\.com\/docs\/concepts\/cache-reuse#[a-z-]+$/);
+      expect(publicHeadings).toContain(definition.href.split("#")[1]);
       expect(definition.href).not.toContain("?");
       expect(document).toContain(`<a id="${definition.anchor}"></a>`);
       expect(document).toContain(`### \`${definition.code}\``);
@@ -89,7 +92,7 @@ describe("signal dictionary", () => {
 
     expect(cacheRefillSignalDefinition(diagnosed)?.code).toBe("cache.provider_diagnosed_refill");
     expect(cacheRefillSignalDefinition({ ...diagnosed, kind: undefined })?.code).toBe("cache.tools_changed.remote_control_connected");
-    expect(JSON.stringify(CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION)).not.toMatch(/full|infer/i);
+    expect(`${CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION.code} ${CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION.observed} ${CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION.impact}`).not.toMatch(/full|infer/i);
   });
 
   it("gives an elapsed-lifetime partial refill its own definition only with its inference", () => {
@@ -100,6 +103,6 @@ describe("signal dictionary", () => {
 
     expect(cacheRefillSignalDefinition(elapsed)?.code).toBe("cache.lifetime_elapsed_partial_refill");
     expect(cacheRefillSignalDefinition({ ...elapsed, cacheLifetimeInference: null })).toBeNull();
-    expect(JSON.stringify(CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION)).not.toMatch(/full/i);
+    expect(`${CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION.code} ${CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION.observed} ${CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION.impact}`).not.toMatch(/full/i);
   });
 });

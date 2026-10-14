@@ -299,10 +299,15 @@ export function cacheRefillEvidenceView(cacheRefills: CacheRefillCount[], agentI
     <span>{index + 1}</span>
     {observedAt ? <time dateTime={observedAt}>{timelineTime(observedAt, true)}</time> : <span>Time unavailable</span>}
   </div>;
-  const definition = (signal: NonNullable<(typeof diagnosed)[number]["signal"]>) => <div className="cacheRefillDefinition">
-    <code>{signal.code}</code>
-    <ExternalLink href={signal.href}>Open signal definition</ExternalLink>
-  </div>;
+  const definition = (signal: NonNullable<(typeof diagnosed)[number]["signal"]>) => <>
+    <div className="cacheRefillDefinition">
+      <code>{signal.code}</code>
+      <ExternalLink href={signal.href}>How cache refills work</ExternalLink>
+    </div>
+    {signal.upstreamIssue && <p className="cacheRefillInference">
+      Related upstream issue: <ExternalLink href={signal.upstreamIssue.href}>{signal.upstreamIssue.label}</ExternalLink>.
+    </p>}
+  </>;
   return {
     title: kinds > 1 ? "Cache refills" : diagnosedCount > 0 ? "Provider-diagnosed refill" : elapsedCount > 0 ? "Partial refill" : "Possible full refill",
     summary: fullCount > 0 ? (onlyExpiryInferences ? undefined : cacheRefillSummary(fullCount, agentIds.length)) : diagnosedCount > 0 ? diagnosedSummary : elapsedSummary,
@@ -444,7 +449,7 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
               </dl>
               <div className="cacheRefillDefinition">
                 <code>{signal.code}</code>
-                <ExternalLink href={signal.href}>Open signal definition</ExternalLink>
+                <ExternalLink href={signal.href}>How cache refills work</ExternalLink>
               </div>
             </li>;
           })}

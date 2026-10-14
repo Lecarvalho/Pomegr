@@ -357,8 +357,10 @@ List and Tree reuse the amber icon, scoped count, and occurrence popover. Same-m
 read-drop occurrences are explicitly labeled as an **Inference**, with the limitation:
 **No positive cache-write evidence, so a refill and its cause cannot be confirmed.**
 Model-change occurrences use the fixed label **Cache reuse dropped across a model
-change** and carry no refill, expiry, or causation inference. The bottom **Open signal
-definition** link documents the complete rules and caveats in the [same-model signal
+change** and carry no refill, expiry, or causation inference. The bottom **How cache
+refills work** link opens the public
+[Cache reuse](../../public/concepts/cache-reuse.md#drops-without-a-recorded-write) guide.
+The complete rules and caveats are in the [same-model signal
 definition](signal-dictionary.md#cache-read-reuse-dropped) and [model-change signal
 definition](signal-dictionary.md#cache-read-reuse-dropped-model-change).
 Elapsed time is supporting evidence, never proof of expiration; `30m+` never

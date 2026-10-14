@@ -1268,8 +1268,10 @@ across a model change** and makes no refill, expiry, or causation inference; mod
 identifiers remain monitor-private.
 This feed is separate from write-backed cache events and report counts. F reuses
 the existing agent indicator and popover, labels the same-model conclusion as an inference,
-and links the [same-model signal definition](signal-dictionary.md#cache-read-reuse-dropped)
-or [model-change signal definition](signal-dictionary.md#cache-read-reuse-dropped-model-change).
+and links the public [Cache reuse](../../public/concepts/cache-reuse.md#drops-without-a-recorded-write)
+guide. The [same-model signal definition](signal-dictionary.md#cache-read-reuse-dropped)
+and [model-change signal definition](signal-dictionary.md#cache-read-reuse-dropped-model-change)
+own the rules.
 It never reconstructs comparisons from request
 rows or provider schemas. S continues to serve committed responses only: no new
 endpoint, source read, subscription, polling lane, or provider request is added.

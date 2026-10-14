@@ -1,6 +1,6 @@
 # Signal dictionary
 
-This dictionary defines the stable, public codes Pomegr may show for deterministic evidence and bounded inferences. The dashboard stays compact; this document carries the evidence rule and its limits. Signals describe what Pomegr observed. They are not billing statements, provider guarantees, or proof of an internal implementation cause.
+This dictionary defines the stable, public codes Pomegr may show for deterministic evidence and bounded inferences. The dashboard stays compact; this document carries the evidence rule and its limits. The dashboard links each code to the public [Cache reuse](../../public/concepts/cache-reuse.md) guide, not to this page. Signals describe what Pomegr observed. They are not billing statements, provider guarantees, or proof of an internal implementation cause.
 
 ## Cache signals
 
@@ -169,6 +169,8 @@ What it means: Claude reported changed tool definitions right after new definiti
 What it does not prove: that the loaded definitions caused the refill, which tools were loaded, that no other tool changed, or that the provider charged any amount. Pomegr always labels this conclusion as an inference.
 
 Privacy: browser state contains only the fixed attribution enum, an empty change list, the bounded count, and stable public code. Tool names, descriptions, schemas, search queries, results, and diagnostics remain monitor-private.
+
+Related public investigation: [anthropics/claude-code#83756](https://github.com/anthropics/claude-code/issues/83756). The popover links it as fixed text, not derived from evidence.
 
 <a id="cache-messages-changed-post-tool-notification-resume"></a>
 
