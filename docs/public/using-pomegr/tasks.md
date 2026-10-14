@@ -9,7 +9,7 @@ description: "Plan work on a repository's task board, queue it, and have the Pom
 board, and one row for each repository's board. A board holds the work you want
 coding agents to do in one repository; the **Repository** menu beside its heading
 switches repository. You can start a session for a task yourself, or turn on a queue and
-let the desktop app start tasks one step at a time. After a start, Pomegr only
+let the desktop app start tasks from the top of **Ready**, one after another. After a start, Pomegr only
 observes the session: it never stops, attaches to, answers, or approves anything
 in a running session. Observing sessions works the same whether or not you use
 tasks.
@@ -96,9 +96,9 @@ done, and requeue a started task.
 | **Run on** | Required. The provider and model of the started session's main agent: under **Claude Code** or **Codex**, a model or **Default model**. A new task starts with the choice of the newest task on the board, or with **Claude Code** and **Default model** on an empty board. Subagents are not set. A task that an agent added without a provider shows **Not set** until you choose one, and starts on Claude Code. |
 | **Effort** | Required. **Low**, **Medium**, **High**, or **Xhigh**. A new task starts with the effort of the newest task on the board, or with **Medium** on an empty board. You cannot clear it. |
 | **Remote Control** | Starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
-| **Remove worktree and branch when done** | When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It is on by default. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
+| **Remove worktree and branch when done** | When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It is on by default. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Worktrees for parallel tasks](#worktrees-for-parallel-tasks). |
 | **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |
-| **Feature** | The group of related tasks the task runs with; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
+| **Feature** | The feature the task belongs to. A feature is shared context and a way to group tasks on the board. It does not set when the task runs; see [Group tasks into features](#group-tasks-into-features). |
 
 Claude Code lists the newest model of each family Pomegr has seen in your
 sessions. Codex lists the models in the client catalog Pomegr last read, which
@@ -183,24 +183,13 @@ Pomegr moves a card to another column when its task changes state:
   choose **Remove from queue** or its session starts. **Remove from queue** leaves
   the card in **Ready**.
 - The queued cards in **Ready** read top to bottom in the order the queue starts
-  them, the order the queue starts them. Cards that are not queued keep
+  them, whatever their feature. Cards that are not queued keep
   their place between them.
-- **Ready** groups its queued cards by step. Each group is headed by its feature
-  and step, such as "Step 2 of 4". A frame marked **Parallel** surrounds the cards
-  of one step that start together. The queued cards with no feature come last,
-  under **Single tasks**.
-- **Change a card's step.** In **Ready**, drag a queued card of a feature onto
-  another step of that feature to run it in parallel with that step. Drag it just
-  under the feature's last step to give it a **New step** of its own at the end.
-  A step cannot be inserted between two steps. From the keyboard, or for a card
-  that is not in **Ready**, focus the card and use **Move to step…**. It works
-  for any card of a feature that has not started, queued or not. A step that is
-  running is listed and cannot be chosen. A step whose tasks are all done accepts
-  nothing. This is off while a feature filter is on.
-- **Reorder single tasks by moving their cards.** Drag a queued card with no
-  feature above or below another in **Ready**, or use its move up and move
-  down buttons. Feature tasks follow their steps, so a card dropped out of that order
-  lands back in it.
+- **Reorder by moving cards.** Drag a queued card above or below another in
+  **Ready**, or use its move up and move down buttons. It lands where you drop it. A
+  feature never moves a card.
+- **Cards that run in parallel** sit together in a frame marked **Parallel**; see
+  [Run tasks in parallel](#run-tasks-in-parallel).
 
 A board holds up to 500 tasks and 50 features. A feature title is up to 80
 characters, its description up to 2000, and its app version up to 40.
@@ -282,16 +271,15 @@ or its place in the queue. The card moves once the session links (see
 [Cards Pomegr moves](#cards-pomegr-moves)). Until the session links, or ten minutes pass, the task
 cannot start again, so you do not get two sessions.
 
-## Group tasks into features and steps
+## Group tasks into features
 
-A feature is an ordered list of steps. Tasks in the same step run in parallel; the
-next step starts only when every task of the step before it is done. Select
+A feature is shared context for related tasks. It has no order of its own: a task in a
+feature runs when its card reaches the top of **Ready**, like any other task. Select
 **New feature…** in a task's **Feature** field or **+ New feature** above the
-board. A task that joins a feature takes a new last step, so it runs after the
-feature's other tasks. To run it in parallel with another task, or earlier, move it
-to that step on the Board (see [Queued cards stay in Ready](#queued-cards-stay-in-ready)). A feature is done when all its tasks are.
+board. A feature is done when all its tasks are.
 Only unfinished features are offered for a new attachment. Select a feature chip
-in the filter row to show only its tasks.
+in the filter row to show only its tasks. The row reads, for example, "3 of 7 tasks
+done · 2 running".
 
 A feature also holds the context its tasks share: a **description** and an **app
 version**, the version you plan the feature for. Put there what every task of the
@@ -333,9 +321,8 @@ already has this title." A board holds up to 50 features. Any other failure show
 To delete a feature, open it with **Edit feature**, choose **Delete feature**, and
 confirm. The window asks first and says how many tasks the feature has. Deleting
 cannot be undone, but it removes no task. Each task stays on the board, in the same
-lane, with no feature and no step. A queued task stays queued and runs as a single
-task, so in **Ready** it moves below the queued tasks of the other features and starts
-after them. The feature's description and app version are deleted with it. If the
+lane, with no feature. A queued task stays queued, keeps its place in **Ready**, and
+keeps its parallel group, so the order does not change. The feature's description and app version are deleted with it. If the
 feature was chosen in the **Feature** filter, the filter returns to **All**.
 
 You cannot delete a feature while one of its tasks has started and is not done. The
@@ -344,11 +331,46 @@ tasks finish.", and **Delete feature** stays disabled. A done task never blocks.
 If the delete fails, the window stays open and shows "The feature could not be
 deleted."
 
-A step that holds more than one task starts each task in a Git worktree of its
-own, on a branch named `tasks/<task ID>`, so parallel agents do not edit the same
+## Run tasks in parallel
+
+The queue starts one card at a time: the top waiting card of **Ready**. It starts the
+next card only after that task has reported and is in **Review** or **Done**. To run
+cards at the same time, put them in a parallel group. The queue then starts the whole
+group together, one task after another in the same check.
+
+- **Run in parallel.** In **Ready**, between two waiting cards, select **Run in
+  parallel**. The two cards, or their groups, become one group.
+- **Add a card to a group.** Drop a waiting card onto a group.
+- **A group.** A frame marked **Parallel · 3** holds the cards that start together.
+  The number counts the members still waiting. Once members have started, the caption
+  adds, for example, "· T-4 and T-5 started". A group holds up to 16 cards.
+- **Take a card out.** On a card of a group, select **Take out of group**. The card
+  keeps its place in **Ready**, or lands right after the group when it was between two
+  cards that stay in it. Or drag the card out of the group, and it lands where you drop it.
+- **Ungroup.** On the caption, select **Ungroup**. Every card keeps its place and runs
+  as a card of its own, one after another.
+- **When the next card starts.** The cards after a group wait until every task of the
+  group is in **Review** or **Done**. A task you took out of the queue no longer counts.
+- **A held member.** A member that a start gate holds, for example while a provider has
+  an incident, keeps its place and shows "Waiting:" with the reasons. It starts when the
+  gate opens. Its siblings start without it, and the cards after the group still wait for it.
+  A member scheduled for a later time holds nothing.
+- **A waiting card behind running work.** A card that an earlier task holds reads
+  "Waiting: T-n has not finished".
+- **A group lasts while it has work.** When a member reaches **Review**, **Blocked by
+  agent**, **Stalled**, or **Done**, or leaves the queue, it is no longer in the group.
+  A group with only one task left is no group.
+- **No dependencies.** A group means "start these together". Pomegr has no way to say that
+  one task waits for another's result. Put the later card below the earlier one in
+  **Ready** instead.
+
+### Worktrees for parallel tasks
+
+Each member of a group starts in a Git worktree of its own, on a branch named
+`tasks/<task ID>`, so parallel agents do not edit the same
 files. The worktree begins at the repository's current commit, so uncommitted
-changes in the repository are not part of it. A task alone in its step, or with no
-feature, runs in the repository itself. Pomegr keeps its worktrees inside the
+changes in the repository are not part of it. A task in no group runs in the
+repository itself, whatever its feature. Pomegr keeps its worktrees inside the
 repository, in `.pomegr/worktrees/<task ID>`. That folder ignores its own contents,
 so the worktrees do not show as changes in the repository.
 
@@ -382,27 +404,25 @@ them. Turning it off never touches a running session. You can also ask Aril to t
 queue on or off: see
 [Turn the queue on or off from the chat](agent-chat.md#turn-the-queue-on-or-off-from-the-chat).
 
-The **Ready** column shows what runs when. Each step is headed **Parallel** or
-**One task**. Tasks with no feature appear under **Single tasks**. To change a
-step, see [Queued cards stay in Ready](#queued-cards-stay-in-ready).
+The **Ready** column shows what runs when. It reads top to bottom, and a frame marked
+**Parallel** surrounds cards that start together (see
+[Run tasks in parallel](#run-tasks-in-parallel)). To change the order, see
+[Queued cards stay in Ready](#queued-cards-stay-in-ready).
 
-- **Order.** Features come first, in the order the board lists them, then each
-  feature's steps in order, then single tasks in the order of their cards in the
-  board's **Ready** column (see
-  [Queued cards stay in Ready](#queued-cards-stay-in-ready)).
-- **One step at a time.** The queue starts every queued task of the current step
-  in the same check, one after another. It starts nothing in a later step, or a
-  later single task, until earlier work has reported and is done.
-- **A waiting feature holds only itself.** A step waits when an earlier step of its
-  feature has a task that is not done, not in review, and not running, for example
-  a task you did not add to the queue. The queue does not start that task, so it
-  goes on with the other features and the single tasks, and marks one of those
-  **Queued · next**. The waiting feature runs when you add the earlier task to the
-  queue or mark it done.
+- **Order.** The queue starts the top waiting card of **Ready**, whatever its
+  feature. When that card is in a parallel group, it starts the group's other waiting
+  cards in the same check, one after another.
+- **One at a time.** While a task is running, the queue starts nothing outside that
+  task's own group. It starts the next card only when every task of the running group
+  has reported and is in **Review** or **Done**. A task in **Review** is finished work
+  that waits for you, so the next card starts.
+- **The queue does not skip a card.** If a start gate holds the top card, the cards
+  after it wait, and the Board marks that card **Queued · next** with the reasons.
+  Cards of its own group still start.
 - **Started tasks.** A task whose session has started is no longer shown as next or
-  as waiting. It keeps its state and shows its session's state, and later steps
-  wait for it. While a task with no feature is running, the queue starts nothing,
-  even when the Board still marks the next single task **Queued · next**.
+  as waiting. It keeps its state and shows its session's state. While it runs, a
+  waiting card outside its group reads "Waiting: T-n has not finished", and the queue
+  starts nothing else.
 - **Timing.** The desktop app asks for the next start every 15 seconds, so the
   queue works only while Pomegr is open.
 
@@ -428,8 +448,8 @@ choose one of two actions. In the desktop app, the banner also offers them, as
 
 Every task an agent reports complete needs review, whether its conditions passed
 or not: only you mark a task done. A task that needs review does not stop the queue. Its work is finished: the card
-waits in **Review**, the next queued task starts, and a later step of the same
-feature starts too. Open the task when you have time and choose **Mark done** or
+waits in **Review**, and the queue goes on to the next waiting card once every task of
+its group is in **Review** or **Done**. Open the task when you have time and choose **Mark done** or
 **Requeue task**. If the agent asked for your attention, the task window shows its
 line under **Complete when**, in the agent's own words.
 
@@ -463,7 +483,7 @@ reading is unknown, and unknown holds a start exactly like a failed gate.
 
 | Gate | A start proceeds only when |
 | --- | --- |
-| **Previous step done** | Every task of the step before it is done. Holds only the queue: **Start session** starts a task whatever its step. |
+| **Earlier task finished** | No task runs outside this task's own parallel group. Holds only the queue: **Start session** starts a task whatever is running. |
 | **Claude Code capacity** and **Codex capacity** | The provider is below the threshold for its five-hour window, or its weekly window for weekly-only Codex accounts. |
 | **Provider status** | The provider's public status shows no incident. |
 | **Working tree** | The repository's working tree has no uncommitted changes. |
@@ -484,8 +504,8 @@ Claude Code usage is not known yet."
 - **A task's own time.** In the task window, **Start at** takes a date and time. It
   makes the task **Scheduled**, adds it to the queue, and keeps the queue from
   starting it earlier. Clear the time to leave the task **Queued**. A scheduled
-  task that is not yet due holds nothing behind it, but its feature's next step
-  waits until it has run.
+  task that is not yet due holds nothing behind it, and a scheduled member of a
+  parallel group that is not yet due holds nothing for its group.
 - **The queue's window.** Under **Schedule**, in **Queue settings** on the Board, **Start at a
   time** sets a time of day before which the queue starts nothing, and **Stop
   starting tasks after** sets a time from which it starts nothing. Pomegr applies
@@ -498,6 +518,24 @@ closed counts from the next check, and the start then happens unless the stop ti
 has come. A stop time that has passed keeps holding the queue until you change or
 clear it. A schedule never stops, pauses, or touches a running session.
 
+## If your board had steps
+
+Earlier versions grouped a feature's tasks into steps. Steps are gone, and Pomegr
+changed your board once, the first time it opened the board after the update.
+
+- **Queued tasks of one step are now a parallel group.** If a step held two or more
+  tasks that were queued, scheduled, or running, those tasks became one group. A step
+  with a single such task became an ordinary card.
+- **Nothing was lost or restarted.** Every task keeps its column, its place in **Ready**,
+  its feature, its state, its schedule, its session, and its report. Pomegr started no
+  session, relaunched none, and sent nothing to a running one.
+- **Steps no longer hold work back.** A feature that waited behind an earlier step, for
+  example because that step had a task you had not queued, no longer waits. Its queued
+  cards start at their place in **Ready**, and a running queue can start one at its next
+  check. Look at the order of **Ready** after the update.
+- **The step controls are gone.** There is no **Move to step…** and no "Step 2 of 4"
+  heading. To run cards together, use **Run in parallel**.
+
 ## What agents report
 
 The plugin gives agents eleven task tools. Each call is tied to the calling session by
@@ -506,7 +544,7 @@ these tools with the plugin's reporting and query tools.
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which puts the task in a new last step. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which attaches the task to it. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
 | `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, or **Complete when**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](#assign-a-session-to-a-task). |
@@ -516,7 +554,7 @@ these tools with the plugin's reporting and query tools.
 | `get_feature` | Reads one feature of the board: its ID, title, description, and app version. The agent names the feature by its ID or its exact title. With no input, it reads the feature of the session's task. It changes nothing. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. A title that another feature has is refused. |
 | `update_feature` | Changes the title, description, or app version of a feature. A field the agent leaves out stays as it is. It changes no task. |
-| `delete_feature` | Deletes a feature that has no task. A feature that still has tasks is refused, so no task loses its feature or its step. It cannot be undone. |
+| `delete_feature` | Deletes a feature that has no task. A feature that still has tasks is refused, so no task loses its feature. It cannot be undone. |
 
 The four feature tools need plugin 0.9.4 or later. They work on any feature of the
 session's board, also one that you made. In Claude Code, `get_feature` needs no
@@ -638,16 +676,16 @@ On a same-computer browser or the desktop app, tasks show up beside the sessions
 started for them. Other devices see none of it.
 
 - **Sessions list.** The **Task** column shows the task number, the number of its
-  [GitHub issue](github-issues.md) if it has one, its feature and
-  step, and a chip only for **Needs review**, **Stalled**, or **Done**. **Group
+  [GitHub issue](github-issues.md) if it has one, its feature,
+  and a chip only for **Needs review**, **Stalled**, or **Done**. **Group
   by** **Feature** and the **Feature** chip filter are described in
   [Sessions and agents](sessions-and-agents.md#find-a-session). A session that is
   assigned to tasks shows them after the word **Assigned**. A dash means that the
   session has no task.
-- **Session view.** The header shows the task, feature, and step. The task
+- **Session view.** The header shows the task and its feature. The task
   ID opens the **Task** tab, the last tab. It is read-only. It shows the task text, the planned and observed model, the
-  definition of done with each check's result, and the feature's tasks in the same
-  and next step. A long task text is cut to ten lines. Select **Show all** to read
+  definition of done with each check's result, and the feature's tasks that run with
+  this session and the ones that come next. A long task text is cut to ten lines. Select **Show all** to read
   the rest. **Open on board** goes to the card. A session with no task has no
   **Task** tab. The feature name, in the header and on the **Task** tab, opens that
   repository's board with the feature chosen in the **Feature** filter. In the desktop
@@ -676,7 +714,7 @@ started for them. Other devices see none of it.
   feature's description and app version are given only to an agent that asks for
   them with `get_feature`, and so reach its provider like the task text. They are
   never in reports, notifications, or the session list, which carries only a task's
-  number, outcome, feature name, step, and GitHub issue number.
+  number, outcome, feature name, and GitHub issue number.
 
 To have an agent cut a feature into tasks or order the board for you, see
 [Agent chat](agent-chat.md).

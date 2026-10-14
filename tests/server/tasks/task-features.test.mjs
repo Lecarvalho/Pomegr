@@ -40,8 +40,7 @@ function addFeature(store, name, repository = REPOSITORY) {
 }
 
 const addTask = (store, payload, repository = REPOSITORY) => store.apply(repository, "create", { text: "task", ...payload });
-const placement = (board) => board.tasks.map((task) => [task.id, task.step]);
-const steps = (board, featureId) => board.tasks.filter((task) => task.featureId === featureId).map((task) => task.step);
+const placement = (board) => board.tasks.map((task) => [task.id, task.featureId]);
 
 test("feature_create lists an empty feature as not done and generates a feat id", async (t) => {
   const { store } = await temporaryStore(t);
@@ -67,36 +66,31 @@ test("feature_create bounds the name, the keys, the count, and duplicates", asyn
   assert.equal(store.readBoard(REPOSITORY).features.length, TASK_BOUNDS.featuresPerRepository);
 });
 
-test("create defaults to a new last step and an explicit step joins an existing one", async (t) => {
+test("create attaches a task to a feature or to none, and a feature gives it no step", async (t) => {
   const { store } = await temporaryStore(t);
   const feature = addFeature(store, "Search");
   addTask(store, { featureId: feature });
   addTask(store, { featureId: feature });
-  addTask(store, { featureId: feature, step: 2 });
-  addTask(store, { featureId: feature, step: 1 });
-  addTask(store, { featureId: feature, step: null });
-  addTask(store, {});
   addTask(store, { featureId: null });
-  assert.deepEqual(placement(store.readBoard(REPOSITORY)), [["T-1", 1], ["T-2", 2], ["T-3", 2], ["T-4", 1], ["T-5", 3], ["T-6", null], ["T-7", null]]);
+  addTask(store, {});
+  const board = store.readBoard(REPOSITORY);
+  assert.deepEqual(placement(board), [["T-1", feature], ["T-2", feature], ["T-3", null], ["T-4", null]]);
+  assert.deepEqual(board.tasks.map((task) => [Object.hasOwn(task, "step"), task.group]), Array(4).fill([false, null]));
 });
 
-test("create validates the step bounds, the feature, and the key shapes", async (t) => {
+test("create validates the feature and the key shapes, and a step is no key", async (t) => {
   const { store } = await temporaryStore(t);
   const feature = addFeature(store, "Search");
   const foreign = addFeature(store, "Other", OTHER_REPOSITORY);
-  for (const step of [0, -1, 1.5, "1", 2, 9, Number.NaN]) {
+  for (const step of [undefined, null, 0, 1, 2, "1"]) {
     assert.deepEqual(addTask(store, { featureId: feature, step }), { ok: false, error: "invalid" }, String(step));
   }
-  addTask(store, { featureId: feature });
-  assert.deepEqual(addTask(store, { featureId: feature, step: 3 }), { ok: false, error: "invalid" });
-  assert.equal(addTask(store, { featureId: feature, step: 2 }).ok, true);
-  assert.deepEqual(addTask(store, { step: 1 }), { ok: false, error: "invalid" });
-  assert.deepEqual(addTask(store, { featureId: null, step: 1 }), { ok: false, error: "invalid" });
+  assert.deepEqual(addTask(store, { featureId: feature, group: "grp-000000000001" }), { ok: false, error: "invalid" });
   assert.deepEqual(addTask(store, { featureId: 7 }), { ok: false, error: "invalid" });
   assert.deepEqual(addTask(store, { featureId: "feat-short" }), { ok: false, error: "invalid" });
   assert.deepEqual(addTask(store, { featureId: UNKNOWN_FEATURE }), { ok: false, error: "not_found" });
   assert.deepEqual(addTask(store, { featureId: foreign }), { ok: false, error: "not_found" });
-  assert.equal(store.readBoard(REPOSITORY).tasks.length, 2);
+  assert.equal(store.readBoard(REPOSITORY).tasks.length, 0);
 });
 
 test("the done flag is false for an empty or mixed feature and true once every task is done", async (t) => {
@@ -117,78 +111,53 @@ test("the done flag is false for an empty or mixed feature and true once every t
   assert.equal(addTask(store, {}).ok, true);
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-4", featureId: feature }), { ok: false, error: "conflict" });
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-3", featureId: feature }), { ok: false, error: "conflict" });
-  // A done task has started, so it no longer moves inside its own feature either.
-  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-2", step: 1 }), { ok: false, error: "conflict" });
-  assert.deepEqual(steps(store.readBoard(REPOSITORY), feature), [1, 2]);
   assert.equal(flag(), true);
 });
 
-test("update moves a task inside its feature, renumbers, and leaves other update times alone", async (t) => {
-  const { store } = await temporaryStore(t);
-  const feature = addFeature(store, "Search");
-  for (let count = 0; count < 3; count += 1) addTask(store, { featureId: feature });
-  const before = store.readBoard(REPOSITORY);
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  // T-1 jumps to the new last step; the emptied step 1 disappears and the rest close up.
-  const moved = store.apply(REPOSITORY, "update", { id: "T-1", step: 4 });
-  assert.deepEqual(placement(moved.board), [["T-1", 3], ["T-2", 1], ["T-3", 2]]);
-  const updatedAt = (board, id) => board.tasks.find((task) => task.id === id).updatedAt;
-  for (const id of ["T-2", "T-3"]) assert.equal(updatedAt(moved.board, id), updatedAt(before, id), id);
-  assert.notEqual(updatedAt(moved.board, "T-1"), updatedAt(before, "T-1"));
-  // The task's own feature ID names the same kind of move.
-  assert.deepEqual(placement(store.apply(REPOSITORY, "update", { id: "T-1", featureId: feature, step: 1 }).board), [["T-1", 1], ["T-2", 1], ["T-3", 2]]);
-  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-2", step: 9 }), { ok: false, error: "invalid" });
-  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-2", step: 0 }), { ok: false, error: "invalid" });
-});
-
-test("update attaches, detaches, and moves between features, renumbering both", async (t) => {
+test("update attaches, detaches, and moves between features without moving the card", async (t) => {
   const { store } = await temporaryStore(t);
   const a = addFeature(store, "A");
   const b = addFeature(store, "B");
   for (let count = 0; count < 3; count += 1) addTask(store, { featureId: a });
   addTask(store, { featureId: b });
   addTask(store, {});
-  // Moving T-2 (A, step 2) to B defaults to B's new last step; A closes the gap.
+  const positions = (board) => board.tasks.map((task) => [task.id, task.columnId, task.position]);
+  const before = store.readBoard(REPOSITORY);
   let board = store.apply(REPOSITORY, "update", { id: "T-2", featureId: b }).board;
-  assert.deepEqual(board.tasks.map((task) => [task.id, task.featureId, task.step]), [["T-1", a, 1], ["T-2", b, 2], ["T-3", a, 2], ["T-4", b, 1], ["T-5", null, null]]);
-  // An explicit step joins an existing one in the other feature.
-  board = store.apply(REPOSITORY, "update", { id: "T-3", featureId: b, step: 1 }).board;
-  assert.deepEqual(board.tasks.map((task) => [task.id, task.featureId, task.step]), [["T-1", a, 1], ["T-2", b, 2], ["T-3", b, 1], ["T-4", b, 1], ["T-5", null, null]]);
-  // A loose task attaches to a new last step.
+  assert.deepEqual(placement(board), [["T-1", a], ["T-2", b], ["T-3", a], ["T-4", b], ["T-5", null]]);
   board = store.apply(REPOSITORY, "update", { id: "T-5", featureId: a }).board;
-  assert.deepEqual([board.tasks[4].featureId, board.tasks[4].step], [a, 2]);
-  // Detaching clears the step and closes the gap in the old feature.
+  assert.equal(board.tasks[4].featureId, a);
   board = store.apply(REPOSITORY, "update", { id: "T-1", featureId: null }).board;
-  assert.deepEqual([board.tasks[0].featureId, board.tasks[0].step], [null, null]);
-  assert.deepEqual(steps(board, a), [1]);
-  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-1", featureId: null, step: 1 }), { ok: false, error: "invalid" });
-  assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", featureId: null, step: null }).ok, true);
-  // Text edits alone leave the placement untouched.
-  assert.deepEqual(placement(store.apply(REPOSITORY, "update", { id: "T-5", text: "renamed" }).board).at(-1), ["T-5", 1]);
+  assert.equal(board.tasks[0].featureId, null);
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", featureId: null }).ok, true);
+  assert.deepEqual(positions(board), positions(before));
+  // Another task's update time stays when it is not the one edited.
+  assert.equal(board.tasks.find((task) => task.id === "T-4").updatedAt, before.tasks.find((task) => task.id === "T-4").updatedAt);
+  // Text edits alone leave the feature untouched.
+  assert.deepEqual(placement(store.apply(REPOSITORY, "update", { id: "T-5", text: "renamed" }).board).at(-1), ["T-5", a]);
+  // A step is no key of an update.
+  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-2", step: 1 }), { ok: false, error: "invalid" });
+  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-1", featureId: null, step: null }), { ok: false, error: "invalid" });
 });
 
-test("update placement is invalid without a feature and not_found for an unknown or foreign feature", async (t) => {
+test("update to an unknown or foreign feature is not_found for an unknown or foreign feature", async (t) => {
   const { store } = await temporaryStore(t);
   const foreign = addFeature(store, "Foreign", OTHER_REPOSITORY);
   addTask(store, {});
   const before = store.readBoard(REPOSITORY);
-  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-1", step: 1 }), { ok: false, error: "invalid" });
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-1", featureId: foreign }), { ok: false, error: "not_found" });
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-1", featureId: UNKNOWN_FEATURE }), { ok: false, error: "not_found" });
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-1", featureId: "nope" }), { ok: false, error: "invalid" });
-  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-1", step: -2 }), { ok: false, error: "invalid" });
   assert.deepEqual(store.readBoard(REPOSITORY), before);
 });
 
-test("delete renumbers the steps of the feature the task leaves", async (t) => {
+test("delete leaves the other tasks of the feature as they are, and the empty feature stays", async (t) => {
   const { store } = await temporaryStore(t);
   const feature = addFeature(store, "Search");
   for (let count = 0; count < 3; count += 1) addTask(store, { featureId: feature });
-  assert.deepEqual(placement(store.apply(REPOSITORY, "delete", { id: "T-2" }).board), [["T-1", 1], ["T-3", 2]]);
+  assert.deepEqual(placement(store.apply(REPOSITORY, "delete", { id: "T-2" }).board), [["T-1", feature], ["T-3", feature]]);
   store.apply(REPOSITORY, "delete", { id: "T-1" });
   const emptied = store.apply(REPOSITORY, "delete", { id: "T-3" });
   assert.equal(emptied.board.features.length, 1);
-  // The empty feature stays and takes a first task at step 1.
-  addTask(store, { featureId: feature });
-  assert.deepEqual(steps(store.readBoard(REPOSITORY), feature), [1]);
+  assert.equal(addTask(store, { featureId: feature }).ok, true);
 });

@@ -41,7 +41,7 @@ test("a queue that is idle, blocked, or paused answers nothing", async (context)
   }
 });
 
-test("one step at a time: a live start or a linked session without an outcome holds the queue", async (context) => {
+test("one task at a time: a live start or a linked session without an outcome holds the queue", async (context) => {
   const { store, clock, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 1, { mintedAt: START_TIME - MINUTE });
@@ -112,27 +112,21 @@ test("a start that is not the first queued task does not pause the queue", async
   assert.equal(queueRow(directory).queue_status, "running");
 });
 
-test("a step waits for the earlier steps of its feature, and holds no task outside that feature", async (context) => {
-  const { store, directory } = await openTemporaryStore(context);
+test("a feature gives no order: the queue starts the top waiting card of Ready, whatever its feature", async (context) => {
+  const { store } = await openTemporaryStore(context);
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Search" });
   assert.equal(feature.ok, true);
   const featureId = feature.board.features[0].id;
   createTask(store, REPOSITORY, { featureId });
   createTask(store, REPOSITORY, { featureId });
   createTask(store, REPOSITORY);
-  queueTask(store, "T-2");
+  // T-1 is in the feature and was never queued: it holds nothing.
   queueTask(store, "T-3");
+  queueTask(store, "T-2");
   queueSettings(store, true);
-  // T-1 is in step 1 and was never queued, so step 1 is not done: T-2 waits, and T-3, outside the feature, starts.
-  assert.deepEqual(store.readBoard(REPOSITORY).tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 2], ["T-3", null]]);
   assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-3", "T-2"]);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-3")] });
-  // With nothing else queued, the held step still never starts.
   assert.equal(store.apply(REPOSITORY, "queue_remove", { id: "T-3" }).ok, true);
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
-  queueTask(store, "T-3");
-  updateTask(directory, 1, { state: "done" });
-  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-2", "T-3"]);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
 });
 
@@ -232,47 +226,72 @@ test("the queue methods answer a fixed unavailable error once the store is close
   assert.deepEqual(store.apply(REPOSITORY, "queue_settings", { on: true }), { ok: false, error: "conflict" });
 });
 
-/** A running queue over one feature: `steps` lists the step of each task, T-1 first. */
-function runningFeature(store, steps) {
+/** A running queue of `count` tasks of one feature, T-1 first, in Ready in that order. */
+function runningFeature(store, count) {
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Search" });
   assert.equal(feature.ok, true);
   const featureId = feature.board.features[0].id;
-  steps.forEach((step, index) => {
-    createTask(store, REPOSITORY, { featureId, step });
-    queueTask(store, `T-${index + 1}`);
-  });
+  for (let index = 1; index <= count; index += 1) {
+    createTask(store, REPOSITORY, { featureId });
+    queueTask(store, `T-${index}`);
+  }
   assert.equal(queueSettings(store, true).ok, true);
 }
+const group = (store, ...ids) => assert.equal(store.apply(REPOSITORY, "queue_group", { ids }).ok, true);
 
-test("the queued tasks of one step are answered together, and the next step waits for all of them", async (context) => {
+test("neighbors of one feature are no group: the queue starts them one at a time", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  runningFeature(store, 3);
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
+  startedTask(directory, 1, { session: SESSION });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  startedTask(directory, 1, { session: SESSION, state: "needs_review" });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
+});
+
+test("the queued tasks of one group are answered together, and the next card waits for all of them", async (context) => {
   const { store, clock, directory } = await openTemporaryStore(context);
-  runningFeature(store, [1, 1, 2]);
+  runningFeature(store, 3);
+  group(store, "T-1", "T-2");
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1"), start("T-2")] });
   // T-1 started; T-2 has not yet: it is still answered, alone.
   startedTask(directory, 1, { mintedAt: clock.now });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
   startedTask(directory, 1, { session: SESSION });
   startedTask(directory, 2, { session: "claude:second-session" });
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "the step is in flight");
-  // One task done is not the step done.
-  updateTask(directory, 1, { state: "done", queue_position: null });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "the group is in flight");
+  // One member in review is not the group finished.
+  updateTask(directory, 1, { state: "needs_review" });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
-  updateTask(directory, 2, { state: "done", queue_position: null });
+  updateTask(directory, 2, { state: "needs_review" });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-3")] });
 });
 
-test("each task of a step is judged by the gates on its own", async (context) => {
-  const { store } = await openTemporaryStore(context);
-  runningFeature(store, [1, 1]);
+test("each member of a group is judged by the gates on its own, and the held one starts when its gate opens", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  runningFeature(store, 3);
   assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "codex", model: null, effort: null } }).ok, true);
+  group(store, "T-1", "T-2");
   const codexOver = () => ({ ...passingGates(), usage: { ...passingGates().usage, codex: { fiveHourPercent: 99, sevenDayPercent: 10 } } });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: codexOver }), { ok: true, starts: [start("T-2")] });
   assert.equal(store.readBoard(REPOSITORY).queue.status, "running");
+  // T-2 started; the group is still the one in flight, so nothing outside it starts and T-1 stays held.
+  startedTask(directory, 2, { session: SESSION });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: codexOver }), { ok: true, starts: [] });
+  let next = store.readBoard(REPOSITORY, { resolveGateFacts: codexOver }).queue.gates.next;
+  assert.deepEqual(next, { taskId: "T-1", provider: "codex", blockedBy: null, reasons: ["usage_over"] });
+  // The sibling reports: the held member still holds T-3 back, and starts at once when the gate opens.
+  updateTask(directory, 2, { state: "needs_review" });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: codexOver }), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
+  next = store.readBoard(REPOSITORY, { resolveGateFacts: passingGates }).queue.gates.next;
+  assert.deepEqual(next, { taskId: "T-1", provider: "codex", blockedBy: null, reasons: [] });
 });
 
-test("the starts of one step stop at the sixteen-start limit", async (context) => {
+test("a group of sixteen starts together, which is the start limit", async (context) => {
   const { store } = await openTemporaryStore(context);
-  runningFeature(store, Array.from({ length: TASK_QUEUE_START_LIMIT + 2 }, () => 1));
+  runningFeature(store, TASK_QUEUE_START_LIMIT + 2);
+  group(store, ...Array.from({ length: TASK_QUEUE_START_LIMIT }, (_, index) => `T-${index + 1}`));
   const answer = store.nextQueueStarts({ resolveGateFacts: passingGates });
   assert.equal(answer.starts.length, TASK_QUEUE_START_LIMIT);
   assert.deepEqual(answer.starts[TASK_QUEUE_START_LIMIT - 1], start(`T-${TASK_QUEUE_START_LIMIT}`));
@@ -292,17 +311,17 @@ test("a started task is not in queue.order and is never the next task, whether i
   assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-2", "T-3", "T-4"]);
 });
 
-test("with a step in flight the next task is the first of a later step and names the in-flight task as its blocker", async (context) => {
+test("with a task in flight the next card names it as its blocker with earlier_task", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Feature" }).board.features[0].id;
-  createTask(store, REPOSITORY, { featureId: feature, step: 1 });
-  createTask(store, REPOSITORY, { featureId: feature, step: 2 });
+  createTask(store, REPOSITORY, { featureId: feature });
+  createTask(store, REPOSITORY, { featureId: feature });
   queueTask(store, "T-1");
   queueTask(store, "T-2");
   startedTask(directory, 1, { session: SESSION });
   const board = store.readBoard(REPOSITORY, { resolveGateFacts: passingGates });
   assert.deepEqual(board.queue.order, ["T-2"]);
-  assert.deepEqual(board.queue.gates.next, { taskId: "T-2", provider: "claude", blockedBy: "T-1", reasons: ["previous_step"] });
+  assert.deepEqual(board.queue.gates.next, { taskId: "T-2", provider: "claude", blockedBy: "T-1", reasons: ["earlier_task"] });
   // With every task of the board in flight there is no next task.
   startedTask(directory, 2, { session: `${SESSION}9` });
   const all = store.readBoard(REPOSITORY, { resolveGateFacts: passingGates });
@@ -310,14 +329,44 @@ test("with a step in flight the next task is the first of a later step and names
   assert.equal(all.queue.gates.next, null);
 });
 
-test("an in-flight task without a feature holds every start while the next single is still the one named", async (context) => {
+test("the next task is the held member of the running group, also when another card stands above it in Ready", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  runningRepository(store, REPOSITORY, 3);
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-2", run: { provider: "codex", model: null, effort: null } }).ok, true);
+  group(store, "T-1", "T-2");
+  startedTask(directory, 1, { session: SESSION });
+  const ready = store.readBoard(REPOSITORY).columns[1].id;
+  assert.equal(store.apply(REPOSITORY, "move", { id: "T-3", columnId: ready, position: 0 }).ok, true);
+  const codexOver = () => ({ ...passingGates(), usage: { ...passingGates().usage, codex: { fiveHourPercent: 99, sevenDayPercent: 10 } } });
+  const board = store.readBoard(REPOSITORY, { resolveGateFacts: codexOver });
+  assert.deepEqual(board.queue.order, ["T-3", "T-2"]);
+  assert.deepEqual(board.queue.gates.next, { taskId: "T-2", provider: "codex", blockedBy: null, reasons: ["usage_over"] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: codexOver }), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
+});
+
+test("a card of the running group has no blocker, and one outside it waits for the group", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  runningRepository(store, REPOSITORY, 4);
+  group(store, "T-1", "T-2");
+  startedTask(directory, 1, { session: SESSION });
+  const board = store.readBoard(REPOSITORY, { resolveGateFacts: passingGates });
+  assert.deepEqual(board.queue.order, ["T-2", "T-3", "T-4"]);
+  assert.deepEqual(board.queue.gates.next, { taskId: "T-2", provider: "claude", blockedBy: null, reasons: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
+  startedTask(directory, 2, { session: "claude:second-session" });
+  assert.deepEqual(store.readBoard(REPOSITORY, { resolveGateFacts: passingGates }).queue.gates.next,
+    { taskId: "T-3", provider: "claude", blockedBy: "T-1", reasons: ["earlier_task"] });
+});
+
+test("an in-flight task outside a group holds every start and the next card names it", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 1, { session: SESSION });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   const board = store.readBoard(REPOSITORY, { resolveGateFacts: passingGates });
   assert.deepEqual(board.queue.order, ["T-2"]);
-  assert.deepEqual(board.queue.gates.next, { taskId: "T-2", provider: "claude", blockedBy: null, reasons: [] });
+  assert.deepEqual(board.queue.gates.next, { taskId: "T-2", provider: "claude", blockedBy: "T-1", reasons: ["earlier_task"] });
 });
 
 test("queue-pause accepts worktree_dirty and the board serves it as pauseReason", async (context) => {

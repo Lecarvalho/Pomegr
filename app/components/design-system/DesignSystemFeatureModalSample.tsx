@@ -41,7 +41,7 @@ function FeatureModalChrome({ mode, initial, failure, unread, board = BOARD_RUNN
           <button type="button" className="commandPrimaryAction" disabled={!valid} onClick={noop}>Create feature</button>
         </>}>
       <FeatureFormFields draft={draft} onChange={setDraft} failure={failure} detailsDisabled={unread} readFailed={unread} />
-      {edit && <FeatureSiblings board={board} featureId={SAMPLE_FEATURE_ID} label="Tasks" steps onOpenTask={noop} />}
+      {edit && <FeatureSiblings board={board} featureId={SAMPLE_FEATURE_ID} label="Tasks" onOpenTask={noop} />}
     </TaskModalChrome>
   </div>;
 }

@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { TASK_GATE_THRESHOLDS, type TaskBoard, type TaskGateThreshold, type TaskGateUsage, type TaskProvider } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
-import { PROVIDER_NAMES, previousStepRow, providerStatusRow, usageReading, workingTreeRow, type GateTone } from "./task-gates-model";
+import { PROVIDER_NAMES, earlierTaskRow, providerStatusRow, usageReading, workingTreeRow, type GateTone } from "./task-gates-model";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
 const thresholdLabel = (value: TaskGateThreshold) => `${value}% of the usage window`;
@@ -36,7 +36,7 @@ export function StartGatesPanel({ queue, edits }: { queue: TaskBoard["queue"]; e
     <p className="taskGatesCaption">Checked before every session Pomegr starts.</p>
     {!gates ? <p className="taskGatesCaption">Start gates are not available yet.</p> : <>
       <dl className="taskGateList">
-        <Row label="Previous step done" tone={previousStepRow(gates).tone}>{previousStepRow(gates).text}</Row>
+        <Row label="Earlier task finished" tone={earlierTaskRow(gates).tone}>{earlierTaskRow(gates).text}</Row>
         <CapacityRow provider="claude" usage={gates.usage.claude} />
         <CapacityRow provider="codex" usage={gates.usage.codex} />
         <Row label="Provider status" tone={providerStatusRow(gates).tone}>{providerStatusRow(gates).text}</Row>

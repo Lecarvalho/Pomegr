@@ -1,7 +1,6 @@
 // The fixed five columns, their roles, and the card move that follows a task's state.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { orderQueue } from "./task-queue.mjs";
 import { COLUMN_ID, DEFAULT_TASK_COLUMNS, DEFAULT_TASK_COLUMN_ROLES, STORED_COLUMN_READ_BOUNDS, TASK_COLUMN_ROLES, normalizeStoredColumn } from "./task-record.mjs";
 
 const roleKey = (repositoryId, role) => `column_role:${repositoryId}:${role}`;
@@ -64,11 +63,13 @@ export function readyColumnId(database, repositoryId) {
   return hasFixedColumns(database, repositoryId) ? storedColumns(database, repositoryId)[READY_COLUMN_INDEX].id : null;
 }
 
-// Puts every waiting queue card in Ready and its waiting cards in start order.
-export function settleReadyColumn(database, repositoryId) {
+// Puts every waiting queue card in Ready, with the waiting cards of each parallel group together. `groups` is the
+// stored group of each task by number. The waiting cards keep their order, which is the start order, and a card
+// that does not wait keeps its place.
+export function settleReadyColumn(database, repositoryId, groups = new Map()) {
   const readyId = readyColumnId(database, repositoryId);
   if (readyId === null) return;
-  const waiting = preparedStatement(database, `SELECT number, column_id, feature_id, step, queue_position FROM tasks
+  const waiting = preparedStatement(database, `SELECT number, column_id, queue_position FROM tasks
     WHERE repository_id = ? AND state IN ('queued', 'scheduled') AND session_id IS NULL ORDER BY queue_position IS NULL, queue_position, number`).all(repositoryId);
   if (waiting.length === 0) return;
   const cards = taskNumbersInOrder(database, repositoryId, readyId);
@@ -80,14 +81,18 @@ export function settleReadyColumn(database, repositoryId) {
     cards.push(Number(row.number));
     left.add(row.column_id);
   }
+  // A store from before Ready was the queue ordered its tasks by a stored position: that order is taken once.
   const legacy = waiting.some((row) => (row.queue_position ?? null) !== null);
-  const place = new Map((legacy ? waiting.map((row) => Number(row.number)) : cards).map((number, index) => [number, index]));
-  const features = preparedStatement(database, "SELECT id FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId);
-  const { order } = orderQueue(waiting.map((row) => ({
-    id: `T-${Number(row.number)}`, featureId: row.feature_id ?? null, step: row.step ?? null, state: "queued", queuePosition: place.get(Number(row.number)),
-  })), features);
-  const inOrder = order.map((id) => Number(id.slice(2)));
-  const waits = new Set(inOrder);
+  const waits = new Set(waiting.map((row) => Number(row.number)));
+  const standing = legacy ? waiting.map((row) => Number(row.number)) : cards.filter((number) => waits.has(number));
+  const byGroup = new Map();
+  for (const number of standing) if (groups.has(number)) byGroup.set(groups.get(number), [...(byGroup.get(groups.get(number)) ?? []), number]);
+  const inOrder = [];
+  const placed = new Set();
+  for (const number of standing) {
+    if (placed.has(number)) continue;
+    for (const member of byGroup.get(groups.get(number)) ?? [number]) { placed.add(member); inOrder.push(member); }
+  }
   let next = 0;
   writeTaskOrder(database, repositoryId, cards.map((number) => (waits.has(number) ? inOrder[next++] : number)));
   for (const columnId of left) writeTaskOrder(database, repositoryId, taskNumbersInOrder(database, repositoryId, columnId));

@@ -190,12 +190,13 @@ The task board is in [Task board design](task-board.md).
 | **Move T-n to column** | A muted “position n” follows |
 | **Add T-n to queue** | Nothing more |
 | **Remove T-n from queue** | Nothing more |
-| **Move T-n to step n** | Nothing more |
+| **Run T-n, T-n, and T-n in parallel** | Nothing more |
+| **Take T-n out of its parallel group** | Nothing more |
 | **Start a session for T-n** | The board's current first line of that task in muted text |
 | **Turn the queue on** | Nothing more |
 | **Turn the queue off** | Nothing more |
 
-- The line of what is set holds “in feature · step n”, provider, model, and effort, “Complete when: PR open, CI passed”, and “then add to queue”.
+- The line of what is set holds “in feature”, provider, model, and effort, “Complete when: PR open, CI passed”, and “then add to queue”.
 - **Update T-n** leaves the current first line out when the board does not hold the task.
 - **Start a session for T-n** is the only row of its card.
 - **Turn the queue on** or **Turn the queue off** is the only row of its card.
@@ -240,7 +241,7 @@ The task board is in [Task board design](task-board.md).
 - On a paired device the footer line of a session start reads “Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.”
 - The Primary of a queue change reads **Turn queue on** or **Turn queue off**, on a paired device too.
 - The Primary names the state the proposal asks for, never the opposite of the queue's current state.
-- The footer line of a queue change that turns the queue on reads “Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, one step at a time, as each passes the start gates.”
+- The footer line of a queue change that turns the queue on reads “Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, in Ready order, as each passes the start gates.”
 - The footer line of a queue change that turns the queue off reads “Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.”
 - No native dialog follows the Primary of a queue change.
 

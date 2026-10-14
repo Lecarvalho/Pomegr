@@ -1,9 +1,7 @@
 import type { HTMLAttributes, MouseEvent } from "react";
 import type { Task } from "../../../shared/task-contract";
-import { ParallelGlyph } from "./ParallelGlyph";
-import { TaskMoveBar, type CardMoves, type CardStepMove } from "./TaskMoveBar";
+import { TaskMoveBar, type CardGroupMove, type CardMoves } from "./TaskMoveBar";
 import type { CardMoveKind } from "./task-board-model";
-import type { FeatureLine } from "./task-features";
 import { TaskCardIds } from "./TaskIssueChip";
 import { TaskRunLine } from "./TaskRunLine";
 import { TaskSessionLink } from "./TaskSessionLink";
@@ -16,21 +14,22 @@ export type TaskCardMove = {
   drag: Pick<HTMLAttributes<HTMLLIElement>, "onDragStart" | "onDragEnd">;
   available: CardMoves;
   onMove(kind: CardMoveKind): void;
-  step?: CardStepMove;
+  group?: CardGroupMove;
 };
 
 /** The controls of a card that keep their own click: a click on one of them never opens the card. */
 const CARD_CONTROLS = "a, button, input, select, textarea, [role='combobox'], [role='listbox'], [role='option']";
 
-export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine, grouped = false, waiting, now }: {
+export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, dropLine, compact = false, waiting, now }: {
   task: Task;
-  featureLine?: FeatureLine | null;
+  /** The name of the task's feature. */
+  featureLine?: string | null;
   nextQueued?: boolean;
   onOpen?: (task: Task, opener: HTMLElement) => void;
   move?: TaskCardMove;
   dropLine?: "before" | "after";
-  /** A card inside a Ready group: compact, with no Complete when line and no feature line, which its caption carries. */
-  grouped?: boolean;
+  /** A card that waits in Ready: compact, with no excerpt and no Complete when line. */
+  compact?: boolean;
   waiting?: string | null;
   /** The clock the Starts line names "today" from. */
   now?: number;
@@ -41,11 +40,10 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
   const preview = taskSessionTitle(task) === null ? taskTextPreview(task.text) : null;
   const heading = preview ? <TaskInlineText text={preview.lead} /> : title;
   const starts = startsParts(task, now);
-  const summary = grouped ? null : completeWhenSummary(task.completeWhen);
-  const feature = grouped ? null : featureLine;
+  const summary = compact ? null : completeWhenSummary(task.completeWhen);
   // The started session leads; the assigned sessions follow in the order they were assigned.
   const sessions = [...(task.session ? [task.session] : []), ...(task.assigned ?? [])];
-  const className = ["taskCard", grouped && "taskReadyCard", onOpen && "isOpenable", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone", dropLine === "before" && "isDropBefore", dropLine === "after" && "isDropAfter"].filter(Boolean).join(" ");
+  const className = ["taskCard", compact && "taskReadyCard", onOpen && "isOpenable", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone", dropLine === "before" && "isDropBefore", dropLine === "after" && "isDropAfter"].filter(Boolean).join(" ");
   // A click anywhere on the card opens it, as its title does; the title stays the opener that focus returns to. A press
   // that moves is the browser's drag, which sends no click.
   const openFromCard = onOpen && ((event: MouseEvent<HTMLLIElement>) => {
@@ -65,20 +63,17 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move, 
     {onOpen
       ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title}><span className="taskCardTitle">{heading}</span></button>
       : <p className="taskCardTitle" title={title}>{heading}</p>}
-    {preview && preview.rest !== "" && !grouped && <p className="taskCardExcerpt"><TaskInlineText text={preview.rest} /></p>}
+    {preview && preview.rest !== "" && !compact && <p className="taskCardExcerpt"><TaskInlineText text={preview.rest} /></p>}
     <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
     {starts && <p className="taskCardDetail taskCardStarts">Starts {starts.day} <span className="taskCardStartsTime">{starts.time}</span></p>}
     {waiting && <p className="taskCardWaiting">{waiting}</p>}
     {summary && <p className="taskCardDetail">{summary}</p>}
-    {feature && <p className="taskCardDetail taskCardFeature">
-      {feature.parallelWith.length > 0 && <ParallelGlyph label="Parallel" />}
-      <span>{feature.text}{feature.parallelWith.length > 0 && <> · parallel with <span className="taskCardFeatureIds">{feature.parallelWith.join(", ")}</span></>}</span>
-    </p>}
+    {featureLine && <p className="taskCardDetail taskCardFeature">{featureLine}</p>}
     {sessions.length > 0 && <p className="taskCardDetail taskCardSessions">
       <TaskSessionLink sessionId={sessions[0].id} className="taskCardLink" />
       {sessions.length > 1 && <span>+{sessions.length - 1} more</span>}
       {task.session === null && <span>Assigned</span>}
     </p>}
-    {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} step={move.step} />}
+    {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} group={move.group} />}
   </li>;
 }

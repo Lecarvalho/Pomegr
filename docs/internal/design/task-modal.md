@@ -116,9 +116,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - New feature… reveals a one-line name field in place.
 - Enter or leaving the name field commits the name.
 - Escape cancels the name.
-- The forms have no Step field.
-- A task that joins a feature takes a new last step.
-- The Board moves a task to another step.
+- A feature gives a task context only. The forms have no step or order field.
 - Once a created feature is chosen, a folded **In this feature** disclosure appears.
 - The disclosure is a native `details` between two rules.
 - The disclosure summary is 44px high, with a muted chevron and a “n tasks · m done” count in data-font numbers.
@@ -244,7 +242,7 @@ A card's title opens the task modal for one stored task.
 - Complete when lists each checked condition's **Passed** (green) or **Not passed** (error) from the agent's report.
 - The report line shows below each condition.
 - In the Feature fields, the folded list leaves out the open task.
-- In the Feature fields, each row leads with its step number.
+- In the Feature fields, the rows are in board order, and a row has no step number.
 - **Sessions** follows Complete when. It is a fieldset with the 12px/500 legend **Sessions**.
 - Sessions lists one ruled row for each session: the session Pomegr started first, then the assigned sessions in the order they were assigned.
 - A row holds the session title as a Text link to the session, over the muted 12px role “Started by Pomegr” or “Assigned”.
@@ -387,7 +385,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - If the read fails, the two fields stay disabled, and the line “The description and app version could not be read.” (`p.newTaskError`, `role="alert"`) follows them.
 - After the fields comes the folded **Tasks** list (`details.taskFeatureDetails`).
 - The summary is the chevron (`.taskFeatureChevron`), the label **Tasks** (`.taskFeatureLabel`), and the count “n tasks · d done” (`.taskFeatureCount`) with data-font numerals.
-- The list is the task modal's In this feature list. Each row leads with its step, its ID, its title button, and its state chip.
+- The list is the task modal's In this feature list. Each row has its ID, its title button, and its state chip.
 - A row's title button opens that task's modal in place of this one. The draft is discarded.
 - The footer is a Quiet **Delete feature**, a spacer, and the one primary **Save**. It has no **Cancel**.
 - **Save** is disabled until the draft differs from the stored feature, the title holds text, and no field is over its bound.

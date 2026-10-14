@@ -38,6 +38,7 @@
 .designSystemTaskModalStage .taskModal { justify-self: center; }
 /* The + New task action is hidden until its lane is hovered or focused; the reference holds it open. */
 .designSystemRevealAdd .taskColumnAdd { opacity: 1; }
+.designSystemRevealLink .taskReadyLinkAction { opacity: 1; }
 .designSystemType { margin-top: var(--space-4); display: grid; gap: var(--space-3); }
 .designSystemType > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: baseline; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 .designSystemType > div > span:first-child { min-width: 0; overflow-wrap: anywhere; }

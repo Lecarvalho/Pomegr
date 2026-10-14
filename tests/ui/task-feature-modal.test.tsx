@@ -37,7 +37,7 @@ const STORED = { ok: true, description: "Uploads fail silently.", appVersion: "1
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -47,9 +47,9 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
 // Retry telemetry holds three tasks, one done. Docs holds none.
 const features = [{ id: "f1", name: "Retry telemetry", done: false }, { id: "f2", name: "Docs", done: false }];
 const tasks = () => [
-  task(1, "Route", { featureId: "f1", step: 1, state: "done" }),
-  task(2, "Store", { featureId: "f1", step: 2 }),
-  task(3, "Columns", { featureId: "f1", step: 2 }),
+  task(1, "Route", { featureId: "f1", state: "done" }),
+  task(2, "Store", { featureId: "f1" }),
+  task(3, "Columns", { featureId: "f1" }),
   task(4, "Loose end"),
 ];
 function boardOf(overrides: Partial<TaskBoard> = {}): TaskBoard {
@@ -433,7 +433,7 @@ describe("the Feature modal, Feature", () => {
     expect(details.querySelector(".taskFeatureCount")).toHaveTextContent("3 tasks · 1 done");
     expect(details.querySelectorAll(".taskFeatureNum")).toHaveLength(2);
     expect([...details.querySelectorAll(".taskFeatureItem")].map((item) => item.getAttribute("data-task-id"))).toEqual(["T-1", "T-2", "T-3"]);
-    expect(details.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(3);
+    expect(details.querySelector(".taskFeatureStep")).toBeNull();
     expect(details.querySelector(".taskFeatureItem .commandChip")).toHaveTextContent("Done");
     await u.click(dialog.getByText("Tasks"));
     await u.click(within(details).getByRole("button", { name: "Store" }));
@@ -517,7 +517,7 @@ describe("the page does not publish the board while a modal saves", () => {
     const dialog = await openEdit(u);
     await loaded(dialog);
     await u.type(dialog.getByRole("textbox", { name: "Description" }), "!");
-    publish(boardOf({ tasks: [...tasks(), task(9, "New one", { featureId: "f1", step: 3 })] }));
+    publish(boardOf({ tasks: [...tasks(), task(9, "New one", { featureId: "f1" })] }));
     expect(dialog.getByRole("textbox", { name: "Description" })).toHaveValue("Uploads fail silently.!");
     expect(document.querySelector(".taskModalTitleGroup .commandChip")).toHaveTextContent("1 of 4 done");
   });

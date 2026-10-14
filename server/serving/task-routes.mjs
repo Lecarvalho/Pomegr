@@ -3,7 +3,7 @@ import { validModelIdentifier, validModelLabel } from "../../shared/model-notifi
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
-  "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+  "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
   "session_assign", "session_unassign",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
@@ -30,7 +30,7 @@ const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const RUN_MODEL_LIMIT = 64;
 export const GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
 export const GATE_REASONS = Object.freeze([
-  "previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
+  "earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
   "before_queue_start", "after_queue_stop",
 ]);
 const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;

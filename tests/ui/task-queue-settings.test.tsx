@@ -23,7 +23,7 @@ const STOP = new Date(2099, 0, 1, 23, 0).toISOString();
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text: `Task ${id}`, columnId: "col-2", position: id, featureId: null, step: null,
+    id: `T-${id}`, text: `Task ${id}`, columnId: "col-2", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -38,10 +38,10 @@ const gates: TaskGates = {
   next: { taskId: "T-2", provider: "claude", blockedBy: null, reasons: [] },
 };
 const session = { id: "claude:abc123", title: null, state: "working", observedModel: null } as NonNullable<Task["session"]>;
-/** Seven tasks in four steps: T-1 of step 1 has a session, the rest wait. */
+/** Seven tasks of one feature: T-1 has a session, the rest wait. */
 const featureTasks = () => [
-  task(1, { featureId: FEATURE.id, step: 1, session }),
-  ...[2, 3, 4, 5, 6, 7].map((id) => task(id, { featureId: FEATURE.id, step: Math.min(4, Math.ceil(id / 2) + 1) })),
+  task(1, { featureId: FEATURE.id, session }),
+  ...[2, 3, 4, 5, 6, 7].map((id) => task(id, { featureId: FEATURE.id })),
 ];
 
 function setBoard(queue: Partial<TaskQueue> = {}, tasks: Task[] = featureTasks()) {
@@ -92,7 +92,7 @@ describe("the Queue settings panel", () => {
     expect(within(panel).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["Start gates", "Schedule", "When the queue blocks"]);
     expect(within(panel).getByText("Checked before every session Pomegr starts.")).toBeInTheDocument();
     const gateRows = panel.querySelectorAll(".taskGatesPanel:not(.taskSchedulePanel) .taskGateRow");
-    expect([...gateRows].map((row) => row.querySelector("dt")?.textContent)).toEqual(["Previous step done", "Claude Code capacity", "Codex capacity", "Provider status", "Working tree"]);
+    expect([...gateRows].map((row) => row.querySelector("dt")?.textContent)).toEqual(["Earlier task finished", "Claude Code capacity", "Codex capacity", "Provider status", "Working tree"]);
     expect(within(panel).getByRole("group", { name: "Queue start" })).toHaveClass("commandSegmented");
     expect(within(panel).getByLabelText("Stop starting tasks after")).toHaveValue("23:00");
     expect(within(panel).getByText("A running session is never stopped by the schedule. Pomegr must be open for scheduled tasks to start.")).toBeInTheDocument();
@@ -148,11 +148,11 @@ describe("the feature filter's progress line", () => {
     return screen.getByRole("group", { name: "Filter by feature" });
   };
 
-  it("reads the done count and the running step of the selected feature, before the moving line (D26)", async () => {
+  it("reads the done count and the running count of the selected feature, before the moving line (D26)", async () => {
     const row = await choose(/^Board \(7\)$/);
     const line = row.querySelector(".taskFeatureProgress") as HTMLElement;
-    expect(line.textContent).toBe("0 of 7 tasks done · step 1 of 4 running");
-    expect([...line.querySelectorAll(".taskFeatureProgressNum")].map((value) => value.textContent)).toEqual(["0", "7", "1", "4"]);
+    expect(line.textContent).toBe("0 of 7 tasks done · 1 running");
+    expect([...line.querySelectorAll(".taskFeatureProgressNum")].map((value) => value.textContent)).toEqual(["0", "7", "1"]);
     expect(line.compareDocumentPosition(within(row).getByText("Moving cards is off while a feature filter is on.")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -164,13 +164,13 @@ describe("the feature filter's progress line", () => {
     expect(document.querySelector(".taskFeatureProgress")).toBeNull();
   });
 
-  it("names a step only while one of its tasks has a session and is not done", () => {
+  it("counts a task as running only while it has a session and is not done", () => {
     const board = setBoard();
-    expect(featureProgress(board, FEATURE.id)).toEqual({ total: 7, done: 0, running: { step: 1, of: 4 } });
+    expect(featureProgress(board, FEATURE.id)).toEqual({ total: 7, done: 0, running: 1 });
     const waiting = { ...board, tasks: board.tasks.map((entry) => ({ ...entry, session: null })) };
-    expect(featureProgress(waiting, FEATURE.id)).toEqual({ total: 7, done: 0, running: null });
+    expect(featureProgress(waiting, FEATURE.id)).toEqual({ total: 7, done: 0, running: 0 });
     const finished = { ...board, tasks: board.tasks.map((entry) => (entry.id === "T-1" ? { ...entry, state: "done" as const } : entry)) };
-    expect(featureProgress(finished, FEATURE.id)).toEqual({ total: 7, done: 1, running: null });
+    expect(featureProgress(finished, FEATURE.id)).toEqual({ total: 7, done: 1, running: 0 });
     expect(featureProgress(board, "none")).toBeNull();
   });
 });

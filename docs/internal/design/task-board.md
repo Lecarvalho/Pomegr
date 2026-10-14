@@ -156,33 +156,33 @@ The head actions appear in this order:
 - The column header is the name (13px/650, ink) and a data-font count (12px, muted) over a one-pixel `--command-line` rule.
 - The column header has no control in the desktop app or a browser.
 - Columns are never added, renamed, moved, or deleted.
-- The count counts cards. A step group of the Ready lane is not counted.
+- The count counts cards. A parallel group of the Ready lane is not counted.
 
-### Ready step groups
+### Ready parallel groups
 
-- Groups are drawn in Ready only. No other lane groups its cards.
-- A group holds the waiting cards of Ready that sit next to each other and share a feature step, or that have no feature step.
+- Ready is the queue's lane. Its waiting cards start from the top, one at a time, whatever their feature.
 - A waiting card is a Queued or Scheduled card with no session. Any other card of Ready is a plain board card where it is.
-- The grouping reads only the lane's card order and each task's feature and step. It reorders no card and stores no value.
-- A card that does not wait, between two waiting cards of one step, splits the step into two groups.
-- A group (`.taskReadyGroup`) is its caption and then its cards, with a 6px gap.
-- A **parallel step group** (`.taskReadyGroup.isParallel`) is a frame around a step's two or more waiting cards.
-- The frame is a one-pixel `--command-line-strong` border with the panel radius, 6px padding, and no fill.
-- Any other group has no frame. Its caption and cards are inset 6px on each side, plus one transparent pixel, so they line up with framed cards.
-- The caption (`.taskReadyCaption`) is the first row, with 2px/4px padding and its two parts at the ends.
-- The left part is the feature name (12px, muted), “ · ”, and “Step k of n” (12px/650, ink).
-- The right part of a step that holds one task is “One task” (11px, muted).
-- The right part of a step that holds more tasks, in any lane, is the parallel glyph, a 4px gap, and “Parallel · n” (11px/500, ink), with the count in the data font.
-- The count is the number of tasks of the step in any lane.
-- The parallel glyph is 12px: two vertical 1.5px strokes in the current color. In a caption it is hidden from assistive technology.
-- The waiting cards with no feature step come under the caption “Single tasks” (12px/650, ink) with “One at a time” (11px, muted).
-- A grouped card (`.taskReadyCard`) is the board card at 10px/12px padding with a 6px gap.
-- A grouped card shows the ID and chip, the title, the provider badge with “model · effort” at 11px, and its Starts or Waiting line.
-- A grouped card shows no Complete when line and no feature line. Its caption carries the feature and the step.
-- The card the monitor lists first keeps the chip **Queued · next**.
-- That card adds one muted 12px “Waiting: …” line while a gate holds it and the queue is on.
-- The drop line and the move toolbar work on a grouped card as on any card.
-- A waiting card of a feature changes step here. See [Changing a step](#changing-a-step).
+- A waiting card of Ready is the compact card (`.taskReadyCard`): the board card at 10px/12px padding with a 6px gap.
+- A compact card shows the ID and chip, the title, the provider badge with “model · effort” at 11px, its Starts or Waiting line, and its feature line.
+- A compact card shows no excerpt and no Complete when line.
+- A **parallel group** (`.taskReadyGroup`) is drawn in Ready only. It holds the waiting cards that share one group and sit together.
+- Only the owner makes a group. Two cards that sit next to each other draw no frame and run one after the other.
+- A group may hold cards of different features and cards with no feature.
+- The frame is a one-pixel `--command-line-strong` border with the panel radius, 6px padding, a 6px gap, and no fill.
+- The grouping reads only the lane's card order and each task's group. It reorders no card and stores no value.
+- A card that does not wait, between two waiting cards of one group, splits the frame into two.
+- The caption (`.taskReadyCaption`) is the first row, with 2px/4px padding and its two parts at the ends. It wraps when narrow.
+- The left part is the parallel glyph, a 4px gap, and “Parallel · n” (11px/500, ink), with the count in the data font.
+- The count is the number of members that still wait. A member that started is not counted.
+- When members started, the left part adds “ · T-4 and T-5 started” (11px/400, muted), with the IDs in the data font, by number.
+- The parallel glyph is 12px: two vertical 1.5px strokes in the current color. It is hidden from assistive technology.
+- The card the monitor names as next keeps the chip **Queued · next**: a waiting card of the group that runs, otherwise the top waiting card.
+- A waiting card adds one muted 12px “Waiting: …” line while a gate holds it and the queue is on.
+- That card reads the monitor's reasons. A waiting card of that card's group reads the same reasons with its own provider's capacity and status.
+- A card that waits on a running task reads “Waiting: T-n has not finished”.
+- A held member of a group whose siblings started ends its line “ · T-4 started”.
+- The drop line and the move toolbar work on a card of a group as on any card.
+- The owner changes a group in the desktop app or on a paired device. See [Parallel groups](#parallel-groups).
 
 ### + New task
 
@@ -210,9 +210,9 @@ The head actions appear in this order:
 - A browser and a paired device draw neither action.
 - Both actions have `aria-haspopup="dialog"`. Focus returns to the one that opened the modal.
 - The order in the row is the eyebrow, the select, **Edit feature**, **+ New feature**, the progress line, and the helper line.
-- While a feature is selected, the row shows its progress (`.taskFeatureProgress`), in any client: muted 12px “0 of 7 tasks done · step 1 of 4 running”.
+- While a feature is selected, the row shows its progress (`.taskFeatureProgress`), in any client: muted 12px “0 of 7 tasks done · 2 running”.
 - The counts of that line use the data font and ink.
-- The step clause names the lowest step with a task that has a session and is not done, and the feature's last step. With no such step, the line is the done count only.
+- The running clause counts the feature's tasks that have a session and no outcome. With no such task, the line is the done count only.
 - **All** and **No feature** show no progress line.
 - While a filter is on, the desktop app's row then shows the line “Moving cards is off while a feature filter is on.”
 
@@ -276,9 +276,7 @@ Each row below the title shows only when it is set, in this order:
 - When the planned model and the observed model differ, the single amber line “Planned x, observed y”. It is a text color, never a fill.
 - The muted **Starts** line of a scheduled task, until its session is linked. It reads “Starts today 22:00”, or “Starts Oct 9, 22:00” on another day, with the time in the data font.
 - One muted **Complete when** line.
-- The feature line “Feature · step k of n”, on a card that is not in a Ready group.
-- When other tasks share the step, the line opens with the muted 12px parallel glyph, named “Parallel”, and a 6px gap.
-- That line then ends “ · parallel with T-55, T-57”: the other tasks of the step, in any lane, by number, in the data font.
+- The feature line: the name of the task's feature, and nothing else.
 - The sessions line: **Open session**, a Text link that is not stretched, for the first session.
 - The first session is the one Pomegr started, or else the first assigned session.
 - When the task has more sessions, the muted “+N more” follows the link.
@@ -299,7 +297,7 @@ Each row below the title shows only when it is set, in this order:
 | --- | --- |
 | Not queued | Neutral and muted. |
 | Queued | Neutral, in ink on the raised fill, with no border. It differs from Not queued. |
-| **Queued · next** | The label of the one task the monitor lists first. |
+| **Queued · next** | The label of the one task the monitor names as next. |
 | Scheduled | Info. The card's Starts line carries its time. |
 | Needs review | Warning. |
 | Stalled | Warning. |
@@ -352,34 +350,40 @@ Each row below the title shows only when it is set, in this order:
 - The toolbar is always drawn on a coarse pointer.
 - Otherwise the toolbar stays in the accessibility tree.
 
-### Changing a step
+### Parallel groups
 
-- In the desktop app, a waiting card of a feature in Ready changes step by drag. A waiting card is a Queued or Scheduled card with no session.
-- The **Move to step…** select changes the step of every card of a feature that has not started, queued or not. A Not queued card in Backlog changes step too.
-- A step move is the board's step action. It joins the card to an existing step or gives it a new last step.
-- While the card is dragged over a step group of its own feature, the group (`.taskReadyGroup.isStepTarget`) takes the panel fill.
+- The owner puts waiting cards of Ready in a parallel group, and takes them out, in the desktop app or on a paired device.
+- **Run in parallel** (`.taskReadyLinkAction`) is one [Quiet](../../../DESIGN.md#buttons) action in the gap between two waiting cards, or groups, that sit next to each other.
+- It has the parallel glyph and the label, 11px ink on the panel fill, with a one-pixel `--command-line-strong` border and the panel radius. It is 20px tall.
+- It takes no room of its own (`.taskReadyLink`). It is invisible (opacity 0, never `display: none`, so it stays keyboard-reachable) until the lane is hovered or the action holds focus.
+- On a coarse pointer and at 760px and narrower it is always visible, 44px tall, in a row of its own.
+- Pressing it puts the cards of both sides in one group: the group one side already has, the upper side's first, or a new one.
+- It is not drawn beside a card that does not wait, or when both sides together would hold more than 16 tasks.
+- Its accessible name is “Run T-4 and T-5 in parallel”.
+- While a waiting card is dragged over a group it is not in, the group (`.taskReadyGroup.isJoinTarget`) takes the panel fill.
 - That group also takes a two-pixel border, drawn as an inset one-pixel ring, in `--command-line-strong`.
-- Dropping the card on the group gives it that step. No drop line is drawn over a step target.
-- While the card is over the gap after the last step group of its feature in Ready, the **new-step zone** (`.taskReadyNewStep`) is drawn in that gap.
-- The zone has a one-pixel dashed `--command-ink` border, the panel radius, and 10px/12px padding.
-- The zone's text is centered 12px ink and reads “New step 3 · after step 2”, in the step numbers drawn now.
-- Dropping the card on the zone gives it a new last step. The zone is drawn only while the card is over that gap.
-- A step cannot be inserted between two steps. No zone is drawn between two steps.
-- The card's own step is no target. The only card of the last step has no zone.
-- A step whose tasks are all done accepts nothing. A card never drops on a step of another feature.
-- A single task has no step target and no select.
-- Nothing moves while a feature filter is on. No card changes step then, by drag or by select.
-- The move toolbar of such a card gains the **Move to step…** `CommandSelect` (`.taskMoveStep`) after the four arrows.
-- The select is 32px high with 12px text. It is 44px high on phone and coarse pointers. It is its own tab stop.
-- Its options are one for each unfinished step except the card's own, then **New last step**.
-- A step option reads “Step 2 · parallel with T-59, T-60”: the tasks of that step, by number.
-- A step with a task that has a session reads “Step 1 · running”. That option is disabled.
-- The toolbar stays drawn while the select's list is open.
-- After a change of step, a status line reads “T-n moved to step k.”
+- Dropping the card on the group puts it in that group, after the group's last waiting card. No drop line is drawn over a join target.
+- A card that does not wait never joins a group. Over a group it draws the drop line of a card move.
+- Dragging a card of a group and dropping it outside the group's frame takes it out of the group. It lands where the drop line is.
+- Dropping it inside its own frame reorders it in the group.
+- The frame of a group is draggable from its caption and its padding. The whole group then moves as one block.
+- The caption's toolbar (`.taskReadyActions`) holds two [Icon](../../../DESIGN.md#buttons) arrows, “Move the group up” and “Move the group down”, and the Quiet **Ungroup**.
+- An arrow moves the group past the card, or the whole group, beside it. An arrow that cannot move is disabled.
+- **Ungroup** (`.taskReadyUngroup`) takes every waiting card out of the group. The cards keep their places.
+- The move toolbar of a waiting card of a group gains the Quiet **Take out of group** (`.taskMoveLeave`) after the four arrows.
+- **Take out of group** takes that card out. Its accessible name is “Take T-n out of its parallel group”.
+- A card taken out keeps its place. A card that stood between two cards that stay in the group lands right after the group.
+- **Ungroup** and **Take out of group** are 32px high with 12px underlined ink. They are 44px high on phone and coarse pointers.
+- The up and down arrows of a card step inside its group. At the group's edge they take the card out, past the card or group beside it.
+- The up and down arrows of a card outside a group step past a whole group.
+- A group left with one card is no group: its frame goes.
+- Nothing moves while a feature filter is on. No group changes then, and no **Run in parallel** is drawn.
+- After a change, a status line reads “T-4 and T-5 run in parallel.”, “T-4 taken out of its parallel group.”, or “T-4 and T-5 no longer run in parallel.”
+- A browser on the same computer draws the frames and captions and no action.
 
 ### Copy
 
-- A muted 12px footnote under the board reads “Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.”
+- A muted 12px footnote under the board reads “Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.”
 
 ## Queue
 
@@ -483,7 +487,7 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 - Beside the ID, an outcome chip shows only for what the session's own State cannot show.
 - Needs review and Stalled use the warning tone. Done is neutral.
 - Blocked by agent is served but has no chip.
-- Under them is a muted 12px “Feature · step n” line. Under a Feature group header, the line is just “Step n”.
+- Under them is a muted 12px feature-name line (“Tasks”). Under a Feature group header, there is no feature line.
 - For a task promoted from a GitHub issue, the number follows the ID as plain muted `--text-xs` data-font text (“#128”, no chip, border, icon, or link).
 - The ID stays the one prominent identifier.
 - Assistive technology reads “GitHub issue #128”.
@@ -498,7 +502,7 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 ### Session header meta
 
 - The meta row adds **Task**, with the ID as a Text link to the Task tab. On that tab, the ID is plain ink text.
-- It then adds **Feature**, with the name as a [feature link](#feature-link) and the data-font “step n of N”.
+- It then adds **Feature**, with the name as a [feature link](#feature-link), and nothing after it.
 - The row uses muted 12px text.
 - The row stays on phone.
 - The Overview tab has no task panel. The header meta and the Task tab carry the task.
@@ -548,7 +552,8 @@ The Feature aside holds these parts:
 
 - The feature name as an ink Text link. It is a [feature link](#feature-link) to the feature the board holds the task in.
 - The data-font “n of m done”.
-- **Same step as this session** and **Next** rows.
+- **Running with this session** rows: the other tasks of this session's parallel group that are in the queue. With no group, the block is not drawn.
+- A **Next** row: the first task of the queue that belongs to this feature, when there is one.
 - While the queue is blocked, one error-colored note.
 
 Each row of the aside shows the ID, a title, and its chip. The title is clamped to two lines and linked to that task's session or the board. The whole title is its tooltip.
@@ -560,8 +565,8 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - The cards in every state.
 - Column headers.
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
-- The Ready lane with its step groups, and a card outside Ready in a parallel step.
-- The Ready lane with a step target and with the new-step zone, and a card with its Move to step select.
+- The Ready lane with a parallel group, in its browser and desktop forms, and a card outside Ready with its feature line.
+- The Ready lane with a join target and with a held member, and a card with its Take out of group action.
 - The feature filter and the capacity strip, with the strip's Board form.
 - Whole boards in their browser and desktop forms.
 - Under **Queue controls**: the queue switch (off, on, busy), the banner (blocked, paused, browser), and the Queue settings panel (desktop app, browser).

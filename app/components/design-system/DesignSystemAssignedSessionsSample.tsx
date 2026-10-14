@@ -25,7 +25,7 @@ const WORKING_SHARED: Task = { ...T6_WORKING, assigned: [RESUME, REVIEWER] };
 const BACKLOG_ASSIGNED: Task = { ...T8_IDLE, assigned: [REVIEWER] };
 
 const reference = (id: string, state: SessionTaskReference["state"], feature: string | null = "Upload reliability"): SessionTaskReference => ({
-  id, repositoryId: SAMPLE_REPOSITORY_ID, state, featureId: feature === null ? null : SAMPLE_FEATURE_ID, feature, step: feature === null ? null : 2, issue: null,
+  id, repositoryId: SAMPLE_REPOSITORY_ID, state, featureId: feature === null ? null : SAMPLE_FEATURE_ID, feature, issue: null,
 });
 
 function ModalSample({ task, chip, subtitle }: { task: Task; chip: { label: string; tone: string }; subtitle: string }) {

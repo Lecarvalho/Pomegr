@@ -55,7 +55,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - The link narrows the list to that group.
 - The narrowed list shows a **Repository:**, **Provider:**, or **Feature:** filter chip and uses ordinary paging.
 - A row under a repository or provider header omits that field from its metadata line.
-- Under a **Feature** header, the Task cell of a row prints only the step.
+- Under a **Feature** header, the Task cell of a row prints no feature line.
 
 | Part | Contract |
 | --- | --- |

@@ -294,7 +294,7 @@ test("the Sessions list carries a session's assigned tasks beside the one it was
   assign(store, "T-1", OTHER);
   const runtime = { serveSessionDirectory: () => ({ revision: 1, sessions: [{ id: HAND }, { id: OTHER }, { id: STARTED }] }) };
   const page = serveSessionDirectoryWithTasks({ runtime, taskStore: store, allowed: true, query: {} });
-  const reference = (id, state = null) => ({ id, repositoryId: REPOSITORY, state, featureId: null, feature: null, step: null, issue: null });
+  const reference = (id, state = null) => ({ id, repositoryId: REPOSITORY, state, featureId: null, feature: null, issue: null });
   assert.deepEqual(page.sessions, [
     { id: HAND, task: reference("T-1"), assignedTasks: [reference("T-2")] },
     { id: OTHER, task: null, assignedTasks: [reference("T-1")] },

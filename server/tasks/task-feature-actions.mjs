@@ -4,8 +4,9 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { deleteFeatureDetails, findFeature } from "./task-feature-details.mjs";
 import { normalizeFeatureDeletePayload, rowStarted } from "./task-record.mjs";
 
-// The feature goes and its tasks stay: each loses its feature and its step and keeps every other field. A task that has
-// started and is not done refuses the delete, because its session holds the feature's title and its step holds its place.
+// The feature goes and its tasks stay: each loses its feature and keeps every other field, its place in Ready and its
+// parallel group included. A task that has started and is not done refuses the delete, because its session holds the
+// feature's title.
 export function deleteFeature({ database, repositoryId, now }, payload) {
   const input = normalizeFeatureDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };

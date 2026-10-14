@@ -25,13 +25,13 @@ export function conversationOf(number: number, messages: Json[], overrides: Part
 /** The eight board operations, in the order the panel draws them. */
 export const EIGHT_OPERATIONS: Json[] = [
   { op: "create_feature", name: "Upload reliability" },
-  { op: "create_task", text: "Add retry with backoff to the upload client\nCover the 5xx and timeout cases.", feature: "Upload reliability", step: 1, run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: null }, queue: true },
+  { op: "create_task", text: "Add retry with backoff to the upload client\nCover the 5xx and timeout cases.", feature: "Upload reliability", run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: null }, queue: true },
   { op: "update_task", id: "T-12", text: "Show the retry count in the upload log", run: { effort: "high" }, feature: "Upload reliability" },
   { op: "delete_task", id: "T-14" },
   { op: "move_task", id: "T-15", column: "Review", position: 0 },
   { op: "queue_task", id: "T-16" },
   { op: "unqueue_task", id: "T-17" },
-  { op: "set_step", id: "T-18", step: 2 },
+  { op: "group_tasks", ids: ["T-18", "T-19", "T-20"] },
 ];
 
 export const proposalOf = (operations: Json[] = EIGHT_OPERATIONS, state = "pending", extra: Json = {}): Json => ({ id: PROPOSAL_ID, summary: "Cut the upload work into tasks.", operations, state, ...extra });
@@ -155,7 +155,7 @@ const COLUMNS = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name,
 
 function task(id: string, text: string): Task {
   return {
-    id, text, columnId: "col-1", position: 0, featureId: null, step: null, run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
+    id, text, columnId: "col-1", position: 0, featureId: null, group: null, run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z",
   };
 }

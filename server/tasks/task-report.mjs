@@ -5,6 +5,7 @@ import { sessionAssignedTasks } from "./task-assignments.mjs";
 import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
+import { writeTaskGroup } from "./task-groups.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
 import { IN_FLIGHT_STATES, isTaskId, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
@@ -161,6 +162,8 @@ export function resolveRequeue({ database, repositoryId, now }, payload) {
     report_at = NULL, report_results = NULL, report_block_reason = NULL, updated_at = ? WHERE repository_id = ? AND number = ?`)
     .run(Date.now(), repositoryId, target.number);
   deleteTaskAttention(database, repositoryId, target.number);
+  // A requeued task is an ordinary card again: it left its parallel group when it started over.
+  writeTaskGroup(database, repositoryId, target.number, null);
   releaseQueue(database, repositoryId);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(target.number));
   return { ok: true };

@@ -2,7 +2,7 @@
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { DEFAULT_TASK_GATE_THRESHOLD, evaluateGates, normalizeGateThreshold, queueGates } from "./task-gates.mjs";
-import { nextQueueStart, previousStepBlocker, queueWhenTurnedOn, queueWindowHold, taskIsDue } from "./task-queue.mjs";
+import { earlierTaskBlocker, nextQueueStart, queueWhenTurnedOn, queueWindowHold, taskIsDue } from "./task-queue.mjs";
 import { isRepositoryId, isTaskId, normalizeQueueSchedule, projectBoard, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 // The reasons the desktop may report.
@@ -54,19 +54,23 @@ function gateFacts(resolveGateFacts, repositoryId) {
 
 const startProvider = (task) => task.run.provider ?? "claude";
 
-export function startGates({ database, repositoryId, board, taskId, resolveGateFacts, at, manual = false }) {
+export function startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at, manual = false }) {
   const task = board.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return { ok: false, reasons: [] };
-  const gates = evaluateGates({ provider: startProvider(task), blockedBy: manual ? null : previousStepBlocker(taskId, board.tasks, board.features) },
+  const gates = evaluateGates({ provider: startProvider(task), blockedBy: manual ? null : earlierTaskBlocker(taskId, queueRecords(rows, at)) },
     gateFacts(resolveGateFacts, repositoryId), { threshold: readGateThreshold(database, repositoryId) });
   const early = task.state === "scheduled" && task.scheduledAt !== null && !taskIsDue(Date.parse(task.scheduledAt), at);
   return early ? { ok: false, reasons: gates.reasons, early: true } : gates;
 }
 
-export function fillQueueGates({ database, board, resolveGateFacts, at }) {
+export function fillQueueGates({ database, board, rows, resolveGateFacts, at }) {
   if (board?.readiness !== "ready" || typeof resolveGateFacts !== "function") return board;
-  const task = board.tasks.find((candidate) => candidate.id === board.queue.order[0]);
-  const next = task ? { taskId: task.id, provider: startProvider(task), blockedBy: previousStepBlocker(task.id, board.tasks, board.features) } : null;
+  // The next task is the one the queue would start first: a waiting member of the group that runs, before the top of Ready.
+  const records = queueRecords(rows, at);
+  const decision = nextQueueStart({ status: "running", tasks: records });
+  const nextId = decision?.starts?.[0] ?? decision?.pause ?? board.queue.order[0];
+  const task = board.tasks.find((candidate) => candidate.id === nextId);
+  const next = task ? { taskId: task.id, provider: startProvider(task), blockedBy: earlierTaskBlocker(task.id, records) } : null;
   const gates = queueGates(next, gateFacts(resolveGateFacts, board.repositoryId), { threshold: readGateThreshold(database, board.repositoryId) });
   const hold = gates.next ? queueWindowHold(readQueueSchedule(database, board.repositoryId), at) : null;
   if (hold) gates.next = { ...gates.next, reasons: [...gates.next.reasons, hold] };
@@ -155,8 +159,7 @@ function queueRecord(row, at) {
   const linked = (row.session_id ?? null) !== null;
   return {
     id: taskIdFromNumber(Number(row.number)),
-    featureId: row.feature_id ?? null,
-    step: row.step ?? null,
+    group: row.group ?? null,
     state: row.state,
     queuePosition: row.position ?? null,
     due: row.state === "scheduled" && taskIsDue(row.scheduled_at ?? null, at),
@@ -164,6 +167,8 @@ function queueRecord(row, at) {
     unlinked: !linked && standing === "expired",
   };
 }
+
+const queueRecords = (rows, at) => (rows?.tasks ?? []).map((row) => queueRecord(row, at));
 
 // Which tasks the running queues start now.
 export function nextQueueStarts({ database, transaction, loadRows, resolveGateFacts, now }) {
@@ -177,11 +182,11 @@ export function nextQueueStarts({ database, transaction, loadRows, resolveGateFa
     const board = projectBoard(repositoryId, rows, { at });
     if (!board) continue;
     const held = queueWindowHold(readQueueSchedule(database, repositoryId), at) !== null;
-    const decision = nextQueueStart({ status: board.queue.status, tasks: rows.tasks.map((row) => queueRecord(row, at)), features: board.features });
+    const decision = nextQueueStart({ status: board.queue.status, tasks: queueRecords(rows, at) });
     if (decision?.starts) {
       for (const taskId of held ? [] : decision.starts) {
         if (starts.length >= TASK_QUEUE_START_LIMIT) break;
-        if (startGates({ database, repositoryId, board, taskId, resolveGateFacts, at }).ok) starts.push({ repositoryId, taskId });
+        if (startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at }).ok) starts.push({ repositoryId, taskId });
       }
     }
     else if (decision?.pause) pauses.push({ repositoryId, taskId: decision.pause });

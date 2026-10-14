@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +14,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -161,13 +161,13 @@ test("feature_create and feature placement travel through the route with the fix
   const [feature] = created.json.board.features;
   assert.deepEqual([feature.name, feature.done], ["Search", false]);
   const attached = await action("create", REPOSITORY_ID, { text: "in feature", featureId: feature.id }, { port });
-  assert.deepEqual(attached.json.board.tasks.map((task) => [task.featureId, task.step]), [[feature.id, 1]]);
+  assert.deepEqual(attached.json.board.tasks.map((task) => [task.featureId, task.group]), [[feature.id, null]]);
   assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port }), 409, "conflict");
   assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "" }, { port }), 400, "invalid");
   assertFixedError(await action("create", REPOSITORY_ID, { text: "x", featureId: `feat-${"0".repeat(12)}` }, { port }), 404, "not_found");
 });
 
-test("queue_add, queue_reorder, and queue_remove travel through the route with the fixed statuses", async (context) => {
+test("queue_add, queue_group, queue_ungroup, and queue_remove travel through the route with the fixed statuses", async (context) => {
   const store = await realStore(context);
   const { port, touched } = await startRoute(context, { taskStore: store });
   const feature = (await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port })).json.board.features[0];
@@ -177,25 +177,39 @@ test("queue_add, queue_reorder, and queue_remove travel through the route with t
   const added = await action("queue_add", REPOSITORY_ID, { id: "T-3" }, { port });
   assert.equal(added.status, 200);
   assert.deepEqual(added.json.board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
-  // T-2 waits for T-1, which is not queued, so the single task is ahead of it.
+  // Ready order is the order of queuing, whatever the feature.
   assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-2" }, { port })).json.board.queue.order, ["T-3", "T-2"]);
-  assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port })).json.board.queue.order, ["T-1", "T-2", "T-3"]);
-  const reordered = await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 2 }, { port });
-  assert.equal(reordered.status, 200);
-  assert.deepEqual(reordered.json.board.tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 1], ["T-3", null]]);
-  const separated = await action("queue_reorder", REPOSITORY_ID, { id: "T-2", step: 2 }, { port });
-  assert.deepEqual(separated.json.board.tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 2], ["T-3", null]]);
+  assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port })).json.board.queue.order, ["T-3", "T-2", "T-1"]);
+  const grouped = await action("queue_group", REPOSITORY_ID, { ids: ["T-3", "T-1"] }, { port });
+  assert.equal(grouped.status, 200);
+  const groupOf = (response) => response.json.board.tasks.map((task) => [task.id, task.group === null ? null : "group"]);
+  assert.deepEqual(groupOf(grouped), [["T-3", "group"], ["T-1", "group"], ["T-2", null]]);
+  assert.deepEqual(grouped.json.board.queue.order, ["T-3", "T-1", "T-2"]);
+  const ungrouped = await action("queue_ungroup", REPOSITORY_ID, { ids: ["T-1"] }, { port });
+  assert.equal(ungrouped.status, 200);
+  assert.deepEqual(groupOf(ungrouped), [["T-3", null], ["T-1", null], ["T-2", null]]);
   const removed = await action("queue_remove", REPOSITORY_ID, { id: "T-2" }, { port });
   assert.equal(removed.status, 200);
-  assert.deepEqual(removed.json.board.queue.order, ["T-1", "T-3"]);
+  assert.deepEqual(removed.json.board.queue.order, ["T-3", "T-1"]);
   assert.equal(JSON.stringify(removed.json).includes("queuePosition"), false);
   assertFixedError(await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port }), 409, "conflict");
   assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-2" }, { port }), 409, "conflict");
   assertFixedError(await action("queue_add", REPOSITORY_ID, { id: "T-9" }, { port }), 404, "not_found");
-  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 0 }, { port }), 400, "invalid");
-  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-3", step: 1 }, { port }), 409, "conflict");
+  assertFixedError(await action("queue_group", REPOSITORY_ID, { ids: ["T-1"] }, { port }), 400, "invalid");
+  assertFixedError(await action("queue_group", REPOSITORY_ID, { ids: ["T-1", "T-2"] }, { port }), 409, "conflict");
+  assertFixedError(await action("queue_group", REPOSITORY_ID, { ids: ["T-1", "T-9"] }, { port }), 404, "not_found");
+  assertFixedError(await action("queue_ungroup", REPOSITORY_ID, { ids: [] }, { port }), 400, "invalid");
   assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-1", text: SECRET_TEXT }, { port }), 400, "invalid");
   assert.deepEqual(touched, ["resolveTaskGateFacts"]);
+});
+
+test("queue_reorder is no action: the route refuses it like any unknown name", async (context) => {
+  const store = await realStore(context);
+  const { store: spy, calls } = recordingStore(store);
+  const { port } = await startRoute(context, { taskStore: spy });
+  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 2 }, { port }), 404, "invalid");
+  assert.deepEqual(calls, []);
+  assert.equal(TASK_ACTIONS.includes("queue_reorder"), false);
 });
 
 test("every listed action has a handler, so none answers the fixed unsupported result", async (context) => {
@@ -406,4 +420,14 @@ test("GET /api/tasks behaves exactly as before: desktop_only for denied clients,
   const post = await send(port, { method: "POST", path: query, headers: { ...withToken, ...JSON_BODY }, body: "{}" });
   assert.equal(post.status, 405);
   assert.equal(post.headers.allow, "GET");
+});
+
+test("the paired-device route's mirrored list takes the group actions, refuses queue_reorder, and lists only fixed actions", async () => {
+  const source = await readFile(new URL("../../../app/api/tasks/action/route.ts", import.meta.url), "utf8");
+  const listed = [...source.match(/const ACTIONS = new Set\(\[([^\]]*)\]\)/u)[1].matchAll(/"([a-z_]+)"/gu)].map((match) => match[1]);
+  assert.ok(listed.includes("queue_group") && listed.includes("queue_ungroup"));
+  assert.equal(listed.includes("queue_reorder"), false);
+  assert.deepEqual(listed.filter((name) => !TASK_ACTIONS.includes(name)), []);
+  // The paired device does not edit or delete features; every other fixed action is there.
+  assert.deepEqual(TASK_ACTIONS.filter((name) => !listed.includes(name)), ["feature_update", "feature_delete"]);
 });

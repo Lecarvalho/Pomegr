@@ -42,7 +42,7 @@ const taskFeature = vi.fn();
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -53,12 +53,12 @@ function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
   return {
     version: 1, readiness: "ready", repositoryId, columns,
     features: [{ id: FEATURE, name: "Task board v1", done: false }, { id: OTHER_FEATURE, name: "Docs", done: false }],
-    tasks: [task(14, { featureId: FEATURE, step: 1, state: "done" }), task(15, { featureId: FEATURE, step: 2 }), task(16, { featureId: OTHER_FEATURE, step: 1 }), task(17)],
+    tasks: [task(14, { featureId: FEATURE, state: "done" }), task(15, { featureId: FEATURE }), task(16, { featureId: OTHER_FEATURE }), task(17)],
     queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, ...overrides,
   };
 }
 
-const reference: SessionTaskReference = { id: "T-15", repositoryId, state: null, featureId: FEATURE, feature: "Task board v1", step: 2 };
+const reference: SessionTaskReference = { id: "T-15", repositoryId, state: null, featureId: FEATURE, feature: "Task board v1" };
 
 function setBoard(next: TaskBoard) {
   useTasks.mockReturnValue({ board: next, refresh: vi.fn(async () => {}) });
@@ -100,7 +100,7 @@ describe("a session's feature link", () => {
   });
 
   it("follows the task to the feature the board holds it in now", () => {
-    setBoard(board({ tasks: [task(15, { featureId: OTHER_FEATURE, step: 1 })] }));
+    setBoard(board({ tasks: [task(15, { featureId: OTHER_FEATURE })] }));
     render(<SessionTaskTab task={reference} sessionId="claude:this-session" />);
     expect(within(screen.getByRole("complementary", { name: "Feature" })).getByRole("link", { name: "Docs" })).toHaveAttribute("href", `${boardHref}&feature=${OTHER_FEATURE}`);
   });
@@ -217,7 +217,7 @@ describe("the Tasks page opened by a feature link", () => {
   it("closes the modal, and returns the filter to All, when the feature is deleted while it is open", () => {
     const view = render(<TasksPage />);
     expect(screen.getByRole("dialog", { name: "Feature" })).toBeInTheDocument();
-    setBoard(board({ features: [{ id: OTHER_FEATURE, name: "Docs", done: false }], tasks: [task(16, { featureId: OTHER_FEATURE, step: 1 }), task(17)] }));
+    setBoard(board({ features: [{ id: OTHER_FEATURE, name: "Docs", done: false }], tasks: [task(16, { featureId: OTHER_FEATURE }), task(17)] }));
     view.rerender(<TasksPage />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(filter()).toHaveTextContent("All (2)");

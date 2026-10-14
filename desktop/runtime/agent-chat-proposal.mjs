@@ -4,7 +4,7 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session", "set_queue",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "start_session", "set_queue",
 ]);
 // The one operation that is not a board change: it asks the desktop to start a session for a task, and stands alone in its proposal.
 export const START_OPERATION = "start_session";
@@ -30,7 +30,7 @@ const CHECKS = Object.freeze(["pr_open", "tree_clean", "commit_on_branch", "pr_m
 const TEXT_LIMIT = 4000;
 const OWN_LIMIT = 500;
 const FEATURE_LIMIT = 80;
-const STEP_LIMIT = 500;
+const GROUP_LIMIT = 16;
 const POSITION_LIMIT = 100_000;
 const BLOCK_LIMIT_BYTES = 256 * 1024;
 const ACTION_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -106,8 +106,11 @@ function taskParts(source) {
   return { ...(Object.keys(run).length > 0 ? { run } : {}), ...(Object.keys(completeWhen).length > 0 ? { completeWhen } : {}) };
 }
 
-function step(value) {
-  return Number.isInteger(value) && value >= 1 && value <= STEP_LIMIT ? value : null;
+// The distinct task IDs of a group operation, in the order written, or null when the list is outside `min` to `GROUP_LIMIT`.
+function taskIds(value, min) {
+  if (!Array.isArray(value) || value.length < min || value.length > GROUP_LIMIT) return null;
+  const ids = value.map(taskId);
+  return ids.every(Boolean) && new Set(ids).size === ids.length ? ids : null;
 }
 
 /** One operation as the agent wrote it, normalized to the stored shape; null when it is outside the contract. */
@@ -119,7 +122,7 @@ export function normalizeOperation(source) {
     return only(source, ["op", "name"]) && name ? { op, name } : null;
   }
   if (op === "create_task") {
-    if (!only(source, ["op", "text", "feature", "step", "queue", ...TASK_FIELDS])) return null;
+    if (!only(source, ["op", "text", "feature", "queue", ...TASK_FIELDS])) return null;
     const text = taskText(source.text);
     const parts = taskParts(source);
     if (!text || !parts) return null;
@@ -129,16 +132,15 @@ export function normalizeOperation(source) {
       if (!feature) return null;
       operation.feature = feature;
     }
-    if (source.step !== undefined && source.step !== null) {
-      const at = step(source.step);
-      if (at === null || operation.feature === undefined) return null;
-      operation.step = at;
-    }
     if (source.queue !== undefined && typeof source.queue !== "boolean") return null;
     if (source.queue === true) operation.queue = true;
     return operation;
   }
   if (op === QUEUE_OPERATION) return only(source, ["op", "on"]) && typeof source.on === "boolean" ? { op, on: source.on } : null;
+  if (op === "group_tasks" || op === "ungroup_tasks") {
+    const ids = taskIds(source.ids, op === "group_tasks" ? 2 : 1);
+    return only(source, ["op", "ids"]) && ids ? { op, ids } : null;
+  }
   const id = taskId(source.id);
   if (!id) return null;
   if (op === "update_task") {
@@ -164,10 +166,6 @@ export function normalizeOperation(source) {
     if (!column) return null;
     if (source.position === undefined || source.position === null) return { op, id, column };
     return Number.isInteger(source.position) && source.position >= 0 && source.position <= POSITION_LIMIT ? { op, id, column, position: source.position } : null;
-  }
-  if (op === "set_step") {
-    const at = step(source.step);
-    return only(source, ["op", "id", "step"]) && at !== null ? { op, id, step: at } : null;
   }
   // delete_task, queue_task, unqueue_task, start_session
   return only(source, ["op", "id"]) ? { op, id } : null;
@@ -305,7 +303,6 @@ export async function applyOperations(operations, { post, board }) {
         const feature = openFeature(operation.feature);
         if (!feature) { results.push(failure("not_found")); continue; }
         payload.featureId = feature.id;
-        if (operation.step !== undefined) payload.step = operation.step;
       }
       const created = await act("create", payload);
       if (created.answer.ok !== true || !created.taskId) { results.push(created.answer.ok === true ? failure("unavailable") : created.answer); continue; }
@@ -314,6 +311,11 @@ export async function applyOperations(operations, { post, board }) {
         if (queued.answer.ok !== true) { results.push({ ...queued.answer, taskId: created.taskId }); continue; }
       }
       results.push({ ok: true, taskId: created.taskId });
+      continue;
+    }
+    if (op === "group_tasks" || op === "ungroup_tasks") {
+      if (!operation.ids.every((id) => facts.tasks.has(id))) { results.push(failure("not_found")); continue; }
+      results.push((await act(op === "group_tasks" ? "queue_group" : "queue_ungroup", { ids: operation.ids })).answer);
       continue;
     }
     const task = facts.tasks.get(operation.id);
@@ -339,7 +341,6 @@ export async function applyOperations(operations, { post, board }) {
       results.push((await act("move", { id: operation.id, columnId: column.id, position: operation.position ?? POSITION_LIMIT })).answer);
       continue;
     }
-    if (op === "set_step") { results.push((await act("queue_reorder", { id: operation.id, step: operation.step })).answer); continue; }
     const action = op === "delete_task" ? "delete" : op === "queue_task" ? "queue_add" : "queue_remove";
     results.push((await act(action, { id: operation.id })).answer);
   }

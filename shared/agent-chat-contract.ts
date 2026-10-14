@@ -37,19 +37,20 @@ export const AGENT_CHAT_COLUMNS: readonly AgentChatColumn[] = ["Backlog", "Ready
 // and it is the only operation of its proposal too.
 export type AgentChatBoardOperation =
   | { op: "create_feature"; name: string }
-  | { op: "create_task"; text: string; feature?: string; step?: number; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean }
+  | { op: "create_task"; text: string; feature?: string; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean }
   | { op: "update_task"; id: string; text?: string; feature?: string | null; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen> }
   | { op: "delete_task"; id: string }
   | { op: "move_task"; id: string; column: AgentChatColumn; position?: number }
   | { op: "queue_task"; id: string }
   | { op: "unqueue_task"; id: string }
-  | { op: "set_step"; id: string; step: number }
+  | { op: "group_tasks"; ids: string[] }
+  | { op: "ungroup_tasks"; ids: string[] }
   | { op: "start_session"; id: string }
   | { op: "set_queue"; on: boolean };
 
 export type AgentChatBoardOperationName = AgentChatBoardOperation["op"];
 export const AGENT_CHAT_BOARD_OPERATIONS: readonly AgentChatBoardOperationName[] = [
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "set_step", "start_session", "set_queue",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "start_session", "set_queue",
 ];
 
 // What an approved queue change left: on, on and held by a stalled or blocked task, or off.

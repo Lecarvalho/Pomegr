@@ -434,7 +434,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("delete_feature", {
     title: "Delete a Pomegr feature",
-    description: "Delete one feature of the current repository's Pomegr board. It works only for a feature that has no task, so no task loses its feature or its step. It cannot be undone. The repository and session are bound by the host.",
+    description: "Delete one feature of the current repository's Pomegr board. It works only for a feature that has no task, so no task loses its feature. It cannot be undone. The repository and session are bound by the host.",
     inputSchema: z.object({ feature: featureReference(false), ...hookFields(hookBound) }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   }, async (input, extra) => feature("delete_feature", FEATURE_DELETE_PATH, input, extra, { feature: input.feature }, () => "Feature deleted."));

@@ -24,8 +24,7 @@ export function parseSessionTaskReference(value: unknown): SessionTaskReference 
   if (typeof task.id !== "string" || !TASK_ID_PATTERN.test(task.id) || typeof task.repositoryId !== "string" || !REPOSITORY_ID.test(task.repositoryId)) return null;
   if (!(task.state === null || STATES.has(task.state as string))) return null;
   if (!(task.featureId === null || boundedText(task.featureId, 200)) || !(task.feature === null || boundedText(task.feature, 80))) return null;
-  if (!(task.step === null || (typeof task.step === "number" && Number.isInteger(task.step) && task.step >= 1 && task.step <= 10_000))) return null;
-  return { id: task.id, repositoryId: task.repositoryId, state: task.state as SessionTaskReference["state"], featureId: task.featureId as string | null, feature: task.feature as string | null, step: task.step as number | null };
+  return { id: task.id, repositoryId: task.repositoryId, state: task.state as SessionTaskReference["state"], featureId: task.featureId as string | null, feature: task.feature as string | null };
 }
 
 export function parseSessionTaskAnswer(value: unknown, sessionId: string): SessionTaskResult | null {
@@ -43,7 +42,7 @@ export function parseSessionTaskAnswer(value: unknown, sessionId: string): Sessi
 function sameResult(left: SessionTaskResult, right: SessionTaskResult) {
   if (left.status !== right.status) return false;
   const a = left.task, b = right.task;
-  return a === b || (a !== null && b !== null && a.id === b.id && a.repositoryId === b.repositoryId && a.state === b.state && a.featureId === b.featureId && a.feature === b.feature && a.step === b.step);
+  return a === b || (a !== null && b !== null && a.id === b.id && a.repositoryId === b.repositoryId && a.state === b.state && a.featureId === b.featureId && a.feature === b.feature);
 }
 
 /** Reads the session's task reference and rereads it while the page is visible. */

@@ -66,7 +66,7 @@ function insertTask(database, repositoryId, columnId, overrides = {}) {
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
 const COLUMN_KEYS = ["id", "name", "position", "role"];
 const FEATURE_KEYS = ["done", "id", "name"];
-const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
 
 function keysOf(value) {
   return Object.keys(value).toSorted();
@@ -154,7 +154,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
   assert.deepEqual(board.features, [{ id: FEATURE, name: "Billing rewrite", done: false }]);
   assert.deepEqual(board.tasks.map((task) => task.id), ["T-1", "T-3", "T-2"]);
   assert.deepEqual(board.tasks[0], {
-    id: "T-1", text: "Add the invoice export\nwith totals", columnId: backlog.id, position: 0, featureId: FEATURE, step: 1,
+    id: "T-1", text: "Add the invoice export\nwith totals", columnId: backlog.id, position: 0, featureId: FEATURE, group: null,
     run: { provider: "codex", model: "gpt-5.2-codex", effort: "xhigh", remoteControl: false },
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "the export is documented" },
     state: "needs_review",

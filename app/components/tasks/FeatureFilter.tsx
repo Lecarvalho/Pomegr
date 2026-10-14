@@ -30,7 +30,7 @@ export function FeatureFilter({ board, filter, onFilter, edits, entry }: {
     {entry && <NewFeatureAction board={board} entry={entry} />}
     {progress && <span className="taskFeatureProgress">
       {num(progress.done)} of {num(progress.total)} {progress.total === 1 ? "task" : "tasks"} done
-      {progress.running && <> · step {num(progress.running.step)} of {num(progress.running.of)} running</>}
+      {progress.running > 0 && <> · {num(progress.running)} running</>}
     </span>}
     {edits && filter !== ALL_FEATURES && <span className="newTaskHelper">Moving cards is off while a feature filter is on.</span>}
   </div>;

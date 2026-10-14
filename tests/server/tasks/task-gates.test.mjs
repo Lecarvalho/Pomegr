@@ -90,9 +90,9 @@ test("a dirty or unknown working tree holds", () => {
   for (const treeClean of [null, undefined, "clean", 1, 0, {}]) assert.deepEqual(reasons(CLAUDE, { ...PASSING, treeClean }, {}), ["tree_unknown"]);
 });
 
-test("an earlier step that is not done holds, whatever names it", () => {
-  assert.deepEqual(reasons({ provider: "claude", blockedBy: "T-12" }, PASSING, {}), ["previous_step"]);
-  assert.deepEqual(reasons({ provider: "claude", blockedBy: "anything" }, PASSING, {}), ["previous_step"]);
+test("an earlier task in flight holds, whatever names it", () => {
+  assert.deepEqual(reasons({ provider: "claude", blockedBy: "T-12" }, PASSING, {}), ["earlier_task"]);
+  assert.deepEqual(reasons({ provider: "claude", blockedBy: "anything" }, PASSING, {}), ["earlier_task"]);
 });
 
 test("no facts and no task hold on everything, in the fixed order", () => {
@@ -104,20 +104,20 @@ test("no facts and no task hold on everything, in the fixed order", () => {
   }
   const everything = { usage: { claude: { fiveHourPercent: 99, sevenDayPercent: 1 } }, providerStatus: { claude: "incident" }, treeClean: false };
   const held = reasons({ provider: "claude", blockedBy: "T-1" }, everything, {});
-  assert.deepEqual(held, ["previous_step", "usage_over", "provider_incident", "tree_dirty"]);
+  assert.deepEqual(held, ["earlier_task", "usage_over", "provider_incident", "tree_dirty"]);
   assert.ok(held.every((reason) => TASK_GATE_REASONS.includes(reason)));
 });
 
 test("the queue block names the next task, its provider, its blocker, and why it waits", () => {
   assert.deepEqual(queueGates({ taskId: "T-15", provider: "claude", blockedBy: "T-12" }, PASSING, { threshold: 85 }), {
     ...gateReadings(PASSING, { threshold: 85 }),
-    next: { taskId: "T-15", provider: "claude", blockedBy: "T-12", reasons: ["previous_step"] },
+    next: { taskId: "T-15", provider: "claude", blockedBy: "T-12", reasons: ["earlier_task"] },
   });
   assert.deepEqual(queueGates({ taskId: "T-15", provider: "codex", blockedBy: null }, PASSING, {}).next,
     { taskId: "T-15", provider: "codex", blockedBy: null, reasons: [] });
   // A blocker that is not a task ID is not served, and still holds.
   assert.deepEqual(queueGates({ taskId: "T-15", provider: "codex", blockedBy: "C:\\repo" }, PASSING, {}).next,
-    { taskId: "T-15", provider: "codex", blockedBy: null, reasons: ["previous_step"] });
+    { taskId: "T-15", provider: "codex", blockedBy: null, reasons: ["earlier_task"] });
 });
 
 test("no queued task, or a malformed one, is no next task", () => {

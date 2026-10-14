@@ -36,7 +36,7 @@ const board: TaskBoard = { ...createEmptyTaskBoard(repositoryId, "ready"), colum
 
 function task(overrides: Partial<Task> = {}): Task {
   return {
-    id: "T-12", text: "Make the queue wait for the worktree.", columnId: "col-1", position: 1, featureId: null, step: null,
+    id: "T-12", text: "Make the queue wait for the worktree.", columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
     session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };

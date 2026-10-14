@@ -34,7 +34,7 @@ export function TaskFieldsSection() {
   const [unset, setUnset] = useState<TaskRun>(EMPTY_RUN);
   const [fresh, setFresh] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [startAt, setStartAt] = useState("02:00");
-  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "", step: 2 });
+  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "" });
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
   const modalTitleId = useId();
   const [modalText, setModalText] = useState("");
@@ -47,7 +47,7 @@ export function TaskFieldsSection() {
   const [codexRun, setCodexRun] = useState<TaskRun>({ ...DEFAULT_RUN, provider: "codex" });
   const [modalCompleteWhen, setModalCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean", "user_validated"], ownText: "The store rejects a malformed record." });
-  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider. Remote Control is one checkbox under both, for a Claude Code session only. Effort is a four-way segmented control. Run on and Effort are required: a new task opens with both chosen, and neither can be cleared. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
+  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider. Remote Control is one checkbox under both, for a Claude Code session only. Effort is a four-way segmented control. Run on and Effort are required: a new task opens with both chosen, and neither can be cleared. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature is one select over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
         <RunFields run={run} models={MODELS} onChange={setRun} />
@@ -67,10 +67,10 @@ export function TaskFieldsSection() {
       <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list. Validated with the user is judged by the agent, so it shows Agent-reported.">
         <CompleteWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
-      <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. A task that joins a feature takes a new last step; Move to step on its Board card changes it. The folded In this feature list counts the feature's tasks and opens on demand.">
+      <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. A feature gives a task context only, not an order. The folded In this feature list counts the feature's tasks and opens on demand.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} onChange={setPlaced} />
       </Sample>
-      <Sample label="Feature, in the Task modal" note="Given the open task, its siblings lead with their step number and the task itself is left out of the list.">
+      <Sample label="Feature, in the Task modal" note="Given the open task, its siblings are listed in board order and the task itself is left out of the list.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} selfId="T-3" onChange={setPlaced} />
       </Sample>
       <Sample label="New feature" note="New feature… reveals a one-line name in place; Enter or leaving the field commits it.">

@@ -32,7 +32,7 @@ const DEFAULT_COMPLETE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -40,18 +40,18 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
 }
 
 /**
- * Task board v1 (unfinished): step 1 T-1 (done), step 2 T-2 and T-3, step 3 T-4 (queued), step 4 T-7 to T-10.
+ * Task board v1 (unfinished): T-1 (done), T-2, T-3, T-4 (queued), T-7 to T-10.
  * Finished work (done): T-5. Docs (unfinished, empty). T-6 has no feature.
  */
 const tasks = () => [
-  task(1, "Route", { featureId: "f1", step: 1, state: "done" }),
-  task(2, "Store", { featureId: "f1", step: 2 }),
-  task(3, "Columns", { featureId: "f1", step: 2 }),
-  task(4, "Queue", { featureId: "f1", step: 3, state: "queued", columnId: "col-2", position: 0 }),
-  task(5, "Old work", { featureId: "f2", step: 1, state: "done" }),
+  task(1, "Route", { featureId: "f1", state: "done" }),
+  task(2, "Store", { featureId: "f1" }),
+  task(3, "Columns", { featureId: "f1" }),
+  task(4, "Queue", { featureId: "f1", state: "queued", columnId: "col-2", position: 0 }),
+  task(5, "Old work", { featureId: "f2", state: "done" }),
   task(6, "Loose end"),
   // T-10 is the newest task, so a new task opens with its Complete when.
-  ...[7, 8, 9, 10].map((id) => task(id, `Gate ${id}`, { featureId: "f1", step: 4, columnId: "col-2", position: id, completeWhen: { checks: ["pr_open", "tree_clean"], own: null } })),
+  ...[7, 8, 9, 10].map((id) => task(id, `Gate ${id}`, { featureId: "f1", columnId: "col-2", position: id, completeWhen: { checks: ["pr_open", "tree_clean"], own: null } })),
 ];
 const features = [
   { id: "f1", name: "Task board v1", done: false },
@@ -126,7 +126,7 @@ describe("New task modal: Feature", () => {
     expect(dialog.queryByText("In this feature")).not.toBeInTheDocument();
   });
 
-  it("creates a task in a feature with no step, and with no feature keys for No feature", async () => {
+  it("creates a task in a feature, and with no feature keys for No feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     let dialog = await openNew(user);
@@ -233,7 +233,7 @@ describe("Task modal: Feature", () => {
     expect(old.getByRole("combobox", { name: "Feature" })).toBeDisabled();
   });
 
-  it("folds the other tasks, ordered by step then board order, with this task counted but not listed", async () => {
+  it("folds the other tasks, in board order, with this task counted but not listed", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
@@ -242,8 +242,8 @@ describe("Task modal: Feature", () => {
     expect(details.querySelector("summary")).toHaveTextContent("8 tasks · 1 done");
     const rows = [...details.querySelectorAll("li")];
     expect(rows.map((row) => row.getAttribute("data-task-id"))).toEqual(["T-1", "T-3", "T-4", "T-7", "T-8", "T-9", "T-10"]);
-    expect(rows.map((row) => row.querySelector(".taskFeatureStep")?.textContent)).toEqual(["1", "2", "3", "4", "4", "4", "4"]);
-    expect(rows[0]).toHaveTextContent("1T-1RouteDone");
+    expect(rows.map((row) => row.querySelector(".taskFeatureStep"))).toEqual(Array(7).fill(null));
+    expect(rows[0]).toHaveTextContent("T-1RouteDone");
     expect(rows[0]).toHaveClass("isDone");
     expect(rows[1]).not.toHaveClass("isDone");
   });
@@ -291,7 +291,7 @@ describe("Task modal: Feature", () => {
     expect(taskAction).not.toHaveBeenCalled();
   });
 
-  it("keeps a task in its step when its own feature is chosen back", async () => {
+  it("keeps a task unchanged when its own feature is chosen back", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
@@ -475,18 +475,14 @@ describe("Feature filter and card feature line", () => {
     expect(screen.getByRole("dialog", { name: "New feature" })).toBeInTheDocument();
   });
 
-  it("shows '<feature> · step K of N' on a card, and names the other tasks of its step only when another task shares it", () => {
+  it("shows only the feature name on a card", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(featureLine("T-1")).toHaveClass("taskCardDetail");
-    expect(featureLine("T-1")?.textContent).toBe("Task board v1 · step 1 of 4");
-    expect(featureLine("T-2")?.textContent).toBe("Task board v1 · step 2 of 4 · parallel with T-3");
-    expect(within(featureLine("T-2") as HTMLElement).getByRole("img", { name: "Parallel" })).toBeInTheDocument();
-    expect(featureLine("T-2")?.querySelector(".taskCardFeatureIds")).toHaveTextContent("T-3");
-    // T-4 waits in Ready, so its group caption carries the feature and the step.
-    expect(featureLine("T-4")).toBeNull();
-    expect(featureLine("T-9")?.textContent).toBe("Task board v1 · step 4 of 4 · parallel with T-7, T-8, T-10");
+    expect(featureLine("T-1")?.textContent).toBe("Task board v1");
+    expect(featureLine("T-2")?.textContent).toBe("Task board v1");
+    expect(featureLine("T-9")?.textContent).toBe("Task board v1");
     expect(featureLine("T-1")?.querySelector("svg")).toBeNull();
-    expect(within(card("T-5")).getByText("Finished work · step 1 of 1")).toBeInTheDocument();
+    expect(within(card("T-5")).getByText("Finished work")).toBeInTheDocument();
     expect(card("T-6")).not.toHaveTextContent("step");
     // It is the card's last line; only the keyboard move toolbar follows it.
     expect(card("T-2").querySelector(".taskCardFeature")?.nextElementSibling).toHaveClass("taskCardMoves");
@@ -503,7 +499,7 @@ describe("without the desktop bridge", () => {
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
     // The filter is the only Feature select: no Task modal field is drawn outside it.
     expect(screen.getAllByRole("combobox", { name: "Feature" })).toEqual([within(group).getByRole("combobox", { name: "Feature" })]);
-    expect(featureLine("T-2")?.textContent).toBe("Task board v1 · step 2 of 4 · parallel with T-3");
+    expect(featureLine("T-2")?.textContent).toBe("Task board v1");
     chooseCommandOption(within(group).getByRole("combobox", { name: "Feature" }), "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
     expect(card("T-6")).not.toHaveAttribute("draggable");

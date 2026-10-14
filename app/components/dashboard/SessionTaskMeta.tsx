@@ -3,11 +3,8 @@
 import Link from "next/link";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import { sessionFeatureHref } from "../tasks/SessionTaskCell";
-import { stepLabel } from "../tasks/session-task-model";
-import { useSessionTask } from "../tasks/use-session-task";
 
 export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference; taskHref: string | null }) {
-  const { stepTotal } = useSessionTask(task);
   const boardHref = sessionFeatureHref(task);
   return <span className="sessionTaskMeta">
     <span className="sessionTaskMetaGroup">
@@ -18,7 +15,6 @@ export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference
       <span aria-hidden="true">·</span>
       <span>Feature</span>
       {boardHref ? <Link className="commandTextLink sessionTaskMetaFeature" href={boardHref}>{task.feature}</Link> : <span className="sessionTaskMetaFeature">{task.feature}</span>}
-      {task.step !== null && <span className="sessionTaskMetaStep">{stepLabel(task.step, stepTotal)}</span>}
     </span>}
   </span>;
 }

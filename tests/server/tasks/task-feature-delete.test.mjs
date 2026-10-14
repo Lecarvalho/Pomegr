@@ -39,13 +39,13 @@ async function populated(context) {
   const { store, clock, directory } = await openTemporaryStore(context, "pomegr-task-feature-delete-");
   const feature = addFeature(store, "Uploads", { description: "SECRET-CONTEXT", appVersion: "1.4.0" });
   const other = addFeature(store, "Other");
-  const idle = addTask(store, "Not queued, step 1", { featureId: feature, step: 1 });
-  const firstQueued = addTask(store, "Queued, step 2", { featureId: feature, step: 2 });
-  const secondQueued = addTask(store, "Queued, parallel in step 2", { featureId: feature, step: 2 });
-  const scheduled = addTask(store, "Scheduled, step 3", { featureId: feature, step: 3 });
-  const finished = addTask(store, "Done with a session", { featureId: feature, step: 1 });
+  const idle = addTask(store, "Not queued", { featureId: feature });
+  const firstQueued = addTask(store, "Queued", { featureId: feature });
+  const secondQueued = addTask(store, "Queued, second", { featureId: feature });
+  const scheduled = addTask(store, "Scheduled", { featureId: feature });
+  const finished = addTask(store, "Done with a session", { featureId: feature });
   const single = addTask(store, "A single queued task");
-  const kept = addTask(store, "Another feature's task", { featureId: other, step: 1 });
+  const kept = addTask(store, "Another feature's task", { featureId: other });
   queueTask(store, secondQueued);
   queueTask(store, firstQueued);
   assert.equal(store.apply(REPOSITORY, "queue_add", { id: scheduled, at: new Date(clock.now + 3_600_000).toISOString() }).ok, true);
@@ -73,19 +73,18 @@ test("deleting a feature detaches every task and changes nothing else on a task 
   assert.equal(new Set(after.map((row) => row.number)).size, after.length);
   for (const row of after) {
     const stored = before.find((candidate) => candidate.number === row.number);
-    // Every field but the feature and the step is the one it was, the update time included.
+    // Every field but the feature (and the unread step column) is the one it was, the update time and the Ready place included.
     assert.deepEqual(withoutFeature(row), withoutFeature(stored), `T-${row.number}`);
-    if (stored.feature_id === feature) assert.deepEqual([row.feature_id, row.step], [null, null], `T-${row.number}`);
-    else assert.deepEqual([row.feature_id, row.step], [stored.feature_id, stored.step], `T-${row.number}`);
-    assert.equal((row.feature_id === null) === (row.step === null), true);
+    if (stored.feature_id === feature) assert.equal(row.feature_id, null, `T-${row.number}`);
+    else assert.equal(row.feature_id, stored.feature_id, `T-${row.number}`);
   }
   assert.equal(after.some((row) => row.feature_id === feature), false);
   assert.equal(after.find((row) => row.number === 7).feature_id, other);
-  // The board serves the detached tasks as tasks with no feature and no step, in the columns they were in.
+  // The board serves the detached tasks as tasks with no feature, in the columns they were in.
   const board = store.readBoard(REPOSITORY);
   for (const id of [ids.idle, ids.firstQueued, ids.secondQueued, ids.scheduled, ids.finished]) {
     const task = board.tasks.find((entry) => entry.id === id);
-    assert.deepEqual([task.featureId, task.step], [null, null], id);
+    assert.equal(task.featureId, null, id);
   }
   assert.equal(board.tasks.find((task) => task.id === ids.finished).columnId, columnId(store, "Done"));
   assert.equal(board.tasks.length, before.length);
@@ -102,12 +101,12 @@ test("deleting a feature detaches every task and changes nothing else on a task 
 test("queued tasks keep their stored queue position once detached", async (context) => {
   const { store, directory } = await openTemporaryStore(context, "pomegr-task-feature-delete-");
   const feature = addFeature(store, "Uploads");
-  const first = addTask(store, "First", { featureId: feature, step: 1 });
-  const second = addTask(store, "Second", { featureId: feature, step: 2 });
-  const third = addTask(store, "Third", { featureId: feature, step: 3 });
+  const first = addTask(store, "First", { featureId: feature });
+  const second = addTask(store, "Second", { featureId: feature });
+  const third = addTask(store, "Third", { featureId: feature });
   for (const id of [third, first, second]) queueTask(store, id);
-  // Inside a feature the steps order the queue; once detached, the stored positions do.
-  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, [first, second, third]);
+  // Ready order is the order of queuing, in a feature or out of it.
+  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, [third, first, second]);
   const positions = rows(directory).map((row) => [row.number, row.queue_position, row.position, row.column_id]);
   assert.equal(store.apply(REPOSITORY, "feature_delete", { id: feature }).ok, true);
   assert.deepEqual(rows(directory).map((row) => [row.number, row.queue_position, row.position, row.column_id]), positions);
@@ -268,29 +267,31 @@ test("feature_delete through the monitor route answers the fixed statuses", asyn
   assert.equal(deleted.json.board.tasks.every((task) => task.featureId !== feature), true);
 });
 
-test("a detached waiting card of Ready joins the single tasks, after another feature's waiting cards", async (context) => {
+test("a detached waiting card keeps its place in Ready and its group", async (context) => {
   const { store, directory } = await openTemporaryStore(context, "pomegr-task-feature-delete-");
   const feature = addFeature(store, "Uploads");
   const later = addFeature(store, "Later");
-  const first = addTask(store, "First", { featureId: feature, step: 1 });
-  const second = addTask(store, "Second", { featureId: feature, step: 2 });
-  const other = addTask(store, "Another feature's task", { featureId: later, step: 1 });
+  const first = addTask(store, "First", { featureId: feature });
+  const second = addTask(store, "Second", { featureId: feature });
+  const other = addTask(store, "Another feature's task", { featureId: later });
   const single = addTask(store, "A single task");
-  for (const id of [first, second, other, single]) queueTask(store, id);
-  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, [first, second, other, single]);
+  for (const id of [first, other, second, single]) queueTask(store, id);
+  assert.equal(store.apply(REPOSITORY, "queue_group", { ids: [first, second] }).ok, true);
+  const groupOf = (id) => store.readBoard(REPOSITORY).tasks.find((task) => task.id === id).group;
+  const group = groupOf(first);
+  assert.match(group, /^grp-[0-9a-f]{12}$/u);
+  const orderBefore = store.readBoard(REPOSITORY).queue.order;
+  assert.deepEqual(orderBefore, [first, second, other, single]);
   const before = rows(directory);
 
   assert.equal(store.apply(REPOSITORY, "feature_delete", { id: feature }).ok, true);
 
-  // Ready reads in start order: the remaining feature first, then the single tasks by the place they held.
   const board = store.readBoard(REPOSITORY);
-  assert.deepEqual(board.queue.order, [other, first, second, single]);
-  const ready = board.tasks.filter((task) => board.queue.order.includes(task.id)).sort((a, b) => a.position - b.position).map((task) => task.id);
-  assert.deepEqual(ready, [other, first, second, single]);
+  assert.deepEqual(board.queue.order, orderBefore);
+  assert.deepEqual([groupOf(first), groupOf(second), groupOf(other), groupOf(single)], [group, group, null, null]);
   const after = rows(directory);
   assert.deepEqual(after.map((row) => row.number), before.map((row) => row.number));
-  // Only the place in Ready moves: the column, the state and the queue fields of every task hold.
-  const kept = ({ position, feature_id, step, ...row }) => row;
+  // Only the feature goes: the column, the place, the state and the queue fields of every task hold.
+  const kept = ({ feature_id, step, ...row }) => row;
   assert.deepEqual(after.map(kept), before.map(kept));
-  assert.deepEqual(after.map((row) => row.position).sort(), before.map((row) => row.position).sort());
 });

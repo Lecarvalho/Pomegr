@@ -18,8 +18,8 @@ import { createRequestHandler } from "../../../server/serving/request-handler.mj
 import { GATE_REASONS, GATE_THRESHOLDS, projectGates } from "../../../server/serving/task-routes.mjs";
 import { TASK_GATE_REASONS, TASK_GATE_THRESHOLDS } from "../../../server/tasks/task-gates.mjs";
 import {
-  FACTS, GATE_FACTS, REPOSITORY, createTask, metaValue, openTemporaryStore, passingGates, queueRow, queueSettings, queueTask, repositoryNumber,
-  setMeta, storedDispatch, updateTask,
+  FACTS, GATE_FACTS, REPOSITORY, SESSION, createTask, metaValue, openTemporaryStore, passingGates, queueRow, queueSettings, queueTask, repositoryNumber,
+  setMeta, startedTask, storedDispatch, updateTask,
 } from "./queue-test-support.mjs";
 
 const TOKEN = "t".repeat(43);
@@ -86,24 +86,26 @@ test("a resolver that throws or answers junk reads every gate unknown and never 
   }
 });
 
-test("the next task names the earlier step it waits on", async (context) => {
-  const { store } = await openTemporaryStore(context);
-  const feature = store.apply(REPOSITORY, "feature_create", { name: "Feature" }).board.features[0].id;
-  createTask(store, REPOSITORY, { featureId: feature, step: 1 });
-  createTask(store, REPOSITORY, { featureId: feature, step: 2 });
+test("the next task names the earlier task it waits on", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  createTask(store, REPOSITORY, {});
+  createTask(store, REPOSITORY, {});
+  queueTask(store, "T-1");
   queueTask(store, "T-2");
+  startedTask(directory, 1, { session: SESSION });
   assert.deepEqual(store.readBoard(REPOSITORY, { resolveGateFacts: passingGates }).queue.gates.next,
-    { taskId: "T-2", provider: "claude", blockedBy: "T-1", reasons: ["previous_step"] });
+    { taskId: "T-2", provider: "claude", blockedBy: "T-1", reasons: ["earlier_task"] });
   assert.equal(queueSettings(store, true).ok, true);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
 });
 
-test("a manual start is not held by step order, which holds only the queue", async (context) => {
-  const { store } = await openTemporaryStore(context);
-  const feature = store.apply(REPOSITORY, "feature_create", { name: "Feature" }).board.features[0].id;
-  createTask(store, REPOSITORY, { featureId: feature, step: 1 });
-  createTask(store, REPOSITORY, { featureId: feature, step: 2 });
+test("a manual start is not held by the earlier task, which holds only the queue", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  createTask(store, REPOSITORY, {});
+  createTask(store, REPOSITORY, {});
+  queueTask(store, "T-1");
   queueTask(store, "T-2");
+  startedTask(directory, 1, { session: SESSION });
   assert.equal(queueSettings(store, true).ok, true);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   // The other gates still hold a start made by hand.
@@ -230,7 +232,7 @@ test("projectGates rebuilds a valid block and drops a block with any value outsi
     usage: { claude: { status: "ok", fiveHourPercent: 62, sevenDayPercent: 31 }, codex: { status: "unknown", fiveHourPercent: null, sevenDayPercent: null } },
     providerStatus: { claude: "ok", codex: "incident" },
     workingTree: "clean",
-    next: { taskId: "T-15", provider: "claude", blockedBy: "T-12", reasons: ["previous_step"] },
+    next: { taskId: "T-15", provider: "claude", blockedBy: "T-12", reasons: ["earlier_task"] },
   };
   assert.deepEqual(projectGates({ ...valid, root: SECRET_ROOT, usage: { ...valid.usage, claude: { ...valid.usage.claude, resetsAt: "soon" } }, next: { ...valid.next, text: "secret" } }), valid);
   assert.deepEqual(projectGates({ ...valid, next: null }), { ...valid, next: null });
@@ -245,7 +247,7 @@ test("projectGates rebuilds a valid block and drops a block with any value outsi
     { ...valid, next: { ...valid.next, taskId: "15" } },
     { ...valid, next: { ...valid.next, provider: "other" } },
     { ...valid, next: { ...valid.next, blockedBy: SECRET_ROOT } },
-    { ...valid, next: { ...valid.next, reasons: ["previous_step", "git status failed"] } },
+    { ...valid, next: { ...valid.next, reasons: ["earlier_task", "git status failed"] } },
     { ...valid, next: undefined },
   ]) assert.equal(projectGates(broken), undefined);
 });

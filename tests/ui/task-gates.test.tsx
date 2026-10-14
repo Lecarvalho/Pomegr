@@ -20,13 +20,14 @@ const columns = ["Backlog", "Ready"].map((name, position) => ({ id: `col-${posit
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
 
+const waiting = (id: string) => ({ id, group: null, run: { provider: null, model: null, effort: null } });
 const gates = (overrides: Partial<TaskGates> = {}): TaskGates => ({
   threshold: 85,
   usage: { claude: { status: "ok", fiveHourPercent: 62, sevenDayPercent: 31 }, codex: { status: "ok", fiveHourPercent: 18, sevenDayPercent: 9 } },
@@ -72,7 +73,7 @@ describe("the Start gates panel", () => {
     await showQueue();
     expect(within(panel()).getByRole("heading", { level: 3, name: "Start gates" })).toBeTruthy();
     expect(within(panel()).getByText("Checked before every session Pomegr starts.")).toBeTruthy();
-    expect(row("Previous step done").textContent).toContain("Done");
+    expect(row("Earlier task finished").textContent).toContain("Finished");
     expect(row("Claude Code capacity").textContent).toContain("5h 62% · 7d 31%");
     expect(row("Codex capacity").textContent).toContain("5h 18% · 7d 9%");
     expect(row("Provider status").textContent).toContain("No incident");
@@ -83,10 +84,10 @@ describe("the Start gates panel", () => {
     setBoard({ gates: gates({
       usage: { claude: { status: "over", fiveHourPercent: 90, sevenDayPercent: null }, codex: { status: "unknown", fiveHourPercent: null, sevenDayPercent: null } },
       providerStatus: { claude: "incident", codex: "incident" }, workingTree: "dirty",
-      next: { taskId: "T-15", provider: "claude", blockedBy: "T-12", reasons: ["previous_step"] },
+      next: { taskId: "T-15", provider: "claude", blockedBy: "T-12", reasons: ["earlier_task"] },
     }) });
     await showQueue();
-    expect(row("Previous step done").textContent).toContain("Blocked by T-12");
+    expect(row("Earlier task finished").textContent).toContain("Blocked by T-12");
     expect(row("Claude Code capacity").textContent).toContain("5h 90% · 7d – · above threshold");
     expect(row("Codex capacity").textContent).toContain("Unknown");
     expect(row("Provider status").textContent).toContain("Incident: Claude Code, Codex");
@@ -109,7 +110,7 @@ describe("the Start gates panel", () => {
     await showQueue();
     expect(row("Provider status").textContent).toContain("Unknown");
     expect(row("Working tree").textContent).toContain("Unknown");
-    expect(row("Previous step done").textContent).toContain("No task queued");
+    expect(row("Earlier task finished").textContent).toContain("No task queued");
   });
 
   it("says the gates are not available when the board sent none", async () => {
@@ -175,15 +176,15 @@ describe("waitingLine", () => {
     ({ status, blockedBy: null, pauseReason: null, order: [next.taskId], gates: gates({ threshold: 70, next }) });
 
   it("words every reason", () => {
-    const reasons: TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown"];
+    const reasons: TaskGateReason[] = ["earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown"];
     const next = { taskId: "T-1", provider: "claude" as const, blockedBy: "T-12", reasons };
-    expect(waitingLine(queue("running", next), "T-1")).toBe("Waiting: step before it is not done (T-12); Claude Code is above 70% of the five-hour window; Claude Code usage is not known yet; Claude Code reports an incident; Claude Code status is not known yet; the working tree has uncommitted changes; the working tree state is not known yet");
+    expect(waitingLine(queue("running", next), waiting("T-1"))).toBe("Waiting: T-12 has not finished; Claude Code is above 70% of the five-hour window; Claude Code usage is not known yet; Claude Code reports an incident; Claude Code status is not known yet; the working tree has uncommitted changes; the working tree state is not known yet");
   });
 
   it("is null for another task, no reasons, or a queue that is not running", () => {
     const next = { taskId: "T-1", provider: "codex" as const, blockedBy: null, reasons: [] as TaskGateReason[] };
-    expect(waitingLine(queue("running", next), "T-1")).toBeNull();
-    expect(waitingLine(queue("running", { ...next, reasons: ["tree_dirty"] }), "T-2")).toBeNull();
-    expect(waitingLine(queue("paused", { ...next, reasons: ["tree_dirty"] }), "T-1")).toBeNull();
+    expect(waitingLine(queue("running", next), waiting("T-1"))).toBeNull();
+    expect(waitingLine(queue("running", { ...next, reasons: ["tree_dirty"] }), waiting("T-2"))).toBeNull();
+    expect(waitingLine(queue("paused", { ...next, reasons: ["tree_dirty"] }), waiting("T-1"))).toBeNull();
   });
 });

@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { TASK_ID_PATTERN, type TaskBoard } from "../../../shared/task-contract";
-import { dropPosition, isNoopMove, leavesReady } from "./task-board-model";
+import { isNoopMove, leavesReady, waitsInQueue } from "./task-board-model";
 import type { TaskMove } from "./task-desktop";
-import { dropKey, isBoardStepTask, reorderTarget, type QueueFeature } from "./task-queue-model";
+import { taskColumns } from "./task-presentation";
 
 export type ColumnDropHandlers = {
   onDragOver(event: DragEvent<HTMLElement>): void;
@@ -62,30 +62,28 @@ function beforeCard(event: DragEvent<HTMLElement>) {
   return idAt(cards.findIndex((card) => event.clientY < middle(card)));
 }
 
-/** The Ready lane's step targets: the lane, its features' steps, and the step action a drop sends. */
-export type CardStepDrop = { columnId: string | null; panels: readonly QueueFeature[]; onStep(id: string, step: number): void };
+/** The Ready lane's group targets: the lane, and the action a drop on a group sends. */
+export type CardGroupDrop = { columnId: string | null; onJoin(id: string, memberId: string): void };
 
-/**
- * The step of `featureId` under the pointer, read from the groups drawn in the lane: a step group's number, null for
- * the new-step zone or the gap after the feature's last group, and undefined anywhere else.
- */
-function stepUnder(event: DragEvent<HTMLElement>, featureId: string) {
-  const own = (element: Element) => element.getAttribute("data-step-feature") === featureId;
-  const over = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-step-feature]") : null;
-  if (over) return !own(over) ? undefined : over.hasAttribute("data-new-step") ? null : Number(over.getAttribute("data-step"));
-  const last = [...event.currentTarget.querySelectorAll<HTMLElement>("[data-step-feature]:not([data-new-step])")].filter(own).at(-1);
-  if (!last) return undefined;
-  // The zone is drawn in this gap once the pointer is in it, so the gap ends at the element after the zone.
-  const zone = last.nextElementSibling?.hasAttribute("data-new-step") ? last.nextElementSibling : null;
-  const next = (zone ?? last).nextElementSibling;
-  return event.clientY >= last.getBoundingClientRect().bottom && (!next || event.clientY < next.getBoundingClientRect().top) ? null : undefined;
+/** What is dragged: one card, or with `block` the whole parallel group of that card. */
+type Dragged = { id: string; block: boolean };
+
+/** What a drop here does: the card joins a group, or the card (or its group) moves before `beforeId`. */
+type DropPlan = { join: { group: string; memberId: string } } | { move: TaskMove; beforeId: string | null };
+
+/** The parallel group drawn under the pointer, with one of its waiting cards. */
+function groupUnder(event: DragEvent<HTMLElement>) {
+  const over = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-ready-group]") : null;
+  const group = over?.getAttribute("data-ready-group");
+  const memberId = over?.getAttribute("data-group-task");
+  return group && memberId ? { group, memberId } : null;
 }
 
-export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void, steps?: CardStepDrop) {
-  const dragged = useRef<string | null>(null);
+export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void, groups?: CardGroupDrop) {
+  const dragged = useRef<Dragged | null>(null);
   const [overColumn, setOverColumn] = useState<string | null>(null);
   const [dropLine, setDropLine] = useState<CardDropLine | null>(null);
-  const [overStep, setOverStep] = useState<string | null>(null);
+  const [overGroup, setOverGroup] = useState<string | null>(null);
   const scroll = useRef<{ list: HTMLElement; y: number; frame: number; at: number | null } | null>(null);
 
   const stopScroll = useCallback(() => {
@@ -114,35 +112,50 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void, 
     scroll.current = { list, y, frame: requestAnimationFrame(tick), at: null };
   };
 
-  const finish = useCallback(() => { dragged.current = null; setOverColumn(null); setDropLine(null); setOverStep(null); stopScroll(); }, [stopScroll]);
+  const finish = useCallback(() => { dragged.current = null; setOverColumn(null); setDropLine(null); setOverGroup(null); stopScroll(); }, [stopScroll]);
 
   // Only a drag this board started is accepted.
   const take = () => {
-    const id = dragged.current;
+    const current = dragged.current;
     finish();
-    return id !== null && TASK_ID_PATTERN.test(id) && board.tasks.some((task) => task.id === id) ? id : null;
-  };
-  /** The move a drop before `beforeId` makes, or null when the card would stay where it is. */
-  const moveTo = (id: string, columnId: string, beforeId: string | null): TaskMove | null => {
-    if (beforeId === id) return null;
-    const move = { id, columnId, position: dropPosition(board, id, columnId, beforeId) };
-    return leavesReady(board, move) || isNoopMove(board, move) ? null : move;
+    return current !== null && TASK_ID_PATTERN.test(current.id) && board.tasks.some((task) => task.id === current.id) ? current : null;
   };
 
-  /** The step a drop here gives the dragged card, or null when the drop is a card move. */
-  const stepTarget = (event: DragEvent<HTMLElement>, id: string, columnId: string) => {
-    if (!steps || steps.columnId !== columnId) return null;
-    const task = board.tasks.find((candidate) => candidate.id === id);
-    const panel = task && isBoardStepTask(task) ? steps.panels.find((candidate) => candidate.feature.id === task.featureId) : undefined;
-    if (!task || !panel) return null;
-    const step = stepUnder(event, panel.feature.id);
-    const target = step === undefined ? null : reorderTarget(panel, task, step);
-    return step === undefined || target === null ? null : { key: dropKey(panel.feature.id, step), step: target };
+  /**
+   * What a drop here does. A waiting card over another group's frame joins that group. A group's card dropped outside
+   * its frame leaves the group. A whole group moves as one block. Anything else is a card move, or nothing when the
+   * card would stay where it is.
+   */
+  const plan = (event: DragEvent<HTMLElement>, current: Dragged, columnId: string): DropPlan | null => {
+    const task = board.tasks.find((candidate) => candidate.id === current.id);
+    if (!task) return null;
+    const inReady = groups?.columnId === columnId;
+    const over = inReady ? groupUnder(event) : null;
+    const member = waitsInQueue(task) && task.group !== null;
+    if (over && !current.block && waitsInQueue(task) && over.group !== task.group) return { join: over };
+    const beforeId = beforeCard(event);
+    const cards = taskColumns(board).find((column) => column.id === columnId)?.tasks ?? [];
+    const carried = new Set(current.block && member ? cards.filter((card) => waitsInQueue(card) && card.group === task.group).map((card) => card.id) : [task.id]);
+    if (beforeId !== null && carried.has(beforeId)) return null;
+    const rest = cards.filter((card) => !carried.has(card.id));
+    const at = beforeId === null ? -1 : rest.findIndex((card) => card.id === beforeId);
+    const position = at < 0 ? rest.length : at;
+    if (current.block && member) {
+      const move: TaskMove = { id: task.id, columnId, position, group: "block" };
+      return cards.findIndex((card) => carried.has(card.id)) === position ? null : { move, beforeId };
+    }
+    const move: TaskMove = { id: task.id, columnId, position };
+    if (leavesReady(board, move)) return null;
+    // Outside its own frame a group's card leaves the group, also when its place in the lane stays the same.
+    if (inReady && member && over?.group !== task.group) return { move: { ...move, group: "leave" }, beforeId };
+    return isNoopMove(board, move) ? null : { move, beforeId };
   };
 
   const cardHandlers = (id: string) => ({
     onDragStart: (event: DragEvent<HTMLLIElement>) => {
-      dragged.current = id;
+      // A card inside a group is the drag, not the group around it.
+      event.stopPropagation();
+      dragged.current = { id, block: false };
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", id);
@@ -151,17 +164,29 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void, 
     onDragEnd: finish,
   });
 
+  /** The handlers of a group's frame: a drag that starts on the frame itself, not on one of its cards, carries the whole group. */
+  const groupHandlers = (memberId: string) => ({
+    onDragStart: (event: DragEvent<HTMLLIElement>) => {
+      if (event.target !== event.currentTarget) return;
+      dragged.current = { id: memberId, block: true };
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", memberId);
+      }
+    },
+    onDragEnd: finish,
+  });
+
   const columnHandlers = (columnId: string): ColumnDropHandlers => ({
     onDragOver: (event: DragEvent<HTMLElement>) => {
-      const id = dragged.current;
-      if (id === null || leavesReady(board, { id, columnId })) return;
+      const current = dragged.current;
+      if (current === null || leavesReady(board, { id: current.id, columnId })) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
       setOverColumn(columnId);
-      const step = stepTarget(event, id, columnId);
-      setOverStep(step?.key ?? null);
-      const beforeId = beforeCard(event);
-      const line = !step && moveTo(id, columnId, beforeId) ? { columnId, beforeId } : null;
+      const target = plan(event, current, columnId);
+      setOverGroup(target && "join" in target ? target.join.group : null);
+      const line = target && "move" in target ? { columnId, beforeId: target.beforeId } : null;
       setDropLine((current) => current?.columnId === line?.columnId && current?.beforeId === line?.beforeId ? current : line);
       scrollNear(event.currentTarget.querySelector<HTMLElement>(".taskColumnList"), event.clientY);
     },
@@ -169,19 +194,18 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void, 
       if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
       setOverColumn((current) => current === columnId ? null : current);
       setDropLine((current) => current?.columnId === columnId ? null : current);
-      if (steps?.columnId === columnId) setOverStep(null);
+      if (groups?.columnId === columnId) setOverGroup(null);
       stopScroll();
     },
     onDrop: (event: DragEvent<HTMLElement>) => {
       event.preventDefault();
-      const beforeId = beforeCard(event);
-      const step = dragged.current === null ? null : stepTarget(event, dragged.current, columnId);
+      const target = dragged.current === null ? null : plan(event, dragged.current, columnId);
       const moved = take();
-      if (moved && step) { steps?.onStep(moved, step.step); return; }
-      const move = moved ? moveTo(moved, columnId, beforeId) : null;
-      if (move) onMove(move);
+      if (!moved || !target) return;
+      if ("join" in target) groups?.onJoin(moved.id, target.join.memberId);
+      else onMove(target.move);
     },
   });
 
-  return { overColumn, dropLine, overStep, cardHandlers, columnHandlers };
+  return { overColumn, dropLine, overGroup, cardHandlers, groupHandlers, columnHandlers };
 }

@@ -22,11 +22,11 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to move it. In Ready, drop a card on a step to run it in parallel with that step, or after its feature's last step to give it a step of its own.";
+const FOOTNOTE = "Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id - 1, featureId: null, step: null,
+    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id - 1, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -610,10 +610,10 @@ describe("keyboard moves", () => {
 describe("queued cards in Ready", () => {
   const featureId = "feat-0123456789ab";
   const inReady = (id: number, position: number, overrides: Partial<Task> = {}) => task(id, { columnId: "col-2", position, state: "queued", ...overrides });
-  /** Ready: T-1 (feature step 1), T-2 (single), T-3 (not queued), T-4 (single, scheduled). Backlog: T-6. Done: T-5. */
+  /** Ready: T-1 (of a feature), T-2 (single), T-3 (not queued), T-4 (single, scheduled). Backlog: T-6. Done: T-5. */
   const queuedBoard = () => setBoard({
     features: [{ id: featureId, name: "Search", done: false }],
-    tasks: [inReady(1, 0, { featureId, step: 1 }), inReady(2, 1), task(3, { columnId: "col-2", position: 2 }), inReady(4, 3, { state: "scheduled", scheduledAt: "2026-10-09T02:00:00.000Z" }),
+    tasks: [inReady(1, 0, { featureId }), inReady(2, 1), task(3, { columnId: "col-2", position: 2 }), inReady(4, 3, { state: "scheduled", scheduledAt: "2026-10-09T02:00:00.000Z" }),
       task(5, { columnId: "col-3", position: 0, state: "done" }), task(6, { position: 0 })],
     queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-1", "T-2"] },
   });
@@ -648,15 +648,16 @@ describe("queued cards in Ready", () => {
     expect(bar("T-3").getByRole("button", { name: "Move T-3 to the next column" })).toBeEnabled();
   });
 
-  it("reorders single queued cards inside Ready, and draws a drop ahead of a feature card in start order", () => {
+  it("reorders queued cards inside Ready whatever their feature, so the top card starts first", async () => {
     queuedBoard();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-4", card("T-2"));
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "move", { id: "T-4", columnId: "col-2", position: 1 });
     expect(order("Ready")).toEqual(["T-1", "T-4", "T-2", "T-3"]);
-    // The monitor keeps the feature's card first among the waiting ones, so the board draws it that way at once.
+    // A feature gives no priority: a card dropped ahead of a feature's card goes ahead of it.
     dragTo("T-2", card("T-1"));
-    expect(order("Ready")).toEqual(["T-1", "T-2", "T-4", "T-3"]);
+    expect(order("Ready")).toEqual(["T-2", "T-1", "T-4", "T-3"]);
+    await waitFor(() => expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "move", { id: "T-2", columnId: "col-2", position: 0 }));
   });
 
   it("lets a card that started leave Ready, because it no longer waits", () => {
@@ -729,7 +730,7 @@ describe("New task in the first lane", () => {
   it("stays while a feature filter is on, because creating a task is not a move", () => {
     setBoard({
       features: [{ id: "feature-1", name: "Upload reliability", done: false }],
-      tasks: [task(1, { featureId: "feature-1", step: 1 }), task(2)],
+      tasks: [task(1, { featureId: "feature-1" }), task(2)],
     });
     render(<TaskBoardPane repositoryId={repositoryId} />);
     chooseCommandOption(screen.getByRole("combobox", { name: "Feature" }), "Upload reliability (1)");

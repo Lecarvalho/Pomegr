@@ -8,7 +8,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
 const INVALID_PAYLOADS = [{}, { id: "" }, { id: "T-0" }, { id: "t-1" }, { id: "T-01" }, { id: 1 }, { id: null }, { id: "T-1", extra: true }, null, "T-1", [], 7, undefined];
 
 async function temporaryStore(t) {
@@ -55,23 +55,17 @@ function addTask(store, payload = {}, repository = REPOSITORY) {
 }
 const queue = (store, id, repository = REPOSITORY) => store.apply(repository, "queue_add", { id });
 const unqueue = (store, id, repository = REPOSITORY) => store.apply(repository, "queue_remove", { id });
-const reorder = (store, id, step, repository = REPOSITORY) => store.apply(repository, "queue_reorder", { id, step });
 const taskOf = (board, id) => board.tasks.find((task) => task.id === id);
-const numberOf = (task) => Number(task.id.slice(2));
-const placement = (board, featureId) => board.tasks.filter((task) => task.featureId === featureId).toSorted((a, b) => numberOf(a) - numberOf(b)).map((task) => [task.id, task.step]);
 const cardsIn = (board, name) => {
   const column = board.columns.find((candidate) => candidate.name === name);
   return board.tasks.filter((task) => task.columnId === column.id).toSorted((a, b) => a.position - b.position).map((task) => task.id);
 };
 const move = (store, id, name, position) => store.apply(REPOSITORY, "move", { id, columnId: store.readBoard(REPOSITORY).columns.find((column) => column.name === name).id, position });
 
-/** A feature of four tasks over two steps: T-1 and T-2 in step 1, T-3 in step 2, T-4 in step 3. All queued. */
+/** A feature of four tasks, queued in the order T-4, T-2, T-1, T-3. */
 function queuedFeature(store) {
   const feature = addFeature(store, "Search");
-  addTask(store, { featureId: feature });
-  addTask(store, { featureId: feature, step: 1 });
-  addTask(store, { featureId: feature });
-  addTask(store, { featureId: feature });
+  for (let count = 0; count < 4; count += 1) addTask(store, { featureId: feature });
   for (const id of ["T-4", "T-2", "T-1", "T-3"]) assert.equal(queue(store, id).ok, true);
   return feature;
 }
@@ -185,31 +179,27 @@ test("a card that waits in the queue cannot leave Ready; one that left the queue
   assert.deepEqual(cardsIn(store.readBoard(REPOSITORY), "Review"), ["T-3"]);
 });
 
-test("Ready lists the waiting cards in start order: feature steps first, then single tasks, other cards in place", async (t) => {
+test("Ready is the start order: a feature gives a card no place, and a drop stays where it lands", async (t) => {
   const { store } = await temporaryStore(t);
   const feature = addFeature(store, "Search");
   addTask(store);                                  // T-1 single
-  addTask(store, { featureId: feature });          // T-2 step 1
-  addTask(store, { featureId: feature });          // T-3 step 2
+  addTask(store, { featureId: feature });          // T-2
+  addTask(store, { featureId: feature });          // T-3
   addTask(store);                                  // T-4 not queued, in Ready by hand
   addTask(store);                                  // T-5 single
   move(store, "T-4", "Ready", 0);
   for (const id of ["T-1", "T-3", "T-5", "T-2"]) queue(store, id);
   let board = store.readBoard(REPOSITORY);
-  assert.deepEqual(board.queue.order, ["T-2", "T-3", "T-1", "T-5"]);
-  assert.deepEqual(cardsIn(board, "Ready"), ["T-4", "T-2", "T-3", "T-1", "T-5"]);
-  // A drop that would put a later step, or a single task, ahead lands in start order instead.
+  assert.deepEqual(board.queue.order, ["T-1", "T-3", "T-5", "T-2"]);
+  assert.deepEqual(cardsIn(board, "Ready"), ["T-4", "T-1", "T-3", "T-5", "T-2"]);
   board = move(store, "T-5", "Ready", 0).board;
-  assert.deepEqual(cardsIn(board, "Ready"), ["T-2", "T-4", "T-3", "T-5", "T-1"]);
-  assert.deepEqual(board.queue.order, ["T-2", "T-3", "T-5", "T-1"]);
-  board = move(store, "T-3", "Ready", 0).board;
-  assert.deepEqual(cardsIn(board, "Ready"), ["T-2", "T-3", "T-4", "T-5", "T-1"]);
-  // A step change moves the cards with it.
-  board = reorder(store, "T-2", 3).board;
-  assert.deepEqual(board.queue.order, ["T-3", "T-2", "T-5", "T-1"]);
-  assert.deepEqual(cardsIn(board, "Ready"), ["T-3", "T-2", "T-4", "T-5", "T-1"]);
-  const waiting = cardsIn(board, "Ready").filter((id) => board.queue.order.includes(id));
-  assert.deepEqual(waiting, board.queue.order);
+  assert.deepEqual(cardsIn(board, "Ready"), ["T-5", "T-4", "T-1", "T-3", "T-2"]);
+  assert.deepEqual(board.queue.order, ["T-5", "T-1", "T-3", "T-2"]);
+  board = move(store, "T-2", "Ready", 1).board;
+  assert.deepEqual(cardsIn(board, "Ready"), ["T-5", "T-2", "T-4", "T-1", "T-3"]);
+  assert.deepEqual(board.queue.order, ["T-5", "T-2", "T-1", "T-3"]);
+  // No move of a feature card groups or orders anything else.
+  assert.deepEqual(board.tasks.map((task) => task.group), Array(5).fill(null));
 });
 
 test("a store from before the rule keeps its queue order once, with every queued card brought into Ready", async (t) => {
@@ -235,18 +225,17 @@ test("a store from before the rule keeps its queue order once, with every queued
   assert.deepEqual(move(store, "T-2", "Ready", 0).board.queue.order, ["T-2", "T-4", "T-1"]);
 });
 
-test("feature tasks run by feature, step, and number before single tasks, whenever they were queued", async (t) => {
+test("feature tasks start in Ready order like any other task, whenever they were queued", async (t) => {
   const { store } = await temporaryStore(t);
   const first = addFeature(store, "First");
   const second = addFeature(store, "Second");
   addTask(store, { featureId: second });
   addTask(store, {});
   addTask(store, { featureId: first });
-  addTask(store, { featureId: first, step: 1 });
+  addTask(store, { featureId: first });
   addTask(store, { featureId: second });
   for (const id of ["T-2", "T-5", "T-4", "T-1", "T-3"]) queue(store, id);
-  // First: T-3, T-4 (step 1). Second: T-1 (step 1), T-5 (step 2). Then the single T-2.
-  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-3", "T-4", "T-1", "T-5", "T-2"]);
+  assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-2", "T-5", "T-4", "T-1", "T-3"]);
 });
 
 test("queue_add and queue_remove answer fixed errors for invalid, unknown, and foreign tasks", async (t) => {
@@ -302,177 +291,12 @@ test("the queue actions leave the stored queue status and its blocker as they ar
   for (const task of store.readBoard(REPOSITORY).tasks) assert.deepEqual([task.session, task.report, task.scheduledAt], [null, null, null]);
 });
 
-test("queue_reorder moves a queued task to another step and closes the step it leaves", async (t) => {
-  const { store, databasePath } = await temporaryStore(t);
-  const feature = queuedFeature(store);
-  assert.deepEqual(placement(store.readBoard(REPOSITORY), feature), [["T-1", 1], ["T-2", 1], ["T-3", 2], ["T-4", 3]]);
-  const before = storedUpdatedAt(databasePath);
-  await pause();
-  // T-3 alone in step 2 joins step 1: step 2 empties and the old step 3 becomes step 2.
-  const moved = reorder(store, "T-3", 1);
-  assert.equal(moved.ok, true);
-  assert.deepEqual(placement(moved.board, feature), [["T-1", 1], ["T-2", 1], ["T-3", 1], ["T-4", 2]]);
-  assert.deepEqual(moved.board.queue.order, ["T-1", "T-2", "T-3", "T-4"]);
-  assert.equal(taskOf(moved.board, "T-3").state, "queued");
-  const after = storedUpdatedAt(databasePath);
-  assert.notEqual(after[3], before[3]);
-  for (const number of [1, 2, 4]) assert.equal(after[number], before[number], `T-${number}`);
-});
-
-test("queue_reorder to the highest step plus one makes a new last step", async (t) => {
-  const { store } = await temporaryStore(t);
-  const feature = queuedFeature(store);
-  // T-1 leaves step 1 for a new step 4; T-2 stays alone in step 1, and the steps stay dense.
-  const moved = reorder(store, "T-1", 4);
-  assert.deepEqual(placement(moved.board, feature), [["T-1", 4], ["T-2", 1], ["T-3", 2], ["T-4", 3]]);
-  assert.deepEqual(moved.board.queue.order, ["T-2", "T-3", "T-4", "T-1"]);
-  // T-2 is alone in step 1: it leaves for a new step 5, its step disappears, and the others close up.
-  const lone = reorder(store, "T-2", 5);
-  assert.deepEqual(placement(lone.board, feature), [["T-1", 3], ["T-2", 4], ["T-3", 1], ["T-4", 2]]);
-  assert.deepEqual(lone.board.queue.order, ["T-3", "T-4", "T-1", "T-2"]);
-  assert.deepEqual(reorder(store, "T-2", 6), { ok: false, error: "invalid" });
-});
-
-test("the lone task of the last step moved to a new last step stays where it is and keeps its update time", async (t) => {
-  const { store, databasePath } = await temporaryStore(t);
-  const feature = queuedFeature(store);
-  const before = store.readBoard(REPOSITORY);
-  const updated = storedUpdatedAt(databasePath);
-  await pause();
-  // T-4 is alone in the last step (3). A new last step (4) would be that same step once the gap closes.
-  const same = reorder(store, "T-4", 4);
-  assert.equal(same.ok, true);
-  assert.deepEqual(same.board, before);
-  assert.deepEqual(storedUpdatedAt(databasePath), updated);
-  assert.equal(placement(same.board, feature).at(-1)[1], 3);
-  // Two tasks in the last step: one leaves for a new last step and it is a real move.
-  reorder(store, "T-3", 3);
-  assert.deepEqual(placement(store.readBoard(REPOSITORY), feature), [["T-1", 1], ["T-2", 1], ["T-3", 2], ["T-4", 2]]);
-  assert.deepEqual(placement(reorder(store, "T-4", 3).board, feature), [["T-1", 1], ["T-2", 1], ["T-3", 2], ["T-4", 3]]);
-});
-
-test("a reorder that empties a step renumbers every step densely", async (t) => {
-  const { store } = await temporaryStore(t);
-  const feature = addFeature(store, "Long");
-  for (let count = 0; count < 5; count += 1) addTask(store, { featureId: feature });
-  for (let number = 1; number <= 5; number += 1) queue(store, `T-${number}`);
-  assert.deepEqual(placement(store.readBoard(REPOSITORY), feature), [["T-1", 1], ["T-2", 2], ["T-3", 3], ["T-4", 4], ["T-5", 5]]);
-  // T-2 joins step 4: step 2 empties, so 3, 4, 5 become 2, 3, 4.
-  assert.deepEqual(placement(reorder(store, "T-2", 4).board, feature), [["T-1", 1], ["T-2", 3], ["T-3", 2], ["T-4", 3], ["T-5", 4]]);
-  // T-4 joins step 1: step 3 still holds T-2, so nothing empties.
-  assert.deepEqual(placement(reorder(store, "T-4", 1).board, feature), [["T-1", 1], ["T-2", 3], ["T-3", 2], ["T-4", 1], ["T-5", 4]]);
-  // T-5 alone in step 4 goes to step 1: step 4 empties.
-  assert.deepEqual(placement(reorder(store, "T-5", 1).board, feature), [["T-1", 1], ["T-2", 3], ["T-3", 2], ["T-4", 1], ["T-5", 1]]);
-});
-
-test("moving a queued task to its own step succeeds and changes nothing", async (t) => {
-  const { store, databasePath } = await temporaryStore(t);
-  queuedFeature(store);
-  const before = store.readBoard(REPOSITORY);
-  const updated = storedUpdatedAt(databasePath);
-  await pause();
-  const same = reorder(store, "T-1", 1);
-  assert.equal(same.ok, true);
-  assert.deepEqual(same.board, before);
-  assert.deepEqual(storedUpdatedAt(databasePath), updated);
-});
-
-test("queue_reorder validates the payload and the step range", async (t) => {
-  const { store } = await temporaryStore(t);
-  const feature = queuedFeature(store);
-  const before = store.readBoard(REPOSITORY);
-  for (const payload of [...INVALID_PAYLOADS.filter((candidate) => candidate !== undefined), { id: "T-1" }, { step: 1 }, { id: "T-1", step: 1, extra: 1 }]) {
-    assert.deepEqual(store.apply(REPOSITORY, "queue_reorder", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
-  }
-  for (const step of [0, -1, 1.5, "2", null, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53, undefined]) {
-    assert.deepEqual(reorder(store, "T-1", step), { ok: false, error: "invalid" }, String(step));
-  }
-  // The feature has three steps, so 4 is the new last step and 5 is out of range.
-  assert.deepEqual(reorder(store, "T-1", 5), { ok: false, error: "invalid" });
-  assert.deepEqual(reorder(store, "T-1", 99), { ok: false, error: "invalid" });
-  assert.deepEqual(store.readBoard(REPOSITORY), before);
-  assert.equal(placement(before, feature).length, 4);
-});
-
-test("queue_reorder answers not_found for an unknown or foreign task", async (t) => {
+test("queue_reorder is no action of the store", async (t) => {
   const { store } = await temporaryStore(t);
   queuedFeature(store);
-  addTask(store, {}, OTHER_REPOSITORY);
-  assert.deepEqual(reorder(store, "T-9", 1), { ok: false, error: "not_found" });
-  // T-2 is a queued task of the first repository; the other repository has only T-1.
-  assert.deepEqual(reorder(store, "T-2", 1, OTHER_REPOSITORY), { ok: false, error: "not_found" });
-  assert.equal(taskOf(store.readBoard(REPOSITORY), "T-2").step, 1);
-});
-
-test("queue_reorder refuses a task that started or finished, or has no feature", async (t) => {
-  const { store, databasePath } = await temporaryStore(t);
-  const feature = addFeature(store, "Search");
-  for (let count = 0; count < 3; count += 1) addTask(store, { featureId: feature });
-  addTask(store);
-  queue(store, "T-1");
-  queue(store, "T-4");
   const before = store.readBoard(REPOSITORY);
-  // A single task: it runs in the order it was queued and has no step.
-  assert.deepEqual(reorder(store, "T-4", 1), { ok: false, error: "conflict" });
-  for (const state of ["needs_review", "stalled", "blocked", "done"]) {
-    setState(databasePath, 1, state);
-    assert.deepEqual(reorder(store, "T-1", 2), { ok: false, error: "conflict" }, state);
-  }
-  setState(databasePath, 1, "queued");
+  assert.deepEqual(store.apply(REPOSITORY, "queue_reorder", { id: "T-1", step: 2 }), { ok: false, error: "unsupported" });
   assert.deepEqual(store.readBoard(REPOSITORY), before);
-  // A linked session is a start, whatever the state.
-  const link = (sessionId) => withRawDatabase(databasePath, (database) => database.prepare("UPDATE tasks SET session_id = ? WHERE repository_id = ? AND number = 1").run(sessionId, REPOSITORY));
-  link("claude:abc");
-  assert.deepEqual(reorder(store, "T-1", 2), { ok: false, error: "conflict" });
-  link(null);
-  assert.deepEqual(store.readBoard(REPOSITORY), before);
-});
-
-test("queue_reorder moves a task that is not queued or is scheduled, and keeps its state", async (t) => {
-  const { store, databasePath } = await temporaryStore(t);
-  const feature = addFeature(store, "Search");
-  for (let count = 0; count < 3; count += 1) addTask(store, { featureId: feature });
-  queue(store, "T-1");
-  // T-2 is not queued: it goes to a new last step and stays out of the queue.
-  const moved = reorder(store, "T-2", 4);
-  assert.equal(moved.ok, true);
-  assert.deepEqual(placement(moved.board, feature), [["T-1", 1], ["T-2", 3], ["T-3", 2]]);
-  assert.equal(taskOf(moved.board, "T-2").state, "not_queued");
-  assert.deepEqual(moved.board.queue.order, ["T-1"]);
-  setState(databasePath, 3, "scheduled");
-  const scheduled = reorder(store, "T-3", 1);
-  assert.equal(scheduled.ok, true);
-  assert.deepEqual(placement(scheduled.board, feature), [["T-1", 1], ["T-2", 2], ["T-3", 1]]);
-  assert.equal(taskOf(scheduled.board, "T-3").state, "scheduled");
-});
-
-test("queue_reorder refuses a step whose tasks are all done and accepts one that is only partly done", async (t) => {
-  const { store, databasePath } = await temporaryStore(t);
-  const feature = queuedFeature(store);
-  // Step 1 holds T-1 and T-2; step 2 holds T-3; step 3 holds T-4.
-  setState(databasePath, 3, "done");
-  const before = store.readBoard(REPOSITORY);
-  assert.deepEqual(reorder(store, "T-4", 2), { ok: false, error: "conflict" });
-  assert.deepEqual(reorder(store, "T-1", 2), { ok: false, error: "conflict" });
-  assert.deepEqual(store.readBoard(REPOSITORY), before);
-  // A step with one task not yet done is open, and a new last step is never done.
-  setState(databasePath, 1, "done");
-  assert.equal(reorder(store, "T-4", 1).ok, true);
-  assert.deepEqual(placement(store.readBoard(REPOSITORY), feature), [["T-1", 1], ["T-2", 1], ["T-3", 2], ["T-4", 1]]);
-  assert.equal(reorder(store, "T-4", 3).ok, true);
-  assert.deepEqual(placement(store.readBoard(REPOSITORY), feature), [["T-1", 1], ["T-2", 1], ["T-3", 2], ["T-4", 3]]);
-});
-
-test("a step that is done refuses a queued task from a later step", async (t) => {
-  const { store, databasePath } = await temporaryStore(t);
-  const feature = addFeature(store, "Two");
-  addTask(store, { featureId: feature });
-  addTask(store, { featureId: feature });
-  queue(store, "T-2");
-  setState(databasePath, 1, "done");
-  assert.deepEqual(reorder(store, "T-2", 1), { ok: false, error: "conflict" });
-  assert.deepEqual(reorder(store, "T-2", 4), { ok: false, error: "invalid" });
-  assert.deepEqual(placement(store.readBoard(REPOSITORY), feature), [["T-1", 1], ["T-2", 2]]);
 });
 
 test("a deleted task leaves the order, and no action stores a queue position", async (t) => {
@@ -494,22 +318,23 @@ test("existing actions keep working on queued tasks and never queue or unqueue o
   board = store.apply(REPOSITORY, "move", { id: "T-3", columnId: second.id, position: 0 }).board;
   assert.deepEqual([taskOf(board, "T-3").columnId, taskOf(board, "T-3").state], [second.id, "queued"]);
   assert.equal(board.queue.order.length, 4);
-  // Detaching a queued task makes it a single task, which runs after the feature tasks.
+  // Detaching or attaching a queued task changes its feature, not its place in the queue.
+  const order = board.queue.order;
   board = store.apply(REPOSITORY, "update", { id: "T-1", featureId: null }).board;
-  assert.deepEqual(board.queue.order, ["T-2", "T-3", "T-4", "T-1"]);
-  // Attaching it again at a step puts it back among the feature tasks, by step and number.
-  board = store.apply(REPOSITORY, "update", { id: "T-1", featureId: feature, step: 2 }).board;
-  assert.deepEqual(board.queue.order, ["T-2", "T-1", "T-3", "T-4"]);
+  assert.deepEqual(board.queue.order, order);
+  board = store.apply(REPOSITORY, "update", { id: "T-1", featureId: feature }).board;
+  assert.deepEqual(board.queue.order, order);
 });
 
 test("the served board carries the order as task IDs and no private queue field", async (t) => {
   const { store } = await temporaryStore(t);
-  const feature = queuedFeature(store);
+  queuedFeature(store);
   addTask(store);
   queue(store, "T-5");
   unqueue(store, "T-1");
   queue(store, "T-1");
-  for (const board of [store.readBoard(REPOSITORY), reorder(store, "T-4", 1).board]) {
+  assert.equal(store.apply(REPOSITORY, "queue_group", { ids: ["T-4", "T-2"] }).ok, true);
+  for (const board of [store.readBoard(REPOSITORY)]) {
     const wire = JSON.parse(JSON.stringify(board));
     assert.deepEqual(Object.keys(wire.queue).toSorted(), ["blockedBy", "order", "pauseReason", "status"]);
     assert.ok(wire.queue.order.every((id) => /^T-[1-9][0-9]*$/u.test(id)));
@@ -519,5 +344,4 @@ test("the served board carries the order as task IDs and no private queue field"
     assert.equal(text.includes("queuePosition"), false);
     assert.equal(text.includes("queue_position"), false);
   }
-  assert.equal(placement(store.readBoard(REPOSITORY), feature).length, 4);
 });

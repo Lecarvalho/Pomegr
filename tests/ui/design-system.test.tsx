@@ -271,7 +271,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(card("Not queued")).not.toHaveClass("isLive", "isAttention");
     expect(chip("Queued · next")).toHaveTextContent("Queued · next");
     expect(chip("Queued · next")).toHaveClass("commandChip", "isInk");
-    expect(card("Queued · next").querySelector(".taskCardFeature")?.textContent).toBe("Upload reliability · step 2 of 3 · parallel with T-2");
+    expect(card("Queued · next").querySelector(".taskCardFeature")?.textContent).toBe("Client cleanup");
     expect(chip("Scheduled")).toHaveClass("info");
     expect(card("Scheduled").querySelector(".taskCardStarts")?.textContent).toMatch(/^Starts /);
     // A bound session's state is borrowed; a differing planned model is the one amber line.
@@ -327,12 +327,12 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(within(desktopFilter).getByText("Moving cards is off while a feature filter is on.")).toBeInTheDocument();
     // The selected feature's progress comes before that line, with its counts in the data font.
     const progress = desktopFilter.querySelector(".taskFeatureProgress") as HTMLElement;
-    expect(progress.textContent).toMatch(/^\d+ of \d+ tasks done( · step \d+ of \d+ running)?$/);
+    expect(progress.textContent).toMatch(/^\d+ of \d+ tasks done( · \d+ running)?$/);
     expect(progress.querySelectorAll(".taskFeatureProgressNum").length).toBeGreaterThanOrEqual(2);
     expect(progress.compareDocumentPosition(within(desktopFilter).getByText("Moving cards is off while a feature filter is on.")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // With one feature chosen: the eyebrow, the select, Edit feature, + New feature, then the progress line and the helper.
     const row = within(sample(board, "Feature filter, desktop app, a feature chosen")).getByRole("group", { name: "Filter by feature" });
-    expect([...row.children].map((child) => child.textContent?.replace(/\s+/g, " ").trim().slice(0, 14))).toEqual(["Feature", "Upload reliabi", "Edit feature", "+ New feature", "1 of 4 tasks d", "Moving cards i"]);
+    expect([...row.children].map((child) => child.textContent?.replace(/\s+/g, " ").trim().slice(0, 14))).toEqual(["Feature", "Upload reliabi", "Edit feature", "+ New feature", "1 of 3 tasks d", "Moving cards i"]);
     expect(within(row).getByRole("button", { name: "Edit feature" })).toHaveClass("commandQuietAction");
     expect(within(row).getByRole("button", { name: "+ New feature" })).toHaveClass("commandQuietAction");
 
@@ -393,11 +393,13 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(desktop.querySelectorAll(".taskColumnAdd")).toHaveLength(1);
     expect(within(lanes[0]).getByRole("button", { name: "New task" })).toHaveClass("commandQuietAction", "taskColumnAdd");
     expect(desktop.querySelector(".commandPrimaryAction")).toBeNull();
-    expect(desktop.querySelector(".taskBoardFootnote")).toHaveTextContent(/^Drag a card to move it\. In Ready, drop a card on a step/);
-    // The step target, the new-step zone, and the Move to step select are drawn from the shipped components.
-    expect(document.querySelector(".taskReadyGroup.isStepTarget")).toHaveAttribute("data-step", "2");
-    expect(document.querySelector(".taskReadyNewStep")).toHaveTextContent("New step 4 · after step 3");
-    expect(screen.getAllByRole("combobox", { name: "Move T-4 to step" }).length).toBeGreaterThan(0);
+    expect(desktop.querySelector(".taskBoardFootnote")).toHaveTextContent(/^Drag a card to move it\. Ready starts from the top, one card at a time\./);
+    // The group frame with its actions and the Run in parallel link are drawn from the shipped components.
+    expect(desktop.querySelector(".taskReadyGroup")).toHaveAttribute("data-ready-group", "grp-0123456789ab");
+    expect(within(desktop).getByRole("button", { name: "Ungroup" })).toHaveClass("taskReadyUngroup");
+    expect(within(desktop).getByRole("button", { name: "Take T-3 out of its parallel group" })).toHaveClass("taskMoveLeave");
+    expect(desktop.querySelectorAll(".taskReadyLinkAction").length).toBeGreaterThan(0);
+    expect(desktop.textContent).not.toMatch(/Move to step|New step|Single tasks|One at a time/);
     expect(within(desktop).queryByRole("region", { name: "Queue status" })).toBeNull();
     expect(within(desktop).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
 
@@ -488,14 +490,14 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(within(sample(gates, "Start gates, desktop app")).getByRole("combobox", { name: "Do not start above" })).toHaveTextContent("85% of the usage window");
 
     const stopped = sample(gates, "Start gates, stopped");
-    expect(reading(stopped, "Previous step done")).toHaveTextContent("Blocked by T-2");
+    expect(reading(stopped, "Earlier task finished")).toHaveTextContent("Blocked by T-2");
     expect(reading(stopped, "Provider status")).toHaveTextContent("Incident: Claude Code");
     expect(reading(stopped, "Working tree")).toHaveTextContent("Uncommitted changes");
-    for (const label of ["Previous step done", "Provider status", "Working tree"]) expect(reading(stopped, label)).toHaveClass("is-error");
+    for (const label of ["Earlier task finished", "Provider status", "Working tree"]) expect(reading(stopped, label)).toHaveClass("is-error");
 
     const unknown = sample(gates, "Start gates, unknown");
-    expect(reading(unknown, "Previous step done")).toHaveTextContent("No task queued");
-    for (const label of ["Previous step done", "Claude Code capacity", "Codex capacity", "Provider status", "Working tree"]) expect(reading(unknown, label)).toHaveClass("is-muted");
+    expect(reading(unknown, "Earlier task finished")).toHaveTextContent("No task queued");
+    for (const label of ["Earlier task finished", "Claude Code capacity", "Codex capacity", "Provider status", "Working tree"]) expect(reading(unknown, label)).toHaveClass("is-muted");
     expect(within(sample(gates, "Start gates, not available")).getByText("Start gates are not available yet.")).toBeInTheDocument();
 
     const notSet = sample(gates, "Schedule, browser, not set");
@@ -552,7 +554,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     const stored = sample(fields, "Feature modal, feature, saved");
     expect(within(stored).getByRole("heading", { level: 2, name: "Feature" })).toBeInTheDocument();
     expect(stored.querySelector(".taskModalTitleGroup .commandChip")).toHaveClass("taskCardChip", "neutral");
-    expect(stored.querySelector(".taskModalTitleGroup .commandChip")).toHaveTextContent("1 of 4 done");
+    expect(stored.querySelector(".taskModalTitleGroup .commandChip")).toHaveTextContent("1 of 3 done");
     const save = within(stored).getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
     expect(save).toHaveClass("commandPrimaryAction");
@@ -561,8 +563,8 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     const tasks = stored.querySelector("details.taskFeatureDetails") as HTMLDetailsElement;
     expect(tasks.open).toBe(false);
     expect(tasks.querySelector(".taskFeatureLabel")).toHaveTextContent("Tasks");
-    expect(tasks.querySelector(".taskFeatureCount")).toHaveTextContent("4 tasks · 1 done");
-    expect(tasks.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(4);
+    expect(tasks.querySelector(".taskFeatureCount")).toHaveTextContent("3 tasks · 1 done");
+    expect(tasks.querySelectorAll(".taskFeatureItem")).toHaveLength(3);
     expect(tasks.querySelector(".taskFeatureOpen")).toBeInTheDocument();
     await user.type(within(stored).getByRole("textbox", { name: "App version" }), "1");
     expect(save).toBeEnabled();
@@ -585,7 +587,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     const confirmation = sample(fields, "Feature modal, delete confirmation");
     expect(within(confirmation).queryByRole("button", { name: "Save" })).toBeNull();
     const group = within(confirmation).getByRole("group", { name: "Confirm delete" });
-    expect(group.querySelector(".taskModalNote")).toHaveTextContent("Delete this feature? Its 4 tasks stay on the board with no feature. This cannot be undone.");
+    expect(group.querySelector(".taskModalNote")).toHaveTextContent("Delete this feature? Its 3 tasks stay on the board with no feature. This cannot be undone.");
     expect(within(group).getByRole("button", { name: "Delete feature" })).toHaveClass("commandSecondaryAction");
     await user.click(within(group).getByRole("button", { name: "Keep feature" }));
     expect(within(confirmation).queryByRole("group", { name: "Confirm delete" })).toBeNull();
@@ -606,12 +608,12 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(within(working).getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/tasks?repository=${REPOSITORY_ID}`);
     expect(within(working).getByRole("link", { name: "Open task T-14 on its board" })).toHaveClass("commandTextLink", "commandSessionTaskId");
     expect(working.querySelector(".commandChip")).toBeNull();
-    expect(working.querySelector(".commandSessionTaskFeature")).toHaveTextContent("Upload reliability · step 2");
+    expect(working.querySelector(".commandSessionTaskFeature")).toHaveTextContent("Upload reliability");
     expect(sample(cells, "Needs review").querySelector(".commandChip")).toHaveClass("warning");
     expect(sample(cells, "Stalled").querySelector(".commandChip")).toHaveTextContent("Stalled");
     expect(sample(cells, "Stalled").querySelector(".commandChip")).toHaveClass("warning");
     expect(sample(cells, "Done").querySelector(".commandChip")).toHaveClass("neutral");
-    expect(sample(cells, "Under a Feature group").querySelector(".commandSessionTaskFeature")?.textContent).toBe("Step 2");
+    expect(sample(cells, "Under a Feature group").querySelector(".commandSessionTaskFeature")).toBeNull();
     expect(sample(cells, "No feature").querySelector(".commandSessionTaskFeature")).toBeNull();
     expect(within(sample(cells, "Started by you")).getByTitle("Not started from a task and not assigned to one")).toHaveTextContent("—");
     expect(within(sample(cells, "Table footnote")).getByText(/^Task shows the task a session was started for, and the tasks it is assigned to\./)).toHaveClass("commandUnavailableNote");
@@ -623,12 +625,10 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     const created = sample(fields, "New feature");
     expect(within(created).getByRole("textbox", { name: "Feature name" })).toHaveValue("Retry telemetry");
     const placed = sample(fields, "Feature");
-    expect(placed.querySelector(".taskFeatureDetails > summary")).toHaveTextContent("In this feature4 tasks · 1 done");
-    expect(placed.querySelectorAll(".taskFeatureItem")).toHaveLength(4);
-    expect(placed.querySelector(".taskFeatureItem.hasStep")).toBeNull();
+    expect(placed.querySelector(".taskFeatureDetails > summary")).toHaveTextContent("In this feature3 tasks · 1 done");
+    expect(placed.querySelectorAll(".taskFeatureItem")).toHaveLength(3);
     const inPanel = sample(fields, "Feature, in the Task modal");
     expect(inPanel.querySelectorAll(".taskFeatureItem")).toHaveLength(3);
-    expect(inPanel.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(3);
     await user.type(within(created).getByRole("textbox", { name: "Feature name" }), "!");
     expect(within(created).getByRole("textbox", { name: "Feature name" })).toHaveValue("Retry telemetry!");
     expect(fetchSpy).not.toHaveBeenCalled();

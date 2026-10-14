@@ -43,7 +43,7 @@ export type TaskGateUsageStatus = "ok" | "over" | "unknown";
 export type TaskGateProviderStatus = "ok" | "incident" | "unknown";
 export type TaskGateWorkingTree = "clean" | "dirty" | "unknown";
 // Why a start is held.
-export type TaskGateReason = "previous_step" | "usage_over" | "usage_unknown" | "provider_incident" | "provider_status_unknown" | "tree_dirty" | "tree_unknown"
+export type TaskGateReason = "earlier_task" | "usage_over" | "usage_unknown" | "provider_incident" | "provider_status_unknown" | "tree_dirty" | "tree_unknown"
   | "before_queue_start" | "after_queue_stop";
 export type TaskGateUsage = { status: TaskGateUsageStatus; fiveHourPercent: number | null; sevenDayPercent: number | null };
 export type TaskGates = {
@@ -60,7 +60,7 @@ export type Task = {
   columnId: string;
   position: number;
   featureId: string | null;
-  step: number | null; // step >= 1
+  group: string | null; // "grp-<12 hex>": the parallel group of a task in the queue, while two or more tasks hold it
   run: TaskRun;
   completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
@@ -163,7 +163,7 @@ export const TASK_QUEUE_STATUSES: readonly TaskQueueStatus[] = ["idle", "running
 export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty"];
 export const TASK_GATE_THRESHOLDS: readonly TaskGateThreshold[] = [70, 85, 95];
 export const DEFAULT_TASK_GATE_THRESHOLD: TaskGateThreshold = 85;
-export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];
+export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];
 export const TASK_SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
 export const TASK_ACTION_ERRORS: readonly TaskActionError[] = ["invalid", "not_found", "limit", "conflict", "unsupported"];
 export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In progress", "Review", "Done"];

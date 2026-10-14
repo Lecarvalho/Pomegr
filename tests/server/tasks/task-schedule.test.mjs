@@ -47,29 +47,29 @@ test("a queue starts nothing before its start time or from its stop time on", ()
 
 test("a scheduled task is in the order only once it is due, and one that is not due lets the tasks behind it start", () => {
   const tasks = [
-    { id: "T-1", featureId: null, step: null, state: "scheduled", queuePosition: 0, due: false },
-    { id: "T-2", featureId: null, step: null, state: "queued", queuePosition: 1 },
-    { id: "T-3", featureId: null, step: null, state: "scheduled", queuePosition: 2, due: true },
+    { id: "T-1", featureId: null, group: null, state: "scheduled", queuePosition: 0, due: false },
+    { id: "T-2", featureId: null, group: null, state: "queued", queuePosition: 1 },
+    { id: "T-3", featureId: null, group: null, state: "scheduled", queuePosition: 2, due: true },
   ];
-  assert.deepEqual(orderQueue(tasks, []).order, ["T-2", "T-3"]);
-  assert.deepEqual(nextQueueStart({ status: "running", tasks, features: [] }), { starts: ["T-2"] });
+  assert.deepEqual(orderQueue(tasks).order, ["T-2", "T-3"]);
+  assert.deepEqual(nextQueueStart({ status: "running", tasks }), { starts: ["T-2"] });
   const due = tasks.map((task) => ({ ...task, due: task.state === "scheduled" }));
-  assert.deepEqual(orderQueue(due, []).order, ["T-1", "T-2", "T-3"]);
-  assert.deepEqual(nextQueueStart({ status: "running", tasks: due, features: [] }), { starts: ["T-1"] });
+  assert.deepEqual(orderQueue(due).order, ["T-1", "T-2", "T-3"]);
+  assert.deepEqual(nextQueueStart({ status: "running", tasks: due }), { starts: ["T-1"] });
 });
 
-test("a scheduled task that is not due keeps its feature step open: the rest of the step starts, the next step waits", () => {
-  const features = [{ id: "f" }];
+test("a scheduled task that is not due is skipped and holds nothing, in or out of a group", () => {
   const tasks = [
-    { id: "T-1", featureId: "f", step: 1, state: "scheduled", queuePosition: 0, due: false },
-    { id: "T-2", featureId: "f", step: 1, state: "queued", queuePosition: 1 },
-    { id: "T-3", featureId: "f", step: 2, state: "queued", queuePosition: 2 },
+    { id: "T-1", featureId: "f", group: "grp-000000000001", state: "scheduled", queuePosition: 0, due: false },
+    { id: "T-2", featureId: "f", group: "grp-000000000001", state: "queued", queuePosition: 1 },
+    { id: "T-3", featureId: "f", state: "queued", queuePosition: 2 },
   ];
-  assert.deepEqual(nextQueueStart({ status: "running", tasks, features }), { starts: ["T-2"] });
+  // The group of T-1 and T-2 still counts two members in the queue, so T-2 starts with its group alone.
+  assert.deepEqual(nextQueueStart({ status: "running", tasks }), { starts: ["T-2"] });
   const later = tasks.map((task) => (task.id === "T-2" ? { ...task, state: "done" } : task));
-  assert.equal(nextQueueStart({ status: "running", tasks: later, features }), null, "step 1 is not done while T-1 waits for its time");
+  assert.deepEqual(nextQueueStart({ status: "running", tasks: later }), { starts: ["T-3"] }, "T-1 waits for its time and holds nothing");
   const due = later.map((task) => (task.id === "T-1" ? { ...task, due: true } : task));
-  assert.deepEqual(nextQueueStart({ status: "running", tasks: due, features }), { starts: ["T-1"] });
+  assert.deepEqual(nextQueueStart({ status: "running", tasks: due }), { starts: ["T-1"] });
 });
 
 test("the horizon matches the contract, and a start time is an instant inside it, not behind the clock", () => {

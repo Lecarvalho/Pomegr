@@ -1,157 +1,186 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { Task, TaskBoard } from "../../shared/task-contract";
+import type { Task } from "../../shared/task-contract";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
 import { taskColumns } from "../../app/components/tasks/task-presentation";
-import { readySegments } from "../../app/components/tasks/task-ready-groups";
+import { idList, linkIds, readySegments, READY_GROUP_LIMIT } from "../../app/components/tasks/task-ready-groups";
 import { startsParts } from "../../app/components/tasks/task-schedule";
+import { GROUP_A, GROUP_B, READY, board, gates, running, task, tasks } from "./task-group-fixtures";
 
-const columns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position, role: null }));
-const features = [{ id: "f1", name: "Tasks adjustments", done: false }, { id: "f2", name: "Aril chat polish", done: false }];
-
-function task(id: number, overrides: Partial<Task> = {}): Task {
-  return {
-    id: `T-${id}`, text: `Task ${id}`, columnId: "col-2", position: id, featureId: null, step: null,
-    run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["pr_open"], own: null },
-    state: "queued", scheduledAt: null, session: null, source: null, report: null,
-    createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
-  };
-}
-
-const session = { id: "claude:s", title: null, state: "working", observedModel: null };
-const local = (hour: number) => new Date(2026, 9, 12, hour).toISOString();
-
-/**
- * Ready, top to bottom: f1 step 2 (T-59, T-60, T-62), f1 step 3 (T-63), f2 step 1 (T-64, T-65), a card that is not
- * queued (T-80), then the single tasks T-69 (scheduled) and T-71. f1 step 1 runs elsewhere: T-55, T-56, T-57.
- */
-const tasks = (): Task[] => [
-  task(55, { featureId: "f1", step: 1, columnId: "col-4", state: "needs_review", session }),
-  task(56, { featureId: "f1", step: 1, columnId: "col-3", session }),
-  task(57, { featureId: "f1", step: 1, columnId: "col-3", session }),
-  task(59, { featureId: "f1", step: 2, position: 0 }),
-  task(60, { featureId: "f1", step: 2, position: 1 }),
-  task(62, { featureId: "f1", step: 2, position: 2 }),
-  task(63, { featureId: "f1", step: 3, position: 3 }),
-  task(64, { featureId: "f2", step: 1, position: 4 }),
-  task(65, { featureId: "f2", step: 1, position: 5 }),
-  task(80, { state: "not_queued", position: 6, featureId: "f1", step: 4 }),
-  task(69, { state: "scheduled", scheduledAt: local(22), position: 7 }),
-  task(71, { position: 8 }),
-];
-
-const gates: NonNullable<TaskBoard["queue"]["gates"]> = {
-  threshold: 85, usage: { claude: { status: "over", fiveHourPercent: 91, sevenDayPercent: 37 }, codex: { status: "ok", fiveHourPercent: 1, sevenDayPercent: 1 } },
-  providerStatus: { claude: "ok", codex: "ok" }, workingTree: "clean", next: { taskId: "T-59", provider: "claude", blockedBy: null, reasons: ["usage_over"] },
-};
-
-function board(overrides: Partial<TaskBoard["queue"]> = {}): TaskBoard {
-  return { version: 1, readiness: "ready", repositoryId: "repo-0123456789abcdef01234567", columns, features, tasks: tasks(),
-    queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-59", "T-60", "T-62", "T-63", "T-64", "T-65", "T-71"], gates, ...overrides } };
-}
-
-const card = (id: string) => document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement;
 const lane = (name: string) => screen.getByRole("region", { name }) as HTMLElement;
-const groups = () => [...lane("Ready").querySelectorAll<HTMLElement>(".taskReadyGroup")];
+const card = (id: string) => document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement;
+const frames = () => [...lane("Ready").querySelectorAll<HTMLElement>(".taskReadyGroup")];
+const ready = (value = board()) => taskColumns(value)[1].tasks;
+const ids = (cards: readonly Task[]) => cards.map((item) => item.id);
 
-describe("the Ready lane's step groups", () => {
+describe("readySegments", () => {
   it("projects the lane's order into segments without moving a card", () => {
     const value = board();
-    const ready = taskColumns(value)[1].tasks;
-    const segments = readySegments(ready, value);
-    expect(segments.map((segment) => segment.kind)).toEqual(["step", "step", "step", "card", "single"]);
-    expect(segments.flatMap((segment) => segment.kind === "card" ? [segment.task.id] : segment.tasks.map((item) => item.id))).toEqual(ready.map((item) => item.id));
-    expect(segments[0]).toMatchObject({ step: 2, last: 4, size: 3 });
-    expect(segments[1]).toMatchObject({ step: 3, last: 4, size: 1 });
+    const segments = readySegments(ready(value), value);
+    expect(segments.map((segment) => segment.kind)).toEqual(["parallel", "card", "card", "card", "card", "parallel"]);
+    expect(segments.flatMap((segment) => segment.kind === "card" ? [segment.task.id] : ids(segment.tasks))).toEqual(READY);
+    expect(segments.filter((segment) => segment.kind === "card").map((segment) => segment.kind === "card" && segment.waiting)).toEqual([true, true, false, true]);
   });
 
-  it("counts a step's tasks in any lane, so a lone waiting card of a parallel step is not called one task", () => {
+  it("makes no group from adjacency alone", () => {
+    const value = { tasks: [task(1, { position: 0 }), task(2, { position: 1 }), task(3, { position: 2 })] };
+    expect(readySegments(value.tasks, value).map((segment) => segment.kind)).toEqual(["card", "card", "card"]);
+  });
+
+  it("makes one frame of the waiting cards that share a group, started siblings aside", () => {
     const value = board();
-    // T-56 is requeued: it waits in Ready while T-55 and T-57 of its step are elsewhere.
-    value.tasks = value.tasks.map((item) => item.id === "T-56" ? { ...item, columnId: "col-2", position: 9, session: null } : item);
-    const segments = readySegments(taskColumns(value)[1].tasks, value);
-    expect(segments.at(-1)).toMatchObject({ kind: "step", step: 1, size: 3, tasks: [{ id: "T-56" }] });
-    render(<TaskBoardView board={value} />);
-    const last = groups().at(-1) as HTMLElement;
-    expect(last).not.toHaveClass("isParallel");
-    expect(last.querySelector(".taskReadyMode")?.textContent).toBe("Parallel · 3");
+    const [frame] = readySegments(ready(value), value);
+    expect(frame).toMatchObject({ kind: "parallel", group: GROUP_A, started: ["T-3"] });
+    expect(frame.kind === "parallel" && ids(frame.tasks)).toEqual(["T-1", "T-2"]);
   });
 
-  it("frames a step with two or more waiting cards and captions it (D6, D7)", () => {
+  it("keeps cards of different features in one frame", () => {
+    const value = board();
+    const [frame] = readySegments(ready(value), value);
+    expect(frame.kind === "parallel" && frame.tasks.map((item) => item.featureId)).toEqual(["f1", "f2"]);
+  });
+
+  it("splits a frame at a card that does not wait", () => {
+    const value = { tasks: [task(1, { group: GROUP_A, position: 0 }), task(2, { state: "not_queued", position: 1 }), task(3, { group: GROUP_A, position: 2 })] };
+    const segments = readySegments(value.tasks, value);
+    expect(segments.map((segment) => segment.kind)).toEqual(["parallel", "card", "parallel"]);
+    expect(segments.map((segment) => segment.kind === "parallel" ? ids(segment.tasks) : [segment.task.id])).toEqual([["T-1"], ["T-2"], ["T-3"]]);
+  });
+
+  it("splits a frame at a card of another group, and keeps two groups apart", () => {
+    const value = { tasks: [task(1, { group: GROUP_A, position: 0 }), task(2, { group: GROUP_B, position: 1 }), task(3, { group: GROUP_B, position: 2 }), task(4, { group: GROUP_A, position: 3 })] };
+    expect(readySegments(value.tasks, value).map((segment) => segment.kind === "parallel" ? ids(segment.tasks) : [])).toEqual([["T-1"], ["T-2", "T-3"], ["T-4"]]);
+  });
+
+  it("lists the members in flight by number, not by text order", () => {
+    const flying = [task(12, { group: GROUP_A, columnId: "col-3", session: running }), task(3, { group: GROUP_A, columnId: "col-3", session: running }), task(9, { group: GROUP_B, columnId: "col-3", session: running })];
+    const waiting = [task(20, { group: GROUP_A, position: 0 }), task(21, { group: GROUP_A, position: 1 })];
+    const [frame] = readySegments(waiting, { tasks: [...waiting, ...flying] });
+    expect(frame).toMatchObject({ kind: "parallel", started: ["T-3", "T-12"] });
+  });
+});
+
+describe("linkIds", () => {
+  const segments = () => {
+    const value = board();
+    return readySegments(ready(value), value);
+  };
+
+  it("names both sides, in lane order, between two waiting segments", () => {
+    const [groupA, four, five, seven, six, groupB] = segments();
+    expect(linkIds(groupA, four)).toEqual(["T-1", "T-2", "T-4"]);
+    expect(linkIds(four, five)).toEqual(["T-4", "T-5"]);
+    expect(linkIds(six, groupB)).toEqual(["T-6", "T-8", "T-9"]);
+    expect(linkIds(groupA, groupB)).toEqual(["T-1", "T-2", "T-8", "T-9"]);
+    expect(linkIds(five, seven)).toBeNull();
+    expect(linkIds(seven, six)).toBeNull();
+  });
+
+  it("is null without a segment on a side", () => {
+    const [groupA] = segments();
+    expect(linkIds(undefined, groupA)).toBeNull();
+    expect(linkIds(groupA, undefined)).toBeNull();
+  });
+
+  it(`stays within ${READY_GROUP_LIMIT} members, counting the siblings that already started`, () => {
+    const group = (name: string, waiting: number, started: number) => {
+      const members = Array.from({ length: waiting }, (_, index) => task(index + 1, { group: name, position: index }));
+      const flying = Array.from({ length: started }, (_, index) => task(100 + index, { group: name, columnId: "col-3", session: running }));
+      return readySegments(members, { tasks: [...members, ...flying] })[0];
+    };
+    const single = readySegments([task(50, { position: 0 })], { tasks: [] })[0];
+    expect(linkIds(group(GROUP_A, 8, 7), single)).toHaveLength(9);
+    expect(linkIds(group(GROUP_A, 8, 8), single)).toBeNull();
+    expect(linkIds(group(GROUP_A, 8, 0), group(GROUP_B, 8, 0))).toHaveLength(16);
+    expect(linkIds(group(GROUP_A, 9, 0), group(GROUP_B, 8, 0))).toBeNull();
+  });
+
+  it("reads a list of IDs aloud", () => {
+    expect([idList(["T-4"]), idList(["T-4", "T-5"]), idList(["T-4", "T-5", "T-9"])]).toEqual(["T-4", "T-4 and T-5", "T-4, T-5, and T-9"]);
+  });
+});
+
+describe("the Ready lane's parallel groups", () => {
+  it("frames the waiting cards of a group, in the lane's own order, and counts the cards waiting", () => {
     render(<TaskBoardView board={board()} />);
-    const [first, , third] = groups();
-    expect(first).toHaveClass("isParallel");
-    expect(first.querySelector(".taskReadyStep")?.textContent).toBe("Tasks adjustments · Step 2 of 4");
-    expect(first.querySelector(".taskReadyMode")?.textContent).toBe("Parallel · 3");
+    const [first, second] = frames();
+    expect(frames()).toHaveLength(2);
+    expect(first).toHaveAttribute("data-ready-group", GROUP_A);
+    expect(first.querySelector(".taskReadyMode")?.textContent).toBe("Parallel · 2 · T-3 started");
     expect(first.querySelector(".taskReadyMode svg")).toHaveAttribute("aria-hidden", "true");
-    expect(first.querySelector(".taskReadyCount")).toHaveTextContent("3");
-    expect([...first.querySelectorAll("li.taskCard")].map((item) => item.getAttribute("data-task-id"))).toEqual(["T-59", "T-60", "T-62"]);
-    expect(third.querySelector(".taskReadyStep")?.textContent).toBe("Aril chat polish · Step 1 of 1");
-    expect(within(first).getByRole("list", { name: "Tasks adjustments, step 2 of 4" })).toBeInTheDocument();
+    expect([...first.querySelectorAll("li.taskCard")].map((item) => item.getAttribute("data-task-id"))).toEqual(["T-1", "T-2"]);
+    expect(within(first).getByRole("list", { name: "Parallel group of T-1 and T-2" })).toBeInTheDocument();
+    expect(second.querySelector(".taskReadyMode")?.textContent).toBe("Parallel · 2");
+    expect(second.querySelector(".taskReadyStarted")).toBeNull();
   });
 
-  it("captions a one-task step and the single tasks without a frame (D8, D9)", () => {
-    render(<TaskBoardView board={board()} />);
-    const [, second, , singles] = groups();
-    expect(second).not.toHaveClass("isParallel");
-    expect(second.querySelector(".taskReadyMode")?.textContent).toBe("One task");
-    expect(second.querySelector("svg.taskParallelGlyph")).toBeNull();
-    expect(singles).not.toHaveClass("isParallel");
-    expect(singles.querySelector(".taskReadyStep")?.textContent).toBe("Single tasks");
-    expect(singles.querySelector(".taskReadyMode")?.textContent).toBe("One at a time");
-    expect(groups()).toHaveLength(4);
-  });
-
-  it("draws a grouped card compact, with its run and no feature or Complete when line (D10)", () => {
-    render(<TaskBoardView board={board()} />);
-    expect(card("T-60")).toHaveClass("taskReadyCard");
-    expect(card("T-60").querySelector(".taskCardPlanned")).toHaveTextContent("model-large · high");
-    expect(card("T-60").querySelector(".taskCardFeature")).toBeNull();
-    expect(card("T-60").querySelectorAll(".taskCardDetail")).toHaveLength(0);
-    // A card of Ready that does not wait in the queue stays a plain board card where it is.
-    expect(card("T-80")).not.toHaveClass("taskReadyCard");
-    expect(card("T-80").closest(".taskReadyGroup")).toBeNull();
-    expect(card("T-80").querySelector(".taskCardFeature")?.textContent).toBe("Tasks adjustments · step 4 of 4");
-  });
-
-  it("keeps Queued · next and adds the Waiting line only while the queue is on (D11)", () => {
-    const { unmount } = render(<TaskBoardView board={board()} />);
-    expect(card("T-59").querySelector(".taskCardChip")).toHaveTextContent("Queued · next");
-    expect(card("T-59").querySelector(".taskCardWaiting")?.textContent).toMatch(/^Waiting: Claude Code is above 85%/u);
-    expect(card("T-60").querySelector(".taskCardWaiting")).toBeNull();
-    unmount();
-    render(<TaskBoardView board={board({ status: "idle" })} />);
-    expect(card("T-59").querySelector(".taskCardWaiting")).toBeNull();
-  });
-
-  it("names a scheduled card's day and puts its time in the data font (D12)", () => {
-    render(<TaskBoardView board={board()} />);
-    expect(card("T-69").querySelector(".taskCardChip")).toHaveClass("info");
-    expect(card("T-69").querySelector(".taskCardChip")).toHaveTextContent("Scheduled");
-    expect(card("T-69").querySelector(".taskCardStartsTime")).toHaveTextContent("22:00");
-    const scheduled = { state: "scheduled", scheduledAt: local(22), session: null } as const;
-    expect(startsParts(scheduled, Date.parse(local(9)))).toEqual({ day: "today", time: "22:00" });
-    expect(startsParts(scheduled, Date.parse(local(9)) - 86_400_000)).toEqual({ day: "Oct 12,", time: "22:00" });
-    expect(startsParts(scheduled)).toEqual({ day: "Oct 12,", time: "22:00" });
-  });
-
-  it("names the other tasks of a parallel step on a card outside Ready, and none for a one-task step (D13, D14)", () => {
+  it("frames a group with one card waiting, and names every sibling that started", () => {
     const value = board();
-    value.tasks = value.tasks.map((item) => item.id === "T-80" ? { ...item, columnId: "col-1" } : item);
+    value.tasks = value.tasks.map((item) => item.id === "T-2" ? { ...item, columnId: "col-3", session: running } : item);
     render(<TaskBoardView board={value} />);
-    const line = card("T-56").querySelector(".taskCardFeature") as HTMLElement;
-    expect(line.textContent).toBe("Tasks adjustments · step 1 of 4 · parallel with T-55, T-57");
-    expect(within(line).getByRole("img", { name: "Parallel" })).toBeInTheDocument();
-    expect(line.querySelector(".taskCardFeatureIds")).toHaveTextContent("T-55, T-57");
-    const alone = card("T-80").querySelector(".taskCardFeature") as HTMLElement;
-    expect(alone.textContent).toBe("Tasks adjustments · step 4 of 4");
-    expect(alone.querySelector("svg")).toBeNull();
+    expect(frames()[0].querySelector(".taskReadyMode")?.textContent).toBe("Parallel · 1 · T-2 and T-3 started");
   });
 
-  it("groups no other lane and counts cards, not groups (D15)", () => {
+  it("draws a card that is not in a group where it is, with no frame and no step text anywhere", () => {
     render(<TaskBoardView board={board()} />);
-    expect(lane("Ready").querySelector(".taskColumnCount")).toHaveTextContent("9 tasks");
+    expect(card("T-4").closest(".taskReadyGroup")).toBeNull();
+    expect(card("T-7").closest(".taskReadyGroup")).toBeNull();
+    const text = document.body.textContent ?? "";
+    for (const word of ["Step", "Move to step", "Single tasks", "One at a time", "step "]) expect(text, word).not.toContain(word);
+    expect(Object.keys(tasks()[0])).not.toContain("step");
+  });
+
+  it("draws a waiting card compact, with its run and the feature name only", () => {
+    render(<TaskBoardView board={board()} />);
+    expect(card("T-1")).toHaveClass("taskReadyCard");
+    expect(card("T-1").querySelector(".taskCardPlanned")).toHaveTextContent("model-large · high");
+    expect(card("T-1").querySelector(".taskCardFeature")?.textContent).toBe("Tasks adjustments");
+    expect(card("T-2").querySelector(".taskCardFeature")?.textContent).toBe("Aril chat polish");
+    expect([...card("T-1").querySelectorAll(".taskCardDetail")].map((item) => item.className)).toEqual(["taskCardDetail taskCardFeature"]);
+    // A card of Ready that does not wait in the queue stays a plain board card where it is.
+    expect(card("T-7")).not.toHaveClass("taskReadyCard");
+    // The started sibling is a plain card of its own lane, named by its feature.
+    expect(card("T-3").closest(".taskReadyGroup")).toBeNull();
+    expect(card("T-3").querySelector(".taskCardFeature")?.textContent).toBe("Tasks adjustments");
+  });
+
+  it("keeps Queued · next and adds the Waiting line only while the queue is on", () => {
+    const next = { taskId: "T-1", provider: "claude" as const, blockedBy: null, reasons: ["usage_over" as const] };
+    const open = (status: "running" | "idle") => board({ queue: { status, blockedBy: null, pauseReason: null, order: ["T-1", "T-2", "T-4"], gates: gates(next, { usage: { claude: { status: "over", fiveHourPercent: 91, sevenDayPercent: 37 }, codex: { status: "ok", fiveHourPercent: 1, sevenDayPercent: 1 } } }) } });
+    const { unmount } = render(<TaskBoardView board={open("running")} />);
+    expect(card("T-1").querySelector(".taskCardChip")).toHaveTextContent("Queued · next");
+    expect(card("T-1").querySelector(".taskCardWaiting")?.textContent).toBe("Waiting: Claude Code is above 85% of the five-hour window · T-3 started");
+    // A waiting sibling of the first task reads its own provider's hold: Claude Code is over.
+    expect(card("T-2").querySelector(".taskCardWaiting")?.textContent).toBe("Waiting: Claude Code is above 85% of the five-hour window · T-3 started");
+    expect(card("T-4").querySelector(".taskCardWaiting")).toBeNull();
+    expect(card("T-8").querySelector(".taskCardWaiting")).toBeNull();
+    unmount();
+    render(<TaskBoardView board={open("idle")} />);
+    expect(card("T-1").querySelector(".taskCardWaiting")).toBeNull();
+  });
+
+  it("names a scheduled card's day and puts its time in the data font", () => {
+    const at = (hour: number) => new Date(2026, 9, 12, hour).toISOString();
+    const value = board();
+    value.tasks = value.tasks.map((item) => item.id === "T-5" ? { ...item, state: "scheduled" as const, scheduledAt: at(22) } : item);
+    render(<TaskBoardView board={value} />);
+    expect(card("T-5").querySelector(".taskCardChip")).toHaveClass("info");
+    expect(card("T-5").querySelector(".taskCardChip")).toHaveTextContent("Scheduled");
+    expect(card("T-5").querySelector(".taskCardStartsTime")).toHaveTextContent("22:00");
+    const scheduled = { state: "scheduled", scheduledAt: at(22), session: null } as const;
+    expect(startsParts(scheduled, Date.parse(at(9)))).toEqual({ day: "today", time: "22:00" });
+    expect(startsParts(scheduled, Date.parse(at(9)) - 86_400_000)).toEqual({ day: "Oct 12,", time: "22:00" });
+  });
+
+  it("groups no other lane and counts cards, not groups", () => {
+    render(<TaskBoardView board={board()} />);
+    expect(lane("Ready").querySelector(".taskColumnCount")).toHaveTextContent("8 tasks");
     expect(lane("In progress").querySelector(".taskReadyGroup")).toBeNull();
-    expect(document.querySelectorAll(".taskReadyGroup")).toHaveLength(4);
+    expect(document.querySelectorAll(".taskReadyGroup")).toHaveLength(2);
+  });
+
+  it("draws no action without edits: no link, no Ungroup, no group arrows, no Take out of group", () => {
+    render(<TaskBoardView board={board()} />);
+    expect(document.querySelector(".taskReadyLink, .taskReadyUngroup, [data-group-move], .taskMoveLeave, [draggable]")).toBeNull();
   });
 });
