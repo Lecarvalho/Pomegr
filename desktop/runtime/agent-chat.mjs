@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
+import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { composePrompt } from "./agent-chat-prompt.mjs";
 import { applyOperations, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
@@ -138,6 +139,15 @@ export function createAgentChat(options = {}) {
     } catch { return null; }
   }
 
+  // The observed runs the task form's Claude model list reads, cut to the source and the model of each. A committed GET;
+  // no answer leaves the Claude list to the board's own tasks.
+  async function readRuns() {
+    try {
+      const agents = await monitor(`/api/agents?${new URLSearchParams({ ...RUN_MODEL_AGENTS_QUERY, days: String(RUN_MODEL_AGENTS_QUERY.days) })}`, { method: "GET" });
+      return (Array.isArray(agents?.runs) ? agents.runs : []).filter(isPlainObject).map((run) => ({ source: run.source, model: run.model }));
+    } catch { return []; }
+  }
+
   async function repositoryRoot(repositoryId) {
     try {
       const answer = await postAction("worktree-root", repositoryId, {});
@@ -239,13 +249,13 @@ export function createAgentChat(options = {}) {
       // No provider, no board, or no repository root: the follow-up is stored as failed. The proposal keeps its outcome.
       const command = executable(turn.provider);
       if (!command) return await finishTurn(turn, null);
-      const [board, root] = await Promise.all([readBoard(turn.repositoryId), repositoryRoot(turn.repositoryId)]);
+      const [board, root, runs] = await Promise.all([readBoard(turn.repositoryId), repositoryRoot(turn.repositoryId), readRuns()]);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
       if (!board || !root) return await finishTurn(turn, null);
       const held = conversationImages(conversation.messages);
       const shown = images && held.length > 0 ? await images.files(turn.repositoryId, conversation.id, held) : [];
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), messages: conversation.messages, followUp: proposal, images: shown, now: now() });
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
@@ -320,7 +330,7 @@ export function createAgentChat(options = {}) {
       const held = conversationImages(existing?.messages);
       if (imageIds.length > 0 && !images) return UNAVAILABLE;
       if (held.length + imageIds.length > CHAT_IMAGES_PER_CONVERSATION) return refused("limit");
-      const [board, root] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId)]);
+      const [board, root, runs] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId), readRuns()]);
       if (!board || !root || disposed) return UNAVAILABLE;
       const conversation = existing ?? await store.create(repositoryId, { provider, model, title: conversationTitle(text) });
       if (!conversation) return refused("limit");
@@ -333,7 +343,7 @@ export function createAgentChat(options = {}) {
       const attached = imageIds.length > 0 ? await images.claim(repositoryId, conversation.id, imageIds) : [];
       if (!attached) return abandoned(INVALID);
       const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };

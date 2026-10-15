@@ -86,6 +86,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "shared/usage-notification.mjs",
   "shared/release-notification.mjs",
   "shared/model-notification.mjs",
+  "shared/task-run-models.mjs",
   "server/web/server.mjs",
 ]);
 

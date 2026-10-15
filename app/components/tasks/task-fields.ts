@@ -68,51 +68,10 @@ export function withRequiredRun(run: TaskRun): TaskRun {
 export type TaskModelOptions = Record<TaskProvider, readonly string[]>;
 export const NO_MODELS: TaskModelOptions = { claude: [], codex: [] };
 
-const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:+[\]-]*$/u;
 const UNSET = "";
 
-function modelVersion(model: string): { family: string; version: number[]; date: number } {
-  const words: string[] = [];
-  const version: number[] = [];
-  let date = 0;
-  for (const part of model.toLowerCase().split("-")) {
-    if (/^\d{8}$/u.test(part)) date = Number(part);
-    else if (/^\d+(?:\.\d+)*$/u.test(part)) version.push(...part.split(".").map(Number));
-    else words.push(part);
-  }
-  return { family: words.join("-"), version, date };
-}
-
-function isNewerModel(candidate: ReturnType<typeof modelVersion>, current: ReturnType<typeof modelVersion>): boolean {
-  for (let index = 0; index < Math.max(candidate.version.length, current.version.length); index += 1) {
-    const difference = (candidate.version[index] ?? 0) - (current.version[index] ?? 0);
-    if (difference !== 0) return difference > 0;
-  }
-  return candidate.date > current.date;
-}
-
-export function latestModels(models: Iterable<string>): string[] {
-  const newest = new Map<string, { model: string; parsed: ReturnType<typeof modelVersion> }>();
-  for (const model of models) {
-    const parsed = modelVersion(model);
-    const current = newest.get(parsed.family);
-    if (!current || isNewerModel(parsed, current.parsed)) newest.set(parsed.family, { model, parsed });
-  }
-  return [...newest.values()].map((entry) => entry.model).sort();
-}
-
-/** Run on models per provider. */
-export function modelsByProvider(
-  runs: ReadonlyArray<{ source: string; model: string | null }>,
-  codexCatalog: ReadonlyArray<{ id: string }> = [],
-): TaskModelOptions {
-  const claude = new Set<string>();
-  for (const run of runs) {
-    if (run.source === "Claude Code" && run.model && run.model.length <= TASK_BOUNDS.modelIdentifierLength && MODEL_IDENTIFIER.test(run.model)) claude.add(run.model);
-  }
-  const codex = codexCatalog.map((model) => model.id).filter((id) => id.length <= TASK_BOUNDS.modelIdentifierLength && MODEL_IDENTIFIER.test(id));
-  return { claude: latestModels(claude), codex: [...new Set(codex)] };
-}
+/** Run on models per provider: the shared list that Aril's board snapshot also reads. */
+export { latestModels, modelsByProvider } from "../../../shared/task-run-models.mjs";
 
 export function runSelectValue(run: TaskRun): string {
   if (!run.provider) return UNSET;

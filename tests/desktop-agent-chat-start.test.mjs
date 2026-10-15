@@ -92,7 +92,7 @@ test("applying on the desktop starts exactly one session through the manual star
   assert.deepEqual(await apply(), { ok: true });
   assert.deepEqual(starts, [[trusted, repositoryId, "T-3"]], "the trusted window event, the repository, and the task: no path, text, or flag");
   await h.followUp();
-  assert.deepEqual(h.calls.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root"], "the chat sends the monitor no queue action, no task action, and no board change: only the reads of the follow-up");
+  assert.deepEqual(h.calls.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root", "/api/agents"], "the chat sends the monitor no queue action, no task action, and no board change: only the reads of the follow-up");
   assert.deepEqual(await proposal(), { ...startProposal(), state: "applied", results: [{ ok: true, start: "started" }] });
 });
 

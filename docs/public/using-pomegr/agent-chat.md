@@ -50,6 +50,12 @@ Things you can ask:
   the planned and observed models, the outcome, and each checked condition. It can also
   read a session's report.
 
+When Aril proposes a task, it chooses the provider, the model, and the effort for that
+task. It weighs the kind and size of the work, the risk, how tasks of the same kind did
+on your board, and the usage of both providers. It can choose any model that the **Run
+on** menu of the task form offers, for Claude Code or Codex, and it says in one line
+why it chose it. If you name a provider, a model, or an effort, Aril uses it.
+
 ### Send an image
 
 You can show Aril a screenshot or a mock-up.

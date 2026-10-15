@@ -159,7 +159,7 @@ test("dismiss stores dismissed and posts nothing: the follow-up after it only re
   const conversation = await seed(h, { messages: withProposal() });
   assert.deepEqual(await dismiss(h, conversation.id), { ok: true });
   await h.followUp();
-  assert.deepEqual(h.calls.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root"]);
+  assert.deepEqual(h.calls.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root", "/api/agents"]);
   const proposal = await storedProposal(h, conversation.id);
   assert.deepEqual(proposal, { ...pendingProposal(), state: "dismissed" });
   assert.equal(Object.hasOwn(proposal, "results"), false);
@@ -477,7 +477,7 @@ test("the chat's runtime files are a closed surface: no console, no shell, no ex
     assert.doesNotMatch(source, /\bprocess\.(?:exit|kill)|child\.kill\(\)\s*;\s*process/u, `${file} ends processes`);
     for (const specifier of [...source.matchAll(/(?:from\s+|import\s*\()\s*["']([^"']+)["']/gu)].map((match) => match[1])) {
       const allowed = specifier.startsWith("node:") || RUNTIME_FILES.some((name) => specifier === `./${name}`)
-        || ["./claude-auth.mjs", "./environment-policy.mjs", "./plugin-cli.mjs", "../../shared/local-auth.mjs"].includes(specifier);
+        || ["./claude-auth.mjs", "./environment-policy.mjs", "./plugin-cli.mjs", "../../shared/local-auth.mjs", "../../shared/task-run-models.mjs"].includes(specifier);
       assert.ok(allowed, `${file} imports ${specifier}`);
     }
   }

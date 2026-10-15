@@ -74,9 +74,12 @@ or a Dismiss that was stored starts one too, for Aril's follow-up (see
    One turn runs at a time for the whole app.
 3. It finds the provider's executable with the same rules a task start uses. No
    executable answers `cli_missing`.
-4. It reads the board (`GET /api/tasks` on the monitor, with the desktop token) and the
-   repository root (`POST /internal/tasks/worktree-root`). A board that is not ready, or
-   a repository the monitor has not located in this run, answers `unavailable`.
+4. It reads the board (`GET /api/tasks` on the monitor, with the desktop token), the
+   repository root (`POST /internal/tasks/worktree-root`), and the observed agent runs
+   that the task form's model list reads (`GET /api/agents` for all projects, 90 days,
+   all scopes). A board that is not ready, or a repository the monitor has not located in
+   this run, answers `unavailable`. An agents read that fails leaves the Claude list to
+   the board's own models.
 5. It moves the message's images into the conversation, builds the prompt (see
    [Prompt](#prompt)), stores the owner's message, declares a Claude Code run to the
    monitor (see [The declared run](#the-declared-run)), and starts the run in the
@@ -200,7 +203,7 @@ characters, in this order:
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the queue (status,
    order, blocker, start threshold, and the usage percentages of the start gates), the
-   models seen on the board and the Codex model list, and every task.
+   model lists (`models`), and every task.
 3. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
@@ -226,8 +229,28 @@ line, the GitHub issue number, the scheduled time, the update time, and the task
 Task text shares a budget of 48,000 characters. Unfinished tasks get their whole text
 first; past the budget a task carries 240 characters and `text_cut`.
 
+`models` holds one list for `claude` and one for `codex`. Each list starts with the
+models the Run on list of the task form offers for that provider, from the same code
+(`modelsByProvider` in `shared/task-run-models.mjs`): for Claude, the newest observed
+model of each family; for Codex, the committed client catalog (`runModels.codex`), in
+its order. The models that the board's tasks planned or reported follow, sorted, so the
+record stays readable. Each list holds at most 64 models, the bound of the Codex
+catalog, so a whole catalog fits. Only valid model identifiers are kept; a run or a
+catalog row adds nothing else.
+
 The snapshot holds no path, token, repository ID, column ID, feature ID, image, or
 dispatch fact. A feature's description and app version are not in it.
+
+Aril chooses the provider, model and effort of each task it proposes on its own. It
+does not copy them from the newest task. It weighs the kind of work (a small located UI
+fix, a cross-layer trace, a design or a prototype, an instruction change, or a probe
+that writes no code), the size, the risk, the board's record for tasks of the same kind
+(where an unavailable result is never a failure), and both providers' usage against the
+start threshold. Both providers' lists are candidates for every task. Aril names in one
+line why it chose each model and effort, recommends only a model that `models` lists or
+a provider's default model, and says so when the record cannot tell. A preference the
+owner states wins. It may still copy `complete_when` from the newest task of the same
+kind.
 
 Aril's advice on models is a reading of this recorded evidence. It is never presented as
 a measurement or a benchmark.
@@ -674,7 +697,10 @@ never a session's.
   snapshot's, no path, and no error text. That prompt holds the owner's messages, Aril's earlier
   answers, and the board snapshot: task text, own conditions, feature titles, block
   reasons, attention lines, session references, model names, and the task IDs each task
-  runs after (task T-101). This is a deliberate
+  runs after (task T-101). The model names include the models the task form offers:
+  Claude's newest observed model of each family, from the sessions of every repository
+  in the last 90 days, and the Codex catalog (task T-110). A model name carries no
+  session, path, or repository. This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
   own session. The run can also read the repository's files and call the seven read
   tools, so file content and normalized session evidence can reach the provider in the
