@@ -377,7 +377,7 @@ describe("artifact boundary audit of the content inputs", () => {
 
     it("accepts only public pages in a static sitemap.xml and only the sitemap line in a static robots.txt", () => {
       const sitemap = (...paths: string[]) => `<urlset>${paths.map((path) => `<url><loc>https://pomegr.com${path}</loc></url>`).join("")}</urlset>\n`;
-      expect(audit(landing(dist({ "dist/client/sitemap.xml": sitemap("/", "/about", "/download", "/docs/help/alpha"), "dist/client/robots.txt": "User-agent: *\nAllow: /\n\nSitemap: https://pomegr.com/sitemap.xml\n" })), true).ok).toBe(true);
+      expect(audit(landing(dist({ "dist/client/sitemap.xml": sitemap("/", "/download", "/docs/help/alpha"), "dist/client/robots.txt": "User-agent: *\nAllow: /\n\nSitemap: https://pomegr.com/sitemap.xml\n" })), true).ok).toBe(true);
 
       const cases: Array<[Record<string, string>, string]> = [
         [{ "dist/client/sitemap.xml": sitemap("/docs/help/unpublished") }, "lists a page the site does not publish"],

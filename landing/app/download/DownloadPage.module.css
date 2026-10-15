@@ -1,93 +1,325 @@
-/* Download extends the landing's printed-paper world and shared ticket/action styles. */
-.page {
-  --download-muted: #4e4b47;
-  --download-faint: #706a62;
-  --download-rule: rgba(23, 23, 21, .4);
-  --download-icon: #71911e;
-}
-
-.printMarks i:nth-child(3),
-.printMarks i:nth-child(4) { top: auto; bottom: 23px; }
-
+/*
+ * Download page. Tokens and rules: docs/internal/design/landing.md. One comparison sheet framed
+ * like a figure; the installer column leads, and a dithered pomegranate half rises from under the
+ * sheet's lower right corner.
+ */
 .download {
+  --canvas: #0e1012;
+  --panel: #15181b;
+  --ink: #edf0f3;
+  --text: #c5cbd3;
+  --muted: #8d959f;
+  --quiet: #3f464f;
+  --line: #262b31;
+  --line-strong: #39404a;
+  --signal: #e5675b;
+  --signal-wash: #2a1d1b;
+  --focus: #91b8ee;
+  --ui: var(--font-inter), sans-serif;
+  --mono: var(--font-geist-mono), Consolas, monospace;
+  --gutter: max(32px, calc((100% - 1200px) / 2));
+  --ease: cubic-bezier(.16, 1, .3, 1);
   position: relative;
-  z-index: 10;
-  width: min(1280px, calc(100% - 80px));
-  margin: 0 auto;
-  padding: 96px 0 110px;
-  display: flex;
-  flex-direction: column;
-  gap: 64px;
+  min-height: 100vh;
+  overflow-x: clip;
+  background: var(--canvas);
+  color: var(--ink);
+  font: 400 15px/1.55 var(--ui);
+  -webkit-font-smoothing: antialiased;
 }
 
-.intro { display: flex; flex-direction: column; gap: 22px; }
-.intro h1 {
-  max-width: 14ch;
-  margin: 0;
-  font: 700 clamp(52px, 6vw, 88px)/.84 var(--landing-display);
-  letter-spacing: -.04em;
-  text-shadow: .55px .25px 0 rgba(23, 23, 21, .2);
+/* Film grain over the whole page. */
+.download::after {
+  content: "";
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  pointer-events: none;
+  opacity: .22;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-.intro h1 em { position: relative; color: var(--landing-red); font-style: normal; }
-.intro h1 em::after {
+
+.download a { color: inherit; }
+.download :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+/* The page sits between two hairline guides, under a dot grid that fades out from the upper right. */
+.page {
+  position: relative;
+  isolation: isolate;
+  padding-inline: var(--gutter);
+}
+
+.page::before,
+.page::after {
   content: "";
   position: absolute;
-  right: -3%; bottom: -4px; left: -1%;
-  height: 5px;
-  background: var(--landing-red);
-  clip-path: polygon(0 20%, 100% 0, 98% 100%, 2% 70%);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+  pointer-events: none;
 }
-.intro p { max-width: 54ch; margin: 6px 0 0; color: var(--download-muted); font: 500 13px/1.55 var(--font-geist-mono), monospace; }
 
-.options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
-.ticket { min-width: 0; display: flex; flex-direction: column; }
-.topline { gap: 12px; flex-wrap: wrap; }
-.ticketHeading { margin-top: 30px; display: flex; align-items: flex-start; gap: 20px; }
-.ticketHeading svg {
-  width: 44px; height: 44px; flex: 0 0 auto; padding: 8px;
-  background: var(--landing-ink); fill: none; stroke: var(--landing-green);
-  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
-  transform: rotate(-2deg);
-}
-.ticket:nth-child(2) .ticketHeading svg { transform: rotate(2deg); }
-.ticketHeading h2 { margin: 0; font: 680 clamp(28px, 3vw, 43px)/.92 var(--landing-display); letter-spacing: -.03em; }
-.ticketFacts {
-  margin: 26px 0 0; padding: 0; list-style: none;
-  display: flex; flex-direction: column; gap: 10px;
-  color: var(--download-muted); font: 500 12px/1.5 var(--font-geist-mono), monospace;
-}
-.ticketFacts li { display: flex; gap: 10px; align-items: baseline; }
-.ticketFacts li::before { content: "+"; color: var(--download-icon); }
-.ticketAction { margin-top: auto; padding-top: 30px; display: flex; flex-direction: column; gap: 14px; }
-.ticketAction a:focus-visible { clip-path: none; }
-.fileMeta { margin: 0; overflow-wrap: anywhere; color: var(--download-faint); font: 500 11px/1.5 var(--font-geist-mono), monospace; }
+.page::before { left: calc(var(--gutter) - 32px); }
+.page::after { right: calc(var(--gutter) - 32px); }
 
-.assurance {
-  display: flex; align-items: center; justify-content: space-between; gap: 40px;
-  padding-top: 34px; border-top: 1px solid var(--download-rule);
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 0 0 auto;
+  height: 760px;
+  pointer-events: none;
+  background-image: radial-gradient(circle, #3a414a 1px, transparent 1.4px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
 }
-.assurance p { margin: 0; display: flex; align-items: center; gap: 12px; color: var(--download-muted); font: 500 11px/1.5 var(--font-geist-mono), monospace; }
-.assurance svg { width: 19px; height: 19px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.assurance p svg { width: 18px; height: 18px; stroke: var(--download-icon); stroke-width: 1.6; }
-.assurance a {
-  min-height: 44px; display: inline-flex; align-items: center; gap: 8px;
-  color: var(--landing-red); font: 700 11px/1.3 var(--font-geist-mono), monospace;
-  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; white-space: nowrap;
+
+.label {
+  margin: 0;
+  color: var(--muted);
+  font: 400 11px/1.4 var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
+
+.label.quiet { color: var(--quiet); }
+
+.hero { padding: 96px 0 48px; }
+
+.hero h1 {
+  max-width: 16ch;
+  margin: 0;
+  font: 600 clamp(40px, 5vw, 64px)/1 var(--ui);
+  letter-spacing: -.04em;
+  text-wrap: balance;
+}
+
+.hero h1 span { color: var(--muted); }
+
+.hero p {
+  margin: 24px 0 0;
+  color: var(--muted);
+  font-size: 17px;
+}
+
+/* The pomegranate fades in from under the sheet and out before the footer. */
+.sheetWrap {
+  position: relative;
+  isolation: isolate;
+}
+
+.fruit {
+  position: absolute;
+  z-index: -1;
+  right: -88px;
+  bottom: -128px;
+  width: min(470px, 40vw);
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 8%, #000 52%, #000 70%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 8%, #000 52%, #000 70%, transparent 100%);
+}
+
+.fruit img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+/* The sheet is a figure: a Line strong frame with registration ticks at its four corners. */
+.sheet {
+  position: relative;
+  border: 1px solid var(--line-strong);
+  background: #15181bd9;
+}
+
+.sheet::before,
+.sheet::after,
+.ticks::before,
+.ticks::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-color: var(--muted);
+  border-style: solid;
+}
+
+.sheet::before { top: -5px; left: -5px; border-width: 1px 0 0 1px; }
+.sheet::after { top: -5px; right: -5px; border-width: 1px 1px 0 0; }
+.ticks::before { bottom: -5px; left: -5px; border-width: 0 0 1px 1px; }
+.ticks::after { bottom: -5px; right: -5px; border-width: 0 1px 1px 0; }
+
+.sheetHead,
+.sheetFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+}
+
+.sheetHead { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.sheetFoot { padding: 6px 16px; border-top: 1px solid var(--line); }
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+
+.column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 32px;
+}
+
+.column + .column { border-left: 1px solid var(--line); }
+
+.column h2 {
+  margin: 10px 0 0;
+  font: 600 24px/1.2 var(--ui);
+  letter-spacing: -.02em;
+}
+
+/* The installer leads: a Signal top edge, a faint wash, and its update row in Signal. */
+.recommended {
+  background: linear-gradient(180deg, #2a1d1b99, transparent 70%);
+  box-shadow: inset 0 1px 0 var(--signal);
+}
+
+.recommended > .label { color: var(--signal); }
+.alternative h2 { color: var(--muted); font-size: 20px; }
+
+.spec {
+  margin: 22px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.spec > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.spec dt { padding-top: 2px; }
+
+.spec dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.spec code {
+  color: var(--ink);
+  font: 400 12.5px/1.4 var(--mono);
+}
+
+.alternative .spec dd { color: var(--muted); }
+.spec .on dt { color: var(--signal); }
+.spec .on dd { color: var(--ink); }
+
+.spec .on dd::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 10px 1px 0;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: beat 2.4s ease-out 1s 3;
+}
+
+@keyframes beat {
+  from { box-shadow: 0 0 0 0 #e5675b80; }
+  to { box-shadow: 0 0 0 8px #e5675b00; }
+}
+
+.get {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 28px;
+}
+
+.get .label { overflow-wrap: anywhere; }
+
+/* Quiet by default: a thin red outline and red text that fill only on hover. */
+.action {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 18px;
+  border: 1px solid #e5675b66;
+  border-radius: 4px;
+  color: var(--signal) !important;
+  font: 500 13px/1 var(--ui);
+  text-decoration: none;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.action:hover { border-color: var(--signal); background: var(--signal-wash); color: var(--ink) !important; }
+
+.action svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 200ms var(--ease);
+}
+
+.action:hover svg { transform: translateY(2px); }
+
+.textLink {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted) !important;
+  font: 400 11px/1.4 var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 6px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.textLink:hover { color: var(--ink) !important; text-decoration-color: var(--signal); }
 
 @media (max-width: 900px) {
-  .download { padding: 64px 0 80px; gap: 44px; }
-  .options { grid-template-columns: minmax(0, 1fr); gap: 26px; }
-  .assurance { flex-direction: column; align-items: flex-start; gap: 16px; }
-  .assurance a { white-space: normal; }
+  .columns { grid-template-columns: minmax(0, 1fr); }
+  .column + .column { border-top: 1px solid var(--line); border-left: 0; }
+  .fruit { right: -40px; bottom: -120px; width: 320px; }
 }
+
 @media (max-width: 720px) {
-  .download { width: calc(100% - 48px); padding: 44px 0 56px; gap: 36px; }
-  .intro h1 { letter-spacing: -.035em; }
-  .ticket { padding: 24px; }
-  .ticketHeading { margin-top: 20px; gap: 14px; }
-  .ticketHeading svg { width: 40px; height: 40px; padding: 7px; }
-  .ticketFacts { margin-top: 18px; gap: 8px; }
-  .ticketAction { padding-top: 22px; gap: 12px; }
-  .printMarks { display: none; }
+  .download { --gutter: 16px; }
+  .page::before,
+  .page::after { display: none; }
+  .hero { padding: 56px 0 32px; }
+  .hero p { font-size: 16px; }
+  .column { padding: 22px 18px 24px; }
+  .spec > div { grid-template-columns: 96px minmax(0, 1fr); }
+  .get { justify-items: stretch; }
+  .get .textLink { justify-self: start; }
+  .fruit { right: -24px; bottom: -110px; width: 240px; opacity: .8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spec .on dd::before { animation: none; }
+  .action,
+  .action svg,
+  .textLink { transition: none; }
 }

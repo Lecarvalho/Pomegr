@@ -2,69 +2,72 @@ import type { Metadata } from "next";
 import { SiteHeader } from "../components/SiteHeader";
 import { SiteFooter } from "../components/SiteFooter";
 import { formatDownloadSize, getDownloadRelease } from "../../server/download-release";
-import shared from "../components/PaperPage.module.css";
 import styles from "./DownloadPage.module.css";
 
 export const metadata: Metadata = {
   title: "Download Pomegr for Windows",
-  description: "Download the Pomegr Windows x64 installer with in-app updates, or the portable app that runs without installation.",
+  description: "Download Pomegr for Windows x64 for free: the installer that keeps itself up to date, or the portable app that runs without installation.",
   alternates: { canonical: "/download" },
 };
 
 export default async function DownloadPage() {
   const release = await getDownloadRelease();
-  const options = [
-    { id: "installer", label: "Installer", code: "SETUP", heading: "Installs and self-updates.",
-      facts: ["Installs Pomegr into Windows", "Supports in-app updates"], asset: release.installer },
-    { id: "portable", label: "Portable", code: "PORTABLE", heading: "Runs without installation.",
-      facts: ["Nothing to install", "Download and run the executable"], asset: release.portable },
-  ];
+  const { installer, portable } = release;
 
   return (
-    <main className={`${shared.landing} ${styles.page}`}>
-      <div className={`${shared.printMarks} ${styles.printMarks}`} aria-hidden="true"><i /><i /><i /><i /></div>
+    <main className={styles.download}>
       <SiteHeader current="download" />
-      <section className={styles.download} aria-labelledby="download-title">
-        <div className={styles.intro}>
-          <h1 id="download-title">Get Pomegr on your <em>machine.</em></h1>
-          <p>Two ways to run the same read-only observer. Pick one.<br />Your session data stays on this device either way.</p>
+      <div className={styles.page}>
+        <section className={styles.hero} aria-labelledby="download-title">
+          <h1 id="download-title">Get Pomegr on your machine. <span>Free, and it keeps itself up to date.</span></h1>
+          <p>Free for Windows x64. No account, and your session data stays on this device.</p>
+        </section>
+
+        <div className={styles.sheetWrap}>
+          <div className={styles.fruit} aria-hidden="true">
+            <img src="/landing/download/pomegranate-half.png" alt="" width="600" height="476" />
+          </div>
+          <section className={styles.sheet} aria-label="Choose a Windows x64 build">
+            <span className={styles.ticks} aria-hidden="true" />
+            <div className={styles.sheetHead}>
+              <span className={styles.label}>[ fig. 1 — two builds, one observer ]</span>
+              <span className={`${styles.label} ${styles.quiet}`}>Windows x64 · v{release.version}</span>
+            </div>
+            <div className={styles.columns}>
+              <article className={`${styles.column} ${styles.recommended}`} aria-labelledby="installer-title">
+                <span className={styles.label}>Installer · recommended</span>
+                <h2 id="installer-title">Installs and keeps itself up to date.</h2>
+                <dl className={styles.spec}>
+                  <div className={styles.on}><dt className={styles.label}>Updates</dt><dd>Automatic. Checks at startup and every four hours, and installs when you choose to restart.</dd></div>
+                  <div><dt className={styles.label}>Installs</dt><dd>For your Windows user, no admin needed</dd></div>
+                  <div><dt className={styles.label}>At login</dt><dd>Optional, from the tray menu</dd></div>
+                </dl>
+                <div className={styles.get}>
+                  <a className={styles.action} href={installer.url}>Download installer <DownloadIcon /></a>
+                  <p className={styles.label}>{installer.name} · {formatDownloadSize(installer.size)} · v{release.version}</p>
+                </div>
+              </article>
+              <article className={`${styles.column} ${styles.alternative}`} aria-labelledby="portable-title">
+                <span className={styles.label}>Portable</span>
+                <h2 id="portable-title">Runs without installation.</h2>
+                <dl className={styles.spec}>
+                  <div><dt className={styles.label}>Updates</dt><dd>Manual. Download each new version yourself.</dd></div>
+                  <div><dt className={styles.label}>Installs</dt><dd>Nothing; run it from any writable folder</dd></div>
+                  <div><dt className={styles.label}>Data</dt><dd><code>PomegrData</code>, beside the executable</dd></div>
+                </dl>
+                <div className={styles.get}>
+                  <a className={styles.textLink} href={portable.url}>Download portable <span aria-hidden="true">↓</span></a>
+                  <p className={styles.label}>{portable.name} · {formatDownloadSize(portable.size)} · v{release.version}</p>
+                </div>
+              </article>
+            </div>
+            <div className={styles.sheetFoot}>
+              <span className={styles.label}>Free · same read-only observer in both · processing stays local</span>
+              <a className={styles.textLink} href={release.notesUrl} target="_blank" rel="noreferrer">Release notes and checksums <span aria-hidden="true">↗</span></a>
+            </div>
+          </section>
         </div>
-        <div className={styles.options}>
-          {options.map((option, index) => (
-            <article key={option.id} className={`${shared.waitlistTicket} ${styles.ticket}`} aria-labelledby={`${option.id}-title`}>
-              <div className={`${shared.ticketTopline} ${styles.topline}`}>
-                <span>Option {index + 1} · {option.label}</span><span>PMGR / {option.code}</span>
-              </div>
-              <div className={styles.ticketHeading}>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  {option.id === "installer"
-                    ? <><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M12 8v6M9 11l3 3 3-3M7 17h10" /></>
-                    : <path d="M4 8h16v11H4zM8 8V5h8v3M10 13h4" />}
-                </svg>
-                <h2 id={`${option.id}-title`}>{option.heading}</h2>
-              </div>
-              <ul className={styles.ticketFacts}>
-                {option.facts.map((fact) => <li key={fact}>{fact}</li>)}
-              </ul>
-              <div className={styles.ticketAction}>
-                <a className={shared.primaryAction} href={option.asset.url}>
-                  Download {option.id}<DownloadIcon />
-                </a>
-                <p className={styles.fileMeta}>{option.asset.name} · {formatDownloadSize(option.asset.size)} · v{release.version}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-        <div className={styles.assurance}>
-          <p>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="1" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" /></svg>
-            <span>Both builds are the same read-only observer for Windows x64. No Pomegr account required. Session processing stays local.</span>
-          </p>
-          <a href={release.notesUrl} target="_blank" rel="noreferrer">Release notes and checksums on GitHub
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
-          </a>
-        </div>
-      </section>
+      </div>
       <SiteFooter current="download" />
     </main>
   );

@@ -155,7 +155,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | Tasks page, board, cards, queue, session task surfaces | [Task board design](docs/internal/design/task-board.md) |
 | Task modal, task fields, Promote issues page | [Task modal design](docs/internal/design/task-modal.md) |
 | Aril chat launcher, panel, messages, proposal card, composer, conversations | [Agent chat design](docs/internal/design/agent-chat.md) |
-| Public website: home page, shared header and footer, landing tokens and motion | [Landing design](docs/internal/design/landing.md) |
+| Public website: home, download, and documentation pages, shared header and footer, landing tokens and motion | [Landing design](docs/internal/design/landing.md) |
 | `CommandTable` integration | [Command table](docs/internal/development/command-table.md) |
 
 ### Visual reference

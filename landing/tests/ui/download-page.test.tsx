@@ -10,6 +10,10 @@ it("renders real direct downloads and navigation when release lookup is unavaila
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
   const html = renderToStaticMarkup(await DownloadPage());
   expect(html).toContain("Get Pomegr on your");
+  expect(html).toContain("Free, and it keeps itself up to date.");
+  expect(html).toContain("Installer · recommended");
+  // The installer leads with the outlined action; the portable build is a quieter text link.
+  expect(html.indexOf("Download installer")).toBeLessThan(html.indexOf("Download portable"));
   expect(html).toContain("Download installer");
   expect(html).toContain("Download portable");
   expect(html).toContain("Pomegr-Setup-0.3.6-x64.exe");
@@ -17,7 +21,8 @@ it("renders real direct downloads and navigation when release lookup is unavaila
   expect(html).toContain("Pomegr-Portable-0.3.6-x64.exe");
   expect(html).toContain("220.3 MB");
   expect(html).toContain('href="https://github.com/Lecarvalho/Pomegr/releases/download/v0.3.6/');
-  expect(html).toContain('aria-current="page"');
+  // The header carries no download action; the page's own links are the only ones to the builds.
+  expect(html).not.toContain("Download for Windows");
   expect(html).not.toContain("releases/latest");
   expect(html).not.toContain("[VERSION]");
   expect(readFileSync(new URL("../../worker/index.ts", import.meta.url), "utf8")).toContain('"/download"');

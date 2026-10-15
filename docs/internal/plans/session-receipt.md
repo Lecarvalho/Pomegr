@@ -99,7 +99,7 @@ npm run test:ui
 ### Task 3 — Render the PNG
 
 - [ ] Draw the picture from the model on a canvas element at double resolution and export it with `toBlob`. Drawing directly avoids the font and layout differences of converting page markup to an image.
-- [ ] Fonts: the app already loads Geist Mono. Rokkitt ships only with the landing site (`landing/public/fonts/rokkitt-variable.ttf`); add it to the app for this surface, check its license notice is carried, and wait for both fonts before drawing.
+- [ ] Fonts: the app already loads Geist Mono. Rokkitt no longer ships with the landing site (it left in T-116; recover `landing/public/fonts/rokkitt-variable.ttf` and its OFL notice from Git history); add it to the app for this surface, check its license notice is carried, and wait for both fonts before drawing.
 - [ ] The mark: draw `public/pomegr-mark-painted.png` through the same luminance mask the header uses, in the muted text color for the chosen ground.
 - [ ] Tests: the drawing calls for each element given a model, the two themes, and the opt-in lines. A pixel comparison is not required.
 

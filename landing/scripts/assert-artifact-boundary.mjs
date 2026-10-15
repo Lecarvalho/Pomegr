@@ -34,7 +34,7 @@ const searchPageKeys = ["description", "group", "headings", "route", "text", "ti
 const searchHeadingKeys = ["id", "text"];
 const controlCharacters = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
 const publicOrigin = "https://pomegr.com";
-const publicSitePages = ["/", "/about", "/download"];
+const publicSitePages = ["/", "/download"];
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

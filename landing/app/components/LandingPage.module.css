@@ -68,6 +68,10 @@
 .page::before { left: calc(var(--gutter) - 32px); }
 .page::after { right: calc(var(--gutter) - 32px); }
 
+/* The guides fade out behind the closing image instead of running into the footer. */
+.pageEnd::before,
+.pageEnd::after { background: linear-gradient(to bottom, var(--line) calc(100% - 720px), transparent calc(100% - 280px)); }
+
 /* Hero zone: a dot grid fading out from the upper right, and the dithered pomegranate. */
 .heroZone {
   position: relative;
@@ -107,6 +111,7 @@
   right: calc(var(--gutter) - 24px);
   width: min(450px, 33vw);
   aspect-ratio: 1;
+  opacity: .6;
   pointer-events: none;
 }
 
@@ -589,33 +594,39 @@
 .miniNew:not(.shown) { max-height: 0; padding-block: 0; border-width: 0; opacity: 0; }
 
 /* The last frame: no caption. */
-.close { margin-top: 8px; }
+.close { position: relative; margin-top: 8px; }
+
+/* Under a fine pointer the image dims to a gray hint, and the pointer reveals it in color through
+   this canvas (PixelGlow). Before its entrance the reveal rule's opacity and blur still win. */
+.close[data-pointer-reveal] .bite { opacity: .16; filter: grayscale(1); }
+
+/* The reveal carries the image's own top and bottom fade. */
+.pixelGlow {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
+  mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
+}
 
 .bite {
   display: block;
   width: 100%;
   height: auto;
   image-rendering: pixelated;
-  /* Starts almost invisible under the figure and gains opacity gradually, as if it was always there. */
-  -webkit-mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%);
-  mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%);
+  /* Starts almost invisible under the figure, gains opacity gradually, and fades out again before the footer. */
+  -webkit-mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
+  mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
 }
 
 .landing[data-motion] .bite[data-reveal]:not([data-shown]) { opacity: 0; transform: translateY(-24px); filter: blur(8px); }
 .landing[data-motion] .bite[data-reveal] { transition: opacity 1.6s var(--ease), transform 1.6s var(--ease), filter 1.6s var(--ease); }
 
-/* A small, quiet note that Pomegr runs locally. */
-.local {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: 8px 48px;
-  margin-top: 48px;
-  padding-top: 24px;
-  border-top: 1px solid var(--line);
-}
-
-.local h2 { margin: 0; font: 600 15px/1.4 var(--ui); }
-.local p { max-width: 64ch; margin: 0; color: var(--muted); font-size: 14px; }
+/* The closing image dissolves into the footer, so the footer's usual top margin is dropped here. */
+.landing > footer { margin-top: 0; }
 
 .narrowOnly { display: none !important; }
 
@@ -633,8 +644,7 @@
   filter: blur(4px);
 }
 
-.landing[data-motion] .figure[data-reveal]:not([data-shown]),
-.landing[data-motion] .local[data-reveal]:not([data-shown]) {
+.landing[data-motion] .figure[data-reveal]:not([data-shown]) {
   opacity: 0;
   transform: translateY(20px);
 }
@@ -692,8 +702,7 @@
 @media (max-width: 900px) {
   .arilScene,
   .jobs,
-  .notes,
-  .local { grid-template-columns: minmax(0, 1fr); }
+  .notes { grid-template-columns: minmax(0, 1fr); }
 
   .jobs > div { padding: 22px 0; }
   .jobs > div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }

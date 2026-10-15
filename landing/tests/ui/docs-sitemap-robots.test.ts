@@ -23,10 +23,10 @@ describe("sitemap", () => {
   const entries = sitemap();
   const urls = entries.map((entry) => entry.url);
 
-  it("lists the home, about, and download pages and every published documentation page, nothing else", () => {
+  it("lists the home and download pages and every published documentation page, nothing else", () => {
     expect(SITE_ORIGIN).toBe("https://pomegr.com");
-    expect(urls).toEqual(["/", "/about", "/download", ...expectedDocsRoutes].map((route) => `https://pomegr.com${route}`));
-    expect(entries).toHaveLength(3 + expectedDocsRoutes.length);
+    expect(urls).toEqual(["/", "/download", ...expectedDocsRoutes].map((route) => `https://pomegr.com${route}`));
+    expect(entries).toHaveLength(2 + expectedDocsRoutes.length);
   });
 
   it("uses absolute canonical URLs without duplicates, queries, fragments, or trailing slashes", () => {
@@ -57,7 +57,7 @@ describe("sitemap", () => {
   });
 
   it("names pages that exist in the application", () => {
-    for (const file of ["app/page.tsx", "app/about/page.tsx", "app/download/page.tsx", "app/docs/[...slug]/page.tsx"]) expect(existsSync(path(file)), file).toBe(true);
+    for (const file of ["app/page.tsx", "app/download/page.tsx", "app/docs/[...slug]/page.tsx"]) expect(existsSync(path(file)), file).toBe(true);
   });
 
   it("uses the same canonical origin as the site metadata", () => {

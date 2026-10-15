@@ -1,39 +1,46 @@
 /*
  * Page frame for the public documentation (WEB-02): skip link, sidebar navigation, outline,
  * previous/next links and the 404 message. The reading column itself is `markdown.module.css`.
- * The landing has no shared token file, so this module mirrors the printed-paper palette on its own
- * root class like the other page modules. Every interactive target is at least 44px tall on a phone.
+ * The landing has no shared token file, so this module copies the dark sheet tokens from
+ * docs/internal/design/landing.md on its own root class. Every interactive target is at least
+ * 44px tall on a phone.
  */
-@font-face {
-  font-family: "Rokkitt Pomegr";
-  src: url("/fonts/rokkitt-variable.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-}
-
 .shell {
-  --docs-paper: #f0ece2;
-  --docs-ink: #171715;
-  --docs-muted: #4e4b47;
-  --docs-rule: rgba(23, 23, 21, .4);
-  --docs-hairline: rgba(23, 23, 21, .2);
-  --docs-wash: rgba(23, 23, 21, .06);
-  --docs-red: #a63c32;
-  --docs-display: "Rokkitt Pomegr", Rockwell, Georgia, serif;
+  --docs-canvas: #0e1012;
+  --docs-panel: #15181b;
+  --docs-ink: #edf0f3;
+  --docs-muted: #8d959f;
+  --docs-line: #262b31;
+  --docs-line-strong: #39404a;
+  --docs-signal: #e5675b;
+  --docs-focus: #91b8ee;
   --docs-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --docs-gutter: max(32px, calc((100% - 1200px) / 2));
   position: relative;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: var(--docs-paper);
-  background-image: linear-gradient(rgba(240, 236, 226, .7), rgba(240, 236, 226, .7)), url("/landing/paper-fiber-tile.png");
+  overflow-x: clip;
+  background: var(--docs-canvas);
   color: var(--docs-ink);
-  font: 400 16px/1.5 var(--font-inter), Arial, sans-serif;
+  font: 400 15px/1.55 var(--font-inter), Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Film grain over the whole page, as on the home page. */
+.shell::after {
+  content: "";
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  pointer-events: none;
+  opacity: .22;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 .shell :where(a, button, summary):focus-visible {
-  outline: 3px solid var(--docs-red);
+  outline: 2px solid var(--docs-focus);
   outline-offset: 3px;
 }
 
@@ -44,9 +51,11 @@
   top: 8px;
   left: 8px;
   padding: 14px 18px;
-  background: var(--docs-ink);
-  color: var(--docs-paper);
-  font: 650 12px/1 var(--docs-mono);
+  border: 1px solid var(--docs-line-strong);
+  border-radius: 4px;
+  background: var(--docs-panel);
+  color: var(--docs-ink);
+  font: 400 12px/1 var(--docs-mono);
   text-decoration: none;
   transform: translateY(-300%);
 }
@@ -55,16 +64,31 @@
   transform: none;
 }
 
+/* The column sits between two hairline guides, like the home page's sheet. */
 .frame {
+  position: relative;
   flex: 1 0 auto;
-  width: min(1280px, calc(100% - 64px));
-  margin: 0 auto;
-  padding: 40px 0 88px;
+  width: 100%;
+  padding: 48px var(--docs-gutter) 0;
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
-  column-gap: clamp(32px, 5vw, 56px);
+  grid-template-columns: 220px minmax(0, 1fr);
+  column-gap: 56px;
   align-items: start;
 }
+
+.frame::before,
+.frame::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: -136px;
+  width: 1px;
+  background: var(--docs-line);
+  pointer-events: none;
+}
+
+.frame::before { left: calc(var(--docs-gutter) - 32px); }
+.frame::after { right: calc(var(--docs-gutter) - 32px); }
 
 /* The main element is a programmatic focus target only (skip link, phone menu), never a control. */
 .main {
@@ -75,13 +99,17 @@
   outline: none;
 }
 
-/* Sidebar navigation. */
+/* Sidebar navigation, below the 60px sticky header. Its scroll box clips, so 4px of padding,
+   taken back by the margin, leaves room for the search field's focus ring. */
 .nav {
   position: sticky;
-  top: 24px;
-  max-height: calc(100vh - 48px);
+  top: 80px;
+  max-height: calc(100vh - 100px);
+  margin: -4px;
+  padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .navToggle {
@@ -98,15 +126,10 @@
 .pagerLabel,
 .outlineCompact > summary {
   margin: 0;
-  font: 700 11px/1.3 var(--docs-mono);
-  letter-spacing: .09em;
-  text-transform: uppercase;
-}
-
-.navGroupTitle,
-.outlineLabel,
-.pagerLabel {
   color: var(--docs-muted);
+  font: 400 11px/1.4 var(--docs-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 
 .navGroupTitle {
@@ -117,36 +140,38 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border-left: 1px solid var(--docs-hairline);
+  border-left: 1px solid var(--docs-line);
 }
 
 .navLink {
   display: block;
-  padding: 7px 12px 7px 14px;
+  padding: 6px 12px 6px 14px;
   margin-left: -1px;
-  border-left: 3px solid transparent;
-  color: var(--docs-ink);
-  font: 500 14px/1.35 var(--font-inter), Arial, sans-serif;
+  border-left: 1px solid transparent;
+  color: var(--docs-muted);
+  font: 400 14px/1.35 var(--font-inter), Arial, sans-serif;
   text-decoration: none;
+  transition: color 160ms ease;
 }
 
 .navLink:hover {
-  background: var(--docs-wash);
+  color: var(--docs-ink);
 }
 
 .navLink[aria-current="page"] {
-  border-left-color: var(--docs-red);
-  font-weight: 700;
+  border-left-color: var(--docs-signal);
+  color: var(--docs-ink);
+  font-weight: 500;
 }
 
 .navLink:focus-visible {
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 
 /* Page: reading column plus the outline rail. */
 .page {
   display: grid;
-  grid-template-columns: minmax(0, 70ch) 208px;
+  grid-template-columns: minmax(0, 68ch) 200px;
   column-gap: 48px;
   align-items: start;
 }
@@ -157,15 +182,15 @@
 
 .eyebrow {
   margin-bottom: 18px;
-  color: var(--docs-red);
 }
 
 .outlineRail {
   position: sticky;
-  top: 24px;
-  max-height: calc(100vh - 48px);
+  top: 84px;
+  max-height: calc(100vh - 108px);
   overflow-y: auto;
   padding-top: 6px;
+  scrollbar-width: thin;
 }
 
 .outlineLabel {
@@ -176,7 +201,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font: 500 13px/1.4 var(--font-inter), Arial, sans-serif;
+  font: 400 13px/1.4 var(--font-inter), Arial, sans-serif;
 }
 
 .outlineList a {
@@ -184,12 +209,11 @@
   padding: 5px 0;
   color: var(--docs-muted);
   text-decoration: none;
+  transition: color 160ms ease;
 }
 
 .outlineList a:hover {
   color: var(--docs-ink);
-  text-decoration: underline;
-  text-underline-offset: .2em;
 }
 
 .outlineList .outlineList {
@@ -204,7 +228,7 @@
 .outlineCompact {
   display: none;
   margin-bottom: 28px;
-  border: 1px solid var(--docs-hairline);
+  border: 1px solid var(--docs-line-strong);
 }
 
 .outlineCompact > summary {
@@ -213,7 +237,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 14px;
-  color: var(--docs-ink);
   cursor: pointer;
   list-style: none;
 }
@@ -235,7 +258,7 @@
 
 .outlineCompact > .outlineList {
   padding: 4px 14px 12px;
-  border-top: 1px solid var(--docs-hairline);
+  border-top: 1px solid var(--docs-line);
 }
 
 .outlineCompact .outlineList a {
@@ -243,43 +266,69 @@
   display: flex;
   align-items: center;
   padding: 0;
+  font-size: 14px;
 }
 
-/* Previous and next. */
+/* Previous and next: two cells under one hairline, like the notes under a home figure. No box;
+   the title turns Signal and its arrow steps forward on hover. */
 .pager {
-  max-width: 70ch;
+  max-width: 68ch;
   margin-top: 64px;
-  padding-top: 24px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  border-top: 1px solid var(--docs-rule);
+  border-top: 1px solid var(--docs-line);
 }
 
 .pagerLink {
   min-height: 44px;
-  padding: 14px 16px;
+  padding: 20px 24px 4px 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: 1px solid var(--docs-rule);
   color: var(--docs-ink);
   text-decoration: none;
 }
 
-.pagerLink:hover {
-  border-color: var(--docs-red);
-  background: var(--docs-wash);
-}
-
 .pagerLink[data-direction="next"] {
   grid-column: 2;
+  padding: 20px 0 4px 24px;
+  border-left: 1px solid var(--docs-line);
   text-align: right;
 }
 
+.pagerLink[data-direction="previous"] .pagerLabel::before {
+  content: "\2190\00a0";
+  content: "\2190\00a0" / "";
+}
+
+.pagerLink[data-direction="next"] .pagerLabel::after {
+  content: "\00a0\2192";
+  content: "\00a0\2192" / "";
+}
+
+.pagerLabel::before,
+.pagerLabel::after {
+  display: inline-block;
+  transition: transform 200ms cubic-bezier(.16, 1, .3, 1);
+}
+
 .pagerTitle {
-  font: 700 16px/1.3 var(--font-inter), Arial, sans-serif;
+  font: 600 17px/1.3 var(--font-inter), Arial, sans-serif;
+  letter-spacing: -.01em;
   overflow-wrap: anywhere;
+  transition: color 160ms ease;
+}
+
+.pagerLink:hover .pagerTitle {
+  color: var(--docs-signal);
+}
+
+.pagerLink[data-direction="previous"]:hover .pagerLabel::before {
+  transform: translateX(-3px);
+}
+
+.pagerLink[data-direction="next"]:hover .pagerLabel::after {
+  transform: translateX(3px);
 }
 
 /* The 404 message renders inside the frame, beside the navigation. */
@@ -287,10 +336,14 @@
   max-width: 54ch;
 }
 
+.notFound .eyebrow {
+  margin-bottom: 18px;
+}
+
 .notFound h1 {
   margin: 0 0 16px;
-  font: 700 clamp(32px, 5vw, 44px)/1.05 var(--docs-display);
-  letter-spacing: -.02em;
+  font: 600 clamp(32px, 4vw, 44px)/1.05 var(--font-inter), Arial, sans-serif;
+  letter-spacing: -.035em;
   text-wrap: balance;
 }
 
@@ -300,8 +353,13 @@
 }
 
 .notFound a {
-  color: var(--docs-red);
+  color: var(--docs-signal);
+  text-decoration-color: #e5675b66;
   text-underline-offset: .2em;
+}
+
+.notFound a:hover {
+  color: var(--docs-ink);
 }
 
 @media (max-width: 1100px) {
@@ -320,15 +378,20 @@
 
 @media (max-width: 760px) {
   .frame {
-    width: calc(100% - 32px);
-    padding: 16px 0 56px;
+    padding: 16px 16px 0;
     display: block;
+  }
+
+  .frame::before,
+  .frame::after {
+    display: none;
   }
 
   .nav {
     position: static;
     max-height: none;
-    margin-bottom: 28px;
+    margin: 0 0 28px;
+    padding: 0;
     overflow: visible;
   }
 
@@ -340,23 +403,23 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    border: 1px solid var(--docs-ink);
-    border-radius: 0;
-    background: transparent;
+    border: 1px solid var(--docs-line-strong);
+    border-radius: 4px;
+    background: var(--docs-panel);
     color: var(--docs-ink);
-    font: 700 11px/1 var(--docs-mono);
-    letter-spacing: .09em;
+    font: 400 11px/1 var(--docs-mono);
+    letter-spacing: .06em;
     text-transform: uppercase;
     cursor: pointer;
   }
 
   .navChevron {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     flex: none;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2;
+    stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
     transition: transform 160ms ease;
@@ -369,8 +432,8 @@
   .navPanel {
     margin-top: 8px;
     padding: 14px 14px 18px;
-    border: 1px solid var(--docs-rule);
-    background: rgba(240, 236, 226, .92);
+    border: 1px solid var(--docs-line-strong);
+    background: var(--docs-panel);
   }
 
   .navPanel[data-open="false"] {
@@ -388,13 +451,28 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .pagerLink,
   .pagerLink[data-direction="next"] {
     grid-column: auto;
+    padding: 16px 0;
+  }
+
+  .pagerLink[data-direction="next"] {
+    border-left: 0;
+  }
+
+  .pagerLink + .pagerLink {
+    border-top: 1px solid var(--docs-line);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .navChevron {
+  .navChevron,
+  .navLink,
+  .outlineList a,
+  .pagerTitle,
+  .pagerLabel::before,
+  .pagerLabel::after {
     transition: none;
   }
 }

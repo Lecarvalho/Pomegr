@@ -27,7 +27,7 @@ describe("public landing surfaces", () => {
   });
 
   it("offers no waitlist signup on any page while the waitlist API stays", () => {
-    for (const file of ["app/components/LandingPage.tsx", "app/about/page.tsx", "app/download/page.tsx"]) {
+    for (const file of ["app/components/LandingPage.tsx", "app/download/page.tsx"]) {
       const source = read(file);
       expect(source, file).not.toContain("Waitlist");
       expect(source, file).not.toContain("#waitlist");
@@ -35,31 +35,31 @@ describe("public landing surfaces", () => {
     expect(read("app/api/waitlist/route.ts")).toContain("createWaitlistHandlers");
   });
 
-  it("documents the local boundary and authoritative project links", () => {
-    const source = read("app/about/page.tsx");
+  it("folds About into Home and keeps the authoritative project links", () => {
+    const about = read("app/about/page.tsx");
     const header = read("app/components/SiteHeader.tsx");
     const footer = read("app/components/SiteFooter.tsx");
     const chrome = read("app/components/SiteChrome.module.css");
-    expect(source).toContain("A quiet view into");
-    expect(source).toContain("observer-principles-signal.webp");
-    expect(source).toContain("phone-observer-sketch.webp");
-    expect(source).toContain("cat-coffee-sketch.webp");
-    expect(source).toContain("boy-on-beetle-sketch.webp");
-    expect(source).toContain("pomegranate-board-sketch.webp");
-    expect(source).toContain("Local session records");
-    expect(source).toContain("Loopback monitor");
-    expect(source).toContain("Bounded metadata");
-    expect(source).toContain("Raw prompts · responses · commands · credentials · transcripts");
-    expect(source).toContain('<SiteHeader current="about" />');
-    expect(source).toContain('<SiteFooter current="about" />');
-    expect(header).toContain('current: "home" | "about"');
-    expect(footer).toContain('current: "home" | "about"');
-    expect(footer).toContain('<Link href="/about">About</Link>');
+    // Existing links to /about land on Home; no page links to it any more.
+    expect(about).toContain('permanentRedirect("/")');
+    expect(header).not.toContain('"/about"');
+    expect(footer).not.toContain('"/about"');
+    expect(read("app/sitemap.ts")).not.toContain("/about");
+    expect(header).toContain('current: "home" | "docs" | "download"');
     expect(footer).toContain('<Link href="/">Home</Link>');
     expect(footer).toContain("TRADEMARKS.md");
     expect(footer).toContain("THIRD_PARTY_NOTICES.md");
     expect(footer).not.toContain("Local-first · read-only");
     expect(chrome).toContain("padding-inline: max(32px, calc((100% - 1200px) / 2));");
+  });
+
+  it("leaves no page on the old paper style", () => {
+    for (const file of ["app/download/DownloadPage.module.css", "app/docs/docs.module.css", "app/docs/markdown.module.css", "app/docs/search.module.css"]) {
+      const css = read(file);
+      expect(css, file).not.toMatch(/Rokkitt|paper-fiber|distress-mask|#f0ece2/i);
+      if (!file.includes("search")) expect(css, file).toContain("#0e1012");
+    }
+    expect(read("app/download/page.tsx")).not.toContain("PaperPage");
   });
 
   it("repeats the Worker's security headers for the files the assets binding serves", () => {

@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { ArilChat } from "./ArilChat";
 import { DotGlow } from "./DotGlow";
+import { PixelGlow } from "./PixelGlow";
 import { PomegranateSplit } from "./PomegranateSplit";
 import { ScrollReveal } from "./ScrollReveal";
 import { SiteFooter } from "./SiteFooter";
@@ -51,7 +52,7 @@ export function LandingPage() {
         </div>
       </div>
 
-      <div className={styles.page}>
+      <div className={`${styles.page} ${styles.pageEnd}`}>
         <section className={styles.chapter} aria-labelledby="sessions-title">
           <h2 data-reveal className={styles.statement} id="sessions-title">Every session, as it happens. <span>Pomegr quietly reads your agents’ records and shows what matters most.</span></h2>
           <Figure caption="[ fig. 2 — one session, four agents ]" note={SAMPLE_NOTE}>
@@ -88,17 +89,10 @@ export function LandingPage() {
           </Figure>
         </section>
 
-        <div className={styles.close} aria-hidden="true">
+        <div className={styles.close} id="closing-image" aria-hidden="true">
+          <PixelGlow rootId="closing-image" />
           <img data-reveal className={styles.bite} src="/landing/home/pomegranate-bite.png" alt="" width="1200" height="800" />
         </div>
-
-        <section data-reveal className={styles.local} aria-labelledby="local-title">
-          <h2 id="local-title">Runs on your machine.</h2>
-          <p>
-            Read-only. The monitor listens only on this computer and needs no Pomegr account. Prompts, responses,
-            commands, and credentials are never shown or sent.
-          </p>
-        </section>
 
       </div>
 
