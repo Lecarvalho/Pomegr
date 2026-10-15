@@ -11,7 +11,8 @@
 > for was added on 2026-10-12 (task T-72), and the queue change on the same day (task
 > T-75). The images that the owner sends, and their way to a task, were added on
 > 2026-10-13 (task T-86), and the follow-up after an answered proposal on the same day
-> (task T-95). A change that widens exposure changes the
+> (task T-95). Proposals of a change that Aril recommends by itself were added on
+> 2026-10-15 (task T-123). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -237,6 +238,13 @@ a measurement or a benchmark.
 Aril changes the board only by ending its answer with one fenced block tagged
 `pomegr-board`: `{ "summary", "operations" }`. `extractProposal` in
 `agent-chat-proposal.mjs` takes the block out of the shown text and validates it.
+
+Aril ends its answer with a proposal when the owner asked for a change, agreed to one, or
+when its own reading recommends one concrete board change, with the reason in the answer;
+it never ends by asking whether it should propose. A start, a queue change, and a delete
+still need the owner's own request, and an answer that is advice only carries no
+proposal. Aril asks one question instead only when different readings of the owner's
+message would lead to materially different proposals.
 
 - A proposal holds 1 to 40 operations and a one-line summary of at most 300 characters.
 - An answer with two blocks, an unclosed block, malformed JSON, or one operation outside

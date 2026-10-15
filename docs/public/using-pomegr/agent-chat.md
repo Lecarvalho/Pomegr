@@ -70,8 +70,10 @@ empty one. **Conversations** lists the saved ones and lets you delete one.
 
 ## Apply a proposal
 
-When you ask for a change, Aril ends its answer with a proposal: a short summary and a
-list of the changes, one line each.
+When you ask for a change, or when Aril recommends one, it ends its answer with a
+proposal: a short summary and a list of the changes, one line each. Nothing changes until
+you select **Apply changes**. Aril proposes a delete, a session start, or a queue change
+only when you ask for it.
 
 1. Read every line. A delete is marked, because it cannot be undone.
 2. Select **Apply changes** to run the list in order, or **Dismiss** to drop it.
