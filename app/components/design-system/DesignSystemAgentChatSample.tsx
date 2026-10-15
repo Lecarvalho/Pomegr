@@ -94,6 +94,12 @@ const IMAGE_OPERATIONS: AgentChatBoardOperation[] = [
 ];
 const IMAGE_PROPOSAL = proposal("pending", undefined, IMAGE_OPERATIONS);
 const IMAGE_FAILED = proposal("partial", [{ ok: true, taskId: "T-19" }, { ok: false, error: "limit", part: "images" }], IMAGE_OPERATIONS);
+const PLACE_OPERATIONS: AgentChatBoardOperation[] = [
+  { op: "create_task", text: "Retry the upload after a token refresh", placeAfter: "T-12" },
+  { op: "create_task", text: "Show upload progress per file", column: "Ready", position: 0 },
+];
+const PLACED = proposal("pending", undefined, PLACE_OPERATIONS);
+const NOT_PLACED = proposal("partial", [{ ok: false, error: "not_found", taskId: "T-19", part: "placement" }, skipped], PLACE_OPERATIONS);
 const WITH_IMAGES = conversation([
   { id: "m-1", role: "user", text: "The upload dialog looks wrong in both of these. Can you make a task for the first one and add the second to T-12?", at: AT, images: [sentImage(IMAGE_ONE), sentImage(IMAGE_TWO)] },
   agent("m-2", "I would create one task with the first image and attach the second to T-12.", { proposal: IMAGE_PROPOSAL }),
@@ -197,6 +203,8 @@ export function AgentChatSection() {
     <div className="designSystemGrid designSystemChatGrid">
       <Card label="Proposal, images, pending" note="A task created with an image, and an image attached to T-12. The strip is labelled Images for this task." shown={IMAGE_PROPOSAL} />
       <Card label="Proposal, an image not attached" note="The task was created, and the attach stopped at its limit. The line is fixed, by error." shown={IMAGE_FAILED} />
+      <Card label="Proposal, new tasks placed" note="One task below T-12, in T-12's column, and one at the top of Ready. Placing a card never queues it." shown={PLACED} />
+      <Card label="Proposal, a new task not placed" note="The task was created, and its placement named a task that is gone. The line names the new task." shown={NOT_PLACED} />
     </div>
     <div className="designSystemGrid">
       <Sample label="Composer, images" note="Two attached images above the row. The second has not arrived yet, so it is an empty frame of the same size.">

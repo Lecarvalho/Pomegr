@@ -175,8 +175,10 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Create feature"], text: { value: operation.name, whole: operation.name, muted: false }, details: [] };
     case "create_task": {
       const place = operation.feature ? `in ${operation.feature}` : "";
-      const details = [place, runParts(operation.run, true).join(" · "), checkParts(operation.completeWhen), operation.images ? `with ${imageCount(operation.images.length)}` : null, operation.queue === true ? "then add to queue" : null].filter(Boolean) as string[];
-      return { title: ["Create task"], text: { value: firstLine(operation.text), whole: plainTaskText(operation.text), muted: false }, details: details.length > 0 ? [details.join(" · ")] : [], ...(operation.images ? { images: operation.images } : {}) };
+      const details = [place, operation.position !== undefined ? `position ${operation.position + 1}` : null, runParts(operation.run, true).join(" · "), checkParts(operation.completeWhen), operation.images ? `with ${imageCount(operation.images.length)}` : null, operation.queue === true ? "then add to queue" : null].filter(Boolean) as string[];
+      // Where the new card lands, when the proposal places it: below a task, or in a column.
+      const title: OperationTitlePart[] = operation.placeAfter ? ["Create task below ", { id: operation.placeAfter }] : [operation.column ? `Create task in ${operation.column}` : "Create task"];
+      return { title, text: { value: firstLine(operation.text), whole: plainTaskText(operation.text), muted: false }, details: details.length > 0 ? [details.join(" · ")] : [], ...(operation.images ? { images: operation.images } : {}) };
     }
     case "update_task": {
       const details: string[] = [];
@@ -279,7 +281,7 @@ export function operationOutcome(operation: AgentChatBoardOperation, result: Age
   if ("start" in result) return result.ok ? { text: START_LAUNCHED, tone: "ok" } : { text: START_FAILURE_LINES[result.start] ?? START_FAILURE_LINES.failed, tone: "error" };
   if (result.ok) return { text: operation.op === "create_task" && result.taskId ? `Created ${result.taskId}` : "Done", tone: "ok" };
   if (result.part === "images") return { text: result.taskId ? `Created ${result.taskId}, but its images could not be attached` : IMAGE_FAILURE_LINES[result.error] ?? IMAGE_NOT_ATTACHED, tone: "error" };
-  if (result.taskId) return { text: `Created ${result.taskId}, but it could not be queued`, tone: "error" };
+  if (result.taskId) return { text: `Created ${result.taskId}, but it could not be ${result.part === "placement" ? "placed" : "queued"}`, tone: "error" };
   return { text: FAILURE_WORDS[result.error] ?? FAILURE_WORDS.unavailable, tone: result.error === "skipped" ? "muted" : "error" };
 }
 
