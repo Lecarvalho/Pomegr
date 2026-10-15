@@ -604,18 +604,8 @@
 .landing[data-motion] .bite[data-reveal]:not([data-shown]) { opacity: 0; transform: translateY(-24px); filter: blur(8px); }
 .landing[data-motion] .bite[data-reveal] { transition: opacity 1.6s var(--ease), transform 1.6s var(--ease), filter 1.6s var(--ease); }
 
-/* A small, quiet note that Pomegr runs locally. */
-.local {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: 8px 48px;
-  margin-top: 48px;
-  padding-top: 24px;
-  border-top: 1px solid var(--line);
-}
-
-.local h2 { margin: 0; font: 600 15px/1.4 var(--ui); }
-.local p { max-width: 64ch; margin: 0; color: var(--muted); font-size: 14px; }
+/* The closing image dissolves into the footer, so the footer's usual top margin is dropped here. */
+.landing > footer { margin-top: 0; }
 
 .narrowOnly { display: none !important; }
 
@@ -633,8 +623,7 @@
   filter: blur(4px);
 }
 
-.landing[data-motion] .figure[data-reveal]:not([data-shown]),
-.landing[data-motion] .local[data-reveal]:not([data-shown]) {
+.landing[data-motion] .figure[data-reveal]:not([data-shown]) {
   opacity: 0;
   transform: translateY(20px);
 }
@@ -692,8 +681,7 @@
 @media (max-width: 900px) {
   .arilScene,
   .jobs,
-  .notes,
-  .local { grid-template-columns: minmax(0, 1fr); }
+  .notes { grid-template-columns: minmax(0, 1fr); }
 
   .jobs > div { padding: 22px 0; }
   .jobs > div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }

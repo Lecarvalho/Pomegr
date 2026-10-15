@@ -92,14 +92,6 @@ export function LandingPage() {
           <img data-reveal className={styles.bite} src="/landing/home/pomegranate-bite.png" alt="" width="1200" height="800" />
         </div>
 
-        <section data-reveal className={styles.local} aria-labelledby="local-title">
-          <h2 id="local-title">Runs on your machine.</h2>
-          <p>
-            Read-only. The monitor listens only on this computer and needs no Pomegr account. Prompts, responses,
-            commands, and credentials are never shown or sent.
-          </p>
-        </section>
-
       </div>
 
       <SiteFooter current="home" />

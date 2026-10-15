@@ -100,7 +100,7 @@ The header and footer are self-contained bands that every page shares.
 
 ## Home page
 
-Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, tasks, and Aril, the closing image right below the last figure, then the local note.
+Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, tasks, and Aril, then the closing image right below the last figure, which runs into the footer with no gap.
 
 - The hero has the two-clause title, one sentence, and the platform line.
 - The one Download for Windows action sits centred under fig. 1. It is quiet: a thin Signal outline at 40% and Signal text at 13px, filling with Signal wash on hover. It is full width on a phone. The page has no View source link; the header's Source link covers it.
@@ -119,7 +119,6 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 - The terminal opens as its own window with a deep shadow, out of the running card and up to 88px past the figure's frame, never past the viewport. It breaks the figure's frame on purpose. On a phone it stays inside the column.
 - The chat plays when the figure is a third in view and replays after a 6.5 second hold. Out of view, and under reduced motion, it shows the finished conversation.
 - Each diagram has a phone version that stacks vertically, because the desktop diagram would be too small to read. The fig. 4 chat stacks the two columns under the conversation.
-- A small, quiet note follows the chapters: "Runs on your machine." in 15px/600 beside one muted 14px paragraph on the read-only loopback monitor, and what is never shown or sent.
 - The home page has no waitlist. The waitlist API stays deployed with no page that uses it.
 
 ## Download page
