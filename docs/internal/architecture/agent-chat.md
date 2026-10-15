@@ -86,7 +86,11 @@ or a Dismiss that was stored starts one too, for Aril's follow-up (see
    monitor (see [The declared run](#the-declared-run)), and starts the run in the
    repository root. The answer to `send` is the conversation ID only.
 6. While the run writes, `read` answers the stored conversation and a `turn`: the
-   answer text so far and one fixed activity label.
+   answer text so far and one fixed activity label. While a client's panel is open and reads
+   no `turn`, the client sends `list` every five seconds. So it follows a turn that
+   another device started: `running` names the open conversation, or a newer `updatedAt`
+   of the open conversation makes the client `read` it again. The operations and their
+   fields are unchanged.
 7. When the run ends, desktop main withdraws the declaration and stores Aril's message
    with one status: `complete`, `stopped`, `failed`, or `timed_out`. A run may take ten
    minutes.

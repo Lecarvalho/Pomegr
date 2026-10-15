@@ -39,6 +39,7 @@ export const proposalOf = (operations: Json[] = EIGHT_OPERATIONS, state = "pendi
 export class FakeChat {
   private readonly byRepository = new Map<string, Map<string, StoredConversation>>();
   private counter = 100;
+  private minutes = 0;
   turn: Turn | null = null;
   /** The next `send` answers this refusal. */
   refuse: string | null = null;
@@ -104,12 +105,24 @@ export class FakeChat {
     if (this.turn) Object.assign(this.turn, { text, activity });
   }
 
+  /** A later instant each time, as the desktop stamps each stored change. */
+  private stamp() {
+    this.minutes += 1;
+    return `2026-10-11T11:${String(this.minutes).padStart(2, "0")}:00.000Z`;
+  }
+
+  /** Sends a message the way another device does: the desktop stores it and starts a turn, and this client is not asked. */
+  async sendElsewhere(repositoryId: string, conversationId: string | null, text: string) {
+    return this.handle("send", { repositoryId, conversationId, text, provider: "claude", model: null });
+  }
+
   /** Ends the running turn the way the desktop does: it stores Aril's message. */
   finish(text: string, status = "complete", extra: Json = {}) {
     const turn = this.turn;
     if (!turn) return;
     const conversation = this.conversation(turn.repositoryId, turn.conversationId);
     conversation?.messages.push(agentMessage(text, { provider: turn.provider, model: turn.model, status, ...extra }, `m-${conversation.messages.length + 1}`));
+    if (conversation) conversation.updatedAt = this.stamp();
     this.turn = null;
   }
 
@@ -148,7 +161,7 @@ export class FakeChat {
         map.set(target.id, target);
         const images = imageIds.map((id) => ({ id, type: this.images.get(id)!.type, bytes: this.images.get(id)!.bytes.byteLength }));
         target.messages.push({ ...userMessage(text, `m-${target.messages.length + 1}`), ...(images.length > 0 ? { images } : {}) });
-        target.updatedAt = "2026-10-11T11:00:00.000Z";
+        target.updatedAt = this.stamp();
         this.turn = { repositoryId, conversationId: target.id, startedAt: AT, provider: String(payload.provider), model: (payload.model as string | null) ?? null, activity: "thinking", text: "" };
         return { ok: true, conversationId: target.id };
       }
