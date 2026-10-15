@@ -99,11 +99,14 @@
   outline: none;
 }
 
-/* Sidebar navigation, below the 60px sticky header. */
+/* Sidebar navigation, below the 60px sticky header. Its scroll box clips, so 4px of padding,
+   taken back by the margin, leaves room for the search field's focus ring. */
 .nav {
   position: sticky;
-  top: 84px;
-  max-height: calc(100vh - 108px);
+  top: 80px;
+  max-height: calc(100vh - 100px);
+  margin: -4px;
+  padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -363,7 +366,8 @@
   .nav {
     position: static;
     max-height: none;
-    margin-bottom: 28px;
+    margin: 0 0 28px;
+    padding: 0;
     overflow: visible;
   }
 
