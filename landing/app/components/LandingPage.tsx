@@ -25,7 +25,7 @@ export function LandingPage() {
             <h1 id="hero-title">Your agents don’t sleep. <span>So you can.</span></h1>
             <div className={styles.heroRow}>
               <div>
-                <p className={styles.lede}>Local, read-only metrics for every coding-agent session, with a task board and an agent, Aril, to plan the next one.</p>
+                <p className={styles.lede}>Local, read-only metrics for every coding-agent session, with a task board and Aril, the task-board agent.</p>
                 <p className={`${styles.platformLine} ${styles.label}`}>
                   <span><i />Windows x64 · installer or portable</span>
                   <span><i className={styles.planned} />iOS &amp; Android · planned</span>
