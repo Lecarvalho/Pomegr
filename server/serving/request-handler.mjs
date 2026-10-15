@@ -22,6 +22,9 @@ import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs
 import { TASK_FEATURE_ACTIONS, serveTaskFeatureRoute } from "./task-feature-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
+export const CHAT_RUN_DECLARE_PATH = "/internal/agent-chat/run-declare";
+export const CHAT_RUN_WITHDRAW_PATH = "/internal/agent-chat/run-withdraw";
+const CHAT_RUN_PATHS = new Set([CHAT_RUN_DECLARE_PATH, CHAT_RUN_WITHDRAW_PATH]);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
 const UNAVAILABLE_STORAGE_SNAPSHOT = Object.freeze({
   revision: 0,
@@ -218,7 +221,8 @@ export function createRequestHandler({
     const repositoryCaptureRequest = requestUrl.pathname === "/internal/repository-inventory/capture";
     const repositoryPluginRequest = ["/internal/repository-plugin/recheck", "/internal/repository-plugin/prepare"].includes(requestUrl.pathname);
     const taskActionRequest = requestUrl.pathname.startsWith(TASK_ACTION_PATH_PREFIX);
-    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest;
+    const chatRunRequest = CHAT_RUN_PATHS.has(requestUrl.pathname);
+    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest || chatRunRequest;
     const desktopReadAllowed = !privateActionRequest && (!authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
@@ -281,6 +285,20 @@ export function createRequestHandler({
           : { status: await runtime.refreshRepositoryPluginSetup(repositoryId, provider), setup: runtime.readRepositoryPluginSetup(repositoryId, provider) };
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify(result));
       } catch { response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ status: "failed" })); }
+      return;
+    }
+    if (chatRunRequest) {
+      // Desktop main declares the session ID of its own chat run for one turn, and withdraws it after: the ID and
+      // nothing else. The monitor keeps it in memory; see the agent chat's privacy rules.
+      const keys = [...requestUrl.searchParams.keys()];
+      const sessionId = requestUrl.searchParams.get("sessionId") || "";
+      const valid = keys.length === 1 && keys[0] === "sessionId" && requestUrl.searchParams.getAll("sessionId").length === 1
+        && Number(request.headers["content-length"] || 0) === 0 && request.headers["transfer-encoding"] === undefined;
+      const declaring = requestUrl.pathname === CHAT_RUN_DECLARE_PATH;
+      let ok = false;
+      try { ok = valid && Boolean(declaring ? runtime.declareChatRun?.(sessionId) : runtime.withdrawChatRun?.(sessionId)); } catch { ok = false; }
+      response.writeHead(ok ? 200 : 400, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ ok }));
       return;
     }
     if (repositoryCaptureRequest) {

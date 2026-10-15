@@ -72,13 +72,14 @@ export function fakeRuns() {
 /**
  * `state` is the fake monitor: `board` answers GET /api/tasks, `rootAnswer` answers worktree-root, `actions(action,
  * payload)` answers every other task action, `gate` (a promise) holds the board read, and `fetchError` makes every
- * request throw. `calls` records each request.
+ * request throw. `calls` records each request, except a run's declaration and withdrawal, which `declarations` records
+ * as `{ action, sessionId, call }`; `declarationError` makes those throw.
  */
 export async function chatHarness(context, overrides = {}) {
   const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pomegr-agent-chat-"));
   context.after(() => fs.rm(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   const directory = path.join(dataRoot, AGENT_CHAT_DIRECTORY);
-  const state = { board: readyBoard(), rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), imageAdd: (call) => ({ ok: true, imageId: call.query.imageId }), gate: null, fetchError: null, calls: [] };
+  const state = { board: readyBoard(), rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), imageAdd: (call) => ({ ok: true, imageId: call.query.imageId }), gate: null, fetchError: null, calls: [], declarations: [], declarationError: null };
   const { viaDataRoot = false, files = [claudeExecutable, codexExecutable, mcpScript], ...rest } = overrides;
   let tick = 0;
   const now = () => new Date(Date.parse(stamp) + (tick += 1000));
@@ -90,6 +91,11 @@ export async function chatHarness(context, overrides = {}) {
       url, pathname: parsed.pathname, search: parsed.search, init, body: typeof init.body === "string" ? JSON.parse(init.body) : null,
       query: Object.fromEntries(parsed.searchParams), bytes: binary, contentType: init.headers?.["content-type"] ?? null,
     };
+    if (parsed.pathname.startsWith("/internal/agent-chat/run-")) {
+      state.declarations.push({ action: parsed.pathname.slice("/internal/agent-chat/run-".length), sessionId: call.query.sessionId, call });
+      if (state.declarationError ?? state.fetchError) throw state.declarationError ?? state.fetchError;
+      return json({ ok: true });
+    }
     state.calls.push(call);
     if (state.fetchError) throw state.fetchError;
     if (init.method === "GET" && parsed.pathname === "/api/tasks") {
@@ -124,7 +130,7 @@ export async function chatHarness(context, overrides = {}) {
   const followUps = () => runs.filter((run) => run.options.prompt.includes("</proposal_outcome>"));
   const followUp = () => until(() => followUps().find((run) => !run.answered) ?? null);
   return {
-    chat, state, runs, calls, dataRoot, directory, store, images, spawn, now, followUps, followUp,
+    chat, state, runs, calls, declarations: state.declarations, dataRoot, directory, store, images, spawn, now, followUps, followUp,
     /** Answers the follow-up that runs or is about to, and waits until it is stored. */
     async finishFollowUp(conversationId, outcome = { status: "complete", text: "Noted." }, repository = repositoryId) {
       const run = await followUp();

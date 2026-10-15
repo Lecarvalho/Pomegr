@@ -12,6 +12,9 @@ import { CLAUDE_MODEL_SOURCE_CAPABILITIES } from "./claude/model-observation.mjs
 import { CODEX_MODEL_SOURCE_CAPABILITIES } from "./codex/model-observation.mjs";
 import path from "node:path";
 
+// The agent chat's declared runs: the monitor's composition takes them here, never from the kernel itself.
+export { chatRunDeclarations } from "./kernel/chat-run-declarations.mjs";
+
 export function createOfficialProviderReleaseReaders(options = {}) {
   return Object.freeze([createClaudeCodeReleaseReader(options), createCodexCliReleaseReader(options)]);
 }

@@ -70,6 +70,7 @@ import { readClaudeHistoryRecords } from "./history-reader.mjs";
 import { createClaudeSessionWorkStartReader } from "./session-work-start.mjs";
 import { claudeUserMessageTimes } from "./user-message-times.mjs";
 import { createSourceLedger } from "../kernel/source-ledger.mjs";
+import { chatRunDeclarations } from "../kernel/chat-run-declarations.mjs";
 import { createClaudeSessionResolver, ingestClaudeDiscovery, parseClaudeSessionLedgerHeader } from "./session-ledger.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
@@ -132,6 +133,14 @@ export function createClaudeProvider(options = {}) {
     root: registryRoot, validateOwners: validateRegistryOwners, now, ownerExists: options.registryProcessExists,
     counters: ownerProbeCounters,
   });
+  const chatRuns = options.chatRunDeclarations || chatRunDeclarations;
+  // Pomegr's own agent chat run is never a session: a registration whose session ID desktop main declared for the
+  // turn is dropped here, before discovery, the catalog, liveness, or status reads it. Every other one stays.
+  function readRegistry() {
+    const observed = registryObservation.read();
+    if (![...observed.registry.keys()].some((sessionId) => chatRuns.has(sessionId))) return observed;
+    return { ...observed, registry: new Map([...observed.registry].filter(([sessionId]) => !chatRuns.has(sessionId))) };
+  }
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
   const readAgentLifecycle = createClaudeAgentLifecycleReader();
   const readCurrentActivity = createClaudeCurrentActivityReader({ yieldControl: options.yieldControl });
@@ -152,7 +161,7 @@ export function createClaudeProvider(options = {}) {
   const discoveredSessions = () => discoveredFromFiles(sessionFileLister.list(projectsRoot));
   const discoveredSessionsAsync = async () => discoveredFromFiles(await sessionFileLister.listAsync(projectsRoot));
   function discoveredFromFiles(files) {
-    const { registry, closedSessionIds } = registryObservation.read();
+    const { registry, closedSessionIds } = readRegistry();
     const explicitFile = explicitSession && fs.existsSync(explicitSession) ? explicitSession : null;
     if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
       files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });
@@ -238,7 +247,7 @@ export function createClaudeProvider(options = {}) {
   }
 
   const resolveSession = createClaudeSessionResolver({
-    ledger: sourceLedger, discover: discoveredSessions, readRegistry: () => registryObservation.read(),
+    ledger: sourceLedger, discover: discoveredSessions, readRegistry,
     explicitFile: () => (explicitSession && fs.existsSync(explicitSession) ? explicitSession : null),
     registryAvailable: () => fs.existsSync(registryRoot), now, selectFile: selectedSessionFile,
   });
@@ -628,7 +637,7 @@ export function createClaudeProvider(options = {}) {
       });
     }
     let registry, registryComplete = true;
-    try { ({ registry, complete: registryComplete } = registryObservation.read()); }
+    try { ({ registry, complete: registryComplete } = readRegistry()); }
     catch { registry = new Map(); registryComplete = false; }
     for (const entry of registry.values()) {
       if (signal?.aborted) return { complete: false };

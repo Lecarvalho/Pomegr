@@ -7,6 +7,8 @@ export const STDOUT_LINE_LIMIT = 4 * 1024 * 1024;
 export const ANSWER_LIMIT = 32_000;
 
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
+// A random version 4 UUID that desktop main made for one turn.
+export const CHAT_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
 // The read tools of the chat's own MCP server (`mcp/agent-chat-server.mjs`); it has no tool that writes.
 export const POMEGR_READ_TOOLS = Object.freeze([
@@ -49,13 +51,17 @@ function validImages(images) {
  * nothing else: no user settings, hooks, plugins, or other MCP servers, no tool that writes, and no way to wait for
  * an approval.
  */
-export function chatArguments(provider, model = null, mcpServer = null, images = null) {
+export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null) {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
+  const identity = typeof sessionId === "string" && CHAT_SESSION_ID.test(sessionId) ? sessionId : null;
   const server = validServer(mcpServer) ? { command: mcpServer.command, args: [...mcpServer.args], env: { ...mcpServer.env } } : null;
   const shown = validImages(images);
   if (provider === "claude") {
     return [
       "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
+      // Claude Code registers even a run that keeps no session file. The ID desktop main gave the run is the one the
+      // monitor holds for the turn, so the registration never shows as a session.
+      ...(identity ? ["--session-id", identity] : []),
       // Restricted mode leaves out the user's, the project's, and the local settings, and every tool that runs code.
       "--restricted", "--strict-mcp-config", "--mcp-config", JSON.stringify({ mcpServers: server ? { [MCP_SERVER_NAME]: server } : {} }),
       // A tool outside the allow list is refused, never asked about.
@@ -177,8 +183,8 @@ export function createTurnReader(provider, { onText = () => {}, onActivity = () 
  * Starts one turn and answers `{ status, text }` when the run ends: `complete`, `failed`, `timed_out`, or `stopped`.
  * `stop()` ends Pomegr's own headless run; it is never a session the owner started.
  */
-export function runChatTurn({ spawn, executable, provider, model = null, mcpServer = null, images = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
-  const args = chatArguments(provider, model, mcpServer, images);
+export function runChatTurn({ spawn, executable, provider, model = null, mcpServer = null, images = null, sessionId = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
+  const args = chatArguments(provider, model, mcpServer, images, sessionId);
   let child = null;
   let stopped = false;
   let timedOut = false;
