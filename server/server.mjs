@@ -8,7 +8,7 @@ import { readPullRequests } from "./repository/pull-requests.mjs";
 import { createSessionRepositoryEnrichment } from "./repository/session-repository-enrichment.mjs";
 import { publicResourceUsage, unavailableResourceUsage } from "./resources/public-resource-usage.mjs";
 import { createResourceUsageSampler } from "./resources/resource-usage.mjs";
-import { providerRegistry } from "./providers/index.mjs";
+import { chatRunDeclarations, providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 import { createObservationRuntime } from "./runtime/observation-runtime.mjs";
 import { createNotificationObservation } from "./runtime/notification-observation.mjs";
@@ -99,6 +99,7 @@ function safeTranscriptPath(value) {
 export function createMonitorRuntime(options = {}) {
   const registry = options.providerRegistry || providerRegistry;
   const providerFolders = registry.providerFolders || EMPTY_PROVIDER_FOLDERS;
+  const chatRuns = options.chatRunDeclarations || chatRunDeclarations;
   const resourceUsageSampler = options.resourceUsageSampler || createResourceUsageSampler();
   const gitReader = options.readGitState || readGitStateAsync;
   const pullRequestReader = options.readPullRequests || readPullRequests;
@@ -631,6 +632,8 @@ export function createMonitorRuntime(options = {}) {
     serveNotifications: notifications.read,
     resolveRunModels: observation.resolveRunModels,
     resolveTaskStart: observation.resolveTaskStart,
+    declareChatRun: (sessionId) => chatRuns.declare(sessionId),
+    withdrawChatRun: (sessionId) => chatRuns.withdraw(sessionId),
     taskIssues: observation.taskIssues,
     resolveTaskSession: observation.resolveTaskSession,
     resolveTaskSessionFacts: observation.resolveTaskSessionFacts,

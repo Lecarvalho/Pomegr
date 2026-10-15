@@ -3,6 +3,7 @@
 // and changes the board only when the owner approves a proposal, through the fixed task actions.
 
 import { spawn as spawnChild } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -37,6 +38,7 @@ const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
 const MONITOR_TIMEOUT_MS = 10_000;
 const IMAGE_TIMEOUT_MS = 20_000;
+const DECLARATION_TIMEOUT_MS = 2_000;
 
 const MCP_WORKER = ["desktop", "workers", "agent-chat-mcp.cjs"];
 
@@ -105,6 +107,24 @@ export function createAgentChat(options = {}) {
       ...init, headers: { [DESKTOP_AUTH_HEADER]: authorizationToken, ...init?.headers },
     });
     return response.json();
+  }
+
+  // Claude Code registers even a chat run that keeps no session file. The run gets a session ID desktop main makes, and
+  // the monitor holds that ID for the turn so the registration never shows as a session; the turn's end withdraws it,
+  // and the monitor lets it expire on its own if desktop main is gone. A refused or late declaration still starts the
+  // run: its row then shows while it answers. A Codex run keeps no thread and registers nothing, so it declares nothing.
+  async function declareRun(provider) {
+    if (provider !== "claude") return null;
+    const sessionId = (options.newSessionId || randomUUID)();
+    try {
+      await monitor(`/internal/agent-chat/run-declare?${new URLSearchParams({ sessionId })}`, { method: "POST", signal: AbortSignal.timeout(DECLARATION_TIMEOUT_MS) });
+    } catch { /* The run starts anyway. */ }
+    return sessionId;
+  }
+
+  function withdrawRun(sessionId) {
+    if (!sessionId) return;
+    void monitor(`/internal/agent-chat/run-withdraw?${new URLSearchParams({ sessionId })}`, { method: "POST", signal: AbortSignal.timeout(DECLARATION_TIMEOUT_MS) }).catch(() => {});
   }
 
   const postAction = (route, repositoryId, payload) => monitor(`/internal/tasks/${route}`, {
@@ -229,14 +249,19 @@ export function createAgentChat(options = {}) {
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
+      const sessionId = await declareRun(turn.provider);
+      if (disposed || turn.stopped) {
+        withdrawRun(sessionId);
+        return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
+      }
       const run = runTurn({
-        spawn, executable: command, provider: turn.provider, model: turn.model, mcpServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null,
+        spawn, executable: command, provider: turn.provider, model: turn.model, mcpServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null, sessionId,
         cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
       turn.stop = run.stop;
-      void run.done.then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
+      void run.done.finally(() => withdrawRun(sessionId)).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
     } catch { await finishTurn(turn, null); }
   }
 
@@ -317,16 +342,18 @@ export function createAgentChat(options = {}) {
       // The run may read the folder of this conversation's images, and nothing else outside the repository.
       const newest = new Set(attached.map((image) => image.id));
       const runImages = shown.length > 0 ? { folder: images.folder(repositoryId, conversation.id), files: shown.filter((image) => newest.has(image.id)).map((image) => image.file) } : null;
+      const sessionId = await declareRun(provider);
+      if (disposed) { withdrawRun(sessionId); return UNAVAILABLE; }
       const turn = { repositoryId, conversationId: conversation.id, provider, model, startedAt: at, activity: "starting", text: "", stop: () => {} };
       active = turn;
       started = true;
       const run = runTurn({
-        spawn, executable: command, provider, model, mcpServer, images: runImages, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        spawn, executable: command, provider, model, mcpServer, images: runImages, sessionId, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
       turn.stop = run.stop;
-      void run.done.then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
+      void run.done.finally(() => withdrawRun(sessionId)).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
       return { ok: true, conversationId: conversation.id };
     } catch {
       return UNAVAILABLE;

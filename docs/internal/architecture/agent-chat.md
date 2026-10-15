@@ -43,7 +43,9 @@ follow-up about the outcome without another message of the owner (see
 ## Ownership
 
 Desktop main owns the whole chat. The monitor does not know that the chat exists: it
-serves the board and takes the fixed task actions as it does for the Tasks page.
+serves the board and takes the fixed task actions as it does for the Tasks page. The one
+thing it holds for the chat is the session ID of a running Claude Code turn, so the
+catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 | Owner | Responsibility | May not |
 | --- | --- | --- |
@@ -53,6 +55,7 @@ serves the board and takes the fixed task actions as it does for the Tasks page.
 | `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the conversation history of one turn | Read anything itself |
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
+| `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with the seven read tools | Register a signal, task, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device | Forward a chat request to the web host |
 | `shared/agent-chat-contract.ts` | Browser-visible types and bounds | Import `server/` or `desktop/` |
@@ -75,12 +78,14 @@ or a Dismiss that was stored starts one too, for Aril's follow-up (see
    repository root (`POST /internal/tasks/worktree-root`). A board that is not ready, or
    a repository the monitor has not located in this run, answers `unavailable`.
 5. It moves the message's images into the conversation, builds the prompt (see
-   [Prompt](#prompt)), stores the owner's message, and starts the run in the repository
-   root. The answer to `send` is the conversation ID only.
+   [Prompt](#prompt)), stores the owner's message, declares a Claude Code run to the
+   monitor (see [The declared run](#the-declared-run)), and starts the run in the
+   repository root. The answer to `send` is the conversation ID only.
 6. While the run writes, `read` answers the stored conversation and a `turn`: the
    answer text so far and one fixed activity label.
-7. When the run ends, desktop main stores Aril's message with one status: `complete`,
-   `stopped`, `failed`, or `timed_out`. A run may take ten minutes.
+7. When the run ends, desktop main withdraws the declaration and stores Aril's message
+   with one status: `complete`, `stopped`, `failed`, or `timed_out`. A run may take ten
+   minutes.
 
 The run is a new provider conversation every time. Pomegr sends the earlier messages in
 the prompt, so the owner may change the provider or the model between two messages.
@@ -90,10 +95,11 @@ the prompt, so the owner may change the provider or the model between two messag
 The run is the owner's own provider CLI, signed in as the owner. Pomegr reads and stores
 no credential, and offers no sign-in of its own. The arguments are fixed
 (`chatArguments` in `agent-chat-runner.mjs`); only a validated model identifier, the
-desktop's own MCP server, and the desktop's own image folder and image files vary.
+desktop's own MCP server, the desktop's own image folder and image files, and the
+session ID desktop main made for the run vary.
 
 - **Claude Code:** print mode with JSON lines, `--no-session-persistence`,
-  `--restricted`, `--strict-mcp-config` with one `--mcp-config`, `--permission-mode
+  `--session-id` with the run's own ID, `--restricted`, `--strict-mcp-config` with one `--mcp-config`, `--permission-mode
   dontAsk`, `--tools Read,Grep,Glob`, and an allow list of those three tools and the
   seven Pomegr read tools. A conversation with images adds `--add-dir` with the folder of
   that conversation's images, because restricted mode confines Read to the working
@@ -116,7 +122,10 @@ What this gives the run, on every computer:
   another MCP server. The owner's settings, hooks, plugins, and other MCP servers are not
   loaded.
 - It cannot wait for an approval. A tool outside the allow list is refused.
-- It leaves no session file, so Pomegr does not observe it and nothing can resume it.
+- It leaves no session file, so nothing can resume it. Claude Code still registers the
+  process in its local session registry, where Pomegr finds live sessions; the
+  declaration below keeps that registration out of the Sessions list. A Codex run
+  registers nothing that Pomegr reads.
 
 The process starts with `spawn`, an argument array, and `shell: false`. The prompt
 travels on stdin. Nothing the owner typed and nothing from the board is in an argument,
@@ -128,6 +137,37 @@ form and then adds no image argument. The environment is the owner's own, as for
 
 **Stop** ends this run. It is Pomegr's own headless process and never a session the
 owner started. Closing the app ends a running turn the same way.
+
+### The declared run
+
+Pomegr tells its own Claude Code run apart from a session by an identity it gives the
+run, never by a heuristic on registry fields. Print mode, a missing transcript, or a
+short life would also match a headless `claude -p` the owner starts by hand.
+
+1. For each Claude Code turn, desktop main makes a random version 4 UUID and passes it
+   with `--session-id`. Claude Code writes that ID in the run's registry entry and still
+   keeps no session file.
+2. Before it starts the run, desktop main sends
+   `POST /internal/agent-chat/run-declare?sessionId=<id>` to the monitor with the
+   desktop token. A refused or late declaration still starts the run; its row then shows
+   while it answers.
+3. The Claude adapter drops a registry entry whose session ID is declared at each
+   registry read. The entry never reaches discovery, the catalog, the live set,
+   liveness, status, a session report, or a notification. Every other entry is admitted
+   as before.
+4. When the run ends (complete, stopped, failed, or timed out), desktop main sends
+   `POST /internal/agent-chat/run-withdraw?sessionId=<id>`.
+5. A declaration expires by itself 11 minutes after it was made: the ten-minute turn
+   timeout and one minute for the run to exit. If desktop main dies mid-turn, nothing
+   stays hidden longer than that.
+
+Limits:
+
+- A run that still runs after its declaration expired shows as a registry-only row
+  until it exits.
+- A run that started while the monitor did not take the declaration shows for that turn.
+- Only the Claude Code run declares. `codex exec --ephemeral` writes no rollout, and the
+  Codex adapter drops an ephemeral app-server thread, so a Codex run never shows.
 
 ### Tools
 
@@ -685,11 +725,18 @@ never a session's.
   (task T-75), and accepts this as part of phone access.
 - **Fixed answers.** A refusal is one fixed word. No answer carries a path, a command,
   a token, or error text.
+- **The declared run.** A declaration holds one session ID that desktop main made for
+  the run, and its expiry. It holds no path, no token, no repository, no conversation,
+  and no text. Desktop main sends it only to the monitor on the same computer, with the
+  desktop token, as a query value with no body. The monitor keeps it in memory, at most
+  eight at a time, until it is withdrawn or expires. No durable store, checkpoint, log,
+  report, or diagnostics holds it, and no browser or paired device can reach the route.
 
 ## Invariants and failure behavior
 
-- Observation is unchanged. No chat run is observed, and no pipeline stage reads a
-  conversation.
+- Observation is unchanged for every session. No chat run is observed: a declared run's
+  registry entry is dropped before any pipeline stage reads it (see
+  [The declared run](#the-declared-run)), and no pipeline stage reads a conversation.
 - Aril never changes the board. Only `apply` does, on the owner's answer, through the
   fixed task actions.
 - Aril puts no image on a task. Only `apply` does, with an image the owner sent in the

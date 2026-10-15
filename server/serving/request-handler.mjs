@@ -20,6 +20,7 @@ import { isTaskHomeRequest, serveTaskHomeRoute } from "./task-home-route.mjs";
 import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
 import { TASK_FEATURE_ACTIONS, serveTaskFeatureRoute } from "./task-feature-routes.mjs";
+import { CHAT_RUN_PATHS, serveChatRunRoute } from "./chat-run-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -218,7 +219,8 @@ export function createRequestHandler({
     const repositoryCaptureRequest = requestUrl.pathname === "/internal/repository-inventory/capture";
     const repositoryPluginRequest = ["/internal/repository-plugin/recheck", "/internal/repository-plugin/prepare"].includes(requestUrl.pathname);
     const taskActionRequest = requestUrl.pathname.startsWith(TASK_ACTION_PATH_PREFIX);
-    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest;
+    const chatRunRequest = CHAT_RUN_PATHS.has(requestUrl.pathname);
+    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest || chatRunRequest;
     const desktopReadAllowed = !privateActionRequest && (!authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
@@ -283,6 +285,7 @@ export function createRequestHandler({
       } catch { response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ status: "failed" })); }
       return;
     }
+    if (chatRunRequest) { serveChatRunRoute({ request, response, requestUrl, runtime }); return; }
     if (repositoryCaptureRequest) {
       const allowedKeys = new Set(["repositoryId", "provider"]);
       const repositoryId = requestUrl.searchParams.get("repositoryId") || "";

@@ -1445,6 +1445,16 @@ the scheduler must not silently fall back to wall-clock time when the adapter su
 This clock wiring does not change cache-only GETs, committed evidence retention,
 revision or checkpoint semantics, or the browser privacy boundary.
 
+The monitor keeps one more acquisition input in memory: the session IDs of the agent
+chat's own runs, which desktop main declares for one turn
+([Agent chat: The declared run](agent-chat.md#the-declared-run)). The Claude adapter
+drops a registry entry whose ID is declared before discovery reads it. A declaration
+lasts until desktop main withdraws it or 11 minutes pass, and the set holds at most
+eight. It is never committed, checkpointed, persisted, or served. A declaration or a
+withdrawal changes no committed revision by itself. The next catalog acquisition shows
+or leaves out the entry, and last known-good retention, cache-only GETs, and revision
+handling are unchanged for every session that is not declared.
+
 ### Source ledger
 
 A provider-neutral source ledger (`server/providers/kernel/source-ledger.mjs`) indexes
