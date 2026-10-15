@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
-import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
+import { HOME_PREFERENCES_STORAGE_KEY, useHomePreferences } from "../../app/hooks/useHomePreferences";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import SessionsPage from "../../app/sessions/page";
 import type { SessionSummary } from "../../shared/monitor-contract";
@@ -60,7 +60,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
   });
 
-  it("opens the update in a dialog that Close keeps and Got it dismisses", async () => {
+  it("opens the update in a dialog that Close and Got it both close, keeping the card", async () => {
     const user = userEvent.setup();
     home();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -74,13 +74,16 @@ describe("personal Home", () => {
     expect(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY) ?? "").not.toContain("dismissedUpdateId");
     await user.click(trigger);
     await user.click(screen.getByRole("button", { name: "Got it" }));
-    expect(screen.queryByRole("heading", { name: "What’s new" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
-    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!).dismissedUpdateId).toBe("tasks-and-aril-v1");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
+    expect(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY) ?? "").not.toContain("dismissedUpdateId");
   });
 
   it("opens the update dialog by itself once per announcement, even after Close or a reload", async () => {
     window.localStorage.clear();
+    // The preferences store is module state: let it read the cleared storage first, as a fresh launch would.
+    renderHook(() => useHomePreferences()).unmount();
     const user = userEvent.setup();
     const view = home();
     const dialog = await screen.findByRole("dialog", { name: "Plan and start work from Tasks" });
