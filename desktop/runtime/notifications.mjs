@@ -129,11 +129,23 @@ export function normalizeNativeNotificationSnapshot(input) {
   return Object.freeze({ revision: input.revision, readiness: { catalog: readiness[0], providerStatus: readiness[1] }, occurrences: rows });
 }
 
-/** Static native copy; no provider-supplied description, URL, or command is read. */
+const NATIVE_BODY_LIMIT = 200;
+// Fits a bounded release excerpt into the native body limit at a word boundary.
+function nativeBody(text) {
+  if (text.length <= NATIVE_BODY_LIMIT) return text;
+  const cut = text.slice(0, NATIVE_BODY_LIMIT - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > NATIVE_BODY_LIMIT / 2 ? cut.slice(0, space) : cut).replace(/[\s.,;:!?-]+$/u, "")}${String.fromCodePoint(0x2026)}`;
+}
+
+/** Fixed native copy, or a validated release excerpt; no URL or command is read. Clicks stay on the local route. */
 export function nativeNotificationPayload(record) {
   if (isModelNotificationKind(record.kind)) return modelNotificationPayload(record);
   if (isUsageNotificationKind(record.kind)) return usageNotificationPayload(record);
-  if (isReleaseNotificationKind(record.kind)) return releaseNotificationPayload(record);
+  if (isReleaseNotificationKind(record.kind)) {
+    const payload = releaseNotificationPayload(record);
+    return payload ? { title: payload.title, body: nativeBody(payload.body) } : null;
+  }
   if (record.kind === "needs_input" && record.lifecycle === "active") {
     const title = record.data.sessionTitle.replace(/\s+/gu, " ").trim().slice(0, 96);
     return Object.freeze(title

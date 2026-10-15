@@ -39,6 +39,11 @@ const UPSTREAM_ISSUE_PATHS = Object.freeze([
   "/anthropics/claude-code/issues/82563",
   "/anthropics/claude-code/issues/83756",
 ]);
+// Release pages that a Provider updates notification derives from its product and version.
+const PROVIDER_RELEASE_PATHS = Object.freeze([
+  /^\/anthropics\/claude-code\/releases\/tag\/v\d{1,4}\.\d{1,4}\.\d{1,4}$/u,
+  /^\/openai\/codex\/releases\/tag\/rust-v\d{1,4}\.\d{1,4}\.\d{1,4}$/u,
+]);
 const GITHUB_PULL_REQUEST_PATH = /^\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\/pull\/[1-9]\d{0,9}$/;
 const PROVIDER_STATUS_PATH = /^\/(?:incidents\/[A-Za-z0-9_-]{1,128}\/?)?$/;
 
@@ -78,6 +83,7 @@ export function isAllowedExternalUrl(value) {
   if (url.pathname === POMEGR_GITHUB_PATH_PREFIX || url.pathname.startsWith(`${POMEGR_GITHUB_PATH_PREFIX}/`)) return true;
   if (url.search) return false;
   const pathname = url.pathname.replace(/\/$/, "");
+  if (!url.hash && PROVIDER_RELEASE_PATHS.some((pattern) => pattern.test(url.pathname))) return true;
   return UPSTREAM_ISSUE_PATHS.includes(pathname) || GITHUB_PULL_REQUEST_PATH.test(pathname);
 }
 

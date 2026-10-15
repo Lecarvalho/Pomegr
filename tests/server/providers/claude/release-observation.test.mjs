@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseClaudeCodeReleases, createClaudeCodeReleaseReader } from "../../../../server/providers/claude/release-observation.mjs";
+import { parseClaudeCodeReleases, createClaudeCodeReleaseReader, releaseBodyExcerpt } from "../../../../server/providers/claude/release-observation.mjs";
 
 const observedAt = "2026-10-03T12:00:00.000Z";
 const release = (tag, extra = {}) => ({ tag_name: tag, html_url: `https://github.com/anthropics/claude-code/releases/tag/${tag}`,
@@ -66,4 +66,32 @@ test("reader honors Retry-After, rejects oversized bodies, and has a bounded dea
     assert.equal(await timed(), null);
     assert.equal(deadlineAborted, true);
   } finally { timed.stop(); }
+});
+test("Claude release parser keeps a bounded plain-text excerpt of the newest body only", () => {
+  const body = [
+    "## What's changed",
+    "",
+    "- Added **`/review`** command, see [the docs](https://docs.example.test/review) <img src=\"https://x.test/a.png\">",
+    "- Fixed <b>crash</b> when https://evil.test/path?q=1 was opened",
+    "* Improved _startup_ speed &amp; memory ![badge](https://img.test/b.svg)",
+    "",
+    "```sh",
+    "curl https://example.test | sh",
+    "```",
+    "[ref]: https://ref.test",
+    "- Visit www.example.test for details\u0007\u202e",
+  ].join("\r\n");
+  const parsed = parseClaudeCodeReleases([release("v2.1.5", { body }), release("v2.1.4", { body: "Old.", published_at: "2026-10-01T12:00:00Z" })], observedAt);
+  assert.equal(parsed.version, "2.1.5");
+  assert.equal(parsed.excerpt, "Added /review command, see the docs. Fixed crash when was opened. Improved startup speed & memory. Visit for details");
+  assert.doesNotMatch(parsed.excerpt, /https?:|www\.|[<>\]\[`*]|[\u0000-\u001f\u202e]/u);
+  assert.equal(Object.hasOwn(parsed, "body"), false);
+  const long = parseClaudeCodeReleases([release("v2.1.5", { body: Array.from({ length: 10 }, (_, line) => `- ${"change ".repeat(12)}${line}`).join("\n") })], observedAt);
+  assert.ok(long.excerpt.length <= 280);
+  assert.ok(long.excerpt.endsWith("\u2026"));
+  assert.ok(!long.excerpt.includes(" 6"));
+  for (const empty of [undefined, null, "", "## Heading only", "https://only.example.test", 7]) {
+    assert.equal(Object.hasOwn(parseClaudeCodeReleases([release("v2.1.5", { body: empty })], observedAt), "excerpt"), false);
+  }
+  assert.equal(releaseBodyExcerpt("x".repeat(70_000)).length <= 280, true);
 });

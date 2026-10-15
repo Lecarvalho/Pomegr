@@ -6,6 +6,7 @@ import { normalizeNotificationPersistence } from "../../../server/notifications/
 import { normalizeNativeNotificationSnapshot, nativeNotificationPayload } from "../../../desktop/runtime/notifications.mjs";
 import { createReleaseObservation } from "../../../server/runtime/release-observation.mjs";
 import { createNotificationObservation } from "../../../server/runtime/notification-observation.mjs";
+import { releaseNotificationPayload } from "../../../shared/release-notification.mjs";
 
 const T0 = "2026-10-03T12:00:00.000Z";
 const T1 = "2026-10-03T13:00:00.000Z";
@@ -89,4 +90,67 @@ test("scheduler coalesces reads, stops timers, and does not wait in GET paths", 
   await pending;
   await scheduler.stop();
   assert.equal(calls, 1);
+});
+const claude = (version, observedAt, excerpt) => ({ provider: "claude", product: "claude_code", version,
+  channel: "latest", observedAt, installation: null, ...(excerpt === undefined ? {} : { excerpt }) });
+test("a Claude Code release carries its bounded excerpt and a derived tag page through every store", () => {
+  let at = Date.parse(T0);
+  const observation = createNotificationObservation({ now: () => at, sourceScope: scope });
+  const source = (version, observedAt, excerpt) => ({ ...claude(version, observedAt, excerpt),
+    publishedAt: observedAt, sourceKey: "anthropics/claude-code" });
+  observation.acceptReleaseObservations([source("2.1.0", T0, "Older notes.")]);
+  at = Date.parse(T1);
+  observation.acceptReleaseObservations([source("2.1.5", T1, "Added the review command. Fixed a crash.")]);
+  const snapshot = observation.readSnapshot();
+  const [row] = snapshot.occurrences;
+  assert.deepEqual(row.data, { product: "claude_code", version: "2.1.5", channel: "latest", excerpt: "Added the review command. Fixed a crash." });
+  const native = normalizeNativeNotificationSnapshot(snapshot);
+  assert.equal(native.occurrences[0].data.excerpt, row.data.excerpt);
+  assert.deepEqual(nativeNotificationPayload(native.occurrences[0]), { title: "Claude Code 2.1.5 published", body: row.data.excerpt });
+  assert.equal(releaseNotificationPayload(row).link, "https://github.com/anthropics/claude-code/releases/tag/v2.1.5");
+  const ledger = createNotificationLedger({ now: () => at });
+  ledger.acceptFacts({ releases: { revision: 1, sourceScope: scope, observations: [claude("2.1.0", T0, "Older notes.")] } });
+  ledger.acceptFacts({ releases: { revision: 2, sourceScope: scope, observations: [claude("2.1.5", T1, "Notes.")] } });
+  const saved = { version: 1, profileScope: scope, ...ledger.exportState() };
+  assert.equal(saved.releaseState.claude_code.excerpt, "Notes.");
+  assert.ok(normalizeNotificationPersistence(saved, scope, at));
+  assert.doesNotMatch(JSON.stringify(saved), /github\.com|https?:/);
+});
+test("a baseline without an excerpt still reads and unsafe or misplaced excerpts never persist", () => {
+  const ledger = createNotificationLedger({ now: () => Date.parse(T1) });
+  ledger.acceptFacts({ releases: { revision: 1, sourceScope: scope, observations: [claude("2.1.0", T0)] } });
+  const saved = { version: 1, profileScope: scope, ...ledger.exportState() };
+  assert.deepEqual(Object.keys(saved.releaseState.claude_code).sort(), ["channel", "observedAt", "version"]);
+  assert.ok(normalizeNotificationPersistence(saved, scope, Date.parse(T1)));
+  for (const excerpt of ["See https://example.test", "<b>bold</b>", "x".repeat(281), "line\nbreak", ""]) {
+    const copy = structuredClone(saved);
+    copy.releaseState.claude_code.excerpt = excerpt;
+    assert.equal(normalizeNotificationPersistence(copy, scope, Date.parse(T1)), null, excerpt);
+  }
+  const codex = structuredClone(saved);
+  codex.releaseState.codex_cli = { version: "1.0.0", channel: "latest", observedAt: T0, excerpt: "Notes." };
+  assert.equal(normalizeNotificationPersistence(codex, scope, Date.parse(T1)), null);
+  const reduced = reduceReleaseNotifications({ observations: [{ ...cli("1.0.0", T0), excerpt: "Codex notes." }] }, null, Date.parse(T0));
+  assert.equal(Object.hasOwn(reduced.state.codex_cli, "excerpt"), false);
+  const unsafe = reduceReleaseNotifications({ observations: [claude("2.1.1", T1, "Visit www.example.test")] },
+    reduceReleaseNotifications({ observations: [claude("2.1.0", T0)] }, null, Date.parse(T0)).state, Date.parse(T1));
+  assert.deepEqual(unsafe.items[0].data, { product: "claude_code", version: "2.1.1", channel: "latest" });
+});
+test("a Codex CLI release yields the derived link only and keeps the fixed wording", () => {
+  const baseline = reduceReleaseNotifications({ observations: [cli("1.0.0", T0)] }, null, Date.parse(T0));
+  const [item] = reduceReleaseNotifications({ observations: [cli("1.1.0", T1)] }, baseline.state, Date.parse(T1)).items;
+  const record = { kind: item.kind, provider: item.provider, data: item.data };
+  assert.deepEqual(releaseNotificationPayload(record), { title: "Codex CLI 1.1.0 published",
+    link: "https://github.com/openai/codex/releases/tag/rust-v1.1.0",
+    body: "This is a Codex CLI release; desktop and IDE updates are separate." });
+  assert.equal(nativeNotificationPayload({ ...record, lifecycle: "resolved" }).body, "This is a Codex CLI release; desktop and IDE updates are separate.");
+  assert.equal(releaseNotificationPayload({ kind: "release_published", provider: null,
+    data: { product: "pomegr_plugin", version: "0.8.0", channel: "main" } }).link, null);
+});
+test("a native toast fits a long excerpt within the OS body limit", () => {
+  const excerpt = `${"word ".repeat(55).trim()}.`;
+  const payload = nativeNotificationPayload({ kind: "release_published", provider: "claude", lifecycle: "resolved",
+    data: { product: "claude_code", version: "2.1.5", channel: "latest", excerpt } });
+  assert.ok(payload.body.length <= 200);
+  assert.ok(payload.body.endsWith(String.fromCodePoint(0x2026)));
 });

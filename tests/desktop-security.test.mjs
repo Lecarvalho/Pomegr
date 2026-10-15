@@ -12,7 +12,7 @@ import {
   inspectAsarPrivacyEntry,
 } from "../desktop/runtime/artifact-privacy.mjs";
 import { createNativeNotificationController, createNotificationPoller } from "../desktop/runtime/notifications.mjs";
-import { installWebContentsSecurity, secureBrowserWindowOptions } from "../desktop/runtime/security-policy.mjs";
+import { installWebContentsSecurity, isAllowedExternalUrl, secureBrowserWindowOptions } from "../desktop/runtime/security-policy.mjs";
 import { DESKTOP_BEHAVIOR_CHANNELS } from "../desktop/runtime/desktop-behavior.mjs";
 import {
   installDesktopBehaviorIpcHandlers,
@@ -391,4 +391,28 @@ test("desktop bridge and runtime reject the removed legacy namespace", async () 
   assert.match(preload, /checkForUpdates\(\)\s*\{\s*return ipcRenderer\.invoke\("pomegr:check-for-updates"\);/);
   assert.match(behavior, /pomegr:desktop-state/);
   assert.match(environment, /POMEGR_DATA_DIR/);
+});
+
+test("the external allowlist admits only the two derived provider release page shapes", () => {
+  for (const url of [
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.5",
+    "https://github.com/openai/codex/releases/tag/rust-v0.48.0",
+  ]) assert.equal(isAllowedExternalUrl(url), true, url);
+  for (const url of [
+    "https://github.com/anthropics/claude-code/releases",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.5-beta.1",
+    "https://github.com/anthropics/claude-code/releases/tag/rust-v2.1.5",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.5/",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.5?x=1",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.5#notes",
+    "https://github.com/anthropics/claude-code/releases/download/v2.1.5/claude.zip",
+    "https://github.com/openai/codex/releases/tag/v0.48.0",
+    "https://github.com/openai/codex/releases/latest",
+    "https://github.com/openai/codex/blob/main/README.md",
+    "https://github.com/someone/claude-code/releases/tag/v2.1.5",
+    "https://github.com/anthropics/claude-code/issues/1",
+    "http://github.com/anthropics/claude-code/releases/tag/v2.1.5",
+    "https://github.com.evil.invalid/anthropics/claude-code/releases/tag/v2.1.5",
+    "https://user@github.com/anthropics/claude-code/releases/tag/v2.1.5",
+  ]) assert.equal(isAllowedExternalUrl(url), false, url);
 });

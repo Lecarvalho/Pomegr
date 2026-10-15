@@ -4,6 +4,7 @@ import path from "node:path";
 import { isSafeSessionId } from "./notification-rules.mjs";
 import { USAGE_NOTIFICATION_KINDS, USAGE_NOTIFICATION_WINDOWS, validUsageNotificationState } from "./usage-notifications.mjs";
 import { RELEASE_KINDS, RELEASE_PRODUCTS, validReleaseNotificationState } from "./release-notifications.mjs";
+import { isReleaseExcerpt } from "../../shared/release-notification.mjs";
 import { validModelNotificationState } from "./model-notifications.mjs";
 import { isModelNotificationKind, normalizeModelNotificationData, modelNotificationPolicy } from "../../shared/model-notification.mjs";
 import { NOTIFICATION_MAX_ACTIVE_SESSIONS, NOTIFICATION_MAX_BYTES, NOTIFICATION_MAX_OCCURRENCES, NOTIFICATION_RETENTION_MS } from "./notification-ledger.mjs";
@@ -55,7 +56,9 @@ function validRow(row) {
     const data = row.data;
     const product = data?.product;
     const keys = product === "pomegr_plugin" && data && Object.hasOwn(data, "affectedRepositories")
-      ? ["product", "version", "channel", "affectedRepositories"] : ["product", "version", "channel"];
+      ? ["product", "version", "channel", "affectedRepositories"]
+      : product === "claude_code" && data && Object.hasOwn(data, "excerpt")
+        ? ["product", "version", "channel", "excerpt"] : ["product", "version", "channel"];
     return row.category === "provider_news" && row.severity === "info" && row.action === "open_providers"
       && row.priority === (row.kind === "release_published" ? 30 : 35)
       && row.lifecycle === "resolved" && row.timeBasis === "observed"
@@ -63,6 +66,7 @@ function validRow(row) {
       && typeof data.version === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/u.test(data.version)
       && data.channel === (product === "pomegr_plugin" ? "main" : "latest")
       && row.provider === (product === "claude_code" ? "claude" : product === "codex_cli" ? "codex" : null)
+      && (!Object.hasOwn(data, "excerpt") || isReleaseExcerpt(data.excerpt))
       && (!Object.hasOwn(data, "affectedRepositories") || (row.kind === "installation_update_available"
         && Number.isSafeInteger(data.affectedRepositories) && data.affectedRepositories >= 1 && data.affectedRepositories <= 200));
   }

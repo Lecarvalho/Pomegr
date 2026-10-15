@@ -70,6 +70,10 @@ Native alerts for this event require **Settings → Notifications → Provider u
 to be enabled. Opening it only shows Usage limits; signing in remains a separate,
 confirmed action. A single failed check or generic network error does not qualify.
 
+**Provider updates** also includes release news. A Claude Code release shows the first
+lines of its release notes as plain text. **What's new** opens the release page on
+GitHub. **View providers** opens this page.
+
 Notification comparisons need a recognized local source and complete, fresh
 windows. Switching sources or encountering stale or partial evidence establishes
 a new baseline. Some Codex installations, including keyring-only sources, cannot

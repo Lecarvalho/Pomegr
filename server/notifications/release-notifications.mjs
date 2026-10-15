@@ -1,4 +1,5 @@
 import { comparePluginVersions } from "../../shared/repository-plugin-state.mjs";
+import { isReleaseExcerpt } from "../../shared/release-notification.mjs";
 
 export const RELEASE_PRODUCTS = Object.freeze(["claude_code", "codex_cli", "pomegr_plugin"]);
 export const RELEASE_KINDS = Object.freeze(["release_published", "installation_update_available"]);
@@ -14,7 +15,10 @@ export function validReleaseNotificationState(value, now) {
     && RELEASE_PRODUCTS.every((product) => {
       const row = value[product];
       return row === null || (row && typeof row === "object" && !Array.isArray(row)
-        && Object.keys(row).length === 3 && typeof row.version === "string" && VERSION.test(row.version)
+        && (Object.hasOwn(row, "excerpt")
+          ? product === "claude_code" && Object.keys(row).length === 4 && isReleaseExcerpt(row.excerpt)
+          : Object.keys(row).length === 3)
+        && typeof row.version === "string" && VERSION.test(row.version)
         && CHANNELS[product].includes(row.channel) && iso(row.observedAt)
         && Date.parse(row.observedAt) <= now + 60_000);
     });
@@ -35,7 +39,9 @@ export function reduceReleaseNotifications(input, previous = null, now = Date.no
     if (prior && Date.parse(row.observedAt) <= Date.parse(prior.observedAt)) continue;
     const comparison = prior ? comparePluginVersions(prior.version, row.version) : null;
     if (comparison === 1) continue; // A delayed older publication cannot lower the baseline.
-    const current = { version: row.version, channel: row.channel, observedAt: row.observedAt };
+    // Only Claude Code sources carry a bounded plain-text excerpt; a stored baseline without one still reads.
+    const excerpt = product === "claude_code" && isReleaseExcerpt(row.excerpt) ? row.excerpt : null;
+    const current = { version: row.version, channel: row.channel, observedAt: row.observedAt, ...(excerpt ? { excerpt } : {}) };
     state[product] = current;
     if (!prior || prior.channel !== row.channel || comparison !== -1) continue;
     const comparable = row.installation?.status === "installed" && row.installation?.channel === row.channel
@@ -45,7 +51,8 @@ export function reduceReleaseNotifications(input, previous = null, now = Date.no
     const affectedRepositories = product === "pomegr_plugin" && comparable
       ? Math.min(200, Math.max(1, Number.isSafeInteger(row.installation.affectedRepositories) ? row.installation.affectedRepositories : 1)) : 0;
     items.push({ kind, key: product, provider: PROVIDERS[product], active: true, at: row.observedAt,
-      data: { product, version: row.version, channel: row.channel, ...(affectedRepositories ? { affectedRepositories } : {}) } });
+      data: { product, version: row.version, channel: row.channel, ...(affectedRepositories ? { affectedRepositories } : {}),
+        ...(excerpt ? { excerpt } : {}) } });
   }
   return { state, items };
 }

@@ -19,6 +19,8 @@ export type NotificationView = {
   description: string;
   href: string;
   linkLabel: string;
+  /** A release page derived from the product and version; the desktop shell applies its allowlist. */
+  releaseHref?: string;
   tone: "attention" | "online" | "offline";
   occurredAt: string;
   priority: number;
@@ -26,7 +28,7 @@ export type NotificationView = {
 
 export type NotificationPresentationRule = {
   kind: string;
-  present: (record: NotificationRecord) => Pick<NotificationView, "group" | "title" | "description" | "tone"> | null;
+  present: (record: NotificationRecord) => Pick<NotificationView, "group" | "title" | "description" | "tone" | "releaseHref"> | null;
 };
 
 const PROVIDER_LABEL = { claude: "Claude Code", codex: "Codex" } as const;
@@ -57,7 +59,8 @@ export const NOTIFICATION_PRESENTATION: readonly NotificationPresentationRule[] 
   ...["release_published", "installation_update_available"].map((kind): NotificationPresentationRule => ({
     kind, present: (record) => {
       const payload = releaseNotificationPayload(record);
-      return payload ? { group: "Provider updates", title: payload.title, description: payload.body, tone: "online" } : null;
+      return payload ? { group: "Provider updates", title: payload.title, description: payload.body, tone: "online",
+        ...(payload.link ? { releaseHref: payload.link } : {}) } : null;
     },
   })),
   ...["usage_window_reset", "usage_capacity_restored", "usage_reset_available", "usage_authentication_required"].map((kind): NotificationPresentationRule => ({
@@ -143,7 +146,10 @@ export function NotificationCenter({ entries, isUnread, unreadCount, markAllRead
       return <article className={`commandNotificationEntry${unread ? "" : " isRead"}`} key={entry.id} data-testid={`notification-${entry.kind}`} aria-label={`${entry.title}, ${entry.kind.replaceAll("_", " ")}, ${unread ? "unread" : "read"}`}>
         <i className={`commandStatusDot ${entry.tone}`} aria-hidden="true" />
         <div><span className="commandNotificationCategory">{entry.group}</span><strong>{entry.title}</strong><p>{entry.description}</p>
-          <Link href={entry.href} onClick={() => onClose(false)}>{entry.linkLabel}</Link>
+          <span className="commandNotificationLinks">
+            <Link href={entry.href} onClick={() => onClose(false)}>{entry.linkLabel}</Link>
+            {entry.releaseHref && <a href={entry.releaseHref} target="_blank" rel="noopener noreferrer">What&apos;s new</a>}
+          </span>
         </div>
         <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString()}</time>
       </article>;

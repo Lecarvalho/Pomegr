@@ -129,6 +129,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandNotificationEntry.isRead a { color: var(--command-muted); }
 .commandNotificationEntry.isRead .commandStatusDot { background: var(--command-faint); box-shadow: none; }
 .commandNotificationEntry p { margin: 6px 0 8px; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.commandNotificationLinks { display: flex; flex-wrap: wrap; gap: 12px; }
 .commandNotificationEntry a { color: var(--command-amber); font-size: var(--text-xs); text-underline-offset: 3px; }
 .commandNotificationEntry time { color: var(--command-faint); font: var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; }
 .commandNotificationTray > footer { min-height: 42px; padding: 0 13px; display: flex; align-items: center; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); }
