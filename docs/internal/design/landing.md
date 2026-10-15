@@ -69,7 +69,7 @@ The landing is an isolated package, so it copies these values instead of importi
 
 - Film grain covers the home page as a fixed SVG noise overlay at 22% opacity, blended as overlay.
 - A 22px dot grid sits behind the hero and fades out from the upper right through a radial mask.
-- Under a fine pointer, the dots within 240px of the cursor turn Signal red, still inside the same fade (`DotGlow`).
+- Under a fine pointer, each dot the cursor crosses turns Signal red and fades out over 1.1 seconds, still inside the same fade (`DotGlow`). Only crossed dots light, never a radius around the cursor.
 - A pomegranate broken in two halves sits behind the hero on the right (`pomegranate-halves.png`).
 - The page ends on a person biting into a pomegranate (`pomegranate-bite.png`), with no caption. Its edges dissolve into the dither, so the image never shows a hard crop.
 - Both images are generated photographs converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.

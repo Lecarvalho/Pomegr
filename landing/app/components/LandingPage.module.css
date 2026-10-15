@@ -88,25 +88,18 @@
   mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
 }
 
-/* The same grid in pomegranate red, shown only in a circle around the pointer and inside the fade. */
-.heroZone::after {
-  content: "";
+/* Dots the pointer crosses light up in pomegranate red, inside the same fade (DotGlow). */
+.dotGlow {
   position: absolute;
   z-index: -2;
-  inset: 0 0 auto;
+  top: 0;
+  left: 0;
+  width: 100%;
   height: 1100px;
   pointer-events: none;
-  opacity: 0;
-  background-image: radial-gradient(circle, var(--signal) 1.6px, transparent 2px);
-  background-size: 22px 22px;
-  -webkit-mask-image: radial-gradient(circle 240px at var(--glow-x, -999px) var(--glow-y, -999px), #000 0%, #000c 35%, transparent 100%), radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
-  -webkit-mask-composite: source-in;
-  mask-image: radial-gradient(circle 240px at var(--glow-x, -999px) var(--glow-y, -999px), #000 0%, #000c 35%, transparent 100%), radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
-  mask-composite: intersect;
-  transition: opacity .5s var(--ease);
+  -webkit-mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
 }
-
-.heroZone[data-glow]::after { opacity: 1; }
 
 .pomegranate {
   position: absolute;
