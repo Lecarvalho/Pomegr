@@ -35,6 +35,10 @@ copying it here.
   when a fix needs live evidence. Let the run finish; a killed run leaves an unfinished
   turn in the user's catalog. Delete the probe when the fix is done. Never keep one as a
   script, a test, or an automated step.
+- Stop only a process you started, by its own handle: the harness's stop action for a
+  background command, or one process ID you confirmed. Never kill processes by a
+  broad filter, a wildcard, or an image name (`taskkill /FI`, `taskkill /IM`,
+  `Stop-Process -Name`, `pkill`); it can close the user's other apps.
 - Durable tests use synthetic transcripts or an isolated temporary provider home, as in
   `tests/server/providers/codex/native-lock-acceptance.test.mjs`.
 
