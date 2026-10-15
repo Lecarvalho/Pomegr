@@ -146,6 +146,8 @@ test("a Pomegr task tool call names its fixed action by exact server and tool id
     ["mcp__notpomegr__update_task", "", null],
     // Reads, reports, feature tools, and other servers are not task actions.
     ["mcp__plugin_pomegr_pomegr__get_feature", "", null],
+    ["mcp__plugin_pomegr_pomegr__get_task", "", null],
+    ["mcp__plugin_pomegr_pomegr__list_tasks", "", null],
     ["mcp__plugin_pomegr_pomegr__update_feature", "", null],
     ["mcp__pomegr__report_session_signal", "", null],
     ["mcp__notpomegr__add_task", "", null],

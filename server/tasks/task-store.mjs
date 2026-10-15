@@ -20,6 +20,7 @@ import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { deleteFeatureDetails, findFeature, readFeature, readFeatureDone, readFeaturesDone, writeFeatureDetails, writeFeatureDone } from "./task-feature-details.mjs";
 import { deleteFeature } from "./task-feature-actions.mjs";
 import { deleteTaskAfter, readTaskAfter, setTaskAfter } from "./task-after.mjs";
+import { agentTaskEntries } from "./task-agent-read.mjs";
 import { moveTask, queueGroupCards } from "./task-card-moves.mjs";
 import { groupTasks, markReadyGroupsMigrated, migrateStepGroups, pruneTaskGroups, readTaskGroups, settleGroupLanes, ungroupTasks, writeTaskGroup } from "./task-groups.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
@@ -610,6 +611,21 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     }
   }
 
+  // What `get_task` and `list_tasks` read (task-agent-read.mjs): each task of one board in the served-task shape, or null.
+  // It seeds nothing and writes nothing; a board that was never written has no task.
+  function readAgentTasks(repositoryId) {
+    if (!database || !isRepositoryId(repositoryId)) return null;
+    try {
+      const rows = loadRows(repositoryId);
+      if (!rows.repository) return [];
+      const at = now();
+      const board = projectBoard(repositoryId, rows, { at });
+      return board ? agentTaskEntries(board, rows, at) : null;
+    } catch {
+      return null;
+    }
+  }
+
   // The Tasks home (task-home.mjs): every stored board, summarized. It seeds nothing and writes nothing.
   function readHome({ resolveSessionFacts = null } = {}) {
     if (!database) return null;
@@ -747,6 +763,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const addImage = (repositoryId, payload) => image(addTaskImage, repositoryId, payload);
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
-  return Object.freeze({ readBoard, readHome, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

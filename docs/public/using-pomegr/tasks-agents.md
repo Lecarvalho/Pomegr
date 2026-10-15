@@ -5,7 +5,7 @@ description: "The task tools the Pomegr plugin gives agents, how Pomegr checks a
 
 # What agents report
 
-The Pomegr plugin gives agents eleven task tools. Each call is tied to the calling
+The Pomegr plugin gives agents thirteen task tools. Each call is tied to the calling
 session by the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md)
 lists these tools with the plugin's reporting and query tools. For the main path, see
 [Tasks](tasks.md).
@@ -15,6 +15,8 @@ lists these tools with the plugin's reporting and query tools. For the main path
 | Tool | What it does |
 | --- | --- |
 | `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of a feature that is not done, which attaches the task to it. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
+| `get_task` | Reads one task of the board by its ID: its text, column, state, feature, **Run on**, **Effort**, **Complete when**, and whether `update_task` can change it. It changes nothing. It needs plugin 0.9.11 or later. See [What an agent can read](#what-an-agent-can-read). |
+| `list_tasks` | Lists the tasks of the board, Done included, in board order. It changes nothing. It needs plugin 0.9.11 or later. |
 | `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, or **Complete when**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](tasks-sessions.md#assign-a-session-to-a-task). |
@@ -27,14 +29,14 @@ lists these tools with the plugin's reporting and query tools. For the main path
 | `delete_feature` | Deletes a feature that has no task. A feature that still has tasks is refused, so no task loses its feature. It cannot be undone. |
 
 The four feature tools need plugin 0.9.4 or later. They work on any feature of the
-session's board, also one that you made. In Claude Code, `get_feature` needs no
-approval, because it only reads the session's own board. The three tools that change a
+session's board, also one that you made. In Claude Code, `get_feature`, `get_task`, and `list_tasks` need no
+approval, because they only read the session's own board. The three tools that change a
 feature ask for your approval like the other task tools.
 
 ## Approve task tool calls
 
 In Claude Code, the coding tool ties each call to its session. If Claude Code hooks are
-off or the hook times out, an agent's add, update, remove, complete, block, or feature
+off or the hook times out, an agent's add, read, update, remove, complete, block, or feature
 call is refused. Nothing is then added, removed, reported, read, or changed.
 
 - When Claude Code asks you to approve such a call, you have up to ten minutes to do
@@ -94,14 +96,28 @@ value it leaves out stays as it is. The agent cannot move the task, queue it, st
 or change its feature or its images. It cannot turn **Remote Control** on; a change
 to Codex turns it off.
 
-No tool gives a task's text to an agent. An agent that sets the text therefore replaces
-text it has not read. If the agent does not have the full text, give it the text you
-want to keep. A new text that leaves out an image keeps the image attached to the task.
+The text the agent sets replaces the whole text. The agent therefore reads the task
+with `get_task` first. A new text that leaves out an image keeps the image attached to
+the task.
 
 An agent can never change a task that started or finished, so a running session always
 matches the task it was started for. The agent gets the same answer for such a task as
 for a task that does not exist. Pomegr answers only that the task was changed or not,
 never with the task's content.
+
+## What an agent can read
+
+With plugin 0.9.11 or later, an agent can read any task of its session's board.
+
+- `get_task` reads one task by its ID, with its whole text.
+- `list_tasks` lists at most 100 tasks, with each text cut at 300 characters. The agent
+  can narrow the list by a part of the text, a state, a feature, or whether
+  `update_task` can change a task.
+- An agent reads a task's text, column, state, feature, **Run on**, **Effort**, and
+  **Complete when**. Where the text has an image, the agent reads `[image]`.
+- An agent never reads a report, an attention line, a block reason, the sessions of a
+  task, an image, or who added a task.
+- What the agent reads reaches its provider, as the task text of its own prompt does.
 
 ## Tasks an agent can remove
 

@@ -73,7 +73,7 @@
         ]
       },
       {
-        "matcher": "^mcp__(plugin_pomegr_pomegr|pomegr)__(add_task|update_task|remove_task|assign_task|unassign_task|complete_task|block_task|get_feature|create_feature|update_feature|delete_feature)$",
+        "matcher": "^mcp__(plugin_pomegr_pomegr|pomegr)__(add_task|get_task|list_tasks|update_task|remove_task|assign_task|unassign_task|complete_task|block_task|get_feature|create_feature|update_feature|delete_feature)$",
         "hooks": [
           {
             "type": "command",

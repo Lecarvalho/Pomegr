@@ -62,7 +62,7 @@ function rejected(text) {
 
 export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
-    { name: "pomegr", version: "0.9.10" },
+    { name: "pomegr", version: "0.9.11" },
     { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS + " " + TASK_TOOL_INSTRUCTIONS },
   );
 
