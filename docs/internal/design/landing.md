@@ -88,14 +88,13 @@ The header and footer are self-contained bands that every page shares.
 - The header is 60px high, sticky, solid Canvas, and has a Line bottom rule.
 - The brand is the painted mark at 26px and the stroked wordmark at 86px in Ink.
 - Header links are Home, Docs, and Source. They are Inter 13px/500 in Muted. Hover and the current page are Ink.
-- Download for Windows is an outlined 36px action at the end of the header, on every page except Home, which has its own under the headline.
+- The header has no download action. Home has one under its headline, Download has its own sheet, and the footer does not link to Download.
 - The footer is a 96px band with a Line top rule: the brand, then the project links in Inter 12px/500. It leaves out the link to the current page.
 - The content column is at most 1200px wide, with at least 32px of side gutter, 16px on phone.
 
 ### Phone (720px and narrower)
 
-- The header keeps the brand, Docs, and (except on Home) Download for Windows on one line. The other links move to the footer.
-- Download for Windows grows to 44px high at 12px type.
+- The header keeps the brand and Docs on one line. The other links move to the footer.
 - The wordmark shrinks to 70px, and hides at 350px and narrower.
 - The footer stacks the brand over the links.
 

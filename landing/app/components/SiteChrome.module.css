@@ -98,20 +98,6 @@
   color: var(--chrome-ink);
 }
 
-.headerAction {
-  margin-left: 10px;
-  min-height: 36px !important;
-  border: 1px solid var(--chrome-line-strong);
-  border-radius: 4px;
-  color: var(--chrome-ink) !important;
-  transition: background-color 160ms ease, border-color 160ms ease !important;
-}
-
-.headerAction:hover {
-  border-color: var(--chrome-muted);
-  background: var(--chrome-raised);
-}
-
 .footer {
   min-height: 96px;
   display: flex;
@@ -144,23 +130,15 @@
 
   /*
    * Docs is the one text link that stays in the phone header; the footer keeps the rest. Its 44 px
-   * box already leaves the text air, so the nav gap shrinks to 8 px. Brand, Docs, and the download
-   * action then share one line down to 351 px, and the wordmark hides at 350 px and below.
+   * box already leaves the text air, so the nav gap shrinks to 8 px. The wordmark hides at 350 px
+   * and below.
    */
   .header nav {
     gap: 8px;
   }
 
-  .header nav > a:not(.headerAction):not(.phoneLink) {
+  .header nav > a:not(.phoneLink) {
     display: none;
-  }
-
-  .headerAction {
-    min-height: 44px !important;
-    margin-left: 0;
-    padding: 0 10px !important;
-    font-size: 12px !important;
-    white-space: nowrap;
   }
 
   .footer {
@@ -187,8 +165,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .header nav a,
-  .footer nav a,
-  .headerAction {
+  .footer nav a {
     transition: none !important;
   }
 }
