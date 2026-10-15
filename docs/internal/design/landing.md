@@ -34,7 +34,7 @@ The landing is an isolated package, so it copies these values instead of importi
 | Raised | `#1d2125` | Hover fill, diagram cards |
 | Ink | `#edf0f3` | Primary text |
 | Muted | `#8d959f` | Supporting text, the second clause of a statement, captions |
-| Faint | `#5d6570` | Strike lines and placeholders |
+| Faint | `#5d6570` | Link underlines at rest |
 | Line | `#262b31` | Hairline rules and the sheet guides |
 | Line strong | `#39404a` | Figure frames and secondary action borders |
 | Done | `#3a414a` | Finished tasks in fig. 1 and the hero dot grid |
@@ -97,7 +97,7 @@ The header and footer are self-contained bands, so they read the same on the pap
 
 ## Home page
 
-Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, tasks, Aril, and privacy, then the closing image.
+Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, tasks, and Aril, the local note, then the closing image.
 
 - The hero has the two-clause title, one sentence, the platform line, and the actions: Download for Windows (primary, Red) and View source (secondary).
 - The platform line is mono: a Signal dot for Windows x64 and a hollow dot for the planned iOS and Android apps.
@@ -110,7 +110,7 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 - Fig. 3 is the queue: the next card in Ready starts a session, which moves to Review when the agent reports done.
 - Fig. 4 is an Aril proposal: nothing changes until the owner applies it.
 - Each diagram has a phone version that stacks vertically, because the desktop diagram would be too small to read.
-- The privacy chapter is a spec table: license, platform, mobile, and monitor facts beside a struck-through list of what Pomegr never shows or sends.
+- A small, quiet note follows the chapters: "Runs on your machine." in 15px/600 beside one muted 14px paragraph on the read-only loopback monitor, what is never shown or sent, and the AGPL-3.0 license.
 - The home page has no waitlist. The waitlist API stays deployed with no page that uses it.
 
 ## Figures
@@ -128,7 +128,6 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 - A statement rises 14px and sharpens from a 4px blur.
 - A figure rises 20px. Its bars then grow from the left, its lines draw, its cards fade in, and its notes follow in a short stagger.
 - After the entrance, the Now line and the next card pulse slowly.
-- The privacy list strikes through one item at a time.
 - On load, the two halves of the hero pomegranate fade in closed, then crack apart.
 - On a phone the hero pomegranate sits behind the title at 35% opacity.
 - The closing image sharpens from an 8px blur as it scrolls into view.

@@ -92,25 +92,13 @@ export function LandingPage() {
           </Figure>
         </section>
 
-        <section className={styles.chapter} aria-labelledby="private-title">
-          <h2 data-reveal className={styles.statement} id="private-title">Read-only, and on your machine. <span>The monitor listens only on this computer.</span></h2>
-          <div data-reveal className={styles.spec}>
-            <dl>
-              <dt className={styles.label}>License</dt><dd><a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">AGPL-3.0</a>, source on GitHub</dd>
-              <dt className={styles.label}>Platform</dt><dd>Windows x64 · installer or portable</dd>
-              <dt className={styles.label}>Mobile</dt><dd>iOS &amp; Android · planned</dd>
-              <dt className={styles.label}>Monitor</dt><dd>Loopback only · no Pomegr account</dd>
-            </dl>
-            <div>
-              <h3><i />Never shown or sent</h3>
-              <ul>
-                <li>Raw prompts and responses</li>
-                <li>Commands and tool output</li>
-                <li>Credentials and tokens</li>
-                <li>Transcript files</li>
-              </ul>
-            </div>
-          </div>
+        <section data-reveal className={styles.local} aria-labelledby="local-title">
+          <h2 id="local-title">Runs on your machine.</h2>
+          <p>
+            Read-only. The monitor listens only on this computer and needs no Pomegr account. Prompts, responses,
+            commands, and credentials are never shown or sent. Open source under{" "}
+            <a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">AGPL-3.0</a>.
+          </p>
         </section>
 
         <div className={styles.close} aria-hidden="true">
