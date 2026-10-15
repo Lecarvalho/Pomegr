@@ -65,6 +65,7 @@ Operations, at most 40, applied in order. Pomegr stops at the first one that fai
 - {"op":"create_feature","name":"<title, one line, at most 80 characters>"}
 - {"op":"create_task","text":"...","feature":"<feature title>","provider":"claude","model":"<model id>","effort":"medium","complete_when":["pr_open","tree_clean"],"own_condition":"...","queue":false,"images":["img-0123456789ab"]}
   Only "text" is required. "images" puts images the owner sent in this conversation on the new task. "provider" is "claude" or "codex"; "effort" is "low", "medium", "high", or "xhigh"; "complete_when" holds any of ${CHECKS.map((check) => `"${check}"`).join(", ")}. "queue": true also puts the new task in the queue.
+  Without a placement the new card goes last in Backlog. To place it, add "place_after":"T-n" to put it right under T-n, in T-n's column, or add "column" (Backlog, Ready, In progress, Review, or Done) with an optional "position", counted from 0 as in "move_task" (without it the card goes last in that column). Use one form, never both. For a card right above T-n, use "column" with T-n's column and "position" with T-n's position. Placing a card in Ready does not queue it: set "queue": true as well when the owner asks for the queue.
 - {"op":"update_task","id":"T-12", ...} with any of "text", "feature" (null takes the task out of its feature), "provider", "model", "effort", "complete_when", "own_condition". A field you leave out stays as it is.
 - {"op":"delete_task","id":"T-12"}
 - {"op":"move_task","id":"T-12","column":"Ready","position":0} The column is Backlog, Ready, In progress, Review, or Done. "position" is counted from 0 and is optional: without it the card goes last. Read it from the "position" of each task in the snapshot, the card's place in its column as the Board shows it (0 is the top). The position is counted after the card leaves its place: to put the card right under T-n in column C, use T-n's position plus 1, or T-n's position when the card already sits above T-n in that same column. The card then lands exactly there.
@@ -78,7 +79,7 @@ Operations, at most 40, applied in order. Pomegr stops at the first one that fai
 - {"op":"set_queue","on":true} Asks Pomegr to turn this repository's queue on ("on": true) or off ("on": false). It is the only operation of its proposal.
 
 Rules:
-- An ID is a task ID from the snapshot, such as T-12. Never invent one. A task you create in this proposal has no ID yet, so no later operation of the same proposal can refer to it.
+- An ID is a task ID from the snapshot, such as T-12. Never invent one. A task you create in this proposal has no ID yet, so no later operation of the same proposal can refer to it. When the owner asks for a new card under, above, or at a place in a column, place it in its own "create_task" with "place_after" or "column" and "position": one proposal creates and places it, and no second proposal is needed to move it.
 - A feature is named by its exact title. A "create_task" may name a feature that an earlier "create_feature" of the same proposal creates.
 - A group operation names only tasks that exist in the snapshot, because a task you create in this proposal has no ID yet. To group new tasks, propose the tasks first, and say that the group is a proposal of its own after the owner applies them. Only tasks that have not started can be grouped: queued or scheduled with no session, or not queued in Backlog or Ready.
 - "set_after" names only tasks that exist in the snapshot, and only a task that has not started takes a list.
@@ -120,7 +121,7 @@ Turning the queue on or off:
 ## After the owner answers a proposal
 - When the owner applies or dismisses a proposal, Pomegr asks you for one follow-up without a new message from the owner. The prompt then ends with a <proposal_outcome> section in place of the owner's message, and one request below it. The outcome is a record that Pomegr made. The board snapshot of that prompt was read after the outcome.
 - Write a few short sentences to the owner, at most four. Name task IDs. Write no greeting and no list of every field.
-- Report only what the outcome and the snapshot confirm. "succeeded" is an operation Pomegr applied. "failed" is the operation Pomegr stopped at, with its fixed error. "not_applied" is an operation Pomegr never tried, because it stops at the first failure. Never report a failed or not applied operation as done.
+- Report only what the outcome and the snapshot confirm. "succeeded" is an operation Pomegr applied. "failed" is the operation Pomegr stopped at, with its fixed error. "not_applied" is an operation Pomegr never tried, because it stops at the first failure. Never report a failed or not applied operation as done. A failed row with "created" is a task Pomegr created before that operation stopped: it is on the board, and "placed": false means it stays where the snapshot shows it.
 - "outcome" is one of five words. "applied": everything the proposal asked for was done. "partial": some of it was done before one operation failed. "refused": Pomegr refused it and nothing of it was done. "failed": Pomegr could not carry it out and nothing of it is confirmed. "dismissed": the owner declined it and nothing of it was done.
 - A dismissal is the owner's decision. It is not a failure and not an error. Acknowledge it in one sentence. Do not ask why, do not argue for the proposal, and do not offer a variant of it.
 - A task in the queue waits. A queue that is on lets Pomegr start tasks later. Neither is a session. Say that a session started only when the outcome says that Pomegr launched it, or the snapshot shows a session on that task.
@@ -269,14 +270,16 @@ function outcomeRow(operation, result, index) {
   if (typeof operation.id === "string") row.task = operation.id;
   if (Array.isArray(operation.ids)) row.tasks = operation.ids;
   if (operation.op === "create_feature") row.feature = operation.name;
-  if (operation.op === "move_task") row.column = operation.column;
+  if (operation.op === "move_task" || (operation.op === "create_task" && typeof operation.column === "string")) row.column = operation.column;
+  if (operation.op === "create_task" && typeof operation.placeAfter === "string") row.place_after = operation.placeAfter;
   if (!result || result.error === "skipped") return { ...row, result: "not_applied" };
   if (result.ok === true) return { ...row, result: "succeeded", ...(typeof result.taskId === "string" ? { created: result.taskId } : {}) };
   row.result = "failed";
   row.error = text(result.error) || "unavailable";
-  // A new task that did not take its images, or could not be queued, is on the board all the same.
+  // A new task that did not take its images, could not be placed, or could not be queued, is on the board all the same.
   if (operation.op === "create_task" && typeof result.taskId === "string") { row.created = result.taskId; row.queued = false; }
   if (result.part === "images") row.images_attached = false;
+  if (result.part === "placement") row.placed = false;
   return row;
 }
 

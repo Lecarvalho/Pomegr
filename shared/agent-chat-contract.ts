@@ -45,9 +45,11 @@ export const AGENT_CHAT_COLUMNS: readonly AgentChatColumn[] = ["Backlog", "Ready
 // operation of its proposal. `set_queue` asks for the repository's queue to be on or off, as a state and never a toggle,
 // and it is the only operation of its proposal too. `images` names images the owner sent in the same conversation:
 // on `create_task` they go on the new task, and `attach_images` puts them on a task that has not started.
+// A `create_task` may place the new card: in `column` at `position` (last without one), or right after the task
+// `placeAfter` names, in that task's column. Without either it lands at the end of Backlog. A placement never queues.
 export type AgentChatBoardOperation =
   | { op: "create_feature"; name: string }
-  | { op: "create_task"; text: string; feature?: string; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean; images?: string[] }
+  | { op: "create_task"; text: string; feature?: string; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean; images?: string[]; column?: AgentChatColumn; position?: number; placeAfter?: string }
   | { op: "update_task"; id: string; text?: string; feature?: string | null; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen> }
   | { op: "delete_task"; id: string }
   | { op: "move_task"; id: string; column: AgentChatColumn; position?: number }
@@ -78,14 +80,14 @@ export const AGENT_CHAT_START_FAILURES: readonly AgentChatStartFailure[] = [
 ];
 
 // The outcome of one approved operation. `skipped` is an operation after the first one that failed. A failure with a
-// task ID is a task that was created and then could not be queued. A result with `start` is the outcome of a session
+// task ID is a task that was created and then could not be placed (`part: "placement"`) or queued. A result with `start` is the outcome of a session
 // start: the launch, or `not_started` with the status that held or failed it. A result with `queue` is a queue change
 // the monitor accepted; one it refused is an ordinary failure. A failure with `part: "images"` stopped at an image:
 // the task is there, created or not, and an image was not put on it.
 export type AgentChatOperationResult =
   | { ok: true; queue: AgentChatQueueResult }
   | { ok: true; taskId?: string }
-  | { ok: false; error: "invalid" | "not_found" | "limit" | "conflict" | "unsupported" | "unavailable" | "skipped"; taskId?: string; part?: "images" }
+  | { ok: false; error: "invalid" | "not_found" | "limit" | "conflict" | "unsupported" | "unavailable" | "skipped"; taskId?: string; part?: "images" | "placement" }
   | { ok: true; start: "started" }
   | { ok: false; error: "not_started"; start: AgentChatStartFailure };
 

@@ -284,7 +284,7 @@ message would lead to materially different proposals.
 | Operation | Fields | Task action when approved |
 | --- | --- | --- |
 | `create_feature` | `name` | `feature_create`; a feature of that title that is already open is the outcome asked for, so nothing is sent |
-| `create_task` | `text`; optional `feature`, `provider`, `model`, `effort`, `complete_when`, `own_condition`, `queue`, `images` | `create`, then the image request for each image, then `queue_add` when `queue` is true |
+| `create_task` | `text`; optional `feature`, `provider`, `model`, `effort`, `complete_when`, `own_condition`, `queue`, `images`, and a placement: `column` with an optional `position`, or `place_after` | `create`, then the image request for each image, then `move` when it has a placement, then `queue_add` when `queue` is true |
 | `update_task` | `id`; any of `text`, `feature` (null takes the task out of its feature), `provider`, `model`, `effort`, `complete_when`, `own_condition` | `update` |
 | `delete_task` | `id` | `delete` |
 | `move_task` | `id`, `column`; optional `position` | `move`; without a position the card goes last |
@@ -306,8 +306,22 @@ message would lead to materially different proposals.
 - The monitor validates every action as it does for the desktop app. The rules of
   [Tasks](tasks.md) hold: a started task is read-only, a waiting card stays in Ready,
   and a bound applies.
+- **A placement puts a new card in its place in the same proposal** (task T-102,
+  2026-10-15). `column` names one of the five columns, and `position` counts from 0 as in
+  `move_task`; without a position the card goes last in that column. `place_after` names
+  a task of the board, and the card lands right under it, in that task's column. The two
+  forms never mix, and a position needs its column. Without a placement the card lands at
+  the end of Backlog, as before. The applier sends the ordinary `move` after the create,
+  on the board the create answered, with the position counted without the new card: the
+  store keeps one placement rule. A placement never queues: a card placed in Ready waits
+  there unqueued unless `queue` is true, and `queue_add` follows the move.
+- **A placement that fails keeps the task.** A column the board does not hold, or a
+  `place_after` task it does not hold, answers `not_found` without a request; a refused
+  `move` answers its error. Either result carries the new task's ID and
+  `part: "placement"`, and the proposal stops there.
 - A group operation names only tasks that exist on the board when the proposal runs. A task
-  that the same proposal creates has no ID yet, so no placeholder is supported. A task of
+  that the same proposal creates has no ID yet, so no placeholder is supported. A
+  placement is the one way to order a new card in the same proposal. A task of
   the list that the board does not hold answers `not_found` without a request.
 - A parallel group is a label in the snapshot (`group A`, `group B`), numbered by the
   lowest task number of each group. The opaque group ID never reaches the prompt.
@@ -455,7 +469,9 @@ A stored proposal is `pending`. The owner answers it once.
   the operations in order, one task action each (`applyOperations`). It stops at the first operation that fails. The
   operations after it answer `skipped`. The proposal becomes `applied` when every
   operation succeeded, else `partial`, with one result per operation: success, the new
-  task's ID, or one fixed error. A failure with `part: "images"` stopped at an image.
+  task's ID, or one fixed error. A failure with `part: "images"` stopped at an image. A
+  failure with `part: "placement"` stopped at the placement of a task it created, and
+  names that task.
 - **Start session** is the `apply` of a start proposal. It reads no board and sends no
   task action (see [Session start](#session-start)).
 - **Turn queue on** and **Turn queue off** are the `apply` of a queue proposal. It reads
@@ -495,7 +511,9 @@ another message.
   proposal's summary, one of the five outcomes below, and for board changes one row for
   each operation with its number, its name, the task IDs it names, the feature title or
   the column it wrote, and `succeeded`, `failed` with the fixed error, or `not_applied`.
-  A new task that was created before its operation failed is named under `created`.
+  A `create_task` row also holds the `column` or `place_after` of its placement. A new
+  task that was created before its operation failed is named under `created`, with
+  `placed: false` when its placement failed.
 - **The board is read again.** The follow-up reads `GET /api/tasks` after the outcome
   was stored, so the snapshot of its prompt shows the board as the apply left it.
 - **The request is fixed.** One sentence that the owner sent no message and that the

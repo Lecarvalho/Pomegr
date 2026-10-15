@@ -213,6 +213,8 @@ The task board is in [Task board design](task-board.md).
 | --- | --- |
 | **Create feature** | The name of the feature |
 | **Create task** | The first line of its text clamped to two lines, with the whole text as its tooltip, and one muted 12px line of what is set |
+| **Create task below T-n** | The **Create task** row, for a new task placed right under T-n |
+| **Create task in column** | The **Create task** row, for a new task placed in that column; the line of what is set adds “position n” when the proposal names one |
 | **Update T-n** | The board's current first line of that task in muted text, a muted line naming the changed fields, and, when the text changes, “New text:” and its first line |
 | **Delete T-n** | The current first line, and “Cannot be undone” in the error color (text only, never a fill) |
 | **Move T-n to column** | A muted “position n” follows |
@@ -241,6 +243,7 @@ The task board is in [Task board design](task-board.md).
 | “Done”, or “Created T-n” for a new task | Green |
 | “Not valid”, “Not found”, “Board is full”, “No longer possible”, “Not supported”, or “Pomegr did not answer” | The error color |
 | “Created T-n, but it could not be queued”, for a task that was created and could not be queued | The error color |
+| “Created T-n, but it could not be placed”, for a task that was created and could not be moved to its place | The error color |
 | “Created T-n, but its images could not be attached”, for a task that was created and did not take an image | The error color |
 | “Not attached.” and one fixed sentence, for an image that a task on the board did not take | The error color |
 | “Not run”, for an operation after the one that failed | Muted |

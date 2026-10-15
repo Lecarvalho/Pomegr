@@ -693,6 +693,9 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     ]);
     expect(sample(chat, "Proposal, partly applied")).toHaveTextContent("Created T-19, but it could not be queued");
     expect(sample(chat, "Proposal, partly applied")).toHaveTextContent("Not run");
+    expect([...sample(chat, "Proposal, new tasks placed").querySelectorAll(".agentChatOpTitle")].map((title) => title.textContent)).toEqual(["Create task below T-12", "Create task in Ready"]);
+    expect(sample(chat, "Proposal, new tasks placed")).toHaveTextContent("position 1");
+    expect([...sample(chat, "Proposal, a new task not placed").querySelectorAll(".agentChatOpResult")].map((result) => result.textContent)).toEqual(["Created T-19, but it could not be placed", "Not run"]);
 
     const startCard = (label: string) => within(sample(chat, label)).getByRole("region", { name: "Proposed session start" });
     expect(within(startCard("Session start, proposed")).getByRole("button", { name: "Start session" })).toHaveClass("commandPrimaryAction");

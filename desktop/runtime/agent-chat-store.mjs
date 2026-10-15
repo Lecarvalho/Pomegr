@@ -47,8 +47,9 @@ export function conversationTitle(text) {
 // The stored operation is already normalized, so it reads back through the agent-facing shape it came from.
 function storedOperation(operation) {
   if (!isPlainObject(operation) || !BOARD_OPERATIONS.includes(operation.op)) return null;
-  const { run, completeWhen, ...rest } = operation;
+  const { run, completeWhen, placeAfter, ...rest } = operation;
   const source = { ...rest };
+  if (placeAfter !== undefined) source.place_after = placeAfter;
   if (run !== undefined) { if (!isPlainObject(run)) return null; Object.assign(source, run); }
   if (completeWhen !== undefined) {
     if (!isPlainObject(completeWhen)) return null;
@@ -69,9 +70,10 @@ function storedResult(result) {
   if (result.queue !== undefined) return result.ok && QUEUE_RESULTS.includes(result.queue) ? { ok: true, queue: result.queue } : null;
   const taskId = typeof result.taskId === "string" && TASK_ID.test(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
-  // `part` says that the operation failed at an image: the task was created, or is there, and the image was not attached.
-  if (result.part !== undefined && result.part !== "images") return null;
-  const part = result.part === "images" ? { part: "images" } : {};
+  // `part` says where the operation failed: at an image (the task was created, or is there, and the image was not
+  // attached), or at the placement of a task it created.
+  if (result.part !== undefined && result.part !== "images" && result.part !== "placement") return null;
+  const part = result.part === undefined ? {} : { part: result.part };
   return typeof result.error === "string" && RESULT_ERRORS.has(result.error) ? { ok: false, error: result.error, ...taskId, ...part } : null;
 }
 

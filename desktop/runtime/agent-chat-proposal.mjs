@@ -128,6 +128,26 @@ function taskIds(value, min) {
   return ids.every(Boolean) && new Set(ids).size === ids.length ? ids : null;
 }
 
+const boardColumn = (value) => (typeof value === "string" ? BOARD_COLUMNS.find((name) => name.toLowerCase() === value.trim().toLowerCase()) ?? null : null);
+
+// A card's place in its column, counted from 0: undefined when it is not set, null when it is malformed.
+function cardPosition(value) {
+  if (value === undefined || value === null) return undefined;
+  return Number.isInteger(value) && value >= 0 && value <= POSITION_LIMIT ? value : null;
+}
+
+// Where a new task lands: a column with an optional position, or right after a task of the snapshot. Without either it
+// lands at the end of Backlog. The two forms never mix, and a position needs its column. Null when it is malformed.
+function placement(source) {
+  const column = source.column === undefined || source.column === null ? undefined : boardColumn(source.column);
+  const position = cardPosition(source.position);
+  const after = source.place_after === undefined || source.place_after === null ? undefined : taskId(source.place_after);
+  if (column === null || position === null || after === null) return null;
+  if (after !== undefined) return column === undefined && position === undefined ? { placeAfter: after } : null;
+  if (column === undefined) return position === undefined ? {} : null;
+  return position === undefined ? { column } : { column, position };
+}
+
 /** One operation as the agent wrote it, normalized to the stored shape; null when it is outside the contract. */
 export function normalizeOperation(source) {
   if (!isPlainObject(source) || typeof source.op !== "string" || !BOARD_OPERATIONS.includes(source.op)) return null;
@@ -137,11 +157,12 @@ export function normalizeOperation(source) {
     return only(source, ["op", "name"]) && name ? { op, name } : null;
   }
   if (op === "create_task") {
-    if (!only(source, ["op", "text", "feature", "queue", "images", ...TASK_FIELDS])) return null;
+    if (!only(source, ["op", "text", "feature", "queue", "images", "column", "position", "place_after", ...TASK_FIELDS])) return null;
     const text = taskText(source.text);
     const parts = taskParts(source);
-    if (!text || !parts) return null;
-    const operation = { op, text, ...parts };
+    const place = placement(source);
+    if (!text || !parts || !place) return null;
+    const operation = { op, text, ...parts, ...place };
     if (source.feature !== undefined && source.feature !== null) {
       const feature = boundedLine(source.feature, FEATURE_LIMIT);
       if (!feature) return null;
@@ -186,11 +207,11 @@ export function normalizeOperation(source) {
     return Object.keys(operation).length > 2 ? operation : null;
   }
   if (op === "move_task") {
-    if (!only(source, ["op", "id", "column", "position"]) || typeof source.column !== "string") return null;
-    const column = BOARD_COLUMNS.find((name) => name.toLowerCase() === source.column.trim().toLowerCase());
-    if (!column) return null;
-    if (source.position === undefined || source.position === null) return { op, id, column };
-    return Number.isInteger(source.position) && source.position >= 0 && source.position <= POSITION_LIMIT ? { op, id, column, position: source.position } : null;
+    if (!only(source, ["op", "id", "column", "position"])) return null;
+    const column = boardColumn(source.column);
+    const position = cardPosition(source.position);
+    if (!column || position === null) return null;
+    return position === undefined ? { op, id, column } : { op, id, column, position };
   }
   if (op === IMAGE_OPERATION) {
     const images = chatImageIds(source.images);
@@ -322,6 +343,20 @@ export async function applyOperations(operations, { post, board, attach }) {
     if (isPlainObject(answer.board)) facts = boardFacts(answer.board);
     return { answer: { ok: true }, taskId: taskId(answer.taskId) };
   };
+  // The move that places a new task: the column it names, or the column of the task it follows, one place below that
+  // task. The position is counted without the new card, as the move counts it.
+  const placeTarget = (operation, createdId) => {
+    if (operation.column !== undefined) {
+      const column = facts.columns.find((candidate) => candidate.name === operation.column);
+      return column ? { columnId: column.id, position: operation.position ?? POSITION_LIMIT } : null;
+    }
+    const anchor = facts.tasks.get(operation.placeAfter);
+    if (!anchor || anchor.id === createdId || !facts.columns.some((column) => column.id === anchor.columnId)) return null;
+    const order = [...facts.tasks.values()]
+      .filter((task) => task.columnId === anchor.columnId && task.id !== createdId)
+      .sort((left, right) => (Number(left.position) || 0) - (Number(right.position) || 0));
+    return { columnId: anchor.columnId, position: order.findIndex((task) => task.id === anchor.id) + 1 };
+  };
   const openFeature = (name) => facts.features.find((feature) => feature.name === name && !feature.done) ?? null;
   // Each image in order, stopping at the first one the task did not take. An image the task already holds is the outcome asked for.
   const attachAll = async (id, images, held = []) => {
@@ -358,6 +393,13 @@ export async function applyOperations(operations, { post, board, attach }) {
       if (operation.images) {
         const attached = await attachAll(created.taskId, operation.images);
         if (attached.ok !== true) { results.push({ ...attached, taskId: created.taskId, part: "images" }); continue; }
+      }
+      // The placement is the ordinary move, on the board the create answered. It never queues: a card placed in Ready
+      // waits there unqueued, unless the operation also asks for the queue, which comes after the move.
+      if (operation.column !== undefined || operation.placeAfter !== undefined) {
+        const target = placeTarget(operation, created.taskId);
+        const placed = target ? await act("move", { id: created.taskId, ...target }) : { answer: failure("not_found") };
+        if (placed.answer.ok !== true) { results.push({ ...placed.answer, taskId: created.taskId, part: "placement" }); continue; }
       }
       if (operation.queue === true) {
         const queued = await act("queue_add", { id: created.taskId });

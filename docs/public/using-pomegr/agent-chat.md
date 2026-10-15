@@ -44,6 +44,9 @@ Things you can ask:
   proposes one feature with its tasks in the order they should start. If the repository has an `acos` skill,
   Aril uses its sizing rules for the cut.
 - "Create this task", "Update T-12", or "Remove T-12".
+- "Add a task for this under T-12." Aril proposes the new task with its place, so one
+  **Apply changes** creates the card right under T-12. A card placed in Ready is not
+  queued unless you also ask for the queue.
 - "T-12 looks too big. How do I cut it?"
 - "Which task must run first, and why?"
 - "Which model fits this kind of task?" Aril compares the tasks already on the board:
@@ -86,7 +89,8 @@ only when you ask for it.
 3. Read the result beside each line: **Done**, the ID of a new task, or why it failed.
 
 Pomegr stops at the first change that fails and does not run the ones after it. Ask Aril
-for the rest once you know why it failed.
+for the rest once you know why it failed. A new task that could not be put in its place
+is still created: the result names it, and the card stays at the end of Backlog.
 
 ### Read Aril's follow-up
 
@@ -107,9 +111,9 @@ no session. It carries no proposal of its own. Select **Stop** to end it early.
 The result beside each line of the proposal is Pomegr's own record. Trust it over the
 follow-up when they differ.
 
-A proposal can create a feature, create, update, delete, or move a task, add a task to
-the queue or remove it, put queued tasks in a parallel group or take them out of one,
-and put an image that you sent on a task. It cannot mark a task done,
+A proposal can create a feature, create a task in a place you name, update, delete, or
+move a task, add a task to the queue or remove it, put queued tasks in a parallel group
+or take them out of one, and put an image that you sent on a task. It cannot mark a task done,
 requeue a task, or change the queue's threshold or schedule. Those stay with you, as
 described in [Tasks](tasks.md). Starting a session and turning the queue on or off are
 proposals of their own, described below.

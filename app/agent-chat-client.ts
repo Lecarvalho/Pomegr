@@ -78,7 +78,7 @@ function parseResult(value: unknown): AgentChatOperationResult | null {
   }
   const taskId = text(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
-  const part = result.part === "images" ? { part: "images" as const } : {};
+  const part = result.part === "images" || result.part === "placement" ? { part: result.part as "images" | "placement" } : {};
   return text(result.error) && result.error !== "not_started" ? { ok: false, error: result.error as Exclude<Extract<AgentChatOperationResult, { ok: false }>["error"], "not_started">, ...taskId, ...part } : null;
 }
 
