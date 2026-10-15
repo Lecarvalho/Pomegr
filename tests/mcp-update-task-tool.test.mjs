@@ -147,3 +147,19 @@ test("update_task replaces what a task runs after, an empty list clears it, and 
     assert.equal(refused.content[0].text, text);
   }
 });
+
+test("add_task takes up to 8 distinct task IDs to run after, and sends them only when set", async () => {
+  const tool = setup().tools.add_task;
+  for (const runs_after of [["T-1"], ["T-1", "T-22"], Array.from({ length: 8 }, (_, index) => `T-${index + 1}`)]) {
+    assert.equal(parse(tool, { text: "x", runs_after }).success, true, JSON.stringify(runs_after));
+  }
+  for (const runs_after of [[], ["T-1", "T-1"], ["T-0"], ["t-1"], ["1"], [1], "T-1", null, Array.from({ length: 9 }, (_, index) => `T-${index + 1}`)]) {
+    assert.equal(parse(tool, { text: "x", runs_after }).success, false, JSON.stringify(runs_after));
+  }
+  const sent = setup({ ref: "codex:t1", answer: { ok: true, taskId: "T-5" } });
+  await sent.tools.add_task.handler({ text: "t", runs_after: ["T-3", "T-1"] });
+  assert.deepEqual(sent.calls[0].body, { sessionRef: "codex:t1", text: "t", after: ["T-3", "T-1"] });
+  const missing = await setup({ answer: { ok: false, reason: "after_not_found" } }).tools.add_task.handler({ text: "t", runs_after: ["T-9"] });
+  assert.equal(missing.isError, true);
+  assert.equal(missing.content[0].text, "A task in runs_after is not on the board, so no task was added.");
+});
