@@ -269,42 +269,66 @@
   font-size: 14px;
 }
 
-/* Previous and next. */
+/* Previous and next: two cells under one hairline, like the notes under a home figure. No box;
+   the title turns Signal and its arrow steps forward on hover. */
 .pager {
   max-width: 68ch;
   margin-top: 64px;
-  padding-top: 24px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
   border-top: 1px solid var(--docs-line);
 }
 
 .pagerLink {
   min-height: 44px;
-  padding: 14px 16px;
+  padding: 20px 24px 4px 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: 1px solid var(--docs-line-strong);
   color: var(--docs-ink);
   text-decoration: none;
-  transition: border-color 160ms ease, background-color 160ms ease;
-}
-
-.pagerLink:hover {
-  border-color: #e5675b66;
-  background: var(--docs-panel);
 }
 
 .pagerLink[data-direction="next"] {
   grid-column: 2;
+  padding: 20px 0 4px 24px;
+  border-left: 1px solid var(--docs-line);
   text-align: right;
 }
 
+.pagerLink[data-direction="previous"] .pagerLabel::before {
+  content: "\2190\00a0";
+  content: "\2190\00a0" / "";
+}
+
+.pagerLink[data-direction="next"] .pagerLabel::after {
+  content: "\00a0\2192";
+  content: "\00a0\2192" / "";
+}
+
+.pagerLabel::before,
+.pagerLabel::after {
+  display: inline-block;
+  transition: transform 200ms cubic-bezier(.16, 1, .3, 1);
+}
+
 .pagerTitle {
-  font: 600 15px/1.3 var(--font-inter), Arial, sans-serif;
+  font: 600 17px/1.3 var(--font-inter), Arial, sans-serif;
+  letter-spacing: -.01em;
   overflow-wrap: anywhere;
+  transition: color 160ms ease;
+}
+
+.pagerLink:hover .pagerTitle {
+  color: var(--docs-signal);
+}
+
+.pagerLink[data-direction="previous"]:hover .pagerLabel::before {
+  transform: translateX(-3px);
+}
+
+.pagerLink[data-direction="next"]:hover .pagerLabel::after {
+  transform: translateX(3px);
 }
 
 /* The 404 message renders inside the frame, beside the navigation. */
@@ -427,8 +451,18 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .pagerLink,
   .pagerLink[data-direction="next"] {
     grid-column: auto;
+    padding: 16px 0;
+  }
+
+  .pagerLink[data-direction="next"] {
+    border-left: 0;
+  }
+
+  .pagerLink + .pagerLink {
+    border-top: 1px solid var(--docs-line);
   }
 }
 
@@ -436,7 +470,9 @@
   .navChevron,
   .navLink,
   .outlineList a,
-  .pagerLink {
+  .pagerTitle,
+  .pagerLabel::before,
+  .pagerLabel::after {
     transition: none;
   }
 }

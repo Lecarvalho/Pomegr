@@ -147,7 +147,7 @@ The docs read on the same sheet: Canvas ground, film grain, and the two guides a
 - Links are Signal with an underline at 40%. List markers are mono Muted.
 - Inline code, code blocks, tables, and images sit on Panel with Line or Line strong borders. Table heads are mono captions.
 - A note callout has a 2px Muted left edge on Panel. A caution has a 2px Signal left edge on Signal wash, and its label is Signal.
-- Previous and next are Line strong boxes whose border turns Signal at 40% on hover.
+- Previous and next are two cells under one Line rule, split by a Line hairline, with no box. Each has a mono caption with an arrow and a 17px/600 title. On hover the title turns Signal and the arrow steps 3px outward.
 - The 404 keeps the navigation, a mono "Error 404" eyebrow, and a 32–44px Inter title.
 - The Tasks board demo reads the docs tokens: Panel ground, Raised cards, Signal for its highlights, and the app's Red fill on its one button.
 - At 760px and narrower the sidebar becomes a full-width "Documentation menu" toggle on Panel, and the outline becomes a disclosure under 1100px.
