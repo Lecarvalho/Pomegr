@@ -145,13 +145,14 @@ export function NotificationCenter({ entries, isUnread, unreadCount, markAllRead
       const unread = isUnread(entry);
       return <article className={`commandNotificationEntry${unread ? "" : " isRead"}`} key={entry.id} data-testid={`notification-${entry.kind}`} aria-label={`${entry.title}, ${entry.kind.replaceAll("_", " ")}, ${unread ? "unread" : "read"}`}>
         <i className={`commandStatusDot ${entry.tone}`} aria-hidden="true" />
-        <div><span className="commandNotificationCategory">{entry.group}</span><strong>{entry.title}</strong><p>{entry.description}</p>
+        <div><span className="commandNotificationMeta"><span className="commandNotificationCategory">{entry.group}</span>
+          <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString()}</time></span>
+          <strong>{entry.title}</strong><p>{entry.description}</p>
           <span className="commandNotificationLinks">
             <Link href={entry.href} onClick={() => onClose(false)}>{entry.linkLabel}</Link>
             {entry.releaseHref && <a href={entry.releaseHref} target="_blank" rel="noopener noreferrer">What&apos;s new</a>}
           </span>
         </div>
-        <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString()}</time>
       </article>;
     })}
     {activeSessionOverflow > 0 && <div className="commandNotificationGroup"><span>{activeSessionOverflow} more sessions need input</span><Link href="/sessions" onClick={() => onClose(false)}>View sessions</Link></div>}
