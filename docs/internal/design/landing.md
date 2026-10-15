@@ -70,7 +70,7 @@ The landing is an isolated package, so it copies these values instead of importi
 - A 22px dot grid sits behind the hero and fades out from the upper right through a radial mask.
 - Under a fine pointer, each dot the cursor crosses turns Signal red and fades out over 1.1 seconds, still inside the same fade (`DotGlow`). Only crossed dots light, never a radius around the cursor.
 - A pomegranate broken in two halves sits behind the hero on the right (`pomegranate-halves.png`).
-- A person biting into a pomegranate (`pomegranate-bite.png`) sits right below the last figure, with no caption. Its sides and bottom dissolve into the dither, and its top starts right under the figure, so it reads as continuing out of it.
+- A person biting into a pomegranate (`pomegranate-bite.png`) sits right below the last figure, with no caption. Its sides and bottom dissolve into the dither, and its top fades in gradually over the upper 42% right under the figure, so it reads as emerging from it.
 - Both images are generated photographs converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.
 - The images render with pixelated scaling, so each dither pixel stays a visible square.
 - The pomegranate is the brand's hidden thread. Nothing on the page names or explains it.
