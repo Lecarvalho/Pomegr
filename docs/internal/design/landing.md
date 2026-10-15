@@ -116,7 +116,7 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 ## Figures
 
 - A figure is a Line strong frame on Panel, with 9px registration ticks at its four corners.
-- Its head holds the caption on the left and `Illustrative · sample data` on the right.
+- Its head holds the caption on the left and `Illustrative · sample data` on the right, in a very quiet `#3f464f`.
 - Diagram text is Geist Mono 11px Muted, with names in Inter 13px Ink.
 - A diagram draws Signal only on the element that is live: the running task, the next card, the Now line, or the new card.
 - Every diagram has an accessible name that describes it and says it is sample data.

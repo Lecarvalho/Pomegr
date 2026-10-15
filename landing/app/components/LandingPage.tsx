@@ -7,6 +7,7 @@ import { SiteHeader } from "./SiteHeader";
 import { TaskField } from "./TaskField";
 import styles from "./LandingPage.module.css";
 
+const SAMPLE_NOTE = "Illustrative · sample data";
 const GITHUB_URL = "https://github.com/Lecarvalho/pomegr";
 const DOWNLOAD_URL = "/download";
 
@@ -41,7 +42,7 @@ export function LandingPage() {
             <Ticks />
             <figcaption className={styles.figureHead}>
               <span className={styles.label}>[ fig. 1 — one repository, queue on ]</span>
-              <span className={`${styles.label} ${styles.wideOnly}`}>Illustrative · sample data</span>
+              <span className={`${styles.label} ${styles.quiet} ${styles.wideOnly}`}>Illustrative · sample data</span>
             </figcaption>
             <TaskField />
           </figure>
@@ -57,7 +58,7 @@ export function LandingPage() {
       <div className={styles.page}>
         <section className={styles.chapter} aria-labelledby="sessions-title">
           <h2 data-reveal className={styles.statement} id="sessions-title">Every session, as it happens. <span>Pomegr reads the records your agents already write and never sends them a command.</span></h2>
-          <Figure caption="[ fig. 2 — one session, four agents ]" note="Illustrative · sample data">
+          <Figure caption="[ fig. 2 — one session, four agents ]" note={SAMPLE_NOTE}>
             <SessionDiagram />
             <Notes items={[
               ["Live and recorded", "Follow a run as it happens, or open last week’s exactly as it was recorded."],
@@ -81,7 +82,7 @@ export function LandingPage() {
 
         <section className={styles.chapter} aria-labelledby="aril-title">
           <h2 data-reveal className={styles.statement} id="aril-title">Aril plans. You apply. <span>Ask about the board and your sessions; every change waits for you.</span></h2>
-          <Figure caption="[ fig. 4 — a proposal ]" note="Illustrative · sample data">
+          <Figure caption="[ fig. 4 — a proposal ]" note={SAMPLE_NOTE}>
             <ProposalDiagram />
             <Notes items={[
               ["Reads, never acts", "Aril runs read-only. A board change is always a proposal."],
@@ -136,7 +137,7 @@ function Figure({ caption, note, children }: { caption: string; note: string; ch
       <Ticks />
       <figcaption className={styles.figureHead}>
         <span className={styles.label}>{caption}</span>
-        <span className={`${styles.label} ${styles.wideOnly}`}>{note}</span>
+        <span className={`${styles.label} ${note === SAMPLE_NOTE ? styles.quiet : ""} ${styles.wideOnly}`}>{note}</span>
       </figcaption>
       {children}
     </figure>

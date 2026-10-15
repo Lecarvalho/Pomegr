@@ -138,6 +138,9 @@
   text-transform: uppercase;
 }
 
+/* A caption that should barely register, such as the sample-data note. */
+.label.quiet { color: #3f464f; }
+
 /* Hero */
 .hero { padding: 104px 0 56px; }
 
