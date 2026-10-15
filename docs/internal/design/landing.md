@@ -70,7 +70,7 @@ The landing is an isolated package, so it copies these values instead of importi
 - A 22px dot grid sits behind the hero and fades out from the upper right through a radial mask.
 - Under a fine pointer, each dot the cursor crosses turns Signal red and fades out over 1.1 seconds, still inside the same fade (`DotGlow`). Only crossed dots light, never a radius around the cursor.
 - A pomegranate broken in two halves sits behind the hero on the right (`pomegranate-halves.png`).
-- A person biting into a pomegranate (`pomegranate-bite.png`) sits right below the last figure, with no caption. Its edges dissolve into the dither, so the image never shows a hard crop.
+- A person biting into a pomegranate (`pomegranate-bite.png`) sits right below the last figure, with no caption. Its sides and bottom dissolve into the dither, and its top starts right under the figure, so it reads as continuing out of it.
 - Both images are generated photographs converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.
 - The images render with pixelated scaling, so each dither pixel stays a visible square.
 - The pomegranate is the brand's hidden thread. Nothing on the page names or explains it.
@@ -129,5 +129,5 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 - After the entrance, the Now line and the next card pulse slowly.
 - On load, the two halves of the hero pomegranate fade in closed, then crack apart.
 - On a phone the hero pomegranate sits behind the title at 35% opacity.
-- The closing image sharpens from an 8px blur as it scrolls into view.
+- The closing image slides down 24px from under the figure and sharpens from an 8px blur as it scrolls into view.
 - Reduced motion turns off every entrance, pulse, the crack, and the task field animation.

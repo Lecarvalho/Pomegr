@@ -345,7 +345,7 @@
 .applyFill { fill: var(--red); }
 
 /* The last frame: no caption. */
-.close { padding-top: 48px; }
+.close { margin-top: 8px; }
 
 .bite {
   display: block;
@@ -354,8 +354,8 @@
   image-rendering: pixelated;
 }
 
-.landing[data-motion] .bite[data-reveal]:not([data-shown]) { opacity: 0; filter: blur(8px); }
-.landing[data-motion] .bite[data-reveal] { transition: opacity 1.6s var(--ease), filter 1.6s var(--ease); }
+.landing[data-motion] .bite[data-reveal]:not([data-shown]) { opacity: 0; transform: translateY(-24px); filter: blur(8px); }
+.landing[data-motion] .bite[data-reveal] { transition: opacity 1.6s var(--ease), transform 1.6s var(--ease), filter 1.6s var(--ease); }
 
 /* A small, quiet note that Pomegr runs locally. */
 .local {
