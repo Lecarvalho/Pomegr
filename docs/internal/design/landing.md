@@ -37,8 +37,8 @@ The landing is an isolated package, so it copies these values instead of importi
 | Line | `#262b31` | Hairline rules and the sheet guides |
 | Line strong | `#39404a` | Figure frames and secondary action borders |
 | Done | `#3a414a` | The hero dot grid |
-| Red | `#a63c32` | The one primary action fill, the same as the app's brand fill |
-| Red hover | `#b9483d` | Primary action hover |
+| Red | `#a63c32` | The Apply changes button in the fig. 4 chat, the app's brand fill |
+| Red hover | `#b9483d` | Apply changes while pressed |
 | Signal | `#e5675b` | The one accent in figures: running, next, now, new |
 | Signal wash | `#2a1d1b` | Fill of a highlighted diagram card |
 | Focus | `#91b8ee` | Focus ring, the app's dark focus color |
@@ -98,7 +98,8 @@ The header and footer are self-contained bands, so they read the same on the pap
 
 Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, tasks, and Aril, the closing image right below the last figure, then the local note.
 
-- The hero has the two-clause title, one sentence, the platform line, and the actions: Download for Windows (primary, Red) and View source (secondary).
+- The hero has the two-clause title, one sentence, and the platform line.
+- The one Download for Windows action sits centred under fig. 1. It is quiet: a thin Signal outline at 40% and Signal text at 13px, filling with Signal wash on hover. It is full width on a phone. The page has no View source link; the header's Source link covers it.
 - The platform line is mono: a Signal dot for Windows x64 and a hollow dot for the planned iOS and Android apps.
 - Fig. 1 has no caption. Its panel is see-through (Panel at 35%) with the frame at half strength, so the curves carry it.
 - Fig. 1 is one session running: a smooth 2px Signal curve over a fill of the same red that fades from 30% to clear, edge to edge in the figure, with no axis or legend.

@@ -171,7 +171,6 @@
 .platformLine i { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
 .platformLine i.planned { border: 1px solid var(--muted); background: transparent; }
 
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 
 .primaryAction {
   min-height: 44px;
@@ -181,14 +180,15 @@
   gap: 10px;
   padding: 0 18px;
   border-radius: 4px;
-  font: 500 14px/1 var(--ui);
+  font: 500 13px/1 var(--ui);
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
-.primaryAction { border: 0; background: var(--red); color: #fff !important; }
-.primaryAction:hover { background: var(--red-hover); }
+/* Quiet by default: a thin red outline and red text that fills in only on hover. */
+.primaryAction { border: 1px solid #e5675b66; background: transparent; color: var(--signal) !important; }
+.primaryAction:hover { border-color: var(--signal); background: var(--signal-wash); color: var(--ink) !important; }
 
 .primaryAction svg {
   width: 15px;
@@ -203,25 +203,12 @@
 
 .primaryAction:hover svg { transform: translateX(3px); }
 
-/* The source link speaks in the page's mono caption voice instead of a second boxed button. */
-.sourceLink {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  color: var(--muted);
-  font: 400 12px/1 var(--mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  text-decoration: none;
-  transition: color 160ms ease;
+/* The one download action, centred under fig. 1. */
+.cta {
+  display: flex;
+  justify-content: center;
+  margin-top: 40px;
 }
-
-.sourceLink svg { width: 14px; height: 14px; fill: currentColor; }
-.sourceLink span { transition: transform 200ms var(--ease); }
-.sourceLink:hover { color: var(--ink); }
-.sourceLink:hover span { transform: translate(2px, -2px); }
 
 /* Figure frame with registration ticks at its four corners. */
 .figure {
@@ -335,7 +322,7 @@
 .jobs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 72px;
+  margin-top: 40px;
   border-block: 1px solid var(--line);
 }
 
@@ -719,8 +706,7 @@
   .pomegranate { top: 0; right: -22vw; width: 84vw; opacity: .35; }
   .hero { padding: 56px 0 40px; }
   .lede { font-size: 16px; }
-  .actions > a { flex: 1 1 100%; }
-  .actions > .sourceLink { justify-content: center; }
+  .cta > a { flex: 1 1 100%; }
   .terminal { position: static; width: auto; box-shadow: none; }
   .figureBody { padding: 20px 14px; }
   .sessionGraph { height: 160px; }
@@ -738,7 +724,5 @@
   .typing i,
   .cursor { animation: none; }
   .primaryAction,
-  .primaryAction svg,
-  .sourceLink,
-  .sourceLink span { transition: none; }
+  .primaryAction svg { transition: none; }
 }
