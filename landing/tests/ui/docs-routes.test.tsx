@@ -210,7 +210,7 @@ describe("layout", () => {
     expect(header).toMatch(/<a class="[^"]*" aria-current="page" href="\/docs">Docs<\/a>/);
     expect(count(header, 'aria-current="page"')).toBe(1);
     const footer = between(html, /<footer/, "</footer>");
-    expect(footer).toContain('href="/about"');
+    expect(footer).not.toContain('href="/about"');
     expect(footer).toContain('href="/"');
     expect(footer).not.toContain('href="/docs"');
   });

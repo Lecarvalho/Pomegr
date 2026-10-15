@@ -1,34 +1,26 @@
 /*
  * Reading styles for rendered public documentation (WEB-02). The landing has no shared token
- * file: each page module mirrors the printed-paper palette and the Rokkitt/Inter/Geist Mono
- * families on its own root class, so this module does the same on `.markdown`. Only a reading
- * column is defined here; the page frame, navigation, and background belong to the docs layout.
+ * file: each page module copies the dark sheet tokens from docs/internal/design/landing.md on its
+ * own root class, so this module does the same on `.markdown`. Only a reading column is defined
+ * here; the page frame, navigation, and background belong to the docs layout.
  */
-@font-face {
-  font-family: "Rokkitt Pomegr";
-  src: url("/fonts/rokkitt-variable.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-}
-
 .markdown {
-  --md-paper: #f0ece2;
-  --md-ink: #171715;
-  --md-muted: #4e4b47;
-  --md-rule: rgba(23, 23, 21, .4);
-  --md-hairline: rgba(23, 23, 21, .2);
-  --md-wash: rgba(23, 23, 21, .06);
-  --md-red: #a63c32;
-  --md-red-wash: rgba(166, 60, 50, .08);
-  --md-monitor: #111112;
-  --md-monitor-text: #f1ede4;
-  --md-monitor-line: #3a3838;
-  --md-display: "Rokkitt Pomegr", Rockwell, Georgia, serif;
+  --md-canvas: #0e1012;
+  --md-panel: #15181b;
+  --md-raised: #1d2125;
+  --md-ink: #edf0f3;
+  --md-text: #c5cbd3;
+  --md-muted: #8d959f;
+  --md-line: #262b31;
+  --md-line-strong: #39404a;
+  --md-signal: #e5675b;
+  --md-signal-soft: #e5675b66;
+  --md-signal-wash: #2a1d1b;
+  --md-focus: #91b8ee;
   --md-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
-  max-width: 70ch;
+  max-width: 68ch;
   min-width: 0;
-  color: var(--md-ink);
+  color: var(--md-text);
   font: 400 16px/1.7 var(--font-inter), Arial, sans-serif;
   overflow-wrap: break-word;
 }
@@ -38,7 +30,7 @@
 .markdown > * + * { margin-top: 1.1em; }
 
 .markdown :is(a, [tabindex]):focus-visible {
-  outline: 3px solid var(--md-red);
+  outline: 2px solid var(--md-focus);
   outline-offset: 3px;
 }
 
@@ -56,20 +48,22 @@
 .markdown > .heading.depth1 { margin-top: 0; }
 .markdown > .heading + * { margin-top: .7em; }
 
+/* Headings clear the 60px sticky header when a link jumps to them. */
 .heading > :is(h1, h2, h3, h4) {
   min-width: 0;
   margin: 0;
-  font-family: var(--md-display);
-  font-weight: 700;
+  color: var(--md-ink);
+  font-family: var(--font-inter), Arial, sans-serif;
+  font-weight: 600;
   letter-spacing: -.02em;
-  scroll-margin-top: 24px;
+  scroll-margin-top: 84px;
   text-wrap: balance;
 }
 
-.depth1 > h1 { font-size: clamp(40px, 6vw, 60px); line-height: .98; letter-spacing: -.03em; }
-.depth2 > h2 { font-size: clamp(30px, 4vw, 38px); line-height: 1.02; }
-.depth3 > h3 { font-size: 26px; line-height: 1.1; letter-spacing: -.01em; }
-.depth4 > h4 { font-size: 20px; line-height: 1.2; letter-spacing: 0; font-weight: 650; }
+.depth1 > h1 { font-size: clamp(36px, 4.4vw, 52px); line-height: 1.02; letter-spacing: -.04em; }
+.depth2 > h2 { font-size: 26px; line-height: 1.15; letter-spacing: -.025em; }
+.depth3 > h3 { font-size: 18px; line-height: 1.3; letter-spacing: -.01em; }
+.depth4 > h4 { font-size: 16px; line-height: 1.35; letter-spacing: 0; }
 
 .anchor {
   flex: none;
@@ -77,8 +71,8 @@
   height: 28px;
   display: inline-grid;
   place-items: center;
-  color: var(--md-red);
-  font: 650 16px/1 var(--md-mono);
+  color: var(--md-muted);
+  font: 400 15px/1 var(--md-mono);
   text-decoration: none;
   opacity: 0;
 }
@@ -98,16 +92,17 @@
 }
 
 /* Text. */
-.markdown strong { font-weight: 650; }
+.markdown strong { color: var(--md-ink); font-weight: 600; }
 
 .link {
-  color: var(--md-red);
+  color: var(--md-signal);
   text-decoration: underline;
+  text-decoration-color: var(--md-signal-soft);
   text-decoration-thickness: 1px;
   text-underline-offset: .2em;
 }
 
-.link:hover { color: var(--md-ink); }
+.link:hover { color: var(--md-ink); text-decoration-color: var(--md-ink); }
 
 .external::after {
   content: "\00a0\2197";
@@ -132,14 +127,16 @@
 
 .list > li + li { margin-top: .4em; }
 .list > li > * + * { margin-top: .5em; }
-.list > li::marker { color: var(--md-red); }
+.list > li::marker { color: var(--md-muted); font-family: var(--md-mono); font-size: .85em; }
 
 /* Code. */
 .inlineCode {
   padding: .1em .35em;
-  border-radius: 2px;
-  background: var(--md-wash);
-  font: 500 .875em/1.5 var(--md-mono);
+  border: 1px solid var(--md-line);
+  border-radius: 4px;
+  background: var(--md-panel);
+  color: var(--md-ink);
+  font: 400 .85em/1.5 var(--md-mono);
   overflow-wrap: anywhere;
 }
 
@@ -147,10 +144,11 @@
   max-width: 100%;
   padding: 16px 18px;
   overflow-x: auto;
-  border: 1px solid var(--md-monitor-line);
-  background: var(--md-monitor);
-  color: var(--md-monitor-text);
-  font: 500 13px/1.65 var(--md-mono);
+  border: 1px solid var(--md-line-strong);
+  background: var(--md-panel);
+  color: var(--md-ink);
+  font: 400 13px/1.65 var(--md-mono);
+  scrollbar-width: thin;
   tab-size: 2;
 }
 
@@ -164,15 +162,16 @@
   display: block;
   max-width: 100%;
   height: auto;
-  border: 1px solid var(--md-rule);
-  background: var(--md-wash);
+  border: 1px solid var(--md-line-strong);
+  background: var(--md-panel);
 }
 
 /* Tables scroll inside a focusable region instead of widening the page. */
 .tableScroll {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--md-rule);
+  border: 1px solid var(--md-line-strong);
+  scrollbar-width: thin;
 }
 
 .table {
@@ -186,15 +185,18 @@
 .table td {
   min-width: 9ch;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--md-hairline);
+  border-bottom: 1px solid var(--md-line);
   text-align: left;
   vertical-align: top;
 }
 
 .table thead th {
-  border-bottom: 2px solid var(--md-ink);
-  font: 700 12px/1.4 var(--md-mono);
-  letter-spacing: .03em;
+  border-bottom-color: var(--md-line-strong);
+  background: var(--md-panel);
+  color: var(--md-muted);
+  font: 400 11px/1.4 var(--md-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 
 .table tbody tr:last-child td { border-bottom: 0; }
@@ -204,34 +206,34 @@
 /* Callouts: the label text and border weight carry the difference, never color alone. */
 .callout {
   padding: 14px 18px 16px;
-  border: 1px solid var(--md-rule);
-  border-left-width: 4px;
-  background: var(--md-wash);
+  border: 1px solid var(--md-line-strong);
+  border-left-width: 2px;
+  background: var(--md-panel);
 }
 
 .callout > * + * { margin-top: .7em; }
-.note { border-left-color: var(--md-ink); }
+.note { border-left-color: var(--md-muted); }
 
 .caution {
-  border-color: var(--md-red);
-  background: var(--md-red-wash);
+  border-left-color: var(--md-signal);
+  background: var(--md-signal-wash);
 }
 
 .calloutLabel {
   margin: 0 0 6px;
   color: var(--md-muted);
-  font: 700 11px/1 var(--md-mono);
-  letter-spacing: .09em;
+  font: 400 11px/1.4 var(--md-mono);
+  letter-spacing: .06em;
   text-transform: uppercase;
 }
 
-.caution > .calloutLabel { color: var(--md-red); }
+.caution > .calloutLabel { color: var(--md-signal); }
 .markdown .calloutLabel + * { margin-top: 0; }
 
 /* Quotes. */
 .quote {
   padding: 2px 0 2px 20px;
-  border-left: 3px solid var(--md-rule);
+  border-left: 1px solid var(--md-line-strong);
   color: var(--md-muted);
 }
 

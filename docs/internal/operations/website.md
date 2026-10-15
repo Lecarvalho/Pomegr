@@ -21,7 +21,7 @@ Start the development server in PowerShell:
 npm --prefix landing run dev
 ```
 
-Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/about), [Downloads](http://127.0.0.1:8788/download), or [Docs](http://127.0.0.1:8788/docs). The server reloads source changes automatically. Leave the terminal running; press **Ctrl+C** to stop. If already inside `landing/`, use `npm run dev`.
+Open [the landing page](http://127.0.0.1:8788/), [Downloads](http://127.0.0.1:8788/download), or [Docs](http://127.0.0.1:8788/docs). `/about` permanently redirects to the landing page. The server reloads source changes automatically. Leave the terminal running; press **Ctrl+C** to stop. If already inside `landing/`, use `npm run dev`.
 
 `landing/vite.config.ts` sets `remoteBindings: false`, so the Cloudflare Vite plugin simulates bindings locally, including the `pomegr_waitlist` binding marked `remote: true` in `landing/wrangler.jsonc`. No shell environment variable, Cloudflare login, or API token is needed to preview these pages. This development option does not change production bindings. The site is not fully offline: release metadata comes from GitHub, and downloads target real GitHub release files.
 
@@ -92,7 +92,7 @@ The prefix admits any depth on purpose. An exact route allowlist generated from 
 
 The Worker does not run for a path that matches a file in `dist/client`: the assets binding (`landing/wrangler.jsonc`) answers those requests itself, so the allowlist and the Worker's response headers do not reach the documentation images, the logo, the fonts, or the build's scripts and styles. [`landing/public/_headers`](../../../landing/public/_headers) therefore repeats the security headers for every asset path (`X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and `X-Frame-Options`); the values live in `landing/worker/security-headers.ts`, and `landing/tests/ui/public-pages.test.ts` fails when the two differ. The same file keeps the immutable `Cache-Control` rule for `/_next/static/*`, which vinext writes only when the package ships no `_headers` file. Running the Worker first for asset paths was the alternative; it would bill a Worker invocation for every image and script to add the same four headers. `_headers` is configuration, not a served file: `/_headers` returns 404.
 
-`/sitemap.xml` and `/robots.txt` are application routes (`landing/app/sitemap.ts` and `landing/app/robots.ts`), not static files, and the Worker admits both paths. The sitemap is built from the same generated content revision as the pages and the docs search index: it lists `/`, `/about`, `/download`, and the published documentation pages on `https://pomegr.com`, never `/docs`, `/docs/images/`, the API, or an unpublished path. `robots.txt` allows everything and names only the sitemap location. See [Search, sitemap, and robots](../development/documentation-manifest.md#search-sitemap-and-robots).
+`/sitemap.xml` and `/robots.txt` are application routes (`landing/app/sitemap.ts` and `landing/app/robots.ts`), not static files, and the Worker admits both paths. The sitemap is built from the same generated content revision as the pages and the docs search index: it lists `/`, `/download`, and the published documentation pages on `https://pomegr.com`, never `/docs`, `/docs/images/`, the API, or an unpublished path. `robots.txt` allows everything and names only the sitemap location. See [Search, sitemap, and robots](../development/documentation-manifest.md#search-sitemap-and-robots).
 
 ## 4. Edge and application rate limits
 
@@ -167,7 +167,7 @@ Do not edit `landing/dist` between the audit and deployment. `npm run deploy` re
 
 After deployment, smoke-test:
 
-- HTTPS `/`, `/about`, and `/download` return 200 and `www` redirects to the apex.
+- HTTPS `/` and `/download` return 200, `/about` redirects to `/` with 308, and `www` redirects to the apex.
 - The documentation pages, images, search, sitemap, `robots.txt`, and unknown-path 404 pass the [documentation smoke checks](#documentation-smoke-checks).
 - The download page shows version and file sizes, and its installer/portable buttons point directly to the corresponding official GitHub `.exe` assets.
 - `/dashboard`, `/api/state`, `/api/sessions`, and random paths return 404.
@@ -217,7 +217,7 @@ After a deployment that changes documentation, check `https://pomegr.com` at des
 - **Pages:** `/docs` redirects to the first documentation page, and each group path (`/docs/get-started`, `/docs/using-pomegr`, `/docs/concepts`, `/docs/help`) redirects (307) to that group's first page. Each changed page returns 200 with its sidebar (current page marked), outline, and previous/next links.
 - **Images:** each changed screenshot displays, and a `/docs/images/<topic>/<file>.jpg` URL returns 200 with an image type and the `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY` headers.
 - **Search:** typing a changed heading in the sidebar field lists its page with a link to that heading, and choosing it opens the page. A word found only in internal documentation finds nothing.
-- **Sitemap:** `/sitemap.xml` returns XML listing exactly `/`, `/about`, `/download`, and the published pages on `https://pomegr.com`, as many pages as the manifest selects, and no `/docs`, image, API, or internal path.
+- **Sitemap:** `/sitemap.xml` returns XML listing exactly `/`, `/download`, and the published pages on `https://pomegr.com`, as many pages as the manifest selects, and no `/docs`, image, API, or internal path.
 - **Robots:** `/robots.txt` returns plain text with `Allow: /` and only the `Sitemap: https://pomegr.com/sitemap.xml` line.
 - **404:** `/docs/not-a-page` and an internal-looking path such as `/docs/internal/architecture/overview` return status 404 with the documentation navigation. `/dashboard` and `/api/state` return the Worker's plain 404.
 

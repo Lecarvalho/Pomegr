@@ -1,19 +1,22 @@
 # Landing design
 
-> Scope: the public website in `landing/`: the home page, and the header and footer that every page
-> shares.
+> Scope: the public website in `landing/`: the home page, the download page, the documentation
+> shell and reading styles, and the header and footer that every page shares.
 > Authority: visual and interaction contract for the landing. [DESIGN.md](../../../DESIGN.md) owns
 > the application tokens and the Pomegr red brand mark; this page owns what the landing does with
 > them.
 > Related code and checks: `landing/app/components/` (`LandingPage`, `SiteHeader`, `SiteFooter`,
-> `PomegrBrand`, `SessionGraph`, `ArilChat`, `PomegranateSplit`, `DotGlow`, `ScrollReveal`), the images in
-> `landing/public/landing/home/`, `landing/app/globals.css`,
-> `landing/tests/ui/public-pages.test.ts`, and `landing/tests/ui/site-header.test.tsx`.
+> `PomegrBrand`, `SessionGraph`, `ArilChat`, `PomegranateSplit`, `DotGlow`, `ScrollReveal`),
+> `landing/app/download/`, the docs styles in `landing/app/docs/` (`docs.module.css`,
+> `markdown.module.css`, `search.module.css`, `demos/tasks-board-demo.module.css`), the images in
+> `landing/public/landing/home/` and `landing/public/landing/download/`, `landing/app/globals.css`,
+> `landing/tests/ui/public-pages.test.ts`, `landing/tests/ui/site-header.test.tsx`, and
+> `landing/tests/ui/download-page.test.tsx`.
 
 The landing reads as the same product as the app, at the scale a public page needs to persuade.
 Its form is a technical specification sheet: figures that explain how Pomegr works, framed and
-captioned, on a near-black textured canvas. About, Download, and Docs still use the earlier paper
-style until they move to this one.
+captioned, on a near-black textured canvas. Home, Download, and Docs all use it. `/about` permanently
+redirects to Home, which carries what About used to say.
 
 ## Why it differs from the app shell
 
@@ -33,6 +36,7 @@ The landing is an isolated package, so it copies these values instead of importi
 | Panel | `#15181b` | Figure fill |
 | Raised | `#1d2125` | Hover fill, diagram cards |
 | Ink | `#edf0f3` | Primary text |
+| Text | `#c5cbd3` | Documentation body text, the terminal lines in fig. 4 |
 | Muted | `#8d959f` | Supporting text, the second clause of a statement, captions |
 | Line | `#262b31` | Hairline rules and the sheet guides |
 | Line strong | `#39404a` | Figure frames and secondary action borders |
@@ -66,25 +70,26 @@ The landing is an isolated package, so it copies these values instead of importi
 
 ## Texture
 
-- Film grain covers the home page as a fixed SVG noise overlay at 22% opacity, blended as overlay.
-- A 22px dot grid sits behind the hero and fades out from the upper right through a radial mask.
+- Film grain covers every page as a fixed SVG noise overlay at 22% opacity, blended as overlay.
+- A 22px dot grid sits behind the Home and Download heroes and fades out from the upper right through a radial mask. Docs has none.
 - Under a fine pointer, each dot the cursor crosses turns Signal red and fades out over 1.1 seconds, still inside the same fade (`DotGlow`). Only crossed dots light, never a radius around the cursor.
 - A pomegranate broken in two halves sits behind the hero on the right (`pomegranate-halves.png`).
 - A person biting into a pomegranate (`pomegranate-bite.png`) sits right below the last figure, with no caption. Its sides and bottom dissolve into the dither. Its top starts almost invisible right under the figure and gains opacity through a gradient mask, reaching full strength at 68% of its height, as if it had always been in the background.
-- Both images are generated photographs converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.
+- Half a pomegranate (`download/pomegranate-half.png`) rises from under the lower right corner of the Download sheet. It fades in from the top and out before the footer.
+- The home images are generated photographs; the Download image is the generated ink sketch the earlier About page used. All are converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.
 - The images render with pixelated scaling, so each dither pixel stays a visible square.
 - The pomegranate is the brand's hidden thread. Nothing on the page names or explains it.
 - Two hairline guides frame the page column on desktop, like the edges of a sheet.
 
 ## Chrome
 
-The header and footer are self-contained bands, so they read the same on the paper pages.
+The header and footer are self-contained bands that every page shares.
 
 - The header is 60px high, sticky, solid Canvas, and has a Line bottom rule.
 - The brand is the painted mark at 26px and the stroked wordmark at 86px in Ink.
-- Header links are Inter 13px/500 in Muted. Hover and the current page are Ink.
+- Header links are Home, Docs, and Source. They are Inter 13px/500 in Muted. Hover and the current page are Ink.
 - Download for Windows is an outlined 36px action at the end of the header, on every page except Home, which has its own under the headline.
-- The footer is a 96px band with a Line top rule: the brand, then the project links in Inter 12px/500.
+- The footer is a 96px band with a Line top rule: the brand, then the project links in Inter 12px/500. It leaves out the link to the current page.
 - The content column is at most 1200px wide, with at least 32px of side gutter, 16px on phone.
 
 ### Phone (720px and narrower)
@@ -117,6 +122,36 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 - Each diagram has a phone version that stacks vertically, because the desktop diagram would be too small to read. The fig. 4 chat stacks the two columns under the conversation.
 - A small, quiet note follows the chapters: "Runs on your machine." in 15px/600 beside one muted 14px paragraph on the read-only loopback monitor, and what is never shown or sent.
 - The home page has no waitlist. The waitlist API stays deployed with no page that uses it.
+
+## Download page
+
+Reading order: the two-clause title, one line, then one comparison sheet.
+
+- The title is "Get Pomegr on your machine." with the muted clause "Free, and it keeps itself up to date." The line under it says the app is free for Windows x64, needs no account, and keeps session data on the device.
+- The sheet is a figure (`[ fig. 1 — two builds, one observer ]`) with the version in its head and a quiet foot line beside the release notes link.
+- The installer leads. Its column is wider (7 to 5), labelled "Installer · recommended" in Signal, with a 1px Signal top edge and a Signal wash that fades down the column.
+- The installer's first spec row is Updates, in Signal, with a Signal dot that pulses three times after load.
+- The installer has the page's one outlined action, Download installer. The portable build has a quieter mono text link, Download portable.
+- Each column ends with the file name, size, and version from the release lookup, in a mono caption.
+- On a phone the columns stack, installer first, and Download installer is full width.
+
+## Documentation
+
+The docs read on the same sheet: Canvas ground, film grain, and the two guides around a 1200px column. Docs has no figures and no pomegranate.
+
+- The sidebar, the reading column (at most 68ch), and the outline rail sit in the column. The sidebar and the rail stick 84px from the top, under the header.
+- Search is a Panel field with a Line strong border and a 4px radius. A result hovers to Signal.
+- Group titles, the eyebrow, the outline label, and the pager labels are mono captions.
+- Sidebar links are Inter 14px in Muted. The current page is Ink with a 1px Signal rule on the left.
+- Headings are Inter 600 in Ink: 36–52px for the page title, then 26px, 18px, and 16px. Headings stop 84px from the top when a link jumps to them.
+- Body text is 16px/1.7 in Text. Bold is Ink.
+- Links are Signal with an underline at 40%. List markers are mono Muted.
+- Inline code, code blocks, tables, and images sit on Panel with Line or Line strong borders. Table heads are mono captions.
+- A note callout has a 2px Muted left edge on Panel. A caution has a 2px Signal left edge on Signal wash, and its label is Signal.
+- Previous and next are Line strong boxes whose border turns Signal at 40% on hover.
+- The 404 keeps the navigation, a mono "Error 404" eyebrow, and a 32–44px Inter title.
+- The Tasks board demo reads the docs tokens: Panel ground, Raised cards, Signal for its highlights, and the app's Red fill on its one button.
+- At 760px and narrower the sidebar becomes a full-width "Documentation menu" toggle on Panel, and the outline becomes a disclosure under 1100px.
 
 ## Figures
 

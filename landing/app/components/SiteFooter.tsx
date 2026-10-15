@@ -5,13 +5,12 @@ import styles from "./SiteChrome.module.css";
 const REPOSITORY = "https://github.com/Lecarvalho/pomegr";
 const REPO_FILE = `${REPOSITORY}/blob/main`;
 
-export function SiteFooter({ current }: { current: "home" | "about" | "docs" | "download" }) {
+export function SiteFooter({ current }: { current: "home" | "docs" | "download" }) {
   return (
     <footer className={styles.footer}>
       <PomegrBrand />
       <nav aria-label="Legal and project links">
-        {current === "home" ? <Link href="/about">About</Link> : <Link href="/">Home</Link>}
-        {current === "download" || current === "docs" ? <Link href="/about">About</Link> : null}
+        {current === "home" ? null : <Link href="/">Home</Link>}
         {current === "docs" ? null : <Link href="/docs">Docs</Link>}
         <a href={`${REPO_FILE}/LICENSE`} target="_blank" rel="noreferrer">License</a>
         <a href={`${REPO_FILE}/THIRD_PARTY_NOTICES.md`} target="_blank" rel="noreferrer">Notices</a>

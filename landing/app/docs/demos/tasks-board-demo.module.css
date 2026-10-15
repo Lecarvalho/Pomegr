@@ -1,16 +1,19 @@
 /*
  * The Tasks board demo in the public guide. It sits inside the reading column (`markdown.module.css`)
- * and reads that module's printed-paper tokens, with the same fallbacks the docs search uses.
+ * and reads that module's dark sheet tokens, with the same fallbacks the docs search uses.
  * Every interactive target is at least 44px tall. The board stacks its columns when it is narrow.
  */
 .demo {
-  --demo-ink: var(--md-ink, #171715);
-  --demo-muted: var(--md-muted, #4e4b47);
-  --demo-rule: var(--md-rule, rgba(23, 23, 21, .4));
-  --demo-hairline: var(--md-hairline, rgba(23, 23, 21, .2));
-  --demo-wash: var(--md-wash, rgba(23, 23, 21, .06));
-  --demo-red: var(--md-red, #a63c32);
-  --demo-red-wash: var(--md-red-wash, rgba(166, 60, 50, .08));
+  --demo-ink: var(--md-ink, #edf0f3);
+  --demo-muted: var(--md-muted, #8d959f);
+  --demo-rule: var(--md-line-strong, #39404a);
+  --demo-hairline: var(--md-line, #262b31);
+  --demo-wash: var(--md-panel, #15181b);
+  --demo-card: var(--md-raised, #1d2125);
+  --demo-red: var(--md-signal, #e5675b);
+  --demo-red-wash: var(--md-signal-wash, #2a1d1b);
+  --demo-red-fill: #a63c32;
+  --demo-focus: var(--md-focus, #91b8ee);
   --demo-mono: var(--md-mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
   container-type: inline-size;
   border: 1px solid var(--demo-rule);
@@ -22,7 +25,7 @@
 .demo :where(p, ul) { margin: 0; }
 
 .demo button:focus-visible {
-  outline: 3px solid var(--demo-red);
+  outline: 2px solid var(--demo-focus);
   outline-offset: 3px;
 }
 
@@ -42,8 +45,8 @@
 .arilName,
 .stepCount {
   color: var(--demo-muted);
-  font: 700 11px/1.3 var(--demo-mono);
-  letter-spacing: .09em;
+  font: 400 11px/1.3 var(--demo-mono);
+  letter-spacing: .06em;
   text-transform: uppercase;
 }
 
@@ -96,7 +99,7 @@
   align-items: flex-start;
   gap: 4px;
   border: 1px solid var(--demo-hairline);
-  background: var(--md-paper, #f0ece2);
+  background: var(--demo-card);
 }
 
 .card[data-changed="true"] {
@@ -158,12 +161,12 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: 1px dashed var(--demo-ink);
+  border: 1px dashed var(--demo-rule);
 }
 
 .groupCaption {
   color: var(--demo-ink);
-  font: 700 11px/1.3 var(--demo-mono);
+  font: 400 11px/1.3 var(--demo-mono);
 }
 
 /* Aril's proposal, under the board. */
@@ -174,7 +177,7 @@
   flex-direction: column;
   gap: 8px;
   border: 1px solid var(--demo-rule);
-  background: var(--md-paper, #f0ece2);
+  background: var(--demo-card);
 }
 
 .arilMessage { color: var(--demo-ink); }
@@ -185,7 +188,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  border-left: 3px solid var(--demo-ink);
+  border-left: 2px solid var(--demo-muted);
   background: var(--demo-wash);
 }
 
@@ -232,9 +235,9 @@
 }
 
 .primaryAction {
-  border: 1px solid var(--demo-red);
-  background: var(--demo-red);
-  color: var(--md-paper, #f0ece2);
+  border: 1px solid var(--demo-red-fill);
+  background: var(--demo-red-fill);
+  color: var(--demo-ink);
 }
 
 .primaryAction:hover { filter: brightness(.92); }

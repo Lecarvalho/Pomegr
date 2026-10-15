@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { SiteFooter } from "../../app/components/SiteFooter";
 import { SiteHeader } from "../../app/components/SiteHeader";
 
-const pages = ["home", "about", "docs", "download"] as const;
+const pages = ["home", "docs", "download"] as const;
 
 const DOWNLOAD_ACTION = /<a class="[^"]*headerAction[^"]*"( aria-current="page")? href="\/download">Download for Windows<\/a>/;
 
@@ -21,14 +21,13 @@ it("keeps the same header on every page, changing only the current-page indicato
   for (const html of headers.slice(1)) expect(DOWNLOAD_ACTION.test(html)).toBe(true);
 });
 
-it("links to the documentation from the header, between About and the source link", () => {
+it("links to the documentation from the header, between Home and the source link", () => {
   for (const current of pages) {
     const html = renderToStaticMarkup(<SiteHeader current={current} />);
     const links = [...html.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map((match) => [match[1], match[2]]);
     expect(links.filter(([, text]) => text === "Docs")).toEqual([["/docs", "Docs"]]);
     expect(links.map(([href]) => href)).toEqual([
       "/",
-      "/about",
       "/docs",
       "https://github.com/Lecarvalho/pomegr",
       ...(current === "home" ? [] : ["/download"]),
@@ -41,7 +40,7 @@ it("links to the documentation from the header, between About and the source lin
 it("keeps the Docs link in the phone header while the other text links hide", () => {
   const css = readFileSync(new URL("../../app/components/SiteChrome.module.css", import.meta.url), "utf8");
   const phone = /@media \(max-width: 720px\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
-  const nav = /<nav[\s\S]*<\/nav>/.exec(renderToStaticMarkup(<SiteHeader current="about" />))![0];
+  const nav = /<nav[\s\S]*<\/nav>/.exec(renderToStaticMarkup(<SiteHeader current="download" />))![0];
   const tags = [...nav.matchAll(/<a\s[^>]*?href="([^"]*)"[^>]*>/g)].map((match) => match[0]);
   const tagFor = (href: string) => tags.find((tag) => tag.includes(`href="${href}"`))!;
   const classOf = (tag: string) => /class="([^"]*)"/.exec(tag)?.[1] ?? "";
@@ -49,7 +48,7 @@ it("keeps the Docs link in the phone header while the other text links hide", ()
   // A class, not an href selector, marks the one text link that stays; the download action has its own class.
   expect(classOf(tagFor("/docs"))).toMatch(/phoneLink/);
   expect(classOf(tagFor("/download"))).toMatch(/headerAction/);
-  for (const href of ["/", "/about", "https://github.com/Lecarvalho/pomegr"]) expect(classOf(tagFor(href)), href).toBe("");
+  for (const href of ["/", "https://github.com/Lecarvalho/pomegr"]) expect(classOf(tagFor(href)), href).toBe("");
   expect(phone).toMatch(/\.header nav > a:not\(\.headerAction\):not\(\.phoneLink\)\s*\{\s*display:\s*none;\s*\}/);
   expect(phone).not.toContain("[href");
   expect(css).not.toMatch(/\.phoneLink\s*\{[^}]*display:\s*none/);
@@ -66,9 +65,8 @@ it("offers the documentation from every footer except the docs pages, and keeps 
     [...renderToStaticMarkup(<SiteFooter current={current} />).matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map((match) => match[2]);
   const shared = ["License", "Notices", "Source", "Trademark policy"];
 
-  expect(footerLinks("home")).toEqual(["About", "Docs", ...shared]);
-  expect(footerLinks("about")).toEqual(["Home", "Docs", ...shared]);
-  expect(footerLinks("download")).toEqual(["Home", "About", "Docs", ...shared]);
-  expect(footerLinks("docs")).toEqual(["Home", "About", ...shared]);
+  expect(footerLinks("home")).toEqual(["Docs", ...shared]);
+  expect(footerLinks("download")).toEqual(["Home", "Docs", ...shared]);
+  expect(footerLinks("docs")).toEqual(["Home", ...shared]);
   expect(renderToStaticMarkup(<SiteFooter current="home" />)).toContain('href="/docs"');
 });

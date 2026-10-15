@@ -271,10 +271,10 @@ Internal documentation, plans, and mockups are never inputs to any of them.
 - **Sitemap and robots:** `landing/app/sitemap.ts` and `landing/app/robots.ts` are
   vinext metadata routes (a production `vinext start` probe serves
   `/sitemap.xml` as `application/xml` and `/robots.txt` as `text/plain`, and the
-  Worker already admits both paths). The sitemap lists `/`, `/about`,
+  Worker already admits both paths). The sitemap lists `/`,
   `/download`, and the published documentation routes, as absolute URLs on the
   origin in `landing/app/site-origin.ts`, without `lastModified` because the
-  revision carries no timestamp. It omits `/docs` (a redirect), `/docs/images/`,
+  revision carries no timestamp. It omits `/about` and `/docs` (redirects), `/docs/images/`,
   the API, and every unknown path. robots.txt allows everything and names only
   the sitemap location, so it reveals no internal path.
 

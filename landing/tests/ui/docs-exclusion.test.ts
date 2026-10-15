@@ -175,7 +175,7 @@ describe("a valid publication beside non-public content", () => {
     try {
       const { default: sitemap } = await import("../../app/sitemap");
       const urls = sitemap().map((entry) => entry.url);
-      const routes = ["/", "/about", "/download", "/docs/get-started/alpha", "/docs/get-started/beta", "/docs/concepts/gamma"];
+      const routes = ["/", "/download", "/docs/get-started/alpha", "/docs/get-started/beta", "/docs/concepts/gamma"];
       expect(urls).toEqual(routes.map((route) => `https://pomegr.com${route}`));
       expect(urls.join("\n")).not.toMatch(/internal|plans|mockups|hidden|canary|\.md\b/i);
     } finally {
