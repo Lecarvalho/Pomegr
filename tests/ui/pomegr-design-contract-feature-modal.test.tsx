@@ -83,4 +83,11 @@ describe("Feature modal visual contract", () => {
     expect(sample).toMatch(/board=\{BOARD_BLOCKED\}/);
     expect(sample).toMatch(/confirm \/>/);
   });
+
+  it("lists done features last in the feature filter as muted options of the shared select", () => {
+    const workspaceStyles = readFileSync(join(process.cwd(), "app", "styles", "workspace.css"), "utf8");
+    expect(workspaceStyles).toMatch(/\.commandSelectOption\[data-muted\] \{ color: var\(--command-muted\); font-weight: 400; \}/);
+    expect(designContract).toMatch(/\| Muted option \| Muted text at 400\./);
+    expect(designContract).toMatch(/Done features follow \*\*No feature\*\*, last, as muted options/);
+  });
 });
