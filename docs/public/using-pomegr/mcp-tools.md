@@ -48,7 +48,7 @@ Guide: [MCP queries](mcp-queries.md).
 
 These eleven tools work on the task board of the repository. Ten of them write to
 it; they are the only tools that change something you made or that Pomegr manages.
-`get_feature` only reads. Guide: [Tasks](tasks.md#what-agents-report).
+`get_feature` only reads. Guide: [Tasks](tasks-agents.md).
 
 | Tool | What it does |
 | --- | --- |
