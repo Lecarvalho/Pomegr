@@ -46,14 +46,16 @@ Guide: [MCP queries](mcp-queries.md).
 
 ## Task tools
 
-These eleven tools work on the task board of the repository. Ten of them write to
+These thirteen tools work on the task board of the repository. Ten of them write to
 it; they are the only tools that change something you made or that Pomegr manages.
-`get_feature` only reads. Guide: [Tasks](tasks-agents.md).
+`get_task`, `list_tasks`, and `get_feature` only read. Guide: [Tasks](tasks-agents.md).
 
 | Tool | What it does |
 | --- | --- |
 | `add_task` | Adds a task to the first column of the board. It does not queue or start the task. |
-| `update_task` | Changes the text, **Run on**, **Effort**, or **Complete when** of a task that has not started. |
+| `get_task` | Reads one task of the board by its ID: its text, column, state, feature, **Run on**, **Effort**, and **Complete when**, and whether `update_task` can change it. |
+| `list_tasks` | Lists at most 100 tasks of the board, with each text cut at 300 characters. The agent can search by text, state, feature, or whether `update_task` can change a task. |
+| `update_task` | Changes the text, **Run on**, **Effort**, or **Complete when** of a task that has not started. The agent reads the task with `get_task` first. |
 | `remove_task` | Deletes a task that the same session added, if the task has not started. |
 | `assign_task` | Assigns the session to a task of the board that is not done, so the session can report it. It changes no state and starts nothing. |
 | `unassign_task` | Removes the session's own assignment from a task. |
@@ -67,7 +69,7 @@ it; they are the only tools that change something you made or that Pomegr manage
 `complete_task` and `block_task` work in a session that Pomegr started for a task, and
 in a session that is assigned to a task. A session with more than one task names the
 task with `task_id`. The first report on a task wins. `assign_task` and `unassign_task`
-need plugin 0.9.8 or later.
+need plugin 0.9.8 or later. `get_task` and `list_tasks` need plugin 0.9.11 or later.
 
 ## If a tool is missing
 

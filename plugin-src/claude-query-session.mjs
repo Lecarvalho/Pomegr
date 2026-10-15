@@ -9,9 +9,11 @@ import { createTaskBindingProof } from "./task-binding-proof.mjs";
 const MAX_INPUT_BYTES = 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
-const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|update_task|remove_task|assign_task|unassign_task|complete_task|block_task|get_feature|create_feature|update_feature|delete_feature)$/u;
+const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|get_task|list_tasks|update_task|remove_task|assign_task|unassign_task|complete_task|block_task|get_feature|create_feature|update_feature|delete_feature)$/u;
 const WRITE_FIELDS = {
   add_task: ["text", "provider", "model", "effort", "remote_control", "complete_when", "own_condition", "feature"],
+  get_task: ["task_id"],
+  list_tasks: ["query", "state", "feature", "editable"],
   update_task: ["task_id", "text", "provider", "model", "effort", "complete_when", "own_condition"],
   remove_task: ["task_id"],
   assign_task: ["task_id"],
@@ -24,8 +26,11 @@ const WRITE_FIELDS = {
   delete_feature: ["feature"],
 };
 const FEATURE_OUTCOME = "so no feature was read or changed";
+const READ_OUTCOME = "so no task was read";
 const WRITE_OUTCOME = {
   add_task: "so no task was added",
+  get_task: READ_OUTCOME,
+  list_tasks: READ_OUTCOME,
   update_task: "so no task was changed",
   remove_task: "so no task was removed",
   assign_task: "so no task was assigned",
@@ -44,8 +49,8 @@ const WRITE_DENIED = Object.fromEntries(Object.entries(WRITE_OUTCOME).map(([name
   session: `Pomegr found no Claude Code session for this call, ${outcome}. Do not retry; tell the user.`,
   proof: `Pomegr could not sign this call for the current session, ${outcome}. Pomegr may not be running; do not retry, tell the user.`,
 }]));
-// A read of the session's own board: bound and signed like a write, and approved like the session's own context read.
-const WRITE_SELF_GRANTED = "get_feature";
+// The reads of the session's own board: bound and signed like a write, and approved like the session's own context read.
+const WRITE_SELF_GRANTED = new Set(["get_feature", "get_task", "list_tasks"]);
 const SELF_GRANTED = "get_agent_context";
 const FIELDS = {
   get_session_report: ["session_ref"],
@@ -97,7 +102,7 @@ export async function bindClaudeQueryWrite(payload, { readToken = defaultReadTok
   if (!proof) return deny("proof");
   return { hookSpecificOutput: {
     hookEventName: "PreToolUse",
-    ...(name === WRITE_SELF_GRANTED ? { permissionDecision: "allow" } : {}),
+    ...(WRITE_SELF_GRANTED.has(name) ? { permissionDecision: "allow" } : {}),
     updatedInput: { ...input, session_ref: sessionRef, session_proof: proof },
   } };
 }

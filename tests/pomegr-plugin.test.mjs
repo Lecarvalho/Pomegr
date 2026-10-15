@@ -615,7 +615,7 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     } });
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["add_task", "assign_task", "block_task", "clear_agent_signal", "clear_session_progress", "clear_session_signal", "complete_task", "create_feature", "delete_feature", "get_agent_context", "get_feature", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions", "remove_task", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal", "unassign_task", "update_feature", "update_task"]);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["add_task", "assign_task", "block_task", "clear_agent_signal", "clear_session_progress", "clear_session_signal", "complete_task", "create_feature", "delete_feature", "get_agent_context", "get_feature", "get_provider_health", "get_recent_failures", "get_session_report", "get_task", "get_usage_limits", "list_session_agents", "list_sessions", "list_tasks", "remove_task", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal", "unassign_task", "update_feature", "update_task"]);
 
     const renameHook = spawnSync(process.execPath, [path.join(isolatedPlugin, "scripts", "rename-session.bundle.mjs")], {
       cwd: clientRepository,
@@ -646,8 +646,8 @@ test("plugin MCP inventory contains bounded reporting, clearing, and native titl
   const reads = ["get_agent_context", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions"];
 
   const writes = ["add_task", "update_task", "remove_task", "assign_task", "unassign_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature"];
-  // The one task tool that only reads.
-  const boardReads = ["get_feature"];
+  // The task tools that only read.
+  const boardReads = ["get_feature", "get_task", "list_tasks"];
   assert.deepEqual(tools, [...writes, ...boardReads, "clear_agent_signal", "clear_session_progress", "clear_session_signal", ...reads, "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"].sort());
   assert.equal(tools.includes("report_session_title"), false);
   assert.equal(tools.includes("ask_pomegr"), false);

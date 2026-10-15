@@ -9,11 +9,13 @@ export const TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
 export const TASK_ASSIGN_PATH = "/api/agent/v1/tasks/assign";
 export const TASK_UNASSIGN_PATH = "/api/agent/v1/tasks/unassign";
 export const TASK_UPDATE_PATH = "/api/agent/v1/tasks/update";
+export const TASK_GET_PATH = "/api/agent/v1/tasks/get";
+export const TASK_LIST_PATH = "/api/agent/v1/tasks/list";
 export const FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
 export const FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
 export const FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
 export const FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
-export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole and no tool reads a task's text back, so set it only when you hold the full text the task should have. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once per task, and only on a task Pomegr started it for or one assigned to it. Use assign_task when the user asks this session to work on an existing board task it was not started for, such as to resume a task whose first session stopped, then report with complete_task or block_task, naming task_id if the session has more than one task; use unassign_task when the session stops working on that task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
+export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole, so read the task with get_task first and set the whole text it should have. Use get_task to read one task of that board by its ID, and list_tasks to find tasks of the board by a part of their text, their state, their feature, or whether update_task can change them; both only read. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once per task, and only on a task Pomegr started it for or one assigned to it. Use assign_task when the user asks this session to work on an existing board task it was not started for, such as to resume a task whose first session stopped, then report with complete_task or block_task, naming task_id if the session has more than one task; use unassign_task when the session stops working on that task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
 export const TASK_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.";
@@ -199,6 +201,48 @@ function servedFeature(feature) {
     && (feature.description === null || typeof feature.description === "string")
     && (feature.appVersion === null || typeof feature.appVersion === "string");
 }
+export const TASK_READ_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was read.";
+const READ_REASON_TEXT = {
+  invalid: "Pomegr rejected the request as invalid, so no task was read.",
+  session_not_found: "Pomegr does not know the current session yet, so no task was read.",
+  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was read.",
+  not_found: "No such task on this session's board.",
+  unavailable: "Pomegr is unavailable, so no task was read.",
+};
+const TASK_STATES = ["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"];
+
+// The served task of the agent task routes; any other answer reads as unavailable.
+function servedTask(task) {
+  return task !== null && typeof task === "object" && typeof task.id === "string" && /^T-[1-9][0-9]{0,8}$/u.test(task.id)
+    && typeof task.text === "string" && typeof task.column === "string" && TASK_STATES.includes(task.state)
+    && typeof task.editable === "boolean" && Array.isArray(task.completeWhen);
+}
+
+export function formatTask(task) {
+  const run = [task.provider, task.model && `model ${task.model}`, task.effort && `effort ${task.effort}`].filter(Boolean).join(", ");
+  const checks = task.completeWhen.filter((check) => Object.hasOwn(CHECK_LABELS, check)).map((check) => CHECK_LABELS[check]).join(", ");
+  return [
+    `Task ${task.id}`,
+    `Column: ${task.column}`,
+    `State: ${task.state}`,
+    `Editable with update_task: ${task.editable ? "yes" : "no"}`,
+    `Feature: ${task.feature ?? "none"}`,
+    `Run on: ${run || "not set"}`,
+    `Complete when: ${checks || "none"}`,
+    `Own condition: ${task.ownCondition ?? "none"}`,
+    task.textCut === true ? "Text (cut; call get_task for the whole text):" : "Text:",
+    task.text,
+  ].join("\n");
+}
+
+export function formatTaskList(answer) {
+  const count = answer.tasks.length;
+  const head = answer.matched === 0 ? "No task of the board matches."
+    : answer.truncated === true ? `${answer.matched} tasks match; these are the first ${count}, in board order. Narrow the list with query, state, feature, or editable.`
+      : `${answer.matched === 1 ? "1 task matches" : `${answer.matched} tasks match`}, in board order.`;
+  return [head, ...answer.tasks.map(formatTask)].join("\n\n");
+}
+
 const SAFE_THREAD_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
 export function resolveCodexCallSession(meta) {
@@ -238,11 +282,57 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     return result(text, true);
   });
 
+  // Both reads are bound to the session's own board like get_feature; neither takes a repository, a path, or a session.
+  const readTasks = async (tool, path, input, extra, body, done) => {
+    const ref = await resolveSession(input, extra, tool);
+    if (typeof ref !== "string" || !ref) return result(TASK_READ_UNBOUND_TEXT, true);
+    let answer;
+    try {
+      answer = await post(path, { sessionRef: ref, ...body });
+    } catch {
+      return result(READ_REASON_TEXT.unavailable, true);
+    }
+    if (answer && answer.ok === true) {
+      const text = done(answer);
+      if (text) return result(text, false);
+    }
+    const text = answer && answer.ok === false && typeof answer.reason === "string" && Object.hasOwn(READ_REASON_TEXT, answer.reason)
+      ? READ_REASON_TEXT[answer.reason] : READ_REASON_TEXT.unavailable;
+    return result(text, true);
+  };
+
+  server.registerTool("get_task", {
+    title: "Read a Pomegr task",
+    description: "Read one task of the current repository's Pomegr board by its ID: its whole text, column, state, whether update_task can change it, feature, Run on (provider, model, and effort), Complete when, and own condition. Read a task before you change it with update_task. It changes nothing. The repository and session are bound by the host; the only input is the task ID.",
+    inputSchema: z.object({
+      task_id: taskIdSchema.describe("ID of the task to read, such as T-12."),
+      ...hookFields(hookBound),
+    }).strict(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (input, extra) => readTasks("get_task", TASK_GET_PATH, input, extra, { taskId: input.task_id },
+    (answer) => (servedTask(answer.task) ? formatTask(answer.task) : null)));
+
+  server.registerTool("list_tasks", {
+    title: "List Pomegr tasks",
+    description: "List the tasks of the current repository's Pomegr board, in board order, with the same fields as get_task. It returns at most 100 tasks, and cuts each text at 300 characters; read a cut task whole with get_task. Narrow the list with query (a part of the text or the own condition, any case), state, feature (its exact title), or editable (true for the tasks update_task can change). It changes nothing. The repository and session are bound by the host.",
+    inputSchema: z.object({
+      query: z.string().trim().min(1).max(80).regex(ONE_LINE, "Use one line of plain text.").optional()
+        .describe("Optional. Lists only the tasks whose text or own condition holds this, in any case."),
+      state: z.enum(TASK_STATES).optional().describe("Optional. Lists only the tasks in this state."),
+      feature: featureTitle.optional().describe("Optional. Lists only the tasks of the feature with this exact title."),
+      editable: z.boolean().optional().describe("Optional. True lists only the tasks update_task can change, false only the others."),
+      ...hookFields(hookBound),
+    }).strict(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (input, extra) => readTasks("list_tasks", TASK_LIST_PATH, input, extra,
+    Object.fromEntries(["query", "state", "feature", "editable"].filter((key) => input[key] !== undefined).map((key) => [key, input[key]])),
+    (answer) => (Array.isArray(answer.tasks) && Number.isInteger(answer.matched) && answer.tasks.every(servedTask) ? formatTaskList(answer) : null)));
+
   const UPDATE_FIELDS = ["text", "provider", "model", "effort", "complete_when", "own_condition"];
   const addShape = inputShape(false);
   server.registerTool("update_task", {
     title: "Update a Pomegr task",
-    description: "Change a task on the current repository's Pomegr board: its text, Run on (provider and model), effort, or Complete when. It works for any task of the board while the task has not started: not queued, queued, or scheduled, with no session and no report. A field you leave out stays as it is, and a field you set replaces the stored one whole. The text replaces the task's whole text and Pomegr never returns a task's text, so set it only when you hold the full text the task should have. It does not move, queue, or start the task. The repository and session are bound by the host; there is no repository or path input.",
+    description: "Change a task on the current repository's Pomegr board: its text, Run on (provider and model), effort, or Complete when. It works for any task of the board while the task has not started: not queued, queued, or scheduled, with no session and no report. A field you leave out stays as it is, and a field you set replaces the stored one whole. The text replaces the task's whole text, not appends to it: read the task with get_task first, then set the whole text the task should have. Where the task shows [image], an image stays attached; text you set without it keeps the image but loses its place in the text. It does not move, queue, or start the task. The repository and session are bound by the host; there is no repository or path input.",
     inputSchema: z.object({
       task_id: z.string().regex(/^T-[1-9][0-9]{0,8}$/u, "Use a task ID such as T-12.").describe("ID of the task to change, such as T-12."),
       text: addShape.text.optional().describe("Optional. The task's new text, which replaces the stored text whole."),

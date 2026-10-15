@@ -21,6 +21,7 @@ import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
 import { TASK_FEATURE_ACTIONS, serveTaskFeatureRoute } from "./task-feature-routes.mjs";
 import { CHAT_RUN_PATHS, serveChatRunRoute } from "./chat-run-routes.mjs";
+import { AGENT_TASK_READ_PATHS, serveAgentTaskReadRoute } from "./task-agent-read-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -122,8 +123,10 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      // The agent POST paths (add, update, remove, assign, unassign, bind, complete, block, and the four feature paths); every other agent route stays GET-only.
+      // The agent POST paths (add, update, remove, assign, unassign, bind, complete, block, the four feature paths, and the
+      // task reads get and list); every other agent route stays GET-only.
       const agentTaskWrite = requestUrl.pathname === AGENT_TASK_ADD_PATH ? serveAgentTaskAddRoute
+        : AGENT_TASK_READ_PATHS.includes(requestUrl.pathname) ? serveAgentTaskReadRoute
         : AGENT_FEATURE_PATHS.includes(requestUrl.pathname) ? serveAgentFeatureRoute
         : requestUrl.pathname === AGENT_TASK_REMOVE_PATH ? serveAgentTaskRemoveRoute
         : requestUrl.pathname === AGENT_TASK_ASSIGN_PATH || requestUrl.pathname === AGENT_TASK_UNASSIGN_PATH ? serveAgentTaskAssignRoute

@@ -16,7 +16,7 @@
 
 **Status: built.** Every capability on this page has shipped: the board, features,
 parallel groups, the queue with its start gates and schedule, session start for Claude Code and
-Codex on Windows, session binding, assigned sessions, the eleven agent tools, verified
+Codex on Windows, session binding, assigned sessions, the thirteen agent tools, verified
 conditions, and the task reference on the Sessions list and in the session view. The user guide is
 [Tasks](../../public/using-pomegr/tasks.md). Report-less completion (a task finishing
 from a deterministic condition with no agent report) is deliberately not designed or
@@ -1797,7 +1797,8 @@ session Pomegr started for a task is its started session, never an assigned one.
   (`resolveTaskSession`), and answers `not_found` for any other.
 - **What an assigned session may do.** It reports the task with `complete_task` or
   `block_task`, and reads its feature with `get_feature`. It gets no prompt from
-  Pomegr, and no task text: no agent path returns one.
+  Pomegr. It may read the task's text with `get_task`, as any session of the board may
+  (see [Agent task read](#agent-task-read)).
 - **The first report wins** (see [Completion](#completion)). The started session and
   each assigned session may report; the first report sets the outcome and every later
   one answers `already_reported`.
@@ -1952,12 +1953,12 @@ the rules below on 2026-10-11.
   that is left out stays as it is. An empty `complete_when` list clears the checks, and
   an empty `own_condition` clears the own condition. The provider, the model, and the
   effort cannot be cleared.
-  - No agent tool reads a task's text, so an agent that sets `text` replaces text that
-    it cannot read back. The tool description says so: the agent sets the text only when
-    it holds the full text the task should have, for example from its own prompt or
-    from the owner.
+  - The agent reads the task with `get_task` first, then sets the whole text (task
+    T-118, 2026-10-15). The tool description says so. Before T-118 no agent tool read a
+    task's text, so an agent replaced text that it could not read back.
   - A new text that leaves out an image marker (`[image:<id>]`) leaves the image
-    attached to the task. The session prompt still lists the image, without a place for
+    attached to the task. `get_task` shows a marker as `[image]`, so a text set back
+    from a read keeps the image but loses its place in the text. The session prompt still lists the image, without a place for
     it in the text.
   - A provider that is set without a model clears the stored model, because a model
     belongs to its provider. A change to Codex turns the task's Remote Control off,
@@ -1996,6 +1997,66 @@ How it is built:
   identity. The tool waits 10 seconds like the other writes. The same input again sets
   the same values, so a call that got no answer is safe to repeat. The tool is in the
   plugins from version 0.9.6. An older plugin has no such tool.
+
+## Agent task read
+
+`get_task` and `list_tasks` let an agent read the tasks of its own board. Before them,
+`update_task` set text that the agent could not read back. They are the agent reads
+for task T-118, and the product owner settled the rules below on 2026-10-15.
+
+- **What a read answers.** For each task: its ID, text, own condition, Complete when
+  checks, provider, model, effort, feature title, column name, state, and `editable`.
+  `editable` is true when `update_task` can change the task: the rule `rowStarted`
+  of `task-record.mjs`, the rule of the desktop `update` action. A list entry also
+  says whether its text was cut (`textCut`).
+- **What a read never answers.** A report, an attention line, a block reason, the
+  linked or an assigned session, an image or its ID, who added the task, a schedule,
+  a path, a token, or a repository, column, or feature ID. An image marker reads
+  `[image]` (`plainTaskText`), as on every surface but the Task modal.
+- **`get_task`** reads one task by its ID: `T-` and a number from 1 to 999999999. It
+  answers the whole text, at most 4000 characters. It reads any task of the board, in
+  any state, Done included.
+- **`list_tasks`** lists every task of the board, Done included, in board order:
+  column, then card. It answers at most 100 tasks, the number that matched, and
+  whether the list was cut. A text over 300 characters is cut to 299 and `…`; the
+  agent reads it whole with `get_task`.
+- **The list's search.** It takes no input, or any of four filters, and a task must
+  match each filter that is set. `query` is one line of 1 to 80 characters, matched
+  in any case against the text and the own condition. `state` is one task state,
+  `feature` an exact feature title, and `editable` a boolean. The owner asked for the
+  search so that a whole board does not fill the session's context.
+- **Which board.** The board is the one `add_task` writes to for that session (see
+  [Session binding](#session-binding)). No input names a repository, a path, or a
+  session. A task that does not exist and a task of another board answer the same
+  `not_found`.
+- **Read only.** Neither tool writes, moves, queues, starts, or steers anything. A
+  board that was never written lists no task, and the read seeds no column.
+
+How it is built:
+
+- The store's `readAgentTasks(repositoryId)` projects the stored rows as a board read
+  does, without seeding, and builds the entries with `agentTaskEntries` of
+  `server/tasks/task-agent-read.mjs`. It answers null when the store cannot be read.
+- The monitor serves them as `POST /api/agent/v1/tasks/get` and
+  `POST /api/agent/v1/tasks/list`, under the gate of `add` and with the same
+  content-type check (`server/serving/task-agent-read-routes.mjs`). The body is a JSON
+  object of at most 1 KiB with `sessionRef` and, for `get`, `taskId` only, or, for
+  `list`, only the four filters. Any other key, a query string, or a value outside its
+  bound is `invalid`.
+- The answer is `{ schemaVersion: 1, ok: true, task }` for `get`, and
+  `{ schemaVersion: 1, ok: true, tasks, matched, truncated }` for `list`. A refusal is
+  `{ schemaVersion: 1, ok: false, reason }` with `invalid` (400), `session_not_found`
+  (404), `repository_unavailable` (409), `not_found` (404), or `unavailable` (503).
+- `servedAgentTask` of the route module is the one served-task shape. It bounds each
+  field again on the way out, as `servedFeature` does, and an entry outside the shape
+  answers `unavailable`. The agent chat's `get_task` (task T-104) uses the same route
+  and shape. This supersedes the line of T-104 that kept the tool off the plugin's
+  server.
+- The MCP tools are in `mcp/task-tools.mjs`. The Claude Code hook binds and signs
+  each as its own tool name, and approves both (`permissionDecision: "allow"`) as it
+  approves `get_feature`: they read the session's own board and change nothing. Codex
+  binds them from the call's thread identity. The tools are in the plugins from
+  version 0.9.11. An older plugin has no such tools.
 
 ## Starting a session
 
@@ -2433,7 +2494,8 @@ serves no other client.
 | `POST /api/agent/v1/tasks/assign\|unassign` | An agent through the MCP tools `assign_task` and `unassign_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out. Never task content, a state, or another session |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
 | `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content or a state |
-| `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title, or one task ID of that session, in; that feature's ID, title, description, and app version out, or one fixed reason. The only agent path that answers user-authored board content |
+| `POST /api/agent/v1/tasks/get\|list` | An agent through the MCP tools `get_task` and `list_tasks`, authorized like the agent-query GETs | The bound session and one task ID, or up to four list filters, in; one served task, or at most 100 with each text cut at 300 characters, out, or one fixed reason. A served task is its ID, text, own condition, checks, Run on, effort, feature title, column name, state, and `editable`. Never a report, a session, an image, who added a task, or an internal ID |
+| `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title, or one task ID of that session, in; that feature's ID, title, description, and app version out, or one fixed reason. With `get` and `list`, one of the three agent paths that answer user-authored board content |
 | `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
 
@@ -2547,8 +2609,9 @@ serves no other client.
   the `/internal/tasks/<action>` answers carry the same filled board.
 - A browser that is not a paired device never mutates tasks or starts a session. A paired device may request only the confirmed manual start described in [Paired devices](#paired-devices); the desktop performs the launch.
 - The seven MCP observation tools stay read-only, as in [MCP observation queries](mcp-queries.md).
-  The task tools are a separate registration with the twelve POST paths above (`bind`
-  is the hook's, not a tool's): eleven writes and the `feature-get` read.
+  The task tools are a separate registration with the fourteen POST paths above (`bind`
+  is the hook's, not a tool's): eleven writes and three reads, `get`, `list`, and
+  `feature-get`.
 
 ## Privacy
 
@@ -2639,9 +2702,25 @@ fixed values.
   `GET /api/tasks`, the Sessions list's task reference, `/api/state`, a session domain,
   a catalog, a notification, or diagnostics.
 - `update_task` sends task fields to the local monitor and gets none back. Its answer is
-  `ok` or one fixed reason, and no agent path returns a task's text, Run on, effort, or
-  Complete when (see [Agent task update](#agent-task-update)). The fields it writes are
-  the ones the desktop `update` action writes, kept and served only as that action's are.
+  `ok` or one fixed reason (see [Agent task update](#agent-task-update)). The fields it
+  writes are the ones the desktop `update` action writes, kept and served as that
+  action's are.
+- A task's text, own condition, checks, Run on, effort, feature title, column name, and
+  state are served to an agent only by `POST /api/agent/v1/tasks/get` and `list`, to an
+  agent whose session is bound to that board (task T-118, 2026-10-15). This is a
+  deliberate widening: before it, no agent path returned a task's text. With `get_task`
+  and `list_tasks`, the fields of any task of the board reach the provider through the
+  calling session, as a task's text does through its prompt.
+  - The answers carry only the fields that [Agent task read](#agent-task-read) lists.
+    They never carry a report, an attention line, a block reason, a session, an image
+    or its ID, who added the task, a path, a token, or a repository, column, or feature
+    ID. Each field is bounded again on the way out.
+  - A list carries at most 100 tasks, each text cut at 300 characters.
+  - `not_found` is the same for a task that does not exist and one of another board.
+  - The search query of `list_tasks` lives in memory for the request only. It is on no
+    board, route answer, log, report, or checkpoint.
+  - The reads never enter `/api/state`, a session domain, a catalog, a checkpoint, a
+    report, a log, a notification, or diagnostics.
 - What makes `add_task` safe to repeat is memory only: a digest that covers the task
   text, never the text, held in the monitor for five minutes (see
   [Session binding](#session-binding)). It is on no board, route, list, log, report,
