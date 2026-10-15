@@ -14,9 +14,33 @@ function mergeLiveUsageSnapshots(previous, current) {
     .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
 }
 
+// Requests the whole-transcript pass parsed, with any newer request only the tail has seen yet. On a
+// collision the whole-transcript snapshot wins: it alone saw the records before the tail opened, which
+// decide comparison groups and send times. A tail-only snapshot keeps its own comparison group, so it
+// is never compared with a whole-transcript one; the next pass includes it.
+function mergeWholeTranscriptSnapshots(whole, tail) {
+  const byId = new Map(tail.map((snapshot) => [snapshot.dedupeId, snapshot]));
+  for (const snapshot of whole) byId.set(snapshot.dedupeId, snapshot);
+  return [...byId.values()]
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId))
+    .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
+}
+
+function tailOnly(tail, whole) {
+  const wholeIds = new Set(whole.map((snapshot) => snapshot.dedupeId));
+  const comparisonGroups = new Set(whole.map((snapshot) => snapshot.comparisonGroup));
+  let group = Math.max(-1, ...comparisonGroups);
+  const regrouped = new Map();
+  return tail.filter((snapshot) => !wholeIds.has(snapshot.dedupeId)).map((snapshot) => {
+    if (!regrouped.has(snapshot.comparisonGroup)) regrouped.set(snapshot.comparisonGroup, group += 1);
+    return { ...snapshot, comparisonGroup: regrouped.get(snapshot.comparisonGroup) };
+  });
+}
+
 export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile, maxEntries = DEFAULT_HISTORICAL_CACHE_MAX_ENTRIES }) {
   const cache = new Map();
   const historicalCache = new Map();
+  const wholeTranscriptCache = new Map();
   function read(file, records, actor, stat, historical, sessionId, compactionTimestamps, unlimited = false, precomputedGeneration, toolChangeCauses) {
     const completeHistory = unlimited || stat.size <= maximumBytesPerFile;
     const parse = () => parseClaudeContextRecords(records, {
@@ -83,13 +107,34 @@ export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile, maxEn
     cache.set(file, { actorId: actor.id, generation, snapshots });
     return snapshots;
   }
-  function pruneMissingFiles(exists = (file) => Boolean(statSafe(file))) {
-    for (const file of cache.keys()) {
-      if (!exists(file)) cache.delete(file);
+  // A transcript longer than the tail: request evidence comes from the whole-transcript pass, so a
+  // request that left the tail (after a restart, or for an ended session) keeps its snapshot.
+  function readWholeTranscript(file, tailSnapshots, usageEvidence, actor, sessionId, compactionTimestamps, toolChangeCauses) {
+    if (!usageEvidence || !Array.isArray(usageEvidence.records)) return tailSnapshots;
+    const key = `${usageEvidence.key}\u0000${actor.id}\u0000${sessionId}\u0000${(compactionTimestamps || []).join(",")}`;
+    let cached = wholeTranscriptCache.get(file);
+    if (!cached || cached.key !== key) {
+      cached = { key, snapshots: parseClaudeContextRecords(usageEvidence.records, {
+        actorId: actor.id,
+        sourceKey: actor.id,
+        completeHistory: usageEvidence.complete === true,
+        expectedSessionId: sessionId,
+        compactionTimestamps,
+        includeToolUseIds: true,
+        toolChangeCauses,
+      }) };
     }
-    for (const file of historicalCache.keys()) {
-      if (!exists(file)) historicalCache.delete(file);
+    wholeTranscriptCache.delete(file);
+    wholeTranscriptCache.set(file, cached);
+    while (wholeTranscriptCache.size > maxEntries) wholeTranscriptCache.delete(wholeTranscriptCache.keys().next().value);
+    return mergeWholeTranscriptSnapshots(cached.snapshots, tailOnly(tailSnapshots, cached.snapshots));
+  }
+  function pruneMissingFiles(exists = (file) => Boolean(statSafe(file))) {
+    for (const cached of [cache, historicalCache, wholeTranscriptCache]) {
+      for (const file of cached.keys()) {
+        if (!exists(file)) cached.delete(file);
+      }
     }
   }
-  return { read, pruneMissingFiles };
+  return { read, readWholeTranscript, pruneMissingFiles };
 }

@@ -360,9 +360,13 @@ export function createClaudeProvider(options = {}) {
       const facts = completeHistory ? null
         : file === mainFile ? mainFacts
           : stat.size > MAX_BYTES_PER_FILE ? await sessionWorkStartReader.readTranscriptFacts(file, { expectedSessionId: sessionId }) : null;
-      const requestEvidence = splitClaudeRequestCorrelationEvidence(liveUsageSnapshots.read(file, records, actor, stat, historical, sessionId,
-        observedCompactions.map((compaction) => compaction.timestamp), completeHistory, completeHistory ? undefined : readGenerations.generation(file),
-        facts?.toolChangeCauses));
+      const compactionTimestamps = observedCompactions.map((compaction) => compaction.timestamp);
+      const tailSnapshots = liveUsageSnapshots.read(file, records, actor, stat, historical, sessionId,
+        compactionTimestamps, completeHistory, completeHistory ? undefined : readGenerations.generation(file),
+        facts?.toolChangeCauses);
+      const requestEvidence = splitClaudeRequestCorrelationEvidence(facts && stat.size > MAX_BYTES_PER_FILE
+        ? liveUsageSnapshots.readWholeTranscript(file, tailSnapshots, facts.usageEvidence, actor, sessionId, compactionTimestamps, facts.toolChangeCauses)
+        : tailSnapshots);
       for (const [key, toolUseIds] of requestEvidence.toolUseIdsByRequest) activityRequestLinks.toolUseIdsByRequest.set(key, toolUseIds);
       for (const [key, replyId] of requestEvidence.replyIdsByRequest) activityRequestLinks.replyIdsByRequest.set(key, replyId);
       for (const [key, userInputIds] of requestEvidence.userInputIdsByRequest) activityRequestLinks.userInputIdsByRequest.set(key, userInputIds);
@@ -659,7 +663,7 @@ export function createClaudeProvider(options = {}) {
     const entry = historical ? null : registry.get(localSessionId);
     return source ? {
       ...source,
-      identity: `${source.identity}:conversation-activity-v13:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
+      identity: `${source.identity}:conversation-activity-v14:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
     } : null;
   }
 

@@ -453,9 +453,9 @@ test("Claude rebuilds unchanged pre-fix checkpoint evidence and publishes the re
   const historical = !(await provider.listSessions())[0].isLive;
   const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file], file, historical), null);
   const currentFingerprint = crypto.createHash("sha256")
-    .update(`claude\0local\0${source.identity}:conversation-activity-v13:Checkpoint fixture\0${titleCreatedAt}:unknown`).digest("hex");
+    .update(`claude\0local\0${source.identity}:conversation-activity-v14:Checkpoint fixture\0${titleCreatedAt}:unknown`).digest("hex");
   const legacyFingerprint = crypto.createHash("sha256")
-    .update(`claude\0local\0${source.identity}:conversation-activity-v12:Checkpoint fixture\0${titleCreatedAt}:unknown`).digest("hex");
+    .update(`claude\0local\0${source.identity}:conversation-activity-v13:Checkpoint fixture\0${titleCreatedAt}:unknown`).digest("hex");
   let checkpoint = { fingerprint: legacyFingerprint, completeOffset: source.size };
   const controller = new AbortController();
   t.after(() => controller.abort());
@@ -720,7 +720,9 @@ test("a bounded window never takes a mid-answer record as its first request's se
   const toolResult = { type: "user", timestamp: clock(305), message: { content: [{ type: "tool_result", tool_use_id: "t", content: "y".repeat(1_000_000) }] } };
   await appendFile(file, lines([inputRecord("user", 203), request("slow", 210, reused, [{ type: "text", text: "x".repeat(1_400_000) }]), toolResult, request("slow", 310, rewritten)]));
   const { usageSnapshots } = await provider.readSession("skipped-fragment", { historical: false });
-  assert.deepEqual(usageSnapshots.map(({ requestSentAt }) => requestSentAt ?? null), [clock(0), null]);
+  // The whole-transcript pass, not the window, supplies request evidence once the transcript outgrows
+  // the window, so the request keeps the send time of its first fragment.
+  assert.deepEqual(usageSnapshots.map(({ requestSentAt }) => requestSentAt ?? null), [clock(0), clock(203)]);
   const feed = buildCacheEvents({ agents: [{ id: "primary" }], usageSnapshots, enabled: true });
   assert.equal(feed.possibleFullRefills[0].occurrences[0].cacheLifetimeInference, null, "sent 203 s after the previous send, not 305 s");
 });

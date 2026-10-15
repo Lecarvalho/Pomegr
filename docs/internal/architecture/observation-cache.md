@@ -166,10 +166,10 @@ checkpoints; aggregate feeds are derived from retained evidence after restore.
 Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
-Claude's `conversation-activity-v13` and Codex's `codex-activity-v5` source
+Claude's `conversation-activity-v14` and Codex's `codex-activity-v5` source
 fingerprints trigger rehydration of checkpoints produced before the current
 work-kind classification, Claude recorded request send times, Claude tool-change
-attribution, Codex completed-item coverage, and successful `update_task` event evidence; see the
+attribution, Claude whole-transcript request evidence, Codex completed-item coverage, and successful `update_task` event evidence; see the
 [provider tool inventory](tool-inventory.md).
 Claude merges recorded tool IDs across fragments sharing one request identity,
 including live snapshot merges after a read window advances. The private
@@ -1190,7 +1190,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](metrics.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v13`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v14`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged
@@ -1234,6 +1234,23 @@ attribution. The
 source fingerprint advance replays unchanged sources whose checkpoints hold an
 attribution that the narrowed deferred-definition rule no longer makes. This adds no
 checkpoint field, GET acquisition, polling lane, or revision mechanism.
+
+The Claude usage observations of a transcript longer than the 2 MiB record tail also come
+from the whole-transcript pass, so the tail bounds acquisition only, never how long a
+request's usage evidence lives. The pass keeps a content-free copy of each complete
+record: record type, timestamps, identities, recorded usage and cache diagnostics, block
+types, tool-use identities and names, the tool use's work kind instead of its input, and
+whether text is present. Prompt and response text, tool input, and tool-result content
+are never kept. It holds at most 32,768 copies per transcript; past that bound the oldest
+are dropped and the copies no longer count as complete history. An unreadable or
+oversized complete record becomes a request with invalid usage, a comparison boundary,
+so no cache rule compares across it. Parsing the copies yields the same observations as
+parsing the records, comparison groups and recorded send times included. A request the
+tail holds but the pass has not reached yet keeps its tail observation in a comparison
+group of its own until the next pass. Observations are capped at the newest 1,000 per
+transcript, as for a live read, so a restart or the end of a session no longer narrows
+cache-refill occurrences to the requests left in the tail. The copies stay in memory in
+the adapter and never reach evidence, checkpoints, or the browser.
 
 ## Cache-lifetime policy normalization
 
@@ -3632,9 +3649,9 @@ recorded list, never the current tree.
 
 ### Session-event sidecar
 
-Cache-refill and compaction events are derived from usage evidence that slides: a live read
-keeps the newest 1,000 usage snapshots, and after a restart the evidence holds only what the
-transcript tail and the checkpoint still carry. Task events are derived from tool-call
+Cache-refill and compaction events are derived from usage evidence that slides: a read keeps
+the newest 1,000 usage snapshots of each transcript, and a transcript that is rewritten or
+truncated, or whose evidence outgrows that bound, no longer derives its oldest ones. Task events are derived from tool-call
 evidence, which is a window of the transcript too. To keep an event from being shown and then
 withdrawn, the monitor records them in a second sidecar, `events-<identity hash>.json`, next
 to the session checkpoint and its repository sidecar.

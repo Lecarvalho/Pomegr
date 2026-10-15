@@ -215,7 +215,7 @@ test("Claude history retains complete requests and replies beyond live limits", 
   await writeFile(file, `${records.map(JSON.stringify).join("\n")}\n`);
   const provider = createClaudeProvider({ homeDir: root, projectsRoot: path.join(root, "projects"), registryRoot: path.join(root, "registry"), tasksRoot: path.join(root, "tasks"), explicitSession: file, usageRequest: async () => { throw new Error("unused"); } });
   const summary = await provider.readSession(id);
-  assert.ok(summary.usageSnapshots.length < 350, "ordinary live read populates a bounded tail cache first");
+  assert.equal(summary.usageSnapshots.length, 350, "a live read past the record tail takes its requests from the whole-transcript pass");
   const history = await provider.readSessionHistory(id);
   assert.equal(history.complete, true); assert.equal(history.requests.length, 350); assert.equal(history.activity.filter((item) => item.tool === "Assistant replied").length, 350);
   assert.ok(history.activity.find((item) => item.tool === "Assistant replied" && item.requestId === history.requests[0].id));
