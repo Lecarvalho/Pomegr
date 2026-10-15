@@ -305,8 +305,18 @@ function deleteTask({ database, repositoryId, now }, payload) {
 // The agent's `add_task`, `remove_task` (task-adder.mjs), and `update_task`.
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
+// What an agent's `add_task` or `update_task` sets the task to run after, through the board's `after_set` and in the
+// same transaction, so a refused list writes nothing of the call. A task that is not on the board answers
+// `after_not_found`, and a list that would make tasks wait for each other answers `after_loop`.
+function agentSetAfter(context, id, after) {
+  const result = setTaskAfter(context, { id, after });
+  if (result.ok || result.error === "invalid") return result;
+  return { ok: false, error: result.error === "not_found" ? "after_not_found" : "after_loop" };
+}
+
 function agentCreateTask(context, payload) {
-  if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "task") || !isTaskSessionId(payload.sessionId)) {
+  if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "task" && key !== "after") || !isTaskSessionId(payload.sessionId)
+    || (payload.after !== undefined && !Array.isArray(payload.after))) {
     return { ok: false, error: "invalid" };
   }
   const { database, repositoryId, recentAdds } = context;
@@ -321,6 +331,10 @@ function agentCreateTask(context, payload) {
   }
   const created = createTask(context, payload.task);
   if (created.ok) writeTaskAdder(database, repositoryId, created.number, payload.sessionId);
+  if (created.ok && payload.after !== undefined && payload.after.length > 0) {
+    const set = agentSetAfter(context, taskIdFromNumber(created.number), payload.after);
+    if (!set.ok) return set;
+  }
   return created.ok && addKey !== null ? { ...created, addKey } : created;
 }
 
@@ -338,7 +352,7 @@ function agentRemoveTask(context, payload) {
   return deleteTask(context, { id: payload.id });
 }
 
-const AGENT_UPDATE_KEYS = Object.freeze({ payload: ["id", "text", "run", "completeWhen"], run: ["provider", "model", "effort"], completeWhen: ["checks", "own"] });
+const AGENT_UPDATE_KEYS = Object.freeze({ payload: ["id", "text", "run", "completeWhen", "after"], run: ["provider", "model", "effort"], completeWhen: ["checks", "own"] });
 // A part an agent may set field by field: a record with at least one of its keys and no other.
 const agentUpdatePart = (value, keys) => value === undefined
   || (isRecord(value) && Object.keys(value).length > 0 && Object.keys(value).every((key) => keys.includes(key)));
@@ -358,7 +372,9 @@ function agentUpdateTask(context, payload) {
   if (!isRecord(payload) || Object.keys(payload).some((key) => !AGENT_UPDATE_KEYS.payload.includes(key))
     || !agentUpdatePart(payload.run, AGENT_UPDATE_KEYS.run) || !agentUpdatePart(payload.completeWhen, AGENT_UPDATE_KEYS.completeWhen)
     || (payload.run && Object.values(payload.run).some((value) => value === null || value === undefined))
-    || (payload.completeWhen && payload.completeWhen.checks === null)) return { ok: false, error: "invalid" };
+    || (payload.completeWhen && payload.completeWhen.checks === null)
+    || (payload.after !== undefined && !Array.isArray(payload.after))
+    || AGENT_UPDATE_KEYS.payload.every((key) => key === "id" || payload[key] === undefined)) return { ok: false, error: "invalid" };
   const input = normalizeDeletePayload({ id: payload.id });
   if (!input) return { ok: false, error: "invalid" };
   const { database, repositoryId, now } = context;
@@ -385,8 +401,12 @@ function agentUpdateTask(context, payload) {
       own: payload.completeWhen.own === undefined ? stored.own_condition : payload.completeWhen.own,
     };
   }
-  const result = updateTask(context, update);
-  return result.ok || result.error === "invalid" ? result : { ok: false, error: "not_found" };
+  // A call that sets only what the task runs after leaves the task's own fields untouched.
+  if (Object.keys(update).length > 1) {
+    const result = updateTask(context, update);
+    if (!result.ok) return result.error === "invalid" ? result : { ok: false, error: "not_found" };
+  }
+  return payload.after === undefined ? { ok: true } : agentSetAfter(context, payload.id, payload.after);
 }
 
 function insertFeature(database, repositoryId, name) {

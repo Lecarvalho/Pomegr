@@ -683,6 +683,13 @@ after other tasks of the same board: it never starts until each of them is Done 
 - **Set by `after_set`.** `{ id, after }` replaces the list; an empty list clears it (see
   [Boundaries](#boundaries)). A task that has started takes no list (`conflict`), because
   its session started from the task as it was.
+- **Also set by an agent** (task T-111, 2026-10-15). `add_task` and `update_task` take an
+  optional `runs_after`, which the routes send to the store as `after`. The store runs
+  `setTaskAfter` inside the agent action's own transaction, so the bounds and the loop
+  refusal are the ones of `after_set`, and a refused list writes nothing of the call. A
+  task of the list that is not on the board answers `after_not_found`, and a loop answers
+  `after_loop`. On `add_task` an empty list is no list; on `update_task` it clears the
+  list. See [Agent task update](#agent-task-update).
 - **A loop is refused.** A list that would make tasks wait for each other, directly or
   through other tasks, answers `conflict` and writes nothing. The Task modal says one fixed
   line: “These tasks would wait for each other, so nothing was changed.”
@@ -1673,7 +1680,8 @@ supplies.
   GETs and under the same gate: loopback host, no `Origin` header, and the agent token
   when one is configured. The body is a JSON object of at most 16 KiB with
   `Content-Type: application/json` and only these keys: `sessionRef` (`claude:<id>` or
-  `codex:<id>`), `text`, and optionally `run`, `completeWhen`, and `feature` (a feature name).
+  `codex:<id>`), `text`, and optionally `run`, `completeWhen`, `feature` (a feature name), and
+  `after` (task IDs the new task runs after, see [Runs after](#runs-after)).
   Any other key, including a repository ID or path, is `invalid`. The record rules are
   the store's. The monitor resolves `sessionRef` to a repository from the task link or, for
   a session without one, from the session's committed repository identity, never reading
@@ -1682,8 +1690,8 @@ supplies.
   An agent makes a feature with `create_feature` (see [Feature context](#feature-context)).
 - The answer is `{ schemaVersion: 1, ok: true, taskId }` or `{ schemaVersion: 1, ok: false,
   reason }`, never an echo of task content. Reasons: `invalid` (400), `session_not_found`
-  (404), `repository_unavailable` (409), `feature_not_found` (404), `limit` (409), and
-  `unavailable` (503). Beside the paths of [Boundaries](#boundaries), no path under
+  (404), `repository_unavailable` (409), `feature_not_found` (404), `limit` (409),
+  `after_not_found` (404), `after_loop` (409), and `unavailable` (503). Beside the paths of [Boundaries](#boundaries), no path under
   `/api/agent/v1/tasks/` is served, and no other agent route accepts a write.
 - **`add_task` is safe to repeat for five minutes.** Decided for task T-14
   (2026-10-10). An agent whose first answer was
@@ -1693,7 +1701,8 @@ supplies.
   task it already added and writes nothing. The answer has the same shape, with only the
   task ID.
   - The text is compared as the store keeps it (trimmed), and the feature by its ID. Run
-    on and Complete when do not tell two adds apart: the first add's values stand.
+    on, Complete when, and Runs after do not tell two adds apart: the first add's values
+    stand.
   - Another text, another session, another feature, or another board makes a new task.
   - The window counts from the add, and a repeated call does not extend it. After it,
     the same call adds a new task.
@@ -1946,13 +1955,14 @@ the rules below on 2026-10-11.
   outcome is refused. A requeue makes it editable again. The task a session was started
   for has started, so a session cannot update its own task.
 - **What it changes.** The task text, **Run on** (`provider` and `model`), **Effort**,
-  and **Complete when** (`complete_when` and `own_condition`). It never changes the
+  **Complete when** (`complete_when` and `own_condition`), and what the task runs after
+  (`runs_after`, task T-111; see [Runs after](#runs-after)). It never changes the
   task's feature, group, column, position, queue state, schedule, images, Remote Control,
   or the keep-worktree setting, and it never queues or starts the task.
 - **Replace, not append.** A field that is set replaces the stored one whole. A field
   that is left out stays as it is. An empty `complete_when` list clears the checks, and
   an empty `own_condition` clears the own condition. The provider, the model, and the
-  effort cannot be cleared.
+  effort cannot be cleared. An empty `runs_after` list clears what the task runs after.
   - The agent reads the task with `get_task` first, then sets the whole text (task
     T-118, 2026-10-15). The tool description says so. Before T-118 no agent tool read a
     task's text, so an agent replaced text that it could not read back.
@@ -1981,22 +1991,24 @@ How it is built:
 - The store action `agent_update` (`server/tasks/task-store.mjs`) is store only, like
   `agent_remove`: it is absent from the fixed action list, so the desktop route and the
   IPC channel never accept it. It takes exactly `id` and at least one of `text`, `run`
-  (`provider`, `model`, `effort`), and `completeWhen` (`checks`, `own`). It checks the
-  rule inside the store's transaction, fills each absent field from the stored row, and
-  then runs the desktop `update`, so the validation is that action's.
+  (`provider`, `model`, `effort`), `completeWhen` (`checks`, `own`), and `after`. It
+  checks the rule inside the store's transaction, fills each absent field from the stored
+  row, and then runs the desktop `update`, so the validation is that action's. A call with
+  only `after` skips `update`. `after` then runs `after_set` in the same transaction.
 - The monitor serves it as `POST /api/agent/v1/tasks/update`, under the gate of `add`
   and with the same content-type check. The body is a JSON object of at most 16 KiB with
-  `sessionRef`, `taskId`, and at least one of `text`, `run`, and `completeWhen`; any
-  other key, a query string, or an ID outside the pattern is `invalid`. The answer is
-  `{ schemaVersion: 1, ok: true }` or `{ schemaVersion: 1, ok: false, reason }` with
-  `invalid` (400), `session_not_found` (404), `repository_unavailable` (409),
-  `not_found` (404), or `unavailable` (503).
+  `sessionRef`, `taskId`, and at least one of `text`, `run`, `completeWhen`, and
+  `after`; any other key, a query string, or an ID outside the pattern is `invalid`. The
+  answer is `{ schemaVersion: 1, ok: true }` or `{ schemaVersion: 1, ok: false, reason }`
+  with `invalid` (400), `session_not_found` (404), `repository_unavailable` (409),
+  `not_found` (404), `after_not_found` (404), `after_loop` (409), or `unavailable` (503).
 - The MCP tool is `update_task` in `mcp/task-tools.mjs`. The Claude Code hook binds and
   signs it as its own tool name (`plugin-src/claude-query-session.mjs`), so a proof made
   for another tool does not update anything; Codex binds it from the call's thread
   identity. The tool waits 10 seconds like the other writes. The same input again sets
   the same values, so a call that got no answer is safe to repeat. The tool is in the
-  plugins from version 0.9.6. An older plugin has no such tool.
+  plugins from version 0.9.6. An older plugin has no such tool. `runs_after` on
+  `add_task` and `update_task` is in the plugins from version 0.9.12.
 
 ## Agent task read
 
@@ -2005,7 +2017,9 @@ How it is built:
 for task T-118, and the product owner settled the rules below on 2026-10-15.
 
 - **What a read answers.** For each task: its ID, text, own condition, Complete when
-  checks, provider, model, effort, feature title, column name, state, and `editable`.
+  checks, provider, model, effort, feature title, column name, state, `editable`, and
+  `runsAfter`, the IDs of the tasks it runs after (task T-111, 2026-10-15; an empty list
+  when none), so an agent holds the whole list before `update_task` replaces it.
   `editable` is true when `update_task` can change the task: the rule `rowStarted`
   of `task-record.mjs`, the rule of the desktop `update` action. A list entry also
   says whether its text was cut (`textCut`).
@@ -2493,8 +2507,8 @@ serves no other client.
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | `complete` and `block` carry the bound session, optionally one task ID of that session, and, for a block, the reason; they answer the resulting state and each condition's result: passed, failed, or unavailable |
 | `POST /api/agent/v1/tasks/assign\|unassign` | An agent through the MCP tools `assign_task` and `unassign_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out. Never task content, a state, or another session |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
-| `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content or a state |
-| `POST /api/agent/v1/tasks/get\|list` | An agent through the MCP tools `get_task` and `list_tasks`, authorized like the agent-query GETs | The bound session and one task ID, or up to four list filters, in; one served task, or at most 100 with each text cut at 300 characters, out, or one fixed reason. A served task is its ID, text, own condition, checks, Run on, effort, feature title, column name, state, and `editable`. Never a report, a session, an image, who added a task, or an internal ID |
+| `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when, and the task IDs it runs after); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content, a state, or a list |
+| `POST /api/agent/v1/tasks/get\|list` | An agent through the MCP tools `get_task` and `list_tasks`, authorized like the agent-query GETs | The bound session and one task ID, or up to four list filters, in; one served task, or at most 100 with each text cut at 300 characters, out, or one fixed reason. A served task is its ID, text, own condition, checks, Run on, effort, feature title, column name, state, `editable`, and the task IDs it runs after. Never a report, a session, an image, who added a task, or an internal ID |
 | `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title, or one task ID of that session, in; that feature's ID, title, description, and app version out, or one fixed reason. With `get` and `list`, one of the three agent paths that answer user-authored board content |
 | `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
@@ -2705,8 +2719,8 @@ fixed values.
   `ok` or one fixed reason (see [Agent task update](#agent-task-update)). The fields it
   writes are the ones the desktop `update` action writes, kept and served as that
   action's are.
-- A task's text, own condition, checks, Run on, effort, feature title, column name, and
-  state are served to an agent only by `POST /api/agent/v1/tasks/get` and `list`, to an
+- A task's text, own condition, checks, Run on, effort, feature title, column name,
+  state, and the task IDs it runs after (added by task T-111) are served to an agent only by `POST /api/agent/v1/tasks/get` and `list`, to an
   agent whose session is bound to that board (task T-118, 2026-10-15). This is a
   deliberate widening: before it, no agent path returned a task's text. With `get_task`
   and `list_tasks`, the fields of any task of the board reach the provider through the
@@ -2771,9 +2785,15 @@ fixed values.
   paired device, and in the `runs_after` reason of `queue.waits`. The `after_set` payload
   carries task IDs only, from the desktop app or a paired device, and its answer is the
   board. The agent chat reads it in its board snapshot as `runs_after` and proposes it as
-  `set_after` (see [Agent chat](agent-chat.md#privacy)). It never enters `/api/state`, the
-  Sessions list's task reference, a session domain, a catalog, a checkpoint, a report, a
-  log, a notification, diagnostics, an MCP tool, or a session's prompt.
+  `set_after` (see [Agent chat](agent-chat.md#privacy)). An agent sets it with the
+  `runs_after` input of `add_task` and `update_task` (task T-111, 2026-10-15): task IDs
+  only, sent from the bound session to the local monitor for a task of that session's
+  board that has not started. Their answer carries no list, only `ok` or one fixed
+  reason. `get_task` and `list_tasks` read the list back as `runsAfter`, to an agent bound
+  to that board, so it can set the whole list (a deliberate widening, decided by the
+  owner on 2026-10-15). It never enters `/api/state`, the Sessions list's task reference,
+  a session domain, a catalog, a checkpoint, a report, a log, a notification,
+  diagnostics, another MCP tool's answer, or a session's prompt.
 - A planned group (task T-101) is the same opaque `Task.group` as above, served the same
   way. Planning stores no other value: the plan's order is the card order the board
   already serves.

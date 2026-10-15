@@ -16,7 +16,7 @@ const proofFor = (tool) => createTaskBindingProof({ token: TOKEN, tool, sessionR
 
 const TASK = {
   id: "T-12", text: "Fix the cache.\nThen [image] the rest.", textCut: false, ownCondition: "Docs updated", completeWhen: ["pr_open", "ci_passed"],
-  provider: "claude", model: "claude-opus-5-5", effort: "high", feature: "Tasks 0.8.0", column: "Ready", state: "queued", editable: true,
+  provider: "claude", model: "claude-opus-5-5", effort: "high", feature: "Tasks 0.8.0", column: "Ready", state: "queued", editable: true, runsAfter: ["T-3", "T-7"],
 };
 
 function setup({ ref = "claude:x", hookBound = false, answer = { ok: true } } = {}) {
@@ -71,11 +71,15 @@ test("get_task prints the served task and posts only the bound session and the t
   assert.equal(read.content[0].text, [
     "Task T-12", "Column: Ready", "State: queued", "Editable with update_task: yes", "Feature: Tasks 0.8.0",
     "Run on: claude, model claude-opus-5-5, effort high", "Complete when: Pull request open, CI passed", "Own condition: Docs updated",
-    "Text:", "Fix the cache.\nThen [image] the rest.",
+    "Runs after: T-3, T-7", "Text:", "Fix the cache.\nThen [image] the rest.",
   ].join("\n"));
   assert.deepEqual(own.calls, [{ pathname: TASK_GET_PATH, body: { sessionRef: "codex:t1", taskId: "T-12" } }]);
-  const bare = formatTask({ ...TASK, provider: null, model: null, effort: null, feature: null, ownCondition: null, completeWhen: [], editable: false });
-  assert.match(bare, /Editable with update_task: no\nFeature: none\nRun on: not set\nComplete when: none\nOwn condition: none/u);
+  const bare = formatTask({ ...TASK, provider: null, model: null, effort: null, feature: null, ownCondition: null, completeWhen: [], editable: false, runsAfter: [] });
+  assert.match(bare, /Editable with update_task: no\nFeature: none\nRun on: not set\nComplete when: none\nOwn condition: none\nRuns after: none\nText:/u);
+  // A monitor from before the field serves none, and the line is left out rather than read as no list.
+  const older = { ...TASK };
+  delete older.runsAfter;
+  assert.doesNotMatch(formatTask(older), /Runs after/u);
 
   const missing = await setup({ answer: { ok: false, reason: "not_found" } }).tools.get_task.handler({ task_id: "T-9" });
   assert.equal(missing.isError, true);

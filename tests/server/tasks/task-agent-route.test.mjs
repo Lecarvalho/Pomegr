@@ -647,3 +647,42 @@ test("the desktop route never accepts the agent update action, and the action ta
   assert.deepEqual(store.apply(REPOSITORY, "agent_update", { id: "T-9", text: "x" }), { ok: false, error: "not_found" });
   assert.equal(taskOf(store, "T-1").text, SECRET_TEXT);
 });
+
+const addAfter = (port, text, after) => send(port, { body: JSON.stringify({ sessionRef: "claude:mine", text, after }) });
+
+test("add and update set what a task runs after, under the board's bounds, and a refused list writes nothing", async (context) => {
+  const { store, directory } = await openTemporaryStore(context, "pomegr-agent-after-");
+  const { port } = await start(context, store);
+  for (let number = 1; number <= 3; number += 1) createTask(store, REPOSITORY, { text: `${SECRET_TEXT} ${number}` });
+  // add_task stores the list with the new task, and its answer names only the new task.
+  const added = await addAfter(port, "runs after two tasks", ["T-1", "T-2"]);
+  assert.deepEqual(added.json, { schemaVersion: 1, ok: true, taskId: "T-4" });
+  assert.deepEqual(taskOf(store, "T-4").after, ["T-1", "T-2"]);
+  // An unknown task and every list outside the board's bounds add nothing.
+  reason(await addAfter(port, "after a missing task", ["T-99"]), 404, "after_not_found");
+  for (const after of ["T-1", [1], ["T-1", "T-1"], ["t-1"], Array.from({ length: 9 }, (_, index) => `T-${index + 1}`)]) {
+    reason(await addAfter(port, "out of bounds", after), 400, "invalid");
+  }
+  assert.equal(store.readBoard(REPOSITORY).tasks.length, 4);
+  // An empty list on add is no list.
+  assert.equal(Object.hasOwn(taskOf(store, (await addAfter(port, "no list", [])).json.taskId), "after"), false);
+  // update_task replaces the list, alone or with other fields, and an empty list clears it.
+  updated(await update(port, "T-3", { after: ["T-1"] }));
+  assert.deepEqual(taskOf(store, "T-3").after, ["T-1"]);
+  updated(await update(port, "T-3", { text: "edited with a list", after: ["T-2"] }));
+  assert.deepEqual(taskOf(store, "T-3").after, ["T-2"]);
+  assert.equal(taskOf(store, "T-3").text, "edited with a list");
+  // A loop, directly or through other tasks, is refused, and the text of the same call is not written.
+  reason(await update(port, "T-1", { text: "loop", after: ["T-4"] }), 409, "after_loop");
+  reason(await update(port, "T-2", { after: ["T-3"] }), 409, "after_loop");
+  assert.equal(taskOf(store, "T-1").text, `${SECRET_TEXT} 1`);
+  reason(await update(port, "T-3", { text: "missing", after: ["T-99"] }), 404, "after_not_found");
+  reason(await update(port, "T-3", { after: ["T-3"] }), 400, "invalid");
+  assert.equal(taskOf(store, "T-3").text, "edited with a list");
+  updated(await update(port, "T-3", { after: [] }));
+  assert.equal(Object.hasOwn(taskOf(store, "T-3"), "after"), false);
+  // A task that started takes no list: the one fixed refusal of update.
+  startedTask(directory, 2, { session: "claude:run-2", state: "queued" });
+  refused(await update(port, "T-2", { after: ["T-1"] }));
+  assert.equal(Object.hasOwn(taskOf(store, "T-2"), "after"), false);
+});
