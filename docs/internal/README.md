@@ -74,6 +74,7 @@ When two pages differ, the owner in this section is correct. Repair the other pa
 | Tasks page, board, cards, queue, session task surfaces | [Task board design](design/task-board.md) |
 | Task modal, task fields, Promote issues page | [Task modal design](design/task-modal.md) |
 | Aril chat launcher, panel, messages, proposal card, composer, conversations | [Agent chat design](design/agent-chat.md) |
+| Public website: home page, shared header and footer, landing tokens and motion | [Landing design](design/landing.md) |
 | Visual reference | The `/design-system` page and its [samples](../../app/components/design-system/). No HTML preview or mockup is an authority. |
 | Command table integration | [Command table](development/command-table.md) |
 
