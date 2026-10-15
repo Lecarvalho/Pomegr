@@ -51,7 +51,7 @@ export function LandingPage() {
         </div>
       </div>
 
-      <div className={styles.page}>
+      <div className={`${styles.page} ${styles.pageEnd}`}>
         <section className={styles.chapter} aria-labelledby="sessions-title">
           <h2 data-reveal className={styles.statement} id="sessions-title">Every session, as it happens. <span>Pomegr quietly reads your agents’ records and shows what matters most.</span></h2>
           <Figure caption="[ fig. 2 — one session, four agents ]" note={SAMPLE_NOTE}>

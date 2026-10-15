@@ -79,7 +79,7 @@ The landing is an isolated package, so it copies these values instead of importi
 - The home images are generated photographs; the Download image is the generated ink sketch the earlier About page used. All are converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.
 - The images render with pixelated scaling, so each dither pixel stays a visible square.
 - The pomegranate is the brand's hidden thread. Nothing on the page names or explains it.
-- Two hairline guides frame the page column on desktop, like the edges of a sheet.
+- Two hairline guides frame the page column on desktop, like the edges of a sheet. On Home they fade out behind the closing image, from 720px to 280px above the end of the page, so they never reach the footer.
 
 ## Chrome
 

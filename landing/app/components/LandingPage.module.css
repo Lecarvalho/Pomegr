@@ -68,6 +68,10 @@
 .page::before { left: calc(var(--gutter) - 32px); }
 .page::after { right: calc(var(--gutter) - 32px); }
 
+/* The guides fade out behind the closing image instead of running into the footer. */
+.pageEnd::before,
+.pageEnd::after { background: linear-gradient(to bottom, var(--line) calc(100% - 720px), transparent calc(100% - 280px)); }
+
 /* Hero zone: a dot grid fading out from the upper right, and the dithered pomegranate. */
 .heroZone {
   position: relative;
