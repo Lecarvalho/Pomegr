@@ -58,8 +58,7 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
         {highlights.length > 0 && <ul className={styles.highlights}>{highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}</ul>}
       </div>
       <div className={styles.actions}>
-        <button type="button" className="commandQuietAction" onClick={() => dialog.current?.close()}>Close</button>
-        <button type="button" className="commandPrimaryAction" onClick={onDismiss}>Got it</button>
+        <button type="button" className="commandPrimaryAction" onClick={() => dialog.current?.close()}>Got it</button>
       </div>
     </dialog>}
   </aside>;

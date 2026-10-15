@@ -44,14 +44,13 @@ This page covers Home and the What's new announcement.
 - A 16px/650 title.
 - The description.
 - Short muted highlights.
-- A [Quiet](../../../DESIGN.md#buttons) **Close**.
 - A [Primary](../../../DESIGN.md#buttons) **Got it**.
 
 ### States
 
-- **Got it** dismisses the announcement. It is the one commitment of the dialog.
-- **Close**, Escape, and a backdrop click keep the card.
-- **Close**, Escape, and a backdrop click return focus to the trigger.
+- **Got it**, the icon close, Escape, and a backdrop click close the dialog and keep the card.
+- Closing the dialog returns focus to the trigger.
+- Only the card's icon dismiss dismisses the announcement.
 - The dialog opens by itself once for each announcement, the first time Home renders it.
 - Pomegr records that opening when the dialog opens.
 - After that, the dialog opens only on the **See what's new** action. This holds whether it was closed or the page reloaded.

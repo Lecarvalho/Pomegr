@@ -24,8 +24,7 @@ it("keeps the announcement seen through the desktop bridge when browser storage 
   const trigger = await screen.findByRole("button", { name: "See what’s new" });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(setHomeUpdate).not.toHaveBeenCalled();
-  await user.click(trigger);
-  await user.click(screen.getByRole("button", { name: "Got it" }));
+  await user.click(screen.getByRole("button", { name: "Dismiss this update" }));
   expect(setHomeUpdate).toHaveBeenCalledWith("dismissedId", HOME_UPDATE_ID);
   expect(screen.queryByRole("button", { name: "See what’s new" })).not.toBeInTheDocument();
 });
