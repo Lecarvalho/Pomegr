@@ -163,7 +163,7 @@ always a proposal of its own.
   what it is, so applying it again cannot reverse the queue.
 - Every start still passes the same checks as on the Tasks page: the Ready order and parallel
   groups of the queue, each task's own start time, the queue's schedule, and the
-  [start gates](tasks.md#start-gates).
+  [start gates](tasks-start-gates.md#start-gates).
 - Aril does not start the tasks and cannot tell you which ones will start. The Board
   shows that.
 - Aril cannot change the usage threshold or the schedule of the queue. Set them on the
@@ -211,7 +211,7 @@ always a proposal of its own.
 | A line says **Not attached.** | Read the reason on the line. A task that has started takes no image, and a task holds up to four. |
 | A line says a task was created, but its images could not be attached | Open the task and put the image in again, if the task has not started. |
 | The image could not be attached | Check that Pomegr shows **Local monitor**, then add the image again. |
-| A start proposal says **Not started.** | Read the reason on the proposal. [Start gates](tasks.md#start-gates) explains a held start. Select **Start session** again when it is gone. |
+| A start proposal says **Not started.** | Read the reason on the proposal. [Start gates](tasks-start-gates.md#start-gates) explains a held start. Select **Start session** again when it is gone. |
 | A queue proposal says **Queue not changed.** | Check that Pomegr shows **Local monitor**, then select the same button again. |
 | The queue is on and nothing starts | Open **Tasks**. A banner or a "Waiting:" line names what holds the queue. See [Run the queue](tasks.md#run-the-queue). |
 | A session can be started from this chat only in the Pomegr desktop app | Apply the start proposal in the desktop app, or start the task from its window. |

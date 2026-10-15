@@ -1,0 +1,132 @@
+---
+title: "What agents report"
+description: "The task tools the Pomegr plugin gives agents, how Pomegr checks a report, and which tasks an agent may change or remove."
+---
+
+# What agents report
+
+The Pomegr plugin gives agents eleven task tools. Each call is tied to the calling
+session by the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md)
+lists these tools with the plugin's reporting and query tools. For the main path, see
+[Tasks](tasks.md).
+
+## Task tools
+
+| Tool | What it does |
+| --- | --- |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which attaches the task to it. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
+| `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, or **Complete when**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
+| `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
+| `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](tasks-sessions.md#assign-a-session-to-a-task). |
+| `unassign_task` | Removes the session's own assignment from a task. It needs plugin 0.9.8 or later. |
+| `complete_task` | Reports the work done on the task the session was started for, or on a task it is assigned to. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
+| `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
+| `get_feature` | Reads one feature of the board: its ID, title, description, and app version. The agent names the feature by its ID or its exact title. With no input, it reads the feature of the session's task. It changes nothing. |
+| `create_feature` | Creates a feature with a title, and optionally a description and an app version. A title that another feature has is refused. |
+| `update_feature` | Changes the title, description, or app version of a feature. A field the agent leaves out stays as it is. It changes no task. |
+| `delete_feature` | Deletes a feature that has no task. A feature that still has tasks is refused, so no task loses its feature. It cannot be undone. |
+
+The four feature tools need plugin 0.9.4 or later. They work on any feature of the
+session's board, also one that you made. In Claude Code, `get_feature` needs no
+approval, because it only reads the session's own board. The three tools that change a
+feature ask for your approval like the other task tools.
+
+## Approve task tool calls
+
+In Claude Code, the coding tool ties each call to its session. If Claude Code hooks are
+off or the hook times out, an agent's add, update, remove, complete, block, or feature
+call is refused. Nothing is then added, removed, reported, read, or changed.
+
+- When Claude Code asks you to approve such a call, you have up to ten minutes to do
+  so. After that the call is refused and the agent can try again.
+- Choose to always allow the tools a session should use without you, so a session you
+  are not watching does not wait for you. Leave `remove_task` on ask if you want to
+  approve each deletion.
+- In Claude Code's auto mode no prompt appears: Claude Code decides by itself and can,
+  rarely, refuse one of these calls. If that happens, add a permission rule for the tool
+  in your Claude Code settings.
+
+## How a report is checked
+
+`complete_task` and `block_task` act only on the task linked to the calling session
+and on the tasks that session is assigned to.
+
+- A task takes one report per start; a second report changes nothing.
+- A report always leaves the task in **Needs review**, with each checked condition's
+  result; you choose **Mark done**. See
+  [Complete when](tasks-create.md#complete-when).
+- When no condition is checked, the report rests on the agent's word, not a check.
+- Pomegr keeps only each condition's result, the block reason, and the attention line,
+  never command output or diffs.
+
+A session that ends without a report leaves the task **Stalled**, but only once Pomegr
+has established the session's end, for example a **Closed** session or a **Stopped**
+Claude Code session.
+
+- A Codex session reads **Stopped** after a failed or interrupted turn while it may
+  still be able to report. **Stopped** alone therefore does not stall a Codex task. It
+  stalls only once Pomegr sees that Codex no longer holds the session (Windows).
+- An **Idle** or **Open** session never stalls a task.
+- A stalled task leaves that state only through **Mark done and resume queue** or
+  **Requeue task**.
+
+## Tasks an agent can change
+
+With plugin 0.9.6 or later, an agent can change a task that is already on the board,
+for example to add a finding to it. `update_task` works when all of these are true:
+
+- The task is on the board of the session's repository. It can be a task you made, a
+  task from a GitHub issue, or a task any session added.
+- The task has not started: it is **Not queued**, **Queued**, or **Scheduled**, and no
+  session is linked to it.
+- No start is in progress for it.
+
+The agent can change the task text, **Run on** (the provider and the model),
+**Effort**, and **Complete when**. A value the agent sets replaces the stored value. A
+value it leaves out stays as it is. The agent cannot move the task, queue it, start it,
+or change its feature or its images. It cannot turn **Remote Control** on; a change
+to Codex turns it off.
+
+No tool gives a task's text to an agent. An agent that sets the text therefore replaces
+text it has not read. If the agent does not have the full text, give it the text you
+want to keep. A new text that leaves out an image keeps the image attached to the task.
+
+An agent can never change a task that started or finished, so a running session always
+matches the task it was started for. The agent gets the same answer for such a task as
+for a task that does not exist. Pomegr answers only that the task was changed or not,
+never with the task's content.
+
+## Tasks an agent can remove
+
+An agent can delete a task only when all of these are true:
+
+- The same session added the task with `add_task`.
+- The task has not started: it is **Not queued**, **Queued**, or **Scheduled**, and no
+  session is linked to it.
+- No start is in progress for it, and it has no report.
+
+Your own edits do not change this. If you edit, move, or queue a task an agent added,
+you can still ask that session to remove it.
+
+An agent can never remove a task you made, a task promoted from a GitHub issue, a task
+another session added, or a task that started or finished. It gets the same answer for
+each of these as for a task that does not exist, so it learns nothing about tasks it
+did not add. To delete one of them, use **Delete task** in the desktop app.
+
+A removal cannot be undone, and the task number is not used again. The task's images
+are deleted with it. If the queue was blocked at that task, the queue resumes.
+
+## What reaches the agent
+
+The session Pomegr starts for a task is told one fixed message: your task text, where
+the task's images are, the **Complete when** list, and the instruction to call
+`complete_task` when the work is complete or `block_task` with a short reason if it
+cannot proceed. With nothing checked, the message says the agent's report alone
+completes the task, which still goes to **Review**.
+
+- A Claude Code session may read the folder that holds the task's images. A Codex
+  session gets them attached to the message.
+- A feature's description and app version are given only to an agent that asks for
+  them with `get_feature`, and so reach its provider like the task text.
+- They are never in reports, notifications, or the session list. The session list
+  carries only a task's number, outcome, feature name, and GitHub issue number.

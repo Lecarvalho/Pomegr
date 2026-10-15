@@ -69,7 +69,7 @@ not on a timer. A browser or phone shows **Desktop managed** instead.
 
 4. Select **Promote**. The task window opens with the issue and the usual
    **Feature**, **Run on**, **Effort**, and **Complete when** fields (see
-   [Create and organize tasks](tasks.md#create-and-organize-tasks)). The footer
+   [Create and organize tasks](tasks-create.md#create-a-task)). The footer
    says "The pull request will say Closes #N." Select **Promote issue**. The task
    lands in **Backlog**, not queued, and the row reads **Promoted · T-3**.
 

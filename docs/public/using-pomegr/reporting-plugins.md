@@ -8,7 +8,7 @@ description: "Install the optional Pomegr plugin for Claude Code or Codex, choos
 The Pomegr plugin is optional; Pomegr observes your sessions without it. With it,
 the agents in a repository can report a short status, a task outcome, and a
 progress estimate. They can also read Pomegr's [MCP queries](mcp-queries.md) and
-use the [task tools](tasks.md#what-agents-report). [MCP tools](mcp-tools.md) lists
+use the [task tools](tasks-agents.md#task-tools). [MCP tools](mcp-tools.md) lists
 each tool of the plugin. The plugin sends no transcript
 contents, prompts, or credentials to Pomegr. Everything an agent reports is
 agent-reported and can be out of date; it is never a Pomegr judgment (see
