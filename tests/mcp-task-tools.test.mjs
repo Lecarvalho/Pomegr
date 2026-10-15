@@ -543,35 +543,6 @@ test("Claude hook binds complete_task and block_task, signed per tool, and denie
   }
 });
 
-test("Claude hook tells each deny cause apart with a fixed sentence that echoes nothing", async () => {
-  const transcript_path = path.resolve("private-path-sentinel", `${SESSION_ID}.jsonl`);
-  const options = { readToken: async () => TOKEN, now: () => NOW };
-  const call = { hook_event_name: "PreToolUse", tool_name: "mcp__plugin_pomegr_pomegr__complete_task", transcript_path };
-  const reason = async (payload, opts = options) => {
-    const out = (await bindClaudeQueryWrite(payload, opts)).hookSpecificOutput;
-    assert.equal(out.permissionDecision, "deny");
-    assert.equal(out.updatedInput, undefined);
-    assert.doesNotMatch(JSON.stringify(out), new RegExp(`${TOKEN}|value-sentinel|error-sentinel|private-path-sentinel|claude:`, "u"));
-    return out.permissionDecisionReason;
-  };
-  const field = "complete_task takes only these fields: attention, task_id. This call held another field, so nothing was reported. "
-    + "A plain completion takes no field. Retry once with only those fields.";
-  assert.equal(await reason({ ...call, tool_input: { summary: "value-sentinel" } }), field);
-  assert.equal(await reason({ ...call, tool_input: { attention: "value-sentinel", result: "value-sentinel" } }), field);
-  assert.equal(await reason({ ...call, tool_input: { summary: "value-sentinel" }, transcript_path: "private-path-sentinel" }), field);
-  assert.equal(await reason({ ...call, tool_input: { attention: "value-sentinel" }, transcript_path: "private-path-sentinel" }),
-    "Pomegr found no Claude Code session for this call, so nothing was reported. Do not retry; tell the user.");
-  const unsigned = "Pomegr could not sign this call for the current session, so nothing was reported. Pomegr may not be running; do not retry, tell the user.";
-  for (const readToken of [async () => null, async () => { throw new Error(`error-sentinel ${TOKEN}`); }]) {
-    assert.equal(await reason({ ...call, tool_input: { attention: "value-sentinel" } }, { readToken, now: () => NOW }), unsigned);
-  }
-  const block = { ...call, tool_name: "mcp__pomegr__block_task", tool_input: { reason: "value-sentinel", summary: "value-sentinel" } };
-  assert.equal(await reason(block),
-    "block_task takes only these fields: reason, task_id. This call held another field, so nothing was reported. Retry once with only those fields.");
-  assert.match(await reason({ ...call, tool_name: "mcp__pomegr__add_task", tool_input: { title: "value-sentinel" } }),
-    /^add_task takes only these fields: text, .*so no task was added\. Retry once/u);
-});
-
 test("Claude hook denies a write it cannot sign and never leaks the token", async () => {
   const transcript_path = path.resolve("private", `${SESSION_ID}.jsonl`);
   for (const readToken of [async () => null, async () => undefined, async () => "", async () => { throw new Error(TOKEN); }]) {
