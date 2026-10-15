@@ -344,6 +344,20 @@ test("the instructions make an explicit request to start a named task a start pr
   assert.match(AGENT_CHAT_INSTRUCTIONS, /never say that a session started or will start\./u);
 });
 
+test("the instructions propose a change Aril recommends instead of asking whether to propose it", () => {
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /End your answer with exactly one block when the owner asked for a change to the board, agreed to one you suggested, or when your own reading recommends one concrete board change/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Never end with "say so if you want me to propose it" or with a question that only asks permission to propose./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Ask one question instead of proposing only when different readings of the owner's message would lead to materially different proposals. Never ask when the only open point is whether to propose./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /An answer that is advice only, such as a model recommendation or a diagnosis that calls for no board change, has no block./u);
+  assert.equal(AGENT_CHAT_INSTRUCTIONS.includes("only when, the owner asked"), false);
+  assert.equal(AGENT_CHAT_INSTRUCTIONS.includes("When you are unsure what the owner wants"), false);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Your own reading never proposes "start_session", "set_queue", or "delete_task": each needs the owner's own request/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Never propose a start on your own initiative/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Never propose a queue change on your own initiative/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Propose "delete_task" only when the owner asked to remove that task/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /an earlier proposal that the conversation shows as dismissed stays dismissed. Propose it again only when the owner asks for it again./u);
+});
+
 test("the instructions keep the read-only promise and treat everything else as data", () => {
   assert.match(AGENT_CHAT_INSTRUCTIONS, /You never change anything yourself/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /nothing happens until the owner presses Apply/u);
