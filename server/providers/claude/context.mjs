@@ -12,6 +12,57 @@ import {
 const MAX_USAGE_SNAPSHOTS = 1_000;
 const MAX_INPUT_CHAIN_RECORDS = 4_096;
 const MAX_INPUT_CHAIN_DEPTH = 256;
+const MAX_SHAPE_STRING_LENGTH = 160;
+// A usage-evidence copy carries a tool use's work kind instead of its input. JSON cannot set a symbol key.
+const USAGE_EVIDENCE_WORK_KIND = Symbol("claudeUsageEvidenceWorkKind");
+const USAGE_EVIDENCE_RECORD_FIELDS = ["type", "subtype", "timestamp", "uuid", "parentUuid", "requestId", "isMeta", "isCompactSummary", "isSidechain", "promptSource"];
+const USAGE_EVIDENCE_MESSAGE_FIELDS = ["id", "model", "usage", "diagnostics", "timestamp"];
+
+function shapeString(value) {
+  return typeof value === "string" ? value.slice(0, MAX_SHAPE_STRING_LENGTH) : undefined;
+}
+
+// Only the block structure the request parser reads: type, identities, tool name, media type,
+// and whether text is present. Text, tool input, and tool-result content are never kept.
+function usageEvidenceBlock(block) {
+  if (!plainObject(block)) return null;
+  const shape = { type: shapeString(block.type) };
+  for (const key of ["id", "tool_use_id", "name", "media_type", "mime_type"]) {
+    const value = shapeString(block[key]);
+    if (value !== undefined) shape[key] = value;
+  }
+  const sourceMediaType = shapeString(block.source?.media_type);
+  if (sourceMediaType !== undefined) shape.source = { media_type: sourceMediaType };
+  if (block.type === "text") shape.text = typeof block.text === "string" && block.text.trim() ? "text" : "";
+  if (block.type === "tool_use") {
+    const tool = block.name || "Tool";
+    const input = plainObject(block.input) ? block.input : {};
+    shape[USAGE_EVIDENCE_WORK_KIND] = toolWorkKind(tool, { detail: safeDetail(tool, input), input });
+  }
+  return shape;
+}
+
+/**
+ * A content-free copy of a Claude record that parses to the same request snapshots, so a
+ * whole-transcript pass can retain every request without retaining prompts, responses, or tool content.
+ */
+export function claudeUsageEvidenceRecord(record) {
+  if (!plainObject(record)) return null;
+  const copy = {};
+  for (const key of USAGE_EVIDENCE_RECORD_FIELDS) if (Object.hasOwn(record, key)) copy[key] = record[key];
+  if (plainObject(record.origin)) copy.origin = { kind: shapeString(record.origin.kind) };
+  if (Array.isArray(record.attachments)) copy.attachments = record.attachments.map(usageEvidenceBlock);
+  if (plainObject(record.message)) {
+    const message = {};
+    for (const key of USAGE_EVIDENCE_MESSAGE_FIELDS) if (Object.hasOwn(record.message, key)) message[key] = record.message[key];
+    const content = record.message.content;
+    if (typeof content === "string") message.content = content.trim() ? "text" : "";
+    else if (Array.isArray(content)) message.content = content.map(usageEvidenceBlock);
+    if (Array.isArray(record.message.attachments)) message.attachments = record.message.attachments.map(usageEvidenceBlock);
+    copy.message = message;
+  }
+  return copy;
+}
 
 function nonNegativeInteger(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -261,7 +312,8 @@ export function parseClaudeContextRecords(records, options = {}) {
       if (!plainObject(block) || block.type !== "tool_use") continue;
       const tool = block.name || "Tool";
       const input = plainObject(block.input) ? block.input : {};
-      const kind = toolWorkKind(tool, { detail: safeDetail(tool, input), input });
+      const kind = typeof block[USAGE_EVIDENCE_WORK_KIND] === "string" ? block[USAGE_EVIDENCE_WORK_KIND]
+        : toolWorkKind(tool, { detail: safeDetail(tool, input), input });
       issued.set(kind, Math.min(999, (issued.get(kind) || 0) + 1));
       if (typeof block.id === "string" && block.id) issuedKinds.set(block.id, kind);
       if (boundedIdentity(block.id)) issuedTools.push({ id: boundedIdentity(block.id), kind });
