@@ -13,7 +13,10 @@ export function SiteHeader({ current }: { current: "home" | "about" | "docs" | "
         <Link href="/about" aria-current={current === "about" ? "page" : undefined}>About</Link>
         <Link className={styles.phoneLink} href="/docs" aria-current={current === "docs" ? "page" : undefined}>Docs</Link>
         <a href={REPOSITORY} target="_blank" rel="noreferrer">Source</a>
-        <Link className={styles.headerAction} href="/download" aria-current={current === "download" ? "page" : undefined}>Download for Windows</Link>
+        {/* Home carries its own Download for Windows action under the headline. */}
+        {current === "home" ? null : (
+          <Link className={styles.headerAction} href="/download" aria-current={current === "download" ? "page" : undefined}>Download for Windows</Link>
+        )}
       </nav>
     </header>
   );

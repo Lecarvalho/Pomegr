@@ -11,7 +11,8 @@
 > for was added on 2026-10-12 (task T-72), and the queue change on the same day (task
 > T-75). The images that the owner sends, and their way to a task, were added on
 > 2026-10-13 (task T-86), and the follow-up after an answered proposal on the same day
-> (task T-95). A change that widens exposure changes the
+> (task T-95). Proposals of a change that Aril recommends by itself were added on
+> 2026-10-15 (task T-123). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -203,7 +204,7 @@ characters, in this order:
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the queue (status,
    order, blocker, start threshold, and the usage percentages of the start gates), the
-   model lists (`models`), and every task.
+   model lists (`models`), and every task with its column and its position in that column.
 3. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
@@ -220,7 +221,8 @@ characters, in this order:
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
-A task in the snapshot holds its ID, column, state, feature title, parallel-group label, the IDs
+A task in the snapshot holds its ID, column, position in that column (`position`, counted
+from 0 in the order the Board shows, null when the stored value is not a whole number of 0 or more), state, feature title, parallel-group label, the IDs
 of the tasks it runs after (`runs_after`, absent when none), planned
 provider, model and effort, complete-when checks and own condition, the linked session's
 reference, state and observed model, the report's results (each one passed, failed, or
@@ -260,6 +262,13 @@ a measurement or a benchmark.
 Aril changes the board only by ending its answer with one fenced block tagged
 `pomegr-board`: `{ "summary", "operations" }`. `extractProposal` in
 `agent-chat-proposal.mjs` takes the block out of the shown text and validates it.
+
+Aril ends its answer with a proposal when the owner asked for a change, agreed to one, or
+when its own reading recommends one concrete board change, with the reason in the answer;
+it never ends by asking whether it should propose. A start, a queue change, and a delete
+still need the owner's own request, and an answer that is advice only carries no
+proposal. Aril asks one question instead only when different readings of the owner's
+message would lead to materially different proposals.
 
 - A proposal holds 1 to 40 operations and a one-line summary of at most 300 characters.
 - An answer with two blocks, an unclosed block, malformed JSON, or one operation outside
@@ -696,11 +705,11 @@ never a session's.
   name the proposal wrote, and fixed result words. It holds no task text beyond the
   snapshot's, no path, and no error text. That prompt holds the owner's messages, Aril's earlier
   answers, and the board snapshot: task text, own conditions, feature titles, block
-  reasons, attention lines, session references, model names, and the task IDs each task
-  runs after (task T-101). The model names include the models the task form offers:
-  Claude's newest observed model of each family, from the sessions of every repository
-  in the last 90 days, and the Codex catalog (task T-110). A model name carries no
-  session, path, or repository. This is a deliberate
+  reasons, attention lines, session references, model names, the task IDs each task
+  runs after (task T-101), and each card's position in its column (task T-103). The model
+  names include the models the task form offers: Claude's newest observed model of each
+  family, from the sessions of every repository in the last 90 days, and the Codex
+  catalog (task T-110). A model name carries no session, path, or repository. This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
   own session. The run can also read the repository's files and call the seven read
   tools, so file content and normalized session evidence can reach the provider in the

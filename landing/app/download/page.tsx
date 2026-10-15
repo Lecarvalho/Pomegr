@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SiteHeader } from "../components/SiteHeader";
 import { SiteFooter } from "../components/SiteFooter";
 import { formatDownloadSize, getDownloadRelease } from "../../server/download-release";
-import shared from "../components/LandingPage.module.css";
+import shared from "../components/PaperPage.module.css";
 import styles from "./DownloadPage.module.css";
 
 export const metadata: Metadata = {

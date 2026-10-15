@@ -104,7 +104,7 @@ test("a stalled task stays in its column", async (context) => {
   const env = await setup(context);
   const id = create(env);
   link(env, id);
-  assert.deepEqual(env.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 1 });
+  assert.deepEqual(env.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 1, recovered: 0 });
   assert.equal(taskOf(env, id).state, "stalled");
   assert.deepEqual(cardsIn(env, "In progress"), [id]);
 });
@@ -115,7 +115,7 @@ test("Mark done moves the card to Done; Requeue puts it back in Ready until the 
   const requeued = create(env, { completeWhen: { checks: ["tree_clean"], own: null } });
   link(env, accepted, "claude:accepted-session");
   link(env, requeued, "claude:requeued-session");
-  assert.deepEqual(env.store.stallEndedTasks((sessionId) => (sessionId === "claude:accepted-session" ? CLOSED : null)), { ok: true, stalled: 1 });
+  assert.deepEqual(env.store.stallEndedTasks((sessionId) => (sessionId === "claude:accepted-session" ? CLOSED : null)), { ok: true, stalled: 1, recovered: 0 });
   assert.equal(env.store.completeTask({ sessionId: "claude:requeued-session" }, () => null).state, "needs_review");
   assert.equal(apply(env, "resolve_done", { id: accepted }).ok, true);
   assert.deepEqual(cardsIn(env, "Done"), [accepted]);

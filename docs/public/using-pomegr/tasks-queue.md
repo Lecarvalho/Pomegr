@@ -81,6 +81,10 @@ T-n**.
   **Ready**, clears its report and session link, and lets a new session report once
   more.
 
+A stalled task can also release the queue by itself when its session did not really end:
+the session reports complete, or Pomegr confirms that it works again. The queue then goes
+on. See [How a report is checked](tasks-agents.md#how-a-report-is-checked).
+
 A task whose session never reports holds the queue too. Pomegr never marks it done or
 stalled by itself while it cannot tell that the session ended, for example after the
 computer or Pomegr restarted. The queue never moves past it, because the task can matter

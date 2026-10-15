@@ -160,7 +160,7 @@ test("the first report wins among the started session and the assigned ones", as
   assert.equal(task(store, "T-1").report.blockReason, "Needs a decision");
 });
 
-test("an assigned session reports a stalled task and frees the queue; the session Pomegr started still cannot", async (context) => {
+test("an assigned session reports a stalled task and frees the queue; the started session's later report changes nothing", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   createTask(store);
   createTask(store);
@@ -169,9 +169,9 @@ test("an assigned session reports a stalled task and frees the queue; the sessio
   assert.equal(queueSettings(store, true).ok, true);
   assert.deepEqual(queueRow(directory), { queue_status: "blocked", queue_blocked_by: "T-1" });
   assign(store, "T-1", HAND);
-  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: false, error: "stalled" });
   assert.deepEqual(store.completeTask({ sessionId: HAND }, () => null), { ok: true, state: "needs_review", results: [] });
   assert.equal(task(store, "T-1").state, "needs_review");
+  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: false, error: "already_reported" });
   assert.deepEqual(queueRow(directory), { queue_status: "running", queue_blocked_by: null });
 });
 

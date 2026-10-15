@@ -1,17 +1,20 @@
 * { box-sizing: border-box; }
 
+/* Near-black canvas shared with the header, footer, and home page (docs/internal/design/landing.md). */
 html {
   min-width: 320px;
-  background: #f0ece2;
+  background: #0e1012;
+  color-scheme: dark;
   scroll-behavior: smooth;
   scrollbar-gutter: stable;
+  scrollbar-color: #39404a #0e1012;
 }
 
 body {
   min-width: 320px;
   margin: 0;
-  background: #f0ece2;
-  color: #171715;
+  background: #0e1012;
+  color: #edf0f3;
   font-family: var(--font-inter), Arial, sans-serif;
   text-rendering: optimizeLegibility;
 }
@@ -21,7 +24,7 @@ input { font: inherit; }
 
 button { color: inherit; }
 
-::selection { background: #a63c32; color: #fff8ec; }
+::selection { background: #a63c32; color: #ffffff; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

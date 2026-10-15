@@ -16,9 +16,9 @@ describe("public landing surfaces", () => {
     const source = read("app/components/LandingPage.tsx");
     expect(source).toContain('<SiteHeader current="home" />');
     expect(source).toContain('<SiteFooter current="home" />');
-    expect(source).toContain('id="waitlist"');
-    expect(source).toContain("Coming next · iOS and Android");
     expect(source).toContain("Windows x64 · installer or portable");
+    expect(source).toContain("iOS &amp; Android · planned");
+    expect(source).toContain("Illustrative · sample data");
     expect(source).toContain('href={DOWNLOAD_URL}>Download for Windows');
     expect(source).toContain('const DOWNLOAD_URL = "/download"');
     expect(source).not.toContain("Field release · desktop, iOS, Android");
@@ -26,26 +26,13 @@ describe("public landing surfaces", () => {
     expect(source).not.toContain("issues/new");
   });
 
-  it("posts a private email signup and recognizes this browser", () => {
-    const source = read("app/components/WaitlistActions.tsx");
-    const waitlistLink = read("app/components/WaitlistStatusLink.tsx");
-    expect(source).toContain('fetch("/api/waitlist"');
-    expect(source).toContain('fetch("/api/waitlist/status"');
-    expect(source).toContain('type="email"');
-    expect(source).not.toContain("platformFieldset");
-    expect(source).not.toContain("platforms:");
-    expect(source).toContain('action: "waitlist_signup"');
-    expect(source).toContain("__TURNSTILE_SITE_KEY__");
-    expect(source).toContain("TURNSTILE_PLACEHOLDER_PATTERN");
-    expect(source).toContain("{turnstileConfigured ? (");
-    expect(source).toContain('new FormData(event.currentTarget).get("website")');
-    expect(source).not.toContain('website: ""');
-    expect(source).toContain("You’re on the waitlist.");
-    expect(source).not.toContain("github.com");
-    expect(waitlistLink).toContain("Join the mobile waitlist");
-    expect(waitlistLink).not.toContain("/api/waitlist/status");
-    expect(waitlistLink).not.toContain("Check your waitlist ticket");
-    expect(waitlistLink).not.toContain("useState");
+  it("offers no waitlist signup on any page while the waitlist API stays", () => {
+    for (const file of ["app/components/LandingPage.tsx", "app/about/page.tsx", "app/download/page.tsx"]) {
+      const source = read(file);
+      expect(source, file).not.toContain("Waitlist");
+      expect(source, file).not.toContain("#waitlist");
+    }
+    expect(read("app/api/waitlist/route.ts")).toContain("createWaitlistHandlers");
   });
 
   it("documents the local boundary and authoritative project links", () => {
@@ -72,7 +59,7 @@ describe("public landing surfaces", () => {
     expect(footer).toContain("TRADEMARKS.md");
     expect(footer).toContain("THIRD_PARTY_NOTICES.md");
     expect(footer).not.toContain("Local-first · read-only");
-    expect(chrome).toContain("width: min(1500px, calc(100% - 64px))");
+    expect(chrome).toContain("padding-inline: max(32px, calc((100% - 1200px) / 2));");
   });
 
   it("repeats the Worker's security headers for the files the assets binding serves", () => {
