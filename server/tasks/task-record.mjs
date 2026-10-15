@@ -242,14 +242,16 @@ export function normalizeFeatureCreatePayload(value) {
   return name === undefined || description === undefined || appVersion === undefined ? undefined : { name, description, appVersion };
 }
 
-// `feature_update`: an ID and at least one field; an absent field stays, and a null description or app version clears it.
+// `feature_update`: an ID and at least one field; an absent field stays, a null description or app version clears it,
+// and `done` marks the feature done or reopens it.
 export function normalizeFeatureUpdatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "name", "description", "appVersion"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "name", "description", "appVersion", "done"])) return undefined;
   if (typeof value.id !== "string" || !FEATURE_ID.test(value.id)) return undefined;
   const update = { feature: { id: value.id } };
   if (value.name !== undefined) update.name = normalizeFeatureName(value.name);
   if (value.description !== undefined) update.description = normalizeFeatureDescription(value.description);
   if (value.appVersion !== undefined) update.appVersion = normalizeFeatureAppVersion(value.appVersion);
+  if (value.done !== undefined) update.done = typeof value.done === "boolean" ? value.done : undefined;
   const fields = Object.keys(update).filter((key) => key !== "feature");
   return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
 }
@@ -475,7 +477,7 @@ export function normalizeStoredColumn(row) {
 export function normalizeStoredFeature(row) {
   if (!isPlainObject(row) || typeof row.id !== "string" || !FEATURE_ID.test(row.id)) return undefined;
   const name = normalizeFeatureName(row.name);
-  return name === undefined ? undefined : { id: row.id, name };
+  return name === undefined ? undefined : { id: row.id, name, done: row.done === true };
 }
 
 export function emptyBoard(repositoryId, readiness) {
@@ -524,10 +526,6 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   // A task that is gone is never served as a task ID.
   const blockedBy = projectedTasks.some((task) => task.id === storedBlockedBy) ? storedBlockedBy : null;
 
-  const doneByFeature = new Map();
-  for (const task of projectedTasks) {
-    if (task.featureId !== null) doneByFeature.set(task.featureId, (doneByFeature.get(task.featureId) ?? true) && task.state === "done");
-  }
   // A task runs after the tasks that are on the board; one that is gone holds nothing.
   const states = new Map(projectedTasks.map((task) => [task.id, task.state]));
   for (const task of projectedTasks) {
@@ -558,7 +556,7 @@ export function projectBoard(repositoryId, { repository, columns, features, task
     readiness: "ready",
     repositoryId,
     columns: projectedColumns.toSorted((a, b) => columnOrder.get(a.id) - columnOrder.get(b.id)),
-    features: projectedFeatures.map((feature) => ({ id: feature.id, name: feature.name, done: doneByFeature.get(feature.id) === true })),
+    features: projectedFeatures.map((feature) => ({ id: feature.id, name: feature.name, done: feature.done })),
     tasks: projectedTasks.toSorted((a, b) => columnOrder.get(a.columnId) - columnOrder.get(b.columnId) || a.position - b.position || taskNumber(a) - taskNumber(b)),
     queue: { status, blockedBy, pauseReason, order, ...(startAt === null && stopAfter === null ? {} : { schedule: { startAt, stopAfter } }) },
   };

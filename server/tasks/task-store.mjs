@@ -17,7 +17,7 @@ import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs
 import { assignSession, deleteTaskAssigned, readTaskAssignments, unassignSession } from "./task-assignments.mjs";
 import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
-import { deleteFeatureDetails, findFeature, readFeature, writeFeatureDetails } from "./task-feature-details.mjs";
+import { deleteFeatureDetails, findFeature, readFeature, readFeatureDone, readFeaturesDone, writeFeatureDetails, writeFeatureDone } from "./task-feature-details.mjs";
 import { deleteFeature } from "./task-feature-actions.mjs";
 import { deleteTaskAfter, readTaskAfter, setTaskAfter } from "./task-after.mjs";
 import { moveTask, queueGroupCards } from "./task-card-moves.mjs";
@@ -191,12 +191,8 @@ function reserveTaskNumber(database, repositoryId, atLeast) {
 const featureExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM features WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
-// A feature is done when it has tasks and every one of them is done; only unfinished features take tasks.
-function featureIsDone(database, repositoryId, featureId) {
-  const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ?")
-    .get(repositoryId, featureId);
-  return Number(row.total) > 0 && Number(row.total) === Number(row.done);
-}
+// A feature is done when the owner marked it done, whatever its tasks' states; only a feature that is not done takes a task.
+const featureIsDone = readFeatureDone;
 
 // The schema requires a step for a task of a feature. Nothing reads it since steps went, so it is always 1.
 const storedStep = (featureId) => (featureId === null ? null : 1);
@@ -437,6 +433,8 @@ function applyFeatureUpdate({ database, repositoryId }, input) {
     preparedStatement(database, "UPDATE features SET name = ? WHERE repository_id = ? AND id = ?").run(input.name, repositoryId, stored.id);
   }
   writeFeatureDetails(database, repositoryId, stored.id, input);
+  // Only the desktop's `feature_update` carries `done`; marking done or reopening moves, unqueues, and deletes no task.
+  if (input.done !== undefined) writeFeatureDone(database, repositoryId, stored.id, input.done);
   return { ok: true, featureId: stored.id };
 }
 
@@ -563,11 +561,13 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const assignments = readTaskAssignments(database, repositoryId);
     const groups = readTaskGroups(database, repositoryId);
     const after = readTaskAfter(database, repositoryId);
+    const featuresDone = readFeaturesDone(database, repositoryId);
     return {
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
-      features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
+      features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId)
+        .map((feature) => ({ ...feature, done: featuresDone.has(feature.id) })),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
         .map((row) => ({ ...row, group: groups.get(Number(row.number)) ?? null, after: after.get(Number(row.number)) ?? [], source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [], run_remote_control: remoteControls.has(Number(row.number)), run_keep_worktree: keepWorktrees.has(Number(row.number)), assigned_sessions: assignments.get(Number(row.number)) ?? [] })),
     };

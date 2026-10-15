@@ -1,6 +1,6 @@
 ---
 title: "Features"
-description: "Group related tasks into a feature, give them shared context, and create, edit, or delete a feature."
+description: "Group related tasks into a feature, give them shared context, and create, edit, mark done, or delete a feature."
 ---
 
 # Features
@@ -21,8 +21,8 @@ reads the description and the app version with the `get_feature` tool when it ne
 them. The desktop app sets all three fields, and an agent can too (see
 [What agents report](tasks-agents.md)).
 
-A feature is done when all its tasks are. Only unfinished features are offered for a
-new attachment.
+A feature is done when you mark it done (see [Mark a feature done](#mark-a-feature-done)).
+Only features that are not done are offered for a new attachment.
 
 ## Group tasks by feature
 
@@ -31,7 +31,7 @@ new attachment.
 - **Filter the board.** Select a feature chip in the filter row to show only its tasks.
   The row reads, for example, "3 of 7 tasks done · 2 running".
 
-## Create, edit, and delete a feature
+## Create, edit, mark done, and delete a feature
 
 You make, edit, and delete features in the Pomegr desktop app. A browser or a paired
 phone shows features but does not change them, except that a task's **New feature…**
@@ -59,6 +59,20 @@ it only while it holds nothing to save.
 A title that another feature already has is refused, with the line "Another feature
 already has this title." A board holds up to 50 features. Any other failure shows "The
 feature could not be saved." The window stays open and keeps what you typed.
+
+### Mark a feature done
+
+Open the feature with **Edit feature** and choose **Mark done**. The feature then takes
+no new task: a new task cannot join it, from the desktop app, a paired phone, or an
+agent.
+
+- You can mark a feature done while some of its tasks are not done. Those tasks stay
+  where they are, keep the feature, and a queued one still starts. Nothing moves or is
+  deleted.
+- A feature is never done on its own, even when all its tasks are done.
+- To take tasks again, open the feature and choose **Reopen**.
+- Only the desktop app marks a feature done or reopens it. An agent and a paired phone
+  cannot.
 
 ### Delete a feature
 

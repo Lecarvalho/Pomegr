@@ -136,8 +136,8 @@ export function createDesktopFeature(repositoryId: string, name: string, details
   return sendTaskAction(repositoryId, "feature_create", { name, ...details });
 }
 
-/** An absent field stays as stored; a null one clears it. */
-export type FeaturePatch = { name?: string; description?: string | null; appVersion?: string | null };
+/** An absent field stays as stored; a null one clears it. `done` marks the feature done or reopens it. */
+export type FeaturePatch = { name?: string; description?: string | null; appVersion?: string | null; done?: boolean };
 
 export function updateDesktopFeature(repositoryId: string, id: string, patch: FeaturePatch): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "feature_update", { id, ...patch });

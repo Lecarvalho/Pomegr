@@ -61,9 +61,9 @@ describe("Feature modal visual contract", () => {
     const footer = readFileSync(join(dir, "FeatureEditFooter.tsx"), "utf8");
     const form = readFileSync(join(dir, "FeatureFormFields.tsx"), "utf8");
     const tasksStyles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
-    // Contract lines 21 to 23: Quiet Delete feature, spacer, primary Save; the confirmation is the task modal's group.
+    // Contract lines 21 to 23: Quiet Delete feature, spacer, Secondary Mark done or Reopen, primary Save; the confirmation is the task modal's group.
     expect(footer).toMatch(/className="commandQuietAction" disabled=\{blockerId !== null \|\| busy\} onClick=\{onAskDelete\}>Delete feature</);
-    expect(footer).toMatch(/<span className="taskModalSpacer" aria-hidden="true" \/>\s*<button type="button" className="commandPrimaryAction" disabled=\{!canSave\} onClick=\{onSave\}>Save</);
+    expect(footer).toMatch(/<span className="taskModalSpacer" aria-hidden="true" \/>\s*<button type="button" className="commandSecondaryAction" disabled=\{busy \|\| deleting\} onClick=\{onToggleDone\}>\{done \? "Reopen" : "Mark done"\}<\/button>\s*<button type="button" className="commandPrimaryAction" disabled=\{!canSave\} onClick=\{onSave\}>Save</);
     expect(footer).toMatch(/<div className="taskModalConfirm" role="group" aria-label="Confirm delete">/);
     expect(footer).toMatch(/className="commandSecondaryAction" disabled=\{deleting\} onClick=\{onDelete\}>Delete feature</);
     expect(footer).toMatch(/ref=\{keepRef\} type="button" className="commandQuietAction" disabled=\{deleting\} onClick=\{onKeep\}>Keep feature</);
@@ -73,13 +73,13 @@ describe("Feature modal visual contract", () => {
     expect(form).toMatch(/failure === "delete" && <p className="newTaskError" role="alert">\{FEATURE_DELETE_FAILURE_MESSAGE\}<\/p>/);
     // The confirmation fills the footer with a token-free rule, so its spacer can push the two actions right.
     expect(tasksStyles).toMatch(/\.taskModalFooter > \.taskModalConfirm \{ flex: 1 1 auto; \}/);
-    expect(designContract).toMatch(/Quiet \*\*Delete feature\*\*, primary \*\*Save\*\*/);
+    expect(designContract).toMatch(/Quiet \*\*Delete feature\*\*, Secondary \*\*Mark done\*\* or \*\*Reopen\*\*, primary \*\*Save\*\*/);
     expect(designContract).toMatch(/“Delete this feature\? Its n tasks stay on the board with no feature\. This cannot be undone\.”/);
     expect(designContract).toMatch(/“T-n is running\. Delete the feature after its tasks finish\.”/);
     expect(designContract).toMatch(/“The feature could not be deleted\.”/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemFeatureModalSample.tsx"), "utf8");
     expect(sample).toMatch(/FeatureEditFooter/);
-    for (const label of ["Feature modal, delete confirmation", "Feature modal, delete blocked", "Feature modal, could not delete"]) expect(sample).toContain(label);
+    for (const label of ["Feature modal, feature, done", "Feature modal, delete confirmation", "Feature modal, delete blocked", "Feature modal, could not delete"]) expect(sample).toContain(label);
     expect(sample).toMatch(/board=\{BOARD_BLOCKED\}/);
     expect(sample).toMatch(/confirm \/>/);
   });

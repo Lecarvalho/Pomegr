@@ -213,7 +213,7 @@ test("the served board holds only the contract keys and never private store fiel
   assert.deepEqual(keysOf(JSON.parse(JSON.stringify(store.readBoard("nope")))), BOARD_KEYS);
 });
 
-test("a stored board's features are done only when every attached task is done", async (t) => {
+test("a store from before the done flag opens with every feature not done, then keeps the flag it is given", async (t) => {
   const temp = await temporaryDirectory(t);
   const { directory, databasePath } = temp;
   const first = openTaskStore({ directory });
@@ -227,10 +227,15 @@ test("a stored board's features are done only when every attached task is done",
     insertTask(database, REPOSITORY, backlog.id, { number: 2, feature_id: FEATURE, step: 2, state: "done", position: 1 });
   });
   const store = openStore(temp);
+  // No flag row: the derived rule is gone, so a feature whose tasks are all done is not done and still takes a task.
   assert.deepEqual(store.readBoard(REPOSITORY).features, [
-    { id: FEATURE, name: "Finished", done: true },
+    { id: FEATURE, name: "Finished", done: false },
     { id: empty, name: "Nothing yet", done: false },
   ]);
+  assert.equal(store.apply(REPOSITORY, "create", { text: "one more", featureId: FEATURE }).ok, true);
+  assert.equal(store.apply(REPOSITORY, "feature_update", { id: FEATURE, done: true }).ok, true);
+  assert.deepEqual(store.readBoard(REPOSITORY).features.map((feature) => feature.done), [true, false]);
+  assert.deepEqual(store.apply(REPOSITORY, "create", { text: "late", featureId: FEATURE }), { ok: false, error: "conflict" });
 });
 
 test("a row outside the contract makes the board unavailable instead of partly served", async (t) => {

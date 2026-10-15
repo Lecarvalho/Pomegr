@@ -20,12 +20,13 @@ const STORED: FeatureFormDraft = { name: STORED_NAME, description: STORED_DETAIL
 const COUNTS = featureCounts(BOARD_RUNNING, SAMPLE_FEATURE_ID);
 
 /** The Feature modal drawn as static chrome over its scrim, with live counters and a live primary. The real frame is a modal dialog. */
-function FeatureModalChrome({ mode, initial, failure, unread, board = BOARD_RUNNING, confirm = false }: {
-  mode: "new" | "edit"; initial: FeatureFormDraft; failure?: FeatureFailure; unread?: boolean; board?: typeof BOARD_RUNNING; confirm?: boolean;
+function FeatureModalChrome({ mode, initial, failure, unread, board = BOARD_RUNNING, confirm = false, done: storedDone = false }: {
+  mode: "new" | "edit"; initial: FeatureFormDraft; failure?: FeatureFailure; unread?: boolean; board?: typeof BOARD_RUNNING; confirm?: boolean; done?: boolean;
 }) {
   const titleId = useId();
   const [draft, setDraft] = useState(initial);
   const [confirming, setConfirming] = useState(confirm);
+  const [done, setDone] = useState(storedDone);
   const edit = mode === "edit";
   const valid = draft.name.trim() !== "" && !featureDescriptionOver(draft);
   const changed = Object.keys(featurePatch({ ...EMPTY_FEATURE_DRAFT, name: STORED_NAME }, draft, unread ? null : STORED_DETAILS)).length > 0;
@@ -34,7 +35,8 @@ function FeatureModalChrome({ mode, initial, failure, unread, board = BOARD_RUNN
       titleExtra={edit ? <span className="commandChip taskCardChip neutral">{COUNTS.done} of {COUNTS.total} done</span> : undefined}
       footer={edit
         ? <FeatureEditFooter confirming={confirming} deleting={false} busy={false} canSave={valid && changed} taskCount={featureCounts(board, SAMPLE_FEATURE_ID).total}
-          blockerId={featureBlocker(board.tasks, SAMPLE_FEATURE_ID)?.id ?? null} onAskDelete={() => setConfirming(true)} onKeep={() => setConfirming(false)} onDelete={noop} onSave={noop} />
+          blockerId={featureBlocker(board.tasks, SAMPLE_FEATURE_ID)?.id ?? null} done={done} onAskDelete={() => setConfirming(true)} onKeep={() => setConfirming(false)} onDelete={noop}
+          onToggleDone={() => setDone((current) => !current)} onSave={noop} />
         : <>
           <span className="taskModalSpacer" aria-hidden="true" />
           <button type="button" className="commandQuietAction" onClick={noop}>Cancel</button>
@@ -52,8 +54,11 @@ export function FeatureModalSamples() {
     <Sample label="Feature modal, new feature" note="The task modal's frame with a form of three fields: Title (required, 80 characters), Description (2,000) and App version (40, in the data font, optional). Title and Description each end with a helper and a live counter; past its bound the Description counter takes the error colour and the primary is disabled. Create feature stays disabled until the title holds text; type to see the counters and the primary change.">
       <FeatureModalChrome mode="new" initial={EMPTY_FEATURE_DRAFT} />
     </Sample>
-    <Sample label="Feature modal, feature, saved" note="Mode Feature holds the stored values as a local draft. The header carries the feature's progress chip. Save is the one primary and stays disabled until the draft differs. The folded Tasks list is the task modal's In this feature list, and a row opens that task. A Quiet Delete feature stands at the left of the footer.">
+    <Sample label="Feature modal, feature, saved" note="Mode Feature holds the stored values as a local draft. The header carries the feature's progress chip. Save is the one primary and stays disabled until the draft differs. The folded Tasks list is the task modal's In this feature list, and a row opens that task. A Quiet Delete feature stands at the left of the footer, and a Secondary Mark done stands before Save.">
       <FeatureModalChrome mode="edit" initial={STORED} />
+    </Sample>
+    <Sample label="Feature modal, feature, done" note="The owner marked the feature done: it takes no new task, and its open tasks stay where they are. Mark done reads Reopen, which takes the feature back. Either one stores the flag at once and keeps the modal open; click to see the label change.">
+      <FeatureModalChrome mode="edit" initial={STORED} done />
     </Sample>
     <Sample label="Feature modal, feature, changed" note="A draft that differs from the stored feature enables Save, which sends only what changed.">
       <FeatureModalChrome mode="edit" initial={{ ...STORED, name: `${STORED_NAME} and retries`, appVersion: "1.5.0" }} />
