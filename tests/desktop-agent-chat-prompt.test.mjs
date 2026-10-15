@@ -25,7 +25,7 @@ const PRIVATE_ROOT = "C:\\Users\\tester\\private-repo";
 
 function fullTask(overrides = {}) {
   return {
-    id: "T-1", text: "Write the plan", columnId: "col-b", state: "needs_review", featureId: "feat-1", group: "grp-0123456789ab",
+    id: "T-1", text: "Write the plan", columnId: "col-b", position: 2, state: "needs_review", featureId: "feat-1", group: "grp-0123456789ab",
     run: { provider: "claude", model: "claude-opus-4-1", effort: "high", remoteControl: true },
     completeWhen: { checks: ["pr_open", "bogus", "tree_clean"], own: "Changelog updated" },
     session: { id: "claude:abc-1", state: "ended", observedModel: "claude-opus-4-1[1m]", transcriptPath: `${PRIVATE_ROOT}\\t.jsonl` },
@@ -77,7 +77,7 @@ test("a task is mapped field by field, with names for its column and feature and
   assert.deepEqual(snapshot.columns, ["Backlog", "Ready"]);
   assert.deepEqual(snapshot.features, [{ name: "Auth", done: false }, { name: "Old", done: true }]);
   assert.deepEqual(snapshot.tasks, [{
-    id: "T-1", column: "Ready", state: "needs_review", feature: "Auth", group: "group A",
+    id: "T-1", column: "Ready", position: 2, state: "needs_review", feature: "Auth", group: "group A",
     provider: "claude", model: "claude-opus-4-1", effort: "high",
     complete_when: ["pr_open", "tree_clean"], own_condition: "Changelog updated",
     session: { ref: "claude:abc-1", state: "ended", observed_model: "claude-opus-4-1[1m]" },
@@ -85,6 +85,26 @@ test("a task is mapped field by field, with names for its column and feature and
     github_issue: 42, scheduled_at: "2026-10-03T08:00:00.000Z", updated_at: "2026-10-02T09:00:00.000Z",
     text: "Write the plan",
   }]);
+});
+
+test("each task carries its place in its column, the tasks stay in ID order, and a missing or invalid position is null", () => {
+  const tasks = [
+    fullTask({ id: "T-94", columnId: "col-a", position: 0 }), fullTask({ id: "T-3", columnId: "col-a", position: 1 }),
+    fullTask({ id: "T-101", columnId: "col-b", position: 0 }), fullTask({ id: "T-7", columnId: "col-b", position: 1 }),
+    fullTask({ id: "T-8", position: undefined }), fullTask({ id: "T-9", position: 1.5 }), fullTask({ id: "T-10", position: -1 }),
+    fullTask({ id: "T-11", position: "2" }), fullTask({ id: "T-12", position: null }),
+  ];
+  const snapshot = boardSnapshot(fullBoard({ tasks }), { now });
+  assert.deepEqual(snapshot.tasks.map((task) => [task.id, task.column, task.position]), [
+    ["T-3", "Backlog", 1], ["T-7", "Ready", 1], ["T-8", "Ready", null], ["T-9", "Ready", null], ["T-10", "Ready", null],
+    ["T-11", "Ready", null], ["T-12", "Ready", null], ["T-94", "Backlog", 0], ["T-101", "Ready", 0],
+  ]);
+});
+
+test("Aril reads a move position from the snapshot positions", () => {
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Read it from the "position" of each task in the snapshot/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /use T-n's position plus 1/u);
+  assert.doesNotMatch(AGENT_CHAT_INSTRUCTIONS, /one slot off/u);
 });
 
 test("groups read as short labels in the order of their lowest task number, and an unknown group ID is dropped", () => {
@@ -100,7 +120,7 @@ test("groups read as short labels in the order of their lowest task number, and 
 test("a task with no run, session, report, or source gets plain defaults and no optional keys", () => {
   const snapshot = boardSnapshot({ tasks: [{ id: "T-2", text: "Bare" }] }, { now });
   assert.deepEqual(snapshot.tasks, [{
-    id: "T-2", column: null, state: "", feature: null, provider: null, model: null, effort: null,
+    id: "T-2", column: null, position: null, state: "", feature: null, provider: null, model: null, effort: null,
     complete_when: [], own_condition: null, updated_at: "", text: "Bare",
   }]);
   assert.deepEqual(snapshot.queue, { status: "idle", order: [], blocked_by: null, start_threshold_percent: null, usage: { claude: null, codex: null } });
@@ -195,7 +215,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
     queue: { status: 5, order: "T-1", blockedBy: 7, gates: { threshold: "80", usage: { claude: 3, codex: [] } } },
     runModels: { codex: "gpt" },
     tasks: [{
-      id: "T-1", text: "ok", columnId: { x: 1 }, featureId: ["feat-2"], group: { x: 1 },
+      id: "T-1", text: "ok", columnId: { x: 1 }, position: "1", featureId: ["feat-2"], group: { x: 1 },
       run: { provider: "gemini", model: "--evil flag", effort: 3 }, completeWhen: { checks: "pr_open", own: 5 },
       session: { id: 9, state: null, observedModel: "../private model" }, report: { results: "none", blockReason: 5, attention: {} },
       source: { number: "42" }, scheduledAt: 20260101, updatedAt: null,
@@ -210,7 +230,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
   assert.deepEqual(snapshot.models, { claude: [], codex: [] });
   const [first, second] = snapshot.tasks;
   assert.deepEqual(first, {
-    id: "T-1", column: null, state: "", feature: null, provider: null, model: null, effort: null, complete_when: [], own_condition: null,
+    id: "T-1", column: null, position: null, state: "", feature: null, provider: null, model: null, effort: null, complete_when: [], own_condition: null,
     session: { ref: "", state: "", observed_model: null }, report: { results: [], block_reason: null, attention: null }, updated_at: "", text: "ok",
   });
   assert.equal(second.provider, null);

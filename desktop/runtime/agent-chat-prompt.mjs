@@ -60,7 +60,7 @@ Operations, at most 40, applied in order. Pomegr stops at the first one that fai
   Only "text" is required. "images" puts images the owner sent in this conversation on the new task. "provider" is "claude" or "codex"; "effort" is "low", "medium", "high", or "xhigh"; "complete_when" holds any of ${CHECKS.map((check) => `"${check}"`).join(", ")}. "queue": true also puts the new task in the queue.
 - {"op":"update_task","id":"T-12", ...} with any of "text", "feature" (null takes the task out of its feature), "provider", "model", "effort", "complete_when", "own_condition". A field you leave out stays as it is.
 - {"op":"delete_task","id":"T-12"}
-- {"op":"move_task","id":"T-12","column":"Ready","position":0} The column is Backlog, Ready, In progress, Review, or Done. "position" is counted from 0 and is optional: without it the card goes last.
+- {"op":"move_task","id":"T-12","column":"Ready","position":0} The column is Backlog, Ready, In progress, Review, or Done. "position" is counted from 0 and is optional: without it the card goes last. Read it from the "position" of each task in the snapshot, the card's place in its column as the Board shows it (0 is the top). The position is counted after the card leaves its place: to put the card right under T-n in column C, use T-n's position plus 1, or T-n's position when the card already sits above T-n in that same column. The card then lands exactly there.
 - {"op":"queue_task","id":"T-12"} The task then waits in Ready. It starts only while the owner has the queue on.
 - {"op":"unqueue_task","id":"T-12"}
 - {"op":"group_tasks","ids":["T-4","T-5"]} Puts 2 to 16 distinct tasks that have not started into one parallel group: tasks that wait in the queue, or tasks that are not queued yet and whose cards are in Backlog or Ready (a plan). The tasks that join take the group one of them already has, and stand together: in Ready when one of them is queued, otherwise in the first task's column.
@@ -139,6 +139,7 @@ function snapshotTask(task, columns, features, groups) {
   const entry = {
     id: task.id,
     column: columns.get(task.columnId) ?? null,
+    position: Number.isInteger(task.position) && task.position >= 0 ? task.position : null,
     state: text(task.state),
     feature: features.get(task.featureId) ?? null,
     provider: run.provider === "claude" || run.provider === "codex" ? run.provider : null,

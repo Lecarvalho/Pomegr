@@ -200,7 +200,8 @@ characters, in this order:
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the queue (status,
    order, blocker, start threshold, and the usage percentages of the start gates), the
-   models seen on the board and the Codex model list, and every task.
+   models seen on the board and the Codex model list, and every task with its column and
+   its position in that column.
 3. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
@@ -217,7 +218,8 @@ characters, in this order:
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
-A task in the snapshot holds its ID, column, state, feature title, parallel-group label, the IDs
+A task in the snapshot holds its ID, column, position in that column (`position`, counted
+from 0 in the order the Board shows, null when the stored value is not a whole number of 0 or more), state, feature title, parallel-group label, the IDs
 of the tasks it runs after (`runs_after`, absent when none), planned
 provider, model and effort, complete-when checks and own condition, the linked session's
 reference, state and observed model, the report's results (each one passed, failed, or
@@ -673,8 +675,8 @@ never a session's.
   name the proposal wrote, and fixed result words. It holds no task text beyond the
   snapshot's, no path, and no error text. That prompt holds the owner's messages, Aril's earlier
   answers, and the board snapshot: task text, own conditions, feature titles, block
-  reasons, attention lines, session references, model names, and the task IDs each task
-  runs after (task T-101). This is a deliberate
+  reasons, attention lines, session references, model names, the task IDs each task
+  runs after (task T-101), and each card's position in its column (task T-103). This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
   own session. The run can also read the repository's files and call the seven read
   tools, so file content and normalized session evidence can reach the provider in the
