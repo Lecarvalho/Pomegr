@@ -54,17 +54,20 @@ that session. No browser, LAN, or IPC route can request it.
 
 - The desktop main process asks the monitor worker over its private message channel for
   the session's owning process.
-- The monitor answers from its latest live inspection only, with a pid and a process start
-  identity. It answers null for a session that is not live, has no owner, or shares its
-  owner with another session.
-- The owner is kept in monitor memory only. It never enters a response, a log, a store, or
-  renderer IPC.
+- The monitor answers from its latest live inspection only, with a pid, a process start
+  identity, and at most two window titles. It answers null for a session that is not live,
+  has no owner, or shares its owner with another session.
+- The window titles are the titles the session's terminal may show. For Claude Code they
+  are the transcript's custom title and AI title, one line each, at most 512 characters.
+  Other providers send none.
+- The owner and its titles are kept in monitor memory only. They never enter a response, a
+  log, a store, or renderer IPC.
 
 **Helper:**
 
 - One fixed hidden Windows PowerShell helper runs with an argument array. It receives the
-  pid, the start identity, Pomegr's own pid, and the bounded notification title on stdin,
-  never on its command line.
+  pid, the start identity, Pomegr's own pid, and at most three titles (the monitor's
+  window titles and the notification title) on stdin, never on its command line.
 - The helper reads only the process list, the top-level window list and titles, and which
   `conhost.exe`, `OpenConsole.exe`, or `WindowsTerminal.exe` processes hold a handle to the
   session's process. It confirms the process start identity first.
@@ -75,7 +78,7 @@ that session. No browser, LAN, or IPC route can request it.
 
 - A window of a console host that holds a handle to the session's process.
 - Else, a window of a terminal that holds that handle. When the terminal has several
-  windows, only the one window whose title contains the session title qualifies.
+  windows, only the one window whose title contains one of the session's titles qualifies.
 - Else, a window of the session's nearest ancestor process that owns windows. The walk
   stops at Pomegr itself and at shell and service processes such as `explorer.exe` and
   `svchost.exe`.

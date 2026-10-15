@@ -32,7 +32,7 @@ onParentMessage((message) => {
     let owner = null;
     try { owner = handle?.sessionWindowOwner?.(message.sessionId) || null; } catch { owner = null; }
     send({ type: "session-window-owner-result", requestId: message.requestId,
-      owner: owner ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity } : null });
+      owner: owner ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity, windowTitles: owner.windowTitles || [] } : null });
   }
   if (message?.type === "claude-sign-in-completed") {
     void Promise.resolve(handle?.refreshUsageAfterClaudeSignIn?.())

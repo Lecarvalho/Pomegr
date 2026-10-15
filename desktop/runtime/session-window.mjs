@@ -12,7 +12,7 @@ const UNSAFE_TITLE = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
 // qualifies only when it belongs to that console or terminal, or to the session's nearest
 // ancestor that owns windows. More than one candidate is ambiguous and nothing is focused,
 // except that among the windows of a terminal that hosts the session, the one window whose
-// title contains the session title is chosen.
+// title contains one of the session's titles is chosen.
 const FOCUS_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
 try {
@@ -131,13 +131,15 @@ public static class PomegrSessionWindow {
     return windows;
   }
   // One terminal process can show many windows; only the one titled with this session may break the tie.
-  static List<IntPtr> Titled(List<IntPtr> windows, string title) {
+  static List<IntPtr> Titled(List<IntPtr> windows, string[] titles) {
     List<IntPtr> matches = new List<IntPtr>();
-    if (windows.Count < 2 || String.IsNullOrEmpty(title)) return windows;
+    if (windows.Count < 2 || titles == null || titles.Length == 0) return windows;
     foreach (IntPtr window in windows) {
-      System.Text.StringBuilder text = new System.Text.StringBuilder(512);
+      System.Text.StringBuilder text = new System.Text.StringBuilder(1024);
       GetWindowTextW(window, text, text.Capacity);
-      if (text.ToString().IndexOf(title, StringComparison.Ordinal) >= 0) matches.Add(window);
+      foreach (string title in titles) {
+        if (!String.IsNullOrEmpty(title) && text.ToString().IndexOf(title, StringComparison.Ordinal) >= 0) { matches.Add(window); break; }
+      }
     }
     return matches.Count == 1 ? matches : windows;
   }
@@ -147,7 +149,7 @@ public static class PomegrSessionWindow {
     if (IsIconic(window)) ShowWindow(window, 9);
     return SetForegroundWindow(window) ? "focused" : "refused";
   }
-  public static string Run(uint pid, long start, uint self, string title) {
+  public static string Run(uint pid, long start, uint self, string[] titles) {
     if (pid == 0 || start <= 0 || Started(pid) != start) return "missing";
     Dictionary<uint, ProcessEntry> processes = new Dictionary<uint, ProcessEntry>();
     IntPtr snapshot = CreateToolhelp32Snapshot(2, 0);
@@ -171,7 +173,7 @@ public static class PomegrSessionWindow {
     foreach (uint holder in Holders(pid, start, hosts)) (Array.IndexOf(Consoles, Name(processes, holder)) >= 0 ? consoles : terminals).Add(holder);
     // A classic console shows its own window; a terminal shows the console it hosts.
     List<IntPtr> windows = WindowsOf(owned, consoles);
-    if (windows.Count == 0) windows = Titled(WindowsOf(owned, terminals), title);
+    if (windows.Count == 0) windows = Titled(WindowsOf(owned, terminals), titles);
     if (windows.Count > 0) return Focus(windows);
     uint current = pid; long currentStart = start;
     for (int depth = 0; depth < MAX_DEPTH; depth++) {
@@ -188,7 +190,7 @@ public static class PomegrSessionWindow {
   }
 }
 '@ | Out-Null
-  [Console]::Out.Write([PomegrSessionWindow]::Run([uint32]$request.pid, [int64]$request.start, [uint32]$request.self, [string]$request.title))
+  [Console]::Out.Write([PomegrSessionWindow]::Run([uint32]$request.pid, [int64]$request.start, [uint32]$request.self, [string[]]@($request.titles)))
 } catch { [Console]::Out.Write('unavailable') }
 `;
 
@@ -196,19 +198,24 @@ function powershellPath(environment) {
   return path.join(environment.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
-/** The session title the helper may match a terminal window by, or "" when it is too short or unsafe. */
+/** A session title the helper may match a terminal window by, or "" when it is too short or unsafe. */
 export function sessionWindowTitle(value) {
   if (typeof value !== "string") return "";
   const title = value.replace(/\s+/gu, " ").trim();
-  return title.length >= 4 && title.length <= 96 && !UNSAFE_TITLE.test(title) ? title : "";
+  return title.length >= 4 && title.length <= 512 && !UNSAFE_TITLE.test(title) ? title : "";
+}
+
+/** At most three distinct safe titles, in the order given. */
+export function sessionWindowTitles(values) {
+  return [...new Set((Array.isArray(values) ? values : []).slice(0, 3).map(sessionWindowTitle).filter(Boolean))];
 }
 
 /** The helper's stdin request, or null: only a positive pid and a Windows process start time pass. */
-export function sessionWindowFocusRequest(owner, selfPid, title = "") {
+export function sessionWindowFocusRequest(owner, selfPid, titles = []) {
   if (!owner || !Number.isInteger(owner.pid) || owner.pid <= 0 || owner.pid > 0x7fffffff
     || typeof owner.processStartIdentity !== "string" || !PROCESS_START.test(owner.processStartIdentity)
     || !Number.isInteger(selfPid) || selfPid <= 0 || selfPid > 0x7fffffff) return null;
-  return { pid: owner.pid, start: owner.processStartIdentity, self: selfPid, title: sessionWindowTitle(title) };
+  return { pid: owner.pid, start: owner.processStartIdentity, self: selfPid, titles: sessionWindowTitles(titles) };
 }
 
 /**
@@ -217,7 +224,7 @@ export function sessionWindowFocusRequest(owner, selfPid, title = "") {
  */
 export function focusSessionWindow(owner, options = {}) {
   if ((options.platform || process.platform) !== "win32") return Promise.resolve("unavailable");
-  const request = sessionWindowFocusRequest(owner, options.selfPid ?? process.pid, options.title);
+  const request = sessionWindowFocusRequest(owner, options.selfPid ?? process.pid, options.titles);
   if (!request) return Promise.resolve("missing");
   const spawnFn = options.spawnFn || spawn;
   const timeoutMs = Math.min(SESSION_WINDOW_FOCUS_TIMEOUT_MS, Math.max(1, options.timeoutMs || SESSION_WINDOW_FOCUS_TIMEOUT_MS));

@@ -298,13 +298,14 @@ test("a running task published together with an idle transition is never shown a
 
 test("the desktop reads a live session's unique owning process only from the private inspection, never a response", async (context) => {
   const monitor = await startMonitor(context, { rows: [liveRow("owned"), liveRow("shared")], resourceTargets: [
-    { sessionId: "codex:owned", pid: 41, processStartIdentity: "134365685309874121" },
+    { sessionId: "codex:owned", pid: 41, processStartIdentity: "134365685309874121", windowTitles: ["Owned custom", "Owned AI"] },
     { sessionId: "codex:shared", status: "shared" },
   ] });
   assert.ok(await until(() => monitor.runtime.sessionWindowOwner("codex:owned")), "the inspection records the owner");
-  assert.deepEqual(monitor.runtime.sessionWindowOwner("codex:owned"), { pid: 41, processStartIdentity: "134365685309874121" });
+  assert.deepEqual(monitor.runtime.sessionWindowOwner("codex:owned"),
+    { pid: 41, processStartIdentity: "134365685309874121", windowTitles: ["Owned custom", "Owned AI"] });
   assert.equal(monitor.runtime.sessionWindowOwner("codex:shared"), null, "a shared owner is ambiguous");
   assert.equal(monitor.runtime.sessionWindowOwner("codex:unknown"), null);
   assert.equal(monitor.runtime.sessionWindowOwner(["codex:owned"]), null);
-  assert.doesNotMatch(JSON.stringify(monitor.runtime.serveCatalog()), /134365685309874121/);
+  assert.doesNotMatch(JSON.stringify(monitor.runtime.serveCatalog()), /134365685309874121|Owned AI/);
 });

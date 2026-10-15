@@ -154,11 +154,22 @@ export function createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState = 
     return value ? `${displayTitle(value)}\0${value.createdAt || ""}` : "";
   }
 
+  // Either title may be the one the terminal shows; both stay monitor-private.
+  function windowTitles(file, stat) {
+    const current = snapshot(stat);
+    const fallback = fallbacks.get(file);
+    const value = readCached(file, stat) || (sameSnapshot(fallback, current) ? fallback : null);
+    const titles = [value?.customTitle, value?.aiTitle]
+      .map((title) => typeof title === "string" ? title.replace(/[\s\u0000-\u001f\u007f]+/gu, " ").trim().slice(0, 512) : "");
+    return [...new Set(titles.filter(Boolean))];
+  }
+
   return {
     fast,
     exact,
     ensure,
     metadata,
+    windowTitles,
     activate() {
       enabled = true;
       generation += 1;

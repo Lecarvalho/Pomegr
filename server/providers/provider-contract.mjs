@@ -458,6 +458,8 @@ export const providerSessionReferenceSchema = z.object({
     pid: z.number().int().positive(),
     processStartIdentity: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.:+-]{0,79}$/),
   }).strict().nullable().optional(),
+  // Monitor-private titles the session's terminal window may show; only the desktop's window focus reads them.
+  windowTitles: z.array(evidenceOneLine(512)).max(2).optional(),
 }).strict();
 
 const providerUsageLimitSchema = z.object({

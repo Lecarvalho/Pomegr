@@ -215,7 +215,7 @@ function openNotificationTarget(target, session = null) {
     : mainWindow.loadURL(url).then(showShellWindow, showShellWindow);
   // Pomegr shows the session first; the session's own window then comes in front of it.
   if (session) void shown.then(() => requestSessionWindowOwner(monitorChild, session.id))
-    .then((owner) => owner && focusSessionWindow(owner, { title: session.title })).catch(() => {});
+    .then((owner) => owner && focusSessionWindow(owner, { titles: [...owner.windowTitles, session.title] })).catch(() => {});
 }
 
 function showNativeNotification(payload, onClick) {

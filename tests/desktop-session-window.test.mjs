@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import { requestSessionWindowOwner } from "../desktop/runtime/monitor-worker.mjs";
-import { focusSessionWindow, sessionWindowFocusRequest, sessionWindowTitle } from "../desktop/runtime/session-window.mjs";
+import { focusSessionWindow, sessionWindowFocusRequest, sessionWindowTitle, sessionWindowTitles } from "../desktop/runtime/session-window.mjs";
 
 const OWNER = Object.freeze({ pid: 50068, processStartIdentity: "134365685309874121" });
 
@@ -30,12 +30,14 @@ function fakeSpawn({ output = "focused", code = 0, hang = false } = {}) {
   return { spawnFn, calls };
 }
 
-test("the helper request carries only a validated pid, process start, Pomegr's own pid, and a safe title", () => {
-  assert.deepEqual(sessionWindowFocusRequest(OWNER, 1234, "  Fix  the\nbuild "),
-    { pid: 50068, start: "134365685309874121", self: 1234, title: "Fix the build" });
-  assert.equal(sessionWindowFocusRequest(OWNER, 1234).title, "");
+test("the helper request carries only a validated pid, process start, Pomegr's own pid, and safe titles", () => {
+  assert.deepEqual(sessionWindowFocusRequest(OWNER, 1234, ["  Fix  the\nbuild ", "Build fix routing", "Fix the build"]),
+    { pid: 50068, start: "134365685309874121", self: 1234, titles: ["Fix the build", "Build fix routing"] });
+  assert.deepEqual(sessionWindowFocusRequest(OWNER, 1234).titles, []);
+  assert.deepEqual(sessionWindowTitles(["One title", "Two title", "Three title", "Four title"]), ["One title", "Two title", "Three title"]);
+  assert.deepEqual(sessionWindowTitles("One title"), []);
   assert.equal(sessionWindowTitle("abc"), "", "too short to tell windows apart");
-  assert.equal(sessionWindowTitle("x".repeat(97)), "");
+  assert.equal(sessionWindowTitle("x".repeat(513)), "");
   assert.equal(sessionWindowTitle("Fix ‮build"), "");
   assert.equal(sessionWindowTitle(["Fix the build"]), "");
   for (const owner of [null, { ...OWNER, pid: 0 }, { ...OWNER, pid: 1.5 }, { ...OWNER, pid: 2 ** 31 },
@@ -48,7 +50,7 @@ test("the helper request carries only a validated pid, process start, Pomegr's o
 
 test("focus runs one fixed hidden helper and passes the identity only on stdin", async () => {
   const helper = fakeSpawn();
-  const outcome = await focusSessionWindow(OWNER, { platform: "win32", selfPid: 77, title: "Fix the build", spawnFn: helper.spawnFn, env: { SystemRoot: "C:\\Windows" } });
+  const outcome = await focusSessionWindow(OWNER, { platform: "win32", selfPid: 77, titles: ["Fix the build"], spawnFn: helper.spawnFn, env: { SystemRoot: "C:\\Windows" } });
   assert.equal(outcome, "focused");
   assert.equal(helper.calls.length, 1);
   const [call] = helper.calls;
@@ -57,7 +59,7 @@ test("focus runs one fixed hidden helper and passes the identity only on stdin",
   assert.doesNotMatch(call.args.join(" "), /50068|134365685309874121|Fix the build/);
   assert.equal(call.options.shell, false);
   assert.equal(call.options.windowsHide, true);
-  assert.deepEqual(call.input, { pid: 50068, start: "134365685309874121", self: 77, title: "Fix the build" });
+  assert.deepEqual(call.input, { pid: 50068, start: "134365685309874121", self: 77, titles: ["Fix the build"] });
   // The helper reads windows and handles and focuses one window; it never sends input or attaches.
   assert.doesNotMatch(call.args[3], /SendInput|keybd_event|PostMessage|SendMessage|AttachConsole|AttachThreadInput|WriteConsoleInput/);
 });
@@ -89,8 +91,8 @@ test("the owner request answers only its own reply and releases every listener",
   assert.equal(sent[0].type, "session-window-owner");
   assert.equal(sent[0].sessionId, "claude:session-a");
   child.emit("message", { type: "session-window-owner-result", requestId: sent[0].requestId + 1, owner: { pid: 9, processStartIdentity: "1" } });
-  child.emit("message", { type: "session-window-owner-result", requestId: sent[0].requestId, owner: { ...OWNER, extra: "PRIVATE" } });
-  assert.deepEqual(await pending, { pid: 50068, processStartIdentity: "134365685309874121" });
+  child.emit("message", { type: "session-window-owner-result", requestId: sent[0].requestId, owner: { ...OWNER, extra: "PRIVATE", windowTitles: 7 } });
+  assert.deepEqual(await pending, { pid: 50068, processStartIdentity: "134365685309874121", windowTitles: [] });
   assert.equal(child.listenerCount("message"), 0);
   assert.equal(child.listenerCount("exit"), 0);
   assert.equal(child.listenerCount("error"), 0);
@@ -98,6 +100,10 @@ test("the owner request answers only its own reply and releases every listener",
   const invalid = requestSessionWindowOwner(child, "claude:session-b");
   child.emit("message", { type: "session-window-owner-result", requestId: sent[1].requestId, owner: { pid: -1, processStartIdentity: "1" } });
   assert.equal(await invalid, null);
+  const titled = requestSessionWindowOwner(child, "claude:session-t");
+  child.emit("message", { type: "session-window-owner-result", requestId: sent[2].requestId,
+    owner: { ...OWNER, windowTitles: ["Custom title", 9, "AI title", "Third title"] } });
+  assert.deepEqual((await titled).windowTitles, ["Custom title", "AI title"]);
   const exited = requestSessionWindowOwner(child, "claude:session-c");
   child.emit("exit", 1);
   assert.equal(await exited, null);

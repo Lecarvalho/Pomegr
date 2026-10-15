@@ -272,7 +272,8 @@ export function createObservationRuntime(options = {}) {
         const resourceTargets = inspected.resourceTargets || [];
         sessionWindowOwners = new Map(resourceTargets.filter((target) => Number.isInteger(target.pid) && target.pid > 0
           && typeof target.processStartIdentity === "string").map((target) => [target.sessionId,
-          Object.freeze({ pid: target.pid, processStartIdentity: target.processStartIdentity })]));
+          Object.freeze({ pid: target.pid, processStartIdentity: target.processStartIdentity,
+            windowTitles: Object.freeze(Array.isArray(target.windowTitles) ? [...target.windowTitles] : []) })]));
         await resourceHistory.sampleAndSchedule(resourceTargets);
         for (const target of resourceTargets) observationCoordinator.refreshProjection(target.sessionId);
       })

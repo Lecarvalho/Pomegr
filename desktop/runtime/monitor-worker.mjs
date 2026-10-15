@@ -53,7 +53,9 @@ export function requestSessionWindowOwner(child, sessionId, timeoutMs = 2_000) {
       if (message?.type !== "session-window-owner-result" || message.requestId !== requestId) return;
       const owner = message.owner;
       finish(owner && Number.isInteger(owner.pid) && owner.pid > 0 && typeof owner.processStartIdentity === "string"
-        ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity } : null);
+        ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity,
+          windowTitles: (Array.isArray(owner.windowTitles) ? owner.windowTitles : []).filter((title) => typeof title === "string").slice(0, 2) }
+        : null);
     };
     const timer = setTimeout(unavailable, timeoutMs);
     child.on("message", onMessage);

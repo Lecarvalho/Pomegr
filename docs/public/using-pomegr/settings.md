@@ -100,7 +100,7 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   Pomegr window forward and opens that session. Pomegr then brings the window
   where the session runs to the front, but only when it can tell which window
   that is: a console window, a single-window app, or the one Windows Terminal
-  window whose title holds the session's title. When it can't tell, it brings
+  window whose title holds one of the session's titles. When it can't tell, it brings
   no other window forward. **Desktop notifications** and
   **Needs input** are on by default. Turn either off, or pause delivery with
   **Quiet for one hour**, under **Settings → Notifications**;
