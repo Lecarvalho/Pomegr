@@ -181,6 +181,28 @@ describe("callouts", () => {
   });
 });
 
+describe("demos", () => {
+  it("renders the tasks board demo where its block is placed", () => {
+    const html = render([paragraph(text("Before.")), { type: "demo", name: "tasks-board" }]);
+    expect(html).toContain("Demo board · sample tasks");
+    expect(html).toContain("not the Pomegr app");
+    expect(html.indexOf("Before.")).toBeLessThan(html.indexOf("Demo board"));
+  });
+
+  it("renders no demo without its block", () => {
+    expect(render([paragraph(text("Only text."))])).not.toContain("Demo board");
+  });
+
+  it("drops an unknown demo name (and fails loudly when strict)", () => {
+    const emptyMarkup = render([]);
+    for (const name of ["sessions-list", "constructor", "__proto__"]) {
+      const block = unknownBlock({ type: "demo", name });
+      expect(render([block], false)).toBe(emptyMarkup);
+      expect(() => render([block])).toThrow(/demo/);
+    }
+  });
+});
+
 describe("links", () => {
   it("renders docs routes and in-page anchors as ordinary same-tab links", () => {
     const html = render([paragraph(link("/docs/concepts/cache-reuse", false), link("/docs/get-started/install#step-one", false), link("#local-anchor", false))]);

@@ -228,6 +228,12 @@ describe("layout", () => {
     for (const page of pages) for (const heading of page.headings) expect(layoutIds.has(heading.id), `${page.route}#${heading.id}`).toBe(false);
     expect([...layoutIds]).toEqual(expect.arrayContaining(["docs-content", "docs-nav-panel", "docs-outline-label", "docs-nav-group-get-started"]));
   });
+
+  it("renders the tasks board demo on the Tasks guide and on no other page", async () => {
+    const withDemo: string[] = [];
+    for (const page of pages) if ((await pageMarkup(page)).includes("Demo board · sample tasks")) withDemo.push(page.route);
+    expect(withDemo).toEqual(["/docs/using-pomegr/tasks"]);
+  });
 });
 
 describe("sidebar", () => {
