@@ -597,7 +597,7 @@
 
 /* Under a fine pointer the image dims to a gray hint, and the pointer reveals it in color through
    this canvas (PixelGlow). Before its entrance the reveal rule's opacity and blur still win. */
-.close[data-pointer-reveal] .bite { opacity: .3; filter: grayscale(1); }
+.close[data-pointer-reveal] .bite { opacity: .16; filter: grayscale(1); }
 
 /* The reveal carries the image's own top and bottom fade. */
 .pixelGlow {
