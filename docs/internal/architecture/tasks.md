@@ -1538,10 +1538,24 @@ supplies.
   `<issuedAtMs>.<base64url HMAC-SHA256>` over the tool name, the session reference, and the
   issue time, keyed by the local agent-query capability token
   (`plugin-src/task-binding-proof.mjs`, shared by hook and server). The hook code is
-  `bindClaudeQueryWrite` (async; it signs, or denies the call with a fixed text when it
-  has no token or no session) and `bindClaudeQuerySession` (reads only, synchronous, and
-  never binds a write tool). The token appears nowhere in the hook's output except as that
-  key.
+  `bindClaudeQueryWrite` (async; it signs the call or denies it) and
+  `bindClaudeQuerySession` (reads only, synchronous, and never binds a write tool). The
+  token appears nowhere in the hook's output except as that key.
+  - The hook denies a write for one of three causes, each with its own fixed sentence for
+    each tool, in the tool's outcome words ("so nothing was reported" for a report):
+    - The input holds a field the tool does not take. The sentence names the tool's
+      fields and tells the agent to retry once with only those. For `complete_task` it
+      adds that a plain completion takes no field.
+    - The transcript path gives no session ID. The sentence says that Pomegr found no
+      session for the call, and tells the agent not to retry and to tell the user.
+    - The hook can make no proof, such as when no token is readable. The sentence says
+      that Pomegr could not sign the call and may not be running, and tells the agent not
+      to retry and to tell the user.
+  - The owner decided on 2026-10-15 (T-122) that the second and third causes get
+    separate sentences, because each needs a different fix. A sentence is a constant: it
+    never holds an input value, an offending key, an error message, a path, or the token,
+    and the proof failure itself is never explained. Before plugin 0.9.10 the hook gave
+    all three causes one sentence, which agents read as a broken Pomegr.
   - The Claude MCP server (`plugins/claude-code/mcp/server.mjs`) accepts a `session_ref`
     only when it has the `claude:<uuid>` shape and its proof verifies against the token read
     from the descriptor at call time: well-formed, issued at most 10 minutes ago (and at

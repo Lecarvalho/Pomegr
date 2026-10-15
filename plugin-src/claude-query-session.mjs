@@ -23,20 +23,27 @@ const WRITE_FIELDS = {
   update_feature: ["feature", "title", "description", "app_version"],
   delete_feature: ["feature"],
 };
-const FEATURE_DENIED = "Pomegr could not bind this call to the current session, so no feature was read or changed.";
-const WRITE_DENIED = {
-  add_task: "Pomegr could not bind this task to the current session, so it was not added.",
-  update_task: "Pomegr could not bind this call to the current session, so no task was changed.",
-  remove_task: "Pomegr could not bind this call to the current session, so no task was removed.",
-  assign_task: "Pomegr could not bind this call to the current session, so no task was assigned.",
-  unassign_task: "Pomegr could not bind this call to the current session, so no task was unassigned.",
-  complete_task: "Pomegr could not bind this report to the current session, so nothing was reported.",
-  block_task: "Pomegr could not bind this report to the current session, so nothing was reported.",
-  get_feature: FEATURE_DENIED,
-  create_feature: FEATURE_DENIED,
-  update_feature: FEATURE_DENIED,
-  delete_feature: FEATURE_DENIED,
+const FEATURE_OUTCOME = "so no feature was read or changed";
+const WRITE_OUTCOME = {
+  add_task: "so no task was added",
+  update_task: "so no task was changed",
+  remove_task: "so no task was removed",
+  assign_task: "so no task was assigned",
+  unassign_task: "so no task was unassigned",
+  complete_task: "so nothing was reported",
+  block_task: "so nothing was reported",
+  get_feature: FEATURE_OUTCOME,
+  create_feature: FEATURE_OUTCOME,
+  update_feature: FEATURE_OUTCOME,
+  delete_feature: FEATURE_OUTCOME,
 };
+const FIELD_HINT = { complete_task: " A plain completion takes no field." };
+// One fixed sentence per tool and cause; none carries input, an error, a path, or the token.
+const WRITE_DENIED = Object.fromEntries(Object.entries(WRITE_OUTCOME).map(([name, outcome]) => [name, {
+  field: `${name} takes only these fields: ${WRITE_FIELDS[name].join(", ")}. This call held another field, ${outcome}.${FIELD_HINT[name] ?? ""} Retry once with only those fields.`,
+  session: `Pomegr found no Claude Code session for this call, ${outcome}. Do not retry; tell the user.`,
+  proof: `Pomegr could not sign this call for the current session, ${outcome}. Pomegr may not be running; do not retry, tell the user.`,
+}]));
 // A read of the session's own board: bound and signed like a write, and approved like the session's own context read.
 const WRITE_SELF_GRANTED = "get_feature";
 const SELF_GRANTED = "get_agent_context";
@@ -74,20 +81,20 @@ export async function bindClaudeQueryWrite(payload, { readToken = defaultReadTok
   const match = typeof payload.tool_name === "string" ? WRITE_TOOL.exec(payload.tool_name) : null;
   if (!match) return null;
   const name = match[1];
-  const deny = { hookSpecificOutput: {
-    hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: WRITE_DENIED[name],
-  } };
+  const deny = (cause) => ({ hookSpecificOutput: {
+    hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: WRITE_DENIED[name][cause],
+  } });
   const input = payload.tool_input;
   if (!input || typeof input !== "object" || Array.isArray(input)
-    || Object.keys(input).some((key) => !WRITE_FIELDS[name].includes(key))) return deny;
+    || Object.keys(input).some((key) => !WRITE_FIELDS[name].includes(key))) return deny("field");
   const id = currentSessionId(payload.transcript_path);
-  if (!id) return deny;
+  if (!id) return deny("session");
   const sessionRef = `claude:${id}`;
   let proof = null;
   try {
     proof = createTaskBindingProof({ token: await readToken(), tool: name, sessionRef, now: now() });
   } catch { /* No proof is a denial; never echo why. */ }
-  if (!proof) return deny;
+  if (!proof) return deny("proof");
   return { hookSpecificOutput: {
     hookEventName: "PreToolUse",
     ...(name === WRITE_SELF_GRANTED ? { permissionDecision: "allow" } : {}),

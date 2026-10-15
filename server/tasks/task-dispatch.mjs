@@ -68,7 +68,7 @@ export function buildTaskPrompt(task, images = [], feature = null) {
     "Complete when:",
     ...(conditions.length > 0 ? conditions : ["- No condition is checked: your report alone completes the task."]),
     ...issueLine(task),
-    "When the task is complete, call the Pomegr MCP tool complete_task. It puts the task in Review for the owner. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason.",
+    "When the task is complete, call the Pomegr MCP tool complete_task. It puts the task in Review for the owner. It takes two optional fields: attention, one line for what needs the owner's attention, and task_id, only when you have more than one task. A finished task with nothing to flag is reported with no field. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason.",
   ].join("\n");
 }
 
