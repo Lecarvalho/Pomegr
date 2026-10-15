@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { ArilChat } from "./ArilChat";
 import { DotGlow } from "./DotGlow";
+import { PixelGlow } from "./PixelGlow";
 import { PomegranateSplit } from "./PomegranateSplit";
 import { ScrollReveal } from "./ScrollReveal";
 import { SiteFooter } from "./SiteFooter";
@@ -88,7 +89,8 @@ export function LandingPage() {
           </Figure>
         </section>
 
-        <div className={styles.close} aria-hidden="true">
+        <div className={styles.close} id="closing-image" aria-hidden="true">
+          <PixelGlow rootId="closing-image" />
           <img data-reveal className={styles.bite} src="/landing/home/pomegranate-bite.png" alt="" width="1200" height="800" />
         </div>
 

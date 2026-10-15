@@ -6,7 +6,7 @@
 > the application tokens and the Pomegr red brand mark; this page owns what the landing does with
 > them.
 > Related code and checks: `landing/app/components/` (`LandingPage`, `SiteHeader`, `SiteFooter`,
-> `PomegrBrand`, `SessionGraph`, `ArilChat`, `PomegranateSplit`, `DotGlow`, `ScrollReveal`),
+> `PomegrBrand`, `SessionGraph`, `ArilChat`, `PomegranateSplit`, `DotGlow`, `PixelGlow`, `ScrollReveal`),
 > `landing/app/download/`, the docs styles in `landing/app/docs/` (`docs.module.css`,
 > `markdown.module.css`, `search.module.css`, `demos/tasks-board-demo.module.css`), the images in
 > `landing/public/landing/home/` and `landing/public/landing/download/`, `landing/app/globals.css`,
@@ -75,6 +75,7 @@ The landing is an isolated package, so it copies these values instead of importi
 - Under a fine pointer, each dot the cursor crosses turns Signal red and fades out over 1.1 seconds, still inside the same fade (`DotGlow`). Only crossed dots light, never a radius around the cursor.
 - A pomegranate broken in two halves sits behind the hero on the right (`pomegranate-halves.png`).
 - A person biting into a pomegranate (`pomegranate-bite.png`) sits right below the last figure, with no caption. Its sides and bottom dissolve into the dither. Its top starts almost invisible right under the figure and gains opacity through a gradient mask, reaching full strength at 68% of its height, as if it had always been in the background. It holds full strength to 74%, then fades out the same way, clear at its bottom edge, before the footer.
+- Under a fine pointer, the dither pixels the cursor crosses on the closing image light up in its three reds and fade out over 1.1 seconds (`PixelGlow`). Each lit square is one dither pixel, on the image's own grid (1/300 of its width). The crossed pixel always lights, and its neighbours within three pixels light more rarely the farther they are. The trail carries the image's top and bottom fade, so it is faint near the figure and the footer.
 - Half a pomegranate (`download/pomegranate-half.png`) rises from under the lower right corner of the Download sheet. It fades in from the top and out before the footer.
 - The home images are generated photographs; the Download image is the generated ink sketch the earlier About page used. All are converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.
 - The images render with pixelated scaling, so each dither pixel stays a visible square.
@@ -170,4 +171,4 @@ The docs read on the same sheet: Canvas ground, film grain, and the two guides a
 - On a phone the hero pomegranate sits behind the title at 35% opacity.
 - The closing image slides down 24px from under the figure and sharpens from an 8px blur as it scrolls into view.
 - On load, fig. 1 is revealed from left to right while it fades in, over 2.8 seconds after a 0.3 second pause.
-- Reduced motion turns off every entrance, pulse, and the scrolling curve, which then stands still.
+- Reduced motion turns off every entrance, pulse, and pointer trail, and the scrolling curve, which then stands still.
