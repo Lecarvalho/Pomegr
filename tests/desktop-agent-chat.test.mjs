@@ -111,15 +111,18 @@ test("a request that is valid in shape is unavailable without a monitor origin, 
   assert.equal(h.calls.length, 0);
 });
 
-test("send reads the board and the root with the desktop header, stores the owner's message, and starts the turn", async (context) => {
+test("send reads the board, the root, and the observed runs with the desktop header, stores the owner's message, and starts the turn", async (context) => {
   const h = await chatHarness(context, { turnTimeoutMs: 4321 });
+  h.state.agents = { runs: [{ source: "Claude Code", model: "claude-opus-5-5", prompt: "private run text" }, { source: "Codex", model: "gpt-9" }] };
   const answer = await send(h, { text: "  Plan the next sprint\nsecond line  ", model: "claude-opus-4-1" });
   assert.equal(answer.ok, true);
   assert.deepEqual(Object.keys(answer), ["ok", "conversationId"]);
   assert.match(answer.conversationId, CHAT_ID);
 
-  assert.equal(h.calls.length, 2);
-  const [board, rootCall] = h.calls;
+  assert.equal(h.calls.length, 3);
+  const [board, rootCall, agents] = h.calls;
+  assert.equal(agents.url, `${origin}/api/agents?project=all&days=90&scope=all`);
+  assert.equal(agents.init.method, "GET");
   assert.equal(board.url, `${origin}/api/tasks?repositoryId=${repositoryId}`);
   assert.equal(board.init.method, "GET");
   assert.equal(rootCall.url, `${origin}/internal/tasks/worktree-root`);
@@ -156,6 +159,8 @@ test("send reads the board and the root with the desktop header, stores the owne
   assert.match(options.prompt, /<conversation>\n\(This is the first message\.\)\n<\/conversation>/u);
   assert.ok(options.prompt.includes("Existing task one"), "the board is in the prompt");
   assert.ok(options.prompt.includes('"repository":"private-repo"'));
+  assert.ok(options.prompt.includes('"claude":["claude-opus-5-5"'), "the form's Claude models are in the snapshot");
+  assert.equal(options.prompt.includes("private run text"), false, "only the model of a run reaches the prompt");
 });
 
 test("the turn gets the owner's session environment without the app's own tokens and runtime variables", async (context) => {

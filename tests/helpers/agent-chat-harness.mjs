@@ -70,7 +70,7 @@ export function fakeRuns() {
 }
 
 /**
- * `state` is the fake monitor: `board` answers GET /api/tasks, `rootAnswer` answers worktree-root, `actions(action,
+ * `state` is the fake monitor: `board` answers GET /api/tasks, `agents` answers GET /api/agents, `rootAnswer` answers worktree-root, `actions(action,
  * payload)` answers every other task action, `gate` (a promise) holds the board read, and `fetchError` makes every
  * request throw. `calls` records each request, except a run's declaration and withdrawal, which `declarations` records
  * as `{ action, sessionId, call }`; `declarationError` makes those throw.
@@ -79,7 +79,7 @@ export async function chatHarness(context, overrides = {}) {
   const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pomegr-agent-chat-"));
   context.after(() => fs.rm(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   const directory = path.join(dataRoot, AGENT_CHAT_DIRECTORY);
-  const state = { board: readyBoard(), rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), imageAdd: (call) => ({ ok: true, imageId: call.query.imageId }), gate: null, fetchError: null, calls: [], declarations: [], declarationError: null };
+  const state = { board: readyBoard(), agents: { runs: [] }, rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), imageAdd: (call) => ({ ok: true, imageId: call.query.imageId }), gate: null, fetchError: null, calls: [], declarations: [], declarationError: null };
   const { viaDataRoot = false, files = [claudeExecutable, codexExecutable, mcpScript], ...rest } = overrides;
   let tick = 0;
   const now = () => new Date(Date.parse(stamp) + (tick += 1000));
@@ -102,6 +102,7 @@ export async function chatHarness(context, overrides = {}) {
       if (state.gate) await state.gate;
       return json(state.board);
     }
+    if (init.method === "GET" && parsed.pathname === "/api/agents") return json(state.agents);
     if (parsed.pathname === "/internal/tasks/worktree-root") return json(state.rootAnswer);
     // The monitor's image route: `state.imageAdd(call)` answers it, and by default takes every image.
     if (parsed.pathname === "/internal/tasks/image-add") return json(await state.imageAdd(call));

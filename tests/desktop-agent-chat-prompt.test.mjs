@@ -136,7 +136,7 @@ test("the queue, the usage gate, and the model lists are read from the board", (
   });
 });
 
-test("models.claude holds the planned and observed models sorted; models.codex adds the models Codex offers", () => {
+test("each model list holds the task form's selectable models first, then the planned and observed models of the board", () => {
   const board = fullBoard({
     tasks: [
       fullTask({ id: "T-1" }),
@@ -145,11 +145,71 @@ test("models.claude holds the planned and observed models sorted; models.codex a
       fullTask({ id: "T-4", run: { provider: "claude", model: "claude-opus-4-1" }, session: undefined }),
     ],
   });
-  const { models } = boardSnapshot(board, { now });
-  assert.deepEqual(models.claude, ["claude-haiku", "claude-opus-4-1", "claude-opus-4-1[1m]"]);
-  assert.deepEqual(models.codex, ["gpt-6-sol", "gpt-6-sol-2", "gpt-7"]);
-  const many = { tasks: Array.from({ length: 40 }, (_, index) => ({ id: `T-${index + 1}`, text: "x", run: { provider: "claude", model: `model-${String(index).padStart(2, "0")}` } })) };
-  assert.equal(boardSnapshot(many, { now }).models.claude.length, 32);
+  const runs = [
+    { source: "Claude Code", model: "claude-sonnet-5-5" }, { source: "Claude Code", model: "claude-sonnet-5-4" },
+    { source: "Claude Code", model: "claude-opus-5-5" }, { source: "Claude Code", model: "claude-opus-4-1" },
+    { source: "Codex", model: "gpt-9" }, { source: "Claude Code", model: "../x" }, { source: "Claude Code", model: null }, null,
+  ];
+  const { models } = boardSnapshot(board, { now, runs });
+  // The Claude list is the form's: the newest observed model of each family; then the board's own models, sorted.
+  assert.deepEqual(models.claude, ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku", "claude-opus-4-1", "claude-opus-4-1[1m]"]);
+  // The Codex list is the committed catalog in its order; then the board's own models.
+  assert.deepEqual(models.codex, ["gpt-6-sol", "gpt-7", "gpt-6-sol-2"]);
+  // Without observed runs, Claude keeps the board's models.
+  assert.deepEqual(boardSnapshot(board, { now }).models.claude, ["claude-haiku", "claude-opus-4-1", "claude-opus-4-1[1m]"]);
+});
+
+test("a board whose tasks used one Claude model still lists every selectable Claude and Codex model", () => {
+  const tasks = [1, 2, 3].map((number) => fullTask({ id: `T-${number}`, run: { provider: "claude", model: "claude-sonnet-5-5", effort: "medium" }, session: null }));
+  const runs = [{ source: "Claude Code", model: "claude-sonnet-5-5" }, { source: "Claude Code", model: "claude-opus-5-5" }, { source: "Claude Code", model: "claude-haiku-5-5" }];
+  const runModels = { codex: [{ id: "gpt-6-sol", label: "Sol" }, { id: "gpt-6-terra", label: null }, { id: "gpt-6-luna", label: null }] };
+  const { models } = boardSnapshot(fullBoard({ tasks, runModels }), { now, runs });
+  assert.deepEqual(models, { claude: ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"], codex: ["gpt-6-sol", "gpt-6-terra", "gpt-6-luna"] });
+});
+
+test("a whole Codex catalog of 64 rows fits, and each list stops at 64 with the catalog first", () => {
+  const catalog = Array.from({ length: 64 }, (_, index) => ({ id: `gpt-cat-${String(index).padStart(2, "0")}` }));
+  const tasks = Array.from({ length: 40 }, (_, index) => ({ id: `T-${index + 1}`, text: "x", run: { provider: "codex", model: `board-${String(index).padStart(2, "0")}` } }));
+  const { models } = boardSnapshot({ runModels: { codex: catalog }, tasks }, { now });
+  assert.deepEqual(models.codex, catalog.map((row) => row.id));
+  const many = { tasks: Array.from({ length: 70 }, (_, index) => ({ id: `T-${index + 1}`, text: "x", run: { provider: "claude", model: `model-${String(index).padStart(2, "0")}` } })) };
+  assert.equal(boardSnapshot(many, { now }).models.claude.length, 64);
+});
+
+test("a hostile board or run list adds no unknown field and no invalid model to the model lists", () => {
+  const board = fullBoard({ runModels: { codex: [{ id: "gpt-6-sol", label: "Sol", entitlement: "pro", path: PRIVATE_ROOT }, { id: "C:/x" }, { id: 7 }, "gpt-8"] } });
+  const runs = [{ source: "Claude Code", model: "claude-opus-5-5", transcriptPath: PRIVATE_ROOT, prompt: "secret" }, { source: "Claude Code", model: "<b>x</b>" }, "claude-x", 3];
+  const { models } = boardSnapshot(board, { now, runs });
+  assert.deepEqual(Object.keys(models), ["claude", "codex"]);
+  assert.deepEqual(models.claude, ["claude-opus-5-5", "claude-opus-4-1", "claude-opus-4-1[1m]"]);
+  assert.deepEqual(models.codex, ["gpt-6-sol"]);
+  const text = JSON.stringify(boardSnapshot(board, { now, runs: "nope" }));
+  assert.doesNotMatch(text, /entitlement|private-repo|secret|transcriptPath/u);
+  assert.doesNotMatch(JSON.stringify(models), /Sol"|entitlement|private-repo|secret/u);
+});
+
+test("a prompt carries the runs it is given into the snapshot's Claude list", () => {
+  const prompt = composePrompt({ board: fullBoard(), repositoryName: "pomegr", runs: [{ source: "Claude Code", model: "claude-opus-5-5" }], message: "Hi", now });
+  const lines = prompt.split(/\r?\n/u);
+  const snapshot = JSON.parse(lines[lines.indexOf("<board_snapshot>") + 1]);
+  assert.ok(snapshot.models.claude.includes("claude-opus-5-5"));
+});
+
+test("the instructions choose provider, model and effort per task and never copy them from the newest task", () => {
+  assert.doesNotMatch(AGENT_CHAT_INSTRUCTIONS, /copy them from the newest task/u);
+  assert.doesNotMatch(AGENT_CHAT_INSTRUCTIONS, /On an empty board use "claude", "medium"/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Choose the provider, model and effort of each task on its own\. Never copy them from another task only because it is the newest one on the board\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /a small fix in a located part of the interface, a trace across several layers, a design or a prototype, a change to instructions, or a probe that writes no code/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /never count it as a failed check/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /"queue\.usage" and the start threshold in "queue\.start_threshold_percent"/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Both providers are candidates for every task/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /For each task you propose, say in one line why you chose its model and effort\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /When the owner states a provider, a model, or an effort, that preference wins\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /When the record cannot tell, say so plainly and give a reasoned default\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /you may copy it from the newest task of the same kind on the board/u);
+  // One rule for the model list, now the whole selectable catalog.
+  assert.equal(AGENT_CHAT_INSTRUCTIONS.match(/Recommend only a model listed under "models"/gu).length, 1);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Each list holds every model the task form offers for that provider/u);
 });
 
 test("usage percentages are kept only as integers from 0 to 100", () => {

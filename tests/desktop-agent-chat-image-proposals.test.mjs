@@ -195,7 +195,7 @@ test("apply of a create with images posts create, then one image request per ima
   // The two requests after the apply are the reads of the follow-up Pomegr then asks of Aril.
   await h.followUp();
   const made = h.calls.slice(before);
-  assert.deepEqual(made.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/create", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/queue_add", "/api/tasks", "/internal/tasks/worktree-root"]);
+  assert.deepEqual(made.map((call) => call.pathname), ["/api/tasks", "/internal/tasks/create", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/image-add", "/internal/tasks/queue_add", "/api/tasks", "/internal/tasks/worktree-root", "/api/agents"]);
   const sentBytes = [pngBytes(1), jpegBytes(2), gifBytes(3)];
   setup.images.forEach((image, index) => {
     const call = made[2 + index];

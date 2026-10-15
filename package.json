@@ -198,6 +198,7 @@
       "shared/usage-notification.mjs",
       "shared/release-notification.mjs",
       "shared/model-notification.mjs",
+      "shared/task-run-models.mjs",
       "server/web/server.mjs",
       "dist/**/*",
       "LICENSE",

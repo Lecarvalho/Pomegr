@@ -104,7 +104,7 @@ test("applying on the desktop sends the canonical queue action once, with the de
   assert.equal(call.init.method, "POST");
   assert.equal(call.init.headers[DESKTOP_AUTH_HEADER], token);
   await h.followUp();
-  assert.deepEqual(h.calls.slice(1).map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root"], "no start plan and no other task action: only the reads of the follow-up come after");
+  assert.deepEqual(h.calls.slice(1).map((call) => call.pathname), ["/api/tasks", "/internal/tasks/worktree-root", "/api/agents"], "no start plan and no other task action: only the reads of the follow-up come after");
   assert.deepEqual(await proposal(), { ...queueProposal(), state: "applied", results: [{ ok: true, queue: "on" }] });
 });
 
