@@ -7,12 +7,18 @@ import { SiteHeader } from "../../app/components/SiteHeader";
 
 const pages = ["home", "about", "docs", "download"] as const;
 
-it("keeps the same header on every page, changing only the current-page indicator", () => {
+const DOWNLOAD_ACTION = /<a class="[^"]*headerAction[^"]*"( aria-current="page")? href="\/download">Download for Windows<\/a>/;
+
+it("keeps the same header on every page, changing only the current-page indicator and Home's download action", () => {
   const headers = pages.map((current) => renderToStaticMarkup(<SiteHeader current={current} />));
+  const plain = (html: string) => html.replace(' aria-current="page"', "").replace(DOWNLOAD_ACTION, "");
   for (const html of headers) {
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
-    expect(html.replace(' aria-current="page"', "")).toBe(headers[0].replace(' aria-current="page"', ""));
+    expect(plain(html)).toBe(plain(headers[0]));
   }
+  // Home has its own Download for Windows action under the headline, so its header leaves it out.
+  expect(DOWNLOAD_ACTION.test(headers[0])).toBe(false);
+  for (const html of headers.slice(1)) expect(DOWNLOAD_ACTION.test(html)).toBe(true);
 });
 
 it("links to the documentation from the header, between About and the source link", () => {
@@ -25,7 +31,7 @@ it("links to the documentation from the header, between About and the source lin
       "/about",
       "/docs",
       "https://github.com/Lecarvalho/pomegr",
-      "/download",
+      ...(current === "home" ? [] : ["/download"]),
     ]);
     expect(/<a class="[^"]*"( aria-current="page")? href="\/docs">Docs<\/a>/.test(html)).toBe(true);
     expect(html.includes('aria-current="page" href="/docs">Docs</a>')).toBe(current === "docs");
@@ -35,7 +41,7 @@ it("links to the documentation from the header, between About and the source lin
 it("keeps the Docs link in the phone header while the other text links hide", () => {
   const css = readFileSync(new URL("../../app/components/SiteChrome.module.css", import.meta.url), "utf8");
   const phone = /@media \(max-width: 720px\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
-  const nav = /<nav[\s\S]*<\/nav>/.exec(renderToStaticMarkup(<SiteHeader current="home" />))![0];
+  const nav = /<nav[\s\S]*<\/nav>/.exec(renderToStaticMarkup(<SiteHeader current="about" />))![0];
   const tags = [...nav.matchAll(/<a\s[^>]*?href="([^"]*)"[^>]*>/g)].map((match) => match[0]);
   const tagFor = (href: string) => tags.find((tag) => tag.includes(`href="${href}"`))!;
   const classOf = (tag: string) => /class="([^"]*)"/.exec(tag)?.[1] ?? "";

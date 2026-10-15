@@ -6,7 +6,7 @@
 > the application tokens and the Pomegr red brand mark; this page owns what the landing does with
 > them.
 > Related code and checks: `landing/app/components/` (`LandingPage`, `SiteHeader`, `SiteFooter`,
-> `PomegrBrand`, `TaskField`, `PomegranateSplit`, `DotGlow`, `ScrollReveal`), the images in
+> `PomegrBrand`, `SessionGraph`, `ArilChat`, `PomegranateSplit`, `DotGlow`, `ScrollReveal`), the images in
 > `landing/public/landing/home/`, `landing/app/globals.css`,
 > `landing/tests/ui/public-pages.test.ts`, and `landing/tests/ui/site-header.test.tsx`.
 
@@ -36,7 +36,7 @@ The landing is an isolated package, so it copies these values instead of importi
 | Muted | `#8d959f` | Supporting text, the second clause of a statement, captions |
 | Line | `#262b31` | Hairline rules and the sheet guides |
 | Line strong | `#39404a` | Figure frames and secondary action borders |
-| Done | `#3a414a` | Finished tasks in fig. 1 and the hero dot grid |
+| Done | `#3a414a` | The hero dot grid |
 | Red | `#a63c32` | The one primary action fill, the same as the app's brand fill |
 | Red hover | `#b9483d` | Primary action hover |
 | Signal | `#e5675b` | The one accent in figures: running, next, now, new |
@@ -83,13 +83,13 @@ The header and footer are self-contained bands, so they read the same on the pap
 - The header is 60px high, sticky, solid Canvas, and has a Line bottom rule.
 - The brand is the painted mark at 26px and the stroked wordmark at 86px in Ink.
 - Header links are Inter 13px/500 in Muted. Hover and the current page are Ink.
-- Download for Windows is an outlined 36px action at the end of the header.
+- Download for Windows is an outlined 36px action at the end of the header, on every page except Home, which has its own under the headline.
 - The footer is a 96px band with a Line top rule: the brand, then the project links in Inter 12px/500.
 - The content column is at most 1200px wide, with at least 32px of side gutter, 16px on phone.
 
 ### Phone (720px and narrower)
 
-- The header keeps the brand, Docs, and Download for Windows on one line. The other links move to the footer.
+- The header keeps the brand, Docs, and (except on Home) Download for Windows on one line. The other links move to the footer.
 - Download for Windows grows to 44px high at 12px type.
 - The wordmark shrinks to 70px, and hides at 350px and narrower.
 - The footer stacks the brand over the links.
@@ -100,15 +100,20 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 
 - The hero has the two-clause title, one sentence, the platform line, and the actions: Download for Windows (primary, Red) and View source (secondary).
 - The platform line is mono: a Signal dot for Windows x64 and a hollow dot for the planned iOS and Android apps.
-- Fig. 1 is a field of 288 squares, one per task. The queue moves them through Backlog, Ready, In progress, Review, and Done every 1.4 seconds, from invented sample data.
-- The last squares of the backlog start empty and fill one by one after the hero pomegranate cracks open.
-- On a phone the field shows 72 squares, the part where the queue is.
+- Fig. 1 has no caption. Its panel is see-through (Panel at 35%) with the frame at half strength, so the curves carry it.
+- Fig. 1 is one session running: a smooth 2px Signal curve over a fill of the same red that fades from 30% to clear, edge to edge in the figure, with no axis or legend.
+- A quieter 1px muted line runs under it, and short Signal ticks along the floor mark events.
+- Three fixed hairlines sit behind the curves, and a fixed dashed Now mark stands near the right edge.
+- The curves are one period of invented sine terms that repeat exactly, drawn twice, and scroll left by one period every 60 seconds (48 on a phone), so they loop calmly forever without a seam. It is pure CSS and SVG.
+- On a phone the graph is 160px high instead of 240px and shows half a period across the width, so the curve keeps its shape.
 - The three jobs (Observe, Plan, Ask) sit in a row of three divided by hairlines.
 - Each chapter is a two-clause statement over one figure. The figure has a caption head, a diagram, and three notes.
 - Fig. 2 is a session timeline: four agents, their context, and a Now line.
 - Fig. 3 is the queue: the next card in Ready starts a session, which moves to Review when the agent reports done.
-- Fig. 4 is an Aril proposal: nothing changes until the owner applies it.
-- Each diagram has a phone version that stacks vertically, because the desktop diagram would be too small to read.
+- Fig. 4 is a chat with Aril beside the Ready and In progress columns (`ArilChat`): your message, Aril typing and answering, a proposal card with Apply changes and Dismiss, Apply pressed, the new card in Ready, Aril's follow-up ("Done. T-44 is first in Ready, so the queue starts it next."), the queue moving it to In progress, and its session's terminal opening and typing four lines.
+- The terminal opens as its own window with a deep shadow, out of the running card and up to 88px past the figure's frame, never past the viewport. It breaks the figure's frame on purpose. On a phone it stays inside the column.
+- The chat plays when the figure is a third in view and replays after a 6.5 second hold. Out of view, and under reduced motion, it shows the finished conversation.
+- Each diagram has a phone version that stacks vertically, because the desktop diagram would be too small to read. The fig. 4 chat stacks the two columns under the conversation.
 - A small, quiet note follows the chapters: "Runs on your machine." in 15px/600 beside one muted 14px paragraph on the read-only loopback monitor, and what is never shown or sent.
 - The home page has no waitlist. The waitlist API stays deployed with no page that uses it.
 
@@ -127,7 +132,8 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 - A statement rises 14px and sharpens from a 4px blur.
 - A figure rises 20px. Its bars then grow from the left, its lines draw, its cards fade in, and its notes follow in a short stagger.
 - After the entrance, the Now line and the next card pulse slowly.
-- On load, the two halves of the hero pomegranate fade in closed, then crack apart.
+- The hero pomegranate is still. It does not animate.
 - On a phone the hero pomegranate sits behind the title at 35% opacity.
 - The closing image slides down 24px from under the figure and sharpens from an 8px blur as it scrolls into view.
-- Reduced motion turns off every entrance, pulse, the crack, and the task field animation.
+- On load, fig. 1 is revealed from left to right while it fades in, over 2.8 seconds after a 0.3 second pause.
+- Reduced motion turns off every entrance, pulse, and the scrolling curve, which then stands still.

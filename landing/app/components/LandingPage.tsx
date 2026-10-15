@@ -1,10 +1,11 @@
 import type { CSSProperties } from "react";
+import { ArilChat } from "./ArilChat";
 import { DotGlow } from "./DotGlow";
 import { PomegranateSplit } from "./PomegranateSplit";
 import { ScrollReveal } from "./ScrollReveal";
 import { SiteFooter } from "./SiteFooter";
 import { SiteHeader } from "./SiteHeader";
-import { TaskField } from "./TaskField";
+import { SessionGraph } from "./SessionGraph";
 import styles from "./LandingPage.module.css";
 
 const SAMPLE_NOTE = "Illustrative · sample data";
@@ -22,10 +23,10 @@ export function LandingPage() {
         <PomegranateSplit />
         <div className={styles.page}>
           <section className={styles.hero} aria-labelledby="hero-title">
-            <h1 id="hero-title">Your agents don’t sleep. <span>Now you can.</span></h1>
+            <h1 id="hero-title">Your agents don’t sleep. <span>So you can.</span></h1>
             <div className={styles.heroRow}>
               <div>
-                <p className={styles.lede}>A local, read-only view of every coding-agent session, with a task board and an agent, Aril, to plan the next one.</p>
+                <p className={styles.lede}>Local, read-only metrics for every coding-agent session, with a task board and an agent, Aril, to plan the next one.</p>
                 <p className={`${styles.platformLine} ${styles.label}`}>
                   <span><i />Windows x64 · installer or portable</span>
                   <span><i className={styles.planned} />iOS &amp; Android · planned</span>
@@ -33,18 +34,14 @@ export function LandingPage() {
               </div>
               <div className={styles.actions}>
                 <a className={styles.primaryAction} href={DOWNLOAD_URL}>Download for Windows <ArrowIcon /></a>
-                <a className={styles.secondaryAction} href={GITHUB_URL} target="_blank" rel="noreferrer">View source</a>
+                <a className={styles.sourceLink} href={GITHUB_URL} target="_blank" rel="noreferrer"><GitHubIcon />View source <span aria-hidden="true">↗</span></a>
               </div>
             </div>
           </section>
 
-          <figure className={styles.figure} aria-label="Illustration: a repository's tasks moving from the backlog to done, from sample data">
+          <figure className={`${styles.figure} ${styles.figureGhost}`} aria-hidden="true">
             <Ticks />
-            <figcaption className={styles.figureHead}>
-              <span className={styles.label}>[ fig. 1 — one repository, queue on ]</span>
-              <span className={`${styles.label} ${styles.quiet} ${styles.wideOnly}`}>Illustrative · sample data</span>
-            </figcaption>
-            <TaskField />
+            <SessionGraph />
           </figure>
 
           <div className={styles.jobs}>
@@ -57,7 +54,7 @@ export function LandingPage() {
 
       <div className={styles.page}>
         <section className={styles.chapter} aria-labelledby="sessions-title">
-          <h2 data-reveal className={styles.statement} id="sessions-title">Every session, as it happens. <span>Pomegr reads the records your agents already write and never sends them a command.</span></h2>
+          <h2 data-reveal className={styles.statement} id="sessions-title">Every session, as it happens. <span>Pomegr quietly reads your agents’ records and shows what matters most.</span></h2>
           <Figure caption="[ fig. 2 — one session, four agents ]" note={SAMPLE_NOTE}>
             <SessionDiagram />
             <Notes items={[
@@ -69,7 +66,7 @@ export function LandingPage() {
         </section>
 
         <section className={styles.chapter} aria-labelledby="tasks-title">
-          <h2 data-reveal className={styles.statement} id="tasks-title">A board that starts the next session. <span>Order tasks in Ready, turn the queue on, and review what comes back.</span></h2>
+          <h2 data-reveal className={styles.statement} id="tasks-title">A kanban to plan and start the next session. <span>Queued tasks start on their own when their turn comes.</span></h2>
           <Figure caption="[ fig. 3 — the queue ]" note="Desktop app · opt-in">
             <QueueDiagram />
             <Notes items={[
@@ -81,9 +78,9 @@ export function LandingPage() {
         </section>
 
         <section className={styles.chapter} aria-labelledby="aril-title">
-          <h2 data-reveal className={styles.statement} id="aril-title">Aril plans. You apply. <span>Ask about the board and your sessions; every change waits for you.</span></h2>
+          <h2 data-reveal className={styles.statement} id="aril-title">Aril, your task specialist, plans. You apply. <span>Ask it about the board and your sessions.</span></h2>
           <Figure caption="[ fig. 4 — a proposal ]" note={SAMPLE_NOTE}>
-            <ProposalDiagram />
+            <div className={styles.figureBody}><ArilChat /></div>
             <Notes items={[
               ["Reads, never acts", "Aril runs read-only. A board change is always a proposal."],
               ["Knows your board", "It answers from your tasks and what Pomegr observed."],
@@ -137,6 +134,14 @@ function Notes({ items }: { items: ReadonlyArray<readonly [string, string]> }) {
     <div className={styles.notes}>
       {items.map(([title, text]) => <div key={title}><strong>{title}</strong><p>{text}</p></div>)}
     </div>
+  );
+}
+
+function GitHubIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
   );
 }
 
@@ -229,52 +234,5 @@ function Card({ x, y, id, title, on = false }: { x: number; y: number; id: strin
       <text className={on ? styles.signalText : undefined} x={x + 14} y={y + 22}>{id}</text>
       <text className={styles.textInk} x={x + 14} y={y + 44}>{title}</text>
     </g>
-  );
-}
-
-const PROPOSAL_LABEL = "A proposal from sample data: you ask Aril, Aril proposes two board changes, and nothing changes until you apply them";
-
-function ProposalDiagram() {
-  return (
-    <div className={styles.figureBody}>
-      <svg className={`${styles.diagram} ${styles.wideOnly}`} viewBox="0 0 1100 250" role="img" aria-label={PROPOSAL_LABEL}>
-        <text x="0" y="16">YOU</text><text x="360" y="16">ARIL PROPOSES</text><text x="790" y="16">THE BOARD</text>
-        <rect className={styles.card} x="0" y="34" width="300" height="74" />
-        <text className={styles.textInk} x="16" y="64">Split the export work so</text><text className={styles.textInk} x="16" y="86">the writer lands first.</text>
-        <path pathLength={1} className={styles.mute} d="M300 71 H352" /><path className={styles.muteFill} d="M352 66 L360 71 352 76Z" />
-        <rect className={styles.frame} x="360" y="34" width="330" height="190" />
-        <text className={styles.textBig} x="378" y="64">Add the CSV writer before T-43</text>
-        <text x="378" y="94">1  CREATE TASK</text><text className={styles.textInk} x="490" y="94">Write the CSV writer</text>
-        <text x="378" y="120">2  MOVE</text><text className={styles.textInk} x="490" y="120">T-43 after it</text>
-        <rect className={styles.applyFill} x="378" y="150" width="120" height="32" />
-        <text className={styles.applyText} x="394" y="171">Apply changes</text>
-        <text className={styles.textUi} x="516" y="171">Dismiss</text>
-        <text x="378" y="210">NOTHING CHANGES UNTIL YOU APPLY</text>
-        <path pathLength={1} className={styles.signalLine} d="M470 150 V140 H680 C730 140 730 90 782 90" /><path className={styles.signalFill} d="M782 85 L792 90 782 95Z" />
-        <path className={styles.dash} d="M548 180 C640 214 700 214 782 204" />
-        <rect className={styles.frame} x="792" y="34" width="308" height="190" />
-        <rect className={styles.cardOn} x="808" y="62" width="276" height="50" />
-        <text className={styles.signalText} x="822" y="82">NEW</text><text className={styles.textInk} x="822" y="100">Write the CSV writer</text>
-        <rect className={styles.card} x="808" y="122" width="276" height="44" /><text className={styles.textInk} x="822" y="149">T-43 Stream large exports</text>
-        <text x="808" y="204">dismiss → board unchanged</text>
-      </svg>
-      <svg className={`${styles.diagram} ${styles.narrowOnly}`} viewBox="0 0 340 380" role="img" aria-label={PROPOSAL_LABEL}>
-        <text x="0" y="14">YOU</text>
-        <rect className={styles.card} x="0" y="24" width="340" height="50" />
-        <text className={styles.textInk} x="14" y="54">Split the export work so the writer lands first.</text>
-        <path pathLength={1} className={styles.mute} d="M30 74 V96" /><path className={styles.muteFill} d="M25 96 L30 106 35 96Z" />
-        <text x="0" y="128">ARIL PROPOSES</text>
-        <rect className={styles.frame} x="0" y="138" width="340" height="150" />
-        <text className={styles.textBig} x="14" y="166">Add the CSV writer before T-43</text>
-        <text x="14" y="192">1 CREATE</text><text className={styles.textInk} x="90" y="192">Write the CSV writer</text>
-        <text x="14" y="214">2 MOVE</text><text className={styles.textInk} x="90" y="214">T-43 after it</text>
-        <rect className={styles.applyFill} x="14" y="232" width="120" height="32" />
-        <text className={styles.applyText} x="30" y="253">Apply changes</text>
-        <text className={styles.textUi} x="152" y="253">Dismiss</text>
-        <path pathLength={1} className={styles.signalLine} d="M74 288 V318" /><path className={styles.signalFill} d="M69 318 L74 328 79 318Z" />
-        <text className={styles.value} x="0" y="356">The board changes only now.</text>
-        <text x="0" y="376">NOTHING CHANGES UNTIL YOU APPLY</text>
-      </svg>
-    </div>
   );
 }
