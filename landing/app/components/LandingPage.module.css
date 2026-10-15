@@ -111,6 +111,7 @@
   right: calc(var(--gutter) - 24px);
   width: min(450px, 33vw);
   aspect-ratio: 1;
+  opacity: .6;
   pointer-events: none;
 }
 
