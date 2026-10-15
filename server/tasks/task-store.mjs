@@ -720,7 +720,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
   const completeTask = (payload, resolveFacts) => dispatch(reportComplete, { payload, resolveFacts, now });
   const blockTask = (payload) => dispatch(reportBlock, { payload, now });
-  const stallEnded = (resolveFacts, confirmation = null) => dispatch(stallEndedTasks, { resolveFacts, confirmation, now });
+  const stallEnded = (resolveFacts, confirmation = null, recovery = null) => dispatch(stallEndedTasks, { resolveFacts, confirmation, recovery, now });
   const nextStarts = ({ resolveGateFacts = null } = {}) => dispatch(nextQueueStarts, { loadRows, resolveGateFacts, now });
   const pauseAt = (repositoryId, payload) => dispatch(pauseQueue, { repositoryId, payload });
   const worktreeCleanups = () => dispatch(pendingWorktreeCleanups, {});

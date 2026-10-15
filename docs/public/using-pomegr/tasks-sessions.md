@@ -58,8 +58,8 @@ unassign the session that Pomegr started.
 An assigned session can report the task with `complete_task` or `block_task`:
 
 - The first report on a task wins. A later report from another session changes nothing.
-- An assigned session can report a **Stalled** task. The task then goes to **Review**,
-  or becomes **Blocked by agent**.
+- An assigned session can report a **Stalled** task, and so can the session Pomegr
+  started. The task then goes to **Review**, or becomes **Blocked by agent**.
 - Pomegr verifies **Complete when** on the repository and the branch of the session
   that reports.
 - A session with more than one task names the task in its report.

@@ -45,13 +45,12 @@ function reportTarget(database, sessionId, taskId) {
 }
 
 const unreported = (row) => (row.report_at ?? null) === null;
-// The first report on a task wins. An assigned session may also report a task Pomegr stalled: its first session ended
-// with no report, and the assigned session is the one that resumed the work.
-const reportable = (row, sessionId) => unreported(row)
-  && (IN_FLIGHT_STATES.includes(row.state) || (row.state === "stalled" && row.session_id !== sessionId));
+// The first report on a task wins. A task Pomegr stalled takes a report too: from an assigned session, which resumed the
+// work, and from the started session itself, whose report shows that the end Pomegr confirmed was wrong.
+const reportable = (row) => unreported(row) && (IN_FLIGHT_STATES.includes(row.state) || row.state === "stalled");
 
-// Why a task takes no report: Pomegr stalled it before any report from the session it started, or it has an outcome.
-const refusal = (row) => (row?.state === "stalled" && unreported(row) ? "stalled" : "already_reported");
+// A task that takes no report has an outcome. `stalled` stays a known reason for older plugins; it is no longer sent.
+const REFUSED = "already_reported";
 
 export function blockQueue(database, repositoryId, taskId) {
   preparedStatement(database, "UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = ? WHERE repository_id = ? AND queue_status = 'running'")
@@ -86,7 +85,7 @@ function storeReport(database, row, { state, at, results, blockReason, attention
 export function reportableChecks({ database, sessionId, taskId }) {
   if (!isTaskSessionId(sessionId) || (taskId !== undefined && !isTaskId(taskId))) return null;
   const { row } = reportTarget(database, sessionId, taskId);
-  const task = row && reportable(row, sessionId) ? normalizeStoredTask(row) : null;
+  const task = row && reportable(row) ? normalizeStoredTask(row) : null;
   return task ? [...task.completeWhen.checks] : null;
 }
 
@@ -95,9 +94,9 @@ function storeFresh({ database, transaction, payload, row }, report) {
   let fresh = null;
   const stored = transaction(() => {
     fresh = sessionRows(database, payload.sessionId).find((entry) => sameTask(entry, row)) ?? null;
-    return fresh !== null && reportable(fresh, payload.sessionId) && storeReport(database, fresh, report);
+    return fresh !== null && reportable(fresh) && storeReport(database, fresh, report);
   });
-  return stored ? null : fresh === null ? "not_found" : refusal(fresh);
+  return stored ? null : fresh === null ? "not_found" : REFUSED;
 }
 
 // `complete`: the bound session reports one of its tasks complete.
@@ -110,7 +109,7 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   if (!row) return { ok: false, error };
   const task = normalizeStoredTask(row);
   if (!task) return { ok: false, error: "unavailable" };
-  if (!reportable(row, payload.sessionId)) return { ok: false, error: refusal(row) };
+  if (!reportable(row)) return { ok: false, error: REFUSED };
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts() : null; } catch { facts = null; }
   const results = verifyChecks(task.completeWhen.checks, facts);
@@ -127,7 +126,7 @@ export function reportBlock({ database, transaction, payload, now }) {
   const { row, error } = reportTarget(database, payload.sessionId, payload.taskId);
   if (!row) return { ok: false, error };
   if (!normalizeStoredTask(row)) return { ok: false, error: "unavailable" };
-  if (!reportable(row, payload.sessionId)) return { ok: false, error: refusal(row) };
+  if (!reportable(row)) return { ok: false, error: REFUSED };
   const refused = storeFresh({ database, transaction, payload, row }, { state: "blocked", at: now(), results: [], blockReason: reason });
   return refused === null ? { ok: true, state: "blocked" } : { ok: false, error: refused };
 }

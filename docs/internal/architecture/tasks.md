@@ -313,7 +313,7 @@ task state.
 | Queued | In the queue, waiting for its turn and the start gates | The user adds it to the queue, or requeues a task that needs review, is blocked, or stalled |
 | Scheduled | In the queue, waiting for its own start time, then for its turn and the start gates | The user sets a start time on the task |
 | Needs review | The agent reported complete; the report holds each checked condition's result and the optional attention line | Verification of a `complete_task` report |
-| Stalled | The bound session ended without a report | Observation of an established session end |
+| Stalled | The bound session ended without a report | Observation of an established session end; it leaves when that session reports or is confirmed live again |
 | Blocked by agent | The agent called `block_task` with a reason | The agent |
 | Done | The owner accepted the task | The user's Mark done (`resolve_done`) |
 
@@ -350,9 +350,34 @@ confirmed:
   starts it again.
 
 The decision is written to the task store once. A stalled task keeps its session link
-and has no report. A later report from that session is refused with `stalled`, a
-different answer from `already_reported`, and only Mark done or Requeue changes the
-state. The sweep reads memory and the task store only: no provider, Git, or GitHub read.
+and has no report. The sweep reads memory and the task store only: no provider, Git, or
+GitHub read.
+
+**Recovery.** Decided for task T-112 (2026-10-15); it replaces the earlier rule that
+Stalled is final. A confirmed end can still be wrong: on T-101 the same session came
+back and kept working while the board held the queue on it. A stalled task leaves
+Stalled only on evidence from its own started session that it did not end:
+
+- **A report.** The started session's `complete_task` or `block_task` on its stalled task
+  is accepted, as an assigned session's is (see [Completion](#completion)). A completion
+  sets Needs review and frees the queue the stall held (`releaseQueue`); a block sets
+  Blocked by agent, which keeps holding it.
+- **A confirmed live reading.** The same sweep reads the session of every stalled task
+  with no report (`recoverLiveTasks`). A Working or Needs input reading only starts a
+  wait of `END_CONFIRM_DELAY_MS`. The task recovers when a reading at or after the end
+  of the wait is open: Working, Needs input, Idle, or Open. An ended, Unknown, or missing
+  reading in between drops the first one, and a later live reading starts a new wait.
+  An Idle or Open reading never starts the wait, because the catalog can show those for
+  a session whose process is gone.
+- A recovered task becomes Not queued, keeps its session link, and keeps its column,
+  normally In progress. It is linked and in flight again, so the stall rule watches it
+  once more, and its card shows the session's observed state. The same transaction
+  frees the queue the stall held (`releaseQueue`): a blocked queue names the next stalled
+  or blocked task, or runs again when none is left. An `idle` or `paused` queue keeps its
+  status.
+- The wait is in memory only, like the end's. Recovery never starts, stops, or steers
+  the session, and an assigned session's activity never recovers a task: the stall
+  watcher follows only the started session.
 
 A linked task whose session has not reported and whose end is not established (a restart
 of the computer or of Pomegr, or a cleared session, can leave it so) keeps its state.
@@ -959,6 +984,10 @@ its parallel group. Every start first passes the [start gates](#start-gates).
   sets the queue to `blocked` with the responsible task in `blockedBy`. Nothing new
   starts until the user resolves it, by **Mark done and resume** (`resolve_done`) or
   **Requeue** (`resolve_requeue`). Sessions already running continue.
+  - **A stalled task can recover.** When its started session reports complete, or is
+    confirmed live again (see [States](#states)), the task leaves Stalled and the queue
+    the stall held is freed by the same `releaseQueue` rule a resolution uses. A block
+    from that session keeps holding the queue, now as Blocked by agent.
   - **Review does not stop the queue.** Decided for GitHub issue #135 (2026-10-10); it
     replaces the earlier rule that a failed check blocks the queue. A task that needs
     review is finished work: its card waits in the Review column, the queue stays
@@ -1500,10 +1529,9 @@ installed plugin from before the rename sends; a body with both names is `invali
   started for the task and every session assigned to it may report it. A second
   `complete_task` or `block_task`, from the same session or another one, and a report
   on a task that already has an outcome, change nothing; the answer is
-  `already_reported`. A report from the session Pomegr started, on a task that Pomegr
-  stalled, changes nothing either, and its answer is `stalled`: the session reported
-  nothing, so the tool tells the agent that the task is Stalled and that only the user
-  can change it. An assigned session may report a stalled task (see
+  `already_reported`. A stalled task with no report takes a report from the session
+  Pomegr started, whose report shows that the end Pomegr confirmed was wrong (see
+  [States](#states)), and from an assigned session (see
   [Assigned sessions](#assigned-sessions)).
 - The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
   `/block`, under the gate of `add`. The body is `{ sessionRef }`, plus a one-line
@@ -1516,8 +1544,9 @@ installed plugin from before the rename sends; a body with both names is `invali
   `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`
   with `invalid` (400), `not_found` (404, the session has no task, or the named task is
   not one of its tasks), `task_required` (409, the session has more than one task and
-  named none), `already_reported` (409), `stalled` (409, Pomegr stalled the task before
-  any report), or `unavailable` (503). The plugins send `taskId` and know
+  named none), `already_reported` (409), or `unavailable` (503). `stalled` (409) was the
+  answer to the started session's report on a task Pomegr stalled; since T-112 the
+  monitor no longer sends it, and the plugins still know it for an older monitor. The plugins send `taskId` and know
   `task_required` from version 0.9.8. From version 0.9.9 the `complete_task` tool names the
   conditions that failed apart from those Pomegr could not verify; an older plugin words both as
   not confirmed. The plugins know `stalled` from version 0.9.5; an older
@@ -1761,8 +1790,8 @@ session Pomegr started for a task is its started session, never an assigned one.
 - **A stalled task.** An assigned session may report a task that Pomegr stalled,
   because it is the session that resumed the work. A completion sets Needs review,
   moves the card to Review, and frees a queue the stall blocked (`releaseQueue`); a
-  block sets Blocked by agent, which keeps holding the queue. The started session's
-  own late report is still refused with `stalled`.
+  block sets Blocked by agent, which keeps holding the queue. The started session may
+  report it too; the first report wins.
 - **A task that has not started.** A report from an assigned session sets the outcome
   as for any task and takes the task out of the queue. The same write clears a
   dispatch that has not linked, so a start still in flight links nothing: its
@@ -2809,7 +2838,8 @@ fixed values.
   facts; it makes no AI judgment about whether work is complete, and the own condition
   is judged by the agent and labeled as such.
 - Missing evidence is not success. A session that vanished is Stalled only after its
-  end is established; unknown is shown as unknown.
+  end is established, and leaves Stalled only on its own report or a confirmed live
+  reading; unknown is shown as unknown.
 - Ready order is the start order. The queue never starts a card ahead of the first
   waiting card of Ready, except the waiting members of that card's own parallel group, and
   it starts nothing while a task outside the group is in flight.
