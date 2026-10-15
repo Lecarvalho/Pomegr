@@ -243,6 +243,8 @@ export function formatTask(task) {
     `Run on: ${run || "not set"}`,
     `Complete when: ${checks || "none"}`,
     `Own condition: ${task.ownCondition ?? "none"}`,
+    // A monitor from before the field serves none, so the line is left out rather than read as no list.
+    ...(Array.isArray(task.runsAfter) ? [`Runs after: ${task.runsAfter.length > 0 ? task.runsAfter.join(", ") : "none"}`] : []),
     task.textCut === true ? "Text (cut; call get_task for the whole text):" : "Text:",
     task.text,
   ].join("\n");
@@ -316,7 +318,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("get_task", {
     title: "Read a Pomegr task",
-    description: "Read one task of the current repository's Pomegr board by its ID: its whole text, column, state, whether update_task can change it, feature, Run on (provider, model, and effort), Complete when, and own condition. Read a task before you change it with update_task. It changes nothing. The repository and session are bound by the host; the only input is the task ID.",
+    description: "Read one task of the current repository's Pomegr board by its ID: its whole text, column, state, whether update_task can change it, feature, Run on (provider, model, and effort), Complete when, own condition, and the tasks it runs after. Read a task before you change it with update_task. It changes nothing. The repository and session are bound by the host; the only input is the task ID.",
     inputSchema: z.object({
       task_id: taskIdSchema.describe("ID of the task to read, such as T-12."),
       ...hookFields(hookBound),

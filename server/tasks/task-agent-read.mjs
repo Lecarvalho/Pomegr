@@ -22,6 +22,8 @@ export function agentTaskEntries(board, rows, at) {
       feature: task.featureId === null ? null : featureNames.get(task.featureId) ?? null,
       column: columnNames.get(task.columnId) ?? null,
       state: task.state,
+      // The tasks of the board it runs after (task T-111), so an agent holds the whole list before update_task replaces it.
+      runsAfter: [...(task.after ?? [])],
       editable: row !== undefined && !rowStarted(row, at),
     };
   });

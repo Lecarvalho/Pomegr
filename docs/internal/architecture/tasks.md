@@ -2017,7 +2017,9 @@ How it is built:
 for task T-118, and the product owner settled the rules below on 2026-10-15.
 
 - **What a read answers.** For each task: its ID, text, own condition, Complete when
-  checks, provider, model, effort, feature title, column name, state, and `editable`.
+  checks, provider, model, effort, feature title, column name, state, `editable`, and
+  `runsAfter`, the IDs of the tasks it runs after (task T-111, 2026-10-15; an empty list
+  when none), so an agent holds the whole list before `update_task` replaces it.
   `editable` is true when `update_task` can change the task: the rule `rowStarted`
   of `task-record.mjs`, the rule of the desktop `update` action. A list entry also
   says whether its text was cut (`textCut`).
@@ -2506,7 +2508,7 @@ serves no other client.
 | `POST /api/agent/v1/tasks/assign\|unassign` | An agent through the MCP tools `assign_task` and `unassign_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out. Never task content, a state, or another session |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
 | `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when, and the task IDs it runs after); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content, a state, or a list |
-| `POST /api/agent/v1/tasks/get\|list` | An agent through the MCP tools `get_task` and `list_tasks`, authorized like the agent-query GETs | The bound session and one task ID, or up to four list filters, in; one served task, or at most 100 with each text cut at 300 characters, out, or one fixed reason. A served task is its ID, text, own condition, checks, Run on, effort, feature title, column name, state, and `editable`. Never a report, a session, an image, who added a task, or an internal ID |
+| `POST /api/agent/v1/tasks/get\|list` | An agent through the MCP tools `get_task` and `list_tasks`, authorized like the agent-query GETs | The bound session and one task ID, or up to four list filters, in; one served task, or at most 100 with each text cut at 300 characters, out, or one fixed reason. A served task is its ID, text, own condition, checks, Run on, effort, feature title, column name, state, `editable`, and the task IDs it runs after. Never a report, a session, an image, who added a task, or an internal ID |
 | `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title, or one task ID of that session, in; that feature's ID, title, description, and app version out, or one fixed reason. With `get` and `list`, one of the three agent paths that answer user-authored board content |
 | `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
@@ -2717,8 +2719,8 @@ fixed values.
   `ok` or one fixed reason (see [Agent task update](#agent-task-update)). The fields it
   writes are the ones the desktop `update` action writes, kept and served as that
   action's are.
-- A task's text, own condition, checks, Run on, effort, feature title, column name, and
-  state are served to an agent only by `POST /api/agent/v1/tasks/get` and `list`, to an
+- A task's text, own condition, checks, Run on, effort, feature title, column name,
+  state, and the task IDs it runs after (added by task T-111) are served to an agent only by `POST /api/agent/v1/tasks/get` and `list`, to an
   agent whose session is bound to that board (task T-118, 2026-10-15). This is a
   deliberate widening: before it, no agent path returned a task's text. With `get_task`
   and `list_tasks`, the fields of any task of the board reach the provider through the
@@ -2787,9 +2789,11 @@ fixed values.
   `runs_after` input of `add_task` and `update_task` (task T-111, 2026-10-15): task IDs
   only, sent from the bound session to the local monitor for a task of that session's
   board that has not started. Their answer carries no list, only `ok` or one fixed
-  reason, and no MCP tool reads a list back. It never enters `/api/state`, the Sessions
-  list's task reference, a session domain, a catalog, a checkpoint, a report, a log, a
-  notification, diagnostics, an MCP tool answer, or a session's prompt.
+  reason. `get_task` and `list_tasks` read the list back as `runsAfter`, to an agent bound
+  to that board, so it can set the whole list (a deliberate widening, decided by the
+  owner on 2026-10-15). It never enters `/api/state`, the Sessions list's task reference,
+  a session domain, a catalog, a checkpoint, a report, a log, a notification,
+  diagnostics, another MCP tool's answer, or a session's prompt.
 - A planned group (task T-101) is the same opaque `Task.group` as above, served the same
   way. Planning stores no other value: the plan's order is the card order the board
   already serves.

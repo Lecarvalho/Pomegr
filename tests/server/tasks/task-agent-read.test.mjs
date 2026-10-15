@@ -69,13 +69,16 @@ async function board(context) {
 test("get_task's route answers one task of the session's own board in the served shape, and nothing else", async (context) => {
   const { store, featureId } = await board(context);
   const port = await start(context, store);
+  assert.equal(store.apply(REPOSITORY, "after_set", { id: "T-1", after: ["T-4", "T-3"] }).ok, true);
   const read = await send(port, GET, { taskId: "T-1" });
   assert.equal(read.status, 200);
   assert.equal(read.headers["cache-control"], "no-store");
   assert.deepEqual(read.json, { schemaVersion: 1, ok: true, task: {
     id: "T-1", text: "Fix the cache [image] now.", textCut: false, ownCondition: "Docs updated", completeWhen: ["pr_open", "ci_passed"],
     provider: "claude", model: "claude-opus-5-5", effort: "high", feature: "Offline mode", column: "Backlog", state: "not_queued", editable: true,
+    runsAfter: ["T-4", "T-3"],
   } });
+  assert.deepEqual((await send(port, GET, { taskId: "T-2" })).json.task.runsAfter, []);
   // A started task reads too, and says update_task cannot change it; its report, session, and IDs never reach the agent.
   const started = await send(port, GET, { taskId: "T-2" });
   assert.equal(started.json.task.state, "blocked");
@@ -142,11 +145,12 @@ test("list_tasks's route answers at most its fixed number of tasks and says the 
 });
 
 test("the served shape refuses any entry outside its bounds and drops every field it does not list", () => {
-  const entry = { id: "T-1", text: "t", ownCondition: null, completeWhen: [], provider: null, model: null, effort: null, feature: null, column: "Ready", state: "queued", editable: true };
+  const entry = { id: "T-1", text: "t", ownCondition: null, completeWhen: [], provider: null, model: null, effort: null, feature: null, column: "Ready", state: "queued", editable: true, runsAfter: ["T-2"] };
   assert.deepEqual(Object.keys(servedAgentTask({ ...entry, session: "s", report: {}, repositoryId: REPOSITORY, columnId: "col-0", featureId: "feat-0" })),
-    ["id", "text", "textCut", "ownCondition", "completeWhen", "provider", "model", "effort", "feature", "column", "state", "editable"]);
+    ["id", "text", "textCut", "ownCondition", "completeWhen", "provider", "model", "effort", "feature", "column", "state", "editable", "runsAfter"]);
   for (const bad of [{ id: "x" }, { text: "" }, { text: "t".repeat(4001) }, { ownCondition: "o".repeat(501) }, { completeWhen: ["merged"] }, { provider: "other" },
-    { model: "m".repeat(121) }, { effort: "max" }, { feature: "f".repeat(81) }, { column: null }, { state: "running" }, { editable: "yes" }]) {
+    { model: "m".repeat(121) }, { effort: "max" }, { feature: "f".repeat(81) }, { column: null }, { state: "running" }, { editable: "yes" },
+    { runsAfter: undefined }, { runsAfter: "T-2" }, { runsAfter: ["x"] }, { runsAfter: [2] }, { runsAfter: Array.from({ length: 9 }, (_, index) => `T-${index + 1}`) }]) {
     assert.equal(servedAgentTask({ ...entry, ...bad }), null, JSON.stringify(bad));
   }
 });
