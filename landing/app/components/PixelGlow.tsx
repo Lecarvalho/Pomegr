@@ -9,7 +9,7 @@ const DITHER_COLUMNS = 300;
 const LIFE_MS = 2000;
 const REACH = 13;
 
-// Under a fine pointer the closing image stays hidden, and the pointer reveals it: the dither
+// Under a fine pointer the closing image dims to a hint, and the pointer reveals it: the dither
 // pixels around its path show the image and fade out again. The canvas carries the image's own top
 // and bottom fade. Touch and reduced motion skip it and show the whole image.
 export function PixelGlow({ rootId }: { rootId: string }) {

@@ -595,8 +595,9 @@
 /* The last frame: no caption. */
 .close { position: relative; margin-top: 8px; }
 
-/* Under a fine pointer the image hides, and the pointer reveals it through this canvas (PixelGlow). */
-.close[data-pointer-reveal] .bite { visibility: hidden; }
+/* Under a fine pointer the image dims to a hint, and the pointer reveals it at full strength through
+   this canvas (PixelGlow). Before its entrance the reveal rule's opacity 0 still wins. */
+.close[data-pointer-reveal] .bite { opacity: .22; }
 
 /* The reveal carries the image's own top and bottom fade. */
 .pixelGlow {
