@@ -41,7 +41,7 @@ async function until(predicate, attempts = 2_000) {
   return null;
 }
 
-async function startMonitor(context, { rows, now } = {}) {
+async function startMonitor(context, { rows, now, resourceTargets = [] } = {}) {
   let publisher = null;
   const capabilities = createEmptyProviderCapabilities();
   const provider = { id: "codex", source: "Codex", capabilities,
@@ -53,7 +53,7 @@ async function startMonitor(context, { rows, now } = {}) {
     async resolveCapabilities() { return capabilities; },
     async readUsageLimits() { return createEmptyUsageLimits(); },
     async readSession() { throw new Error("serving and catalog commits must not acquire provider evidence"); },
-    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    async inspectSessions() { return { sessions: [], resourceTargets }; },
     unavailableMessage: () => "Unavailable",
     async startObservers(nextPublisher) {
       publisher = nextPublisher;
@@ -294,4 +294,17 @@ test("a running task published together with an idle transition is never shown a
   }));
   assert.ok(await until(() => control.summary(working).snapshot.value.lifecycle.activityFallback.label === "Running tests"));
   assert.equal(control.summary(working).snapshot.value.lifecycle.activityFallback.state, "current");
+});
+
+test("the desktop reads a live session's unique owning process only from the private inspection, never a response", async (context) => {
+  const monitor = await startMonitor(context, { rows: [liveRow("owned"), liveRow("shared")], resourceTargets: [
+    { sessionId: "codex:owned", pid: 41, processStartIdentity: "134365685309874121" },
+    { sessionId: "codex:shared", status: "shared" },
+  ] });
+  assert.ok(await until(() => monitor.runtime.sessionWindowOwner("codex:owned")), "the inspection records the owner");
+  assert.deepEqual(monitor.runtime.sessionWindowOwner("codex:owned"), { pid: 41, processStartIdentity: "134365685309874121" });
+  assert.equal(monitor.runtime.sessionWindowOwner("codex:shared"), null, "a shared owner is ambiguous");
+  assert.equal(monitor.runtime.sessionWindowOwner("codex:unknown"), null);
+  assert.equal(monitor.runtime.sessionWindowOwner(["codex:owned"]), null);
+  assert.doesNotMatch(JSON.stringify(monitor.runtime.serveCatalog()), /134365685309874121/);
 });

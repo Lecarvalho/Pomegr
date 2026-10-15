@@ -97,7 +97,11 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   session is waiting for your action." A session without a title gets the title
   "Pomegr" and the text "A coding-agent session needs input." It never includes the
   question, a command, or any conversation content. Selecting it brings the
-  Pomegr window forward and opens that session. **Desktop notifications** and
+  Pomegr window forward and opens that session. Pomegr then brings the window
+  where the session runs to the front, but only when it can tell which window
+  that is: a console window, a single-window app, or the one Windows Terminal
+  window whose title holds the session's title. When it can't tell, it brings
+  no other window forward. **Desktop notifications** and
   **Needs input** are on by default. Turn either off, or pause delivery with
   **Quiet for one hour**, under **Settings → Notifications**;
   the pause is not saved and ends when Pomegr restarts. Windows notification

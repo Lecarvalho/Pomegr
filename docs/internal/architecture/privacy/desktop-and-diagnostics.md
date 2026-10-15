@@ -45,6 +45,46 @@ Behavior: [Observation cache](../observation-cache.md)
 
 Behavior: [Observation cache](../observation-cache.md)
 
+## Session window focus
+
+**Trigger:** only a click on a native `needs_input` notification, after Pomegr has opened
+that session. No browser, LAN, or IPC route can request it.
+
+**Owner lookup:**
+
+- The desktop main process asks the monitor worker over its private message channel for
+  the session's owning process.
+- The monitor answers from its latest live inspection only, with a pid and a process start
+  identity. It answers null for a session that is not live, has no owner, or shares its
+  owner with another session.
+- The owner is kept in monitor memory only. It never enters a response, a log, a store, or
+  renderer IPC.
+
+**Helper:**
+
+- One fixed hidden Windows PowerShell helper runs with an argument array. It receives the
+  pid, the start identity, Pomegr's own pid, and the bounded notification title on stdin,
+  never on its command line.
+- The helper reads only the process list, the top-level window list and titles, and which
+  `conhost.exe`, `OpenConsole.exe`, or `WindowsTerminal.exe` processes hold a handle to the
+  session's process. It confirms the process start identity first.
+- It answers one fixed word (`focused`, `refused`, `ambiguous`, `missing`, or
+  `unavailable`). Pomegr keeps no answer.
+
+**Which window qualifies:**
+
+- A window of a console host that holds a handle to the session's process.
+- Else, a window of a terminal that holds that handle. When the terminal has several
+  windows, only the one window whose title contains the session title qualifies.
+- Else, a window of the session's nearest ancestor process that owns windows. The walk
+  stops at Pomegr itself and at shell and service processes such as `explorer.exe` and
+  `svchost.exe`.
+- More than one qualifying window, or none, focuses nothing.
+
+**Never:** the helper sends no input, attaches to no process or console, and changes no
+window except to restore and bring forward the one qualifying window. It does not run off
+Windows.
+
 ## Provider-folder read
 
 **Access** (as explicitly approved by the user):
