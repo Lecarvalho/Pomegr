@@ -3,7 +3,8 @@ import http from "node:http";
 import test from "node:test";
 
 import { createChatRunDeclarations } from "../../server/providers/kernel/chat-run-declarations.mjs";
-import { CHAT_RUN_DECLARE_PATH, CHAT_RUN_WITHDRAW_PATH, createRequestHandler } from "../../server/serving/request-handler.mjs";
+import { CHAT_RUN_DECLARE_PATH, CHAT_RUN_WITHDRAW_PATH } from "../../server/serving/chat-run-routes.mjs";
+import { createRequestHandler } from "../../server/serving/request-handler.mjs";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 
 const sessionId = "0b7c2a4e-1f3d-4c5b-9a8e-7d6f5e4c3b2a";
