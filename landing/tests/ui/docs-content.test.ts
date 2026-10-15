@@ -324,6 +324,39 @@ describe("raw HTML is never accepted", () => {
   });
 });
 
+describe("demos", () => {
+  const demoFence = (name: string, lang = "pomegr-demo") => [`${FENCE}${lang}`, name, FENCE].join("\n");
+  const indent = (block: string, prefix: string) => block.split("\n").map((line) => `${prefix}${line}`).join("\n");
+
+  it("turns a top-level pomegr-demo fence naming a known demo into a demo block, and nothing else", () => {
+    const content = loaded(standard(alphaWith(demoFence("tasks-board"))));
+    expect(pageOf(content, "get-started/alpha.md").blocks[2]).toEqual({ type: "demo", name: "tasks-board" });
+    for (const page of content.pages.filter((candidate) => candidate.source !== "get-started/alpha.md")) {
+      expect(page.blocks.some((block) => block.type === "demo")).toBe(false);
+    }
+  });
+
+  it("keeps an ordinary fence a code block even when it names the demo", () => {
+    const page = pageOf(loaded(standard(alphaWith(demoFence("tasks-board", "text")))), "get-started/alpha.md");
+    expect(page.blocks[2]).toEqual({ type: "codeblock", lang: "text", text: "tasks-board" });
+  });
+
+  it.each([
+    ["an unknown demo", demoFence("sessions-list"), 'unknown demo "sessions-list"'],
+    ["an empty demo", demoFence(""), 'unknown demo ""'],
+    ["a demo with extra text", demoFence("tasks-board\nmore"), "unknown demo"],
+    ["a demo with padding", demoFence("  tasks-board"), "unknown demo"],
+    ["another reserved language", demoFence("tasks-board", "pomegr-widget"), 'unsupported fence language "pomegr-widget"'],
+    ["the reserved language in another case", demoFence("tasks-board", "Pomegr-Demo"), 'unsupported fence language "Pomegr-Demo"'],
+    ["an info string", demoFence("tasks-board", "pomegr-demo title=x"), "must name its language"],
+    ["a demo inside a list", `- item\n\n${indent(demoFence("tasks-board"), "  ")}`, "a demo must be top-level"],
+    ["a demo inside a blockquote", indent(demoFence("tasks-board"), "> "), "a demo must be top-level"],
+    ["a second demo on one page", `${demoFence("tasks-board")}\n\n${demoFence("tasks-board")}`, "a page holds at most one demo"],
+  ])("rejects %s", (_name, body, message) => {
+    expect(rejected(standard(alphaWith(body)))).toContain(message);
+  });
+});
+
 describe("links", () => {
   const link = (target: string, label = "link") => alphaWith(`Go to [${label}](${target}).`);
 

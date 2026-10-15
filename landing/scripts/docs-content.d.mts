@@ -20,7 +20,9 @@ export type DocsBlock =
   | { type: "table"; align: Array<"left" | "center" | "right" | null>; header: DocsInline[][]; rows: DocsInline[][][] }
   | { type: "codeblock"; lang: string; text: string }
   | { type: "callout"; kind: "note" | "caution"; blocks: DocsBlock[] }
-  | { type: "quote"; blocks: DocsBlock[] };
+  | { type: "quote"; blocks: DocsBlock[] }
+  /** An interactive landing component placed with a `pomegr-demo` fence; it carries no content of its own. */
+  | { type: "demo"; name: "tasks-board" };
 
 export interface DocsHeading {
   depth: number;

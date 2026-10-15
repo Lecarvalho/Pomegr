@@ -11,6 +11,13 @@ one after another. After a start, Pomegr only observes the session: it never sto
 attaches to, answers, or approves anything in a running session. Observing sessions
 works the same whether or not you use tasks.
 
+Click through the demo below to see a board at work. It is a demo with sample tasks,
+not the Pomegr app, and it starts nothing.
+
+```pomegr-demo
+tasks-board
+```
+
 ## The board
 
 Select **Tasks** in the sidebar to open the Tasks home. **Needs you** lists the tasks

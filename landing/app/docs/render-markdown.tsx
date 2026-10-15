@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Fragment } from "react";
 import type { ReactNode } from "react";
 import type { DocsBlock, DocsInline } from "../../scripts/docs-content.mjs";
+import { TasksBoardDemo } from "./demos/TasksBoardDemo";
 import styles from "./markdown.module.css";
 
 // No raw-HTML path: unrecognized nodes and destinations are dropped; `strict` throws instead so tests catch new token types.
@@ -22,6 +23,8 @@ const PAGE_ANCHOR = new RegExp(`^#${FRAGMENT}$`, "u");
 const DOCS_ROUTE = new RegExp(`^/docs(?:/[a-z0-9]+(?:-[a-z0-9]+)*){0,2}(?:#${FRAGMENT})?$`, "u");
 const IMAGE_ROUTE = /^\/docs\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif)$/;
 const MAX_TABLE_LABEL = 120;
+// The one place a demo name maps to a component; the loader accepts only these names.
+const DEMOS = { "tasks-board": TasksBoardDemo } as const;
 
 const HEADING_TAGS = { 1: "h1", 2: "h2", 3: "h3", 4: "h4" } as const;
 const DEPTH_CLASS = { 1: styles.depth1, 2: styles.depth2, 3: styles.depth3, 4: styles.depth4 } as const;
@@ -230,6 +233,11 @@ function renderBlock(block: DocsBlock, context: Context): ReactNode {
           {renderBlocks(block.blocks, context)}
         </div>
       );
+    }
+    case "demo": {
+      const Demo = Object.hasOwn(DEMOS, block.name) ? DEMOS[block.name] : undefined;
+      if (!Demo) return unsupported(context, `demo ${describeType(block.name)}`);
+      return <Demo />;
     }
     case "quote":
       return <blockquote className={styles.quote}>{renderBlocks(block.blocks, context)}</blockquote>;

@@ -13,6 +13,7 @@
 }
 
 .markdown {
+  --md-paper: #f0ece2;
   --md-ink: #171715;
   --md-muted: #4e4b47;
   --md-rule: rgba(23, 23, 21, .4);

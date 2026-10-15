@@ -20,6 +20,9 @@ export const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f
 export const BIDI_CONTROLS = /\p{Bidi_C}/u;
 const SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 const CODE_LANGUAGE = /^[A-Za-z0-9_+-]{1,24}$/;
+// A fence whose language starts `pomegr-` is reserved: only `pomegr-demo` naming one of these demos becomes a demo block.
+export const DEMO_LANGUAGE = "pomegr-demo";
+export const DEMO_NAMES = Object.freeze(["tasks-board"]);
 
 const IMAGE_SIGNATURES = {
   png: (bytes) => startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -211,12 +214,12 @@ function resolveRelativeTarget(fromSource, href) {
   return { source: joined, fragment };
 }
 
-const SUPPORTED_BLOCKS = "headings, paragraphs, lists, tables, fenced code, blockquotes and images";
+const SUPPORTED_BLOCKS = "headings, paragraphs, lists, tables, fenced code, blockquotes, images and demos";
 
 export function createConverter(state) {
   const { page, pagesBySource, readImage, imagesByRoute, issues } = state;
   const pageLabel = `${PUBLIC_LABEL}${page.source}`;
-  const ctx = { line: page.bodyLine, headingIndex: 0 };
+  const ctx = { line: page.bodyLine, headingIndex: 0, demos: 0 };
   const fail = (message) => issues.push(`${pageLabel}:${ctx.line}: ${message}`);
 
   function resolveLink(href) {
@@ -397,6 +400,19 @@ export function createConverter(state) {
     return null;
   }
 
+  function demo(token, top) {
+    const name = token.text.trim();
+    if (token.lang !== DEMO_LANGUAGE) fail(`unsupported fence language ${quote(token.lang)}; the pomegr- prefix is reserved for ${DEMO_LANGUAGE}`);
+    else if (!top) fail("a demo must be top-level, not inside lists or blockquotes");
+    else if (!DEMO_NAMES.includes(name) || token.text !== name) fail(`unknown demo ${quote(token.text)}; a ${DEMO_LANGUAGE} fence holds only one of: ${DEMO_NAMES.join(", ")}`);
+    else if (ctx.demos > 0) fail("a page holds at most one demo");
+    else {
+      ctx.demos += 1;
+      return { type: "demo", name };
+    }
+    return null;
+  }
+
   function blocks(tokens, top) {
     const out = [];
     for (const token of tokens) {
@@ -451,7 +467,10 @@ export function createConverter(state) {
         case "code":
           if (token.codeBlockStyle === "indented") fail("indented code blocks are not supported; use a fenced block");
           else if (!CODE_LANGUAGE.test(token.lang ?? "")) fail("a fenced code block must name its language, such as powershell, json or text");
-          else out.push({ type: "codeblock", lang: token.lang, text: token.text });
+          else if (/^pomegr-/i.test(token.lang)) {
+            const block = demo(token, top);
+            if (block) out.push(block);
+          } else out.push({ type: "codeblock", lang: token.lang, text: token.text });
           break;
         case "table": {
           if (token.header.length === 0) {

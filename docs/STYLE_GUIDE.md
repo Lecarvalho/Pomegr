@@ -115,6 +115,11 @@ reader needs before acting. Keep essential steps in the main procedure; do not
 turn every paragraph into a callout. Scope and lifecycle metadata use ordinary
 blockquotes as shown in the templates below.
 
+A public page may place one interactive demo with a `pomegr-demo` fence whose
+body is the demo name, such as `tasks-board` in the Tasks guide. The
+[publication manifest contract](internal/development/documentation-manifest.md)
+lists the names. Say in the text around it that it is a demo, not the app.
+
 ### Page templates
 
 Adapt these starting points to the subject and remove unused sections. Replace
