@@ -67,8 +67,15 @@ Claude Code session.
   still be able to report. **Stopped** alone therefore does not stall a Codex task. It
   stalls only once Pomegr sees that Codex no longer holds the session (Windows).
 - An **Idle** or **Open** session never stalls a task.
-- A stalled task leaves that state only through **Mark done and resume queue** or
-  **Requeue task**.
+- A stalled task leaves that state when you choose **Mark done and resume queue** or
+  **Requeue task**, or when its own session turns out not to have ended:
+  - The session reports with `complete_task` or `block_task`. The task goes to
+    **Review**, or becomes **Blocked by agent**.
+  - Pomegr reads the session **Working** or **Needs input** again, and a second reading
+    about 20 seconds later confirms that it has not ended. The task goes back to
+    **Not queued** with its session, and its card shows the session's state again.
+- Either way, a queue that the stalled task held moves on, unless the session reports
+  that it is blocked. Pomegr never starts, stops, or steers the session.
 
 ## Tasks an agent can change
 

@@ -87,7 +87,7 @@ lists its tasks before the usual destinations.
 | **Queued** | Waiting for its turn and the start gates. The next one reads **Queued · next**. | **Add to queue**, or **Requeue task**. |
 | **Scheduled** | Queued with its own start time. | Setting **Start at** on the task. |
 | **Needs review** | The agent reported complete. The task window shows each checked condition's result and the agent's attention line, if it gave one. | Pomegr, when it verifies the report. |
-| **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. |
+| **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. It leaves Stalled when that session reports or works again. |
 | **Blocked by agent** | The agent reported it cannot continue and gave a reason. | The agent. |
 | **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done**. |
 
@@ -99,7 +99,8 @@ and then taken back.
 
 **Stalled** means Pomegr observed the session end with no report, not that the work
 failed. Pomegr confirms the end with a second reading about 20 seconds after the first,
-so a session that reads as ended for a moment does not stall its task.
+so a session that reads as ended for a moment does not stall its task. If the same
+session reports or works again later, the task leaves **Stalled** by itself.
 
 ## Board limits
 

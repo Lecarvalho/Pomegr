@@ -282,17 +282,14 @@ test("a started task takes no update until it is requeued", async (context) => {
   assert.equal(apply(env, "update", { id: "T-2", text: "second, edited" }).ok, true);
 });
 
-test("a report on a task Pomegr stalled is refused as stalled, not as already reported", async (context) => {
+test("the session Pomegr started still reports a task Pomegr stalled, and the first report wins", async (context) => {
   const env = await setup(context);
   startedTask(env);
-  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "closed" })), { ok: true, stalled: 1 });
-  const before = taskOf(env);
-  refused(await complete(env), 409, "stalled");
-  refused(await block(env), 409, "stalled");
-  assert.deepEqual(taskOf(env), before);
-  assert.equal(before.report, null);
-  // Mark done leaves an outcome, so the answer is the ordinary one again.
-  assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
+  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "closed" })), { ok: true, stalled: 1, recovered: 0 });
+  assert.equal(taskOf(env).report, null);
+  // The report shows that the end Pomegr confirmed was wrong.
+  assert.equal((await complete(env)).json.state, "needs_review");
+  refused(await block(env), 409, "already_reported");
   refused(await complete(env), 409, "already_reported");
 });
 
@@ -465,7 +462,7 @@ test("nothing resolves a linked task with no report by itself: the queue waits o
   assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   // A session the monitor still shows working, or one it holds no facts for, never changes the task.
   for (const facts of [{ state: "working", writerReleased: false }, { state: "unknown", writerReleased: false }, null]) {
-    assert.deepEqual(env.store.stallEndedTasks(() => facts), { ok: true, stalled: 0 });
+    assert.deepEqual(env.store.stallEndedTasks(() => facts), { ok: true, stalled: 0, recovered: 0 });
   }
   env.clock.now += 24 * 60 * 60 * 1000;
   assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });

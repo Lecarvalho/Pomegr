@@ -7,7 +7,7 @@ import test from "node:test";
 import { createOwnerProbeCounters } from "../../../server/normalize/session-registry.mjs";
 import { createClaudeRegistryObservation } from "../../../server/providers/claude/registry-observation.mjs";
 import { resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
-import { createEndConfirmation, createTaskStallWatcher, END_CONFIRM_DELAY_MS, sessionEnded } from "../../../server/tasks/task-stall.mjs";
+import { createEndConfirmation, createLiveConfirmation, createTaskStallWatcher, END_CONFIRM_DELAY_MS, sessionEnded, sessionLive } from "../../../server/tasks/task-stall.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { passingGates } from "./queue-test-support.mjs";
 
@@ -104,7 +104,7 @@ test("a Stopped state ends only a recognized provider's session; Closed ends any
 test("a stopped session of an unrecognized provider prefix leaves the task as it is", async (context) => {
   const env = await setup(context);
   const id = startedTask(env, "gemini:019a0000-2222-7333-8444-555566667777");
-  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "stopped", writerReleased: true })), { ok: true, stalled: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "stopped", writerReleased: true })), { ok: true, stalled: 0, recovered: 0 });
   assert.equal(taskOf(env, id).state, "not_queued");
 });
 
@@ -113,7 +113,7 @@ test("a linked task whose session closed with no report is stalled, and the deci
   const id = startedTask(env);
   env.clock.now = 2_000_000;
   const seen = [];
-  assert.deepEqual(env.store.stallEndedTasks((sessionId) => { seen.push(sessionId); return CLOSED; }), { ok: true, stalled: 1 });
+  assert.deepEqual(env.store.stallEndedTasks((sessionId) => { seen.push(sessionId); return CLOSED; }), { ok: true, stalled: 1, recovered: 0 });
   assert.deepEqual(seen, [SESSION]);
   const task = taskOf(env, id);
   assert.equal(task.state, "stalled");
@@ -131,7 +131,7 @@ test("a stopped session and a released Codex writer stall the task too", async (
   const first = startedTask(env);
   const second = startedTask(env, OTHER_SESSION);
   const facts = { [SESSION]: { state: "stopped" }, [OTHER_SESSION]: { state: "unknown", writerReleased: true } };
-  assert.deepEqual(env.store.stallEndedTasks((sessionId) => facts[sessionId]), { ok: true, stalled: 2 });
+  assert.deepEqual(env.store.stallEndedTasks((sessionId) => facts[sessionId]), { ok: true, stalled: 2, recovered: 0 });
   assert.equal(taskOf(env, first).state, "stalled");
   assert.equal(taskOf(env, second).state, "stalled");
 });
@@ -141,8 +141,8 @@ test("a Codex session that reads Stopped with its writer present leaves the task
   const id = startedTask(env, OTHER_SESSION);
   setQueue(env, "running");
   const present = { state: "stopped", writerReleased: false };
-  assert.deepEqual(env.store.stallEndedTasks(() => present), { ok: true, stalled: 0 });
-  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "stopped" })), { ok: true, stalled: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(() => present), { ok: true, stalled: 0, recovered: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "stopped" })), { ok: true, stalled: 0, recovered: 0 });
   assert.equal(taskOf(env, id).state, "not_queued");
   assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "running", blockedBy: null });
   // The turn failed, then the same process recovered and reported: the report is accepted.
@@ -157,22 +157,21 @@ test("a Codex session that reads Stopped with its writer released stalls the tas
   const id = startedTask(env, OTHER_SESSION);
   setQueue(env, "running");
   const released = { state: "stopped", writerReleased: true };
-  assert.deepEqual(env.store.stallEndedTasks(() => released), { ok: true, stalled: 1 });
+  assert.deepEqual(env.store.stallEndedTasks(() => released), { ok: true, stalled: 1, recovered: 0 });
   assert.equal(taskOf(env, id).state, "stalled");
   assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "blocked", blockedBy: id });
-  assert.deepEqual(env.store.stallEndedTasks(() => released), { ok: true, stalled: 0 });
-  assert.deepEqual(env.store.completeTask({ sessionId: OTHER_SESSION }, () => null), { ok: false, error: "stalled" });
+  assert.deepEqual(env.store.stallEndedTasks(() => released), { ok: true, stalled: 0, recovered: 0 });
 
   const closed = await setup(context);
   const closedId = startedTask(closed, OTHER_SESSION);
-  assert.deepEqual(closed.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 1 });
+  assert.deepEqual(closed.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 1, recovered: 0 });
   assert.equal(taskOf(closed, closedId).state, "stalled");
 });
 
 test("a Claude Code session that reads Stopped stalls the task as before", async (context) => {
   const env = await setup(context);
   const id = startedTask(env);
-  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "stopped", writerReleased: false })), { ok: true, stalled: 1 });
+  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "stopped", writerReleased: false })), { ok: true, stalled: 1, recovered: 0 });
   assert.equal(taskOf(env, id).state, "stalled");
 });
 
@@ -180,11 +179,11 @@ test("an idle, open, working, or unknown session never stalls a task", async (co
   const env = await setup(context);
   const id = startedTask(env);
   for (const state of ["idle", "open", "working", "needs_input", "unknown"]) {
-    assert.deepEqual(env.store.stallEndedTasks(() => ({ state, writerReleased: false })), { ok: true, stalled: 0 }, state);
+    assert.deepEqual(env.store.stallEndedTasks(() => ({ state, writerReleased: false })), { ok: true, stalled: 0, recovered: 0 }, state);
   }
-  assert.deepEqual(env.store.stallEndedTasks(() => null), { ok: true, stalled: 0 });
-  assert.deepEqual(env.store.stallEndedTasks(() => { throw new Error("no facts"); }), { ok: true, stalled: 0 });
-  assert.deepEqual(env.store.stallEndedTasks(null), { ok: true, stalled: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(() => null), { ok: true, stalled: 0, recovered: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(() => { throw new Error("no facts"); }), { ok: true, stalled: 0, recovered: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(null), { ok: true, stalled: 0, recovered: 0 });
   assert.equal(taskOf(env, id).state, "not_queued");
 });
 
@@ -196,24 +195,88 @@ test("a task without a session, and a task that already has a report, are left a
   const blocked = startedTask(env, OTHER_SESSION);
   assert.equal(env.store.blockTask({ sessionId: OTHER_SESSION, reason: "Needs a decision" }).ok, true);
   const seen = [];
-  assert.deepEqual(env.store.stallEndedTasks((sessionId) => { seen.push(sessionId); return CLOSED; }), { ok: true, stalled: 0 });
+  assert.deepEqual(env.store.stallEndedTasks((sessionId) => { seen.push(sessionId); return CLOSED; }), { ok: true, stalled: 0, recovered: 0 });
   assert.deepEqual(seen, []);
   assert.equal(taskOf(env, unlinked).state, "not_queued");
   assert.equal(taskOf(env, reported).state, "needs_review");
   assert.equal(taskOf(env, blocked).state, "blocked");
 });
 
-test("a stalled task never leaves stalled by itself", async (context) => {
+test("only a working or needs-input reading counts as live", () => {
+  for (const state of ["working", "needs_input"]) assert.equal(sessionLive({ state }), true, state);
+  for (const state of ["idle", "open", "closed", "stopped", "unknown", "", null, undefined]) assert.equal(sessionLive({ state }), false, String(state));
+  for (const facts of [null, undefined, "working", 1]) assert.equal(sessionLive(facts), false);
+});
+
+test("a stalled task stays stalled while its session reads idle, open, ended, unknown, or missing", async (context) => {
   const env = await setup(context);
   const id = startedTask(env);
   env.store.stallEndedTasks(() => CLOSED);
-  // The session is observed working again, and reports: neither changes the decision.
-  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "working" })), { ok: true, stalled: 0 });
-  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: false, error: "stalled" });
-  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "Too late" }), { ok: false, error: "stalled" });
+  for (const facts of [{ state: "idle" }, { state: "open" }, CLOSED, { state: "stopped" }, { state: "unknown" }, null]) {
+    assert.deepEqual(env.store.stallEndedTasks(() => facts), { ok: true, stalled: 0, recovered: 0 }, String(facts?.state));
+  }
+  assert.deepEqual(env.store.stallEndedTasks(() => { throw new Error("feed failed"); }), { ok: true, stalled: 0, recovered: 0 });
+  assert.equal(taskOf(env, id).state, "stalled");
+});
+
+test("a stalled task whose own session works again leaves Stalled, keeps its link, and frees the queue", async (context) => {
+  const env = await setup(context);
+  const id = startedTask(env);
+  setQueue(env, "running");
+  env.store.stallEndedTasks(() => CLOSED);
+  assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "blocked", blockedBy: id });
+  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "needs_input" })), { ok: true, stalled: 0, recovered: 1 });
   const task = taskOf(env, id);
-  assert.equal(task.state, "stalled");
+  assert.equal(task.state, "not_queued");
   assert.equal(task.report, null);
+  assert.equal(task.session.id, SESSION);
+  assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "running", blockedBy: null });
+  // The stall rule watches it again: it stalls when the session ends once more, and its report is accepted until then.
+  assert.deepEqual(env.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 1, recovered: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "working" })), { ok: true, stalled: 0, recovered: 1 });
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).state, "needs_review");
+});
+
+test("a recovered task releases the queue to the next task that still holds it", async (context) => {
+  const env = await setup(context);
+  const first = startedTask(env);
+  const second = startedTask(env, OTHER_SESSION);
+  setQueue(env, "running");
+  env.store.stallEndedTasks(() => CLOSED);
+  assert.equal(board(env).queue.blockedBy, first);
+  const facts = (sessionId) => (sessionId === SESSION ? { state: "working" } : CLOSED);
+  assert.deepEqual(env.store.stallEndedTasks(facts), { ok: true, stalled: 0, recovered: 1 });
+  assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "blocked", blockedBy: second });
+  for (const status of ["idle", "paused"]) {
+    const other = await setup(context);
+    const stalled = startedTask(other);
+    other.store.stallEndedTasks(() => CLOSED);
+    setQueue(other, status);
+    other.store.stallEndedTasks(() => ({ state: "working" }));
+    assert.equal(taskOf(other, stalled).state, "not_queued");
+    assert.equal(board(other).queue.status, status, "recovery never turns a queue on");
+  }
+});
+
+test("the session Pomegr started reports its stalled task: a completion frees the queue, a block keeps holding it", async (context) => {
+  const env = await setup(context);
+  const completed = startedTask(env);
+  setQueue(env, "running");
+  env.store.stallEndedTasks(() => CLOSED);
+  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: true, state: "needs_review", results: [] });
+  assert.equal(taskOf(env, completed).state, "needs_review");
+  assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "running", blockedBy: null });
+  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "Too late" }), { ok: false, error: "already_reported" });
+
+  const other = await setup(context);
+  const blocked = startedTask(other);
+  setQueue(other, "running");
+  other.store.stallEndedTasks(() => CLOSED);
+  assert.deepEqual(other.store.blockTask({ sessionId: SESSION, reason: "Needs a decision" }), { ok: true, state: "blocked" });
+  assert.equal(taskOf(other, blocked).state, "blocked");
+  assert.deepEqual({ status: board(other).queue.status, blockedBy: board(other).queue.blockedBy }, { status: "blocked", blockedBy: blocked });
+  // A reported task is not moved back by a live reading.
+  assert.deepEqual(other.store.stallEndedTasks(() => ({ state: "working" })), { ok: true, stalled: 0, recovered: 0 });
 });
 
 test("a stalled task holds a running queue and leaves an idle or paused one as it is", async (context) => {
@@ -238,7 +301,7 @@ test("the user resolves a stalled task: mark done resumes the queue, requeue cle
   const done = startedTask(env);
   const requeued = startedTask(env, OTHER_SESSION);
   setQueue(env, "running");
-  assert.deepEqual(env.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 2 });
+  assert.deepEqual(env.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 2, recovered: 0 });
   assert.equal(board(env).queue.blockedBy, done);
 
   assert.equal(apply(env, "resolve_done", { id: done }).ok, true);
@@ -250,7 +313,7 @@ test("the user resolves a stalled task: mark done resumes the queue, requeue cle
   const task = taskOf(env, requeued);
   assert.equal(task.state, "queued");
   assert.equal(task.session, null);
-  assert.deepEqual(env.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 0 });
+  assert.deepEqual(env.store.stallEndedTasks(() => CLOSED), { ok: true, stalled: 0, recovered: 0 });
   assert.equal(taskOf(env, requeued).state, "queued");
 });
 
@@ -363,7 +426,6 @@ test("an end that a second reading confirms after the delay stalls the task once
   assert.equal(taskOf(env, id).state, "stalled");
   assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "blocked", blockedBy: id });
   assert.equal(timers.length, 2, "nothing waits for a second reading any more");
-  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: false, error: "stalled" });
   watcher.stop();
 });
 
@@ -426,7 +488,7 @@ test("one false reading that a live Claude Code process is gone does not stall i
   watcher.stop();
 });
 
-test("a Claude Code process that stays gone stalls its task at the second reading, and its report says so", async (context) => {
+test("a Claude Code process that stays gone stalls its task at the second reading", async (context) => {
   const env = await setup(context);
   const id = startedTask(env);
   const readings = { ownerIsCurrent: true, processExists: true };
@@ -440,9 +502,63 @@ test("a Claude Code process that stays gone stalls its task at the second readin
   clock.now += END_CONFIRM_DELAY_MS;
   timers.at(-1).run();
   assert.equal(taskOf(env, id).state, "stalled");
-  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: false, error: "stalled" });
-  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "Too late" }), { ok: false, error: "stalled" });
   assert.equal(counters.snapshot().sessionsReinstated, 0);
+  watcher.stop();
+});
+
+test("a live reading is confirmed only by an open reading after the delay, with no ended or unknown reading between", () => {
+  const clock = { now: 0 };
+  const confirmation = createLiveConfirmation({ delayMs: 1000, now: () => clock.now });
+  const working = { state: "working" };
+  assert.equal(confirmation.dueIn(), null);
+  assert.equal(confirmation.read("s", { state: "idle" }), false, "an idle reading starts no wait");
+  assert.equal(confirmation.dueIn(), null);
+  assert.equal(confirmation.read("s", working), false, "the first live reading only starts the wait");
+  assert.equal(confirmation.dueIn(), 1000);
+  clock.now = 999;
+  assert.equal(confirmation.read("s", { state: "idle" }), false, "too early");
+  clock.now = 1000;
+  assert.equal(confirmation.read("s", { state: "idle" }), true, "an open reading after the delay confirms");
+  assert.equal(confirmation.dueIn(), null);
+  for (const between of [CLOSED, { state: "unknown" }, null]) {
+    clock.now = 0;
+    confirmation.read("s", working);
+    clock.now = 500;
+    assert.equal(confirmation.read("s", between), false);
+    clock.now = 1500;
+    assert.equal(confirmation.read("s", working), false, `${String(between?.state)} between drops the first live reading`);
+    clock.now = 2500;
+    assert.equal(confirmation.read("s", working), true);
+  }
+  confirmation.read("s", working);
+  confirmation.retain([]);
+  assert.equal(confirmation.dueIn(), null, "a session the sweep did not read is forgotten");
+});
+
+test("the watcher moves a stalled task back only when a later reading confirms the session works again", async (context) => {
+  const env = await setup(context);
+  const id = startedTask(env);
+  setQueue(env, "running");
+  env.store.stallEndedTasks(() => CLOSED);
+  let facts = { state: "working", writerReleased: false };
+  const { watcher, clock, timers } = watched(env, () => facts);
+  watcher.sweep();
+  assert.equal(taskOf(env, id).state, "stalled", "one live reading moves nothing");
+  assert.equal(timers.at(-1).delay, END_CONFIRM_DELAY_MS + 50, "the confirming reading is scheduled");
+  // The session reads closed again before the confirming reading: the wait starts over.
+  facts = CLOSED;
+  clock.now += 2_000;
+  watcher.sweep();
+  facts = { state: "working", writerReleased: false };
+  clock.now += END_CONFIRM_DELAY_MS;
+  watcher.sweep();
+  assert.equal(taskOf(env, id).state, "stalled", "a live reading after a closed one is a first reading again");
+  // The turn finished before the confirming reading: Idle is open, so it confirms.
+  facts = { state: "idle", writerReleased: false };
+  clock.now += END_CONFIRM_DELAY_MS;
+  timers.at(-1).run();
+  assert.equal(taskOf(env, id).state, "not_queued");
+  assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "running", blockedBy: null });
   watcher.stop();
 });
 
