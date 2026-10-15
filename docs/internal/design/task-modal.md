@@ -64,7 +64,7 @@ One task modal serves three modes, and the Feature modal uses its frame for a fo
 | Edit | Quiet **Delete task**, Secondary **Add to queue** or **Remove from queue**, Secondary **Start session**, primary **Save** |
 | Promote | Quiet **Cancel**, primary **Promote issue** |
 | New feature | Quiet **Cancel**, primary **Create feature** |
-| Feature | Quiet **Delete feature**, primary **Save** |
+| Feature | Quiet **Delete feature**, Secondary **Mark done** or **Reopen**, primary **Save** |
 
 ## Task fields
 
@@ -112,7 +112,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 ### Feature
 
 - **Feature** fills a one-column row.
-- **Feature** is a `CommandSelect` that lists unfinished features, No feature, and New feature….
+- **Feature** is a `CommandSelect` that lists the features that are not done, No feature, and New feature…. A task keeps its own done feature in the list.
 - New feature… reveals a one-line name field in place.
 - Enter or leaving the name field commits the name.
 - Escape cancels the name.
@@ -424,7 +424,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - The summary is the chevron (`.taskFeatureChevron`), the label **Tasks** (`.taskFeatureLabel`), and the count “n tasks · d done” (`.taskFeatureCount`) with data-font numerals.
 - The list is the task modal's In this feature list. Each row has its ID, its title button, and its state chip.
 - A row's title button opens that task's modal in place of this one. The draft is discarded.
-- The footer is a Quiet **Delete feature**, a spacer, and the one primary **Save**. It has no **Cancel**.
+- The footer is a Quiet **Delete feature**, a spacer, a Secondary **Mark done** or **Reopen**, and the one primary **Save**. It has no **Cancel**.
 - **Save** is disabled until the draft differs from the stored feature, the title holds text, and no field is over its bound.
 - **Save** sends one update that holds only the changed fields. A cleared description or app version is sent as `null`.
 - **Save** closes the modal and the board reads again.
@@ -453,6 +453,17 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - A failed delete, a `conflict` from a task that started in the meantime included, keeps the modal open and returns to the idle footer.
 - A failed delete shows one fixed line under the fields.
 - **Delete feature** is not available on a paired device or in a browser.
+
+### Mark done and Reopen
+
+- The Secondary reads **Mark done** while the feature is not done, and **Reopen** while it is.
+- It sends one `feature_update` that holds the ID and `done` alone, at once. The draft is not saved with it.
+- A successful one keeps the modal open, flips the label, and the board reads again.
+- A done feature takes no new task. Its tasks keep their column, state, and queue place.
+- It is disabled while a save, a mark, or a delete runs, and while the delete confirmation shows.
+- A failed one shows “The feature could not be saved.” under the fields.
+- A done feature looks the same on the board. The Feature fields of the task forms do not offer it.
+- **Mark done** and **Reopen** are not available on a paired device or in a browser.
 
 ### Failures
 

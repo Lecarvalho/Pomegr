@@ -527,7 +527,7 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
     const completeWhen = body.completeWhen ?? body.doneWhen;
     if (completeWhen !== undefined) payload.completeWhen = completeWhen;
     if (feature !== undefined) {
-      // Exact name of an unfinished feature; agents never create features.
+      // Exact name of a feature that is not done; a done feature reads as not found.
       const match = projectBoard(repositoryId, taskStore.readBoard(repositoryId)).features
         .find((candidate) => candidate.name === feature && candidate.done !== true);
       if (!match) {

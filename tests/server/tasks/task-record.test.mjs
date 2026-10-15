@@ -212,7 +212,9 @@ test("stored columns and features are validated", () => {
   assert.equal(normalizeStoredColumn({ id: "col-1", name: "Backlog", position: 0 }), undefined);
   assert.equal(normalizeStoredColumn({ id: COLUMN, name: "x".repeat(41), position: 0 }), undefined);
   assert.equal(normalizeStoredColumn({ id: COLUMN, name: "Backlog", position: -1 }), undefined);
-  assert.deepEqual(normalizeStoredFeature({ id: FEATURE, name: "Billing" }), { id: FEATURE, name: "Billing" });
+  assert.deepEqual(normalizeStoredFeature({ id: FEATURE, name: "Billing" }), { id: FEATURE, name: "Billing", done: false });
+  assert.deepEqual(normalizeStoredFeature({ id: FEATURE, name: "Billing", done: true }), { id: FEATURE, name: "Billing", done: true });
+  assert.deepEqual(normalizeStoredFeature({ id: FEATURE, name: "Billing", done: "1" }), { id: FEATURE, name: "Billing", done: false });
   assert.equal(normalizeStoredFeature({ id: COLUMN, name: "Billing" }), undefined);
   assert.equal(normalizeStoredFeature({ id: FEATURE, name: "x".repeat(81) }), undefined);
 });
@@ -266,11 +268,11 @@ test("a stored task outside the contract is rejected whole", () => {
   for (const overrides of invalid) assert.equal(normalizeStoredTask(storedTask(overrides)), undefined, JSON.stringify(overrides));
 });
 
-test("the board orders columns and tasks and derives feature completion", () => {
+test("the board orders columns and tasks and serves the stored feature flag", () => {
   const board = projectBoard(REPOSITORY, {
     repository: { queue_status: "blocked", queue_blocked_by: "T-3" },
     columns: [{ id: OTHER_COLUMN, name: "Done", position: 1 }, { id: COLUMN, name: "Backlog", position: 0 }],
-    features: [{ id: FEATURE, name: "Billing" }, { id: `feat-${"0".repeat(11)}2`, name: "Empty" }],
+    features: [{ id: FEATURE, name: "Billing" }, { id: `feat-${"0".repeat(11)}2`, name: "Empty", done: true }],
     tasks: [
       storedTask({ number: 3, column_id: OTHER_COLUMN, position: 0, state: "done", feature_id: FEATURE }),
       storedTask({ number: 2, column_id: COLUMN, position: 1 }),
@@ -282,17 +284,18 @@ test("the board orders columns and tasks and derives feature completion", () => 
   assert.equal(board.repositoryId, REPOSITORY);
   assert.deepEqual(board.columns.map((column) => column.id), [COLUMN, OTHER_COLUMN]);
   assert.deepEqual(board.tasks.map((task) => task.id), ["T-1", "T-2", "T-3"]);
+  // Every task of Billing is done and it stays open; the empty feature is done because its flag is.
   assert.deepEqual(board.features, [
-    { id: FEATURE, name: "Billing", done: true },
-    { id: `feat-${"0".repeat(11)}2`, name: "Empty", done: false },
+    { id: FEATURE, name: "Billing", done: false },
+    { id: `feat-${"0".repeat(11)}2`, name: "Empty", done: true },
   ]);
   assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-3", pauseReason: null, order: [] });
 
   const pending = projectBoard(REPOSITORY, {
-    repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing" }],
+    repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing", done: true }],
     tasks: [storedTask({ number: 1, state: "done", feature_id: FEATURE }), storedTask({ number: 2, state: "queued", feature_id: FEATURE })],
   });
-  assert.equal(pending.features[0].done, false);
+  assert.equal(pending.features[0].done, true);
 });
 
 test("a board with inconsistent or out-of-bound rows is not projected", () => {

@@ -130,6 +130,16 @@ test("feature_update through the route answers the fixed statuses and never the 
   assert.equal((await action(port, "feature_update", { id: UNKNOWN, name: "x" })).status, 404);
   assert.equal((await action(port, "feature_update", { id })).status, 400);
   assert.equal((await post(port, "feature_update", { repositoryId: REPOSITORY, payload: { id, name: "Z" } }, JSON_BODY)).status, 401);
+
+  // The desktop marks the feature done and reopens it; the board serves the stored flag.
+  const marked = await action(port, "feature_update", { id, done: true });
+  assert.equal(marked.status, 200);
+  assert.deepEqual(marked.json.board.features.map((feature) => [feature.name, feature.done]), [["Renamed", true], ["Two", false]]);
+  assert.equal((await action(port, "create", { text: "late", featureId: id })).status, 409);
+  assert.equal((await action(port, "feature_update", { id, done: "yes" })).status, 400);
+  const reopened = await action(port, "feature_update", { id, done: false });
+  assert.equal(reopened.json.board.features[0].done, false);
+  assert.equal((await action(port, "create", { text: "again", featureId: id })).status, 200);
 });
 
 test("the feature read answers the two fields, desktop only, with exact inputs", async (context) => {

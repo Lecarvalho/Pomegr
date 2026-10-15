@@ -93,7 +93,7 @@ test("create validates the feature and the key shapes, and a step is no key", as
   assert.equal(store.readBoard(REPOSITORY).tasks.length, 0);
 });
 
-test("the done flag is false for an empty or mixed feature and true once every task is done", async (t) => {
+test("a feature is done only when the owner marks it, whatever the states of its tasks", async (t) => {
   const { store, databasePath } = await temporaryStore(t);
   const feature = addFeature(store, "Search");
   const flag = () => store.readBoard(REPOSITORY).features.find((candidate) => candidate.id === feature).done;
@@ -101,17 +101,69 @@ test("the done flag is false for an empty or mixed feature and true once every t
   addTask(store, { featureId: feature });
   addTask(store, { featureId: feature });
   markDone(databasePath, 1);
-  assert.equal(flag(), false);
   markDone(databasePath, 2);
-  assert.equal(flag(), true);
-  // A done feature accepts no new task, on create or from another feature.
+  // Every task done no longer makes the feature done: it still takes a task.
+  assert.equal(flag(), false);
+  assert.equal(addTask(store, { featureId: feature }).ok, true);
+  // An empty feature can be marked done.
+  const empty = addFeature(store, "Empty");
+  assert.equal(store.apply(REPOSITORY, "feature_update", { id: empty, done: true }).ok, true);
+  assert.equal(store.readBoard(REPOSITORY).features.find((candidate) => candidate.id === empty).done, true);
+});
+
+test("a feature marked done with open tasks refuses new tasks and leaves its tasks untouched, until it is reopened", async (t) => {
+  const { store, databasePath } = await temporaryStore(t);
+  const feature = addFeature(store, "Search");
   const open = addFeature(store, "Open");
+  addTask(store, { featureId: feature });
+  addTask(store, { featureId: feature });
+  addTask(store, { featureId: feature });
   addTask(store, { featureId: open });
+  markDone(databasePath, 1);
+  assert.equal(store.apply(REPOSITORY, "queue_add", { id: "T-2" }).ok, true);
+  const before = store.readBoard(REPOSITORY);
+
+  const marked = store.apply(REPOSITORY, "feature_update", { id: feature, done: true });
+  assert.deepEqual(Object.keys(marked).filter((key) => key !== "board"), ["ok"]);
+  const board = store.readBoard(REPOSITORY);
+  assert.deepEqual(board.features.map((candidate) => [candidate.name, candidate.done]), [["Search", true], ["Open", false]]);
+  // Nothing moves, unqueues, changes state, or is deleted.
+  const cards = (snapshot) => snapshot.tasks.map((task) => [task.id, task.featureId, task.columnId, task.position, task.state, task.updatedAt]);
+  assert.deepEqual(cards(board), cards(before));
+  assert.deepEqual(board.queue.order, before.queue.order);
+  // The details stay as they were.
+  assert.deepEqual(store.readFeature(REPOSITORY, feature), { id: feature, title: "Search", description: null, appVersion: null });
+
+  // A done feature takes no new task, on create, by update, or through the agent's add.
   assert.deepEqual(addTask(store, { featureId: feature }), { ok: false, error: "conflict" });
-  assert.equal(addTask(store, {}).ok, true);
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-4", featureId: feature }), { ok: false, error: "conflict" });
-  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-3", featureId: feature }), { ok: false, error: "conflict" });
-  assert.equal(flag(), true);
+  assert.deepEqual(store.apply(REPOSITORY, "agent_create", { sessionId: "session-a", task: { text: "late", featureId: feature } }), { ok: false, error: "conflict" });
+  // A task already in it keeps it, and an edit of that task still works.
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-3", text: "renamed" }).ok, true);
+  assert.equal(store.readBoard(REPOSITORY).tasks.find((task) => task.id === "T-3").featureId, feature);
+  // Editing the other fields keeps the flag.
+  assert.equal(store.apply(REPOSITORY, "feature_update", { id: feature, name: "Search done" }).ok, true);
+  assert.equal(store.readBoard(REPOSITORY).features[0].done, true);
+
+  assert.equal(store.apply(REPOSITORY, "feature_update", { id: feature, done: false }).ok, true);
+  assert.equal(store.readBoard(REPOSITORY).features[0].done, false);
+  assert.equal(addTask(store, { featureId: feature }).ok, true);
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-4", featureId: feature }).ok, true);
+});
+
+test("only the desktop feature_update takes done; the agent's feature actions refuse it", async (t) => {
+  const { store } = await temporaryStore(t);
+  const feature = addFeature(store, "Search");
+  for (const done of [1, "true", null, {}]) {
+    assert.deepEqual(store.apply(REPOSITORY, "feature_update", { id: feature, done }), { ok: false, error: "invalid" }, JSON.stringify(done));
+  }
+  assert.deepEqual(store.apply(REPOSITORY, "agent_feature_update", { feature, done: true }), { ok: false, error: "invalid" });
+  assert.deepEqual(store.apply(REPOSITORY, "agent_feature_create", { title: "Other", done: true }), { ok: false, error: "invalid" });
+  assert.equal(store.readBoard(REPOSITORY).features[0].done, false);
+  // Deleting a done feature drops its flag with it.
+  assert.equal(store.apply(REPOSITORY, "feature_update", { id: feature, done: true }).ok, true);
+  assert.equal(store.apply(REPOSITORY, "feature_delete", { id: feature }).ok, true);
+  assert.deepEqual(store.readBoard(REPOSITORY).features, []);
 });
 
 test("update attaches, detaches, and moves between features without moving the card", async (t) => {

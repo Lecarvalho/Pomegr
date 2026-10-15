@@ -453,6 +453,59 @@ describe("the Feature modal, Feature", () => {
   });
 });
 
+describe("Mark done and Reopen", () => {
+  it("marks the feature done with the flag alone, keeps the modal open, and reads the board again", async () => {
+    const u = user();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openEdit(u);
+    await loaded(dialog);
+    const mark = dialog.getByRole("button", { name: "Mark done" });
+    expect(mark).toHaveClass("commandSecondaryAction");
+    // Footer order: Delete feature, the spacer, Mark done, then Save.
+    expect(mark.compareDocumentPosition(dialog.getByRole("button", { name: "Save" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(dialog.getByRole("button", { name: "Delete feature" }).compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await u.type(dialog.getByRole("textbox", { name: "Description" }), " Draft.");
+    await u.click(mark);
+    await waitFor(() => expect(lastCall("feature_update")).toEqual({ id: "f1", done: true }));
+    expect(refresh).toHaveBeenCalled();
+    expect(await dialog.findByRole("button", { name: "Reopen" })).toBeEnabled();
+    expect(screen.getByRole("dialog", { name: "Feature" })).toBeInTheDocument();
+    // The draft is not saved with the flag, and stays.
+    expect(dialog.getByRole("textbox", { name: "Description" })).toHaveValue("Uploads fail silently. Draft.");
+  });
+
+  it("reads Reopen for a done feature and sends done false", async () => {
+    mock.board = boardOf({ features: [{ id: "f1", name: "Retry telemetry", done: true }, features[1]] });
+    const u = user();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openEdit(u, "Retry telemetry (3), done");
+    await loaded(dialog);
+    expect(dialog.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
+    await u.click(dialog.getByRole("button", { name: "Reopen" }));
+    await waitFor(() => expect(lastCall("feature_update")).toEqual({ id: "f1", done: false }));
+    expect(await dialog.findByRole("button", { name: "Mark done" })).toBeInTheDocument();
+  });
+
+  it("follows a board that reads the flag otherwise", async () => {
+    const u = user();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openEdit(u);
+    publish(boardOf({ features: [{ id: "f1", name: "Retry telemetry", done: true }, features[1]] }));
+    expect(dialog.getByRole("button", { name: "Reopen" })).toBeInTheDocument();
+  });
+
+  it("keeps the label and shows the save failure line when the update fails", async () => {
+    taskAction.mockResolvedValue({ ok: false, error: "not_found" });
+    const u = user();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openEdit(u);
+    await loaded(dialog);
+    await u.click(dialog.getByRole("button", { name: "Mark done" }));
+    expect(await dialog.findByRole("alert")).toHaveTextContent("The feature could not be saved.");
+    expect(dialog.getByRole("button", { name: "Mark done" })).toBeEnabled();
+  });
+});
+
 describe("closing the Feature modal", () => {
   const scrim = () => screen.getByRole("dialog") as HTMLElement;
   const clickScrim = () => { fireEvent.mouseDown(scrim()); fireEvent.click(scrim()); };

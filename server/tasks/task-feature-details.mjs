@@ -1,10 +1,12 @@
-// A feature's description and app version: the context a task's session reads with `get_feature`.
+// A feature's description and app version, the context a task's session reads with `get_feature`, and its done flag.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { FEATURE_ID, isRepositoryId, normalizeFeatureAppVersion, normalizeFeatureDescription, normalizeFeatureName, normalizeFeatureReference } from "./task-record.mjs";
 
 const descriptionKey = (repositoryId, featureId) => `feature_description:${repositoryId}:${featureId}`;
 const appVersionKey = (repositoryId, featureId) => `feature_app_version:${repositoryId}:${featureId}`;
+const donePrefix = (repositoryId) => `feature_done:${repositoryId}:`;
+const DONE = "1";
 
 const readValue = (database, key) => preparedStatement(database, "SELECT value FROM meta WHERE key = ?").get(key)?.value;
 
@@ -28,8 +30,25 @@ export function writeFeatureDetails(database, repositoryId, featureId, { descrip
   if (appVersion !== undefined) writeValue(database, appVersionKey(repositoryId, featureId), appVersion);
 }
 
+// The owner marks a feature done, and only a feature that is not done takes a task. A store without the key reads as not done.
+export function readFeatureDone(database, repositoryId, featureId) {
+  return readValue(database, `${donePrefix(repositoryId)}${featureId}`) === DONE;
+}
+
+// The IDs of one repository's features that are done.
+export function readFeaturesDone(database, repositoryId) {
+  const prefix = donePrefix(repositoryId);
+  const rows = preparedStatement(database, "SELECT key, value FROM meta WHERE substr(key, 1, ?) = ?").all(prefix.length, prefix);
+  return new Set(rows.filter((row) => row.value === DONE).map((row) => String(row.key).slice(prefix.length)).filter((id) => FEATURE_ID.test(id)));
+}
+
+export function writeFeatureDone(database, repositoryId, featureId, done) {
+  writeValue(database, `${donePrefix(repositoryId)}${featureId}`, done === true ? DONE : null);
+}
+
 export function deleteFeatureDetails(database, repositoryId, featureId) {
   writeFeatureDetails(database, repositoryId, featureId, { description: null, appVersion: null });
+  writeFeatureDone(database, repositoryId, featureId, false);
 }
 
 // The stored feature a reference names, by ID or by exact title, or null.

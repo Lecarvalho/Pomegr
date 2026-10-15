@@ -22,6 +22,8 @@ export type CommandSelectOption<V extends string | number = string> = {
   group?: string;
   /** Listed and read, but never chosen. */
   disabled?: boolean;
+  /** Chosen like any option, drawn in muted text. */
+  muted?: boolean;
 };
 
 type CommandSelectProps<V extends string | number> = {
@@ -229,6 +231,7 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
           aria-disabled={option.disabled || undefined}
           data-value={String(option.value)}
           data-active={index === activeIndex || undefined}
+          data-muted={option.muted || undefined}
           className="commandSelectOption"
           onPointerMove={() => { if (index !== activeIndex) setActiveIndex(index); }}
           onClick={() => commit(index)}

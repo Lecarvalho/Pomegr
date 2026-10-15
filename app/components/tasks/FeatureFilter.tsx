@@ -15,11 +15,18 @@ export function FeatureFilter({ board, filter, onFilter, edits, entry }: {
   entry?: FeatureEntry;
 }) {
   const count = (match: (featureId: string | null) => boolean) => board.tasks.filter((task) => match(task.featureId)).length;
+  const feature = (entry: TaskBoard["features"][number]) => ({ value: entry.id, label: entry.name, total: count((id) => id === entry.id), done: entry.done });
+  // Done features sit last, below No feature, in muted text.
   const options = [
     { value: ALL_FEATURES, label: "All", total: board.tasks.length },
-    ...board.features.map((feature) => ({ value: feature.id, label: feature.name, total: count((id) => id === feature.id) })),
+    ...board.features.filter((entry) => !entry.done).map(feature),
     { value: WITHOUT_FEATURE, label: "No feature", total: count((id) => id === null) },
-  ].map((option) => ({ value: option.value, label: `${option.label} (${option.total})` }));
+    ...board.features.filter((entry) => entry.done).map(feature),
+  ].map((option) => ({
+    value: option.value,
+    label: `${option.label} (${option.total})`,
+    ...("done" in option && option.done ? { muted: true, iconLabel: "done" } : {}),
+  }));
   const progress = featureProgress(board, filter);
   const num = (value: number) => <span className="taskFeatureProgressNum">{value}</span>;
   return <div className="taskFeatureFilter" role="group" aria-label="Filter by feature">

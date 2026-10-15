@@ -437,6 +437,7 @@ Every single-select dropdown uses `CommandSelect`. Do not add a native `<select>
 | Active option | Raised tone |
 | Selected option | Brand text at 600 |
 | Disabled option | Muted text and the default cursor. It carries `aria-disabled` and is never chosen. |
+| Muted option | Muted text at 400. It is chosen like any option; Selected still wins. |
 
 - Focus stays on the trigger with `aria-activedescendant`.
 - Arrows, Home/End, Page Up/Down, typeahead, Enter/Space, Escape, and Tab follow the native select.

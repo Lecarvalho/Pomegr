@@ -126,6 +126,12 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   `feature_app_version:<repositoryId>:<featureId>` (`server/tasks/task-feature-details.mjs`).
   A row exists only while the field is set, and both go in the write that deletes the
   feature. Neither is projected onto a board (see [Feature context](#feature-context)).
+- A feature the owner marked done is kept there too, under
+  `feature_done:<repositoryId>:<featureId>` with the fixed value `1`
+  (`server/tasks/task-feature-details.mjs`). The row exists only while the feature is
+  done, and it goes in the write that deletes the feature. A store with no such row, an
+  older one included, reads every feature as not done; it needs no schema change and no
+  migration step (see [Done features](#done-features)).
 
 ## Record
 
@@ -262,8 +268,8 @@ type TaskBoard = {
   order and why it has not started (see [Why a task waits](#why-a-task-waits)): a task
   ID, a place, fixed reasons, and for a reason the IDs of at most eight tasks of the
   same board. It adds no task content, path, time, percentage, or error text.
-- A feature is `done` when every task attached to it is done. Only unfinished
-  features are offered when attaching a task. A board feature is `{ id, name, done }`:
+- A feature is `done` when the owner marked it done (see [Done features](#done-features)).
+  Only features that are not done are offered when attaching a task. A board feature is `{ id, name, done }`:
   `name` is the feature's title, and its description and app version are not on the
   board (see [Feature context](#feature-context)).
 - `session` is a borrowed, normalized reference to the bound session (see
@@ -731,6 +737,33 @@ paths stay desktop-private and never reach the monitor store or browser state.
   that was done before T-27 is never listed.
 - **Git.** `execFile` with argument arrays and no shell, with a 30-second limit per call.
 
+### Done features
+
+Task T-130, product-owner decision of 2026-10-14. It replaces the derived rule, under
+which a feature was done when it had tasks and every one of them was done.
+
+- **One rule.** A feature is done when the owner marked it done, and only then. The
+  states of its tasks play no part: a feature whose tasks are all done stays open until
+  the owner marks it, and a feature with no task can be done. The flag is stored, not
+  derived, and an older store reads every feature as not done (no backfill).
+- **Done with open tasks.** The owner may mark a feature done while it still holds tasks
+  that are not done. Those cards stay where they are and keep the feature as context:
+  nothing moves, unqueues, changes state, leaves a group, or is deleted. A queued task of
+  a done feature still starts.
+- **What done refuses.** A done feature takes no new task. `create`, the store's
+  `agent_create`, and an `update` or `agent_update` that moves a task into it answer
+  `conflict`. The agent's `add_task` route matches only a feature that is not done, so
+  it answers `feature_not_found` first, as before. A task already in the feature keeps it.
+- **Reopen.** The owner reopens a done feature through the same control, and it takes
+  tasks again.
+- **Desktop only.** Only the desktop `feature_update` takes `done`. The agent's
+  `update_feature` (`agent_feature_update`), the paired-device route, and every other
+  agent tool never mark a feature done or reopen one. Marking done changes no name,
+  description, or app version, and editing those keeps the flag.
+- **Served.** The board serves the flag as `features[].done`, so the board, the task
+  forms' Feature field, Tasks home's open-feature count, and Aril's board snapshot read
+  the same value.
+
 ### Feature context
 
 Task T-33, product-owner decision of 2026-10-10. A feature is a record with three
@@ -771,7 +804,8 @@ or compares it, and it gates nothing.
   The desktop `feature_delete` is a different action, with its own rule (below).
 - **Desktop create and update.** The desktop `feature_create` takes `{ name }` and,
   optionally, `description` and `appVersion`. The desktop `feature_update` takes
-  `{ id, name?, description?, appVersion? }` with at least one field beside `id`.
+  `{ id, name?, description?, appVersion?, done? }` with at least one field beside `id`;
+  `done` is a boolean that only it takes (see [Done features](#done-features)).
   They validate and store the fields as the agent tools do, in the same store rows.
 - **Desktop delete.** The desktop `feature_delete` takes `{ id }` and nothing else. It
   detaches every task of the feature, then deletes the feature with its description and
@@ -1601,7 +1635,7 @@ supplies.
   the store's. The monitor resolves `sessionRef` to a repository from the task link or, for
   a session without one, from the session's committed repository identity, never reading
   Git or provider files, and creates the task as the desktop `create` action does: last in the first column, not queued. A `feature` must
-  name an unfinished feature of that repository exactly; the task joins that feature.
+  name a feature of that repository that is not done, exactly; the task joins that feature. A done feature answers `feature_not_found`.
   An agent makes a feature with `create_feature` (see [Feature context](#feature-context)).
 - The answer is `{ schemaVersion: 1, ok: true, taskId }` or `{ schemaVersion: 1, ok: false,
   reason }`, never an echo of task content. Reasons: `invalid` (400), `session_not_found`
@@ -2387,15 +2421,16 @@ serves no other client.
   to 80 characters, the description at most 2000, the app version one line of at most 40;
   an absent or blank one is none); a
   duplicate name in the repository answers `conflict` and a 51st feature `limit`.
-  `feature_update` takes `{ id, name?, description?, appVersion? }` with at least one
+  `feature_update` takes `{ id, name?, description?, appVersion?, done? }` with at least one
   field beside `id`: a present field replaces the stored one, an absent one stays, and a
-  null `description` or `appVersion` clears it. An unknown `id` answers `not_found`, a
+  null `description` or `appVersion` clears it. `done` is a boolean: `true` marks the
+  feature done and `false` reopens it; any other value is `invalid`. An unknown `id` answers `not_found`, a
   name another feature holds `conflict`, and the feature's own name is no conflict.
   Neither answers the description or the app version. A
-  feature with no task is listed with `done: false`. `create` and `update` take one
+  feature is listed with the `done` the owner stored, `false` until marked. `create` and `update` take one
   optional key, `featureId` (a feature ID or null). A payload with a `step` is `invalid`:
   no step exists. An unknown feature, or one of another
-  repository, is `not_found`; a done feature (it has tasks and all are done) refuses a
+  repository, is `not_found`; a done feature (the owner marked it done) refuses a
   task that is not already in it with `conflict`. In `update`, `featureId: null`
   detaches, and the task's own feature ID changes nothing. A feature has no order, so a
   task that joins or leaves a feature moves no card and changes no group.

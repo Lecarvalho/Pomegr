@@ -120,7 +120,7 @@ describe("the copy", () => {
 });
 
 describe("the Feature modal footer, idle", () => {
-  it("draws a Quiet Delete feature, the spacer, and the one primary Save, in that order", async () => {
+  it("draws a Quiet Delete feature, the spacer, a Secondary Mark done, and the one primary Save, in that order", async () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openEdit(user());
     const footer = document.querySelector(".taskModalFooter") as HTMLElement;
@@ -128,9 +128,11 @@ describe("the Feature modal footer, idle", () => {
     expect(remove).toHaveClass("commandQuietAction");
     expect(remove).toBeEnabled();
     expect(remove).toHaveAttribute("type", "button");
-    const [first, spacer, last] = [...footer.children];
+    const [first, spacer, mark, last] = [...footer.children];
     expect(first).toBe(remove);
     expect(spacer).toHaveClass("taskModalSpacer");
+    expect(mark).toHaveClass("commandSecondaryAction");
+    expect(mark).toHaveTextContent("Mark done");
     expect(last).toHaveClass("commandPrimaryAction");
     expect(last).toHaveTextContent("Save");
     expect(footer.querySelector(".taskModalResolve")).toBeNull();

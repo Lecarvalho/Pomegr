@@ -39,6 +39,13 @@ export function FeatureModal(props: Props) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [failure, setFailure] = useState<FeatureFailure | null>(null);
+  // The stored flag shows once the monitor stores it, before the board reads again; a board that reads otherwise wins.
+  const [done, setDone] = useState(feature?.done ?? false);
+  const [boardDone, setBoardDone] = useState(feature?.done ?? false);
+  if (feature && feature.done !== boardDone) {
+    setBoardDone(feature.done);
+    setDone(feature.done);
+  }
 
   // The stored details fill the draft the moment the read answers, so Save never sees them as a change.
   if (read.state === "ready" && !synced) {
@@ -80,6 +87,22 @@ export function FeatureModal(props: Props) {
     if (next === "duplicate") title.current?.focus({ preventScroll: true });
   };
 
+  // Mark done and Reopen store the flag alone and keep the modal open; no task moves, unqueues, or is deleted.
+  const toggleDone = async () => {
+    if (props.mode !== "edit" || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setFailure(null);
+    const next = !done;
+    const result = await updateDesktopFeature(repositoryId, props.feature.id, { done: next });
+    inFlight.current = false;
+    if (result.ok) props.onChanged();
+    if (!mounted.current) return;
+    setBusy(false);
+    if (result.ok) setDone(next);
+    else setFailure("failed");
+  };
+
   const remove = async () => {
     if (props.mode !== "edit" || inFlight.current) return;
     inFlight.current = true;
@@ -101,8 +124,9 @@ export function FeatureModal(props: Props) {
   return <TaskModalFrame title={feature ? "Feature" : "New feature"} subtitle={repositoryName} initialFocus={title} closeOnScrim={!holdsText && !busy && !deleting} onClose={onClose}
     titleExtra={counts && counts.total > 0 ? <span className="commandChip taskCardChip neutral">{counts.done} of {counts.total} done</span> : undefined}
     footer={feature && counts
-      ? <FeatureEditFooter confirming={confirming && (blocker === null || deleting)} deleting={deleting} busy={busy} canSave={canSubmit && !deleting} taskCount={counts.total} blockerId={blocker?.id ?? null}
-        keepRef={keep} onAskDelete={() => { setFailure((current) => (current === "delete" ? null : current)); setConfirming(true); }} onKeep={() => setConfirming(false)} onDelete={() => void remove()} onSave={() => void submit()} />
+      ? <FeatureEditFooter confirming={confirming && (blocker === null || deleting)} deleting={deleting} busy={busy} canSave={canSubmit && !deleting} taskCount={counts.total} blockerId={blocker?.id ?? null} done={done}
+        keepRef={keep} onAskDelete={() => { setFailure((current) => (current === "delete" ? null : current)); setConfirming(true); }} onKeep={() => setConfirming(false)} onDelete={() => void remove()}
+        onToggleDone={() => void toggleDone()} onSave={() => void submit()} />
       : <>
         <span className="taskModalSpacer" aria-hidden="true" />
         <button type="button" className="commandQuietAction" onClick={onClose}>Cancel</button>

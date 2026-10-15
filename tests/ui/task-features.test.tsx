@@ -414,7 +414,12 @@ describe("Feature filter and card feature line", () => {
     expect(within(group).getByText("Feature")).toBeInTheDocument();
     const select = within(group).getByRole("combobox", { name: "Feature" });
     expect(select).toHaveTextContent("All (10)");
-    expect(optionLabels(select)).toEqual(["All (10)", "Task board v1 (8)", "Finished work (1)", "Docs (0)", "No feature (1)"]);
+    // A done feature sits last, below No feature, muted, and its name ends in "done".
+    expect(optionLabels(select)).toEqual(["All (10)", "Task board v1 (8)", "Docs (0)", "No feature (1)", "Finished work (1), done"]);
+    fireEvent.click(select);
+    expect(screen.getByRole("option", { name: "Finished work (1), done" })).toHaveAttribute("data-muted", "true");
+    expect(screen.getByRole("option", { name: "Docs (0)" })).not.toHaveAttribute("data-muted");
+    fireEvent.click(select);
     expect(within(group).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
 
     fireEvent.click(select);
