@@ -23,7 +23,7 @@ npm --prefix landing run dev
 
 Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/about), [Downloads](http://127.0.0.1:8788/download), or [Docs](http://127.0.0.1:8788/docs). The server reloads source changes automatically. Leave the terminal running; press **Ctrl+C** to stop. If already inside `landing/`, use `npm run dev`.
 
-`landing/vite.config.ts` sets `remoteBindings: false`, so the Cloudflare Vite plugin simulates bindings locally, including the `pomegr_waitlist` binding marked `remote: true` in `landing/wrangler.jsonc`. No shell environment variable, Cloudflare login, or API token is needed to preview these pages. This development option does not change production bindings. The site is not fully offline: release metadata comes from GitHub, and the waitlist widget uses Turnstile. Downloads still target real GitHub release files.
+`landing/vite.config.ts` sets `remoteBindings: false`, so the Cloudflare Vite plugin simulates bindings locally, including the `pomegr_waitlist` binding marked `remote: true` in `landing/wrangler.jsonc`. No shell environment variable, Cloudflare login, or API token is needed to preview these pages. This development option does not change production bindings. The site is not fully offline: release metadata comes from GitHub, and downloads target real GitHub release files.
 
 The landing is independent of the desktop/dashboard development server on port 3003. Running `npm run dev` at the repository root starts that application instead of the landing.
 
@@ -31,7 +31,7 @@ Before `dev`, `test`, `typecheck`, and `build`, npm runs `docs:prepare`. It vali
 
 ### Local waitlist configuration
 
-Page previews do not require waitlist secrets. To configure the local widget and database, first copy the example only if a local configuration does not already exist:
+No page shows the waitlist signup form since the home page redesign; the waitlist API and its D1 store remain deployed. Page previews do not require waitlist secrets. To exercise the API and database locally, first copy the example only if a local configuration does not already exist:
 
 ```powershell
 if (-not (Test-Path -LiteralPath landing/.dev.vars)) {

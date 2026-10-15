@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { SiteFooter } from "../components/SiteFooter";
 import { SiteHeader } from "../components/SiteHeader";
-import { WaitlistStatusLink } from "../components/WaitlistStatusLink";
 import styles from "./AboutPage.module.css";
 
 const REPOSITORY = "https://github.com/Lecarvalho/pomegr";
@@ -110,13 +109,12 @@ export default function AboutPage() {
         <section className={styles.closing} aria-labelledby="closing-title">
           <div>
             <h2 id="closing-title">Take the observer with you.</h2>
-            <p>Pomegr is available now for Windows x64. Choose the installer or portable app, or join the waitlist for the planned iOS and Android apps.</p>
+            <p>Pomegr is available now for Windows x64. Choose the installer or portable app.</p>
           </div>
           <div className={styles.ticket}>
             <div><span>Windows x64 · available</span><code>PMGR / ABOUT</code></div>
             <strong>Your observer is ready.</strong>
             <a className={styles.ticketAction} href="/download">Download for Windows <ArrowIcon /></a>
-            <WaitlistStatusLink className={styles.ticketSecondary} />
           </div>
         </section>
       </article>

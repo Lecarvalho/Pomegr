@@ -1,19 +1,34 @@
+/*
+ * Shared header and footer: self-contained near-black bands, so they read the same on the home
+ * page and on the pages that still use the paper style. Tokens: docs/internal/design/landing.md.
+ */
 .header,
 .footer {
+  --chrome-canvas: #0e1012;
+  --chrome-raised: #1d2125;
+  --chrome-ink: #edf0f3;
+  --chrome-muted: #8d959f;
+  --chrome-line: #262b31;
+  --chrome-line-strong: #39404a;
   position: relative;
   z-index: 30;
-  width: min(1500px, calc(100% - 64px));
-  margin: 0 auto;
-  color: #171715;
+  width: 100%;
+  margin: 0;
+  padding-inline: max(32px, calc((100% - 1200px) / 2));
+  background: var(--chrome-canvas);
+  color: var(--chrome-ink);
   font-family: var(--font-inter), Arial, sans-serif;
 }
 
 .header {
-  min-height: 72px;
+  position: sticky;
+  top: 0;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(23, 23, 21, .72);
+  gap: 24px;
+  border-bottom: 1px solid var(--chrome-line);
 }
 
 .header :global(.brand),
@@ -21,20 +36,20 @@
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  gap: 11px;
-  color: #a63c32;
+  gap: 10px;
+  color: var(--chrome-ink);
   text-decoration: none;
 }
 
 .header :global(.brandMark),
 .footer :global(.brandMark) {
-  width: 35px;
-  height: 35px;
+  width: 26px;
+  height: 26px;
 }
 
 .header :global(.brandWordmark),
 .footer :global(.brandWordmark) {
-  width: 112px;
+  width: 86px;
 }
 
 .header :global(.brandText),
@@ -50,11 +65,17 @@
   border: 0;
 }
 
+.header :focus-visible,
+.footer :focus-visible {
+  outline: 2px solid #91b8ee;
+  outline-offset: 2px;
+}
+
 .header nav,
 .footer nav {
   display: flex;
   align-items: center;
-  gap: clamp(18px, 2.5vw, 38px);
+  gap: 2px;
 }
 
 .header nav a,
@@ -63,87 +84,68 @@
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  color: #171715;
-  font: 650 11px/1 var(--font-geist-mono), monospace;
-  text-underline-offset: 5px;
+  justify-content: center;
+  padding: 0 12px;
+  color: var(--chrome-muted);
+  font: 500 13px/1 var(--font-inter), Arial, sans-serif;
+  text-decoration: none;
+  transition: color 160ms ease;
 }
 
-.header nav > a:not(.headerAction) {
-  text-decoration-color: transparent;
-  transition: text-decoration-color 160ms ease;
-}
-
-.header nav > a:not(.headerAction):hover,
-.footer nav a:hover {
-  text-decoration-color: #a63c32;
+.header nav a:hover,
+.footer nav a:hover,
+.header nav > a[aria-current="page"] {
+  color: var(--chrome-ink);
 }
 
 .headerAction {
-  gap: 8px;
-  color: #a63c32 !important;
-  text-decoration: none;
+  margin-left: 10px;
+  min-height: 36px !important;
+  border: 1px solid var(--chrome-line-strong);
+  border-radius: 4px;
+  color: var(--chrome-ink) !important;
+  transition: background-color 160ms ease, border-color 160ms ease !important;
 }
 
-.header nav > a[aria-current="page"] {
-  text-decoration-line: underline;
-  text-decoration-color: #a63c32;
-}
-
-.headerAction svg {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: #71911e;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.headerAction:hover {
+  border-color: var(--chrome-muted);
+  background: var(--chrome-raised);
 }
 
 .footer {
-  min-height: 132px;
+  min-height: 96px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 32px;
-  border-top: 1px solid rgba(23, 23, 21, .55);
+  margin-top: 136px;
+  border-top: 1px solid var(--chrome-line);
 }
 
 .footer nav {
-  gap: 20px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 .footer nav a {
-  font-size: 9px;
+  font-size: 12px;
 }
 
 @media (max-width: 720px) {
   .header,
   .footer {
-    width: calc(100% - 32px);
-  }
-
-  .header {
-    min-height: 66px;
-  }
-
-  .header :global(.brandMark),
-  .footer :global(.brandMark) {
-    width: 31px;
-    height: 31px;
+    padding-inline: 16px;
   }
 
   .header :global(.brandWordmark),
   .footer :global(.brandWordmark) {
-    width: 92px;
+    width: 70px;
   }
 
   /*
    * Docs is the one text link that stays in the phone header; the footer keeps the rest. Its 44 px
-   * box already leaves the text about 18 px of air, so the nav gap shrinks to 8 px. Brand, Docs, and
-   * the download action then share one line with 12 px or more before Docs at 351 px, and the
-   * wordmark hides at 350 px and below.
+   * box already leaves the text air, so the nav gap shrinks to 8 px. Brand, Docs, and the download
+   * action then share one line down to 351 px, and the wordmark hides at 350 px and below.
    */
   .header nav {
     gap: 8px;
@@ -154,20 +156,26 @@
   }
 
   .headerAction {
-    font-size: 10px !important;
+    min-height: 44px !important;
+    margin-left: 0;
+    padding: 0 10px !important;
+    font-size: 12px !important;
+    white-space: nowrap;
   }
 
   .footer {
     min-height: 0;
-    padding: 34px 0;
+    margin-top: 88px;
+    padding-block: 24px;
     align-items: flex-start;
     flex-direction: column;
+    gap: 8px;
   }
 
   .footer nav {
     width: 100%;
+    margin-left: -12px;
     justify-content: flex-start;
-    gap: 2px 18px;
   }
 }
 
@@ -178,7 +186,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .header nav > a:not(.headerAction) {
-    transition: none;
+  .header nav a,
+  .footer nav a,
+  .headerAction {
+    transition: none !important;
   }
 }

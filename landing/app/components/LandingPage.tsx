@@ -1,255 +1,137 @@
+import type { CSSProperties } from "react";
+import { ArilChat } from "./ArilChat";
+import { DotGlow } from "./DotGlow";
+import { PomegranateSplit } from "./PomegranateSplit";
+import { ScrollReveal } from "./ScrollReveal";
 import { SiteFooter } from "./SiteFooter";
 import { SiteHeader } from "./SiteHeader";
-import { WaitlistActions } from "./WaitlistActions";
+import { SessionGraph } from "./SessionGraph";
 import styles from "./LandingPage.module.css";
 
-const GITHUB_URL = "https://github.com/Lecarvalho/pomegr";
+const SAMPLE_NOTE = "Illustrative · sample data";
 const DOWNLOAD_URL = "/download";
 
 export function LandingPage() {
   return (
-    <main className={styles.landing}>
-      <div className={styles.printMarks} aria-hidden="true">
-        <i /><i /><i /><i />
-      </div>
+    <main className={styles.landing} id="home">
+      <ScrollReveal rootId="home" />
       <SiteHeader current="home" />
 
-      <section className={styles.hero} id="observer" aria-labelledby="hero-title">
-        <div className={styles.monitor}>
-          <span className={styles.monitorGrit} aria-hidden="true" />
-          <div className={styles.monitorTopline}>
-            <div>
-              <span className={styles.previewLabel}>Illustrative preview</span>
-              <span className={styles.liveDot} />
-              <code>session-7f3a</code>
-              <span className={styles.activeTag}>Active</span>
-              <span className={styles.startedMeta}>Started 2h 17m ago</span>
-            </div>
-            <div className={styles.readOnlyStatus}>
-              <span><strong>Read-only observer</strong><small>Pomegr never writes.</small></span>
-              <LockIcon />
-            </div>
-          </div>
-
-          <aside className={styles.sessionRail} aria-label="Illustrative sessions">
-            <div className={styles.localNote}>
-              <span className={styles.liveDot} />
-              <strong>Local first</strong>
-              <p>All data stays<br />on this device.</p>
-            </div>
-            <p className={styles.railLabel}>Sessions</p>
-            <div className={`${styles.sessionItem} ${styles.sessionItemActive}`}>
-              <strong>session-7f3a</strong>
-              <span>2h 17m · Active</span>
-            </div>
-            <div className={styles.sessionItem}>
-              <strong>session-b2c4</strong>
-              <span>Yesterday</span>
-            </div>
-            <div className={styles.sessionItem}>
-              <strong>session-9d1e</strong>
-              <span>May 6</span>
-            </div>
-            <div className={styles.sessionItem}>
-              <strong>session-3a91</strong>
-              <span>May 5</span>
-            </div>
-            <div className={styles.settingsItem}><SettingsIcon />Settings</div>
-          </aside>
-
-          <div className={styles.pitchAssembly}>
-            <span className={styles.tape} aria-hidden="true" />
-            <div className={styles.pitchCard}>
-              <h1 id="hero-title">Visualize what your agents are <em>doing.</em></h1>
-              <p>Live execution metadata.<br />Deterministic signals.<br />Visual insights.</p>
-              <div className={styles.heroActions}>
-                <a className={styles.primaryAction} href={DOWNLOAD_URL}>Download for Windows <ArrowIcon /></a>
-                <a className={styles.repoAction} href={GITHUB_URL} target="_blank" rel="noreferrer">View public repo</a>
+      <div className={styles.heroZone} id="hero-zone">
+        <DotGlow rootId="hero-zone" />
+        <PomegranateSplit />
+        <div className={styles.page}>
+          <section className={styles.hero} aria-labelledby="hero-title">
+            <h1 id="hero-title">Your agents don’t sleep. <span>So you can.</span></h1>
+            <div className={styles.heroRow}>
+              <div>
+                <p className={styles.lede}>Local, read-only metrics for every coding-agent session, with a task board and Aril, the task-board agent.</p>
+                <p className={`${styles.platformLine} ${styles.label}`}>
+                  <span><i />Windows x64 · installer or portable</span>
+                  <span><i className={styles.planned} />iOS &amp; Android · planned</span>
+                </p>
               </div>
-              <p className={styles.platformLine}>
-                <span><LaptopIcon />Windows x64 · installer or portable</span><span><PhoneIcon />iOS &amp; Android · planned</span>
-              </p>
-              <span className={styles.localStamp}>Local<br />first<br /><small>by design</small></span>
             </div>
+          </section>
+
+          <figure className={`${styles.figure} ${styles.figureGhost}`} aria-hidden="true">
+            <Ticks />
+            <SessionGraph />
+          </figure>
+
+          <div className={styles.cta}>
+            <a className={styles.primaryAction} href={DOWNLOAD_URL}>Download for Windows <ArrowIcon /></a>
           </div>
 
-          <div className={styles.observerCanvas}>
-            <p className={`${styles.annotation} ${styles.spawnedNote}`}>spawned<br />by session <NoteArrow /></p>
-            <p className={`${styles.annotation} ${styles.observeNote}`}>observe <NoteArrow /></p>
-
-            <article className={styles.sourceCard}>
-              <div className={styles.cardHeading}>
-                <TerminalIcon />
-                <span>Main session</span>
-              </div>
-              <strong>agent-runtime</strong>
-              <span className={styles.processId}>PID 48211</span>
-              <dl>
-                <div><dt>cwd</dt><dd>~/projects/atlas</dd></div>
-                <div><dt>branch</dt><dd>feat/search-refactor</dd></div>
-                <div><dt>started</dt><dd>10:14:22 AM</dd></div>
-              </dl>
-              <span className={styles.runningState}><i />Running</span>
-            </article>
-
-            <svg className={styles.connections} viewBox="0 0 250 420" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <marker id="observer-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path className={styles.connectorArrow} d="M0 0 8 4 0 8Z" />
-                </marker>
-              </defs>
-              <path className={styles.connectionPath} d="M4 106 C88 106 100 2 250 2" markerEnd="url(#observer-arrow)" />
-              <path className={styles.connectionPath} d="M4 139 C88 139 100 137 250 137" markerEnd="url(#observer-arrow)" />
-              <path className={styles.connectionPath} d="M4 171 C88 171 100 283 250 283" markerEnd="url(#observer-arrow)" />
-              <path className={styles.connectionPath} d="M4 203 C88 203 100 408 250 408" markerEnd="url(#observer-arrow)" />
-              <circle cx="4" cy="106" r="3" />
-              <circle cx="4" cy="139" r="3" />
-              <circle cx="4" cy="171" r="3" />
-              <circle cx="4" cy="203" r="3" />
-            </svg>
-
-            <div className={styles.signalStack} id="observer-signals">
-              <SignalPanel tone="lavender" icon={<ContextIcon />} title="Agent context" meta="@ 2,843 files · 1.2 GB →">
-                <div className={styles.contextBody}>
-                  <AreaTrace />
-                  <p><span>Most active</span><strong>src/search/index.ts</strong><small>8m ago</small></p>
-                </div>
-              </SignalPanel>
-
-              <SignalPanel tone="green" icon={<TaskIcon />} title="Tasks" meta="7 tasks · 2 blocked →">
-                <ul className={styles.taskList}>
-                  <li><i className={styles.working} />Implement fuzzy search <span>1h ago</span></li>
-                  <li><i className={styles.done} />Refactor results ranking <span>24m ago</span></li>
-                  <li><i className={styles.working} />Add keyboard navigation <b>Blocked</b><span>12m ago</span></li>
-                  <li><i />Write tests <span>—</span></li>
-                </ul>
-              </SignalPanel>
-
-              <SignalPanel tone="amber" icon={<GitIcon />} title="Git activity" meta="feat/search-refactor →">
-                <div className={styles.gitActivity}>
-                  <GitGraph />
-                  <ul className={styles.commitList}>
-                    <li><code>a1b2c3d</code><span>Refactor search index</span><small>18m ago</small></li>
-                    <li><code>d4e5f6a</code><span>Add trigram matcher</span><small>42m ago</small></li>
-                    <li><code>e7f8a9b</code><span>WIP</span><small>1h ago</small></li>
-                  </ul>
-                </div>
-              </SignalPanel>
-
-              <SignalPanel tone="plain" icon={<PulseIcon />} title="Usage" meta="Window 2h →">
-                <div className={styles.usageGrid}>
-                  <UsageMetric label="CPU" value="14%" path="M0 21 L8 20 12 7 17 24 24 17 31 20 37 9 43 23 51 18 58 22 66 12 73 21" />
-                  <UsageMetric label="MEM" value="2.1 GB" path="M0 22 L7 17 13 20 19 11 25 21 32 8 38 17 45 13 51 23 57 14 64 18 72 9" />
-                  <UsageMetric label="NET" value="↓ 240 KB/s" path="M0 21 L9 19 14 23 20 13 27 20 34 16 40 21 48 10 56 17 62 12 70 20 76 9" />
-                  <UsageMetric label="TOKENS" value="128.4K" path="M0 23 L7 21 13 10 18 19 26 12 33 21 40 9 46 16 53 13 59 20 66 8 75 15" />
-                </div>
-              </SignalPanel>
-            </div>
-
-            <aside className={styles.legend} aria-label="Observer legend">
-              <span className={styles.legendTape}>Legend</span>
-              <LegendItem icon={<TerminalIcon />} title="Main session">Root agent process.</LegendItem>
-              <LegendItem icon={<ContextIcon />} title="Context">Files, size, and activity the agent can see.</LegendItem>
-              <LegendItem icon={<TaskIcon />} title="Tasks">Planned / running / blocked work.</LegendItem>
-              <LegendItem icon={<GitIcon />} title="Git">Branches, commits, and diffs.</LegendItem>
-              <LegendItem icon={<PulseIcon />} title="Usage">System + token consumption.</LegendItem>
-              <LegendItem icon={<LockIcon />} title="Read-only">Pomegr observes.<br />It never writes.</LegendItem>
-              <LegendItem icon={<span className={styles.legendDot} />} title="Local-first">Everything stays on this device.</LegendItem>
-            </aside>
+          <div className={styles.jobs}>
+            <div><span className={styles.label}>Observe</span><h2>Every session, read-only</h2><p>Live and recorded sessions, agents, context, Git changes, and usage limits.</p></div>
+            <div><span className={styles.label}>Plan</span><h2>A board that starts work</h2><p>The queue starts one session per task and moves it to Review when it is done.</p></div>
+            <div><span className={styles.label}>Ask</span><h2>Aril proposes, you apply</h2><p>An agent for your board that changes nothing until you say so.</p></div>
           </div>
-
         </div>
-      </section>
+      </div>
 
-      <section className={styles.principles} aria-labelledby="principles-title">
-        <h2 id="principles-title" className={styles.visuallyHidden}>Why Pomegr</h2>
-        <p className={styles.marginNote}>No prompts.<br />No messages.<br />Just signals.</p>
-        <article>
-          <span>Observe</span>
-          <h3>Pomegr watches, so <u>you</u> stay in control.</h3>
-          <p>Read-only by design. Pomegr never sends commands to your agents or stores their conversations.</p>
-        </article>
-        <article className={styles.principleDiagram}>
-          <div className={styles.diagramSticker}>
-            <span className={styles.diagramTape} aria-hidden="true" />
-            <ObserverDiagram />
-          </div>
-          <div className={styles.principleCopy}>
-            <span>Understand</span>
-            <h3>See <u>execution</u>, not interpretation.</h3>
-            <p>Session state, context snapshots, tasks, Git changes, usage limits, and traceable signals.</p>
-          </div>
-        </article>
-        <article>
-          <span>Keep private</span>
-          <h3>Everything stays on your machine.</h3>
-          <p>Local-first storage.<br />No accounts, no cloud,<br />no surprises.</p>
-        </article>
-        <aside className={styles.trustNote} aria-label="Built for focus and trust">
-          <strong>Built for<br />focus<br />&amp; trust</strong>
-          <p><NoteArrow />Works offline.<br />Sync is your<br />choice.</p>
-        </aside>
-      </section>
+      <div className={styles.page}>
+        <section className={styles.chapter} aria-labelledby="sessions-title">
+          <h2 data-reveal className={styles.statement} id="sessions-title">Every session, as it happens. <span>Pomegr quietly reads your agents’ records and shows what matters most.</span></h2>
+          <Figure caption="[ fig. 2 — one session, four agents ]" note={SAMPLE_NOTE}>
+            <SessionDiagram />
+            <Notes items={[
+              ["Live and recorded", "Follow a run as it happens, or open last week’s exactly as it was recorded."],
+              ["Signals you can trace", "Each signal points to the events that raised it. A heuristic says so."],
+              ["Usage limits in view", "See each account window before you start long work."],
+            ]} />
+          </Figure>
+        </section>
 
-      <section className={styles.statement}>
-        <div>
-          <EyeIcon />
-          <h2>Observe everything.<br />Change nothing.</h2>
-        </div>
-        <p>
-          Pomegr turns existing session records into a live, explainable view. It does not expose raw prompts,
-          responses, commands, or credentials.
-        </p>
-      </section>
+        <section className={styles.chapter} aria-labelledby="tasks-title">
+          <h2 data-reveal className={styles.statement} id="tasks-title">A kanban to plan and start the next session. <span>Queued tasks start on their own when their turn comes.</span></h2>
+          <Figure caption="[ fig. 3 — the queue ]" note="Desktop app · opt-in">
+            <QueueDiagram />
+            <Notes items={[
+              ["Your board, per repository", "Backlog, Ready, In progress, Review, Done. Ready is the queue."],
+              ["Starts only what you queue", "Dispatch is opt-in and lives in the desktop app. Observation never needs it."],
+              ["Review before Done", "Each card links to its session, so the evidence is one click away."],
+            ]} />
+          </Figure>
+        </section>
 
-      <section className={styles.waitlist} id="waitlist" aria-labelledby="waitlist-title">
-        <div className={styles.waitlistIntro}>
-          <p className={styles.annotation}>Coming next · iOS and Android</p>
-          <h2 id="waitlist-title">Take the observer with you.</h2>
-          <p>Pomegr is available now for Windows x64, with installer and portable downloads. Join the waitlist for the planned iOS and Android apps.</p>
-          <a href={DOWNLOAD_URL}>Download for Windows <ArrowIcon /></a>
+        <section className={styles.chapter} aria-labelledby="aril-title">
+          <h2 data-reveal className={styles.statement} id="aril-title">Aril, your task specialist, plans. You apply. <span>Ask it about the board and your sessions.</span></h2>
+          <Figure caption="[ fig. 4 — a proposal ]" note={SAMPLE_NOTE}>
+            <div className={styles.figureBody}><ArilChat /></div>
+            <Notes items={[
+              ["Reads, never acts", "Aril runs read-only. A board change is always a proposal."],
+              ["Knows your board", "It answers from your tasks and what Pomegr observed."],
+              ["Starts only on your say", "A start or a queue change needs your confirmation in the desktop app."],
+            ]} />
+          </Figure>
+        </section>
+
+        <div className={styles.close} aria-hidden="true">
+          <img data-reveal className={styles.bite} src="/landing/home/pomegranate-bite.png" alt="" width="1200" height="800" />
         </div>
-        <div className={styles.waitlistTicket}>
-          <div className={styles.ticketTopline}><span>Mobile waitlist</span><code>PMGR / 001</code></div>
-          <h3>Hear when the mobile apps land.</h3>
-          <WaitlistActions />
-        </div>
-      </section>
+
+        <section data-reveal className={styles.local} aria-labelledby="local-title">
+          <h2 id="local-title">Runs on your machine.</h2>
+          <p>
+            Read-only. The monitor listens only on this computer and needs no Pomegr account. Prompts, responses,
+            commands, and credentials are never shown or sent.
+          </p>
+        </section>
+
+      </div>
 
       <SiteFooter current="home" />
     </main>
   );
 }
 
-function SignalPanel({
-  tone,
-  icon,
-  title,
-  meta,
-  children,
-}: {
-  tone: "lavender" | "green" | "amber" | "plain";
-  icon: React.ReactNode;
-  title: string;
-  meta: string;
-  children: React.ReactNode;
-}) {
+function delay(step: number): CSSProperties {
+  return { "--delay": `${200 + step * 140}ms` } as CSSProperties;
+}
+
+function Ticks() {
+  return <span className={styles.ticks} aria-hidden="true" />;
+}
+
+function Figure({ caption, note, children }: { caption: string; note: string; children: React.ReactNode }) {
   return (
-    <article className={`${styles.signalPanel} ${styles[`signalPanel_${tone}`]}`}>
-      <div className={styles.signalHeading}>
-        <span>{icon}<strong>{title}</strong></span>
-        <small>{meta}</small>
-      </div>
+    <figure data-reveal className={styles.figure}>
+      <Ticks />
+      <figcaption className={styles.figureHead}>
+        <span className={styles.label}>{caption}</span>
+        <span className={`${styles.label} ${note === SAMPLE_NOTE ? styles.quiet : ""} ${styles.wideOnly}`}>{note}</span>
+      </figcaption>
       {children}
-    </article>
+    </figure>
   );
 }
 
-function LegendItem({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function Notes({ items }: { items: ReadonlyArray<readonly [string, string]> }) {
   return (
-    <div className={styles.legendItem}>
-      <span>{icon}</span>
-      <p><strong>{title}</strong>{children}</p>
+    <div className={styles.notes}>
+      {items.map(([title, text]) => <div key={title}><strong>{title}</strong><p>{text}</p></div>)}
     </div>
   );
 }
@@ -258,94 +140,90 @@ function ArrowIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>;
 }
 
-function TerminalIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="m7 9 3 3-3 3M13 15h4" /></svg>;
-}
+const SESSION_LABEL = "A session timeline from sample data: an orchestrator starts three subagents, and one is running tests now";
 
-function ContextIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5" /></svg>;
-}
-
-function TaskIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 12l2 2 5-6" /></svg>;
-}
-
-function GitIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="5" r="2" /><circle cx="7" cy="19" r="2" /><circle cx="17" cy="9" r="2" /><path d="M7 7v10M9 17c5 0 8-2 8-6" /></svg>;
-}
-
-function PulseIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6" /></svg>;
-}
-
-function LockIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="1" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" /></svg>;
-}
-
-function SettingsIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" /></svg>;
-}
-
-function LaptopIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="11" /><path d="M3 18h18l-1 2H4Z" /></svg>;
-}
-
-function PhoneIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="1" /><path d="M10 5h4M11 19h2" /></svg>;
-}
-
-function NoteArrow() {
-  return <svg className={styles.noteArrow} viewBox="0 0 72 34" aria-hidden="true"><path d="M2 9c20-4 39 0 60 12M52 13l10 8-12 4" /></svg>;
-}
-
-function AreaTrace() {
+function SessionDiagram() {
   return (
-    <svg className={styles.areaTrace} viewBox="0 0 230 58" role="img" aria-label="Illustrative recent context activity">
-      <defs>
-        <linearGradient id="context-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#aaa0ca" stopOpacity=".68" />
-          <stop offset="1" stopColor="#aaa0ca" stopOpacity=".08" />
-        </linearGradient>
-      </defs>
-      <path className={styles.areaFill} d="M0 51 C8 48 10 27 18 25 S29 38 37 37 49 45 58 44 70 51 80 47 91 33 102 38 115 31 126 43 138 32 148 24 158 34 170 44 181 39 194 42 205 31 216 34 224 18 230 10 L230 58 0 58Z" />
-      <path className={styles.areaLine} d="M0 51 C8 48 10 27 18 25 S29 38 37 37 49 45 58 44 70 51 80 47 91 33 102 38 115 31 126 43 138 32 148 24 158 34 170 44 181 39 194 42 205 31 216 34 224 18 230 10" />
-    </svg>
-  );
-}
-
-function GitGraph() {
-  return (
-    <svg className={styles.gitGraph} viewBox="0 0 46 70" aria-hidden="true">
-      <path d="M10 4v18c0 13 24 9 24 23v21M10 22c0 12 24 9 24 23" />
-      <circle cx="10" cy="4" r="3" /><circle cx="10" cy="22" r="3" /><circle cx="34" cy="45" r="3" /><circle cx="34" cy="66" r="3" />
-    </svg>
-  );
-}
-
-function UsageMetric({ label, value, path }: { label: string; value: string; path: string }) {
-  return (
-    <div className={styles.usageMetric}>
-      <p><strong>{label}</strong><span>{value}</span></p>
-      <svg viewBox="0 0 76 28" preserveAspectRatio="none" aria-hidden="true"><path d={path} /></svg>
+    <div className={styles.figureBody}>
+      <svg className={`${styles.diagram} ${styles.wideOnly}`} viewBox="0 0 1100 300" role="img" aria-label={SESSION_LABEL}>
+        <text x="0" y="22">AGENT</text><text x="980" y="22">CONTEXT</text>
+        <line className={styles.rule} x1="0" y1="36" x2="1100" y2="36" />
+        <text className={styles.textInk} x="0" y="74">Orchestrator</text>
+        <rect style={delay(0)} className={styles.bar} x="170" y="62" width="740" height="14" />
+        <text className={styles.value} x="980" y="74">64k</text>
+        <path pathLength={1} className={styles.mute} d="M260 76 V118 H300 M420 76 V178 H460 M640 76 V238 H680" />
+        <text className={styles.textInk} x="0" y="124">Reader</text>
+        <rect style={delay(1)} className={styles.bar} x="300" y="112" width="180" height="14" />
+        <text className={styles.value} x="980" y="124">38k</text>
+        <text className={styles.textInk} x="0" y="184">Retry policy</text>
+        <rect style={delay(2)} className={styles.bar} x="460" y="172" width="330" height="14" />
+        <text className={styles.value} x="980" y="184">71k</text>
+        <text className={styles.textInk} x="0" y="244">Test runner</text>
+        <rect style={delay(3)} className={styles.bar} x="680" y="232" width="150" height="14" />
+        <rect style={delay(4)} className={styles.barOn} x="830" y="232" width="80" height="14" />
+        <text className={styles.value} x="980" y="244">47k</text>
+        <line className={styles.now} x1="910" y1="44" x2="910" y2="262" />
+        <text className={styles.signalText} x="884" y="282">NOW</text>
+        <line className={styles.rule} x1="0" y1="264" x2="1100" y2="264" />
+        <text x="170" y="282">10:02</text><text x="355" y="282">10:12</text><text x="540" y="282">10:22</text><text x="725" y="282">10:32</text>
+      </svg>
+      <svg className={`${styles.diagram} ${styles.narrowOnly}`} viewBox="0 0 340 250" role="img" aria-label={SESSION_LABEL}>
+        <text className={styles.textInk} x="0" y="20">Orchestrator</text><rect style={delay(5)} className={styles.bar} x="0" y="30" width="300" height="10" />
+        <path pathLength={1} className={styles.mute} d="M30 40 V70 M90 40 V130 M170 40 V190" />
+        <text className={styles.textInk} x="40" y="70">Reader</text><rect style={delay(0)} className={styles.bar} x="30" y="78" width="80" height="10" />
+        <text className={styles.textInk} x="100" y="130">Retry policy</text><rect style={delay(1)} className={styles.bar} x="90" y="138" width="140" height="10" />
+        <text className={styles.textInk} x="180" y="190">Test runner</text><rect style={delay(2)} className={styles.bar} x="170" y="198" width="70" height="10" />
+        <rect style={delay(3)} className={styles.barOn} x="240" y="198" width="60" height="10" />
+        <line className={styles.now} x1="300" y1="22" x2="300" y2="222" /><text className={styles.signalText} x="282" y="242">NOW</text>
+      </svg>
     </div>
   );
 }
 
-function EyeIcon() {
-  return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M5 32s10-16 27-16 27 16 27 16-10 16-27 16S5 32 5 32Z" /><circle cx="32" cy="32" r="7" /><path d="M32 3v8M32 53v8M3 32h8M53 32h8" /></svg>;
+const QUEUE_LABEL = "The queue: the top card in Ready starts a session, and when the agent reports done the card moves to Review";
+
+function QueueDiagram() {
+  return (
+    <div className={styles.figureBody}>
+      <svg className={`${styles.diagram} ${styles.wideOnly}`} viewBox="0 0 1100 330" role="img" aria-label={QUEUE_LABEL}>
+        <text x="0" y="16">BACKLOG</text><text x="285" y="16">READY</text><text x="570" y="16">IN PROGRESS</text><text x="855" y="16">REVIEW</text>
+        <rect className={styles.frame} x="0" y="28" width="245" height="290" /><rect className={styles.frame} x="285" y="28" width="245" height="290" />
+        <rect className={styles.frame} x="570" y="28" width="245" height="290" /><rect className={styles.frame} x="855" y="28" width="245" height="290" />
+        <Card x={14} y={44} id="T-45" title="Show retry counts" />
+        <Card x={14} y={110} id="T-44" title="Document export limits" />
+        <Card x={299} y={44} id="T-43 · NEXT" title="Stream large exports" on />
+        <Card x={299} y={110} id="T-42" title="Paginate the audit log" />
+        <Card x={584} y={44} id="T-41" title="Add retry to the worker" />
+        <Card x={869} y={44} id="T-39" title="Fix the upload test" />
+        <path pathLength={1} className={styles.signalLine} d="M516 72 C545 72 545 210 600 210" /><path className={styles.signalFill} d="M600 205 L610 210 600 215Z" />
+        <rect className={styles.cardOn} x="614" y="186" width="187" height="48" />
+        <text className={styles.signalText} x="628" y="206">SESSION STARTS</text><text className={styles.textInk} x="628" y="224">queue on · one at a time</text>
+        <path className={styles.dash} d="M801 72 H869" />
+        <text x="590" y="290">agent reports done → Review</text>
+      </svg>
+      <svg className={`${styles.diagram} ${styles.narrowOnly}`} viewBox="0 0 340 300" role="img" aria-label={QUEUE_LABEL}>
+        <text x="0" y="14">READY</text>
+        <rect className={styles.cardOn} x="0" y="24" width="340" height="50" />
+        <text className={styles.signalText} x="14" y="44">T-43 · NEXT</text><text className={styles.textInk} x="14" y="64">Stream large exports</text>
+        <path pathLength={1} className={styles.signalLine} d="M30 74 V108" /><path className={styles.signalFill} d="M25 108 L30 118 35 108Z" />
+        <text className={styles.signalText} x="46" y="100">QUEUE ON · SESSION STARTS</text>
+        <text x="0" y="140">IN PROGRESS</text>
+        <rect className={styles.card} x="0" y="150" width="340" height="50" />
+        <text x="14" y="170">T-43</text><text className={styles.textInk} x="14" y="190">Stream large exports</text>
+        <path pathLength={1} className={styles.mute} d="M30 200 V234" /><path className={styles.muteFill} d="M25 234 L30 244 35 234Z" />
+        <text x="46" y="226">AGENT REPORTS DONE</text>
+        <text x="0" y="266">REVIEW</text><rect className={styles.frame} x="0" y="276" width="340" height="22" />
+      </svg>
+    </div>
+  );
 }
 
-function ObserverDiagram() {
+function Card({ x, y, id, title, on = false }: { x: number; y: number; id: string; title: string; on?: boolean }) {
   return (
-    <svg className={styles.observerDiagram} viewBox="0 0 250 150" aria-label="One session branching into observed metadata">
-      <rect x="95" y="8" width="60" height="38" />
-      <path d="m112 20 8 7-8 7M126 34h12" />
-      <path d="M125 46v28M125 74H35v25M125 74H95v25M125 74h30v25M125 74h90v25" />
-      <rect x="15" y="99" width="40" height="38" />
-      <rect x="75" y="99" width="40" height="38" />
-      <rect x="135" y="99" width="40" height="38" />
-      <rect x="195" y="99" width="40" height="38" />
-      <path d="M25 118h20M85 118h20M145 112h20M145 122h14M205 121l6-8 5 11 8-15" />
-    </svg>
+    <g>
+      <rect className={on ? styles.cardOn : styles.card} x={x} y={y} width="217" height="56" />
+      <text className={on ? styles.signalText : undefined} x={x + 14} y={y + 22}>{id}</text>
+      <text className={styles.textInk} x={x + 14} y={y + 44}>{title}</text>
+    </g>
   );
 }

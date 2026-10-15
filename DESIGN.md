@@ -127,7 +127,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 - The application is a calm evidence workspace.
 - A compact branded header, a persistent route rail, flat panels, one-pixel rules, and restrained semantic color give a reliable scan order.
 - The application shell stays provider-neutral.
-- Landing and marketing have their own typography and brand treatments. Do not promote a landing decision into the application shell.
+- Landing and marketing have their own typography and brand treatments, owned by [Landing design](docs/internal/design/landing.md). Do not promote a landing decision into the application shell.
 - [AGENTS.md](AGENTS.md#security-and-privacy) owns the privacy rules. [Metrics](docs/internal/architecture/metrics.md) owns the metric definitions. This file does not restate them.
 
 **Key Characteristics:**
@@ -155,6 +155,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | Tasks page, board, cards, queue, session task surfaces | [Task board design](docs/internal/design/task-board.md) |
 | Task modal, task fields, Promote issues page | [Task modal design](docs/internal/design/task-modal.md) |
 | Aril chat launcher, panel, messages, proposal card, composer, conversations | [Agent chat design](docs/internal/design/agent-chat.md) |
+| Public website: home page, shared header and footer, landing tokens and motion | [Landing design](docs/internal/design/landing.md) |
 | `CommandTable` integration | [Command table](docs/internal/development/command-table.md) |
 
 ### Visual reference
@@ -509,7 +510,7 @@ Usage limits widget in the rail:
 - **Do** use the type steps in [Typography](#typography) and the control heights in [Shapes](#shapes).
 - **Do** keep the 60px header and the 220px desktop rail.
 - **Do** keep the identity provider-neutral, and keep the normalized privacy boundaries and the metric meanings.
-- **Do** keep landing typography, paper artifacts, and brand decisions on the landing and marketing pages.
+- **Do** keep landing typography, texture, and brand decisions on the landing and marketing pages.
 
 ### Don't:
 
