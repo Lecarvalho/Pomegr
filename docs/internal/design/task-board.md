@@ -217,7 +217,8 @@ The head actions appear in this order:
 - The feature filter (`.taskFeatureFilter`) appears once the board has a feature.
 - It is one row with a muted caption eyebrow **Feature** and one `CommandSelect` (`.taskFeatureSelect`).
 - The select is 32px high, 12px text, at most 320px wide. It is 44px high on phone and coarse pointers.
-- The options carry the task count in parentheses. **All** is first and **No feature** is last.
+- The options carry the task count in parentheses. **All** is first, then the open features, then **No feature**.
+- Done features follow **No feature**, last, as muted options whose accessible name ends in “done”.
 - The row stays one control however many features a board holds.
 - The desktop app adds a Quiet **Edit feature** and a Quiet **+ New feature** after the select.
 - **Edit feature** shows only while one feature is chosen. **All** and **No feature** show no **Edit feature**.

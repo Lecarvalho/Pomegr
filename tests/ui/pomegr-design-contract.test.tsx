@@ -481,6 +481,8 @@ describe("Pomegr visual contract", () => {
     // A disabled option of the shared select is muted and never chosen.
     expect(styles).toMatch(/\.commandSelectOption\[aria-disabled="true"\] \{ color: var\(--command-muted\); cursor: default; \}/);
     expect(designContract).toMatch(/\| Disabled option \| Muted text and the default cursor\./);
+    expect(styles).toMatch(/\.commandSelectOption\[data-muted\] \{ color: var\(--command-muted\); font-weight: 400; \}/);
+    expect(designContract).toMatch(/\| Muted option \| Muted text at 400\./);
     expect(styles).toMatch(/\.taskQueueBannerActions \.commandQuietAction \{ min-height: var\(--control-compact\); color: var\(--command-ink\); \}/);
     const read = (name: string) => readFileSync(join(process.cwd(), "app", "components", "tasks", name), "utf8");
     // A group change is its own action: the board writes no group rule, and a drop sends the fixed actions.

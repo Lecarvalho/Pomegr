@@ -318,7 +318,9 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     await user.click(filterSelect);
     const filterOptions = screen.getAllByRole("option").map((option) => option.textContent ?? "");
     expect(filterOptions[0]).toMatch(/^All \(\d+\)$/);
-    expect(filterOptions.at(-1)).toMatch(/^No feature \(\d+\)$/);
+    // Done features follow No feature, last.
+    expect(filterOptions.at(-2)).toMatch(/^No feature \(\d+\)$/);
+    expect(filterOptions.at(-1)).toMatch(/^Archive export \(\d+\), done$/);
     await user.click(filterSelect);
     expect(within(filter).queryByRole("button", { name: "+ New feature" })).toBeNull();
     const desktopFilter = sample(board, "Feature filter, desktop app");

@@ -59,10 +59,11 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 const FEATURE_ENTRY: FeatureEntry = { onNew: noop, onEdit: noop };
+const FILTER_BOARD = { ...BOARD_RUNNING, features: [...BOARD_RUNNING.features, { id: "feature-archive", name: "Archive export", done: true }] };
 
 function FilterSample({ desktop, initial = ALL_FEATURES }: { desktop: boolean; initial?: FeatureFilterValue }) {
   const [filter, setFilter] = useState<FeatureFilterValue>(initial);
-  return <Frame><FeatureFilter board={BOARD_RUNNING} filter={filter} onFilter={setFilter} edits={desktop ? EDITS : undefined} entry={desktop ? FEATURE_ENTRY : undefined} /></Frame>;
+  return <Frame><FeatureFilter board={FILTER_BOARD} filter={filter} onFilter={setFilter} edits={desktop ? EDITS : undefined} entry={desktop ? FEATURE_ENTRY : undefined} /></Frame>;
 }
 
 export function TaskBoardSection() {
@@ -112,7 +113,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Feature filter" note="One select whose options carry a task count: All first, No feature last. Filtering is client state only.">
+      <Sample label="Feature filter" note="One select whose options carry a task count: All first, then the open features and No feature. Done features come last, in muted text. Filtering is client state only.">
         <FilterSample desktop={false} />
       </Sample>
       <Sample label="Feature filter, desktop app" note="With All or No feature chosen the row adds only the Quiet + New feature, which opens the Feature modal in mode New feature. Choose a feature to see the row below.">

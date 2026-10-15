@@ -70,6 +70,8 @@ agent.
   where they are, keep the feature, and a queued one still starts. Nothing moves or is
   deleted.
 - A feature is never done on its own, even when all its tasks are done.
+- In the **Feature** filter, a done feature is listed last, below **No feature**, in
+  dimmed text.
 - To take tasks again, open the feature and choose **Reopen**.
 - Only the desktop app marks a feature done or reopens it. An agent and a paired phone
   cannot.

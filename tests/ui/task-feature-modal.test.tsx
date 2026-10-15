@@ -478,7 +478,7 @@ describe("Mark done and Reopen", () => {
     mock.board = boardOf({ features: [{ id: "f1", name: "Retry telemetry", done: true }, features[1]] });
     const u = user();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openEdit(u);
+    const dialog = await openEdit(u, "Retry telemetry (3), done");
     await loaded(dialog);
     expect(dialog.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
     await u.click(dialog.getByRole("button", { name: "Reopen" }));
