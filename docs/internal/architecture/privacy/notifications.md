@@ -25,6 +25,7 @@ The notification response has a fixed shape.
 **Kind-specific data:**
 
 - `needs_input` carries only a validated normalized session ID and a bounded catalog title.
+- Release news carries only the fields that [Release notifications](#release-notifications) lists.
 - Provider incident/recovery carries only a fixed health status.
 - Client-local `monitor_unreachable` carries no data.
 
@@ -37,6 +38,8 @@ paths, credentials, prompts, commands, errors, and arbitrary URLs.
 **Actions:**
 
 - Actions map to fixed local destinations.
+- A release occurrence also gets a **What's new** link. The client derives it from the
+  product and the version. It is not an action, and it is never stored.
 - Actions cannot approve work, authenticate, install, or change a provider.
 
 **Stores:**
@@ -136,13 +139,42 @@ monitor may persist at most:
 
 - one normalized version;
 - one fixed channel;
-- the original observation time.
+- the original observation time;
+- for Claude Code only, an optional release excerpt.
 
 **Public release occurrences** carry only:
 
 - a fixed product/channel;
 - a validated semantic version;
-- an optional bounded affected-repository count.
+- an optional bounded affected-repository count;
+- for Claude Code only, an optional release excerpt.
+
+**Release excerpt** (deliberate widening, task T-121, approved by the owner on 2026-10-15):
+
+- The Claude Code parser reads the `body` of the newest valid GitHub release row, within the
+  reader's existing 1 MiB response limit.
+- The parser makes the excerpt and drops the body. No raw body leaves the parser.
+- The excerpt is plain text from the first six content lines. Headings, code blocks,
+  images, link targets, bare URLs, HTML, entities, and control, zero-width, and
+  bidirectional characters are removed. Link text stays.
+- The excerpt is one line of at most 280 characters. A longer excerpt is cut at a word
+  and ends with an ellipsis.
+- Every store and client accepts an excerpt only when it has no `<`, `>`, `://`, or
+  `www.`, no control character, and no more than 280 characters. A row with any other
+  excerpt is refused.
+- A baseline or occurrence without an excerpt stays valid.
+- Codex CLI and the plugin have no excerpt: their sources supply no notes. Pomegr adds no
+  fetch for Codex notes.
+
+**Release page link** (same widening):
+
+- The client derives the page from the product and the validated version with a fixed
+  template: `https://github.com/anthropics/claude-code/releases/tag/v<version>` and
+  `https://github.com/openai/codex/releases/tag/rust-v<version>`.
+- No URL is read from a payload or stored. The plugin has no link.
+- The desktop external allowlist admits exactly these two path shapes, with no query or
+  fragment. It refuses every other release path.
+- A paired device shows the excerpt and the link the same way as the desktop.
 
 **Wording:**
 
@@ -150,7 +182,7 @@ monitor may persist at most:
 - Unknown installation yields publication wording.
 
 **Never in notification state or durable stores:** private repository IDs, source keys,
-release bodies, URLs, paths, and provider payloads.
+full or raw release bodies, URLs, paths, and provider payloads.
 
 **Scheduler:**
 
@@ -158,8 +190,14 @@ release bodies, URLs, paths, and provider payloads.
 - Conditional responses, fixed endpoint/redirect denial, deadlines, size/item limits, and
   retry backoff cannot block live observation or GET serving.
 
-**Actions:** native and browser actions remain fixed local navigation. They never run an
-install, download, or provider command.
+**Actions:**
+
+- Native and browser actions remain fixed local navigation. They never run an install,
+  download, or provider command.
+- The native toast shows the excerpt as its body, cut to the 200-character native limit.
+  A click opens the local Usage limits route.
+- The tray's **What's new** link opens the derived release page in a new window, so the
+  desktop shell applies its external allowlist.
 
 ## Model notifications
 

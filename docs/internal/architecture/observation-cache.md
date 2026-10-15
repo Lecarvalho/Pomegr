@@ -889,10 +889,15 @@ and fixed copy; neither contains transition rules.
   warning severity, and priority 75. It uses the same fixed Usage limits action.
 Release news carries only fixed product (`claude_code`, `codex_cli`, or
 `pomegr_plugin`), validated three-component semantic version, fixed channel,
-and, for a plugin update, a bounded affected-repository count. Both release
+and, for a plugin update, a bounded affected-repository count. A Claude Code
+occurrence can also carry a bounded plain-text `excerpt` of its release notes. Both release
 kinds use category `provider_news`, observed time, and fixed local navigation.
 Their private comparison state holds only one version, channel, and original
-observation time per product. Initial observations establish baselines; only
+observation time per product, and the optional Claude Code excerpt. A baseline
+without an excerpt stays valid. The tray derives a **What's new** release page from
+the product and version; the occurrence never carries a URL.
+[Release notifications](privacy/notifications.md#release-notifications) owns the
+excerpt and link rules. Initial observations establish baselines; only
 a newer version on the same channel emits. Equal versions, downgrades,
 prereleases, unknown installations, and channel changes never claim an
 installation update. Current validated repository plugin setup can qualify an
@@ -906,7 +911,8 @@ with bounded jitter. Both adapter readers use fixed unauthenticated URLs,
 redirect denial, eight-second deadlines, a 1 MiB body cap, conditional ETags,
 and Retry-After or exponential backoff. Claude's list is limited to 30 releases;
 the Codex metadata is limited to 256 asset entries and retains none of them.
-Failures retain the last valid observation. Claude Code GitHub releases prove
+The Claude parser reads the newest valid row's body within these limits and keeps
+only its excerpt. Failures retain the last valid observation. Claude Code GitHub releases prove
 latest-channel publication, not stable eligibility. The Codex reader uses the
 official installer's `https://releases.openai.com/codex/channels/latest` metadata
 and accepts only a stable `rust-v` tag; it covers the CLI only. Desktop and IDE

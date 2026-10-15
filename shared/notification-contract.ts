@@ -25,7 +25,7 @@ export type NotificationRecord =
     modelId: string; label: string; evidence: "official_announcement" | "client_catalog";
   } })
   | (NotificationBase & { kind: "release_published" | "installation_update_available"; provider: "claude" | "codex" | null; data: {
-    product: "claude_code" | "codex_cli" | "pomegr_plugin"; version: string; channel: "latest" | "main"; affectedRepositories?: number;
+    product: "claude_code" | "codex_cli" | "pomegr_plugin"; version: string; channel: "latest" | "main"; affectedRepositories?: number; excerpt?: string;
   } })
   | (NotificationBase & { kind: "usage_authentication_required"; provider: "claude" | "codex"; data: Record<string, never> })
   | (NotificationBase & { kind: "usage_window_reset" | "usage_capacity_restored"; provider: "claude" | "codex"; data: {

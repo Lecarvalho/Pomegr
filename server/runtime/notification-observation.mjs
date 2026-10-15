@@ -1,5 +1,6 @@
 import { createNotificationLedger } from "../notifications/notification-ledger.mjs";
 import { comparePluginVersions, repositoryPluginSetupSchema } from "../../shared/repository-plugin-state.mjs";
+import { isReleaseExcerpt } from "../../shared/release-notification.mjs";
 
 export function createNotificationObservation({ now = Date.now, persistence = null, sourceScope } = {}) {
   const listeners = new Set();
@@ -115,7 +116,8 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
         || typeof row.version !== "string" || !/^\d{1,4}\.\d{1,4}\.\d{1,4}$/u.test(row.version)
         || !Number.isFinite(Date.parse(row.observedAt || "")) || !Number.isFinite(Date.parse(row.publishedAt || ""))) continue;
       published.set(row.product, { provider: row.provider, product: row.product, version: row.version,
-        channel: row.channel, observedAt: row.observedAt, installation: null });
+        channel: row.channel, observedAt: row.observedAt, installation: null,
+        ...(row.product === "claude_code" && isReleaseExcerpt(row.excerpt) ? { excerpt: row.excerpt } : {}) });
     }
     return commitReleases();
   }

@@ -115,7 +115,10 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   releases. It does not report Codex desktop or IDE releases, or claim that a
   CLI installation can update. A current Pomegr reporting-plugin setup can
   show an update when its installed version is behind the official release.
-  Opening release news only navigates inside Pomegr; it never installs software.
+  Claude Code release news shows the first lines of its release notes as plain
+  text. Codex CLI release news shows fixed text, because its source has no notes.
+  **What's new** opens the release page on GitHub in your browser. Opening release
+  news otherwise only navigates inside Pomegr; it never installs software.
   Model news distinguishes an official OpenAI announcement from a model
   **listed in your client**. Codex can return a bundled or cached catalog, so
   neither means your account has access. Only narrowly recognized OpenAI
