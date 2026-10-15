@@ -595,7 +595,10 @@
 /* The last frame: no caption. */
 .close { position: relative; margin-top: 8px; }
 
-/* Dither pixels the pointer crosses light up in the image's reds, under the image's own fade (PixelGlow). */
+/* Under a fine pointer the image hides, and the pointer reveals it through this canvas (PixelGlow). */
+.close[data-pointer-reveal] .bite { visibility: hidden; }
+
+/* The reveal carries the image's own top and bottom fade. */
 .pixelGlow {
   position: absolute;
   z-index: 1;
