@@ -36,6 +36,7 @@ const REASON_TEXT = {
   repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was added.",
   feature_not_found: "That feature does not exist on the board, so no task was added.",
   limit: "The board is full, so no task was added.",
+  after_not_found: "A task in runs_after is not on the board, so no task was added.",
   unavailable: TASK_UNAVAILABLE_TEXT,
 };
 
@@ -62,9 +63,16 @@ function inputShape(hookBound) {
       .optional().describe("Optional conditions Pomegr verifies when the agent reports the task complete. user_validated is not verified: the agent validates the work with the user before it reports."),
     own_condition: z.string().trim().min(1).max(500).optional().describe("Optional free-text condition the agent judges itself."),
     feature: z.string().trim().min(1).max(80).optional().describe("Optional name of an existing feature on the board."),
+    runs_after: runsAfterSchema.min(1).optional()
+      .describe("Optional IDs of up to 8 tasks of the same board, such as T-12, that must be Done or deleted before this task may start."),
   };
   return { ...shape, ...hookFields(hookBound) };
 }
+
+// A task runs after at most this many tasks of its board, the monitor's bound.
+const RUNS_AFTER_LIMIT = 8;
+const runsAfterSchema = z.array(z.string().regex(/^T-[1-9][0-9]{0,8}$/u, "Use task IDs such as T-12.")).max(RUNS_AFTER_LIMIT)
+  .refine((items) => new Set(items).size === items.length, "Task IDs must be unique.");
 
 export function buildAddTaskBody(ref, input) {
   const body = { sessionRef: ref, text: input.text };
@@ -77,6 +85,8 @@ export function buildAddTaskBody(ref, input) {
     body.completeWhen = { checks: input.complete_when ?? [], own: input.own_condition ?? null };
   }
   if (input.feature !== undefined) body.feature = input.feature;
+  // Sent only when set, so a monitor from before the option still takes every other task.
+  if (input.runs_after !== undefined) body.after = input.runs_after;
   return body;
 }
 
@@ -91,6 +101,7 @@ export function buildUpdateTaskBody(ref, input) {
   if (input.complete_when !== undefined) completeWhen.checks = input.complete_when;
   if (input.own_condition !== undefined) completeWhen.own = clearable(input.own_condition);
   if (Object.keys(completeWhen).length > 0) body.completeWhen = completeWhen;
+  if (input.runs_after !== undefined) body.after = input.runs_after;
   return body;
 }
 
@@ -147,6 +158,8 @@ const UPDATE_REASON_TEXT = {
   session_not_found: "Pomegr does not know the current session yet, so no task was changed.",
   repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was changed.",
   not_found: "No task was changed. A task can be changed only while it is on this session's board and has not started.",
+  after_not_found: "A task in runs_after is not on the board, so no task was changed.",
+  after_loop: "These tasks would wait for each other, so no task was changed.",
   unavailable: "Pomegr is unavailable, so no task was changed.",
 };
 
@@ -262,7 +275,7 @@ function result(text, isError) {
 export function registerTaskTools(server, { resolveSession, post, hookBound = false }) {
   server.registerTool("add_task", {
     title: "Add a Pomegr task",
-    description: "Add a task to the current repository's Pomegr board, in the first column, not queued. It does not start any session. Adding the same text to the same feature again within a few minutes returns the task already added instead of a second one. The repository and session are bound by the host; there is no repository or path input.",
+    description: "Add a task to the current repository's Pomegr board, in the first column, not queued. It does not start any session. Set runs_after to the tasks of the board it must wait for: it never starts until each is Done or deleted. Adding the same text to the same feature again within a few minutes returns the task already added instead of a second one. The repository and session are bound by the host; there is no repository or path input.",
     inputSchema: z.object(inputShape(hookBound)).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async (input, extra) => {
@@ -328,11 +341,11 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     Object.fromEntries(["query", "state", "feature", "editable"].filter((key) => input[key] !== undefined).map((key) => [key, input[key]])),
     (answer) => (Array.isArray(answer.tasks) && Number.isInteger(answer.matched) && answer.tasks.every(servedTask) ? formatTaskList(answer) : null)));
 
-  const UPDATE_FIELDS = ["text", "provider", "model", "effort", "complete_when", "own_condition"];
+  const UPDATE_FIELDS = ["text", "provider", "model", "effort", "complete_when", "own_condition", "runs_after"];
   const addShape = inputShape(false);
   server.registerTool("update_task", {
     title: "Update a Pomegr task",
-    description: "Change a task on the current repository's Pomegr board: its text, Run on (provider and model), effort, or Complete when. It works for any task of the board while the task has not started: not queued, queued, or scheduled, with no session and no report. A field you leave out stays as it is, and a field you set replaces the stored one whole. The text replaces the task's whole text, not appends to it: read the task with get_task first, then set the whole text the task should have. Where the task shows [image], an image stays attached; text you set without it keeps the image but loses its place in the text. It does not move, queue, or start the task. The repository and session are bound by the host; there is no repository or path input.",
+    description: "Change a task on the current repository's Pomegr board: its text, Run on (provider and model), effort, Complete when, or the tasks it runs after. It works for any task of the board while the task has not started: not queued, queued, or scheduled, with no session and no report. A field you leave out stays as it is, and a field you set replaces the stored one whole. The text replaces the task's whole text, not appends to it: read the task with get_task first, then set the whole text the task should have. Where the task shows [image], an image stays attached; text you set without it keeps the image but loses its place in the text. It does not move, queue, or start the task. The repository and session are bound by the host; there is no repository or path input.",
     inputSchema: z.object({
       task_id: z.string().regex(/^T-[1-9][0-9]{0,8}$/u, "Use a task ID such as T-12.").describe("ID of the task to change, such as T-12."),
       text: addShape.text.optional().describe("Optional. The task's new text, which replaces the stored text whole."),
@@ -341,6 +354,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
       effort: addShape.effort.describe("Optional new effort level."),
       complete_when: addShape.complete_when.describe("Optional new list of the conditions Pomegr verifies when the agent reports the task complete; an empty list clears it."),
       own_condition: z.string().trim().max(500).optional().describe("Optional new free-text condition the agent judges itself; an empty string clears it."),
+      runs_after: runsAfterSchema.optional().describe("Optional new list of up to 8 tasks of the same board, such as T-12, that must be Done or deleted before this task may start. It replaces the stored list whole; an empty list clears it. A list that would make tasks wait for each other is refused."),
       ...hookFields(hookBound),
     }).strict().refine((value) => UPDATE_FIELDS.some((key) => value[key] !== undefined), "Set at least one field to change."),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

@@ -14,10 +14,10 @@ lists these tools with the plugin's reporting and query tools. For the main path
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of a feature that is not done, which attaches the task to it. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), the exact name of a feature that is not done, which attaches the task to it, and with plugin 0.9.12 or later **Runs after** (`runs_after`, up to 8 task IDs of the board). When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
 | `get_task` | Reads one task of the board by its ID: its text, column, state, feature, **Run on**, **Effort**, **Complete when**, and whether `update_task` can change it. It changes nothing. It needs plugin 0.9.11 or later. See [What an agent can read](#what-an-agent-can-read). |
 | `list_tasks` | Lists the tasks of the board, Done included, in board order. It changes nothing. It needs plugin 0.9.11 or later. |
-| `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, or **Complete when**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
+| `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, **Complete when**, or with plugin 0.9.12 or later **Runs after**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](tasks-sessions.md#assign-a-session-to-a-task). |
 | `unassign_task` | Removes the session's own assignment from a task. It needs plugin 0.9.8 or later. |
@@ -91,7 +91,8 @@ for example to add a finding to it. `update_task` works when all of these are tr
 - No start is in progress for it.
 
 The agent can change the task text, **Run on** (the provider and the model),
-**Effort**, and **Complete when**. A value the agent sets replaces the stored value. A
+**Effort**, **Complete when**, and with plugin 0.9.12 or later **Runs after**
+(`runs_after`). A value the agent sets replaces the stored value. A
 value it leaves out stays as it is. The agent cannot move the task, queue it, start it,
 or change its feature or its images. It cannot turn **Remote Control** on; a change
 to Codex turns it off.
@@ -99,6 +100,12 @@ to Codex turns it off.
 The text the agent sets replaces the whole text. The agent therefore reads the task
 with `get_task` first. A new text that leaves out an image keeps the image attached to
 the task.
+
+**Runs after** follows the board's rules (see [Runs after](tasks-order.md#runs-after)):
+up to 8 tasks of the same board, and an empty list clears it. A task that is not on the
+board, or a list that would make tasks wait for each other, is refused with its own
+answer, and nothing of the call is changed. `add_task` takes the same list for the new
+task.
 
 An agent can never change a task that started or finished, so a running session always
 matches the task it was started for. The agent gets the same answer for such a task as

@@ -434,11 +434,14 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
 
 export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 // `doneWhen` is the name an installed plugin from before the rename still sends for `completeWhen`.
-const AGENT_TASK_KEYS = new Set(["sessionRef", "text", "run", "completeWhen", "doneWhen", "feature"]);
+const AGENT_TASK_KEYS = new Set(["sessionRef", "text", "run", "completeWhen", "doneWhen", "feature", "after"]);
 const AGENT_FEATURE_NAME_LIMIT = 80;
 const AGENT_ADD_STATUS = Object.freeze({
-  invalid: 400, session_not_found: 404, repository_unavailable: 409, feature_not_found: 404, limit: 409, unavailable: 503,
+  invalid: 400, session_not_found: 404, repository_unavailable: 409, feature_not_found: 404, limit: 409,
+  after_not_found: 404, after_loop: 409, unavailable: 503,
 });
+// What an agent may ask a task to run after: task IDs only. The store applies the board's bounds and loop refusal.
+const isAgentAfter = (value) => value === undefined || (Array.isArray(value) && value.every((id) => typeof id === "string"));
 
 function writeAgentAddResult(response, reason, taskId = null, { close = false } = {}) {
   const ok = reason === null;
@@ -503,7 +506,8 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
   const valid = isPlainObject(body) && Object.keys(body).every((key) => AGENT_TASK_KEYS.has(key))
     && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
     && typeof body.text === "string"
-    && (feature === undefined || (typeof feature === "string" && feature.length > 0 && feature.length <= AGENT_FEATURE_NAME_LIMIT));
+    && (feature === undefined || (typeof feature === "string" && feature.length > 0 && feature.length <= AGENT_FEATURE_NAME_LIMIT))
+    && isAgentAfter(body.after);
   if (!valid) {
     writeAgentAddResult(response, "invalid");
     return;
@@ -536,9 +540,9 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       }
       payload.featureId = match.id;
     }
-    const result = taskStore.apply(repositoryId, "agent_create", { sessionId: body.sessionRef, task: payload });
+    const result = taskStore.apply(repositoryId, "agent_create", { sessionId: body.sessionRef, task: payload, ...(body.after === undefined ? {} : { after: body.after }) });
     if (result?.ok !== true) {
-      const reason = result?.error === "invalid" ? "invalid" : result?.error === "limit" ? "limit"
+      const reason = ["invalid", "limit", "after_not_found", "after_loop"].includes(result?.error) ? result.error
         : feature !== undefined && (result?.error === "not_found" || result?.error === "conflict") ? "feature_not_found" : "unavailable";
       writeAgentAddResult(response, reason);
       return;
@@ -608,8 +612,10 @@ export async function serveAgentTaskRemoveRoute({ request, response, requestUrl,
 }
 
 export const AGENT_TASK_UPDATE_PATH = "/api/agent/v1/tasks/update";
-const AGENT_UPDATE_STATUS = Object.freeze({ invalid: 400, session_not_found: 404, repository_unavailable: 409, not_found: 404, unavailable: 503 });
-const AGENT_UPDATE_FIELDS = Object.freeze(["text", "run", "completeWhen"]);
+const AGENT_UPDATE_STATUS = Object.freeze({
+  invalid: 400, session_not_found: 404, repository_unavailable: 409, not_found: 404, after_not_found: 404, after_loop: 409, unavailable: 503,
+});
+const AGENT_UPDATE_FIELDS = Object.freeze(["text", "run", "completeWhen", "after"]);
 
 const writeAgentUpdateResult = writeAgentOutcome.bind(null, AGENT_UPDATE_STATUS);
 
@@ -626,7 +632,8 @@ export async function serveAgentTaskUpdateRoute({ request, response, requestUrl,
     && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
     && typeof body.taskId === "string" && AGENT_TASK_ID_PATTERN.test(body.taskId)
     && AGENT_UPDATE_FIELDS.some((key) => body[key] !== undefined)
-    && (body.text === undefined || typeof body.text === "string");
+    && (body.text === undefined || typeof body.text === "string")
+    && isAgentAfter(body.after);
   if (!valid) {
     writeAgentUpdateResult(response, "invalid");
     return;
@@ -645,7 +652,7 @@ export async function serveAgentTaskUpdateRoute({ request, response, requestUrl,
     for (const key of AGENT_UPDATE_FIELDS) if (body[key] !== undefined) payload[key] = body[key];
     const result = taskStore.apply(repositoryId, "agent_update", payload);
     if (result?.ok === true) writeAgentUpdateResult(response, null);
-    else writeAgentUpdateResult(response, result?.error === "not_found" || result?.error === "invalid" ? result.error : "unavailable");
+    else writeAgentUpdateResult(response, ["not_found", "invalid", "after_not_found", "after_loop"].includes(result?.error) ? result.error : "unavailable");
   } catch {
     writeAgentUpdateResult(response, "unavailable");
   }

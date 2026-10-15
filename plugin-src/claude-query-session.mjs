@@ -11,10 +11,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
 const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|get_task|list_tasks|update_task|remove_task|assign_task|unassign_task|complete_task|block_task|get_feature|create_feature|update_feature|delete_feature)$/u;
 const WRITE_FIELDS = {
-  add_task: ["text", "provider", "model", "effort", "remote_control", "complete_when", "own_condition", "feature"],
+  add_task: ["text", "provider", "model", "effort", "remote_control", "complete_when", "own_condition", "feature", "runs_after"],
   get_task: ["task_id"],
   list_tasks: ["query", "state", "feature", "editable"],
-  update_task: ["task_id", "text", "provider", "model", "effort", "complete_when", "own_condition"],
+  update_task: ["task_id", "text", "provider", "model", "effort", "complete_when", "own_condition", "runs_after"],
   remove_task: ["task_id"],
   assign_task: ["task_id"],
   unassign_task: ["task_id"],

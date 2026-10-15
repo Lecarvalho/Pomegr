@@ -52,10 +52,10 @@ it; they are the only tools that change something you made or that Pomegr manage
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the first column of the board. It does not queue or start the task. |
+| `add_task` | Adds a task to the first column of the board. It does not queue or start the task. The optional `runs_after` lists the tasks it must wait for. |
 | `get_task` | Reads one task of the board by its ID: its text, column, state, feature, **Run on**, **Effort**, and **Complete when**, and whether `update_task` can change it. |
 | `list_tasks` | Lists at most 100 tasks of the board, with each text cut at 300 characters. The agent can search by text, state, feature, or whether `update_task` can change a task. |
-| `update_task` | Changes the text, **Run on**, **Effort**, or **Complete when** of a task that has not started. The agent reads the task with `get_task` first. |
+| `update_task` | Changes the text, **Run on**, **Effort**, **Complete when**, or **Runs after** of a task that has not started. The agent reads the task with `get_task` first. |
 | `remove_task` | Deletes a task that the same session added, if the task has not started. |
 | `assign_task` | Assigns the session to a task of the board that is not done, so the session can report it. It changes no state and starts nothing. |
 | `unassign_task` | Removes the session's own assignment from a task. |
@@ -70,6 +70,13 @@ it; they are the only tools that change something you made or that Pomegr manage
 in a session that is assigned to a task. A session with more than one task names the
 task with `task_id`. The first report on a task wins. `assign_task` and `unassign_task`
 need plugin 0.9.8 or later. `get_task` and `list_tasks` need plugin 0.9.11 or later.
+
+`runs_after` on `add_task` and `update_task` needs plugin 0.9.12 or later. It takes up to
+8 task IDs of the same board, such as `T-12`. The task never starts until each of them
+is **Done** or deleted, as with [Runs after](tasks-order.md#runs-after) on the board. On
+`update_task`, the list replaces the stored one, and an empty list clears it. A task
+that is not on the board, or a list that would make tasks wait for each other, is
+refused, and nothing of the call is changed.
 
 ## If a tool is missing
 

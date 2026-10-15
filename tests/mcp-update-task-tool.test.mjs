@@ -125,3 +125,25 @@ test("Claude hook binds update_task from the host transcript, signed for that to
   const hooks = JSON.parse(readFileSync(new URL("../plugin-src/claude-hooks.json", import.meta.url), "utf8"));
   assert.ok(hooks.hooks.PreToolUse.some((entry) => new RegExp(entry.matcher, "u").test("mcp__plugin_pomegr_pomegr__update_task")));
 });
+
+test("update_task replaces what a task runs after, an empty list clears it, and a refused list has fixed text", async () => {
+  const { tools } = setup();
+  const tool = tools.update_task;
+  for (const runs_after of [[], ["T-1"], Array.from({ length: 8 }, (_, index) => `T-${index + 1}`)]) {
+    assert.equal(parse(tool, { task_id: "T-12", runs_after }).success, true, JSON.stringify(runs_after));
+  }
+  for (const runs_after of [["T-1", "T-1"], ["T-0"], ["x"], [1], "T-1", null, Array.from({ length: 9 }, (_, index) => `T-${index + 1}`)]) {
+    assert.equal(parse(tool, { task_id: "T-12", runs_after }).success, false, JSON.stringify(runs_after));
+  }
+  assert.deepEqual(buildUpdateTaskBody("claude:x", { task_id: "T-4", runs_after: [] }), { sessionRef: "claude:x", taskId: "T-4", after: [] });
+  assert.deepEqual(buildUpdateTaskBody("claude:x", { task_id: "T-4", text: "t", runs_after: ["T-2"] }), { sessionRef: "claude:x", taskId: "T-4", text: "t", after: ["T-2"] });
+  const texts = {
+    after_not_found: "A task in runs_after is not on the board, so no task was changed.",
+    after_loop: "These tasks would wait for each other, so no task was changed.",
+  };
+  for (const [code, text] of Object.entries(texts)) {
+    const refused = await setup({ answer: { ok: false, reason: code } }).tools.update_task.handler({ task_id: "T-4", runs_after: ["T-2"] });
+    assert.equal(refused.isError, true);
+    assert.equal(refused.content[0].text, text);
+  }
+});

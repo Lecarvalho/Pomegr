@@ -111,6 +111,9 @@ accepted.
 - **No loops.** A choice that would make tasks wait for each other is refused with
   "These tasks would wait for each other, so nothing was changed."
 - **Remove it** with **Remove** on the row. A task that has started cannot be changed.
+- **An agent can set it too.** With plugin 0.9.12 or later, `add_task` and `update_task`
+  take `runs_after`, a list of task IDs, under the same rules. See
+  [What agents report](tasks-agents.md#tasks-an-agent-can-change).
 
 ## If your board had steps
 
