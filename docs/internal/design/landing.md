@@ -34,7 +34,6 @@ The landing is an isolated package, so it copies these values instead of importi
 | Raised | `#1d2125` | Hover fill, diagram cards |
 | Ink | `#edf0f3` | Primary text |
 | Muted | `#8d959f` | Supporting text, the second clause of a statement, captions |
-| Faint | `#5d6570` | Link underlines at rest |
 | Line | `#262b31` | Hairline rules and the sheet guides |
 | Line strong | `#39404a` | Figure frames and secondary action borders |
 | Done | `#3a414a` | Finished tasks in fig. 1 and the hero dot grid |
@@ -71,7 +70,7 @@ The landing is an isolated package, so it copies these values instead of importi
 - A 22px dot grid sits behind the hero and fades out from the upper right through a radial mask.
 - Under a fine pointer, each dot the cursor crosses turns Signal red and fades out over 1.1 seconds, still inside the same fade (`DotGlow`). Only crossed dots light, never a radius around the cursor.
 - A pomegranate broken in two halves sits behind the hero on the right (`pomegranate-halves.png`).
-- The page ends on a person biting into a pomegranate (`pomegranate-bite.png`), with no caption. Its edges dissolve into the dither, so the image never shows a hard crop.
+- A person biting into a pomegranate (`pomegranate-bite.png`) sits right below the last figure, with no caption. Its edges dissolve into the dither, so the image never shows a hard crop.
 - Both images are generated photographs converted to a 4×4 Bayer dither in three reds (`#5c201b`, Red, Signal) on a transparent ground. Each file carries its generation prompt and conversion steps in a PNG text chunk.
 - The images render with pixelated scaling, so each dither pixel stays a visible square.
 - The pomegranate is the brand's hidden thread. Nothing on the page names or explains it.
@@ -97,7 +96,7 @@ The header and footer are self-contained bands, so they read the same on the pap
 
 ## Home page
 
-Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, tasks, and Aril, the local note, then the closing image.
+Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, tasks, and Aril, the closing image right below the last figure, then the local note.
 
 - The hero has the two-clause title, one sentence, the platform line, and the actions: Download for Windows (primary, Red) and View source (secondary).
 - The platform line is mono: a Signal dot for Windows x64 and a hollow dot for the planned iOS and Android apps.
@@ -110,7 +109,7 @@ Reading order: hero, fig. 1, the three jobs, one chapter each for sessions, task
 - Fig. 3 is the queue: the next card in Ready starts a session, which moves to Review when the agent reports done.
 - Fig. 4 is an Aril proposal: nothing changes until the owner applies it.
 - Each diagram has a phone version that stacks vertically, because the desktop diagram would be too small to read.
-- A small, quiet note follows the chapters: "Runs on your machine." in 15px/600 beside one muted 14px paragraph on the read-only loopback monitor, what is never shown or sent, and the AGPL-3.0 license.
+- A small, quiet note follows the chapters: "Runs on your machine." in 15px/600 beside one muted 14px paragraph on the read-only loopback monitor, and what is never shown or sent.
 - The home page has no waitlist. The waitlist API stays deployed with no page that uses it.
 
 ## Figures

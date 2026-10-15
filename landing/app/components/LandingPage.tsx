@@ -92,18 +92,18 @@ export function LandingPage() {
           </Figure>
         </section>
 
+        <div className={styles.close} aria-hidden="true">
+          <img data-reveal className={styles.bite} src="/landing/home/pomegranate-bite.png" alt="" width="1200" height="800" />
+        </div>
+
         <section data-reveal className={styles.local} aria-labelledby="local-title">
           <h2 id="local-title">Runs on your machine.</h2>
           <p>
             Read-only. The monitor listens only on this computer and needs no Pomegr account. Prompts, responses,
-            commands, and credentials are never shown or sent. Open source under{" "}
-            <a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">AGPL-3.0</a>.
+            commands, and credentials are never shown or sent.
           </p>
         </section>
 
-        <div className={styles.close} aria-hidden="true">
-          <img data-reveal className={styles.bite} src="/landing/home/pomegranate-bite.png" alt="" width="1200" height="800" loading="lazy" />
-        </div>
       </div>
 
       <SiteFooter current="home" />

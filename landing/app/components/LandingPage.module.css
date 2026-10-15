@@ -9,7 +9,6 @@
   --raised: #1d2125;
   --ink: #edf0f3;
   --muted: #8d959f;
-  --faint: #5d6570;
   --line: #262b31;
   --line-strong: #39404a;
   --done: #3a414a;
@@ -346,7 +345,7 @@
 .applyFill { fill: var(--red); }
 
 /* The last frame: no caption. */
-.close { padding-top: 136px; }
+.close { padding-top: 48px; }
 
 .bite {
   display: block;
@@ -363,15 +362,13 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   gap: 8px 48px;
-  margin-top: 136px;
+  margin-top: 48px;
   padding-top: 24px;
   border-top: 1px solid var(--line);
 }
 
 .local h2 { margin: 0; font: 600 15px/1.4 var(--ui); }
 .local p { max-width: 64ch; margin: 0; color: var(--muted); font-size: 14px; }
-.local a { color: var(--ink); text-decoration-color: var(--faint); text-underline-offset: 4px; }
-.local a:hover { text-decoration-color: var(--ink); }
 
 .narrowOnly { display: none !important; }
 
