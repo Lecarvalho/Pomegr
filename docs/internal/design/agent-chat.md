@@ -45,6 +45,9 @@ The task board is in [Task board design](task-board.md).
 | An answer is being written and the panel is minimized | The label reads “Aril · answering…” | Adds “answering” |
 | An answer finished while the panel was minimized | A 7px `--command-brand` dot follows the name | Adds “new answer” until the panel is opened |
 
+- Both states follow a turn of the open conversation that another device started, once the open panel has seen it.
+- A turn that another device starts while the panel is minimized and idle does not change the launcher, because that panel asks nothing.
+
 ## Panel
 
 ### Layout
@@ -60,6 +63,11 @@ The task board is in [Task board design](task-board.md).
 - So the draft and the scroll position survive.
 - The chat asks the desktop only while the panel is open or an answer is being written.
 - A minimized, idle panel asks nothing.
+- An open panel that follows no answer asks for the conversation list every five seconds, on the desktop and on a paired device.
+- So a message sent from another device, and the turn it starts, reach an open panel without reopening it.
+- A turn started elsewhere in the open conversation shows as the panel's own: the answer text, the activity line, Stop in place of Send, then the stored messages.
+- A newer stored open conversation in that list is read again, so a turn that ended between two asks still shows.
+- A conversation started elsewhere joins the conversation list, and the busy line disables Send while it is answered.
 
 ### Header
 

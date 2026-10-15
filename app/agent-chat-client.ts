@@ -16,6 +16,9 @@ import { useClientAccess } from "./hooks/ClientAccessContext";
 
 const DESKTOP_POLL_MS = 500;
 const PAIRED_POLL_MS = 1_000;
+// While the panel is open and no answer of its conversation is being written, the list is asked at this slower pace,
+// so a message sent from another device, and the turn it starts, reach this panel.
+const IDLE_POLL_MS = 5_000;
 const PAIRED_PATH = "/api/agent-chat";
 
 type Bridge = { agentChat(operation: AgentChatOperationName, payload: unknown): Promise<unknown> };
@@ -216,7 +219,8 @@ export type AgentChatView = {
 
 /**
  * The chat of one repository while its panel is open. `active` false stops every request, so a closed or minimized
- * panel asks nothing. Polls only while an answer is being written. The caller mounts one instance per repository
+ * panel asks nothing. Reads the open conversation every poll interval while its answer is being written, and the list
+ * every idle interval otherwise, so a turn started from another device is followed as this panel's own. The caller mounts one instance per repository
  * (a `key`), so no conversation of one repository is ever shown under another.
  */
 export function useAgentChat(repositoryId: string | null, active: boolean, availability: AgentChatAvailability): AgentChatView {
@@ -230,6 +234,9 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
   const [pendingImages, setPendingImages] = useState<readonly AgentChatImage[]>([]);
   const [resolving, setResolving] = useState<string | null>(null);
   const [error, setError] = useState<AgentChatError | null>(null);
+  // Bumped when the list shows that the open conversation changed since it was read, so it is read again.
+  const [revision, setRevision] = useState(0);
+  const shown = useRef<AgentChatConversation | null>(null);
   const generation = useRef(0);
   const chosen = useRef(false);
   const usable = active && repositoryId !== null && (availability === "desktop" || availability === "paired");
@@ -261,6 +268,8 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     void listAgentChats(repositoryId).then((answer) => applyList(answer, at));
   }, [usable, repositoryId, applyList]);
 
+  useEffect(() => { shown.current = conversation; }, [conversation]);
+
   // Reads the open conversation, and keeps reading while its answer is being written.
   useEffect(() => {
     if (!usable || repositoryId === null || openId === null) return;
@@ -283,7 +292,31 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     };
     void read();
     return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
-  }, [usable, repositoryId, openId, pollMs, running, refreshList]);
+  }, [usable, repositoryId, openId, pollMs, running, revision, refreshList]);
+
+  // While no answer of the open conversation is being written, asks the list again at the idle pace. A turn that
+  // another device started sets `running`, which reads the open conversation again; a newer stored conversation
+  // is read again through `revision`.
+  const idle = usable && turn === null && pendingMessage === null;
+  useEffect(() => {
+    if (!idle || repositoryId === null) return;
+    const at = generation.current;
+    let cancelled = false;
+    let timer: number | null = null;
+    const schedule = () => { timer = window.setTimeout(() => { timer = null; void poll(); }, IDLE_POLL_MS); };
+    const poll = async () => {
+      const answer = await listAgentChats(repositoryId);
+      if (cancelled || at !== generation.current) return;
+      applyList(answer, at);
+      if (answer.ok && openId !== null && answer.running !== openId) {
+        const summary = answer.conversations.find((entry) => entry.id === openId);
+        if (summary?.updatedAt !== shown.current?.updatedAt) setRevision((value) => value + 1);
+      }
+      schedule();
+    };
+    schedule();
+    return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
+  }, [idle, repositoryId, openId, applyList]);
 
   const open = useCallback((conversationId: string | null) => {
     chosen.current = true;
