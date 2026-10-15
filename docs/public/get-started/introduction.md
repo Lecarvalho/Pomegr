@@ -100,6 +100,10 @@ cut from a feature. Nothing changes until you select **Apply changes**, and Aril
 starts a session or turns the queue on or off only through a proposal you apply. See
 [Agent chat](../using-pomegr/agent-chat.md).
 
+![The Pomegr repository's task board in dark theme, with the queue on, cards in Backlog, In progress, and Done, and the Aril panel proposing one new task with Apply changes and Dismiss.](../images/introduction/tasks-board.jpg)
+
+*A real board from the Pomegr project, with Aril proposing a task.*
+
 After a start, Pomegr only observes the session: it never stops, attaches to,
 answers, or approves anything in a running session. Sessions always run on the
 computer running Pomegr. A paired phone can change tasks and apply Aril's proposals,
