@@ -90,7 +90,9 @@ function inspectCatalogEntries(entries) {
     const owner = ownersBySessionId.get(entry.id);
     if (!owner) return { sessionId: entry.id, status: "unavailable" };
     if (ownerCounts.get(resourceOwnerKey(owner)) > 1) return { sessionId: entry.id, status: "shared" };
-    return { sessionId: entry.id, pid: owner.pid, processStartIdentity: owner.processStartIdentity };
+    const windowTitles = (Array.isArray(entry.windowTitles) ? entry.windowTitles : [])
+      .filter((title) => typeof title === "string" && title.length <= 512).slice(0, 2);
+    return { sessionId: entry.id, pid: owner.pid, processStartIdentity: owner.processStartIdentity, ...(windowTitles.length ? { windowTitles } : {}) };
   });
   return {
     sessions: entries.map(publicCatalogEntry),

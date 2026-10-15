@@ -65,6 +65,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/task-worktree.mjs",
   "desktop/runtime/plugin-cli.mjs",
   "desktop/runtime/security-policy.mjs",
+  "desktop/runtime/session-window.mjs",
   "desktop/runtime/shell-stage.mjs",
   "desktop/runtime/settings.mjs",
   "desktop/runtime/provider-settings.mjs",

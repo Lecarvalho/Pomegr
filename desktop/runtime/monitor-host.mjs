@@ -28,6 +28,12 @@ onParentMessage((message) => {
     void Promise.resolve(handle?.refreshUsageAfterCodexSignIn?.())
       .catch(() => {}).finally(() => send({ type: "codex-usage-rechecked" }));
   }
+  if (message?.type === "session-window-owner" && typeof message.requestId === "number") {
+    let owner = null;
+    try { owner = handle?.sessionWindowOwner?.(message.sessionId) || null; } catch { owner = null; }
+    send({ type: "session-window-owner-result", requestId: message.requestId,
+      owner: owner ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity, windowTitles: owner.windowTitles || [] } : null });
+  }
   if (message?.type === "claude-sign-in-completed") {
     void Promise.resolve(handle?.refreshUsageAfterClaudeSignIn?.())
       .catch(() => {}).finally(() => send({ type: "claude-usage-rechecked" }));

@@ -33,6 +33,38 @@ function refreshUsageAfterSignIn(child, provider, timeoutMs) {
   });
 }
 
+let sessionWindowOwnerRequests = 0;
+
+/** Ask the monitor for the live session's unique owning process. Desktop-main only; null when unknown. */
+export function requestSessionWindowOwner(child, sessionId, timeoutMs = 2_000) {
+  if (!child || typeof sessionId !== "string") return Promise.resolve(null);
+  sessionWindowOwnerRequests = (sessionWindowOwnerRequests + 1) % Number.MAX_SAFE_INTEGER;
+  const requestId = sessionWindowOwnerRequests;
+  return new Promise((resolve) => {
+    const finish = (owner) => {
+      clearTimeout(timer);
+      child.removeListener("message", onMessage);
+      child.removeListener("exit", unavailable);
+      child.removeListener("error", unavailable);
+      resolve(owner);
+    };
+    const unavailable = () => finish(null);
+    const onMessage = (message) => {
+      if (message?.type !== "session-window-owner-result" || message.requestId !== requestId) return;
+      const owner = message.owner;
+      finish(owner && Number.isInteger(owner.pid) && owner.pid > 0 && typeof owner.processStartIdentity === "string"
+        ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity,
+          windowTitles: (Array.isArray(owner.windowTitles) ? owner.windowTitles : []).filter((title) => typeof title === "string").slice(0, 2) }
+        : null);
+    };
+    const timer = setTimeout(unavailable, timeoutMs);
+    child.on("message", onMessage);
+    child.once("exit", unavailable);
+    child.once("error", unavailable);
+    try { child.postMessage({ type: "session-window-owner", requestId, sessionId }); } catch { unavailable(); }
+  });
+}
+
 export function createMonitorWorker(entrypoint, options) {
   const { agentQueryDescriptorPath: descriptorPath, agentAuthorizationToken: token } = options.workerData;
   const worker = new Worker(entrypoint, options);

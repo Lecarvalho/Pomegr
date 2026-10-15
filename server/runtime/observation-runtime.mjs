@@ -83,6 +83,9 @@ export function createObservationRuntime(options = {}) {
   let usageRefreshTimer = null;
   let resourceRefreshTimer = null;
   let resourceRefreshInFlight = null;
+  // Monitor-private: the latest unique owning process of each live session, for the desktop's
+  // notification window focus only. Never serialized to a response, log, or store.
+  let sessionWindowOwners = new Map();
   let observationServingActive = false;
   let observationStartPromise = null;
   let unsubscribeObservation = null;
@@ -267,6 +270,10 @@ export function createObservationRuntime(options = {}) {
     const refresh = registry.inspectSessions()
       .then(async (inspected) => {
         const resourceTargets = inspected.resourceTargets || [];
+        sessionWindowOwners = new Map(resourceTargets.filter((target) => Number.isInteger(target.pid) && target.pid > 0
+          && typeof target.processStartIdentity === "string").map((target) => [target.sessionId,
+          Object.freeze({ pid: target.pid, processStartIdentity: target.processStartIdentity,
+            windowTitles: Object.freeze(Array.isArray(target.windowTitles) ? [...target.windowTitles] : []) })]));
         await resourceHistory.sampleAndSchedule(resourceTargets);
         for (const target of resourceTargets) observationCoordinator.refreshProjection(target.sessionId);
       })
@@ -706,6 +713,9 @@ export function createObservationRuntime(options = {}) {
       if (usageRefreshInFlight) await usageRefreshInFlight;
       if (!observationServingActive) return;
       await refreshUsageResponses("claude");
+    },
+    sessionWindowOwner(sessionId) {
+      return typeof sessionId === "string" ? sessionWindowOwners.get(sessionId) || null : null;
     },
     async refreshUsageAfterCodexSignIn() {
       // Native completion queues acquisition independently of cache-only GETs.

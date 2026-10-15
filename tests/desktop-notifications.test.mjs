@@ -39,6 +39,7 @@ async function fixture(context, options = {}) {
 function controller(store, options = {}) {
   const shown = [];
   const opened = [];
+  const sessions = [];
   const instance = createNativeNotificationController({
     store, now: options.clock || (() => START),
     getPreferences: options.preferences || (() => ({ enabled: true })),
@@ -47,9 +48,9 @@ function controller(store, options = {}) {
       shown.push({ payload, onClick });
       return options.notifyResult === undefined ? true : options.notifyResult;
     },
-    openTarget(target) { opened.push(target); },
+    openTarget(target, session) { opened.push(target); sessions.push(session); },
   });
-  return { instance, shown, opened };
+  return { instance, shown, opened, sessions };
 }
 
 test("usage occurrences deliver fixed copy once and clicks only open Usage limits", async (context) => {
@@ -67,6 +68,23 @@ test("usage occurrences deliver fixed copy once and clicks only open Usage limit
   native.shown[0].onClick();
   assert.deepEqual(native.opened, ["/usage-limits"]);
   assert.equal(normalizeNativeNotificationSnapshot(snapshot([{ ...row, action: "open_session" }])), null);
+});
+
+test("a session click names its validated session and title so the shell can also focus its window; other clicks name none", async (context) => {
+  const { store } = await fixture(context);
+  const native = controller(store());
+  await native.instance.start();
+  await native.instance.observe(snapshot([]));
+  assert.equal(await native.instance.observe(snapshot([occurrence(7)], 2)), 1);
+  native.shown[0].onClick();
+  assert.deepEqual(native.opened, ["/sessions/codex-session-7"]);
+  assert.deepEqual(native.sessions, [{ id: "codex:session-7", title: "Session 7" }]);
+  const usage = occurrence(8, { kind: "usage_reset_available", category: "usage", severity: "info", lifecycle: "resolved",
+    priority: 60, timeBasis: "observed", action: "open_usage_limits", data: { availableCount: 1 } });
+  assert.equal(await native.instance.observe(snapshot([usage], 3)), 1);
+  native.shown[1].onClick();
+  assert.deepEqual(native.opened, ["/sessions/codex-session-7", "/usage-limits"]);
+  assert.deepEqual(native.sessions, [{ id: "codex:session-7", title: "Session 7" }, null]);
 });
 
 test("persistent usage authentication alerts require Provider news opt-in without a backlog", async (context) => {

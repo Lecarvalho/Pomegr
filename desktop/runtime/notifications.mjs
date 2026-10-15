@@ -223,8 +223,11 @@ export function createNativeNotificationController({ store, notify, openTarget, 
         || typeof payload.body !== "string" || !payload.body || payload.body.length > 200
         || !SAFE_TEXT.test(payload.title) || !SAFE_TEXT.test(payload.body)) continue;
       const target = notificationTarget(row);
+      // Only a session notification names a session; the shell may also focus that session's own window.
+      const session = row.kind === "needs_input" && target !== NOTIFICATION_FALLBACK_TARGET
+        ? Object.freeze({ id: row.data.sessionId, title: row.data.sessionTitle }) : null;
       try {
-        if (notify(payload, () => openTarget(target)) === true) {
+        if (notify(payload, () => openTarget(target, session)) === true) {
           toastTimes.push(clock);
           if (group) { coalesced.add(group); newsDeliveredAt.set(group, clock); }
           emitted += 1;

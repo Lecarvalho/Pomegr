@@ -35,7 +35,8 @@ import {
 } from "./security-policy.mjs";
 import { waitForMessage } from "./utility-lifecycle.mjs";
 import { CODEX_SIGN_IN_CHANNEL, createCodexSignInAction } from "./codex-auth.mjs";
-import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn } from "./monitor-worker.mjs";
+import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn, requestSessionWindowOwner } from "./monitor-worker.mjs";
+import { focusSessionWindow } from "./session-window.mjs";
 import { withDeadline } from "./bounded-lifecycle.mjs";
 import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
@@ -204,17 +205,17 @@ function openAbout() {
   void mainWindow.loadURL(`${webHandle.origin}/settings?section=about`).then(showShellWindow, showShellWindow);
 }
 
-function openNotificationTarget(target) {
+function openNotificationTarget(target, session = null) {
   if (!isAllowedNotificationTarget(target) || !webHandle?.origin) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const url = `${webHandle.origin}${target}`;
   let current = "";
   try { current = mainWindow.webContents.getURL(); } catch { /* A crashed renderer reloads below. */ }
-  if (current === url) {
-    showShellWindow();
-    return;
-  }
-  void mainWindow.loadURL(url).then(showShellWindow, showShellWindow);
+  const shown = current === url ? Promise.resolve(showShellWindow())
+    : mainWindow.loadURL(url).then(showShellWindow, showShellWindow);
+  // Pomegr shows the session first; the session's own window then comes in front of it.
+  if (session) void shown.then(() => requestSessionWindowOwner(monitorChild, session.id))
+    .then((owner) => owner && focusSessionWindow(owner, { titles: [...owner.windowTitles, session.title] })).catch(() => {});
 }
 
 function showNativeNotification(payload, onClick) {

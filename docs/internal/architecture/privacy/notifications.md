@@ -41,6 +41,10 @@ paths, credentials, prompts, commands, errors, and arbitrary URLs.
 - A release occurrence also gets a **What's new** link. The client derives it from the
   product and the version. It is not an action, and it is never stored.
 - Actions cannot approve work, authenticate, install, or change a provider.
+- A native `needs_input` click also asks the desktop to bring the session's own window to
+  the front. It hands the shell only the validated session ID and bounded title already
+  in the occurrence. [Session window focus](desktop-and-diagnostics.md#session-window-focus)
+  owns what that action may read and do.
 
 **Stores:**
 

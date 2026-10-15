@@ -284,6 +284,7 @@ The [Settings guide](../../public/using-pomegr/settings.md#use-the-desktop-contr
 - Pomegr notifies only on a transition into a recognized live needs-input state; it deduplicates repeated observations until the state clears.
 - Windows notification settings or Focus Assist can suppress native presentation. Pomegr monitoring continues if notification delivery fails.
 - Notification clicks navigate to an observation view only. Pomegr cannot approve, answer, resume, or control an agent.
+- A needs-input click also brings the session's own window to the front when Pomegr can identify it. [Session window focus](../architecture/privacy/desktop-and-diagnostics.md#session-window-focus) owns the rules. If no window comes forward, the session was not live, its window could not be identified, or more than one window qualified.
 
 ### Updates are unavailable
 

@@ -208,9 +208,11 @@ export function createClaudeProvider(options = {}) {
           ? "closed" : sessionActivityStatus(isLive, registryEntry, backgroundRunning),
         ...(isLive && registryEntry?.resourceOwner ? { resourceOwner: registryEntry.resourceOwner } : {}),
       };
+      // Read after the summary so the titles of a first scan are present too.
+      const windowTitles = () => (liveState.resourceOwner ? { windowTitles: titleEnrichment.windowTitles(file, stat) } : {});
       if (cached?.key === cacheKey) {
         if (fastCatalog) titleEnrichment.ensure(file, stat);
-        sessions.push({ ...cached.value, ...liveState });
+        sessions.push({ ...cached.value, ...liveState, ...windowTitles() });
         continue;
       }
       const records = readJsonlTailCold(file, MAX_SESSION_SUMMARY_BYTES);
@@ -224,7 +226,7 @@ export function createClaudeProvider(options = {}) {
         updatedAt: new Date(activityMs || stat.mtimeMs).toISOString(),
       };
       sessionSummaryCache.set(file, { key: cacheKey, value });
-      sessions.push({ ...value, ...liveState });
+      sessions.push({ ...value, ...liveState, ...windowTitles() });
     }
     let catalog = catalogPresence.merge(sessions, files, registry, { explicitSession });
     const deferredStatusIds = catalog.filter((entry) => entry.detailReadiness === "unavailable").map((entry) => entry.localId);

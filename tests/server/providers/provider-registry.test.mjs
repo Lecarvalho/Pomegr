@@ -29,6 +29,7 @@ function session(localId, updatedAt, options = {}) {
     needsInput: options.needsInput ?? false,
     activityStatus: options.activityStatus || (options.needsInput ? "needs_input" : options.isLive === false ? "unknown" : "working"),
     ...(options.resourceOwner ? { resourceOwner: options.resourceOwner } : {}),
+    ...(options.windowTitles ? { windowTitles: options.windowTitles } : {}),
   };
 }
 
@@ -77,7 +78,7 @@ test("keeps resource ownership internal while classifying live inspection target
   const sharedOwner = { pid: 202, processStartIdentity: "shared-start" };
   const registry = createProviderRegistry([
     provider("claude", [
-      session("unique", "2026-08-10T15:00:00.000Z", { resourceOwner: uniqueOwner }),
+      session("unique", "2026-08-10T15:00:00.000Z", { resourceOwner: uniqueOwner, windowTitles: ["Unique custom", "Unique AI"] }),
       session("shared-a", "2026-08-10T14:00:00.000Z", { resourceOwner: sharedOwner }),
       session("missing", "2026-08-10T12:00:00.000Z"),
       session("history", "2026-08-10T11:00:00.000Z", { isLive: false, resourceOwner: uniqueOwner }),
@@ -95,18 +96,18 @@ test("keeps resource ownership internal while classifying live inspection target
 
   const inspected = await registry.inspectSessions();
   assert.deepEqual(inspected.resourceTargets, [
-    { sessionId: "claude:unique", pid: 101, processStartIdentity: "unique-start" },
+    { sessionId: "claude:unique", pid: 101, processStartIdentity: "unique-start", windowTitles: ["Unique custom", "Unique AI"] },
     { sessionId: "claude:shared-a", status: "shared" },
     { sessionId: "codex:shared-b", status: "shared" },
     { sessionId: "claude:missing", status: "unavailable" },
   ]);
   assert.equal(inspected.sessions.some(({ id }) => id === "claude:history"), true);
   assert.equal(inspected.resourceTargets.some(({ sessionId }) => sessionId === "claude:history"), false);
-  assert.doesNotMatch(JSON.stringify(inspected.sessions), /resourceOwner|processStartIdentity|\"pid\"/);
+  assert.doesNotMatch(JSON.stringify(inspected.sessions), /resourceOwner|processStartIdentity|\"pid\"|windowTitles|Unique AI/);
 
   const catalog = await registry.listSessions();
   const selected = await registry.readSession("claude:unique");
-  assert.doesNotMatch(JSON.stringify(catalog), /resourceOwner|processStartIdentity|\"pid\"/);
+  assert.doesNotMatch(JSON.stringify(catalog), /resourceOwner|processStartIdentity|\"pid\"|windowTitles|Unique AI/);
   assert.doesNotMatch(JSON.stringify(selected), /resourceOwner|processStartIdentity|\"pid\"/);
 });
 

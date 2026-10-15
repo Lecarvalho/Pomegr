@@ -543,3 +543,20 @@ test("Claude title enrichment does not reuse a replaced source after an exact sc
   }]);
   assert.deepEqual(fallback, { title: "Replacement title", createdAt: "2026-08-13T14:00:00.000Z" });
 });
+
+test("Claude title enrichment keeps both titles for window focus, sanitized and only for the current file", async () => {
+  const source = titleStat(1, 10, 1);
+  const reader = createClaudeCatalogTitleEnrichment({ statSafe: () => source, scanTitleState: () => new Promise(() => {}) });
+  reader.activate();
+  try {
+    assert.deepEqual(reader.windowTitles("synthetic.jsonl", source), []);
+    reader.fast("synthetic.jsonl", source, [
+      { type: "custom-title", customTitle: "Task\ttitle" },
+      { type: "ai-title", aiTitle: "Generated\u0000 title" },
+    ]);
+    assert.deepEqual(reader.windowTitles("synthetic.jsonl", source), ["Task title", "Generated title"]);
+    assert.deepEqual(reader.windowTitles("synthetic.jsonl", titleStat(2, 10, 1)), []);
+  } finally {
+    reader.stop();
+  }
+});
