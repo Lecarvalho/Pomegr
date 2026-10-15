@@ -352,6 +352,9 @@
   width: 100%;
   height: auto;
   image-rendering: pixelated;
+  /* Starts almost invisible under the figure and gains opacity gradually, as if it was always there. */
+  -webkit-mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%);
+  mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%);
 }
 
 .landing[data-motion] .bite[data-reveal]:not([data-shown]) { opacity: 0; transform: translateY(-24px); filter: blur(8px); }
