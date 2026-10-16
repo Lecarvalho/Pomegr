@@ -73,7 +73,8 @@ or to create an issue from a task, see [GitHub issues](github-issues.md).
    moves to **In progress** and shows **Open session**.
 
 The agent reports with `complete_task` when the work is complete, or with `block_task`
-when it cannot continue. A report puts the task in **Review**, never in **Done**. A
+when it cannot continue. A completion puts an unblocked task in **Review**, never in **Done**.
+A later completion keeps an existing block until you resolve it; see [What agents report](tasks-agents.md#how-a-report-is-checked). A
 [start gate](tasks-start-gates.md) can hold a start, for example while a provider has an
 incident. In the desktop app you can also ask Aril to start a task; see
 [Start a session from the chat](agent-chat.md#start-a-session-from-the-chat).

@@ -106,7 +106,7 @@ export async function serveAgentTaskReportRoute({ request, response, requestUrl,
       ? call({ sessionId: body.sessionRef, ...task, reason: body.reason })
       : call({ sessionId: body.sessionRef, ...task, ...(noted ? { attention: body.attention } : {}) }, () => read ?? (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
     if (result?.ok === true && blocking) writeAgentReportResult(response, null, { state: "blocked" });
-    else if (result?.ok === true && result.state === "needs_review") {
+    else if (result?.ok === true && ["needs_review", "blocked"].includes(result.state)) {
       writeAgentReportResult(response, null, { state: result.state, results: reportResults(result.results) });
     } else writeAgentReportResult(response, Object.hasOwn(AGENT_REPORT_STATUS, result?.error) ? result.error : "unavailable");
   } catch {

@@ -15,11 +15,11 @@ export const FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
 export const FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
 export const FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
 export const FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
-export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole, so read the task with get_task first and set the whole text it should have. Use get_task to read one task of that board by its ID, and list_tasks to find tasks of the board by a part of their text, their state, their feature, or whether update_task can change them; both only read. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once per task, and only on a task Pomegr started it for or one assigned to it. Use assign_task when the user asks this session to work on an existing board task it was not started for, such as to resume a task whose first session stopped, then report with complete_task or block_task, naming task_id if the session has more than one task; use unassign_task when the session stops working on that task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
+export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole, so read the task with get_task first and set the whole text it should have. Use get_task to read one task of that board by its ID, and list_tasks to find tasks of the board by a part of their text, their state, their feature, or whether update_task can change them; both only read. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task when the task is complete, which puts an unblocked task in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; the latest report wins until the owner marks the task done, and only a session Pomegr started for the task or assigned to it may report. A completion after a block keeps the task blocked until the owner resolves it. Use assign_task when the user asks this session to work on an existing board task it was not started for, such as to resume a task whose first session stopped, then report with complete_task or block_task, naming task_id if the session has more than one task; use unassign_task when the session stops working on that task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
 export const TASK_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.";
-export const TASK_REPORT_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the report was recorded. It may have been: do not assume it failed. Calling the same tool once more is safe, because a task takes one report; if the answer is that this session already reported, the first report stands.";
+export const TASK_REPORT_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the report was recorded. It may have been: do not assume it failed. Retry the same report only if it still describes the work: the latest report wins until the owner marks the task done. A completion after a block does not clear the owner-controlled hold.";
 export const TASK_REMOVE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was removed. It may have been: do not assume it failed. Calling remove_task once more with the same task ID is safe; if the answer is that no task was removed, the first call removed it or it could not be removed.";
 
 export const TASK_ASSIGN_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was assigned.";
@@ -117,7 +117,7 @@ const REPORT_REASON_TEXT = {
   invalid: "Pomegr rejected the report as invalid, so nothing was reported.",
   not_found: "No Pomegr task is linked to this session, or the task named is not one of its tasks, so nothing was reported.",
   task_required: "This session has more than one task, so nothing was reported. Call the tool again with task_id set to the task you are reporting on.",
-  already_reported: "This session already reported on its task, so nothing changed.",
+  already_reported: "This task no longer accepts reports, so nothing changed. Tell the user what remains and ask them to review the task on the board.",
   stalled: "Pomegr marked this task Stalled, because it read this session as ended before any report, so nothing was reported. Only the user can change that, with Mark done or Requeue on the board. Tell the user what you finished, and do not report again.",
   unavailable: "Pomegr is unavailable, so nothing was reported.",
 };
@@ -415,7 +415,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("assign_task", {
     title: "Assign a Pomegr task to this session",
-    description: "Assign a task of the current repository's Pomegr board to this session, so this session can report it with complete_task or block_task and read its feature with get_feature. It works for any task of the board that is not done, including one that already has a session and one that has not started. It changes no state, column, or queue place and starts nothing. The first report on a task wins. A session can be assigned to several tasks and a task can hold several sessions; assigning the same task again changes nothing. The repository and session are bound by the host; the only input is the task ID.",
+    description: "Assign a task of the current repository's Pomegr board to this session, so this session can report it with complete_task or block_task and read its feature with get_feature. It works for any task of the board that is not done, including one that already has a session and one that has not started. It changes no state, column, or queue place and starts nothing. The latest report on a task wins until the owner marks it done. A session can be assigned to several tasks and a task can hold several sessions; assigning the same task again changes nothing. The repository and session are bound by the host; the only input is the task ID.",
     inputSchema: z.object({
       task_id: taskIdSchema.describe("ID of the task to assign to this session, such as T-12."),
       ...hookFields(hookBound),
@@ -455,7 +455,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("complete_task", {
     title: "Report the Pomegr task complete",
-    description: "Report that the task Pomegr started this session for, or a task assigned to this session, is complete. Pomegr then verifies the conditions the user checked and puts the task in Review with each result; only the user marks it done. Set attention only when the work is finished but something needs the user's attention, such as a choice you made for them or a follow-up they must do; leave it out otherwise. A task in Review does not hold the queue; when the work that follows must not start, call block_task instead. The session is bound by the host, and each session reports once per task, and the first report on a task wins. Name task_id only when this session has more than one task. The tool has no summary or result field: a plain completion is a call with no input. A denied call changed nothing, so one retry with only the allowed fields is safe.",
+    description: "Report that the task Pomegr started this session for, or a task assigned to this session, is complete. Pomegr verifies the checked conditions and records each result. An unblocked task goes to Review; only the user marks it done. Set attention only when the work is finished but something needs the user's attention, such as a choice you made for them or a follow-up they must do; leave it out otherwise. An initial completion puts the task in Review and does not hold the queue; when the work that follows must not start, call block_task instead. A completion after a block records fresh check results but leaves the task Blocked until the owner chooses Mark done or Requeue. The session is bound by the host, and the latest report wins until the owner marks the task done. Name task_id only when this session has more than one task. The tool has no summary or result field: a plain completion is a call with no input. A denied call changed nothing, so one retry with only the allowed fields is safe.",
     inputSchema: z.object({
       task_id: optionalTaskId,
       attention: z.string().trim().min(1).max(200).regex(ONE_LINE, "Use one line of plain text.").optional()
@@ -466,17 +466,21 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
   }, async (input, extra) => report(TASK_COMPLETE_PATH, await resolveSession(input, extra, "complete_task"), { ...(input.task_id === undefined ? {} : { taskId: input.task_id }), ...(input.attention === undefined ? {} : { attention: input.attention }) }, (answer) => {
     // A monitor from before every report went to Review still answers `done`.
     if (answer.state === "done") return "Task reported complete. Pomegr marked it done.";
-    if (answer.state !== "needs_review") return null;
+    if (!["needs_review", "blocked"].includes(answer.state)) return null;
+    if (answer.state === "blocked" && !Array.isArray(answer.results)) return null;
     const open = (Array.isArray(answer.results) ? answer.results : []).filter((entry) => entry && entry.passed === false && Object.hasOwn(CHECK_LABELS, entry.check));
     // A monitor from before the two were told apart marks nothing `unavailable`.
     const labels = (unavailable) => open.filter((entry) => (entry.unavailable === true) === unavailable).map((entry) => CHECK_LABELS[entry.check]).join(", ");
     const failed = labels(false);
     const unverified = labels(true);
+    const held = answer.state === "blocked";
+    const holdText = "The task stays Blocked by agent until the user chooses Mark done or Requeue; the queue hold is unchanged.";
+    if (open.length === 0 && held) return `Task reported complete. ${holdText}`;
     if (open.length === 0) return input.attention !== undefined
-      ? "Task reported complete. Pomegr put it in Review for the user's attention; do not report again."
-      : "Task reported complete. Pomegr put it in Review; the user marks it done. Do not report again.";
+      ? "Task reported complete. Pomegr put it in Review for the user's attention; the user marks it done."
+      : "Task reported complete. Pomegr put it in Review; the user marks it done.";
     const parts = [failed && `these conditions did not pass: ${failed}`, unverified && `Pomegr could not verify: ${unverified} (it had no current evidence, which does not mean the condition failed)`].filter(Boolean);
-    return `Task reported complete, but ${parts.join("; and ")}. The task now needs the user's review; do not report again.`;
+    return `Task reported complete, but ${parts.join("; and ")}. ${held ? holdText : "The task now needs the user's review."}`;
   }));
 
   const feature = async (tool, path, input, extra, body, done) => {
@@ -551,7 +555,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("block_task", {
     title: "Report the Pomegr task blocked",
-    description: "Report that you cannot continue the task Pomegr started this session for, or a task assigned to this session, with a short reason the user will read. The task is marked blocked until the user resolves it. The session is bound by the host, and each session reports once per task. Name task_id only when this session has more than one task.",
+    description: "Report that you cannot continue the task Pomegr started this session for, or a task assigned to this session, with a short reason the user will read. The task is marked blocked until the user resolves it. The session is bound by the host. The latest report wins until the owner marks the task done; a later completion does not clear the owner-controlled hold. Name task_id only when this session has more than one task.",
     inputSchema: z.object({
       task_id: optionalTaskId,
       reason: z.string().trim().min(1).max(200).regex(ONE_LINE, "Use one line of plain text.")

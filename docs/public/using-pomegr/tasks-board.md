@@ -88,7 +88,7 @@ lists its tasks before the usual destinations.
 | **Scheduled** | Queued with its own start time. | Setting **Start at** on the task. |
 | **Needs review** | The agent reported complete. The task window shows each checked condition's result and the agent's attention line, if it gave one. | Pomegr, when it verifies the report. |
 | **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. It leaves Stalled when that session reports or works again. |
-| **Blocked by agent** | The agent reported it cannot continue and gave a reason. | The agent. |
+| **Blocked by agent** | A block still needs your resolution, even if the latest report claims completion. | The agent sets the block; you resolve it. |
 | **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done**. |
 
 A task has no **Running** state. Once a session is linked to a task that has no outcome

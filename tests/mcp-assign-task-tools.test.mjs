@@ -55,7 +55,7 @@ test("assign_task and unassign_task take one task ID, are not destructive, and h
     assert.equal(parse(setup({ hookBound: true }).tools[name], { task_id: "T-1", session_ref: "claude:x", session_proof: "p" }).success, true);
   }
   assert.match(tools.assign_task.config.description, /complete_task or block_task/u);
-  assert.match(tools.assign_task.config.description, /first report on a task wins/u);
+  assert.match(tools.assign_task.config.description, /latest report on a task wins until the owner marks it done/u);
   assert.doesNotMatch(`${tools.assign_task.config.description}${tools.unassign_task.config.description}`, /attach/iu);
 });
 

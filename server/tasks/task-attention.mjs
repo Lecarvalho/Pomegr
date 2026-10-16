@@ -5,6 +5,11 @@ import { isRepositoryId, isTaskId, taskIdFromNumber } from "./task-record.mjs";
 
 const prefixOf = (repositoryId) => `task_attention:${repositoryId}:`;
 
+export function readTaskAttention(database, repositoryId, taskNumber) {
+  return preparedStatement(database, "SELECT value FROM meta WHERE key = ?")
+    .get(`${prefixOf(repositoryId)}${taskIdFromNumber(taskNumber)}`)?.value ?? null;
+}
+
 export function readTaskAttentions(database, repositoryId) {
   const notes = new Map();
   if (!isRepositoryId(repositoryId)) return notes;

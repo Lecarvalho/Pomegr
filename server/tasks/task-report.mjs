@@ -2,12 +2,13 @@
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { sessionAssignedTasks } from "./task-assignments.mjs";
-import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
+import { deleteTaskAttention, readTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { writeTaskGroup } from "./task-groups.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
+import { archiveTaskReport } from "./task-report-history.mjs";
 import { IN_FLIGHT_STATES, isTaskId, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "task_required", "already_reported", "stalled", "unavailable"]);
@@ -45,9 +46,9 @@ function reportTarget(database, sessionId, taskId) {
 }
 
 const unreported = (row) => (row.report_at ?? null) === null;
-// The first report on a task wins. A task Pomegr stalled takes a report too: from an assigned session, which resumed the
-// work, and from the started session itself, whose report shows that the end Pomegr confirmed was wrong.
-const reportable = (row) => unreported(row) && (IN_FLIGHT_STATES.includes(row.state) || row.state === "stalled");
+// Reports remain replaceable until the owner accepts the task. A block is an owner-controlled hold,
+// even when the latest report claims completion. The session relation still gates every replacement.
+const reportable = (row) => IN_FLIGHT_STATES.includes(row.state) || UNRESOLVED_STATES.includes(row.state);
 
 // A task that takes no report has an outcome. `stalled` stays a known reason for older plugins; it is no longer sent.
 const REFUSED = "already_reported";
@@ -68,9 +69,15 @@ export function releaseQueue(database, repositoryId) {
 }
 
 function storeReport(database, row, { state, at, results, blockReason, attention = null }) {
+  const previous = normalizeStoredTask(row)?.report;
+  const previousAttention = readTaskAttention(database, row.repository_id, Number(row.number));
+  // Identical retries with identical check results have no additional effect.
+  if (previous && row.state === state && previous.blockReason === blockReason && previousAttention === attention
+    && JSON.stringify(previous.results) === JSON.stringify(results)) return true;
+  if (previous) archiveTaskReport(database, row, { ...previous, attention: previousAttention });
   // A task an assigned session reports before any session linked keeps no dispatch: a start still in flight links nothing.
   const written = preparedStatement(database, `UPDATE tasks SET state = ?, queue_position = NULL, dispatch_token = NULL, report_at = ?, report_results = ?, report_block_reason = ?, updated_at = ?
-    WHERE repository_id = ? AND number = ? AND report_at IS NULL`)
+    WHERE repository_id = ? AND number = ?`)
     .run(state, at, JSON.stringify(results), blockReason, at, row.repository_id, row.number);
   if (Number(written.changes) !== 1) return false;
   if (attention === null) deleteTaskAttention(database, row.repository_id, Number(row.number));
@@ -92,11 +99,15 @@ export function reportableChecks({ database, sessionId, taskId }) {
 // Stores a report on the task the earlier read chose, if it is still that session's task and still takes a report.
 function storeFresh({ database, transaction, payload, row }, report) {
   let fresh = null;
+  let state = report.state;
   const stored = transaction(() => {
     fresh = sessionRows(database, payload.sessionId).find((entry) => sameTask(entry, row)) ?? null;
-    return fresh !== null && reportable(fresh) && storeReport(database, fresh, report);
+    if (fresh === null || !reportable(fresh)) return false;
+    // Reporting cannot release an existing block, even if facts resolution changed the task.
+    if (fresh.state === "blocked") state = "blocked";
+    return storeReport(database, fresh, { ...report, state });
   });
-  return stored ? null : fresh === null ? "not_found" : REFUSED;
+  return stored ? { state } : { error: fresh === null ? "not_found" : REFUSED };
 }
 
 // `complete`: the bound session reports one of its tasks complete.
@@ -114,8 +125,8 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   try { facts = typeof resolveFacts === "function" ? resolveFacts() : null; } catch { facts = null; }
   const results = verifyChecks(task.completeWhen.checks, facts);
   const state = "needs_review";
-  const refused = storeFresh({ database, transaction, payload, row }, { state, at: now(), results, blockReason: null, attention });
-  return refused === null ? { ok: true, state, results } : { ok: false, error: refused };
+  const stored = storeFresh({ database, transaction, payload, row }, { state, at: now(), results, blockReason: null, attention });
+  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state, results };
 }
 
 // `block`: the bound session reports it cannot continue one of its tasks, with a one-line reason of at most 200 characters.
@@ -127,8 +138,8 @@ export function reportBlock({ database, transaction, payload, now }) {
   if (!row) return { ok: false, error };
   if (!normalizeStoredTask(row)) return { ok: false, error: "unavailable" };
   if (!reportable(row)) return { ok: false, error: REFUSED };
-  const refused = storeFresh({ database, transaction, payload, row }, { state: "blocked", at: now(), results: [], blockReason: reason });
-  return refused === null ? { ok: true, state: "blocked" } : { ok: false, error: refused };
+  const stored = storeFresh({ database, transaction, payload, row }, { state: "blocked", at: now(), results: [], blockReason: reason });
+  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state };
 }
 
 const awaitingReport = (row) => rowInFlight(row) && unreported(row);
@@ -157,6 +168,12 @@ export function resolveDone({ database, repositoryId, now }, payload) {
 export function resolveRequeue({ database, repositoryId, now }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
+  const previous = taskRow(database, repositoryId, target.number);
+  const report = normalizeStoredTask(previous)?.report;
+  if (report) {
+    const attention = readTaskAttention(database, repositoryId, target.number);
+    archiveTaskReport(database, previous, { ...report, attention });
+  }
   preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = NULL, scheduled_at = NULL, session_id = NULL, dispatch_token = NULL,
     report_at = NULL, report_results = NULL, report_block_reason = NULL, updated_at = ? WHERE repository_id = ? AND number = ?`)
     .run(Date.now(), repositoryId, target.number);

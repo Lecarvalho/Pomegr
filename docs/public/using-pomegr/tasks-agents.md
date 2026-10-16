@@ -21,7 +21,7 @@ lists these tools with the plugin's reporting and query tools. For the main path
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](tasks-sessions.md#assign-a-session-to-a-task). |
 | `unassign_task` | Removes the session's own assignment from a task. It needs plugin 0.9.8 or later. |
-| `complete_task` | Reports the work done on the task the session was started for, or on a task it is assigned to. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
+| `complete_task` | Reports the work done on the task the session was started for, or on a task it is assigned to. Pomegr then verifies the checked conditions. An unblocked task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
 | `get_feature` | Reads one feature of the board: its ID, title, description, and app version. The agent names the feature by its ID or its exact title. With no input, it reads the feature of the session's task. It changes nothing. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. A title that another feature has is refused. |
@@ -53,13 +53,19 @@ call is refused. Nothing is then added, removed, reported, read, or changed.
 `complete_task` and `block_task` act only on the task linked to the calling session
 and on the tasks that session is assigned to.
 
-- A task takes one report per start; a second report changes nothing.
-- A report always leaves the task in **Needs review**, with each checked condition's
-  result; you choose **Mark done**. See
+- The latest report wins until you mark the task done. Agents may report blocked, complete, then blocked again.
+- Each completion verifies the checked conditions again. Failed or unavailable checks remain identified.
+- A completion leaves an unblocked task in **Needs review**; you choose **Mark done**. See
   [Complete when](tasks-create.md#complete-when).
 - When no condition is checked, the report rests on the agent's word, not a check.
 - Pomegr keeps only each condition's result, the block reason, and the attention line,
   never command output or diffs.
+
+A completion after a block replaces the report and check results, but the task stays **Blocked by agent**.
+The queue stays held. Choose **Mark done** or **Requeue task** to resolve that hold.
+An updated report never starts a session or marks a task done.
+Pomegr retains earlier reports privately; the task window shows the latest report.
+Identical reports with identical results change nothing.
 
 A session that ends without a report leaves the task **Stalled**, but only once Pomegr
 has established the session's end, for example a **Closed** session or a **Stopped**

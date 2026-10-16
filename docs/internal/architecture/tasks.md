@@ -1330,15 +1330,15 @@ installed plugin from before the rename sends; a body with both names is `invali
 | Validated with the user | Not verified; the agent validates the work with the user before it reports |
 | Own condition | Not verified; the agent judges it in its report |
 
-- **A report always sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
+- **An unblocked completion sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
   rule that a report whose conditions all passed set Done). Whatever the results, with or
-  without an attention line, the card goes to Review with each condition's result, and
+  without an attention line, an unblocked card goes to Review with each condition's result, and
   only the owner sets Done, with Mark done (`resolve_done`). The agent can call
   `block_task` with a bounded reason; the state becomes Blocked by agent.
 - **Attention line** (GitHub issue #135, 2026-10-10). `complete_task` takes one optional
   input, `attention`: one line of at most 200 characters that names what in the finished
   work needs the owner's attention, such as a choice the agent made for them. It does
-  not decide the state: every report is Needs review. The
+  not decide the state: a completion needs review, or stays Blocked under an existing owner hold. The
   checks are verified and stored either way. The line is agent-authored text, bounded
   and validated like the block reason. The store keeps it in its `meta` table under
   `task_attention:<repositoryId>:<taskId>` (`server/tasks/task-attention.mjs`), so the
@@ -1514,9 +1514,9 @@ installed plugin from before the rename sends; a body with both names is `invali
   - It carries pass or fail only: no fact, read time, work time, CI status, pull-request
     item, or path. It has no unavailable mark (`readChecks`): "Not yet" already says that
     the condition is not established now.
-- A report is verified once. A task whose condition did not pass or was not verified but
-  holds later (CI that finished after the report, for example) is resolved by the user
-  with Mark done; the verification is not repeated.
+- Each completion report verifies the conditions once. Pomegr does not repeat verification by itself.
+  A later completion verifies them again, for example after CI finishes.
+  The owner may also resolve the task with Mark done.
 - **Limits, stated plainly.**
   - The work times come from committed state, which can trail the agent by a moment. A
     command that ended just before the report and is still committed as running leaves
@@ -1538,14 +1538,28 @@ installed plugin from before the rename sends; a body with both names is `invali
     execution task. A compound or generic shell command, or another tool, that changes
     the branch or a pull request is not counted, and only the newest retained execution
     tasks are seen.
-- A task takes one report per dispatch, and the first report wins. The session Pomegr
-  started for the task and every session assigned to it may report it. A second
-  `complete_task` or `block_task`, from the same session or another one, and a report
-  on a task that already has an outcome, change nothing; the answer is
-  `already_reported`. A stalled task with no report takes a report from the session
-  Pomegr started, whose report shows that the end Pomegr confirmed was wrong (see
-  [States](#states)), and from an assigned session (see
-  [Assigned sessions](#assigned-sessions)).
+- **The latest accepted report wins** (owner decision, T-142, 2026-10-16). The started session and assigned sessions may replace reports until Done.
+  They may alternate `block_task` and `complete_task`, including completion followed by a new block.
+  Every completion uses the existing completion-check path, including its bounded fresh read and unavailable results.
+  Failed or unavailable checks never become success through the agent's claim.
+  Identical reports with identical results change nothing, including timestamps and history.
+  A repeated completion may record different results when the facts change.
+- **Reporting and owner holds are separate.** A block sets Blocked by agent and holds a running queue.
+  A later completion replaces the current report and results but keeps the task Blocked.
+  It moves no card, releases no queue, starts no session, and never sets Done.
+  The answer names the remaining owner action: Mark done or Requeue.
+  These actions retain their existing queue-release rules in [Queue](#queue).
+  A queue that is off or paused keeps its status throughout reporting.
+- **Owner decisions remain final.** Done refuses reports with `already_reported`.
+  Requeue clears the started session's link, so its later report answers `not_found`.
+  Assignments retain their existing lifetime; an assigned session may report the requeued task.
+  An unrelated or unassigned session cannot replace a report.
+  A stalled task with no report still accepts reports under [Assigned sessions](#assigned-sessions).
+- **Prior reports stay private.** Before replacing or requeuing a report, the store retains it in `meta`.
+  The key is `task_report_history:<repositoryId>:<taskId>`; schema version stays 1.
+  Each entry retains the report time, check results, block reason, and attention line.
+  The newest 100 superseded reports survive reopening, Mark done, and Requeue; deleting the task removes them.
+  The current report remains in the existing fields. Provider transcripts and their observed events remain unchanged.
 - The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
   `/block`, under the gate of `add`. The body is `{ sessionRef }`, plus a one-line
   `reason` of at most 200 characters for a block, or an optional one-line `attention`
@@ -1554,7 +1568,7 @@ installed plugin from before the rename sends; a body with both names is `invali
   assigned to. A session with more than one task names the one it reports with
   `taskId`, which must be one of its own tasks. The answer is
   `{ schemaVersion: 1, ok: true, state, results }` (`state` is `needs_review` or
-  `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`
+  `blocked`; `results` only for a completion, including one that retains a block) or `{ schemaVersion: 1, ok: false, reason }`
   with `invalid` (400), `not_found` (404, the session has no task, or the named task is
   not one of its tasks), `task_required` (409, the session has more than one task and
   named none), `already_reported` (409), or `unavailable` (503). `stalled` (409) was the
@@ -1663,8 +1677,8 @@ supplies.
       agent writes to the board in every permission mode with no user approval and no
       classifier check, including the free text of `add_task` and the `block_task` reason.
       The user is not asked and can only opt out, with a deny or ask rule. The bounds that
-      remain are Pomegr's own: the session proof, one report per start on the session's own
-      task, and an added task that is last in the first column and not queued. This
+      remain are Pomegr's own: the session proof, reports limited to the session's own
+      tasks, and an added task that is last in the first column and not queued. This
       changes the rule in `AGENTS.md` that dispatch never approves work in a running
       session, so it needs the product owner's decision before any code ships.
 - **Codex**: the thread identity Codex puts in the `_meta` of every MCP tool call
@@ -1731,8 +1745,8 @@ supplies.
     (the wait ran out, the connection broke, or the answer was not the route's). The
     monitor may have committed the write. The tool says the outcome is unknown, that the
     agent must not assume a failure, and what is safe: the same `add_task` again within
-    a few minutes returns the same task; `complete_task` and `block_task` once more,
-    because a task takes one report per dispatch; `remove_task` once more with the same
+    a few minutes returns the same task; the same report again, only if it still describes the work;
+    the latest accepted report wins; `remove_task` once more with the same
     ID; `update_task` once more with the same input, which sets the same values.
   - The tool writes wait longer than a read, because a write is not repeated by
     itself and a busy monitor commits it and answers late. `add_task`, `update_task`, `remove_task`,
@@ -1814,14 +1828,13 @@ session Pomegr started for a task is its started session, never an assigned one.
   `block_task`, and reads its feature with `get_feature`. It gets no prompt from
   Pomegr. It may read the task's text with `get_task`, as any session of the board may
   (see [Agent task read](#agent-task-read)).
-- **The first report wins** (see [Completion](#completion)). The started session and
-  each assigned session may report; the first report sets the outcome and every later
-  one answers `already_reported`.
+- **The latest report wins** under [Completion](#completion). The started session and assigned sessions may update reports until Done.
+  An updated completion never clears an existing owner-controlled block.
 - **A stalled task.** An assigned session may report a task that Pomegr stalled,
   because it is the session that resumed the work. A completion sets Needs review,
   moves the card to Review, and frees a queue the stall blocked (`releaseQueue`); a
   block sets Blocked by agent, which keeps holding the queue. The started session may
-  report it too; the first report wins.
+  report it too; later reports follow [Completion](#completion).
 - **A task that has not started.** A report from an assigned session sets the outcome
   as for any task and takes the task out of the queue. The same write clears a
   dispatch that has not linked, so a start still in flight links nothing: its
@@ -2648,6 +2661,11 @@ serves no other client.
   `feature-get`.
 
 ## Privacy
+
+- Superseded report history stays only in the task store, under the bounded retention in [Completion](#completion).
+- History never enters an API, IPC, agent tool answer, browser, session domain, catalog, checkpoint, report, log, notification, or diagnostics.
+- Completion answers may carry `state: "blocked"` with fixed per-condition results when an owner hold remains.
+- That answer carries no prior report, block reason, attention line, session identity, or repository fact.
 
 - A paired device may send queue on and off through the existing authenticated task action route. Only the desktop queue runner launches sessions.
 - A paired device may also apply a queue proposal of the agent chat. Desktop main then sends the same `queue_settings` action with `{ on }` and nothing else, and the chat keeps only the state asked for and one fixed result.
