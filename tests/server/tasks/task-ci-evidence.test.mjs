@@ -173,6 +173,18 @@ test("no pull request, a branch mismatch, or a different head revision leaves CI
   }
 });
 
+test("a check response without a head commit retains prior revision evidence but cannot verify the report", async () => {
+  const known = scenario();
+  await known.settle();
+  const prior = pullRequestCheckRead(URL);
+  assert.equal(prior.headOid, HEAD);
+  const missingRevision = scenario({ prHeadOid: null });
+  await missingRevision.settle();
+  const facts = await readTaskCheckFacts(SESSION, { observationStore: missingRevision.store, readNow: missingRevision.enrichment.readNow });
+  assert.deepEqual(verifyChecks(["ci_passed"], facts), [{ check: "ci_passed", passed: false, unavailable: true }]);
+  assert.deepEqual(pullRequestCheckRead(URL), prior);
+});
+
 test("a delayed older pull-request refresh cannot replace the newer revision-bound check read", async () => {
   let releaseOld;
   const oldGate = new Promise((resolve) => { releaseOld = resolve; });

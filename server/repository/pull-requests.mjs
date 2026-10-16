@@ -103,7 +103,7 @@ function recordCheckStatus(url, value, checkedAt) {
   const headOid = typeof value?.headRefOid === "string" && /^[a-f0-9]{40}$/iu.test(value.headRefOid) ? value.headRefOid : null;
   const read = { url, status, readAt, headOid };
   // Keep the last known-good observation. The caller's snapshot still records an unknown current read.
-  if (status === null || held && held.readAt > readAt) return read;
+  if (status === null || held && (held.readAt > readAt || held.headOid !== null && headOid === null)) return read;
   checkStatuses.delete(url);
   checkStatuses.set(url, { status, readAt, headOid });
   if (checkStatuses.size > MAX_CHECK_STATUSES) checkStatuses.delete(checkStatuses.keys().next().value);
