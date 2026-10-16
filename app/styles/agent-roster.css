@@ -25,10 +25,10 @@
 .rosterRoleLegend > span { color: var(--command-ink); }
 .rosterLegends b { color: var(--command-ink); font: 500 11px/1.4 var(--font-data); }
 .rosterStatusLegend i { width: 8px; height: 8px; border-radius: 2px; }
-.rosterFilterBar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--command-line); }
-.rosterFilterBar input { min-width: 100px; width: 260px; height: 32px; padding: 0 10px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 400 13px/1.4 var(--font-ui); }
+.rosterFilterBar { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--command-line); }
+.rosterFilterBar input { flex: 1 1 100px; min-width: 100px; height: 32px; padding: 0 10px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 400 13px/1.4 var(--font-ui); }
 .rosterFilterBar input::placeholder { color: var(--command-muted); }
-.rosterDesktopFilters { display: flex; align-items: center; flex-wrap: wrap; flex: 1; gap: 8px; }
+.rosterDesktopFilters { display: contents; }
 .rosterFilterBar .commandSelect, .rosterFilterSheet .commandSelect { min-height: 32px; font-size: 12px; max-width: 180px; }
 .rosterFilterBar .commandSelectTrigger { min-height: 32px; height: 32px; font-size: 12px; }
 .rosterSort { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--command-muted); font-size: 12px; }
