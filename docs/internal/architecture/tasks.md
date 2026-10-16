@@ -2077,6 +2077,22 @@ How it is built:
   approves `get_feature`: they read the session's own board and change nothing. Codex
   binds them from the call's thread identity. The tools are in the plugins from
   version 0.9.11. An older plugin has no such tools.
+- Both reads use the shared task POST transport (`shared/agent-query-transport.mjs`),
+  whose exact path allowlist includes `tasks/get` and `tasks/list`. Plugin 0.9.11 and
+  0.9.12 omitted both paths, so the transport refused them before discovery or a
+  network request and the tools answered the fixed unavailable text even when the
+  monitor was running. Plugin 0.9.13 fixes that omission for both providers.
+- The transport reads the local runtime descriptor on every call. A later call uses
+  a newly published loopback origin and capability after a runtime restart; it never
+  caches either in the MCP process or falls back from an invalid descriptor. Claude's
+  proof is also checked against the current capability, so a proof from before the
+  restart is refused; a fresh hook-bound call can read again. There is no automatic
+  write, retry, session start, or lookup of another repository during recovery.
+- A missing task or a task of another board answers `No such task on this session's
+  board.` An unreachable runtime, an unusable answer, or the route's `unavailable`
+  answers `Pomegr is unavailable, so no task was read.` Neither result establishes
+  the other. Binding, unknown-session, and unresolved-repository refusals keep their
+  separate fixed feedback. No response includes transport or runtime evidence.
 
 ## Starting a session
 
