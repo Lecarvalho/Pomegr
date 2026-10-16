@@ -1249,6 +1249,10 @@ nobody asks about is not inspected, so there is no timer. A read whose `git stat
 failed or timed out is unknown, never clean. Roots, changed files, and Git
 errors stay in the monitor: only clean, dirty, or unknown leaves it.
 
+The tree check uses only bounded local `git status`, without a HEAD, branch, remote, or file projection dependency.
+A successful empty status proves clean; any status entry proves dirty, including entries omitted from public file lists.
+The observation belongs to the recognized root. A changed or missing root invalidates its previous reading.
+
 ### Usage reading
 
 Task T-49, 2026-10-11. `gateUsageFact` judges a provider's committed usage by three
@@ -1295,7 +1299,9 @@ What a held gate does:
   ("This task is held: ..."), and falls back to one fixed line that points at the Queue
   view when those readings show no hold. It asks for the board again after the answer, so
   the line is drawn from the newest readings. A reading that is unknown reads "not known
-  yet", never as passed. A start held only by the root's uncommitted changes answers the fixed
+  yet", never as passed. An unknown tree adds fixed pending-or-unavailable feedback and asks the owner to retry after 15 seconds.
+  **Start session** stays available; another explicit start requests gate facts again. No held start launches automatically.
+  A start held only by the root's uncommitted changes answers the fixed
   `tree_dirty` instead, and the renderer offers
   [a separate worktree](#separate-worktree-for-a-dirty-repository). The queue runner
   treats `gate_held` and `tree_dirty` like a task that moved: no pause, and the next poll
@@ -2078,8 +2084,7 @@ Starting is explicit and runs on the desktop computer.
 
 1. A manual start shows a native confirmation in the desktop app or a browser confirmation on the paired device.
    A start the owner applied from an agent-chat proposal in the desktop app is a manual
-   start whose confirmation is **Start session** on the proposal card: no native
-   confirmation follows (see [Agent chat: Session start](agent-chat.md#session-start)).
+   start with the same native confirmation after Apply (see [Agent chat: Session start](agent-chat.md#session-start)).
    The queue runner starts without a prompt
    only after the user turned the queue on.
 2. The runner opens a visible terminal window in the repository root, or in the task's
@@ -2182,8 +2187,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   calls `startApproved` with that window's event, the repository ID, and the task ID,
   and never a separate-worktree start. The trusted-frame check, the start plan, every
   refusal above, and the launch slot are the same, and the chat gets back the same one
-  fixed status. It shows no native confirmation: the card's **Start session** is the
-  owner's confirmation (product-owner decision, 2026-10-12). A paired device cannot apply such a proposal, and the
+  fixed status. Apply approves the proposal; the shared native dialog confirms the start (task T-147, 2026-10-16). A paired device cannot apply such a proposal, and the
   queue is not touched.
 - The New task modal's **Create and queue** and **Create and start session** (task T-83,
   2026-10-12) add no action, channel, or route. The renderer sends `create` and, once

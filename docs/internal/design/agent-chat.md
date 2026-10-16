@@ -273,8 +273,8 @@ The task board is in [Task board design](task-board.md).
 - After a successful apply, the board is read again.
 - After an Apply or a Dismiss that was stored, the conversation is read until Aril's follow-up is stored.
 - The Primary of a session start reads **Start session**.
-- The footer line of a session start reads “Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.”
-- **Start session** is the confirmation of the start, so no native dialog follows it.
+- The footer line of a session start reads “Nothing starts until you select Start session and confirm in the desktop dialog. Pomegr then checks the start gates and opens a terminal on this computer.”
+- **Start session** approves the proposal and opens the manual start's native confirmation.
 - On a paired device a session start has no Primary, only **Dismiss**.
 - On a paired device the footer line of a session start reads “Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.”
 - The Primary of a queue change reads **Turn queue on** or **Turn queue off**, on a paired device too.

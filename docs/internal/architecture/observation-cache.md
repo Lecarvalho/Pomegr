@@ -910,7 +910,7 @@ and Codex CLI latest-channel metadata after startup and about every six hours
 with bounded jitter. Both adapter readers use fixed unauthenticated URLs,
 redirect denial, eight-second deadlines, a 1 MiB body cap, conditional ETags,
 and Retry-After or exponential backoff. Claude's list is limited to 30 releases;
-the Codex metadata is limited to 256 asset entries and retains none of them.
+the Codex metadata is limited to 512 asset entries and retains none of them.
 The Claude parser reads the newest valid row's body within these limits and keeps
 only its excerpt. Failures retain the last valid observation. Claude Code GitHub releases prove
 latest-channel publication, not stable eligibility. The Codex reader uses the
@@ -3777,6 +3777,11 @@ Checkpoint/prune work owns measurement; GETs serve only the committed result and
 touch SQLite.
 
 ## Repository context inventory
+
+The task control plane has a separate, demand-triggered working-tree observation, owned by [Start gates](tasks.md#start-gates).
+It reads bounded local Git status in background and commits only clean, dirty, or unknown in monitor memory.
+GETs serve committed evidence and may queue that check; they never wait for it or perform Git acquisition themselves.
+This check needs no HEAD, remote comparison, or public file projection. It adds no checkpoint, browser field, or diagnostic content.
 
 Repository context inventory is a separate repository/provider-scoped committed domain.
 Repository identity is an installation-salted opaque ID derived monitor-side from the

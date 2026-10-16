@@ -272,7 +272,7 @@ describe("a proposed session start", () => {
     expect(startButton()).toHaveClass("commandPrimaryAction");
     expect(within(card()).queryByRole("button", { name: "Apply changes" })).toBeNull();
     expect(within(card()).getByRole("button", { name: "Dismiss" })).toHaveClass("commandQuietAction");
-    expect(within(card()).getByText("Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.")).toBeInTheDocument();
+    expect(within(card()).getByText("Nothing starts until you select Start session and confirm in the desktop dialog. Pomegr then checks the start gates and opens a terminal on this computer.")).toBeInTheDocument();
     expect(card()).not.toHaveTextContent(/Session started/);
     expect(chat.calls("apply")).toEqual([]);
   });
@@ -312,7 +312,7 @@ describe("a proposed session start", () => {
     const result = card().querySelector(".agentChatOpResult");
     expect(result).toHaveTextContent("Not started. A start gate held this task.");
     expect(result).toHaveClass("is-error");
-    expect(within(card()).getByText("This task is held: Claude Code is above 85% of the five-hour window; the working tree state is not known yet.")).toBeInTheDocument();
+    expect(within(card()).getByText("This task is held: Claude Code is above 85% of the five-hour window; the working tree state is not known yet. The Git check is pending or unavailable. Wait 15 seconds, then select Start session again.")).toBeInTheDocument();
     expect(card()).not.toHaveTextContent(/Session started/);
     expect(startButton()).toBeEnabled();
     expect(harness.refresh).toHaveBeenCalledTimes(1);

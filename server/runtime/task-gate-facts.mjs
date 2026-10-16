@@ -1,4 +1,4 @@
-import { readGitStateAsync } from "../repository/git-state.mjs";
+import { readGitWorkingTreeAsync } from "../repository/git-state.mjs";
 
 const PROVIDERS = Object.freeze(["claude", "codex"]);
 // A successful usage reading counts for this long after it was fetched. It must stay longer than one
@@ -51,40 +51,44 @@ export function gateProviderStatusFact(row) {
 }
 
 // The working tree of repository roots, observed off the request path.
-export function createTaskTreeObservation({ repositoryRoot, gitReader = readGitStateAsync, forbiddenRoots = () => [], now = Date.now } = {}) {
+export function createTaskTreeObservation({ repositoryRoot, gitReader = readGitWorkingTreeAsync, now = Date.now } = {}) {
   const entries = new Map();
   let stopped = false;
 
-  function refresh(repositoryId, entry) {
-    let root = null;
-    try { root = repositoryRoot?.(repositoryId) ?? null; } catch { root = null; }
-    if (typeof root !== "string" || root === "") {
-      entries.delete(repositoryId);
-      return;
-    }
+  function refresh(repositoryId, entry, root) {
     entry.inFlight = true;
     entry.attemptedAt = now();
-    Promise.resolve().then(() => gitReader(root, { forbiddenRoots: forbiddenRoots() })).then((state) => {
-      // A read whose `git status` failed lists no file without having read the tree: unknown, never clean.
-      const known = state?.available === true && Array.isArray(state.files) && state._statusUnknown !== true;
-      entry.clean = known ? state.files.length === 0 : null;
-      entry.checkedAt = known ? now() : null;
+    Promise.resolve().then(() => gitReader(root)).then((clean) => {
+      const known = clean === true || clean === false;
+      if (entries.get(repositoryId) === entry) {
+        entry.clean = known ? clean : null;
+        entry.checkedAt = known ? now() : null;
+      }
     }).catch(() => {
-      entry.clean = null;
-      entry.checkedAt = null;
+      if (entries.get(repositoryId) === entry) {
+        entry.clean = null;
+        entry.checkedAt = null;
+      }
     }).finally(() => { entry.inFlight = false; });
   }
 
   return Object.freeze({
     read(repositoryId) {
       if (stopped || typeof repositoryId !== "string") return null;
+      let root = null;
+      try { root = repositoryRoot?.(repositoryId) ?? null; } catch { root = null; }
+      if (typeof root !== "string" || root === "") {
+        entries.delete(repositoryId);
+        return null;
+      }
       let entry = entries.get(repositoryId);
+      if (entry && entry.root !== root) entry = null;
       if (entry) entries.delete(repositoryId);
-      else entry = { clean: null, checkedAt: null, attemptedAt: null, inFlight: false };
+      else entry = { root, clean: null, checkedAt: null, attemptedAt: null, inFlight: false };
       entries.set(repositoryId, entry);
       while (entries.size > TASK_GATE_TREE_LIMIT) entries.delete(entries.keys().next().value);
       const at = now();
-      if (!entry.inFlight && (entry.attemptedAt === null || at - entry.attemptedAt >= TASK_GATE_TREE_REFRESH_MS)) refresh(repositoryId, entry);
+      if (!entry.inFlight && (entry.attemptedAt === null || at - entry.attemptedAt >= TASK_GATE_TREE_REFRESH_MS)) refresh(repositoryId, entry, root);
       const current = entries.get(repositoryId);
       return current && current.checkedAt !== null && at - current.checkedAt <= TASK_GATE_TREE_MAX_AGE_MS ? current.clean : null;
     },

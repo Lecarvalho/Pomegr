@@ -121,9 +121,9 @@ describe("Start session", () => {
       ["uncommitted changes beside another hold", { workingTree: "dirty", providerStatus: { claude: "incident", codex: "ok" } }, "This task is held: Claude Code reports an incident; the working tree has uncommitted changes."],
       ["usage that is unknown", { usage: { ...passing.usage, claude: unknown } }, "This task is held: Claude Code usage is not known yet."],
       ["a provider status that is unknown", { providerStatus: { claude: "unknown", codex: "ok" } }, "This task is held: Claude Code status is not known yet."],
-      ["a working tree that is unknown", { workingTree: "unknown" }, "This task is held: the working tree state is not known yet."],
+      ["a working tree that is unknown", { workingTree: "unknown" }, "This task is held: the working tree state is not known yet. The Git check is pending or unavailable. Wait 15 seconds, then select Start session again."],
       ["every reading unknown", { workingTree: "unknown", usage: { claude: unknown, codex: unknown }, providerStatus: { claude: "unknown", codex: "unknown" } },
-        "This task is held: Claude Code usage is not known yet; Claude Code status is not known yet; the working tree state is not known yet."],
+        "This task is held: Claude Code usage is not known yet; Claude Code status is not known yet; the working tree state is not known yet. The Git check is pending or unavailable. Wait 15 seconds, then select Start session again."],
     ])("names %s", async (_name, held, line) => {
       const { dialog } = await startHeld({ ...passing, ...held });
       expect(dialog.getByRole("status")).toHaveTextContent(line);
@@ -135,7 +135,7 @@ describe("Start session", () => {
       const { dialog } = await startHeld(
         { ...passing, workingTree: "unknown", usage: { claude: passing.usage.claude, codex: over }, providerStatus: { claude: "incident", codex: "ok" } },
         task({ run: { provider: "codex", model: null, effort: null } }));
-      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: Codex is above 85% of the five-hour window; the working tree state is not known yet.");
+      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: Codex is above 85% of the five-hour window; the working tree state is not known yet. The Git check is pending or unavailable. Wait 15 seconds, then select Start session again.");
       expect(dialog.getByRole("status")).not.toHaveTextContent("Claude Code");
     });
 
@@ -165,7 +165,20 @@ describe("Start session", () => {
       expect(refresh).toHaveBeenCalledTimes(1);
       useTasks.mockReturnValue({ board: heldBoard({ ...passing, workingTree: "unknown" }), refresh });
       view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
-      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: the working tree state is not known yet.");
+      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: the working tree state is not known yet. The Git check is pending or unavailable. Wait 15 seconds, then select Start session again.");
+    });
+
+    it("keeps an unknown-tree start retryable and closes only after the owner's successful retry", async () => {
+      const { dialog, view } = await startHeld({ ...passing, workingTree: "unknown" });
+      expect(dialog.getByRole("status")).toHaveTextContent("The Git check is pending or unavailable.");
+      expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+      useTasks.mockReturnValue({ board: heldBoard(passing), refresh });
+      view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
+      expect(taskStart).toHaveBeenCalledTimes(1);
+      taskStart.mockResolvedValue({ status: "started" });
+      await userEvent.setup().click(dialog.getByRole("button", { name: "Start session" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+      expect(taskStart).toHaveBeenCalledTimes(2);
     });
   });
 

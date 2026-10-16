@@ -699,7 +699,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
 
     const startCard = (label: string) => within(sample(chat, label)).getByRole("region", { name: "Proposed session start" });
     expect(within(startCard("Session start, proposed")).getByRole("button", { name: "Start session" })).toHaveClass("commandPrimaryAction");
-    expect(startCard("Session start, proposed")).toHaveTextContent("Nothing starts until you select Start session.");
+    expect(startCard("Session start, proposed")).toHaveTextContent("Nothing starts until you select Start session and confirm in the desktop dialog.");
     expect(chipOf("Session start, proposed")).toBeNull();
     expect(startCard("Session start, held")).toHaveTextContent("Not started. A start gate held this task.");
     expect(startCard("Session start, held")).toHaveTextContent("This task is held: Claude Code is above 85% of the five-hour window.");

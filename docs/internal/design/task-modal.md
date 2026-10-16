@@ -317,6 +317,8 @@ A card's title opens the task modal for one stored task.
 - A paired phone's **Start in separate worktree** confirmation says that uncommitted changes are left out and remain untouched.
 - A start that works closes the modal, from **Start session** or from **Start in separate worktree**.
 - A start that does not happen keeps the modal open with its start-status note.
+- An unknown-tree hold adds “The Git check is pending or unavailable. Wait 15 seconds, then select Start session again.”
+- A held start keeps **Start session** enabled unless the task itself cannot start.
 - The footer ends with the primary **Save**.
 - Footer action height follows the [Frame](#layout).
 

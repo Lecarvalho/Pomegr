@@ -334,11 +334,9 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: true, separateWorktree: separateWorktree === true }, repositoryId, taskId);
   }
 
-  // A start the owner approved on a proposal card of the agent chat, in the trusted window. The card's Start session is
-  // the confirmation, so no native one follows; every other step of the manual start is the same.
+  // Apply approves the stored chat proposal. The ordinary manual start still owns native confirmation and every gate.
   async function startApproved(event, repositoryId, taskId) {
-    if (!isTrustedEvent(event)) return result("invalid");
-    return exclusive({ confirmRequired: false }, repositoryId, taskId);
+    return start(event, repositoryId, taskId);
   }
 
   function startQueued(repositoryId, taskId) {

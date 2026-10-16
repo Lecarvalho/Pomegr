@@ -300,7 +300,7 @@ export function proposalChip(proposal: AgentChatProposal): { label: string; tone
 
 export const PROPOSAL_PENDING_NOTE = "Nothing changes until you apply.";
 export const PROPOSAL_DELETE_NOTE = "Nothing changes until you apply. Deleting cannot be undone.";
-export const START_PENDING_NOTE = "Nothing starts until you select Start session. Pomegr then checks the start gates and opens a terminal on this computer.";
+export const START_PENDING_NOTE = "Nothing starts until you select Start session and confirm in the desktop dialog. Pomegr then checks the start gates and opens a terminal on this computer.";
 export const START_ELSEWHERE_NOTE = "Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.";
 
 export const QUEUE_ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, in Ready order, as each passes the start gates.";

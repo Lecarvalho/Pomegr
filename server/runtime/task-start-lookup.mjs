@@ -10,7 +10,6 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
   const tree = createTaskTreeObservation({
     repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null,
     ...(gateSources?.gitReader ? { gitReader: gateSources.gitReader } : {}),
-    ...(gateSources?.forbiddenRoots ? { forbiddenRoots: gateSources.forbiddenRoots } : {}),
     ...(gateSources?.now ? { now: gateSources.now } : {}),
   });
   return {

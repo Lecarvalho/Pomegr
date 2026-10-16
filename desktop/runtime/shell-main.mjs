@@ -673,7 +673,7 @@ async function startDesktop() {
             update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null, lastCheckedAt: null }),
           }),
         });
-        // An approved start proposal of the chat takes the manual start of the Tasks page; the card's Start session is its confirmation.
+        // An applied chat start takes the Tasks page's manual start, including its native confirmation.
         const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           isTrustedEvent: trustedDesktopEvent,

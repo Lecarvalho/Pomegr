@@ -10,7 +10,8 @@ test("Codex official latest channel selects CLI tags only, excluding desktop, ID
   assert.equal(row.channel, "latest");
   assert.equal(parseCodexCliRelease(release("rust-v0.9.0-alpha.1"), "2026-10-03T12:00:00.000Z"), null);
   assert.equal(parseCodexCliRelease(release("app-v1.2.3"), "2026-10-03T12:00:00.000Z"), null);
-  assert.equal(parseCodexCliRelease(release("rust-v0.9.0", { assets: Array(257).fill({}) }), "2026-10-03T12:00:00.000Z"), null);
+  assert.equal(parseCodexCliRelease(release("rust-v0.163.0", { assets: Array(318).fill({}) }), "2026-10-03T12:00:00.000Z").version, "0.163.0");
+  assert.equal(parseCodexCliRelease(release("rust-v0.9.0", { assets: Array(513).fill({}) }), "2026-10-03T12:00:00.000Z"), null);
 });
 test("Codex reader pins OpenAI's installer channel metadata", async () => {
   let requested;
