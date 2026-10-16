@@ -711,7 +711,7 @@ describe("the task modal as a dialog (mode new)", () => {
 describe("task modal styles (mode new)", () => {
   const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
   const rule = (selector: string) => {
-    const match = styles.match(new RegExp(`(?:^|\\n)${selector.replace(/[.\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`));
+    const match = styles.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`));
     expect(match, `${selector} rule`).not.toBeNull();
     return match![1];
   };
@@ -728,12 +728,12 @@ describe("task modal styles (mode new)", () => {
     expect(rule(".newTaskField label")).toMatch(/500 var\(--text-xs\)/);
     expect(rule(".newTaskField textarea")).toMatch(/min-height: 150px[^}]*border: 1px solid var\(--command-line-strong\)[^}]*border-radius: var\(--control-radius\)[^}]*resize: none/);
     expect(rule(".taskTextCounter")).toMatch(/align-self: flex-end[^}]*var\(--font-data\)/);
-    // The panel is never taller than the window: the Task field shrinks and scrolls first, then the body scrolls.
+    // The panel stays within the window; the body scrolls around the full-height Task field.
     expect(rule(".taskModalScrim > .taskModal")).toMatch(/max-height: 100%/);
     expect(rule(".taskModalBody")).toMatch(/min-height: 0[^}]*overflow-y: auto/);
-    expect(rule(".taskModalBody > .taskTextField > textarea")).toMatch(/flex-shrink: 1/);
-    expect(rule(".taskModalBody > .taskTextField > .taskComposer")).toMatch(/flex-shrink: 1/);
-    expect(rule(".taskModalBody > .taskTextField .taskRichText")).toMatch(/min-height: 0; max-height: none/);
+    expect(rule(".taskModalBody > .taskTextField > *")).toMatch(/flex-shrink: 0/);
+    expect(rule(".taskModalBody > .taskTextField > textarea")).toMatch(/overflow-y: hidden; overflow-wrap: anywhere/);
+    expect(rule(".taskModalBody > .taskTextField .taskRichText")).toMatch(/max-height: none; overflow-y: hidden/);
     expect(styles).toMatch(/@media \(max-width: 760px\)\s*\{[^]*\.taskModal \{[^}]*max-width: none/);
   });
 

@@ -32,8 +32,9 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
   const imageHelperId = useId();
   const editor = useRef<TaskRichTextHandle>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const hasImages = Boolean(images);
   useImperativeHandle(ref, () => ({ focus: (options) => (editor.current ?? textarea.current)?.focus(options) }));
-  // The textarea grows with its text; the stylesheet stops it at the window height, then it scrolls.
+  // Fit the full text while the modal body owns scrolling. Rich text grows through normal layout.
   useLayoutEffect(() => {
     const grow = () => {
       const field = textarea.current;
@@ -44,10 +45,15 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
     grow();
     // Measured again when the field gets its box (the dialog opens after this effect) or a new width.
     if (!textarea.current || typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(grow);
+    let width = -1;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry || entry.contentRect.width === width) return;
+      width = entry.contentRect.width;
+      grow();
+    });
     observer.observe(textarea.current);
     return () => observer.disconnect();
-  }, [value]);
+  }, [value, hasImages]);
   const describedBy = [helper ? helperId : null, error ? errorId : null, counterId].filter(Boolean).join(" ");
   const over = value.length > TASK_BOUNDS.textLength;
   return <div className="newTaskField taskTextField">
