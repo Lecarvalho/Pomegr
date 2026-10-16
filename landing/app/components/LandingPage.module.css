@@ -585,13 +585,17 @@
 .arilScene .answer:not(.shown),
 .arilScene .proposal:not(.shown) { opacity: 0; transform: translateY(10px); }
 
-.miniNew {
-  overflow: hidden;
-  max-height: 80px;
-  transition: max-height .7s var(--ease), opacity .6s var(--ease) .15s, padding .7s var(--ease), border-width .7s;
+/* The new card's slot opens from 0fr to 1fr, so the card keeps its padding and border while it grows. */
+.miniSlot {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows .7s var(--ease);
 }
 
-.miniNew:not(.shown) { max-height: 0; padding-block: 0; border-width: 0; opacity: 0; }
+.miniSlot > div { min-height: 0; overflow: hidden; }
+.miniSlot .miniNew { transition: opacity .6s var(--ease) .15s; }
+.miniSlot:not(.shown) { grid-template-rows: 0fr; }
+.miniSlot:not(.shown) .miniNew { opacity: 0; }
 
 /* The last frame: no caption. */
 .close { position: relative; margin-top: 8px; }

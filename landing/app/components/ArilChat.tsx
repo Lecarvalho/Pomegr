@@ -82,13 +82,13 @@ export function ArilChat() {
       </div>
       <div className={styles.miniBoard} aria-label="Sample board, Ready column">
         <p className={styles.miniHead}>Ready <span>{step >= 6 && step < 9 ? 3 : 2}</span></p>
-        <div className={`${styles.miniNew} ${step >= 6 && step < 9 ? styles.shown : ""}`}><span>T-44 · New</span>Write the CSV writer</div>
+        <div className={`${styles.miniSlot} ${step >= 6 && step < 9 ? styles.shown : ""}`}><div><div className={styles.miniNew}><span>T-44 · New</span>Write the CSV writer</div></div></div>
         <div className={styles.miniCard}><span>T-43</span>Stream large exports</div>
         <div className={styles.miniCard}><span>T-42</span>Paginate the audit log</div>
       </div>
       <div className={`${styles.miniBoard} ${styles.runningColumn}`} aria-label="Sample board, In progress column">
         <p className={styles.miniHead}>In progress <span>{step >= 9 ? 1 : 0}</span></p>
-        <div className={`${styles.miniNew} ${shown(9)}`}><span>T-44 · Running</span>Write the CSV writer</div>
+        <div className={`${styles.miniSlot} ${shown(9)}`}><div><div className={styles.miniNew}><span>T-44 · Running</span>Write the CSV writer</div></div></div>
         <div className={`${styles.terminal} ${shown(10)}`} aria-label="Sample session terminal">
           <p className={styles.terminalBar}><i /><i /><i /><span>T-44 · session</span></p>
           <div className={styles.terminalBody}>
