@@ -73,6 +73,15 @@
         ],
         "createdAt": "2026-10-16T13:30:33.240Z",
         "reason": "Escaped regex text for the documented --font-data token (DESIGN.md Typography), not a font family; owner asked to add the token to DESIGN.md"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "\\s*var\\(--font-data\\)",
+        "files": [
+          "tests/ui/pomegr-design-contract.test.tsx"
+        ],
+        "createdAt": "2026-10-16T13:36:06.227Z",
+        "reason": "Escaped regex text for the documented --font-data token (DESIGN.md Typography), not a font family; same false positive as the var\\(--font-data\\) entry"
       }
     ]
   }
