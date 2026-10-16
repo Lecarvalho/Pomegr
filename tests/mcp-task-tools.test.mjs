@@ -11,7 +11,7 @@ import { buildPomegrMcpServer as buildCodexServer } from "../mcp/server.mjs";
 import { buildPomegrMcpServer as buildClaudeServer } from "../plugins/claude-code/mcp/server.mjs";
 import {
   buildAddTaskBody, TASK_ASSIGN_NO_ANSWER_TEXT, TASK_ASSIGN_PATH, TASK_ASSIGN_UNBOUND_TEXT, TASK_UNASSIGN_NO_ANSWER_TEXT, TASK_UNASSIGN_PATH, TASK_UNASSIGN_UNBOUND_TEXT, FEATURE_CREATE_PATH, FEATURE_DELETE_PATH, FEATURE_GET_PATH, FEATURE_UPDATE_PATH, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REMOVE_PATH, TASK_REMOVE_UNBOUND_TEXT, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
-  TASK_UPDATE_NO_ANSWER_TEXT, TASK_UPDATE_PATH, TASK_UPDATE_UNBOUND_TEXT,
+  TASK_UPDATE_NO_ANSWER_TEXT, TASK_UPDATE_PATH, TASK_UPDATE_UNBOUND_TEXT, TASK_GET_PATH, TASK_LIST_PATH,
   TASK_NO_ANSWER_TEXT, TASK_REMOVE_NO_ANSWER_TEXT, TASK_REPORT_NO_ANSWER_TEXT, TASK_UNAVAILABLE_TEXT,
 } from "../mcp/task-tools.mjs";
 import {
@@ -199,9 +199,9 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   assert.equal(requests[0].init.headers[AGENT_QUERY_AUTH_HEADER], "t".repeat(43));
   assert.equal(requests[0].init.body, JSON.stringify({ text: "x" }));
 
-  // Add, bind, complete, block, remove, update, assign, unassign, and the feature paths are the only task write paths; nothing else is reachable.
+  // Only these task POST paths are reachable, including the read-only task and feature reads.
   assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, TASK_REMOVE_PATH, TASK_UPDATE_PATH,
-    TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH, FEATURE_GET_PATH, FEATURE_CREATE_PATH, FEATURE_UPDATE_PATH, FEATURE_DELETE_PATH]);
+    TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH, FEATURE_GET_PATH, FEATURE_CREATE_PATH, FEATURE_UPDATE_PATH, FEATURE_DELETE_PATH, TASK_GET_PATH, TASK_LIST_PATH]);
   assert.equal(AGENT_TASK_COMPLETE_PATH, TASK_COMPLETE_PATH);
   assert.equal(AGENT_TASK_BLOCK_PATH, TASK_BLOCK_PATH);
   const bind = createAgentTaskWriter({ ...base, fetchFn: respond(200, { schemaVersion: 1, ok: true }) });
@@ -213,6 +213,7 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   for (const bad of [
     "/api/agent/v1/tasks/complete/", "/api/agent/v1/tasks/block?x=1", "/api/agent/v1/tasks/resolve", "/api/agent/v1/sessions", "/api/agent/v1/tasks/add/../x",
     "/api/tasks", "/api/agent/v1/tasks/bind/", "/api/agent/v1/tasks/bind?token=x", "/api/agent/v1/tasks/bind/x", "/api/agent/v1/tasks/Bind", "",
+    "/api/agent/v1/tasks/get/", "/api/agent/v1/tasks/list?repositoryId=x", "/api/agent/v1/tasks/Get", "/api/agent/v1/tasks/list/../add",
   ]) {
     await assert.rejects(() => write(bad, {}), /AGENT_QUERY_PATH_INVALID/u);
     await assert.rejects(() => bind(bad, {}), /AGENT_QUERY_PATH_INVALID/u);
@@ -229,7 +230,6 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   const badDescriptor = createAgentTaskWriter({ ...base, readFileFn: async () => "{}", fetchFn: respond(200, { ok: true }) });
   await assert.rejects(() => badDescriptor(AGENT_TASK_ADD_PATH, {}), /AGENT_QUERY_UNAVAILABLE/u);
 });
-
 test("Codex server falls back to CODEX_THREAD_ID when a call carries no thread metadata, and refuses without either", async () => {
   const calls = [];
   const taskPost = async (pathname, body) => { calls.push({ pathname, body }); return { ok: true, taskId: "T-2" }; };

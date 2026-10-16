@@ -15,8 +15,8 @@ lists these tools with the plugin's reporting and query tools. For the main path
 | Tool | What it does |
 | --- | --- |
 | `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), the exact name of a feature that is not done, which attaches the task to it, and with plugin 0.9.12 or later **Runs after** (`runs_after`, up to 8 task IDs of the board). When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
-| `get_task` | Reads one task of the board by its ID: its text, column, state, feature, **Run on**, **Effort**, **Complete when**, **Runs after**, and whether `update_task` can change it. It changes nothing. It needs plugin 0.9.11 or later. See [What an agent can read](#what-an-agent-can-read). |
-| `list_tasks` | Lists the tasks of the board, Done included, in board order. It changes nothing. It needs plugin 0.9.11 or later. |
+| `get_task` | Reads one task of the board by its ID: its text, column, state, feature, **Run on**, **Effort**, **Complete when**, **Runs after**, and whether `update_task` can change it. It changes nothing. It needs plugin 0.9.13 or later. See [What an agent can read](#what-an-agent-can-read). |
+| `list_tasks` | Lists the tasks of the board, Done included, in board order. It changes nothing. It needs plugin 0.9.13 or later. |
 | `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, **Complete when**, or with plugin 0.9.12 or later **Runs after**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](tasks-sessions.md#assign-a-session-to-a-task). |
@@ -114,7 +114,7 @@ never with the task's content.
 
 ## What an agent can read
 
-With plugin 0.9.11 or later, an agent can read any task of its session's board.
+With plugin 0.9.13 or later, an agent can read any task of its session's board.
 
 - `get_task` reads one task by its ID, with its whole text.
 - `list_tasks` lists at most 100 tasks, with each text cut at 300 characters. The agent
@@ -125,6 +125,8 @@ With plugin 0.9.11 or later, an agent can read any task of its session's board.
 - An agent never reads a report, an attention line, a block reason, the sessions of a
   task, an image, or who added a task.
 - What the agent reads reaches its provider, as the task text of its own prompt does.
+
+For a missing task or an unavailable answer, see [If a task cannot be read](mcp-tools.md#if-a-task-cannot-be-read).
 
 ## Tasks an agent can remove
 

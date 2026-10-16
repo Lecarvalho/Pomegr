@@ -69,7 +69,7 @@ it; they are the only tools that change something you made or that Pomegr manage
 `complete_task` and `block_task` work in a session that Pomegr started for a task, and
 in a session that is assigned to a task. A session with more than one task names the
 task with `task_id`. The first report on a task wins. `assign_task` and `unassign_task`
-need plugin 0.9.8 or later. `get_task` and `list_tasks` need plugin 0.9.11 or later.
+need plugin 0.9.8 or later. `get_task` and `list_tasks` need plugin 0.9.13 or later.
 
 `runs_after` on `add_task` and `update_task` needs plugin 0.9.12 or later. It takes up to
 8 task IDs of the same board, such as `T-12`. The task never starts until each of them
@@ -85,3 +85,20 @@ Run `/pomegr:doctor` in Claude Code or `$pomegr:doctor` in Codex. Then see
 [If reporting is missing](reporting-plugins.md#if-reporting-is-missing). A session
 keeps the plugin version that it loaded, so a new tool appears only in a session
 that starts after the update.
+
+## If a task cannot be read
+
+`No such task on this session's board.` means the task ID is not on the board bound
+to that session. Confirm the ID on that repository's board; the tool cannot look up
+another repository's task.
+
+`Pomegr is unavailable, so no task was read.` means the lookup did not return a usable
+answer. Plugins 0.9.11 and 0.9.12 return this for bound `get_task` and `list_tasks` calls,
+even with Pomegr running. Update to plugin 0.9.13 or later and start a new session.
+See [Update the plugin](reporting-plugins.md#update-the-plugin).
+
+With the fixed plugin, confirm Pomegr is running and retry the read after it is ready.
+A later call discovers the current runtime after a Pomegr restart. This read changes
+nothing. An unavailable answer does not say whether the task exists. Feedback about
+an unbound call, an unknown session, or an unresolved repository instead identifies
+that separate setup problem; start with the provider's doctor command above.
