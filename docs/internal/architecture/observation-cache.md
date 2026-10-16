@@ -3377,13 +3377,25 @@ read cache, and its answer replaces the session's live repository value like any
 it is the agent's POST, never a GET. The store's served
 serialization omits them, so revision and unchanged-detection ignore them, and no
 response, domain, snapshot, sidecar, checkpoint, report, or log carries one. Restored and
-historical states carry none. The Git reader's answer carries two private keys that the
+historical states carry none. The Git reader's answer carries private keys that the
 enrichment and the start-gate observation consume and never pass on: `_readStartedAt`,
 the start of the shared inspection, so a caller that joins an inspection already under way
 is dated by that inspection and not by its own later call; and `_statusUnknown`, set when
 `git status` failed or timed out, in which case the block is committed with its empty file
 list as before but with no stamp. The served `session.pullRequests.checkedAt` is the start
 of the newest pull-request read, not its end.
+The Git reader also supplies private `_headOid`, the validated checkout commit, as live repository `headOid`.
+Each pull-request block keeps at most eight private `checkReads` from its own acquisition.
+Each entry holds its canonical URL, validated head commit, aggregate check status, and read time.
+The state serializer removes these fields; named-field domain and snapshot projections exclude them too.
+They are never persisted, served, reported, or logged.
+A fresh completion read verifies CI only when the branch and exact commit match the bound checkout.
+That revision proof avoids Codex's enclosing code-cell timing gap; other completion conditions keep their existing age rules.
+Pending, absent, or mismatched CI evidence remains unavailable, rather than failed.
+An older refresh cannot replace newer cached evidence, and failed acquisition retains last known-good cache values.
+Each response keeps its own check snapshot, so another refresh cannot replace the evidence used to judge that response.
+An unavailable pull-request refresh retains the prior live block; the report still judges its own unavailable read.
+All acquisition remains outside GETs; see [Completion](tasks.md#completion).
 A live session with no repository binding (a Codex session without one proven repository,
 or a Claude session without a recorded branch) has nothing to check: its repository
 readiness is `ready` with no repository, a factual empty result, so it cannot hold the

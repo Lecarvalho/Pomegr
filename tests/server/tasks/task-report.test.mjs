@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
+import { readTaskCheckFacts } from "../../../server/runtime/task-session-lookup.mjs";
 import { passingGates } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
@@ -660,6 +661,47 @@ test("a report that passes, and a queue that is not running, leave the queue sta
 // The committed facts were read before the agent's last Git command; the report's own read is later than it.
 const STALE = { ...PASSING, ciPassed: true, readAt: { tree: 500, branch: 500, pullRequests: 500, ci: 500 } };
 const READ_NOW = { ...PASSING, ciPassed: true };
+
+test("Codex completion refreshes revision-bound CI, deduplicates unchanged results, and preserves an owner hold", async (context) => {
+  const headOid = "a".repeat(40);
+  const url = "https://github.com/example/repo/pull/144";
+  const repository = { available: true, historical: false, branch: "tasks/T-144", headOid, files: [], readAt: new Date(2000).toISOString() };
+  const check = { url, headOid, status: "pending", readAt: 2000 };
+  const blocks = { repository, pullRequests: { status: "ready", readAt: new Date(2000).toISOString(),
+    items: [{ url, headBranch: repository.branch, state: "open" }], checkReads: [check] } };
+  // The code cell that calls completion still holds its earlier PR command open.
+  const state = { session: { id: OTHER_SESSION }, agents: [], activity: { items: [], total: 0 },
+    executionTasks: [{ id: "enclosing-cell-shell-1", workKind: "pull_request", status: "running", startedAt: new Date(1000).toISOString(), finishedAt: null }] };
+  const env = await setup(context, { read: () => readTaskCheckFacts(OTHER_SESSION, {
+    observationStore: { get: () => ({ publicState: state }) }, readNow: async () => blocks,
+  }) });
+  startedTask(env, { session: OTHER_SESSION, checks: ["pr_open", "ci_passed", "user_validated"] });
+  setQueue(env, "running");
+  await block(env, REASON, OTHER_SESSION);
+  const first = await complete(env, OTHER_SESSION);
+  assert.deepEqual(first.json.results, [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false, unavailable: true }]);
+  assert.equal(first.json.ownerHold, true);
+
+  check.status = "passed";
+  env.clock.now += 100;
+  const passed = await complete(env, OTHER_SESSION);
+  assert.deepEqual(passed.json.results, [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: true }]);
+  const accepted = taskOf(env);
+  const history = historyOf(env);
+  env.clock.now += 100;
+  await complete(env, OTHER_SESSION);
+  assert.deepEqual(taskOf(env), accepted, "an identical completion does not rewrite the stored report");
+  assert.deepEqual(historyOf(env), history);
+
+  repository.headOid = "b".repeat(40);
+  assert.deepEqual((await complete(env, OTHER_SESSION)).json.results[1], { check: "ci_passed", passed: false, unavailable: true });
+  check.headOid = repository.headOid;
+  check.status = "failed";
+  assert.deepEqual((await complete(env, OTHER_SESSION)).json.results[1], { check: "ci_passed", passed: false });
+  assert.equal(taskOf(env).state, "needs_review");
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "blocked");
+  assert.doesNotMatch(JSON.stringify(taskOf(env)), /headOid|checkReads|example\/repo|enclosing-cell/u);
+});
 
 test("a report is verified on a read made when it arrives, not on the older committed facts", async (context) => {
   const env = await setup(context, { facts: STALE, read: () => READ_NOW });

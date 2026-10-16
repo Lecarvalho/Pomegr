@@ -1326,7 +1326,7 @@ installed plugin from before the rename sends; a body with both names is `invali
 | Working tree clean | Committed repository state of the root or worktree |
 | Commit on task branch | Committed Git facts of the task branch |
 | Pull request merged | Committed state of the same pull requests |
-| CI passed | Check status of the same pull requests, as last read by the monitor |
+| CI passed | Check status of a pull request on the bound checkout branch, for its exact current commit |
 | Validated with the user | Not verified; the agent validates the work with the user before it reports |
 | Own condition | Not verified; the agent judges it in its report |
 
@@ -1409,12 +1409,16 @@ installed plugin from before the rename sends; a body with both names is `invali
   - A read that cannot be made (no bound repository, a failed Git read, the deadline)
     falls back to the committed facts below, which the age rule then judges. A fact that
     is unknown is not a pass and not a failure: its result is unavailable.
-  - CI still running when the report arrives is a known `pending`, so the condition
-    fails. The agent waits for CI before it reports.
+  - CI still running when the report arrives is unavailable. The agent waits for CI before it reports.
+  - A fresh report read verifies CI against the checkout commit and the pull-request head commit.
+    Matching revisions establish CI even when Codex keeps the enclosing code cell marked running.
+    Completed repository work must still finish before the checkout read; unresolved work must start before it.
+    Unknown work times or later work leave CI unavailable, even when the two commit hashes match.
+    This exception changes no other condition and trusts no agent claim.
 - The board's reading of a waiting task (below) uses committed facts only and never
   blocks on acquisition (`resolveTaskCheckFacts`).
 - Both hand the pure rule `verifyChecks(checks, facts)` the same shape,
-  `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt }`, built by
+  `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt, ciRevisionVerified? }`, built by
   one function from a repository block, a pull-request block, and the session's
   committed public state. The task branch is the branch recorded for that session.
   - Working tree clean: the live repository block lists no uncommitted file.
@@ -1428,21 +1432,22 @@ installed plugin from before the rename sends; a body with both names is `invali
     session's branch (`readPullRequests`). An item with no known state is listed as
     `unknown`: it leaves the condition unavailable unless another item holds the state.
     A ready block that lists no pull request is a known answer, so both conditions fail.
-  - CI passed: the monitor's pull-request read (`server/repository/pull-requests.mjs`)
-    asks gh for `statusCheckRollup` in the same call and normalizes it to one of
-    `passed`, `failed`, `pending`, or `none`: any failed check gives `failed`, otherwise
-    any unfinished check gives `pending`, and a pull request with no check gives `none`.
-    A missing or unrecognized list is unknown. The condition judges the block's
-    open pull requests, or its merged ones when none is open, and passes only when each
-    is `passed`. Pending, failed, no check, and no such pull request are known failures; a
-    pull request whose status the monitor has not read is unknown. No such pull request is
-    dated by the pull-request block's read. The status and the
-    time of the read that established it are taken from memory (`pullRequestCheckRead`);
-    a report's own pull-request read is what puts them there.
+  - CI passed: the pull-request read asks gh for `headRefOid` and `statusCheckRollup` together.
+    It normalizes checks to `passed`, `failed`, `pending`, `none`, or unknown.
+    Only pull requests whose head branch matches the bound checkout branch count for CI.
+    Open pull requests take priority over merged ones.
+    Each judged status must name the exact commit that Git read from the bound checkout.
+    With every judged revision matched, all statuses must pass; a verified failure remains failed.
+    Pending, missing, unrecognized, empty, or mismatched evidence remains unavailable.
+    No matching pull request also leaves CI unavailable.
+    The response keeps its own private `checkReads` snapshot, including unknown reads.
+    A later URL-cache update cannot change that response's evidence or supply another revision.
+    Failed acquisition preserves last known-good cache evidence but cannot verify a fresh report with it.
+    Older refreshes cannot overwrite newer cache observations.
   - An unavailable or historical repository block, a missing base comparison, and a
     pull-request block that is not ready are unknown.
 - **A fact is judged only on a read made after the work it judges.** Working tree
-  clean, Commit on task branch, and CI passed never pass
+  clean, Commit on task branch, and the waiting board's CI reading never pass
   on a fact older than the session's latest work that could have changed it. Pull
   request open and Pull request merged are the exception (task T-88, 2026-10-12): they
   need a dated read and are not compared with the work, so the Task tab never says
@@ -1477,7 +1482,7 @@ installed plugin from before the rename sends; a body with both names is `invali
     execution task, because any shell command can dirty the tree. A file write ends at
     its call time plus its recorded wall duration, not at its call: a write that waited
     for approval changes the file later than it was called.
-    `commit_on_branch` and `ci_passed` are dated by the latest end
+    `commit_on_branch` and the waiting board's `ci_passed` reading are dated by the latest end
     of the session's finished `git`, `git_push`, and `pull_request` execution tasks. A task
     still running or finished at no known time, and a file write with no recorded
     result, make the matching facts unknown. A
@@ -1531,9 +1536,9 @@ installed plugin from before the rename sends; a body with both names is `invali
     stamps, so a derive whose served state is identical keeps the older stamp. The
     reading can therefore say "Not yet" for a condition a report would pass. Read-only
     commands (`gh pr checks`, `git status`) count as work for the reading too.
-  - A running execution task of any kind (a dev server, for example) keeps `tree_clean`
-    unknown while it runs, and a running Git, push, or pull-request task does the same for
-    Commit on task branch and CI passed.
+  - A running execution task of any kind keeps `tree_clean` unknown while it runs.
+    A running Git, push, or pull-request task also keeps Commit on task branch unknown.
+    The waiting board applies that age rule to CI; a fresh report uses the exact revision match instead.
   - Repository work is recognized only as a finished `git`, `git_push`, or `pull_request`
     execution task. A compound or generic shell command, or another tool, that changes
     the branch or a pull request is not counted, and only the newest retained execution
@@ -2930,14 +2935,15 @@ fixed values.
   [Session evidence](privacy/session-evidence.md#session-events).
 - Provider and model names, effort, check results, and times are normalized enums or
   identifiers, not user content.
-- The pull-request check status is monitor-private. It is held only in memory, as one
-  fixed `passed`, `failed`, `pending`, or `none` value together with the time of the read
-  that established it, for at most 256 pull-request URLs, and it is not part of the
-  normalized pull-request item. It is never persisted and never enters `/api/state`, a
-  session domain, a repository snapshot, a report, a log, or `GET /api/tasks`. Its only
-  use is the CI passed condition, which exposes passed, failed, or unavailable, and the time
-  only refuses a result on a fact read before the session's latest relevant work. Check names, URLs,
-  conclusions, and counts are dropped when the list is normalized.
+- Pull-request check evidence stays monitor-private and in memory only.
+  - Each live pull-request block keeps at most eight `checkReads`: canonical URL, validated head commit, aggregate status, and read time.
+  - A bounded URL cache retains at most 256 last known-good statuses with their head commits and read times.
+  - Unknown acquisition never erases a last known-good cache observation or substitutes it into a fresh response.
+  - Each live repository block keeps its validated checkout commit as `headOid`.
+  - The serializer removes `headOid` and `checkReads`, like `readAt`, before serving.
+  - These values never enter a session domain, snapshot, sidecar, checkpoint, report, log, or `GET /api/tasks`.
+  - Completion exposes only passed, failed, or unavailable; fixed feedback explains the current-commit requirement.
+  - Check names, check URLs, raw conclusions, and counts are discarded during normalization.
 - The committed repository and pull-request blocks of a live session state also carry a
   monitor-private `readAt` (the start of the Git read, and the start of the oldest
   pull-request read). The session-state serializer removes them before any serving, and

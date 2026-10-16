@@ -7,6 +7,8 @@ import { normalizeCheckStatus, normalizePullRequest, pullRequestCheckRead, pullR
 import { pullRequestCreationEvents, readClaudePullRequestCreations } from "../../../server/providers/claude/pull-requests.mjs";
 import { parseCodexPullRequestRecords } from "../../../server/providers/codex/pull-requests.mjs";
 
+const HEAD_OID = "d".repeat(40);
+
 function bashCall(id, command) {
   return { type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", id, input: { command } }] } };
 }
@@ -66,13 +68,14 @@ test("combines transcript-created and current-branch PRs while preserving sessio
       state: "OPEN",
       url: "https://github.com/PomegrHQ/pomegr/pull/42",
       headRefName: "feature/pr-drawer",
+      headRefOid: HEAD_OID,
       baseRefName: "main",
       additions: 10,
       deletions: 2,
     });
     return JSON.stringify([
-      { number: 42, title: "Created in session", state: "OPEN", url: "https://github.com/PomegrHQ/pomegr/pull/42" },
-      { number: 41, title: "Earlier branch PR", state: "CLOSED", url: "https://github.com/PomegrHQ/pomegr/pull/41" },
+      { number: 42, title: "Created in session", state: "OPEN", url: "https://github.com/PomegrHQ/pomegr/pull/42", headRefOid: HEAD_OID },
+      { number: 41, title: "Earlier branch PR", state: "CLOSED", url: "https://github.com/PomegrHQ/pomegr/pull/41", headRefOid: HEAD_OID },
     ]);
   };
 
@@ -101,7 +104,7 @@ test("historical sessions never infer PRs from the current branch", async () => 
   });
 
   assert.equal(branchLookup, false);
-  assert.deepEqual(result, { status: "ready", checkedAt: null, readAt: null, items: [] });
+  assert.deepEqual(result, { status: "ready", checkedAt: null, readAt: null, checkReads: [], items: [] });
 });
 
 test("reconstructs session PR associations from the complete transcript", async (context) => {
@@ -197,10 +200,10 @@ test("the check status is read with the pull request and kept out of the normali
   const fields = [];
   const ghRunner = (rollups) => async (_cwd, args) => {
     fields.push(args.at(-1));
-    if (args[1] === "view") return JSON.stringify({ number: 7, state: "OPEN", url: url(7), headRefName: "tasks/13", statusCheckRollup: rollups[7] });
+    if (args[1] === "view") return JSON.stringify({ number: 7, state: "OPEN", url: url(7), headRefName: "tasks/13", headRefOid: HEAD_OID, statusCheckRollup: rollups[7] });
     return JSON.stringify([
-      { number: 7, state: "OPEN", url: url(7), headRefName: "tasks/13", statusCheckRollup: rollups[7] },
-      { number: 6, state: "MERGED", mergedAt: "2026-10-01T00:00:00Z", url: url(6), headRefName: "tasks/13", statusCheckRollup: rollups[6] },
+      { number: 7, state: "OPEN", url: url(7), headRefName: "tasks/13", headRefOid: HEAD_OID, statusCheckRollup: rollups[7] },
+      { number: 6, state: "MERGED", mergedAt: "2026-10-01T00:00:00Z", url: url(6), headRefName: "tasks/13", headRefOid: HEAD_OID, statusCheckRollup: rollups[6] },
     ]);
   };
   const read = (rollups) => readPullRequests([], { cwd: "C:\\repo", branch: "tasks/13", sessionCreations: [{ url: url(7) }], ghRunner: ghRunner(rollups) });
@@ -212,22 +215,26 @@ test("the check status is read with the pull request and kept out of the normali
   assert.equal(checkStatus(url(7)), "pending");
   assert.equal(checkStatus(url(6)), "passed");
   assert.deepEqual(result.items.map((item) => item.number), [7, 6]);
-  assert.doesNotMatch(JSON.stringify(result), /statusCheckRollup|passed|pending|PRIVATE/u);
-  assert.deepEqual(Object.keys(result), ["status", "checkedAt", "readAt", "items"]);
+  assert.doesNotMatch(JSON.stringify(result.items), /headRefOid|statusCheckRollup|passed|pending|PRIVATE/u);
+  assert.deepEqual(Object.keys(result), ["status", "checkedAt", "readAt", "checkReads", "items"]);
+  assert.deepEqual(result.checkReads.map(({ url: readUrl, status, headOid }) => ({ url: readUrl, status, headOid })), [
+    { url: url(7), status: "pending", headOid: HEAD_OID },
+    { url: url(6), status: "passed", headOid: HEAD_OID },
+  ]);
 
-  // The newest read replaces the status; a read that does not establish one clears it.
+  // Verified reads replace the monitor-private map; an unknown current read stays unknown in this response and retains the last known-good map entry.
   await read({ 7: [run("COMPLETED", "FAILURE")], 6: [] });
   assert.equal(checkStatus(url(7)), "failed");
   assert.equal(checkStatus(url(6)), "none");
   await read({ 7: [run("MADE_UP")] });
-  assert.equal(checkStatus(url(7)), null);
-  assert.equal(checkStatus(url(6)), null);
+  assert.equal(checkStatus(url(7)), "failed");
+  assert.equal(checkStatus(url(6)), "none");
   for (const value of [undefined, null, 7, "", "https://example.invalid/pull/7"]) assert.equal(checkStatus(value), null);
 });
 
-test("a check status keeps the time of the read that established it, and a read that establishes nothing clears it", async () => {
+test("a check status keeps the time and revision of its last known-good read", async () => {
   const url = "https://github.com/PomegrHQ/pomegr-checks/pull/21";
-  const ghRunner = (rollup) => async () => JSON.stringify([{ number: 21, state: "OPEN", url, headRefName: "tasks/21", statusCheckRollup: rollup }]);
+  const ghRunner = (rollup, headRefOid = HEAD_OID) => async () => JSON.stringify([{ number: 21, state: "OPEN", url, headRefName: "tasks/21", headRefOid, statusCheckRollup: rollup }]);
   const read = (rollup) => readPullRequests([], { cwd: "C:\\repo", branch: "tasks/21", ghRunner: ghRunner(rollup) });
 
   assert.equal(pullRequestCheckRead(url), null);
@@ -235,7 +242,7 @@ test("a check status keeps the time of the read that established it, and a read 
   await read([run("COMPLETED", "SUCCESS")]);
   const after = Date.now();
   const first = pullRequestCheckRead(url);
-  assert.deepEqual(Object.keys(first), ["status", "readAt"]);
+  assert.deepEqual(Object.keys(first), ["status", "readAt", "headOid"]);
   assert.equal(first.status, "passed");
   assert.ok(Number.isSafeInteger(first.readAt) && first.readAt >= before && first.readAt <= after, `${first.readAt} in ${before}..${after}`);
 
@@ -243,8 +250,8 @@ test("a check status keeps the time of the read that established it, and a read 
   const heldAt = first.readAt;
   first.readAt = 0;
   first.status = "failed";
-  assert.deepEqual(pullRequestCheckRead(url), { status: "passed", readAt: heldAt });
-  assert.deepEqual(pullRequestCheckRead(url), { status: "passed", readAt: heldAt });
+  assert.deepEqual(pullRequestCheckRead(url), { status: "passed", readAt: heldAt, headOid: HEAD_OID });
+  assert.deepEqual(pullRequestCheckRead(url), { status: "passed", readAt: heldAt, headOid: HEAD_OID });
 
   // A newer read replaces both the status and the time.
   await new Promise((resolve) => setTimeout(resolve, 5));
@@ -253,10 +260,46 @@ test("a check status keeps the time of the read that established it, and a read 
   assert.equal(second.status, "pending");
   assert.ok(second.readAt > heldAt, `${second.readAt} after ${heldAt}`);
 
-  // A read that establishes no status clears the entry, time included.
-  await read([run("MADE_UP")]);
-  assert.equal(pullRequestCheckRead(url), null);
+  // A read that establishes no status stays unknown in its response and preserves the previous known-good map entry.
+  const unknown = await read([run("MADE_UP")]);
+  assert.deepEqual(unknown.checkReads, [{ url, status: null, readAt: unknown.checkReads[0].readAt, headOid: HEAD_OID }]);
+  assert.equal(pullRequestCheckRead(url).status, "pending");
+  assert.equal(pullRequestCheckRead(url).readAt, second.readAt);
+  assert.equal(pullRequestCheckRead(url).headOid, HEAD_OID);
   for (const value of [undefined, null, 21, "", "https://example.invalid/pull/21"]) assert.equal(pullRequestCheckRead(value), null);
+});
+
+test("a delayed older metadata response does not replace a newer successful check read", async () => {
+  const url = "https://github.com/PomegrHQ/pomegr-checks/pull/22";
+  let viewCalls = 0;
+  let announceOldStart;
+  let releaseOld;
+  const oldStarted = new Promise((resolve) => { announceOldStart = resolve; });
+  const oldGate = new Promise((resolve) => { releaseOld = resolve; });
+  const ghRunner = async (_cwd, args) => {
+    if (args[1] !== "view") return "[]";
+    viewCalls += 1;
+    const call = viewCalls;
+    if (call === 1) {
+      announceOldStart();
+      await oldGate;
+    }
+    return JSON.stringify({ number: 22, state: "OPEN", url, headRefName: "tasks/22", headRefOid: HEAD_OID,
+      statusCheckRollup: [run("COMPLETED", call === 1 ? "FAILURE" : "SUCCESS")] });
+  };
+  const read = () => readPullRequests([], { cwd: "C:\\repo", sessionCreations: [{ url }], fresh: true, ghRunner });
+
+  const older = read();
+  await oldStarted;
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const newer = await read();
+  assert.equal(newer.checkReads[0].status, "passed");
+  assert.equal(pullRequestCheckRead(url).status, "passed");
+  releaseOld();
+  const olderResult = await older;
+  assert.equal(olderResult.checkReads[0].status, "failed", "the response retains the result of its own older read");
+  assert.equal(pullRequestCheckRead(url).status, "passed", "the last-known-good map remains on the later read");
+  assert.equal(pullRequestCheckRead(url).headOid, HEAD_OID);
 });
 
 test("at most 256 check statuses are held, the oldest read first out", async () => {

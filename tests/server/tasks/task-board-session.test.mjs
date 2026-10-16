@@ -17,6 +17,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { passingGates } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
+const HEAD_OID = "a".repeat(40);
 const DESKTOP = "d".repeat(40);
 const SESSION = "claude:0b8f2c1e-1111-4222-8333-444455556666";
 const FACTS = { root: "C:/Work/repo", pluginReady: true };
@@ -350,7 +351,7 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
 // The complete-when check facts carry the time each was read and the time of the work that could have changed it.
 const iso = (milliseconds) => new Date(milliseconds).toISOString();
 const checkRepository = (overrides = {}) => ({
-  available: true, historical: false, branch: "tasks/12", isMain: false, files: [],
+  available: true, historical: false, branch: "tasks/12", headOid: HEAD_OID, isMain: false, files: [],
   comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 0, integrated: false },
   remote: { status: "ready", checkedAt: iso(5_000) }, ...overrides,
 });
@@ -361,7 +362,7 @@ const task = (workKind, finishedAt, status = "completed") => ({ id: `tool-${work
 const pullBlock = (items = [openPull()], overrides = {}) => ({ status: "ready", checkedAt: iso(6_000), readAt: iso(6_000), items, ...overrides });
 const checkSession = (overrides = {}) => ({ repository: checkRepository(), pullRequests: pullBlock(), ...overrides });
 const checkState = (overrides = {}) => ({ session: checkSession(), executionTasks: [], agents: [], activity: { items: [], total: 0 }, ...overrides });
-const passedRead = (url) => (url === pullUrl(1) ? { status: "passed", readAt: 7_000 } : null);
+const passedRead = (url) => (url === pullUrl(1) ? { status: "passed", readAt: 7_000, headOid: HEAD_OID } : null);
 const checkFacts = (publicState, options = {}) => resolveTaskCheckFacts(SESSION, { observationStore: storeWith(publicState), checkRead: passedRead, ...options });
 
 test("each check fact carries the time it was read, from committed memory alone", () => {
@@ -400,21 +401,21 @@ test("each check fact carries the time it was read, from committed memory alone"
 
   // CI uses the oldest read among the judged pull requests, bounded by the block's own, and an unread or undated one makes it unknown.
   const two = checkState({ session: checkSession({ pullRequests: pullBlock([openPull(1), openPull(2)], { readAt: iso(8_000) }) }) });
-  const reads = { [pullUrl(1)]: { status: "passed", readAt: 7_000 }, [pullUrl(2)]: { status: "passed", readAt: 4_000 } };
+  const reads = { [pullUrl(1)]: { status: "passed", readAt: 7_000, headOid: HEAD_OID }, [pullUrl(2)]: { status: "passed", readAt: 4_000, headOid: HEAD_OID } };
   const oldestCheck = checkFacts(two, { checkRead: (url) => reads[url] ?? null });
   assert.deepEqual([oldestCheck.ciPassed, oldestCheck.readAt.ci], [true, 4_000]);
   // A status read after the committed block does not make the block's pull requests newer than the block.
-  const newerStatus = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([openPull(1)], { readAt: iso(3_000) }) }) }), { checkRead: () => ({ status: "passed", readAt: 7_000 }) });
+  const newerStatus = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([openPull(1)], { readAt: iso(3_000) }) }) }), { checkRead: () => ({ status: "passed", readAt: 7_000, headOid: HEAD_OID }) });
   assert.deepEqual([newerStatus.ciPassed, newerStatus.readAt.ci], [true, 3_000]);
   const unread = checkFacts(two, { checkRead: (url) => (url === pullUrl(1) ? reads[url] : null) });
   assert.deepEqual([unread.ciPassed, unread.readAt.ci], [null, null]);
-  const undated = checkFacts(two, { checkRead: () => ({ status: "passed", readAt: Number.NaN }) });
+  const undated = checkFacts(two, { checkRead: () => ({ status: "passed", readAt: Number.NaN, headOid: HEAD_OID }) });
   assert.deepEqual([undated.ciPassed, undated.readAt.ci], [null, null]);
   const unstampedBlock = checkFacts(unstamped);
   assert.deepEqual([unstampedBlock.ciPassed, unstampedBlock.readAt.ci], [true, null]);
-  // No judged pull request is a known "not passed" that rests on the pull-request read.
+  // No judged same-branch pull request gives no evidence about CI.
   const none = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([]) }) }));
-  assert.deepEqual([none.ciPassed, none.readAt.ci], [false, 6_000]);
+  assert.deepEqual([none.ciPassed, none.readAt.ci], [null, null]);
 });
 
 test("the work times are the latest end of the session's finished commands and recorded file changes", () => {
@@ -562,14 +563,14 @@ test("the stamped read times stay in the committed state and leave no served for
   assert.equal(typeof value.pullRequests.readAt, "string");
 
   const served = serializeServedSessionState(state);
-  assert.doesNotMatch(served, /readAt/u);
-  const withoutReadAt = (block) => Object.fromEntries(Object.entries(block).filter(([key]) => key !== "readAt"));
-  assert.deepEqual(JSON.parse(served).session, { id: SESSION, repository: withoutReadAt(value.repository), pullRequests: withoutReadAt(value.pullRequests) });
+  assert.doesNotMatch(served, /readAt|headOid|checkReads/u);
+  const withoutPrivateEvidence = (block) => Object.fromEntries(Object.entries(block).filter(([key]) => !["readAt", "headOid", "checkReads"].includes(key)));
+  assert.deepEqual(JSON.parse(served).session, { id: SESSION, repository: withoutPrivateEvidence(value.repository), pullRequests: withoutPrivateEvidence(value.pullRequests) });
   assert.equal(typeof state.session.repository.readAt, "string", "serving does not change the committed state");
 
   // The store serves the stripped form and keeps the stamped one for the complete-when rule.
   const store = committedStore(state);
-  assert.doesNotMatch(store.getSerialized("claude", SESSION.slice("claude:".length)), /readAt/u);
+  assert.doesNotMatch(store.getSerialized("claude", SESSION.slice("claude:".length)), /readAt|headOid|checkReads/u);
   assert.equal(store.get("claude", SESSION.slice("claude:".length)).publicState.session.repository.readAt, value.repository.readAt);
 });
 
@@ -587,7 +588,7 @@ test("a report is judged on the blocks its own read returned, which are later th
     calls.push(ref);
     return { repository: checkRepository({ readAt: iso(9_000) }), pullRequests: pullBlock([openPull()], { checkedAt: iso(9_100), readAt: iso(9_100) }) };
   };
-  const facts = await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: (url) => (url === pullUrl(1) ? { status: "passed", readAt: 9_100 } : null) });
+  const facts = await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: (url) => (url === pullUrl(1) ? { status: "passed", readAt: 9_100, headOid: HEAD_OID } : null) });
   assert.deepEqual(calls, [SESSION]);
   assert.deepEqual(facts.readAt, { tree: 9_000, branch: 9_000, pullRequests: 9_100, ci: 9_100 });
   assert.deepEqual(facts.workAt, { tree: 8_000, repository: 8_000 });
@@ -598,7 +599,7 @@ test("a report's read still fails a condition that is false, and CI still runnin
   const store = storeWith(checkState({ executionTasks: gitDone(8_000) }));
   const readNow = async () => ({ repository: checkRepository({ readAt: iso(9_000), comparison: { branch: "origin/main", kind: "base", ahead: 0, behind: 0, integrated: false } }),
     pullRequests: pullBlock([openPull()], { readAt: iso(9_100) }) });
-  const facts = await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: () => ({ status: "pending", readAt: 9_100 }) });
+  const facts = await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: () => ({ status: "pending", readAt: 9_100, headOid: HEAD_OID }) });
   assert.deepEqual(passes(facts), { pr_open: true, commit_on_branch: false, ci_passed: false });
 });
 

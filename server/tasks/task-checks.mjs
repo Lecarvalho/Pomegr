@@ -31,6 +31,7 @@ const isRecord = (value) => value !== null && typeof value === "object" && !Arra
 function readAfterWork(facts, { read, work }) {
   const readAt = isRecord(facts.readAt) ? facts.readAt[read] : undefined;
   if (!Number.isFinite(readAt)) return false;
+  if (read === "ci" && facts.ciRevisionVerified === true) return true;
   if (work === null) return true;
   const workAt = isRecord(facts.workAt) ? facts.workAt[work] : undefined;
   if (workAt === null) return true;

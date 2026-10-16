@@ -35,13 +35,19 @@ export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogS
 
 const PULL_REQUEST_STATES = ["open", "merged", "closed"];
 
-function ciPassed(items, checkRead) {
-  const judged = ["open", "merged"].map((state) => items.filter((item) => item?.state === state)).find((list) => list.length > 0);
-  // No open or merged pull request is a known answer of the pull-request read, unless a listed one has no known state.
-  if (!judged) return items.some((item) => !PULL_REQUEST_STATES.includes(item?.state)) ? { value: null, readAt: null } : { value: false, readAt: Number.POSITIVE_INFINITY };
-  const reads = judged.map((item) => checkRead(item.url));
-  if (reads.some((read) => !read || !Number.isFinite(read.readAt))) return { value: null, readAt: null };
-  return { value: reads.every((read) => read.status === "passed"), readAt: Math.min(...reads.map((read) => read.readAt)) };
+function ciPassed(items, repository, pulls, checkRead) {
+  const unknown = { value: null, readAt: null };
+  if (!/^[a-f0-9]{40}$/iu.test(repository.headOid || "")) return unknown;
+  const matching = items.filter((item) => item?.headBranch === repository.branch);
+  const judged = ["open", "merged"].map((state) => matching.filter((item) => item?.state === state)).find((list) => list.length > 0);
+  if (!judged) return unknown;
+  const reads = judged.map((item) => Array.isArray(pulls.checkReads)
+    ? pulls.checkReads.find((read) => read.url === item.url) : checkRead(item.url));
+  if (reads.some((read) => !read || !Number.isFinite(read.readAt)
+    || typeof read.headOid !== "string" || read.headOid.toLowerCase() !== repository.headOid.toLowerCase())) return unknown;
+  const value = reads.some((read) => read.status === "failed") ? false
+    : reads.every((read) => read.status === "passed") ? true : null;
+  return { value, readAt: Math.min(...reads.map((read) => read.readAt)) };
 }
 
 // Epoch milliseconds of an ISO timestamp, or null when the value is not one.
@@ -53,9 +59,21 @@ function timeOf(value) {
 // Work whose end moves the time a fact must be read after.
 const REPOSITORY_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 
-function workTimes(state) {
-  const tasks = [...(Array.isArray(state?.executionTasks) ? state.executionTasks : []),
+function executionTasks(state) {
+  return [...(Array.isArray(state?.executionTasks) ? state.executionTasks : []),
     ...(Array.isArray(state?.agents) ? state.agents : []).flatMap((agent) => (Array.isArray(agent?.executionTasks) ? agent.executionTasks : []))];
+}
+
+// Only unresolved work already under way when Git read the checkout may be the enclosing code cell.
+function ciReadAfterKnownWork(state, readAt) {
+  return readAt !== null && executionTasks(state).filter((task) => REPOSITORY_WORK_KINDS.has(task?.workKind)).every((task) => {
+    const time = timeOf(task.status === "running" ? task.startedAt : task.finishedAt);
+    return time !== null && time <= readAt;
+  });
+}
+
+function workTimes(state) {
+  const tasks = executionTasks(state);
   const latest = (times) => (times.length === 0 ? null : Math.max(...times));
   const endOf = (task) => (task?.status === "running" ? Number.POSITIVE_INFINITY : timeOf(task?.finishedAt) ?? Number.POSITIVE_INFINITY);
   const ends = tasks.filter((task) => task && typeof task === "object").map((task) => ({ kind: task.workKind, end: endOf(task) }));
@@ -75,7 +93,7 @@ function workTimes(state) {
   };
 }
 
-function checkFacts(state, blocks, checkRead) {
+function checkFacts(state, blocks, checkRead, freshCi = false) {
   const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null,
     readAt: { tree: null, branch: null, pullRequests: null, ci: null }, workAt: { tree: null, repository: null } };
   const repository = blocks?.repository;
@@ -86,15 +104,16 @@ function checkFacts(state, blocks, checkRead) {
   // The session's pull requests are the ones its pull-request block lists: those it created and those of its branch.
   const pulls = blocks.pullRequests;
   const branchPulls = pulls?.status === "ready" && Array.isArray(pulls.items) ? pulls.items : null;
-  const ci = branchPulls ? ciPassed(branchPulls, checkRead) : { value: null, readAt: null };
+  const ci = branchPulls ? ciPassed(branchPulls, repository, pulls, checkRead) : { value: null, readAt: null };
   const blockReadAt = timeOf(repository.readAt);
   const pullsReadAt = timeOf(pulls?.readAt);
   const comparisonReadAt = repository.remote?.status === "ready" ? blockReadAt : null;
+  const ciRevisionVerified = freshCi && ci.value !== null && ciReadAfterKnownWork(state, blockReadAt);
   return {
     treeClean: Array.isArray(repository.files) ? repository.files.length === 0 : null,
     branchCommits,
     pullRequestStates: branchPulls ? branchPulls.map((item) => (PULL_REQUEST_STATES.includes(item?.state) ? item.state : "unknown")) : null,
-    ciPassed: ci.value,
+    ciPassed: freshCi && !ciRevisionVerified ? null : ci.value,
     readAt: {
       tree: blockReadAt,
       branch: comparisonReadAt,
@@ -102,6 +121,8 @@ function checkFacts(state, blocks, checkRead) {
       ci: ci.readAt !== null && pullsReadAt !== null ? Math.min(ci.readAt, pullsReadAt) : null,
     },
     workAt: workTimes(state),
+    // A report's own revision-bound read establishes CI even while its enclosing code cell is still running.
+    ...(ciRevisionVerified ? { ciRevisionVerified: true } : {}),
   };
 }
 
@@ -131,5 +152,5 @@ export async function readTaskCheckFacts(sessionRef, { observationStore, readNow
     } catch { blocks = null; } finally { clearTimeout(timer); }
   }
   const state = committedState(sessionRef, observationStore);
-  return checkFacts(state, blocks ?? state?.session, checkRead);
+  return checkFacts(state, blocks ?? state?.session, checkRead, blocks !== null);
 }

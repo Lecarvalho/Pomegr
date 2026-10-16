@@ -415,6 +415,7 @@ export function readGitState(cwd, { forbiddenRoots = [] } = {}) {
   return {
     available: true,
     _repositoryRoot: root,
+    _headOid: head,
     branch: safeText(branch, 200),
     files,
     ...remoteState,
@@ -480,6 +481,7 @@ async function inspectGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
   return {
     available: true,
     _repositoryRoot: root,
+    _headOid: head,
     branch: safeText(branch, 200),
     files,
     ...remoteState,

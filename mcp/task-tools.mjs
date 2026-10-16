@@ -480,7 +480,9 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
       ? "Task reported complete. Pomegr put it in Review for the user's attention; the user marks it done."
       : "Task reported complete. Pomegr put it in Review; the user marks it done.";
     const parts = [failed && `these conditions did not pass: ${failed}`, unverified && `Pomegr could not verify: ${unverified} (it had no current evidence, which does not mean the condition failed)`].filter(Boolean);
-    return `Task reported complete, but ${parts.join("; and ")}. ${held ? holdText : "The task now needs the user's review."}`;
+    const ciText = open.some((entry) => entry.check === "ci_passed" && entry.unavailable === true)
+      ? " CI needs a finished check result for this checkout's current commit; pending, missing, or mismatched evidence cannot verify it." : "";
+    return `Task reported complete, but ${parts.join("; and ")}.${ciText} ${held ? holdText : "The task now needs the user's review."}`;
   }));
 
   const feature = async (tool, path, input, extra, body, done) => {

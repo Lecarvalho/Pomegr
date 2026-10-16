@@ -6,8 +6,10 @@ import { SessionObservationStore } from "../../../server/sessions/checkpoints/se
 
 const ROOT = "C:\\synthetic\\pomegr";
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
+const HEAD_OID = "c".repeat(40);
 const iso = (milliseconds) => new Date(milliseconds).toISOString();
-const withoutReadAt = (block) => Object.fromEntries(Object.entries(block).filter(([key]) => key !== "readAt"));
+const PRIVATE_KEYS = ["readAt", "headOid", "checkReads"];
+const withoutPrivateEvidence = (block) => Object.fromEntries(Object.entries(block).filter(([key]) => !PRIVATE_KEYS.includes(key)));
 const binding = { state: "single", repositoryId: REPOSITORY_ID, root: ROOT, fingerprint: `bound:${ROOT}`, recordedBranch: "codex/live" };
 const evidence = { session: { cwd: ROOT, recordedGitBranch: "codex/live", startedAt: iso(0) }, pullRequestCreations: [], executionTasks: [] };
 
@@ -17,12 +19,12 @@ function fixture({ startedAt, statusUnknown = false } = {}) {
   const clock = { now: 5_000 };
   const enrichment = createSessionRepositoryEnrichment({
     gitReader: async (root) => {
-      const acquired = { available: true, branch: "codex/live", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root,
+      const acquired = { available: true, branch: "codex/live", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root, _headOid: HEAD_OID,
         ...(startedAt === undefined ? {} : { _readStartedAt: startedAt }), ...(statusUnknown ? { _statusUnknown: true } : {}) };
       clock.now = 6_500;
       return acquired;
     },
-    pullRequestReader: async () => ({ status: "ready", checkedAt: iso(5_900), readAt: iso(5_100), items: [] }),
+    pullRequestReader: async () => ({ status: "ready", checkedAt: iso(5_900), readAt: iso(5_100), checkReads: [{ url: "https://github.com/PomegrHQ/pomegr/pull/1", status: "passed", readAt: 5_100, headOid: HEAD_OID }], items: [] }),
     now: () => clock.now,
     cacheMs: 2_500,
     providerFolders: { folders: {} },
@@ -62,16 +64,19 @@ test("a read whose git status failed commits no stamp, so nothing is judged on i
   assert.deepEqual(value.repository.files, []);
 });
 
-test("the served form drops both private read times and changes nothing else", async () => {
+test("the served form drops private revision evidence and read times, changing nothing else", async () => {
   const { refresh } = fixture();
   const { repository, pullRequests } = await refresh();
   const state = { connected: true, session: { id: "codex:stamped", repository, pullRequests, title: "kept" } };
-  const repositoryWithoutStamp = withoutReadAt(repository);
-  const pullRequestsWithoutStamp = withoutReadAt(pullRequests);
+  const repositoryWithoutStamp = withoutPrivateEvidence(repository);
+  const pullRequestsWithoutStamp = withoutPrivateEvidence(pullRequests);
 
   assert.deepEqual(JSON.parse(serializeServedSessionState(state)), { connected: true, session: { id: "codex:stamped", repository: repositoryWithoutStamp, pullRequests: pullRequestsWithoutStamp, title: "kept" } });
   assert.equal(typeof state.session.repository.readAt, "string", "serving leaves the committed state alone");
   assert.equal(typeof state.session.pullRequests.readAt, "string");
+  assert.equal(state.session.repository.headOid, HEAD_OID);
+  assert.equal(state.session.pullRequests.checkReads[0].headOid, HEAD_OID);
+  assert.doesNotMatch(serializeServedSessionState(state), /headOid|checkReads/u);
   // A state with no stamp, or no session, is served as it is.
   const plain = { session: { repository: repositoryWithoutStamp } };
   assert.equal(servedSessionState(plain), plain);
@@ -87,10 +92,12 @@ test("the default observation store serves the stripped state and keeps the stam
   const publicState = { session: { id: "codex:stamped", repository, pullRequests } };
   assert.equal(store.publish({ providerId: "codex", localSessionId: "stamped", evidence: {}, readiness: {}, publicState }).accepted, true);
 
-  assert.doesNotMatch(store.getSerialized("codex", "stamped"), /readAt/u);
+  assert.doesNotMatch(store.getSerialized("codex", "stamped"), /readAt|headOid|checkReads/u);
   const committed = store.get("codex", "stamped").publicState.session;
   assert.equal(committed.repository.readAt, repository.readAt);
   assert.equal(committed.pullRequests.readAt, pullRequests.readAt);
+  assert.equal(committed.repository.headOid, HEAD_OID);
+  assert.equal(committed.pullRequests.checkReads[0].headOid, HEAD_OID);
 });
 
 test("the recorded repository sidecar is built from named fields and never carries a read time", async () => {
@@ -102,7 +109,7 @@ test("the recorded repository sidecar is built from named fields and never carri
 
   const snapshot = snapshotFromLiveCheck({ ...checks[0], repositoryId: REPOSITORY_ID });
   assert.ok(snapshot, "the live check records a sidecar");
-  assert.doesNotMatch(JSON.stringify(snapshot), /readAt|_readStartedAt/u);
+  assert.doesNotMatch(JSON.stringify(snapshot), /readAt|headOid|checkReads|_readStartedAt/u);
 });
 
 // `readNow` is the task report's own read: awaited, bound to the session's latest derive, and never an older answer.
@@ -114,7 +121,7 @@ function readNowFixture({ joinedAt = null } = {}) {
       gitCalls.push(clock.now);
       // The first call may have joined an inspection that began earlier; a later call starts its own.
       const startedAt = gitCalls.length === 1 && joinedAt !== null ? joinedAt : clock.now;
-      return { available: true, branch: "codex/live", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root, _readStartedAt: startedAt };
+      return { available: true, branch: "codex/live", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root, _headOid: HEAD_OID, _readStartedAt: startedAt };
     },
     pullRequestReader: async (_creations, options) => { pullCalls.push(options); return { status: "ready", checkedAt: iso(clock.now), readAt: iso(clock.now), items: [] }; },
     now: () => clock.now,

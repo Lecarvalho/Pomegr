@@ -642,8 +642,8 @@ test("the monitor-private read times of the repository and pull-request blocks n
     connected: true, source: claude.source, capabilities: claude.capabilities, view: "live",
     session: {
       id: "claude:claude-fixture-parent",
-      repository: { available: true, historical: false, branch: "tasks/12", isMain: false, files: [], comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, readAt: "2026-10-09T10:00:00.000Z" },
-      pullRequests: { status: "ready", checkedAt: "2026-10-09T10:00:02.000Z", readAt: "2026-10-09T10:00:01.000Z", items: [] },
+      repository: { available: true, historical: false, branch: "tasks/12", isMain: false, files: [], comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, readAt: "2026-10-09T10:00:00.000Z", headOid: "a".repeat(40) },
+      pullRequests: { status: "ready", checkedAt: "2026-10-09T10:00:02.000Z", readAt: "2026-10-09T10:00:01.000Z", checkReads: [{ url: "https://github.com/example/private/pull/1", headOid: "a".repeat(40), status: "passed", readAt: 1 }], items: [] },
     },
   };
   const runtime = { async analyze() { return state; }, analyzeEmpty() { return { connected: false, source: claude.source, capabilities: claude.capabilities, view: "live" }; } };
@@ -651,7 +651,7 @@ test("the monitor-private read times of the repository and pull-request blocks n
   const response = await fetch(`${origin}/api/state`);
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.doesNotMatch(body, /readAt/u);
+  assert.doesNotMatch(body, /readAt|headOid|checkReads|example\/private/u);
   const served = JSON.parse(body);
   assert.equal(served.session.repository.branch, "tasks/12");
   assert.equal(served.session.pullRequests.checkedAt, "2026-10-09T10:00:02.000Z");

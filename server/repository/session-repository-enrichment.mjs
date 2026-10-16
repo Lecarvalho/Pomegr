@@ -34,20 +34,20 @@ function sameRoot(left, right) {
   return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
-// Monitor-private read time.
-const PRIVATE_READ_KEY = "readAt";
+// Monitor-private read times and revision-bound CI evidence.
+const PRIVATE_KEYS = ["readAt", "headOid", "checkReads"];
 
 function carriesReadStamp(block) {
-  return block !== null && typeof block === "object" && Object.hasOwn(block, PRIVATE_READ_KEY);
+  return block !== null && typeof block === "object" && PRIVATE_KEYS.some((key) => Object.hasOwn(block, key));
 }
 
 function withoutReadStamp(block) {
   const served = { ...block };
-  delete served[PRIVATE_READ_KEY];
+  for (const key of PRIVATE_KEYS) delete served[key];
   return served;
 }
 
-/** The session state as it is served: without the monitor-private read times of its repository and pull-request blocks. */
+/** The session state as served, without monitor-private repository and check evidence. */
 export function servedSessionState(state) {
   const session = state?.session;
   if (!session || typeof session !== "object" || (!carriesReadStamp(session.repository) && !carriesReadStamp(session.pullRequests))) return state;
@@ -83,7 +83,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
       const forbiddenRoots = Object.values(providerFolders?.folders || {}).filter(Boolean);
       let acquired = await gitReader(input.root, { forbiddenRoots });
       if (fresh && Number.isFinite(acquired?._readStartedAt) && acquired._readStartedAt < readStartedAt) acquired = await gitReader(input.root, { forbiddenRoots });
-      const { _repositoryRoot: root = null, _readStartedAt: inspectionStartedAt, _statusUnknown: statusUnknown = false, ...publicRepository } = acquired;
+      const { _repositoryRoot: root = null, _headOid: headOid, _readStartedAt: inspectionStartedAt, _statusUnknown: statusUnknown = false, ...publicRepository } = acquired;
       const rootMatches = input.exactRoot ? sameRoot(root, input.root) : Boolean(root && path.isAbsolute(root));
       const onBranch = input.anyBranch ? Boolean(publicRepository.branch) : publicRepository.branch === input.branch;
       // Git answered for the bound root on another branch: the working tree left the session's recorded branch.
@@ -98,7 +98,8 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
         return false;
       }
       const readAt = statusUnknown === true ? null : Number.isFinite(inspectionStartedAt) ? Math.min(readStartedAt, inspectionStartedAt) : readStartedAt;
-      repository = { ...publicRepository, historical: false, ...(Number.isFinite(readAt) && readAt !== null ? { readAt: new Date(readAt).toISOString() } : {}) };
+      repository = { ...publicRepository, historical: false, ...(/^[a-f0-9]{40}$/iu.test(headOid || "") ? { headOid } : {}),
+        ...(Number.isFinite(readAt) && readAt !== null ? { readAt: new Date(readAt).toISOString() } : {}) };
       resolvedRoot = root;
     } catch { return false; }
     let pullRequests;
@@ -117,7 +118,8 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     const value = { repository, pullRequests };
     // A read that began before the one already held does not replace it.
     if (entry.hasValue && entry.readStartedAt > readStartedAt) return value;
-    entry.value = value; entry.readStartedAt = readStartedAt; entry.repositoryRoot = resolvedRoot; entry.commitsInSession = commitsInSession;
+    entry.value = { repository, pullRequests: pullRequests?.status !== "ready" && entry.hasValue ? entry.value.pullRequests : pullRequests };
+    entry.readStartedAt = readStartedAt; entry.repositoryRoot = resolvedRoot; entry.commitsInSession = commitsInSession;
     entry.refreshedAt = refreshedAt; entry.retryAfter = null; entry.hasValue = true; entry.checked = true; entry.everAvailable = true; entry.unavailableReason = null;
     onCheck?.(entry.sessionId, { repository, pullRequests, commitsInSession, sessionCommitPaths, sessionCommitChanges, commitTimes, checkedAt: new Date(refreshedAt).toISOString(), repositoryId: input.repositoryId });
     return value;

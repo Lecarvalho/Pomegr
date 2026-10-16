@@ -55,6 +55,9 @@ and on the tasks that session is assigned to.
 
 - The latest report wins until you mark the task done. Agents may report blocked, complete, then blocked again.
 - Each completion verifies the checked conditions again. Failed or unavailable checks remain identified.
+- CI needs a finished check result for the current checkout commit and its pull request.
+- Pending, missing, or mismatched CI evidence reads **Not verified**. A verified failed check reads **Did not pass**.
+- After CI finishes, a later completion checks again. The task remains in Review until you choose **Mark done**.
 - A completion leaves the task in **Needs review**; you choose **Mark done**. See
   [Complete when](tasks-create.md#complete-when).
 - When no condition is checked, the report rests on the agent's word, not a check.
