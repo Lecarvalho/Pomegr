@@ -109,7 +109,7 @@
 .commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; }
 /* The toolbar follows its own width, which a restored window narrows before the viewport media queries notice. The filter chips keep one line; the search field gives up width first. */
 .commandSessionsToolbar { container: session-toolbar / inline-size; }
-.commandSessionsToolbar .commandToolbar { display: grid; grid-template-columns: minmax(240px, 360px) max-content minmax(0, 1fr); }
+.commandSessionsToolbar .commandToolbar { display: grid; grid-template-columns: minmax(240px, 360px) max-content minmax(max-content, 1fr); }
 .commandSessionsToolbar .commandSearch { width: 100%; }
 .commandSessionFilters { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 /* Keep filter controls above the legacy button shape and shell font resets. */
@@ -123,18 +123,18 @@
 .commandToolbarCount { margin-left: auto; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); white-space: nowrap; }
 .commandSessionsToolbar .commandToolbarCount { width: 11ch; margin: 0 var(--space-1) 0 0; line-height: inherit; text-align: right; }
 /* The count, the label, and the segments share one text baseline. */
-.commandSessionGroupBy { grid-column: 3; justify-self: end; display: flex; align-items: baseline; gap: var(--space-2); color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
+.commandSessionGroupBy { grid-column: 3; justify-self: end; margin-left: var(--space-6); display: flex; align-items: baseline; gap: var(--space-2); color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
 /* Between the phone stack and a wide window, Group by takes a row of its own so it never sits on the filter chips. */
 @container session-toolbar (max-width: 1039px) {
   .commandSessionsToolbar .commandToolbar { grid-template-columns: minmax(240px, 360px) minmax(0, 1fr); }
-  .commandSessionGroupBy { grid-column: 1 / -1; }
+  .commandSessionGroupBy { grid-column: 1 / -1; margin-left: 0; }
 }
 @media (max-width: 900px) {
   .commandSessionsToolbar .commandToolbar { grid-template-columns: minmax(0, 1fr); }
   .commandSessionFilters { width: 100%; max-width: 100%; }
   .commandSessionFilters .commandFilterChip { flex: 0 0 auto; }
   .commandSessionsToolbar .commandToolbarCount { width: 100%; text-align: left; }
-  .commandSessionGroupBy { grid-column: auto; justify-self: stretch; flex-wrap: wrap; }
+  .commandSessionGroupBy { grid-column: auto; justify-self: stretch; margin-left: 0; flex-wrap: wrap; }
 }
 /* Official chip: shared by AgentChip (.agentChip in evidence.css) and Command Center session badges. Tone modifiers recolor text (and the optional dot) only; chips stay transparent outline labels. */
 .commandChip { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; padding: 2px 7px; border: 1px solid var(--command-line); border-radius: var(--control-radius); color: var(--command-muted); background: transparent; font: 500 var(--text-caption)/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; }

@@ -14,8 +14,10 @@ describe("Sessions table width", () => {
 
   it("keeps the filter chips on one line and moves Group by by the toolbar's own width", () => {
     expect(styles).toMatch(/\.commandSessionsToolbar\s*\{\s*container:\s*session-toolbar \/ inline-size/);
-    expect(styles).toMatch(/\.commandSessionsToolbar \.commandToolbar\s*\{[^}]*grid-template-columns:\s*minmax\(240px, 360px\) max-content minmax\(0, 1fr\)/);
+    expect(styles).toMatch(/\.commandSessionsToolbar \.commandToolbar\s*\{[^}]*grid-template-columns:\s*minmax\(240px, 360px\) max-content minmax\(max-content, 1fr\)/);
     expect(styles).toMatch(/@container session-toolbar \(max-width: 1039px\)\s*\{[^@]*\.commandSessionGroupBy\s*\{\s*grid-column:\s*1 \/ -1/);
+    // Group by keeps a clear gap from the last filter chip.
+    expect(styles).toMatch(/\.commandSessionGroupBy\s*\{[^}]*grid-column:\s*3;[^}]*margin-left:\s*var\(--space-6\)/);
     expect(styles).not.toMatch(/@media \(max-width: 1240px\)\s*\{\s*\.commandSessionsToolbar/);
   });
 
