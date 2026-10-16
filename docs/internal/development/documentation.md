@@ -64,6 +64,14 @@ and update the guide and images together. Keep the caption accurate about which
 kind of data is shown. These are maintained explanatory screenshots;
 they do not replace the design-system page or preserve a temporary mockup.
 
+`agents-tab.jpg` was recaptured on 2026-10-16 from the working Agents panel in
+Pomegr 0.7.0, after correcting the toolbar's wrapping alignment. It uses the
+existing synthetic agents from `/design-system`, with both groups expanded and
+the primary agent selected. The dark capture uses a 1200 px viewport and 2x
+scale, cropped from the panel header through the inspector's Signals section.
+The JPEG contains only the panel; no session records, credentials, or personal
+paths appear. The introduction caption identifies the illustrative data.
+
 ### Context and tokens screenshot ownership
 
 The [context and tokens](../../public/concepts/context-and-tokens.md) page owns the

@@ -49,9 +49,9 @@ or group the roster, and switch between **List** and **Grid** to explore the sam
 agents in different views. [Sessions and agents](../using-pomegr/sessions-and-agents.md)
 explains each state and label.
 
-![The Agents tab in dark List view: a primary agent with 440.5K final context, eight subagents, and the selected primary agent's model, context, wall time, and tool calls on the right.](../images/introduction/agents-tab.jpg)
+![The Agents panel in dark List view, with aligned filters, expanded agent groups, and the selected primary agent's details on the right.](../images/introduction/agents-tab.jpg)
 
-*The same session's Agents tab, with the primary agent selected.*
+*Illustrative sample data in the working Agents panel, with the primary agent selected.*
 
 ## Look inside a request
 

@@ -40,6 +40,7 @@ Agent activity shows normalized roles and evidence with the existing privacy bou
 ### Controls
 
 - The controls are workflow grouping, search, status and model filters, Hide finished, and within-group sorting.
+- Search, filters, and Sort share one wrapping row, with the search field taking the remaining width.
 
 ### Intermediate widths
 
