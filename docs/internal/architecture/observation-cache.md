@@ -910,7 +910,7 @@ and Codex CLI latest-channel metadata after startup and about every six hours
 with bounded jitter. Both adapter readers use fixed unauthenticated URLs,
 redirect denial, eight-second deadlines, a 1 MiB body cap, conditional ETags,
 and Retry-After or exponential backoff. Claude's list is limited to 30 releases;
-the Codex metadata is limited to 256 asset entries and retains none of them.
+the Codex metadata is limited to 512 asset entries and retains none of them.
 The Claude parser reads the newest valid row's body within these limits and keeps
 only its excerpt. Failures retain the last valid observation. Claude Code GitHub releases prove
 latest-channel publication, not stable eligibility. The Codex reader uses the
