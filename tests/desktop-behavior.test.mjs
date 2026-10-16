@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import test from "node:test";
 
 import {
   clampWindowState,
+  startupWindowState,
   applyDesktopNativeTheme,
   applyTrayLoginToggle,
   createSerializedSettingsWriter,
@@ -14,6 +16,8 @@ import {
   installDesktopWindowLifecycle,
   installWindowBoundsGuard,
 } from "../desktop/runtime/desktop-behavior.mjs";
+import { DEFAULT_DESKTOP_SETTINGS, settingsForWindowClose } from "../desktop/runtime/settings.mjs";
+import { secureBrowserWindowOptions } from "../desktop/runtime/security-policy.mjs";
 
 test("native theme synchronization accepts only bounded values from trusted renderer events", () => {
   const nativeTheme = { themeSource: "system" };
@@ -82,6 +86,46 @@ test("off-screen window state is clamped into a current display work area", () =
     x: 2200,
     y: 0,
     maximized: false,
+  });
+});
+
+test("startup centers saved restored bounds and ignores the last maximize state", () => {
+  const displays = [
+    { workArea: { x: 0, y: 40, width: 1920, height: 1040 } },
+    { workArea: { x: -1600, y: -200, width: 1600, height: 900 } },
+  ];
+  for (const maximized of [false, true]) {
+    const saved = settingsForWindowClose({ canPersist: true }, DEFAULT_DESKTOP_SETTINGS,
+      { x: -1500, y: -150, width: 1000, height: 700 }, maximized);
+    const startup = startupWindowState(saved.window, displays);
+    assert.deepEqual(startup, { x: -1300, y: -100, width: 1000, height: 700, maximized: false });
+    assert.equal(saved.window.maximized, maximized);
+  }
+  assert.deepEqual(startupWindowState(DEFAULT_DESKTOP_SETTINGS.window, displays), {
+    x: 320, y: 160, width: 1280, height: 800, maximized: false,
+  });
+  assert.deepEqual(startupWindowState(DEFAULT_DESKTOP_SETTINGS.window, [
+    { workArea: { x: 0, y: 0, width: 640, height: 480 } },
+    { workArea: { x: 0, y: 480, width: 1920, height: 1080 } },
+  ]), { x: 0, y: 0, width: 640, height: 480, maximized: false });
+});
+
+test("startup fits smaller work areas and moves disconnected-monitor bounds onto a remaining display", () => {
+  const saved = { x: 3500, y: 0, width: 1280, height: 800, maximized: true };
+  for (const area of [
+    { x: 0, y: 30, width: 1024, height: 738 },
+    { x: -640, y: -480, width: 640, height: 480 },
+  ]) {
+    const startup = startupWindowState(saved, [{ workArea: area }]);
+    assert.deepEqual(startup, { ...area, maximized: false });
+    const options = secureBrowserWindowOptions({ preloadPath: path.resolve("desktop/runtime/preload.cjs"), windowState: startup });
+    assert.ok(options.minWidth <= area.width);
+    assert.ok(options.minHeight <= area.height);
+    assert.equal(options.resizable, undefined);
+    assert.equal(options.maximizable, undefined);
+  }
+  assert.deepEqual(startupWindowState(saved, [{ workArea: { x: 0, y: 40, width: 1920, height: 1040 } }]), {
+    x: 320, y: 160, width: 1280, height: 800, maximized: false,
   });
 });
 
@@ -357,17 +401,23 @@ test("display topology changes re-clamp a live window and listeners are removabl
   const browserScreen = new EventEmitter();
   browserScreen.getAllDisplays = () => [{ workArea: { x: 0, y: 0, width: 1024, height: 768 } }];
   const changes = [];
+  const minimums = [];
   const browserWindow = {
     isDestroyed: () => false,
     getNormalBounds: () => ({ x: 5000, y: 5000, width: 1280, height: 800 }),
     setBounds: (bounds) => changes.push(bounds),
+    setMinimumSize: (...size) => minimums.push(size),
   };
   const remove = installWindowBoundsGuard(browserScreen, browserWindow);
   browserScreen.emit("display-removed");
   assert.deepEqual(changes, [{ x: 0, y: 0, width: 1024, height: 768 }]);
+  browserScreen.getAllDisplays = () => [{ workArea: { x: -640, y: 0, width: 640, height: 480 } }];
+  browserScreen.emit("display-metrics-changed");
+  assert.deepEqual(changes[1], { x: -640, y: 0, width: 640, height: 480 });
+  assert.deepEqual(minimums, [[720, 520], [640, 480]]);
   remove();
   browserScreen.emit("display-metrics-changed");
-  assert.equal(changes.length, 1);
+  assert.equal(changes.length, 2);
 });
 
 test("a rejected tray login toggle restores the bounded menu state without rejecting", async () => {

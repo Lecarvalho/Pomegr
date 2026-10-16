@@ -67,7 +67,7 @@ import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
 import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 import {
-  clampWindowState,
+  startupWindowState,
   applyDesktopNativeTheme,
   applyTrayLoginToggle,
   createDesktopBehaviorController,
@@ -638,11 +638,10 @@ async function startDesktop() {
           webOrigin: web.origin,
           authorizationToken,
         });
-        const restoredWindow = clampWindowState(desktopSettings.window, screen.getAllDisplays());
+        const restoredWindow = startupWindowState(desktopSettings.window, screen.getAllDisplays());
         mainWindow = createSecureWindow(browserSession, restoredWindow);
         removeWindowBoundsGuard = installWindowBoundsGuard(screen, mainWindow);
         recordStage("SHELL_WINDOW_CREATED");
-        mainWindow.maximize();
         behaviorController = createDesktopBehaviorController({
           settings: desktopSettings,
           canPersist: settingsLoad.canPersist,

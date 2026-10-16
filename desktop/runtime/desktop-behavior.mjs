@@ -75,7 +75,7 @@ function centerDistanceSquared(first, second) {
   return dx * dx + dy * dy;
 }
 
-export function clampWindowState(windowState, displays) {
+function fitWindowState(windowState, displays, centered = false) {
   const source = windowState && typeof windowState === "object" ? windowState : {};
   const areas = (Array.isArray(displays) ? displays : [])
     .map((display) => display?.workArea)
@@ -87,22 +87,31 @@ export function clampWindowState(windowState, displays) {
     width: Number.isInteger(source.width) ? source.width : 1280,
     height: Number.isInteger(source.height) ? source.height : 800,
   };
-  const area = areas.reduce((best, current) => {
+  const hasSavedPosition = Number.isInteger(source.x) && Number.isInteger(source.y);
+  const area = !hasSavedPosition ? areas[0] : areas.reduce((best, current) => {
     const currentIntersection = intersectionArea(candidate, current);
     const bestIntersection = intersectionArea(candidate, best);
     if (currentIntersection !== bestIntersection) return currentIntersection > bestIntersection ? current : best;
     return centerDistanceSquared(candidate, current) < centerDistanceSquared(candidate, best) ? current : best;
   }, areas[0]);
-  const width = Math.max(720, Math.min(candidate.width, area.width));
-  const height = Math.max(520, Math.min(candidate.height, area.height));
+  const width = Math.min(area.width, Math.max(720, candidate.width));
+  const height = Math.min(area.height, Math.max(520, candidate.height));
   return {
     ...source,
     width,
     height,
-    x: Math.min(Math.max(candidate.x, area.x), area.x + Math.max(0, area.width - width)),
-    y: Math.min(Math.max(candidate.y, area.y), area.y + Math.max(0, area.height - height)),
+    x: centered ? area.x + Math.floor((area.width - width) / 2) : Math.min(Math.max(candidate.x, area.x), area.x + area.width - width),
+    y: centered ? area.y + Math.floor((area.height - height) / 2) : Math.min(Math.max(candidate.y, area.y), area.y + area.height - height),
     maximized: Boolean(source.maximized),
   };
+}
+
+export function clampWindowState(windowState, displays) {
+  return fitWindowState(windowState, displays);
+}
+
+export function startupWindowState(windowState, displays) {
+  return { ...fitWindowState(windowState, displays, true), maximized: false };
 }
 
 export function createDesktopBehaviorController(options) {
@@ -301,6 +310,7 @@ export function installWindowBoundsGuard(browserScreen, browserWindow) {
     const current = browserWindow.getNormalBounds();
     const next = clampWindowState(current, browserScreen.getAllDisplays());
     if (["x", "y", "width", "height"].every((key) => current[key] === next[key])) return false;
+    browserWindow.setMinimumSize(Math.min(720, next.width), Math.min(520, next.height));
     browserWindow.setBounds({ x: next.x, y: next.y, width: next.width, height: next.height });
     return true;
   };
