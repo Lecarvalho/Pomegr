@@ -155,8 +155,8 @@ test("the latest report wins among the started session and assigned ones while t
   assign(store, "T-1", HAND);
   assign(store, "T-1", OTHER);
   assert.deepEqual(store.blockTask({ sessionId: HAND, reason: "Needs a decision" }), { ok: true, state: "blocked" });
-  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: true, state: "blocked", results: [] });
-  assert.deepEqual(store.completeTask({ sessionId: OTHER }, () => null), { ok: true, state: "blocked", results: [] });
+  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: true, state: "needs_review", results: [], ownerHold: true });
+  assert.deepEqual(store.completeTask({ sessionId: OTHER }, () => null), { ok: true, state: "needs_review", results: [], ownerHold: true });
   assert.equal(task(store, "T-1").report.blockReason, null);
 });
 

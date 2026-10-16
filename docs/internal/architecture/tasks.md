@@ -451,7 +451,7 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 - **A card already in the role's column keeps its place.** The state still changes.
 - **Blocked by agent and Stalled move nothing.** The card stays where it is, normally
   the In progress column, and its chip and the Queue banner say that it needs the user.
-  These two are the outcomes that hold the queue. A card in Review holds nothing (see
+  These outcomes hold the queue. A card in Review also retains an earlier block's owner hold (see
   [Stop on trouble](#queue)).
 - **A move by hand does not opt a card out.** The user may drag a card anywhere at any
   time, except a card that waits in the queue (see
@@ -995,21 +995,21 @@ its parallel group. Every start first passes the [start gates](#start-gates).
     confirmed live again (see [States](#states)), the task leaves Stalled and the queue
     the stall held is freed by the same `releaseQueue` rule a resolution uses. A block
     from that session keeps holding the queue, now as Blocked by agent.
-  - **Review does not stop the queue.** Decided for GitHub issue #135 (2026-10-10); it
+  - **Review alone does not stop the queue.** Decided for GitHub issue #135 (2026-10-10); it
     replaces the earlier rule that a failed check blocks the queue. A task that needs
     review is finished work: its card waits in the Review column, the queue stays
     `running`, and it goes on to the next waiting card once every member of the task's
     group is in Review or Done. The owner resolves it with the same two actions, at any time. When the work that
     follows must not start, the agent's path is `block_task`, whose card stays in In
-    progress and holds the queue.
+    progress and holds the queue. A later completion moves that card to Review but retains its separate owner hold.
   - A store written before this rule may hold a queue that is `blocked` at a task that
-    needs review. When the monitor opens the store, each such queue names the
-    lowest-numbered stalled or blocked task instead, or runs again when there is none
+    needs review without a separate block-hold marker. When the monitor opens the store, each such queue names the
+    lowest-numbered stalled, blocked, or separately held task instead, or runs again when there is none
     (`releaseQueue`, the rule a resolution uses).
   - A block or a stall changes the stored status only of a queue that is `running`: it becomes
     `blocked`, and a queue that is already blocked keeps its first blocker. An `idle` or
     `paused` queue keeps its status; turning the queue on then computes `blocked` when any
-    task is blocked or stalled.
+    task is blocked, stalled, or in Review with an unresolved earlier block.
   - `resolve_done` sets such a task to Done and keeps its report and session link.
     `resolve_requeue` puts it back in the queue as Queued, its card last in Ready, and clears its
     report, session link, and any dispatch, so a new session can be started for it and
@@ -1330,15 +1330,15 @@ installed plugin from before the rename sends; a body with both names is `invali
 | Validated with the user | Not verified; the agent validates the work with the user before it reports |
 | Own condition | Not verified; the agent judges it in its report |
 
-- **An unblocked completion sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
+- **A completion sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
   rule that a report whose conditions all passed set Done). Whatever the results, with or
-  without an attention line, an unblocked card goes to Review with each condition's result, and
+  without an attention line, the card goes to Review with each condition's result, and
   only the owner sets Done, with Mark done (`resolve_done`). The agent can call
   `block_task` with a bounded reason; the state becomes Blocked by agent.
 - **Attention line** (GitHub issue #135, 2026-10-10). `complete_task` takes one optional
   input, `attention`: one line of at most 200 characters that names what in the finished
   work needs the owner's attention, such as a choice the agent made for them. It does
-  not decide the state: a completion needs review, or stays Blocked under an existing owner hold. The
+  not decide the state: every completion needs review, including one with an earlier owner hold. The
   checks are verified and stored either way. The line is agent-authored text, bounded
   and validated like the block reason. The store keeps it in its `meta` table under
   `task_attention:<repositoryId>:<taskId>` (`server/tasks/task-attention.mjs`), so the
@@ -1545,13 +1545,16 @@ installed plugin from before the rename sends; a body with both names is `invali
   Identical reports with identical results change nothing, including timestamps and history.
   A repeated completion may record different results when the facts change.
 - **Reporting and owner holds are separate.** A block sets Blocked by agent and holds a running queue.
-  A later completion replaces the current report and results but keeps the task Blocked.
-  It moves no card, releases no queue, starts no session, and never sets Done.
+  A later completion replaces the current report and results, sets Needs review, and moves the card to Review.
+  It releases no queue, starts no session, and never sets Done.
+  The store retains one private `task_block_hold:<repositoryId>:<taskId>` marker in `meta`, independent of task state.
+  Mark done, Requeue, and deletion clear that marker; queue off/on and monitor restart preserve it.
+  The queue selects the lowest-numbered remaining held task when another blocker resolves.
   The answer names the remaining owner action: Mark done or Requeue.
   These actions retain their existing queue-release rules in [Queue](#queue).
   A queue that is off or paused keeps its status throughout reporting.
-  Plugin 0.9.14 recognizes completion answers that retain a block and names the required owner action.
-  An older plugin may call that successful answer unavailable; it cannot undo the stored report.
+  Plugin 0.9.14 recognizes `ownerHold: true` on completion answers and names the required owner action.
+  An older plugin omits that hold from its feedback; the board still shows Queue blocked.
   An older monitor still refuses replacement reports. Update the monitor and plugin together for this recovery.
 - **Owner decisions remain final.** Done refuses reports with `already_reported`.
   Requeue clears the started session's link, so its later report answers `not_found`.
@@ -1571,7 +1574,7 @@ installed plugin from before the rename sends; a body with both names is `invali
   assigned to. A session with more than one task names the one it reports with
   `taskId`, which must be one of its own tasks. The answer is
   `{ schemaVersion: 1, ok: true, state, results }` (`state` is `needs_review` or
-  `blocked`; `results` only for a completion, including one that retains a block) or `{ schemaVersion: 1, ok: false, reason }`
+  `blocked`; `results` only for a completion, with optional `ownerHold: true` for an unresolved earlier block) or `{ schemaVersion: 1, ok: false, reason }`
   with `invalid` (400), `not_found` (404, the session has no task, or the named task is
   not one of its tasks), `task_required` (409, the session has more than one task and
   named none), `already_reported` (409), or `unavailable` (503). `stalled` (409) was the
@@ -2665,9 +2668,10 @@ serves no other client.
 
 ## Privacy
 
+- The block-hold marker stays only in the task store. It is served indirectly through existing queue status and `blockedBy`, never as task content.
 - Superseded report history stays only in the task store, under the bounded retention in [Completion](#completion).
 - History never enters an API, IPC, agent tool answer, browser, session domain, catalog, checkpoint, report, log, notification, or diagnostics.
-- Completion answers may carry `state: "blocked"` with fixed per-condition results when an owner hold remains.
+- Completion answers carry `state: "needs_review"`, fixed per-condition results, and optional `ownerHold: true` for an earlier block.
 - That answer carries no prior report, block reason, attention line, session identity, or repository fact.
 
 - A paired device may send queue on and off through the existing authenticated task action route. Only the desktop queue runner launches sessions.

@@ -99,10 +99,10 @@ task window says "The session has not reported. Mark done and Requeue do not sto
 ## Review a report
 
 Every completion needs your review, whether its conditions passed or not: only you mark a task done.
-A completion after a block keeps the task **Blocked by agent** and retains the queue hold.
+A completion after a block moves the task to **Review** and retains the queue hold.
 Choose **Mark done** or **Requeue task** to resolve it.
-A task that needs review does not stop the queue. Its
-work is finished: the card waits in **Review**, and the queue goes on to the next
+A task in review without an earlier block does not stop the queue. Its
+card waits in **Review**, and the queue goes on to the next
 waiting card once every task of its group is in **Review** or **Done**. Open the task
 when you have time and choose **Mark done** or **Requeue task**. If the agent asked for
 your attention, the task window shows its line under **Complete when**, in the agent's

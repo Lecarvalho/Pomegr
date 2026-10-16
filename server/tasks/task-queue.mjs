@@ -61,7 +61,7 @@ export function queueWhenTurnedOn(tasks) {
   let blockedBy = null;
   let lowest = Number.POSITIVE_INFINITY;
   for (const task of Array.isArray(tasks) ? tasks : []) {
-    const number = isRecord(task) && UNRESOLVED_STATES.has(task.state) ? taskNumber(task.id) : undefined;
+    const number = isRecord(task) && (UNRESOLVED_STATES.has(task.state) || task.held === true) ? taskNumber(task.id) : undefined;
     if (number !== undefined && number < lowest) {
       lowest = number;
       blockedBy = task.id;

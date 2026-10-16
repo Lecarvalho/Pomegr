@@ -29,12 +29,12 @@ function setup({ answer }) {
 
 test("complete_task gives truthful fixed feedback when reporting completion retains an owner hold", async () => {
   for (const results of [[], [{ check: "tree_clean", passed: false }, { check: "ci_passed", passed: false, unavailable: true }]]) {
-    const { tools } = setup({ answer: { ok: true, state: "blocked", results, reason: SENTINEL, history: SENTINEL } });
+    const { tools } = setup({ answer: { ok: true, state: "needs_review", ownerHold: true, results, reason: SENTINEL, history: SENTINEL } });
     const out = await tools.complete_task.handler({});
     assert.equal(out.isError, undefined);
     assert.match(out.content[0].text, /Task reported complete/u);
-    assert.match(out.content[0].text, /stays Blocked by agent until the user chooses Mark done or Requeue/u);
-    assert.match(out.content[0].text, /queue hold is unchanged/u);
+    assert.match(out.content[0].text, /earlier block still needs the user to choose Mark done or Requeue/u);
+    assert.match(out.content[0].text, /queue state is unchanged/u);
     if (results.length) {
       assert.match(out.content[0].text, /conditions did not pass: Working tree clean/u);
       assert.match(out.content[0].text, /could not verify: CI passed/u);
@@ -69,7 +69,7 @@ for (const provider of ["claude", "codex"]) {
     assert.equal((await call("block_task", { reason: "Owner needed" })).isError, undefined);
     const recovered = await call("complete_task");
     assert.equal(recovered.isError, undefined);
-    assert.match(recovered.content[0].text, /stays Blocked by agent/u);
+    assert.match(recovered.content[0].text, /task is in Review/u);
     assert.equal((await call("block_task", { reason: "New issue" })).isError, undefined);
     assert.equal(store.readBoard(repositoryId).tasks[0].report.blockReason, "New issue");
   });

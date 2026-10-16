@@ -134,9 +134,9 @@ test("the prompt is fixed: opening sentence, id, text, labels, own condition, to
     "Pull request merged", "CI passed", "Validated with the user", "docs updated", "complete_task", "block_task"]) {
     assert.ok(prompt.includes(part), part);
   }
-  assert.ok(prompt.endsWith("When the task is complete, call the Pomegr MCP tool complete_task. It puts an unblocked task in Review for the owner. "
+  assert.ok(prompt.endsWith("When the task is complete, call the Pomegr MCP tool complete_task. It puts the task in Review for the owner. "
     + "It takes two optional fields: attention, one line for what needs the owner's attention, and task_id, only when you have more than one task. "
-    + "A finished task with nothing to flag is reported with no field. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason. The latest report wins until the owner marks the task done. Reporting completion after a block runs the checks but keeps the task blocked until the owner chooses Mark done or Requeue."));
+    + "A finished task with nothing to flag is reported with no field. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason. The latest report wins until the owner marks the task done. Reporting completion after a block runs the checks and moves the task to Review, but keeps the queue hold until the owner chooses Mark done or Requeue."));
   const empty = buildTaskPrompt({ id: "T-8", text: "x", completeWhen: { checks: [], own: null } });
   assert.ok(empty.includes("No condition is checked"));
   assert.ok(!empty.includes("Pull request open"));

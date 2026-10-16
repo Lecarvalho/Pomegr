@@ -110,7 +110,7 @@ for (const session of [SESSION, OTHER_SESSION]) {
     const original = taskOf(env).report;
     env.clock.now += 100;
     const response = await complete(env, session, ATTENTION);
-    assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "blocked", results: [
+    assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", ownerHold: true, results: [
       { check: "tree_clean", passed: false }, { check: "ci_passed", passed: false, unavailable: true },
     ] });
     assert.deepEqual(env.readCalls, [session]);
@@ -123,7 +123,8 @@ for (const session of [SESSION, OTHER_SESSION]) {
     await complete(env, session, ATTENTION);
     assert.deepEqual(taskOf(env), before, "a duplicate with unchanged checks changes nothing");
     assert.deepEqual(historyOf(env), [original]);
-    assert.equal(taskOf(env).state, "blocked");
+    assert.equal(taskOf(env).state, "needs_review");
+    assert.equal(env.store.readBoard(REPOSITORY_ID).columns.find((column) => column.id === taskOf(env).columnId).role, "review");
     assert.deepEqual(historyOf(env), [original]);
     assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
     assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "blocked");
@@ -132,7 +133,7 @@ for (const session of [SESSION, OTHER_SESSION]) {
     assert.equal((await block(env, "Owner is away", session)).status, 200);
     assert.equal(taskOf(env).report.blockReason, "Owner is away");
     assert.equal(historyOf(env)[1].attention, ATTENTION);
-    assert.equal((await complete(env, session)).json.state, "blocked");
+    assert.equal((await complete(env, session)).json.state, "needs_review");
     assert.equal(taskOf(env).report.blockReason, null);
     assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
     refused(await block(env, "Too late", session), 409, "already_reported");
@@ -163,13 +164,37 @@ test("replacement completion rechecks changed facts; Requeue retains history and
   assert.equal(taskOf(env).report, null);
 });
 
+test("a review task's separate block hold survives off/on, other resolutions, and reopening until owner recovery", async (context) => {
+  const env = await setup(context);
+  startedTask(env);
+  startedTask(env, { session: OTHER_SESSION });
+  setQueue(env, "running");
+  env.store.blockTask({ sessionId: SESSION, reason: REASON });
+  env.store.blockTask({ sessionId: OTHER_SESSION, reason: REASON });
+  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: true, state: "needs_review", results: [], ownerHold: true });
+  assert.equal(apply(env, "resolve_done", { id: "T-2" }).ok, true);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.blockedBy, "T-1");
+  apply(env, "queue_settings", { on: false });
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "idle");
+  apply(env, "queue_settings", { on: true });
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "blocked");
+  env.store.close();
+  env.store = openTaskStore({ directory: env.directory });
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "blocked");
+  assert.equal(taskOf(env).state, "needs_review");
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  assert.equal(apply(env, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "running");
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).error, "not_found");
+});
+
 test("owner resolution and a new block during facts resolution cannot be undone by a completion", async (context) => {
   const env = await setup(context);
   startedTask(env, { checks: ["tree_clean"] });
   assert.equal(env.store.completeTask({ sessionId: SESSION }, () => {
     env.store.blockTask({ sessionId: SESSION, reason: REASON });
     return PASSING;
-  }).state, "blocked");
+  }).state, "needs_review");
   assert.equal(taskOf(env).report.blockReason, null);
   assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => {
     apply(env, "resolve_done", { id: "T-1" });
@@ -389,7 +414,7 @@ test("the session Pomegr started still reports a task Pomegr stalled and may upd
   // The report shows that the end Pomegr confirmed was wrong.
   assert.equal((await complete(env)).json.state, "needs_review");
   assert.equal((await block(env)).json.state, "blocked");
-  assert.equal((await complete(env)).json.state, "blocked");
+  assert.equal((await complete(env)).json.state, "needs_review");
 });
 
 test("the latest report wins, identical retries change nothing, and a block remains owner-controlled", async (context) => {
@@ -400,7 +425,7 @@ test("the latest report wins, identical retries change nothing, and a block rema
   assert.equal((await complete(env)).json.state, "needs_review");
   assert.deepEqual(taskOf(env), before);
   assert.equal((await block(env)).json.state, "blocked");
-  assert.equal((await complete(env)).json.state, "blocked");
+  assert.equal((await complete(env)).json.state, "needs_review");
   assert.equal(taskOf(env).report.blockReason, null);
   assert.equal((await block(env, "another reason")).json.state, "blocked");
   assert.equal(taskOf(env).report.blockReason, "another reason");

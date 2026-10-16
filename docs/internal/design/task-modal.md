@@ -302,7 +302,7 @@ A card's title opens the task modal for one stored task.
 - After a dirty-worktree start, the top row also holds **Open folder**.
 - For a task that needs the user, the top row also holds the Secondary **Mark done and resume queue** and **Requeue task**.
 - A task needs the user in the states Needs review, Blocked by agent, and Stalled.
-- A task that needs review holds no queue, so its first action reads **Mark done**.
+- A task that needs review reads **Mark done**, or **Mark done and resume queue** when the queue still names its earlier block.
 - A linked task that has not reported offers **Mark done** and **Requeue task**.
 - A linked task that has not reported shows a line that neither action stops the session.
 - A **Mark done** that works closes the modal, under either of its names.

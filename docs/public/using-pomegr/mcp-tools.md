@@ -59,7 +59,7 @@ it; they are the only tools that change something you made or that Pomegr manage
 | `remove_task` | Deletes a task that the same session added, if the task has not started. |
 | `assign_task` | Assigns the session to a task of the board that is not done, so the session can report it. It changes no state and starts nothing. |
 | `unassign_task` | Removes the session's own assignment from a task. |
-| `complete_task` | Reports that a task of the session is complete. The task goes to **Review**, or stays **Blocked by agent** if an earlier block remains. A plain completion takes no input. The optional `attention` field gives the owner one line to look at. |
+| `complete_task` | Reports that a task of the session is complete. The task goes to **Review**. An earlier block still holds the queue until you resolve it. A plain completion takes no input. The optional `attention` field gives the owner one line to look at. |
 | `block_task` | Reports that the agent cannot continue a task, with a short reason. |
 | `get_feature` | Reads the title, description, and app version of one feature. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. |

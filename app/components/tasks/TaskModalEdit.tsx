@@ -220,7 +220,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {folderOffered && <button type="button" className="commandSecondaryAction" disabled={start.folder.opening} onClick={() => void start.folder.open()}>Open folder</button>}
         {separateOffered && <button type="button" className="commandSecondaryAction" onClick={() => void start.separate.run()}>Start in separate worktree</button>}
         {unresolved && <>
-          <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(true)}>{task.state === "needs_review" ? "Mark done" : "Mark done and resume queue"}</button>
+          <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(true)}>{task.state === "needs_review" && !(board.queue?.status === "blocked" && board.queue.blockedBy === task.id) ? "Mark done" : "Mark done and resume queue"}</button>
           <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>
         </>}
         {awaitingReport && <>

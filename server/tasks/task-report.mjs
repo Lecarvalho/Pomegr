@@ -9,6 +9,7 @@ import { writeTaskGroup } from "./task-groups.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
 import { archiveTaskReport } from "./task-report-history.mjs";
+import { deleteTaskBlockHold, holdTaskBlock, readTaskBlockHolds } from "./task-block-holds.mjs";
 import { IN_FLIGHT_STATES, isTaskId, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "task_required", "already_reported", "stalled", "unavailable"]);
@@ -61,14 +62,18 @@ export function blockQueue(database, repositoryId, taskId) {
 export function releaseQueue(database, repositoryId) {
   const repository = preparedStatement(database, "SELECT queue_status FROM repositories WHERE repository_id = ?").get(repositoryId);
   if (repository?.queue_status !== "blocked") return;
-  const next = preparedStatement(database, `SELECT MIN(number) AS number FROM tasks WHERE repository_id = ? AND state IN (${QUEUE_HOLDING_STATES.map(() => "?").join(", ")})`)
-    .get(repositoryId, ...QUEUE_HOLDING_STATES);
-  const blocker = next?.number === null || next?.number === undefined ? undefined : taskIdFromNumber(Number(next.number));
+  const holds = readTaskBlockHolds(database, repositoryId);
+  const next = preparedStatement(database, "SELECT number, state FROM tasks WHERE repository_id = ? ORDER BY number")
+    .all(repositoryId).find((row) => QUEUE_HOLDING_STATES.includes(row.state)
+      || (row.state === "needs_review" && holds.has(taskIdFromNumber(Number(row.number)))));
+  const blocker = next === undefined ? undefined : taskIdFromNumber(Number(next.number));
   if (blocker) preparedStatement(database, "UPDATE repositories SET queue_blocked_by = ? WHERE repository_id = ?").run(blocker, repositoryId);
   else preparedStatement(database, "UPDATE repositories SET queue_status = 'running', queue_blocked_by = NULL WHERE repository_id = ?").run(repositoryId);
 }
 
 function storeReport(database, row, { state, at, results, blockReason, attention = null }) {
+  // Also captures a block recorded by an older monitor, before separate holds existed.
+  if (row.state === "blocked" || state === "blocked") holdTaskBlock(database, row.repository_id, row.number);
   const previous = normalizeStoredTask(row)?.report;
   const previousAttention = readTaskAttention(database, row.repository_id, Number(row.number));
   // Identical retries with identical check results have no additional effect.
@@ -99,15 +104,16 @@ export function reportableChecks({ database, sessionId, taskId }) {
 // Stores a report on the task the earlier read chose, if it is still that session's task and still takes a report.
 function storeFresh({ database, transaction, payload, row }, report) {
   let fresh = null;
-  let state = report.state;
+  const state = report.state;
+  let ownerHold = false;
   const stored = transaction(() => {
     fresh = sessionRows(database, payload.sessionId).find((entry) => sameTask(entry, row)) ?? null;
     if (fresh === null || !reportable(fresh)) return false;
-    // Reporting cannot release an existing block, even if facts resolution changed the task.
-    if (fresh.state === "blocked") state = "blocked";
-    return storeReport(database, fresh, { ...report, state });
+    const written = storeReport(database, fresh, report);
+    ownerHold = readTaskBlockHolds(database, fresh.repository_id).has(taskIdFromNumber(Number(fresh.number)));
+    return written;
   });
-  return stored ? { state } : { error: fresh === null ? "not_found" : REFUSED };
+  return stored ? { state, ownerHold } : { error: fresh === null ? "not_found" : REFUSED };
 }
 
 // `complete`: the bound session reports one of its tasks complete.
@@ -126,7 +132,7 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   const results = verifyChecks(task.completeWhen.checks, facts);
   const state = "needs_review";
   const stored = storeFresh({ database, transaction, payload, row }, { state, at: now(), results, blockReason: null, attention });
-  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state, results };
+  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state, results, ...(stored.ownerHold ? { ownerHold: true } : {}) };
 }
 
 // `block`: the bound session reports it cannot continue one of its tasks, with a one-line reason of at most 200 characters.
@@ -158,6 +164,7 @@ export function resolveDone({ database, repositoryId, now }, payload) {
   preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, target.number);
   moveTaskToRole(database, repositoryId, target.number, "done");
+  deleteTaskBlockHold(database, repositoryId, target.number);
   requestWorktreeCleanup(database, repositoryId, target.number);
   releaseQueue(database, repositoryId);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(target.number));
@@ -178,6 +185,7 @@ export function resolveRequeue({ database, repositoryId, now }, payload) {
     report_at = NULL, report_results = NULL, report_block_reason = NULL, updated_at = ? WHERE repository_id = ? AND number = ?`)
     .run(Date.now(), repositoryId, target.number);
   deleteTaskAttention(database, repositoryId, target.number);
+  deleteTaskBlockHold(database, repositoryId, target.number);
   // A requeued task is an ordinary card again: it left its parallel group when it started over.
   writeTaskGroup(database, repositoryId, target.number, null);
   releaseQueue(database, repositoryId);
