@@ -21,6 +21,13 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - Rows stay neutral within a cache lifetime.
 - The toolbar ends with the **Group by** control.
 - On phone, the **Group by** control stretches to the full toolbar width.
+- The table never scrolls sideways. The width of its panel picks one of three presentations.
+
+| Panel width | Presentation |
+| --- | --- |
+| 1380px and wider, or 1180px and wider without the Task column | Every column, with Last activity in its own column. |
+| Narrower, down to 1000px | Last activity moves under the session title as its compact line. The fixed columns narrow, and the title wraps. |
+| Below 1000px | Each session is a stacked row with labelled fields, as on phone. |
 
 ### Group by
 

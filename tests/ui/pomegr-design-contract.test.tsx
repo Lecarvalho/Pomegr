@@ -134,11 +134,24 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandSidebarLimit\.critical > i > b\s*\{\s*background:\s*var\(--command-error\);/);
     expect(styles).toMatch(/\.commandSessionColActivity\s*\{\s*width:\s*280px/);
     expect(styles).toMatch(/\.commandTableActivityLabel\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTableActivityColumn\s*\{\s*display:\s*none/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTableActivityCompact\s*\{[^}]*display:\s*flex/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable\s*\{[^}]*min-width:\s*0;[^}]*display:\s*block;[^}]*table-layout:\s*auto/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
+    // The session list fits its panel at every width, so a restored desktop window never scrolls it sideways (T-149).
+    expect(styles).not.toMatch(/\.commandSessionTable[^{]*\{[^}]*min-width:\s*\d{4}px/);
+    expect(styles).toMatch(/\.commandTableWrap:has\(> \.commandSessionTable\)\s*\{\s*container:\s*session-table \/ inline-size/);
+    const sessionTier = (width: number) => styles.match(new RegExp(`@container session-table \\(max-width: ${width}px\\) \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
+    for (const [width, scope] of [[1379, ".commandSessionTable:has(.commandSessionColTask)"], [1179, ".commandSessionTable"]] as const) {
+      const tier = sessionTier(width);
+      // A group header spans every column, so Last activity collapses to zero width instead of dropping its cells.
+      expect(tier).toContain(`${scope} .commandSessionColActivity { width: 0; }`);
+      expect(tier).toContain(`${scope} .commandTableActivityColumn > * { display: none; }`);
+      expect(tier).toContain(`${scope} .commandTableActivity.agentChip.commandTableActivityCompact { display: flex; }`);
+      expect(tier).not.toMatch(/colgroup|\.commandTableActivityColumn \{ display: none/);
+    }
+    const stacked = sessionTier(999);
+    expect(stacked).toMatch(/\.commandTableActivityColumn\s*\{\s*display:\s*none/);
+    expect(stacked).toMatch(/\.commandTableActivityCompact\s*\{[^}]*display:\s*flex/);
+    expect(stacked).toMatch(/\.commandSessionTable\s*\{[^}]*display:\s*block;[^}]*table-layout:\s*auto/);
+    expect(stacked).toMatch(/\.commandSessionTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
+    expect(stacked).toMatch(/\.commandSessionTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
     expect(styles).toMatch(/\.pullRequestTitle em, \.branchComparison\s*\{[^}]*font-size:\s*var\(--text-xs\)/);
     expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip, \.commandChip\), input, select\)\s*\{\s*font:\s*inherit/);
     expect(styles).toMatch(/--popover:\s*var\(--color-raised\)/);
