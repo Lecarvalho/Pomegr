@@ -351,7 +351,7 @@ test("complete_task reports the state and names only the conditions Pomegr could
     { check: "pr_open", passed: false }, { check: "tree_clean", passed: true }, { check: "ci_passed", passed: false, unavailable: true }, { check: "made_up", passed: false },
   ] } });
   assert.equal((await review.tools.complete_task.handler({})).content[0].text,
-    "Task reported complete, but these conditions did not pass: Pull request open; and Pomegr could not verify: CI passed (it had no current evidence, which does not mean the condition failed). The task now needs the user's review.");
+    "Task reported complete, but these conditions did not pass: Pull request open; and Pomegr could not verify: CI passed (it had no current evidence, which does not mean the condition failed). CI needs a finished check result for this checkout's current commit; pending, missing, or mismatched evidence cannot verify it. The task now needs the user's review.");
 
   // The attention line is the only thing the tool adds to the body, and Review is then what the agent asked for.
   const noted = setup({ answer: { ok: true, state: "needs_review", results: [{ check: "pr_open", passed: true }] } });

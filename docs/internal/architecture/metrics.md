@@ -862,6 +862,9 @@ Current-window correlation considers bounded live and recently updated completed
 
 ## Git state
 
+Task completion uses a fresh, exact-revision CI read instead of command timestamps when the enclosing code cell still runs.
+The waiting board retains its timestamp heuristic. See [Completion](tasks.md#completion) for the revision match and unavailable evidence rules.
+
 Codex repository attribution follows one provider-neutral rule (approved by the product
 owner on 2026-09-27; see `server/normalize/session-identity.mjs`): the launch or recorded cwd
 names the project when it resolves to a recognized Git repository, and successful

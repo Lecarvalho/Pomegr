@@ -15,6 +15,7 @@ const ROOT = "C:\\synthetic\\checkout";
 const LAUNCH_BRANCH = "tasks/T-62";
 const TASK_BRANCH = "tasks/T-64";
 const PULL_URL = "https://github.com/PomegrHQ/pomegr/pull/197";
+const HEAD_OID = "b".repeat(40);
 const iso = (milliseconds) => new Date(milliseconds).toISOString();
 
 const READ_AT = Object.freeze({ tree: 2000, branch: 2000, pullRequests: 2000, ci: 2000 });
@@ -64,11 +65,11 @@ function boundSession({ branch = TASK_BRANCH, root = ROOT, files = [], pulls = "
   const ghCalls = [];
   const rollup = { passed: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }], pending: [{ __typename: "CheckRun", status: "IN_PROGRESS" }] };
   const enrichment = createSessionRepositoryEnrichment({
-    gitReader: async () => ({ available: true, branch, files, isMain: false, commits: [], _repositoryRoot: root,
+    gitReader: async () => ({ available: true, branch, files, isMain: false, commits: [], _repositoryRoot: root, _headOid: HEAD_OID,
       comparison: { branch: "origin/main", kind: "base", ahead: 1, behind: 0, integrated: false }, remote: { status: "ready", checkedAt: iso(Date.now()) } }),
     pullRequestReader: (creations, options) => readPullRequests(creations, { ...options, ghRunner: async (cwd, args) => {
       ghCalls.push(args);
-      return JSON.stringify(pulls === "none" ? [] : [{ number: 197, state: "OPEN", url: PULL_URL, headRefName: TASK_BRANCH, statusCheckRollup: rollup[pulls] }]);
+      return JSON.stringify(pulls === "none" ? [] : [{ number: 197, state: "OPEN", url: PULL_URL, headRefName: TASK_BRANCH, headRefOid: HEAD_OID, statusCheckRollup: rollup[pulls] }]);
     } }),
     now: Date.now,
     cacheMs: 0,
@@ -112,11 +113,11 @@ test("a report from a session that left its launch branch is judged on the branc
 test("that read reports a verified failure as failed", async () => {
   const dirty = boundSession({ files: [{ status: "modified", path: "src/a.mjs" }], pulls: "pending" });
   const pending = verifyChecks(REPORTED, await readTaskCheckFacts(SESSION, { observationStore: committed((await dirty.settle()).value), readNow: dirty.enrichment.readNow }));
-  assert.deepEqual(pending, [{ check: "pr_open", passed: true }, FAILED("tree_clean"), FAILED("ci_passed")]);
+  assert.deepEqual(pending, [{ check: "pr_open", passed: true }, FAILED("tree_clean"), UNAVAILABLE("ci_passed")]);
 
   const none = boundSession({ pulls: "none" });
   const absent = verifyChecks(REPORTED, await readTaskCheckFacts(SESSION, { observationStore: committed((await none.settle()).value), readNow: none.enrichment.readNow }));
-  assert.deepEqual(absent, [FAILED("pr_open"), { check: "tree_clean", passed: true }, FAILED("ci_passed")]);
+  assert.deepEqual(absent, [FAILED("pr_open"), { check: "tree_clean", passed: true }, UNAVAILABLE("ci_passed")]);
 });
 
 test("a read that Git answers for another checkout verifies nothing", async () => {

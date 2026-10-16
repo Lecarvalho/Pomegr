@@ -4,7 +4,7 @@ const MAX_PULL_REQUESTS = 8;
 const CACHE_TTL_MS = 60_000;
 const GH_TIMEOUT_MS = 6_000;
 const GITHUB_PULL_REQUEST_URL = /https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})\/pull\/(\d{1,10})(?![A-Za-z0-9/?#])/g;
-const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt";
+const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt,headRefOid";
 // Asked for with the metadata when gh can read it; a gh that cannot answers the metadata alone.
 const GH_CHECK_FIELD = "statusCheckRollup";
 const MAX_CHECK_ENTRIES = 200;
@@ -100,17 +100,20 @@ function recordCheckStatus(url, value, checkedAt) {
   const parsed = Date.parse(checkedAt);
   const readAt = Number.isFinite(parsed) ? parsed : Date.now();
   const held = checkStatuses.get(url);
-  if (status !== null && held && held.readAt > readAt) return;
+  const headOid = typeof value?.headRefOid === "string" && /^[a-f0-9]{40}$/iu.test(value.headRefOid) ? value.headRefOid : null;
+  const read = { url, status, readAt, headOid };
+  // Keep the last known-good observation. The caller's snapshot still records an unknown current read.
+  if (status === null || held && held.readAt > readAt) return read;
   checkStatuses.delete(url);
-  if (status === null) return;
-  checkStatuses.set(url, { status, readAt });
+  checkStatuses.set(url, { status, readAt, headOid });
   if (checkStatuses.size > MAX_CHECK_STATUSES) checkStatuses.delete(checkStatuses.keys().next().value);
+  return read;
 }
 
-/** @param {unknown} url @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number } | null} */
+/** @param {unknown} url @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number, headOid: string | null } | null} */
 export function pullRequestCheckRead(url) {
   const held = typeof url === "string" ? checkStatuses.get(url) : undefined;
-  return held ? { status: held.status, readAt: held.readAt } : null;
+  return held ? { ...held } : null;
 }
 
 async function readGhJson(ghRunner, cwd, args) {
@@ -148,7 +151,11 @@ async function cached(cache, key, loader, fresh = false) {
   const startedAt = new Date().toISOString();
   const pending = loader().then((loaded) => {
     const value = { loaded, checkedAt: startedAt };
-    cache.set(key, { timestamp: Date.now(), value, pending: null });
+    if (cache.get(key)?.pending === pending) {
+      cache.set(key, loaded === null
+        ? { timestamp: previous?.timestamp || 0, value: previous?.value || null, pending: null }
+        : { timestamp: Date.now(), value, pending: null });
+    }
     return value;
   });
   cache.set(key, { timestamp: previous?.timestamp || 0, value: previous?.value || null, pending });
@@ -200,6 +207,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
   const branchResult = options.historical ? null : await pullRequestsForBranch(options.cwd, options.branch, ghRunner, fresh);
   const branchValues = branchResult?.loaded ?? null;
   const itemsByUrl = new Map();
+  const checkReads = new Map();
   let queried = transcriptUrls.length > 0;
   let available = metadata.some(({ result }) => result.loaded !== null);
 
@@ -207,7 +215,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
     const item = normalizePullRequest(result.loaded || {}, "session", url);
     if (!item) continue;
     itemsByUrl.set(item.url, item);
-    if (result.loaded !== null) recordCheckStatus(item.url, result.loaded, result.checkedAt);
+    checkReads.set(item.url, recordCheckStatus(item.url, result.loaded, result.checkedAt));
   }
   if (branchValues !== null) {
     queried = true;
@@ -216,7 +224,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
       const item = normalizePullRequest(value, "branch");
       if (!item) continue;
       if (!itemsByUrl.has(item.url)) itemsByUrl.set(item.url, item);
-      recordCheckStatus(item.url, value, branchResult.checkedAt);
+      checkReads.set(item.url, recordCheckStatus(item.url, value, branchResult.checkedAt));
     }
   }
 
@@ -224,11 +232,14 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
     ? [...metadata.filter(({ result }) => result.loaded !== null).map(({ result }) => result.checkedAt), branchValues !== null ? branchResult.checkedAt : null]
       .filter(Boolean).sort()
     : [];
+  const items = [...itemsByUrl.values()].slice(0, MAX_PULL_REQUESTS);
   return {
     status: !queried || available ? "ready" : "unavailable",
     checkedAt: reads.at(-1) || null,
     // Monitor-private: the complete-when rule judges the block by this time.
     readAt: reads[0] || null,
-    items: [...itemsByUrl.values()].slice(0, MAX_PULL_REQUESTS),
+    // Monitor-private, bound to this exact response rather than a later URL-cache observation.
+    checkReads: items.map((item) => checkReads.get(item.url)),
+    items,
   };
 }

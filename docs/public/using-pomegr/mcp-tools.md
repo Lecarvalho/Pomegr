@@ -71,6 +71,10 @@ in a session that is assigned to a task. A session with more than one task names
 task with `task_id`. The latest report wins until you mark the task done. A later completion keeps an existing block until you resolve it. `assign_task` and `unassign_task`
 need plugin 0.9.8 or later. `get_task` and `list_tasks` need plugin 0.9.13 or later.
 
+Completion checks CI for the checkout's exact commit and matching pull request.
+Pending, missing, or mismatched evidence stays unavailable; it does not mean CI failed.
+After CI finishes, a later completion checks again. Only you mark the task done.
+
 `runs_after` on `add_task` and `update_task` needs plugin 0.9.12 or later. It takes up to
 8 task IDs of the same board, such as `T-12`. The task never starts until each of them
 is **Done** or deleted, as with [Runs after](tasks-order.md#runs-after) on the board. On
