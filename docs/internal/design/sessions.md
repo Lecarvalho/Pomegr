@@ -21,6 +21,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - Rows stay neutral within a cache lifetime.
 - The toolbar ends with the **Group by** control.
 - On phone, the **Group by** control stretches to the full toolbar width.
+- The filter chips stay on one line. Below a 1040px toolbar, **Group by** takes a row of its own.
 - The table never scrolls sideways. The width of its panel picks one of three presentations.
 
 | Panel width | Presentation |
