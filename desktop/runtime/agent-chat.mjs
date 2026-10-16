@@ -441,7 +441,7 @@ export function createAgentChat(options = {}) {
   }
 
   // An approved start goes to the manual start of the Tasks page and to nothing else: the same start plan, gates, and
-  // launch slot. The card's Start session is the owner's confirmation, so no native one follows. Only a launch answers
+  // launch slot and native confirmation. Only a confirmed launch answers
   // the proposal; a start that was held or failed keeps it pending with the fixed status, so the owner may apply it
   // again. Null when the start was cancelled (the app is closing), which stores nothing.
   async function startSession(event, repositoryId, taskId, proposal) {

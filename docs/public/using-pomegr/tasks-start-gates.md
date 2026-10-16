@@ -38,6 +38,11 @@ a failed gate.
 - **A held manual start** says which gates hold it, for example "This task is held:
   Claude Code usage is not known yet."
 
+An unknown working tree means its Git check is pending or unavailable. It never means the tree is clean.
+Keep the board open, wait 15 seconds, then select **Start session** again in the task window or Aril's proposal.
+Pomegr checks again in background. An unavailable check keeps the task held; a successful check updates the gate.
+Check **Working tree** in **Queue settings** for the current reading. Pomegr never retries a held manual launch by itself.
+
 ### Start in a separate worktree
 
 When the working tree gate is the only gate that holds a manual start, the task window

@@ -246,10 +246,10 @@ async function dispatchHarness(context, { plan = () => ({ ok: true, plan: { task
   return { h, starter, monitor, spawns, confirmations, apply, proposal: () => storedProposal(h, conversation.id) };
 }
 
-test("an applied start takes the manual path with no second confirmation: one start plan, one launch, and no queue action", async (context) => {
+test("an applied start takes the manual path with native confirmation: one start plan, one launch, and no queue action", async (context) => {
   const d = await dispatchHarness(context);
   assert.deepEqual(await d.apply(), { ok: true });
-  assert.deepEqual(d.confirmations, [], "Start session on the card is the confirmation; no native dialog follows");
+  assert.deepEqual(d.confirmations, [{ taskId: "T-3", separateWorktree: false }]);
   assert.deepEqual(d.monitor, [{ route: "start-plan", body: { repositoryId, payload: { id: "T-3" } } }], "the plan is asked for the task alone: no worktree override, no queue or board action");
   assert.equal(d.spawns.length, 1);
   assert.equal(d.spawns[0][2].shell, false);
@@ -280,14 +280,16 @@ test("a held start that the owner applies again launches once the monitor lets i
   assert.equal((await d.proposal()).state, "applied");
 });
 
-test("the task window's own start still asks its native confirmation, and a chat start never borrows that answer", async (context) => {
+test("manual and chat starts each require their own native confirmation; cancellation mints no plan", async (context) => {
   const d = await dispatchHarness(context, { confirm: async () => false });
   assert.deepEqual(await d.starter.start(trusted, repositoryId, "T-3"), { status: "cancelled" });
   assert.deepEqual(d.confirmations, [{ taskId: "T-3", separateWorktree: false }]);
   assert.deepEqual(d.spawns, []);
   assert.deepEqual(await d.apply(), { ok: true });
-  assert.equal(d.confirmations.length, 1);
-  assert.equal(d.spawns.length, 1);
+  assert.equal(d.confirmations.length, 2);
+  assert.equal(d.spawns.length, 0);
+  assert.deepEqual(d.monitor, []);
+  assert.deepEqual(await d.proposal(), startProposal());
 });
 
 test("a start refused while the app is closing launches nothing and is stored as not started", async (context) => {

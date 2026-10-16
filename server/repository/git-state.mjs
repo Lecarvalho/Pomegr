@@ -437,6 +437,18 @@ export function readGitStateAsync(cwd, options = {}) {
   return pending.then((state) => structuredClone(state));
 }
 
+// Task start gates need only a bounded status result. Keep this independent of HEAD,
+// branch comparison, remote state, commit history, and display-path filtering.
+export async function readGitWorkingTreeAsync(cwd) {
+  if (typeof cwd !== "string" || cwd.length === 0) return null;
+  try {
+    const output = await runGitAsync(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], 2_500);
+    return output.length === 0;
+  } catch {
+    return null;
+  }
+}
+
 async function inspectGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
   const empty = {
     available: false,

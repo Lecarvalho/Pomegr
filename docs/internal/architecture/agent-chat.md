@@ -351,15 +351,13 @@ Task T-72, 2026-10-12. It replaces the earlier rule that the chat starts no sess
 - **The owner applies it in the desktop window.** `apply` hands the trusted window event
   of the `pomegr:agent-chat` call, the repository ID, and the task ID to the manual start
   (`startApproved` of `createTaskStart` in `task-dispatch.mjs`). It is the start behind
-  `pomegr:task-start` without the native confirmation: the trusted-frame check, the start
+  `pomegr:task-start` with the native confirmation: the trusted-frame check, the start
   plan with every gate ([Tasks: Starting a session](tasks.md#starting-a-session)), and
   the one launch slot that manual and queued starts share. The chat adds no path of its
   own.
-- **The card is the confirmation.** Product-owner decision of 2026-10-12, after trying
-  the first build: **Start session** on the proposal card, which names the task, is the
-  explicit confirmation of this start, and no native dialog follows it. It replaces the
-  rule of the same day that the native confirmation also showed. The start of the task
-  window keeps its native confirmation.
+- **The native dialog confirms the start.** Task T-147 restores the shared native confirmation after Apply, as requested on 2026-10-16.
+  **Start session** on the card approves the proposal. Desktop main then asks the owner to confirm the named task.
+  Cancellation requests no start plan and leaves the proposal unchanged.
 - **A paired device cannot apply it.** A call through `POST /api/agent-chat` carries no
   window event. `apply` of a start then answers `desktop_only` before anything runs, and
   the proposal stays pending as it was, so the owner can apply it on the computer. A
@@ -802,7 +800,7 @@ never a session's.
 - An image is served only when a message of its conversation names it.
 - Aril never starts a session. Only `apply` of a start proposal does, from the desktop
   window, through the manual start and behind every start gate. The owner's **Start
-  session** on the card is its confirmation. One Apply is at most one launch.
+  session** on the card approves the proposal; the shared native dialog confirms the start. One Apply is at most one launch.
 - Aril never turns the queue on or off. Only `apply` of a queue proposal does, on the
   owner's answer, through `queue_settings` with the one setting `on`. The state is the
   one the proposal names, so no Apply reverses the queue.

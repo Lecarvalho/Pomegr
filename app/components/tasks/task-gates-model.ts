@@ -62,7 +62,8 @@ export function heldStartLine(task: Task, queue: Pick<TaskBoard["queue"], "gates
   if (gates.workingTree !== "clean") reasons.push(gates.workingTree === "dirty" ? "tree_dirty" : "tree_unknown");
   if (reasons.length === 0) return null;
   const next = { taskId: task.id, provider, blockedBy: null, reasons };
-  return `This task is held: ${reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}.`;
+  const retry = gates.workingTree === "unknown" ? " The Git check is pending or unavailable. Wait 15 seconds, then select Start session again." : "";
+  return `This task is held: ${reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}.${retry}`;
 }
 
 /** The Waiting line of the next task when a board carries no waits: the reasons the monitor gave for it. */

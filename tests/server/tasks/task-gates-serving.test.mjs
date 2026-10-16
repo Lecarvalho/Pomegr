@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -9,6 +10,7 @@ import { USAGE_REFRESH_INTERVAL_MS } from "../../../server/normalize/usage-limit
 import { captureClaudeStatuslineUsage } from "../../../server/providers/claude/usage-feed.mjs";
 import { createClaudeUsageLimitsReader } from "../../../server/providers/claude/usage-limits.mjs";
 import { createCodexUsageLimitsCoordinator } from "../../../server/providers/codex/usage-limits.mjs";
+import { readGitWorkingTreeAsync } from "../../../server/repository/git-state.mjs";
 import {
   TASK_GATE_TREE_LIMIT, TASK_GATE_TREE_MAX_AGE_MS, TASK_GATE_TREE_REFRESH_MS, TASK_GATE_USAGE_MAX_AGE_MS,
   createTaskGateFacts, createTaskTreeObservation, gateProviderStatusFact, gateUsageFact,
@@ -477,24 +479,37 @@ test("provider status counts only when ready, fresh, and known", () => {
   assert.equal(gateProviderStatusFact(null), null);
 });
 
+test("the task working-tree reader recognizes clean unborn repositories and keeps status failures unknown", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pomegr-task-tree-"));
+  try {
+    execFileSync("git", ["-C", root, "init", "--quiet"], { stdio: "ignore" });
+    assert.equal(await readGitWorkingTreeAsync(root), true, "an empty status result is clean even before the first commit");
+
+    fs.writeFileSync(path.join(root, "untracked.txt"), "synthetic");
+    assert.equal(await readGitWorkingTreeAsync(root), false, "untracked files count as dirty without path filtering");
+    assert.equal(await readGitWorkingTreeAsync(path.join(root, "missing")), null, "a failed Git status is unknown");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("the working tree is observed off the request path and served only while fresh", async () => {
   let now = NOW;
-  let files = [];
+  let clean = true;
   const reads = [];
   const tree = createTaskTreeObservation({
     repositoryRoot: (id) => (id === REPOSITORY ? SECRET_ROOT : null),
-    gitReader: async (root, options) => { reads.push({ root, options }); return { available: true, files }; },
-    forbiddenRoots: () => ["C:/Users/x/.claude"],
+    gitReader: async (root) => { reads.push(root); return clean; },
     now: () => now,
   });
   assert.equal(tree.read(REPOSITORY), null, "the first ask answers unknown and queues the read");
   assert.equal(tree.read(REPOSITORY), null, "an inspection in flight is not repeated");
   await settle();
-  assert.deepEqual(reads, [{ root: SECRET_ROOT, options: { forbiddenRoots: ["C:/Users/x/.claude"] } }]);
+  assert.deepEqual(reads, [SECRET_ROOT]);
   assert.equal(tree.read(REPOSITORY), true);
   assert.equal(reads.length, 1, "a fresh observation is not refreshed");
 
-  files = [{ status: "M", path: "a.txt" }];
+  clean = false;
   now += TASK_GATE_TREE_REFRESH_MS;
   assert.equal(tree.read(REPOSITORY), true, "the committed observation is served while the refresh runs");
   await settle();
@@ -513,6 +528,60 @@ test("the working tree is observed off the request path and served only while fr
   assert.equal(tree.read(REPOSITORY), null);
 });
 
+test("a working-tree reading is bound to the repository root it inspected", async () => {
+  let root = "C:/repos/first";
+  const reads = [];
+  const tree = createTaskTreeObservation({
+    repositoryRoot: () => root,
+    gitReader: async (readRoot) => {
+      reads.push(readRoot);
+      return readRoot.endsWith("first");
+    },
+    now: () => NOW,
+  });
+
+  assert.equal(tree.read(REPOSITORY), null);
+  await settle();
+  assert.equal(tree.read(REPOSITORY), true);
+
+  root = "C:/repos/second";
+  assert.equal(tree.read(REPOSITORY), null, "a root change invalidates the prior root's clean reading immediately");
+  await settle();
+  assert.deepEqual(reads, ["C:/repos/first", "C:/repos/second"]);
+  assert.equal(tree.read(REPOSITORY), false, "the new root's dirty result is retained");
+  tree.stop();
+});
+
+test("a working-tree read from a previous repository root cannot commit after rebinding", async () => {
+  let root = "C:/repos/first";
+  const pending = new Map();
+  const reads = [];
+  const tree = createTaskTreeObservation({
+    repositoryRoot: () => root,
+    gitReader: (readRoot) => {
+      reads.push(readRoot);
+      return new Promise((resolve) => pending.set(readRoot, resolve));
+    },
+    now: () => NOW,
+  });
+
+  assert.equal(tree.read(REPOSITORY), null);
+  await settle();
+  root = "C:/repos/second";
+  assert.equal(tree.read(REPOSITORY), null);
+  await settle();
+  assert.deepEqual(reads, ["C:/repos/first", "C:/repos/second"]);
+
+  pending.get("C:/repos/first")(true);
+  await settle();
+  assert.equal(tree.read(REPOSITORY), null, "the old clean result cannot satisfy the new root's gate");
+
+  pending.get("C:/repos/second")(false);
+  await settle();
+  assert.equal(tree.read(REPOSITORY), false);
+  tree.stop();
+});
+
 test("a failed or unavailable Git read is unknown, and only the most recently asked repositories are held", async () => {
   let now = NOW;
   let answer = () => { throw new Error(`fatal: ${SECRET_ROOT}`); };
@@ -521,21 +590,16 @@ test("a failed or unavailable Git read is unknown, and only the most recently as
   tree.read(REPOSITORY);
   await settle();
   assert.equal(tree.read(REPOSITORY), null);
-  answer = () => ({ available: false, files: [] });
+  answer = () => null;
   now += TASK_GATE_TREE_REFRESH_MS;
   tree.read(REPOSITORY);
   await settle();
   assert.equal(tree.read(REPOSITORY), null);
-  answer = () => ({ available: true, files: [], _statusUnknown: true });
+  answer = () => false;
   now += TASK_GATE_TREE_REFRESH_MS;
   tree.read(REPOSITORY);
   await settle();
-  assert.equal(tree.read(REPOSITORY), null, "a failed git status lists no file and is not a clean tree");
-  answer = () => ({ available: true, files: [] });
-  now += TASK_GATE_TREE_REFRESH_MS;
-  tree.read(REPOSITORY);
-  await settle();
-  assert.equal(tree.read(REPOSITORY), true);
+  assert.equal(tree.read(REPOSITORY), false);
 
   for (let index = 1; index <= TASK_GATE_TREE_LIMIT; index += 1) tree.read(repositoryNumber(index));
   await settle();
@@ -574,8 +638,7 @@ test("createTaskLookups wires the gate facts from the committed sources it is ha
     gateSources: {
       usageLimits: () => ({ providers: [{ provider: "claude", usageLimits: { available: true, fetchedAt: at, freshness: "fresh", limits: [{ window: "5 hours", percent: 5 }, { window: "7 days", percent: 6 }] } }] }),
       providerStatus: () => ({ providers: [{ provider: "claude", readiness: "ready", freshness: "fresh", status: "operational" }] }),
-      gitReader: async () => ({ available: true, files: [] }),
-      forbiddenRoots: () => [],
+      gitReader: async () => true,
       now: () => NOW,
     },
   });

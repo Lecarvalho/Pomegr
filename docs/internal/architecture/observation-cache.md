@@ -3778,6 +3778,11 @@ touch SQLite.
 
 ## Repository context inventory
 
+The task control plane has a separate, demand-triggered working-tree observation, owned by [Start gates](tasks.md#start-gates).
+It reads bounded local Git status in background and commits only clean, dirty, or unknown in monitor memory.
+GETs serve committed evidence and may queue that check; they never wait for it or perform Git acquisition themselves.
+This check needs no HEAD, remote comparison, or public file projection. It adds no checkpoint, browser field, or diagnostic content.
+
 Repository context inventory is a separate repository/provider-scoped committed domain.
 Repository identity is an installation-salted opaque ID derived monitor-side from the
 main repository root, or normalized session working directory for a non-Git
