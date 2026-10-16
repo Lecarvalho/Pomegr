@@ -266,7 +266,8 @@ test("the session Pomegr started reports its stalled task: a completion frees th
   assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: true, state: "needs_review", results: [] });
   assert.equal(taskOf(env, completed).state, "needs_review");
   assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "running", blockedBy: null });
-  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "Too late" }), { ok: false, error: "already_reported" });
+  assert.deepEqual(env.store.blockTask({ sessionId: SESSION, reason: "New issue needs a decision" }), { ok: true, state: "blocked" });
+  assert.deepEqual({ status: board(env).queue.status, blockedBy: board(env).queue.blockedBy }, { status: "blocked", blockedBy: completed });
 
   const other = await setup(context);
   const blocked = startedTask(other);

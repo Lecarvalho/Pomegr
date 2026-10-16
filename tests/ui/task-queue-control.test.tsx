@@ -206,13 +206,15 @@ describe("the Queue banner", () => {
 
   // A task in review never holds the queue, so the monitor never names one. A queue that names one anyway is worded
   // without a cause and offers no resolution.
-  it("gives a task in review no blocked copy of its own", async () => {
+  it("explains the earlier hold of a task now in review and offers owner resolution", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12" });
     renderBoard();
-    expect(within(banner()).getByText("A task needs you. Running sessions continue. Nothing new starts until it is resolved.")).toBeInTheDocument();
+    expect(within(banner()).getByText("T-12's latest report is complete. An earlier block still needs your resolution. Running sessions continue. Nothing new starts until you resolve T-12.")).toBeInTheDocument();
     expect(banner()).not.toHaveTextContent("did not pass");
-    expect(within(banner()).queryByRole("button", { name: "Mark done and resume" })).not.toBeInTheDocument();
-    expect(within(banner()).queryByRole("button", { name: "Requeue T-12" })).not.toBeInTheDocument();
+    expect(within(banner()).getByRole("button", { name: "Mark done and resume" })).toBeInTheDocument();
+    expect(within(banner()).getByRole("button", { name: "Requeue T-12" })).toBeInTheDocument();
+    await userEvent.setup().click(within(banner()).getByRole("button", { name: "Open T-12" }));
+    expect(within(screen.getByRole("dialog", { name: "Task" })).getByRole("button", { name: "Mark done and resume queue" })).toBeInTheDocument();
   });
 
   it("reads the stalled and blocked copy without printing the block reason", async () => {
@@ -239,10 +241,10 @@ describe("the Queue banner", () => {
     expect(banner().compareDocumentPosition(screen.getByRole("region", { name: "Task board" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("offers only Open for a blocker that is not stalled or blocked", async () => {
-    setBoard({ status: "blocked", blockedBy: "T-12" });
+  it("offers only Open for a blocker that has no unresolved outcome", async () => {
+    setBoard({ status: "blocked", blockedBy: "T-15" });
     renderBoard();
-    expect(within(banner()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Open T-12"]);
+    expect(within(banner()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Open T-15"]);
   });
 
   it("offers Open, Mark done and resume, and Requeue, each in its role", async () => {

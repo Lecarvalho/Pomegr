@@ -442,7 +442,8 @@ Each row below the title shows only when it is set, in this order:
 | **Queue paused** | **Open T-n**, and **Open folder** for a dirty worktree. The banner states one fixed reason. | Text only |
 
 - The actions are 32px high with an 8px gap.
-- **Mark done and resume** and **Requeue T-n** show only for a task that stalled or was blocked by its agent.
+- **Mark done and resume** and **Requeue T-n** show for a stalled or blocked task, or a task in Review with an unresolved earlier block.
+- For a task in Review that still holds the queue, the banner states that the latest report is complete and an earlier block needs resolution.
 
 ### Queue settings panel
 

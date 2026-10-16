@@ -11,6 +11,8 @@ import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRole
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
+import { deleteTaskReportHistory } from "./task-report-history.mjs";
+import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs";
@@ -286,6 +288,8 @@ function deleteTask({ database, repositoryId, now }, payload) {
   preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
   deleteTaskSource(database, repositoryId, input.number);
   deleteTaskAttention(database, repositoryId, input.number);
+  deleteTaskReportHistory(database, repositoryId, input.number);
+  deleteTaskBlockHold(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
   deleteTaskAssigned(database, repositoryId, input.number);

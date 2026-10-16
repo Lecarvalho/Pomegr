@@ -53,13 +53,24 @@ call is refused. Nothing is then added, removed, reported, read, or changed.
 `complete_task` and `block_task` act only on the task linked to the calling session
 and on the tasks that session is assigned to.
 
-- A task takes one report per start; a second report changes nothing.
-- A report always leaves the task in **Needs review**, with each checked condition's
-  result; you choose **Mark done**. See
+- The latest report wins until you mark the task done. Agents may report blocked, complete, then blocked again.
+- Each completion verifies the checked conditions again. Failed or unavailable checks remain identified.
+- A completion leaves the task in **Needs review**; you choose **Mark done**. See
   [Complete when](tasks-create.md#complete-when).
 - When no condition is checked, the report rests on the agent's word, not a check.
 - Pomegr keeps only each condition's result, the block reason, and the attention line,
   never command output or diffs.
+
+A completion after a block replaces the report and check results, and moves the task to **Review**.
+The queue stays held. Choose **Mark done** or **Requeue task** to resolve that hold.
+An updated report never starts a session or marks a task done.
+Pomegr retains earlier reports privately; the task window shows the latest report.
+Identical reports with identical results change nothing.
+
+This recovery needs a Pomegr build that supports updated reports and plugin 0.9.14 or later.
+Update both before retrying. An older plugin omits the remaining owner hold from its feedback.
+The board still shows **Queue blocked** until you resolve that hold.
+See [Update the plugin](reporting-plugins.md#update-the-plugin).
 
 A session that ends without a report leaves the task **Stalled**, but only once Pomegr
 has established the session's end, for example a **Closed** session or a **Stopped**

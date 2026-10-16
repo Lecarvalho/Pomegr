@@ -343,21 +343,20 @@ test("complete_task reports the state and names only the conditions Pomegr could
   assert.equal(out.content[0].text, "Task reported complete. Pomegr marked it done.");
   assert.deepEqual(done.calls, [{ pathname: TASK_COMPLETE_PATH, body: { sessionRef: "claude:x" } }]);
 
-  // Every report goes to Review: with nothing failed and no note, the text says who marks it done.
   const passed = await setup({ answer: { ok: true, state: "needs_review", results: [{ check: "tree_clean", passed: true }] } }).tools.complete_task.handler({});
   assert.equal(passed.isError, undefined);
-  assert.equal(passed.content[0].text, "Task reported complete. Pomegr put it in Review; the user marks it done. Do not report again.");
+  assert.equal(passed.content[0].text, "Task reported complete. Pomegr put it in Review; the user marks it done.");
 
   const review = setup({ answer: { ok: true, state: "needs_review", results: [
     { check: "pr_open", passed: false }, { check: "tree_clean", passed: true }, { check: "ci_passed", passed: false, unavailable: true }, { check: "made_up", passed: false },
   ] } });
   assert.equal((await review.tools.complete_task.handler({})).content[0].text,
-    "Task reported complete, but these conditions did not pass: Pull request open; and Pomegr could not verify: CI passed (it had no current evidence, which does not mean the condition failed). The task now needs the user's review; do not report again.");
+    "Task reported complete, but these conditions did not pass: Pull request open; and Pomegr could not verify: CI passed (it had no current evidence, which does not mean the condition failed). The task now needs the user's review.");
 
   // The attention line is the only thing the tool adds to the body, and Review is then what the agent asked for.
   const noted = setup({ answer: { ok: true, state: "needs_review", results: [{ check: "pr_open", passed: true }] } });
   assert.equal((await noted.tools.complete_task.handler({ attention: "Confirm the retry limit" })).content[0].text,
-    "Task reported complete. Pomegr put it in Review for the user's attention; do not report again.");
+    "Task reported complete. Pomegr put it in Review for the user's attention; the user marks it done.");
   assert.deepEqual(noted.calls, [{ pathname: TASK_COMPLETE_PATH, body: { sessionRef: "claude:x", attention: "Confirm the retry limit" } }]);
   const both = setup({ answer: { ok: true, state: "needs_review", results: [{ check: "pr_open", passed: false }] } });
   assert.match((await both.tools.complete_task.handler({ attention: "Confirm the retry limit" })).content[0].text, /^Task reported complete, but these conditions did not pass: Pull request open\. The task/u);
@@ -367,7 +366,7 @@ test("the report tools map every refusal to fixed text and never echo the monito
   const texts = {
     invalid: "Pomegr rejected the report as invalid, so nothing was reported.",
     not_found: "No Pomegr task is linked to this session, or the task named is not one of its tasks, so nothing was reported.",
-    already_reported: "This session already reported on its task, so nothing changed.",
+    already_reported: "This task no longer accepts reports, so nothing changed. Tell the user what remains and ask them to review the task on the board.",
     stalled: "Pomegr marked this task Stalled, because it read this session as ended before any report, so nothing was reported. Only the user can change that, with Mark done or Requeue on the board. Tell the user what you finished, and do not report again.",
     unavailable: "Pomegr is unavailable, so nothing was reported.",
   };
@@ -412,6 +411,7 @@ function claudeServer({ token = TOKEN, answer } = {}) {
 }
 
 const proofFor = (tool, overrides = {}) => createTaskBindingProof({ token: TOKEN, tool, sessionRef: REF, now: NOW, ...overrides });
+
 const CLAUDE_CALLS = {
   add_task: { input: { text: "x" }, unbound: TASK_UNBOUND_TEXT, ok: "Task T-3 added to the board, not queued." },
   remove_task: { input: { task_id: "T-3" }, unbound: TASK_REMOVE_UNBOUND_TEXT, ok: "Task T-3 removed from the board." },

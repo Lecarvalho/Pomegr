@@ -5,6 +5,7 @@ import { DEFAULT_TASK_GATE_THRESHOLD, evaluateGates, normalizeGateThreshold, que
 import { earlierTaskBlocker, nextQueueStart, queueWhenTurnedOn, queueWindowHold, taskIsDue } from "./task-queue.mjs";
 import { explainQueueWaits } from "./task-queue-waits.mjs";
 import { unfinishedAfter } from "./task-after.mjs";
+import { readTaskBlockHolds } from "./task-block-holds.mjs";
 import { isRepositoryId, isTaskId, normalizeQueueSchedule, projectBoard, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 // The reasons the desktop may report.
@@ -143,8 +144,10 @@ const QUEUE_OFF = Object.freeze({ status: "idle", blockedBy: null });
 
 function turnedOn(database, repositoryId, at) {
   clearExpiredDispatches(database, repositoryId, at);
+  const holds = readTaskBlockHolds(database, repositoryId);
   return queueWhenTurnedOn(preparedStatement(database, "SELECT number, state FROM tasks WHERE repository_id = ?").all(repositoryId)
-    .map((row) => ({ id: taskIdFromNumber(Number(row.number)), state: row.state })));
+    .map((row) => ({ id: taskIdFromNumber(Number(row.number)), state: row.state,
+      held: row.state === "needs_review" && holds.has(taskIdFromNumber(Number(row.number))) })));
 }
 
 function writeQueueStatus(database, repositoryId, next) {

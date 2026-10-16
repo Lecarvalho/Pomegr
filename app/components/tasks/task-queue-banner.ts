@@ -29,11 +29,12 @@ export function worktreeOpenLine(status: TaskWorktreeOpenStatus): string {
   return "The folder could not be opened.";
 }
 
-const RESOLVABLE_STATES = new Set<Task["state"]>(["stalled", "blocked"]);
+const RESOLVABLE_STATES = new Set<Task["state"]>(["stalled", "blocked", "needs_review"]);
 
 function blockedBody(task: Task | null) {
   if (!task || !RESOLVABLE_STATES.has(task.state)) return `A task needs you. ${SESSIONS_CONTINUE} Nothing new starts until it is resolved.`;
   const tail = `${SESSIONS_CONTINUE} Nothing new starts until you resolve ${task.id}.`;
+  if (task.state === "needs_review") return `${task.id}'s latest report is complete. An earlier block still needs your resolution. ${tail}`;
   if (task.state === "stalled") return `${task.id}'s session ended with no report. ${tail}`;
   return `${task.id}'s agent reported it cannot continue. ${tail}`;
 }

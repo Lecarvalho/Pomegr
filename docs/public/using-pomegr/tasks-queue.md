@@ -98,9 +98,11 @@ task window says "The session has not reported. Mark done and Requeue do not sto
 
 ## Review a report
 
-Every task an agent reports complete needs review, whether its conditions passed or
-not: only you mark a task done. A task that needs review does not stop the queue. Its
-work is finished: the card waits in **Review**, and the queue goes on to the next
+Every completion needs your review, whether its conditions passed or not: only you mark a task done.
+A completion after a block moves the task to **Review** and retains the queue hold.
+Choose **Mark done** or **Requeue task** to resolve it.
+A task in review without an earlier block does not stop the queue. Its
+card waits in **Review**, and the queue goes on to the next
 waiting card once every task of its group is in **Review** or **Done**. Open the task
 when you have time and choose **Mark done** or **Requeue task**. If the agent asked for
 your attention, the task window shows its line under **Complete when**, in the agent's
@@ -121,8 +123,8 @@ yourself, then choose **Mark done** or **Requeue task**.
 > **Note:** Pomegr checks a report once, against the repository and its pull requests
 > as it reads them when the report arrives. A condition that comes true later, such as
 > CI that finishes after the agent reported, still reads **Not passed** in the task
-> window though the condition now holds. Choose **Mark done**; Pomegr does not repeat
-> the check.
+> window though the condition now holds. Choose **Mark done**, or ask the agent to report completion again.
+> Pomegr repeats the check only when another completion report arrives.
 
 ## If a start fails
 

@@ -145,22 +145,22 @@ test("an assigned session reports a task that has not started: it goes to Review
   assert.equal(store.readBoard(REPOSITORY).columns.find((column) => column.id === reported.columnId).role, "review");
   assert.equal(storedDispatch(directory, 1), null);
   clock.now += 1;
-  assert.deepEqual(store.completeTask({ sessionId: HAND }, () => null), { ok: false, error: "already_reported" });
+  assert.deepEqual(store.completeTask({ sessionId: HAND }, () => null), { ok: true, state: "needs_review", results: [] });
 });
 
-test("the first report wins among the started session and the assigned ones", async (context) => {
+test("the latest report wins among the started session and assigned ones while the owner hold remains", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   createTask(store);
   startedTask(directory, 1, { session: STARTED });
   assign(store, "T-1", HAND);
   assign(store, "T-1", OTHER);
   assert.deepEqual(store.blockTask({ sessionId: HAND, reason: "Needs a decision" }), { ok: true, state: "blocked" });
-  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: false, error: "already_reported" });
-  assert.deepEqual(store.completeTask({ sessionId: OTHER }, () => null), { ok: false, error: "already_reported" });
-  assert.equal(task(store, "T-1").report.blockReason, "Needs a decision");
+  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: true, state: "needs_review", results: [], ownerHold: true });
+  assert.deepEqual(store.completeTask({ sessionId: OTHER }, () => null), { ok: true, state: "needs_review", results: [], ownerHold: true });
+  assert.equal(task(store, "T-1").report.blockReason, null);
 });
 
-test("an assigned session reports a stalled task and frees the queue; the started session's later report changes nothing", async (context) => {
+test("an assigned session reports a stalled task and frees the queue; the started session may update the report", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   createTask(store);
   createTask(store);
@@ -171,7 +171,7 @@ test("an assigned session reports a stalled task and frees the queue; the starte
   assign(store, "T-1", HAND);
   assert.deepEqual(store.completeTask({ sessionId: HAND }, () => null), { ok: true, state: "needs_review", results: [] });
   assert.equal(task(store, "T-1").state, "needs_review");
-  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: false, error: "already_reported" });
+  assert.deepEqual(store.completeTask({ sessionId: STARTED }, () => null), { ok: true, state: "needs_review", results: [] });
   assert.deepEqual(queueRow(directory), { queue_status: "running", queue_blocked_by: null });
 });
 

@@ -96,6 +96,129 @@ function withDatabase(directory, work) {
 }
 const setQueue = (env, status, blockedBy = null) => withDatabase(env.directory, (database) =>
   database.prepare("UPDATE repositories SET queue_status = ?, queue_blocked_by = ? WHERE repository_id = ?").run(status, blockedBy, REPOSITORY_ID));
+const historyOf = (env) => withDatabase(env.directory, (database) => JSON.parse(database.prepare("SELECT value FROM meta WHERE key = ?")
+  .get(`task_report_history:${REPOSITORY_ID}:T-1`)?.value ?? "[]"));
+
+for (const session of [SESSION, OTHER_SESSION]) {
+  test(`${session.split(":")[0]} bound reports can alternate, run normal checks, and never release an owner hold`, async (context) => {
+    const env = await setup(context, { read: () => ({ ...PASSING, treeClean: false, ciPassed: null }) });
+    startedTask(env, { session, checks: ["tree_clean", "ci_passed", "user_validated"] });
+    apply(env, "create", { text: "Next task" });
+    apply(env, "queue_add", { id: "T-2" });
+    setQueue(env, "running");
+    assert.equal((await block(env, REASON, session)).status, 200);
+    const original = taskOf(env).report;
+    env.clock.now += 100;
+    const response = await complete(env, session, ATTENTION);
+    assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", ownerHold: true, results: [
+      { check: "tree_clean", passed: false }, { check: "ci_passed", passed: false, unavailable: true },
+    ] });
+    assert.deepEqual(env.readCalls, [session]);
+    assert.doesNotMatch(response.text, /SECRET|attention|blockReason|sessionId|history/u);
+    assert.equal(taskOf(env).report.blockReason, null);
+    assert.equal(taskOf(env).report.attention, ATTENTION);
+    assert.deepEqual(historyOf(env), [original]);
+    const before = taskOf(env);
+    env.clock.now += 100;
+    await complete(env, session, ATTENTION);
+    assert.deepEqual(taskOf(env), before, "a duplicate with unchanged checks changes nothing");
+    assert.deepEqual(historyOf(env), [original]);
+    assert.equal(taskOf(env).state, "needs_review");
+    assert.equal(env.store.readBoard(REPOSITORY_ID).columns.find((column) => column.id === taskOf(env).columnId).role, "review");
+    assert.deepEqual(historyOf(env), [original]);
+    assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+    assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "blocked");
+    const unrelated = session === SESSION ? OTHER_SESSION : SESSION;
+    refused(await complete(env, unrelated), 404, "not_found");
+    assert.equal((await block(env, "Owner is away", session)).status, 200);
+    assert.equal(taskOf(env).report.blockReason, "Owner is away");
+    assert.equal(historyOf(env)[1].attention, ATTENTION);
+    assert.equal((await complete(env, session)).json.state, "needs_review");
+    assert.equal(taskOf(env).report.blockReason, null);
+    assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
+    refused(await block(env, "Too late", session), 409, "already_reported");
+    env.store.close();
+    env.store = openTaskStore({ directory: env.directory, now: () => env.clock.now });
+    assert.deepEqual(historyOf(env)[0], original);
+    assert.equal(taskOf(env).state, "done");
+    assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }),
+      { ok: true, starts: [{ repositoryId: REPOSITORY_ID, taskId: "T-2" }] });
+    assert.equal(apply(env, "delete", { id: "T-1" }).ok, true);
+    assert.deepEqual(historyOf(env), []);
+  });
+}
+
+test("replacement completion rechecks changed facts; Requeue retains history and revokes the started session", async (context) => {
+  const env = await setup(context);
+  startedTask(env, { checks: ["tree_clean"] });
+  await complete(env, SESSION, ATTENTION);
+  env.facts = { ...PASSING, treeClean: false };
+  env.clock.now += 100;
+  assert.deepEqual((await complete(env)).json.results, [{ check: "tree_clean", passed: false }]);
+  assert.equal(historyOf(env)[0].attention, ATTENTION);
+  await block(env);
+  const blockReport = taskOf(env).report;
+  assert.equal(apply(env, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.deepEqual(historyOf(env).at(-1), blockReport);
+  refused(await complete(env), 404, "not_found");
+  assert.equal(taskOf(env).report, null);
+});
+
+test("a review task's separate block hold survives off/on, other resolutions, and reopening until owner recovery", async (context) => {
+  const env = await setup(context);
+  startedTask(env);
+  startedTask(env, { session: OTHER_SESSION });
+  setQueue(env, "running");
+  env.store.blockTask({ sessionId: SESSION, reason: REASON });
+  env.store.blockTask({ sessionId: OTHER_SESSION, reason: REASON });
+  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => null), { ok: true, state: "needs_review", results: [], ownerHold: true });
+  assert.equal(apply(env, "resolve_done", { id: "T-2" }).ok, true);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.blockedBy, "T-1");
+  apply(env, "queue_settings", { on: false });
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "idle");
+  apply(env, "queue_settings", { on: true });
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "blocked");
+  env.store.close();
+  env.store = openTaskStore({ directory: env.directory });
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "blocked");
+  assert.equal(taskOf(env).state, "needs_review");
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  assert.equal(apply(env, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "running");
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).error, "not_found");
+});
+
+test("owner resolution and a new block during facts resolution cannot be undone by a completion", async (context) => {
+  const env = await setup(context);
+  startedTask(env, { checks: ["tree_clean"] });
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => {
+    env.store.blockTask({ sessionId: SESSION, reason: REASON });
+    return PASSING;
+  }).state, "needs_review");
+  assert.equal(taskOf(env).report.blockReason, null);
+  assert.deepEqual(env.store.completeTask({ sessionId: SESSION }, () => {
+    apply(env, "resolve_done", { id: "T-1" });
+    return PASSING;
+  }), { ok: false, error: "already_reported" });
+  assert.equal(taskOf(env).state, "done");
+});
+
+test("superseded history stays bounded and a corrupt history refuses replacement atomically", async (context) => {
+  const env = await setup(context);
+  startedTask(env);
+  for (let index = 0; index < 105; index += 1) {
+    env.clock.now += 1;
+    assert.equal(env.store.blockTask({ sessionId: SESSION, reason: `Waiting ${index}` }).ok, true);
+  }
+  assert.equal(historyOf(env).length, 100);
+  assert.equal(historyOf(env).at(-1).blockReason, "Waiting 103");
+  assert.equal(JSON.stringify(env.store.readBoard(REPOSITORY_ID)).includes("Waiting 103"), false);
+  const before = taskOf(env);
+  withDatabase(env.directory, (database) => database.prepare("UPDATE meta SET value = ? WHERE key = ?")
+    .run("{}", `task_report_history:${REPOSITORY_ID}:T-1`));
+  refused(await complete(env), 503, "unavailable");
+  assert.deepEqual(taskOf(env), before);
+});
 
 test("complete with no checked condition needs review on the report alone: a report never sets Done", async (context) => {
   const env = await setup(context, { facts: null });
@@ -125,7 +248,8 @@ test("complete with an attention note needs review like any report, and keeps th
   assert.equal(board.columns.find((column) => column.id === task.columnId).role, "review");
   // The note is kept beside the report in `meta`, and the tasks table gains no column.
   assert.equal(withDatabase(env.directory, (database) => database.prepare("SELECT value FROM meta WHERE key = ?").get(`task_attention:${REPOSITORY_ID}:T-1`).value), ATTENTION);
-  refused(await complete(env, SESSION, "again"), 409, "already_reported");
+  assert.equal((await complete(env, SESSION, "again")).json.state, "needs_review");
+  assert.equal((await complete(env, SESSION, ATTENTION)).json.state, "needs_review");
   // Mark done keeps the report with its note; the card goes to Done.
   assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
   assert.equal(taskOf(env).report.attention, ATTENTION);
@@ -282,33 +406,29 @@ test("a started task takes no update until it is requeued", async (context) => {
   assert.equal(apply(env, "update", { id: "T-2", text: "second, edited" }).ok, true);
 });
 
-test("the session Pomegr started still reports a task Pomegr stalled, and the first report wins", async (context) => {
+test("the session Pomegr started still reports a task Pomegr stalled and may update its report", async (context) => {
   const env = await setup(context);
   startedTask(env);
   assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "closed" })), { ok: true, stalled: 1, recovered: 0 });
   assert.equal(taskOf(env).report, null);
   // The report shows that the end Pomegr confirmed was wrong.
   assert.equal((await complete(env)).json.state, "needs_review");
-  refused(await block(env), 409, "already_reported");
-  refused(await complete(env), 409, "already_reported");
+  assert.equal((await block(env)).json.state, "blocked");
+  assert.equal((await complete(env)).json.state, "needs_review");
 });
 
-test("a task takes one report per dispatch", async (context) => {
+test("the latest report wins, identical retries change nothing, and a block remains owner-controlled", async (context) => {
   const env = await setup(context);
   startedTask(env, { checks: ["tree_clean"] });
   assert.equal((await complete(env)).json.state, "needs_review");
   const before = taskOf(env);
-  refused(await complete(env), 409, "already_reported");
-  refused(await block(env), 409, "already_reported");
+  assert.equal((await complete(env)).json.state, "needs_review");
   assert.deepEqual(taskOf(env), before);
-
-  const blocked = await setup(context);
-  startedTask(blocked);
-  assert.equal((await block(blocked)).json.state, "blocked");
-  refused(await complete(blocked), 409, "already_reported");
-  refused(await block(blocked, "another reason"), 409, "already_reported");
-  assert.equal(taskOf(blocked).report.blockReason, REASON);
-  assert.deepEqual(blocked.factCalls, []);
+  assert.equal((await block(env)).json.state, "blocked");
+  assert.equal((await complete(env)).json.state, "needs_review");
+  assert.equal(taskOf(env).report.blockReason, null);
+  assert.equal((await block(env, "another reason")).json.state, "blocked");
+  assert.equal(taskOf(env).report.blockReason, "another reason");
 });
 
 test("only the session linked to a task can report on it", async (context) => {
@@ -585,13 +705,13 @@ test("only a report that will be verified reads the repository", async (context)
   // A task with no checked condition has nothing to verify.
   startedTask(env, { own: "Tests pass." });
   assert.equal((await complete(env)).json.state, "needs_review");
-  // A second report changes nothing.
-  refused(await complete(env), 409, "already_reported");
+  // A second report with no condition has nothing to read.
+  assert.equal((await complete(env)).json.state, "needs_review");
   // A block never reads.
   startedTask(env, { checks: ["pr_open"], session: OTHER_SESSION });
   assert.equal((await block(env, REASON, OTHER_SESSION)).json.state, "blocked");
   assert.deepEqual(env.readCalls, []);
-  assert.equal(env.store.reportChecks(SESSION), null);
+  assert.deepEqual(env.store.reportChecks(SESSION), []);
   assert.equal(env.store.reportChecks("not a session"), null);
 });
 
@@ -600,5 +720,7 @@ test("reportChecks lists the checked conditions of a task that can still be repo
   startedTask(env, { checks: ["pr_open", "ci_passed"] });
   assert.deepEqual(env.store.reportChecks(SESSION), ["pr_open", "ci_passed"]);
   await complete(env);
+  assert.deepEqual(env.store.reportChecks(SESSION), ["pr_open", "ci_passed"]);
+  apply(env, "resolve_done", { id: "T-1" });
   assert.equal(env.store.reportChecks(SESSION), null);
 });
