@@ -511,6 +511,8 @@ describe("Pomegr visual contract", () => {
     expect(tasksStyles).toMatch(/\.taskModal \{[^}]*max-width: 640px[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel\)[^}]*box-shadow: var\(--command-overlay-shadow\)/);
     expect(tasksStyles).toMatch(/\.taskModalHeader \{[^}]*padding: var\(--space-2\) var\(--space-3\) var\(--space-2\) var\(--space-6\)[^}]*border-bottom: 1px solid var\(--command-line\)/);
     expect(tasksStyles).toMatch(/\.taskModalBody \{[^}]*gap: var\(--space-4\)[^}]*padding: var\(--space-6\)/);
+    expect(tasksStyles).toMatch(/\.taskModalBody > \.taskTextField > \* \{ flex-shrink: 0; \}/);
+    expect(tasksStyles).toMatch(/\.taskModalBody > \.taskTextField \.taskRichText \{ max-height: none; overflow-y: hidden; \}/);
     expect(tasksStyles).toMatch(/\.taskModalFooter \{[^}]*padding: var\(--space-3\) var\(--space-6\)[^}]*border-top: 1px solid var\(--command-line\)/);
     expect(tasksStyles).not.toMatch(/\.taskModal[A-Za-z]*[^{]*\{[^}]*(?:transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
     // G153-G158: footer actions keep their roles and are 36px with a fine pointer at 761px and wider, 44px otherwise.

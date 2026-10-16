@@ -167,7 +167,7 @@
 .taskModalScrim { box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: var(--space-8) var(--space-4) var(--space-6); border: 0; background: color-mix(in srgb, var(--color-text) 40%, transparent); color: var(--command-ink); overflow-y: auto; }
 .taskModalScrim[open] { display: flex; align-items: flex-start; justify-content: center; }
 .taskModalScrim:focus { outline: none; }
-/* Centred in the window and never taller than it: the Task field gives up height first, then the body scrolls. */
+/* Centred in the window and never taller than it: the body scrolls around full-height task fields. */
 .taskModalScrim > .taskModal { margin-block: auto; max-height: 100%; }
 .taskModal { box-sizing: border-box; flex: 0 1 640px; width: 100%; max-width: 640px; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
 .taskModalHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6); border-bottom: 1px solid var(--command-line); }
@@ -177,14 +177,12 @@
 .taskModalHeader .commandIconAction { flex: 0 0 auto; }
 .taskModalBody { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); overflow-y: auto; }
 .taskModalBody > * { flex-shrink: 0; }
-/* The Task field grows with its text. Its parts are laid out as rows of the body, so the text box alone shrinks, and
-   scrolls, once the panel is as tall as the window. 187px is the 150px editor over the 37px Attach image foot. */
+/* The Task field grows with its full text; only the surrounding body scrolls. Its parts share the body's rows. */
 .taskModalBody > .taskTextField { display: contents; }
 .taskModalBody > .taskTextField > * { flex-shrink: 0; }
 .taskModalBody > .taskTextField > * + * { margin-top: calc(var(--space-2) - var(--space-4)); }
-.taskModalBody > .taskTextField > textarea { flex-shrink: 1; }
-.taskModalBody > .taskTextField > .taskComposer { flex-shrink: 1; min-height: 187px; }
-.taskModalBody > .taskTextField .taskRichText { flex: 1 1 auto; min-height: 0; max-height: none; }
+.taskModalBody > .taskTextField > textarea { overflow-y: hidden; overflow-wrap: anywhere; }
+.taskModalBody > .taskTextField .taskRichText { max-height: none; overflow-y: hidden; }
 .taskModalBody > .taskTextField .taskImagesHead { flex: 0 0 auto; }
 .taskModalFooter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-top: 1px solid var(--command-line); }
 .taskModalSpacer { flex: 1 1 0; }

@@ -20,8 +20,8 @@ One task modal serves three modes, and the Feature modal uses its frame for a fo
 - The dialog's padding (32px above, 24px below, 16px at the sides) is the margin the panel keeps from the window.
 - The panel sits in the dialog and is at most 640px wide.
 - The panel is never taller than the window less that margin.
-- The Task field gives up height first.
-- The body scrolls only when the window is too short for the rest.
+- The Task field keeps the height of its full text.
+- The body scrolls when its content exceeds the available height, keeping the header and footer actions reachable.
 - The panel has the panel fill, a one-pixel `--command-line` border, the panel radius, and the overlay shadow.
 - The panel has no entrance or exit motion.
 - The panel is centred in the window.
@@ -74,6 +74,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 
 - **Task** is a label and a `textarea` at least 150px tall in 13px type.
 - The textarea grows with its text and has no resize handle.
+- In the task modal, the textarea resizes on load, text changes, and width changes without an internal vertical scrollbar.
 - The placeholder is “What should the session do?”.
 - A right-aligned muted data-font counter reads “n / 4,000” under the field.
 
@@ -82,8 +83,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - In the desktop app, the Task field of the New task and Task forms is rich text (`TaskRichText`, `.taskRichText`).
 - Rich text holds the task's images in the text itself.
 - An editable region replaces the textarea. It has the same type, padding, 150px minimum height, and placeholder.
-- In the task modal, the textarea and the editable region grow until the panel is as tall as the window allows.
-- Then the text scrolls inside the field.
+- In the task modal, the editable region grows and shrinks with its full text, inline images, and wrapping without an internal scrollbar.
 - Outside the modal, the editable region scrolls past 480px.
 - The region sits in one frame (`.taskComposer`) with a one-pixel `--command-line-strong` border, the control radius, and the panel fill.
 - The frame shows the focus ring while the editor has keyboard focus.
@@ -596,6 +596,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - `/design-system` renders the Queue block for a task behind earlier cards, a queue that is off, a held start, a scheduled task, and no known hold.
 - `/design-system` renders the Runs after block with rows, with the loop line, and read-only for a started task.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
+- The edit sample holds long text and an inline image to exercise full-height editing and body scrolling.
 - The mode new sample ends with the split action.
 - `/design-system` renders the Feature modal chrome in New feature, in Feature with Save disabled and enabled, with the delete confirmation, with Delete feature blocked by a started task, with the details not read, and with each failure line.
 - The chrome is static markup over a static scrim, without the dialog behavior.

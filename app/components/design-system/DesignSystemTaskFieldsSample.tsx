@@ -131,15 +131,16 @@ export function TaskFieldsSection() {
 }
 
 const STORED_TEXT = "Retry failed uploads with a capped backoff and cover it with a test.";
+const LONG_TASK_TEXT = `${STORED_TEXT}\n\n${"Keep a retry budget for each upload. Cover a temporary failure, an exhausted budget, and a successful retry.\n\n".repeat(12)}${TEXT_WITH_IMAGE}`;
 
 /** Mode edit as static chrome. */
 function TaskModalEditSamples() {
   const draftId = useId();
   const reviewId = useId();
-  const [text, setText] = useState(STORED_TEXT);
+  const [text, setText] = useState(LONG_TASK_TEXT);
   const [run, setRun] = useState<TaskRun>(DEFAULT_RUN);
   const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
-  const dirty = text.trim() !== STORED_TEXT;
+  const dirty = text.trim() !== LONG_TASK_TEXT;
   const reviewed: CompleteWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." };
   return <>
     <Sample label="Task modal, edit" note="The header holds the title, the task ID, the state chip and the subtitle. Save is the one primary and stays disabled until the draft differs from the stored task; while it does, Add to queue and Start session are disabled and one quiet line says to save first. Change the text to see it. A task promoted from a GitHub issue starts the body with its Source block: the label, the issue chip and a caption; the text stays editable.">
@@ -158,7 +159,7 @@ function TaskModalEditSamples() {
             <button type="button" className="commandPrimaryAction" disabled={!dirty} onClick={noop}>Save</button>
           </>}>
           <TaskModalSource number={142} caption="GitHub issue" />
-          <TaskTextField value={text} onChange={setText} />
+          <TaskTextField value={text} onChange={setText} images={{ urls: SAMPLE_IMAGE_URLS, onAttach: noImages }} />
           <RunFields run={run} models={MODELS} onChange={setRun} />
           <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
         </TaskModalChrome>
