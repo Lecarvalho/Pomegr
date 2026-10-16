@@ -107,7 +107,9 @@
 .commandSearch input:focus-visible { outline: 0; }
 .commandSearch input::placeholder { color: var(--command-muted); opacity: 1; }
 .commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; }
-.commandSessionsToolbar .commandToolbar { display: grid; grid-template-columns: minmax(240px, 360px) minmax(0, 1fr) auto; }
+/* The toolbar follows its own width, which a restored window narrows before the viewport media queries notice. The filter chips keep one line; the search field gives up width first. */
+.commandSessionsToolbar { container: session-toolbar / inline-size; }
+.commandSessionsToolbar .commandToolbar { display: grid; grid-template-columns: minmax(240px, 360px) max-content minmax(max-content, 1fr); }
 .commandSessionsToolbar .commandSearch { width: 100%; }
 .commandSessionFilters { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 /* Keep filter controls above the legacy button shape and shell font resets. */
@@ -121,18 +123,18 @@
 .commandToolbarCount { margin-left: auto; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); white-space: nowrap; }
 .commandSessionsToolbar .commandToolbarCount { width: 11ch; margin: 0 var(--space-1) 0 0; line-height: inherit; text-align: right; }
 /* The count, the label, and the segments share one text baseline. */
-.commandSessionGroupBy { grid-column: 3; justify-self: end; display: flex; align-items: baseline; gap: var(--space-2); color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
+.commandSessionGroupBy { grid-column: 3; justify-self: end; margin-left: var(--space-6); display: flex; align-items: baseline; gap: var(--space-2); color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
 /* Between the phone stack and a wide window, Group by takes a row of its own so it never sits on the filter chips. */
-@media (max-width: 1240px) {
+@container session-toolbar (max-width: 1039px) {
   .commandSessionsToolbar .commandToolbar { grid-template-columns: minmax(240px, 360px) minmax(0, 1fr); }
-  .commandSessionGroupBy { grid-column: 1 / -1; }
+  .commandSessionGroupBy { grid-column: 1 / -1; margin-left: 0; }
 }
 @media (max-width: 900px) {
   .commandSessionsToolbar .commandToolbar { grid-template-columns: minmax(0, 1fr); }
   .commandSessionFilters { width: 100%; max-width: 100%; }
   .commandSessionFilters .commandFilterChip { flex: 0 0 auto; }
   .commandSessionsToolbar .commandToolbarCount { width: 100%; text-align: left; }
-  .commandSessionGroupBy { grid-column: auto; justify-self: stretch; flex-wrap: wrap; }
+  .commandSessionGroupBy { grid-column: auto; justify-self: stretch; margin-left: 0; flex-wrap: wrap; }
 }
 /* Official chip: shared by AgentChip (.agentChip in evidence.css) and Command Center session badges. Tone modifiers recolor text (and the optional dot) only; chips stay transparent outline labels. */
 .commandChip { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; padding: 2px 7px; border: 1px solid var(--command-line); border-radius: var(--control-radius); color: var(--command-muted); background: transparent; font: 500 var(--text-caption)/1.3 var(--font-ui); letter-spacing: 0; text-transform: none; }
@@ -155,9 +157,11 @@
 .commandSessionsSkeletonDetail { grid-column: 1; grid-row: 2; width: min(160px, 48%); }
 .commandSessionsSkeletonMeta { grid-column: 2; grid-row: 1; width: 75%; justify-self: end; }
 .commandTable { width: 100%; border-collapse: collapse; color: var(--command-muted); font-size: var(--text-sm); }
-.commandSessionTable { min-width: 1180px; table-layout: fixed; }
-/* The Task column is present only for a same-computer client; it widens the table instead of squeezing the title. */
-.commandSessionTable:has(.commandSessionColTask) { min-width: 1380px; }
+/* The session list fits its panel at every width: no minimum width, three presentations chosen by the panel's own width. */
+.commandTableWrap:has(> .commandSessionTable) { container: session-table / inline-size; }
+.commandSessionTable { table-layout: fixed; }
+.commandSessionTable .commandTablePrimary { min-width: 0; }
+.commandSessionTable .commandTablePrimary strong { overflow-wrap: anywhere; }
 .commandSessionColSession { width: auto; }
 .commandSessionColTask { width: 200px; }
 .commandSessionColState { width: 126px; }
@@ -229,6 +233,78 @@
 .commandTableActivityUnavailable { color: var(--command-faint); }
 @keyframes commandActivityLabelIn { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .commandTableActivityLabelChanged { animation: none; } }
+/* A restored window: Last activity moves under the title, where its compact line already renders, and the fixed columns narrow.
+   The column keeps its cells at zero width, because a group header spans every column. A same-computer client adds the Task column,
+   so its table switches at a wider panel. */
+@container session-table (max-width: 1379px) {
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColActivity { width: 0; }
+  .commandSessionTable:has(.commandSessionColTask) .commandTableActivityColumn { padding: 0; }
+  .commandSessionTable:has(.commandSessionColTask) .commandTableActivityColumn > * { display: none; }
+  .commandSessionTable:has(.commandSessionColTask) .commandTableActivity.agentChip.commandTableActivityCompact { display: flex; }
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColTask { width: 180px; }
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColState { width: 120px; }
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColAgents { width: 84px; }
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColContext { width: 96px; }
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColProgress { width: 108px; }
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColUpdated { width: 120px; }
+  .commandSessionTable:has(.commandSessionColTask) .commandSessionColAction { width: 56px; }
+}
+@container session-table (max-width: 1179px) {
+  .commandSessionTable .commandSessionColActivity { width: 0; }
+  .commandSessionTable .commandTableActivityColumn { padding: 0; }
+  .commandSessionTable .commandTableActivityColumn > * { display: none; }
+  .commandSessionTable .commandTableActivity.agentChip.commandTableActivityCompact { display: flex; }
+  .commandSessionTable .commandSessionColTask { width: 180px; }
+  .commandSessionTable .commandSessionColState { width: 120px; }
+  .commandSessionTable .commandSessionColAgents { width: 84px; }
+  .commandSessionTable .commandSessionColContext { width: 96px; }
+  .commandSessionTable .commandSessionColProgress { width: 108px; }
+  .commandSessionTable .commandSessionColUpdated { width: 120px; }
+  .commandSessionTable .commandSessionColAction { width: 56px; }
+}
+/* A narrow panel uses the stacked row presentation of the phone. */
+@container session-table (max-width: 999px) {
+  .commandSessionTable { display: block; table-layout: auto; }
+  .commandSessionTable colgroup { display: none; }
+  .commandSessionTable thead { display: block; border-bottom: 1px solid var(--command-line); }
+  .commandSessionTable thead tr { display: flex; flex-wrap: wrap; }
+  .commandSessionTable thead th:not(.commandTableSortable) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+  .commandSessionTable th.commandTableSortable { flex: 1; }
+  .commandSessionTable .commandTableSort { padding-inline: 8px; justify-content: center; }
+  .commandSessionTable tbody { display: block; }
+  .commandSessionTable tbody tr { min-width: 0; padding: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 44px; gap: 14px 12px; }
+  .commandSessionTable tbody tr + tr { border-top: 1px solid var(--command-line); }
+  .commandSessionTable tbody tr.commandTableGroupRow, .commandSessionTable tbody tr.commandTableGroupFooter { padding: 0; display: block; }
+  .commandSessionTable .commandTableGroupRow > th { display: block; }
+  .commandSessionTable tbody + tbody .commandTableGroupRow > th { border-top: 1px solid var(--command-line); }
+  .commandSessionTable .commandTableGroupFooter > td { display: block; padding: 0 12px; }
+  .commandTable .commandSessionGroupToggle { min-height: 44px; padding: var(--space-1) 12px; flex-wrap: wrap; white-space: normal; }
+  .commandSessionTable td { min-width: 0; min-height: 0; padding: 0; border-top: 0; }
+  .commandSessionTable td:first-child { grid-column: 1 / 3; grid-row: 1; }
+  .commandSessionTable td.commandSessionCellState { grid-column: 1; grid-row: 2; }
+  .commandSessionTable td.commandTableAgents { grid-column: 2; grid-row: 2; }
+  .commandSessionTable td.commandSessionCellContext { grid-column: 1; grid-row: 3; }
+  .commandSessionTable td.commandSessionCellProgress { grid-column: 2; grid-row: 3; }
+  .commandSessionTable td.commandTableUpdated { grid-column: 1 / 3; grid-row: 4; display: flex; align-items: baseline; gap: 8px; }
+  /* The Task cell is optional, so it takes the last row and leaves no gap when the column is absent. */
+  .commandSessionTable td.commandSessionCellTask { grid-column: 1 / 3; grid-row: 5; }
+  .commandSessionTable td:last-child { grid-column: 3; grid-row: 1; }
+  .commandSessionTable td[data-label]:not(.commandTableUpdated) { display: grid; align-content: start; gap: 6px; }
+  .commandTableUpdated .commandSessionCacheTiming { margin-left: -2px; }
+  .commandTableUpdated .commandSessionCacheTiming .dottedInfoPopoverTrigger { min-width: 28px; min-height: 28px; justify-content: flex-start; }
+  .commandSessionTable td[data-label]::before { color: var(--command-faint); content: attr(data-label); font: var(--text-xs)/1 var(--font-ui); letter-spacing: 0; text-transform: none; }
+  .commandTableActivityColumn { display: none; }
+  .commandTableActivity.agentChip.commandTableActivityCompact { display: flex; }
+  .commandTableActivityCompact .commandTableActivityMark { width: 10px; height: 10px; flex-basis: 10px; }
+  .commandTableActivityCompact .commandTableActivityMarkPlaceholder { width: 10px; height: 10px; flex-basis: 10px; }
+  .commandTableActivityCompact .commandTableActivityMark::before { inset: 3px; }
+  .commandTableActivityCompact .commandTableActivityLabel { color: var(--command-muted); font-size: var(--text-xs); }
+  .commandTableActivityCompact .commandTableActivityMeta { font-size: var(--text-xs); }
+  .commandSessionTable .commandIconLink { width: 44px; height: 44px; }
+}
+@container session-table (max-width: 500px) {
+  .commandSessionTable tbody tr { padding: 13px 12px; gap: 13px 10px; }
+}
 .commandTableProgress { color: var(--command-ink); font: 600 var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .commandPagination { min-height: 48px; padding-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .commandPaginationSummary { color: var(--command-faint); font: var(--text-xs)/1.4 var(--font-ui); }
@@ -449,48 +525,11 @@
   .repositoryInventorySummary > div:nth-child(4) { border-top: 1px solid var(--command-line); }
 }
 @media (max-width: 760px) {
-  .commandSessionTable { min-width: 0; display: block; table-layout: auto; }
-  .commandSessionTable:has(.commandSessionColTask) { min-width: 0; }
-  .commandSessionTable colgroup { display: none; }
-  .commandSessionTable thead { display: block; border-bottom: 1px solid var(--command-line); }
-  .commandSessionTable thead tr { display: flex; flex-wrap: wrap; }
-  .commandSessionTable thead th:not(.commandTableSortable) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
-  .commandSessionTable th.commandTableSortable { flex: 1; }
   .commandTableSort { min-height: 44px; }
-  .commandSessionTable .commandTableSort { padding-inline: 8px; justify-content: center; }
-  .commandSessionTable tbody { display: block; }
-  .commandSessionTable tbody tr { min-width: 0; padding: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 44px; gap: 14px 12px; }
-  .commandSessionTable tbody tr + tr { border-top: 1px solid var(--command-line); }
-  .commandSessionTable tbody tr.commandTableGroupRow, .commandSessionTable tbody tr.commandTableGroupFooter { padding: 0; display: block; }
-  .commandSessionTable .commandTableGroupRow > th { display: block; }
-  .commandSessionTable tbody + tbody .commandTableGroupRow > th { border-top: 1px solid var(--command-line); }
-  .commandSessionTable .commandTableGroupFooter > td { display: block; padding: 0 12px; }
-  .commandTable .commandSessionGroupToggle { min-height: 44px; padding: var(--space-1) 12px; flex-wrap: wrap; white-space: normal; }
   .commandSessionGroupSummary { padding: 12px; }
-  .commandSessionTable td { min-width: 0; min-height: 0; padding: 0; border-top: 0; }
-  .commandSessionTable td:first-child { grid-column: 1 / 3; grid-row: 1; }
-  .commandSessionTable td.commandSessionCellState { grid-column: 1; grid-row: 2; }
-  .commandSessionTable td.commandTableAgents { grid-column: 2; grid-row: 2; }
-  .commandSessionTable td.commandSessionCellContext { grid-column: 1; grid-row: 3; }
-  .commandSessionTable td.commandSessionCellProgress { grid-column: 2; grid-row: 3; }
-  .commandSessionTable td.commandTableUpdated { grid-column: 1 / 3; grid-row: 4; display: flex; align-items: baseline; gap: 8px; }
-  /* The Task cell is optional, so it takes the last row and leaves no gap when the column is absent. */
-  .commandSessionTable td.commandSessionCellTask { grid-column: 1 / 3; grid-row: 5; }
-  .commandSessionTable td:last-child { grid-column: 3; grid-row: 1; }
-  .commandSessionTable td[data-label]:not(.commandTableUpdated) { display: grid; align-content: start; gap: 6px; }
-  .commandTableUpdated .commandSessionCacheTiming { margin-left: -2px; }
-  .commandTableUpdated .commandSessionCacheTiming .dottedInfoPopoverTrigger { min-width: 28px; min-height: 28px; justify-content: flex-start; }
-  .commandSessionTable td[data-label]::before { color: var(--command-faint); content: attr(data-label); font: var(--text-xs)/1 var(--font-ui); letter-spacing: 0; text-transform: none; }
   .commandTablePrimary { min-width: 0; }
   .commandTablePrimary strong { overflow-wrap: anywhere; }
   .commandIconLink { width: 44px; height: 44px; }
-  .commandTableActivityColumn { display: none; }
-  .commandTableActivity.agentChip.commandTableActivityCompact { display: flex; }
-  .commandTableActivityCompact .commandTableActivityMark { width: 10px; height: 10px; flex-basis: 10px; }
-  .commandTableActivityCompact .commandTableActivityMarkPlaceholder { width: 10px; height: 10px; flex-basis: 10px; }
-  .commandTableActivityCompact .commandTableActivityMark::before { inset: 3px; }
-  .commandTableActivityCompact .commandTableActivityLabel { color: var(--command-muted); font-size: var(--text-xs); }
-  .commandTableActivityCompact .commandTableActivityMeta { font-size: var(--text-xs); }
   .commandViewActions { margin-top: 12px; }
   .commandToolbar { align-items: stretch; flex-wrap: wrap; }
   .commandToolbar .commandSearch { width: 100%; }
@@ -536,7 +575,6 @@
   .commandPaginationPageStatus { display: block; text-align: center; line-height: 1.4; }
 }
 @media (max-width: 520px) {
-  .commandSessionTable tbody tr { padding: 13px 12px; gap: 13px 10px; }
   .commandComingSoon { grid-template-columns: 1fr; }
 }
 

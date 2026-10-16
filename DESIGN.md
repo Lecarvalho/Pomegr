@@ -208,8 +208,8 @@ Role tint is the one exception that colors agent roles. [Agents design](docs/int
 
 ## Typography
 
-**UI Font:** Inter (with sans-serif fallback)<br>
-**Data Font:** Geist Mono (with Consolas and monospace fallbacks)
+**UI Font:** Inter (with sans-serif fallback), token `--font-ui`<br>
+**Data Font:** Geist Mono (with Consolas and monospace fallbacks), token `--font-data`
 
 - Inter keeps the dense monitoring workspace readable and direct.
 - Geist Mono is for values, timestamps, counts, identifiers, and other execution metadata.

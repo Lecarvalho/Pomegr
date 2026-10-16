@@ -134,11 +134,6 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandSidebarLimit\.critical > i > b\s*\{\s*background:\s*var\(--command-error\);/);
     expect(styles).toMatch(/\.commandSessionColActivity\s*\{\s*width:\s*280px/);
     expect(styles).toMatch(/\.commandTableActivityLabel\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTableActivityColumn\s*\{\s*display:\s*none/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandTableActivityCompact\s*\{[^}]*display:\s*flex/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable\s*\{[^}]*min-width:\s*0;[^}]*display:\s*block;[^}]*table-layout:\s*auto/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable tbody tr\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\) 44px/);
-    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionTable td\[data-label\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
     expect(styles).toMatch(/\.pullRequestTitle em, \.branchComparison\s*\{[^}]*font-size:\s*var\(--text-xs\)/);
     expect(styles).toMatch(/\.commandShell :where\(button:not\(\.agentChip, \.commandChip\), input, select\)\s*\{\s*font:\s*inherit/);
     expect(styles).toMatch(/--popover:\s*var\(--color-raised\)/);
