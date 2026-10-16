@@ -671,7 +671,7 @@ test("Codex completion refreshes revision-bound CI, deduplicates unchanged resul
     items: [{ url, headBranch: repository.branch, state: "open" }], checkReads: [check] } };
   // The code cell that calls completion still holds its earlier PR command open.
   const state = { session: { id: OTHER_SESSION }, agents: [], activity: { items: [], total: 0 },
-    executionTasks: [{ id: "enclosing-cell-shell-1", workKind: "pull_request", status: "running", finishedAt: null }] };
+    executionTasks: [{ id: "enclosing-cell-shell-1", workKind: "pull_request", status: "running", startedAt: new Date(1000).toISOString(), finishedAt: null }] };
   const env = await setup(context, { read: () => readTaskCheckFacts(OTHER_SESSION, {
     observationStore: { get: () => ({ publicState: state }) }, readNow: async () => blocks,
   }) });

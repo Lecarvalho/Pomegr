@@ -1412,6 +1412,8 @@ installed plugin from before the rename sends; a body with both names is `invali
   - CI still running when the report arrives is unavailable. The agent waits for CI before it reports.
   - A fresh report read verifies CI against the checkout commit and the pull-request head commit.
     Matching revisions establish CI even when Codex keeps the enclosing code cell marked running.
+    Completed repository work must still finish before the checkout read; unresolved work must start before it.
+    Unknown work times or later work leave CI unavailable, even when the two commit hashes match.
     This exception changes no other condition and trusts no agent claim.
 - The board's reading of a waiting task (below) uses committed facts only and never
   blocks on acquisition (`resolveTaskCheckFacts`).

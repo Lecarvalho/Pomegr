@@ -59,9 +59,21 @@ function timeOf(value) {
 // Work whose end moves the time a fact must be read after.
 const REPOSITORY_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 
-function workTimes(state) {
-  const tasks = [...(Array.isArray(state?.executionTasks) ? state.executionTasks : []),
+function executionTasks(state) {
+  return [...(Array.isArray(state?.executionTasks) ? state.executionTasks : []),
     ...(Array.isArray(state?.agents) ? state.agents : []).flatMap((agent) => (Array.isArray(agent?.executionTasks) ? agent.executionTasks : []))];
+}
+
+// Only unresolved work already under way when Git read the checkout may be the enclosing code cell.
+function ciReadAfterKnownWork(state, readAt) {
+  return readAt !== null && executionTasks(state).filter((task) => REPOSITORY_WORK_KINDS.has(task?.workKind)).every((task) => {
+    const time = timeOf(task.status === "running" ? task.startedAt : task.finishedAt);
+    return time !== null && time <= readAt;
+  });
+}
+
+function workTimes(state) {
+  const tasks = executionTasks(state);
   const latest = (times) => (times.length === 0 ? null : Math.max(...times));
   const endOf = (task) => (task?.status === "running" ? Number.POSITIVE_INFINITY : timeOf(task?.finishedAt) ?? Number.POSITIVE_INFINITY);
   const ends = tasks.filter((task) => task && typeof task === "object").map((task) => ({ kind: task.workKind, end: endOf(task) }));
@@ -96,11 +108,12 @@ function checkFacts(state, blocks, checkRead, freshCi = false) {
   const blockReadAt = timeOf(repository.readAt);
   const pullsReadAt = timeOf(pulls?.readAt);
   const comparisonReadAt = repository.remote?.status === "ready" ? blockReadAt : null;
+  const ciRevisionVerified = freshCi && ci.value !== null && ciReadAfterKnownWork(state, blockReadAt);
   return {
     treeClean: Array.isArray(repository.files) ? repository.files.length === 0 : null,
     branchCommits,
     pullRequestStates: branchPulls ? branchPulls.map((item) => (PULL_REQUEST_STATES.includes(item?.state) ? item.state : "unknown")) : null,
-    ciPassed: ci.value,
+    ciPassed: freshCi && !ciRevisionVerified ? null : ci.value,
     readAt: {
       tree: blockReadAt,
       branch: comparisonReadAt,
@@ -109,7 +122,7 @@ function checkFacts(state, blocks, checkRead, freshCi = false) {
     },
     workAt: workTimes(state),
     // A report's own revision-bound read establishes CI even while its enclosing code cell is still running.
-    ...(freshCi && ci.value !== null ? { ciRevisionVerified: true } : {}),
+    ...(ciRevisionVerified ? { ciRevisionVerified: true } : {}),
   };
 }
 

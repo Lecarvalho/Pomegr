@@ -128,6 +128,25 @@ test("Claude completion uses the same exact-revision CI evidence", async () => {
   assert.deepEqual(verifyChecks(["ci_passed"], reportFacts), [{ check: "ci_passed", passed: true }]);
 });
 
+test("matching CI cannot hide repository work that finishes or starts after the checkout read", async () => {
+  const session = scenario();
+  const blocks = await session.settle();
+  const afterGit = Date.parse(blocks.repository.readAt) + 1;
+  // GitHub answers later, but its matching old head cannot renew the local checkout observation.
+  blocks.pullRequests.readAt = timestamp(afterGit + 100);
+  blocks.pullRequests.checkReads[0].readAt = afterGit + 100;
+  for (const task of [
+    { workKind: "git_push", status: "completed", finishedAt: timestamp(afterGit) },
+    { workKind: "git", status: "running", startedAt: timestamp(afterGit), finishedAt: null },
+    { workKind: "git", status: "completed", finishedAt: null },
+  ]) {
+    session.state.executionTasks = [task];
+    const facts = await readTaskCheckFacts(SESSION, { observationStore: session.store, readNow: async () => blocks });
+    assert.notEqual(facts.ciRevisionVerified, true);
+    assert.deepEqual(verifyChecks(["ci_passed"], facts), [{ check: "ci_passed", passed: false, unavailable: true }]);
+  }
+});
+
 test("CI evidence distinguishes a verified failure from pending, absent, and missing checks", async () => {
   for (const [checks, expected] of [["failed", false], ["pending", "unavailable"], ["none", "unavailable"], ["missing", "unavailable"]]) {
     const session = scenario({ checks });
