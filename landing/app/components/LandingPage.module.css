@@ -18,6 +18,10 @@
   --signal-soft: #e5675b33;
   --signal-wash: #2a1d1b;
   --focus: #91b8ee;
+  --text: #c5cbd3;
+  /* Masks read only alpha. */
+  --dot-fade: radial-gradient(ellipse 70% 80% at 70% 30%, black 20%, transparent 75%);
+  --image-fade: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, black 7%, transparent) 8%, color-mix(in srgb, black 27%, transparent) 22%, color-mix(in srgb, black 60%, transparent) 40%, color-mix(in srgb, black 87%, transparent) 55%, black 68%, black 74%, color-mix(in srgb, black 87%, transparent) 82%, color-mix(in srgb, black 60%, transparent) 89%, color-mix(in srgb, black 27%, transparent) 95%, transparent 100%);
   --ui: var(--font-inter), sans-serif;
   --mono: var(--font-geist-mono), Consolas, monospace;
   --page: 1200px;
@@ -87,8 +91,8 @@
   pointer-events: none;
   background-image: radial-gradient(circle, var(--done) 1px, transparent 1.4px);
   background-size: 22px 22px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: var(--dot-fade);
+  mask-image: var(--dot-fade);
 }
 
 /* Dots the pointer crosses light up in pomegranate red, inside the same fade (DotGlow). */
@@ -100,8 +104,8 @@
   width: 100%;
   height: 1100px;
   pointer-events: none;
-  -webkit-mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse 70% 80% at 70% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: var(--dot-fade);
+  mask-image: var(--dot-fade);
 }
 
 .pomegranate {
@@ -132,7 +136,7 @@
 }
 
 /* A caption that should barely register, such as the sample-data note. */
-.label.quiet { color: #3f464f; }
+.label.quiet { color: color-mix(in srgb, var(--muted) 7%, var(--line-strong)); }
 
 /* Hero */
 .hero { padding: 104px 0 56px; }
@@ -192,7 +196,7 @@
 }
 
 /* Quiet by default: a thin red outline and red text that fills in only on hover. */
-.primaryAction { border: 1px solid #e5675b66; background: transparent; color: var(--signal) !important; }
+.primaryAction { border: 1px solid color-mix(in srgb, var(--signal) 40%, transparent); background: transparent; color: var(--signal) !important; }
 .primaryAction:hover { border-color: var(--signal); background: var(--signal-wash); color: var(--ink) !important; }
 
 .primaryAction svg {
@@ -225,8 +229,8 @@
 
 /* fig. 1 recedes: a see-through panel and a softer frame, so the curves carry it. */
 .figureGhost {
-  border-color: #39404a80;
-  background: #15181b59;
+  border-color: color-mix(in srgb, var(--line-strong) 50%, transparent);
+  background: color-mix(in srgb, var(--panel) 35%, transparent);
 }
 
 .figure::before,
@@ -311,7 +315,7 @@
   right: 24px;
   bottom: 0;
   padding: 10px 0 0 8px;
-  border-left: 1px dashed #e5675b55;
+  border-left: 1px dashed color-mix(in srgb, var(--signal) 33%, transparent);
   color: var(--signal);
   font: 400 11px/1 var(--mono);
   letter-spacing: .06em;
@@ -377,7 +381,7 @@
 .signalFill { fill: var(--signal); }
 .now { stroke: var(--signal); stroke-width: 1.5; stroke-dasharray: 2 3; }
 .dash { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; }
-.bar { fill: #2c3238; }
+.bar { fill: color-mix(in srgb, var(--line-strong) 32%, var(--line)); }
 .barOn { fill: var(--signal); }
 .card { fill: var(--raised); stroke: var(--line-strong); stroke-width: 1; }
 .cardOn { fill: var(--signal-wash); stroke: var(--signal); stroke-width: 1; }
@@ -493,7 +497,7 @@
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  color: #5d6570;
+  color: color-mix(in srgb, var(--muted) 43%, var(--line-strong));
   font-size: 13px;
 }
 
@@ -535,8 +539,8 @@
   width: 360px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
-  background: #0a0b0d;
-  box-shadow: 0 24px 60px #000000b3;
+  background: color-mix(in srgb, var(--canvas) 72%, black);
+  box-shadow: 0 24px 60px color-mix(in srgb, black 70%, transparent);
   transform-origin: 0 0;
   transition: opacity .45s ease, transform .7s var(--ease);
 }
@@ -556,7 +560,7 @@
 .terminalBar span { margin-left: 8px; color: var(--muted); font: 400 10px/1 var(--mono); letter-spacing: .06em; }
 
 .terminalBody { display: grid; gap: 7px; padding: 14px; min-height: 200px; align-content: start; }
-.terminalBody p { margin: 0; color: #c5cbd3; font: 400 12.5px/1.45 var(--mono); transition: opacity .3s ease; }
+.terminalBody p { margin: 0; color: var(--text); font: 400 12.5px/1.45 var(--mono); transition: opacity .3s ease; }
 .terminalBody p:not(.shown) { opacity: 0; }
 .terminalBody b { color: var(--signal); font-weight: 400; }
 
@@ -612,8 +616,8 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
-  mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
+  -webkit-mask-image: var(--image-fade);
+  mask-image: var(--image-fade);
 }
 
 .bite {
@@ -622,8 +626,8 @@
   height: auto;
   image-rendering: pixelated;
   /* Starts almost invisible under the figure, gains opacity gradually, and fades out again before the footer. */
-  -webkit-mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
-  mask-image: linear-gradient(to bottom, #0000 0%, #0001 8%, #0004 22%, #0009 40%, #000d 55%, #000 68%, #000 74%, #000d 82%, #0009 89%, #0004 95%, #0000 100%);
+  -webkit-mask-image: var(--image-fade);
+  mask-image: var(--image-fade);
 }
 
 .landing[data-motion] .bite[data-reveal]:not([data-shown]) { opacity: 0; transform: translateY(-24px); filter: blur(8px); }
@@ -700,7 +704,7 @@
 
 @keyframes nextGlow {
   0%, 100% { fill: var(--signal-wash); }
-  50% { fill: #3a221f; }
+  50% { fill: color-mix(in srgb, var(--signal) 9%, var(--signal-wash)); }
 }
 
 @media (max-width: 900px) {

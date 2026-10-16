@@ -48,7 +48,9 @@ The landing is an isolated package, so it copies these values instead of importi
 | Focus | `#91b8ee` | Focus ring, the app's dark focus color |
 
 - Red and Signal are the only colors. Green, amber, and lavender stay in the app.
+- Each other tone mixes these tokens with `color-mix()`.
 - The radius is 4px on buttons and fields. Figures, cards, and frames are square.
+- The fig. 4 chat bubble is rounded at 10px, with a 2px tail corner.
 
 ## Type
 
