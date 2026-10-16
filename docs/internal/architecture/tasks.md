@@ -1550,6 +1550,9 @@ installed plugin from before the rename sends; a body with both names is `invali
   The answer names the remaining owner action: Mark done or Requeue.
   These actions retain their existing queue-release rules in [Queue](#queue).
   A queue that is off or paused keeps its status throughout reporting.
+  Plugin 0.9.14 recognizes completion answers that retain a block and names the required owner action.
+  An older plugin may call that successful answer unavailable; it cannot undo the stored report.
+  An older monitor still refuses replacement reports. Update the monitor and plugin together for this recovery.
 - **Owner decisions remain final.** Done refuses reports with `already_reported`.
   Requeue clears the started session's link, so its later report answers `not_found`.
   Assignments retain their existing lifetime; an assigned session may report the requeued task.

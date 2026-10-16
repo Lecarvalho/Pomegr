@@ -67,6 +67,11 @@ An updated report never starts a session or marks a task done.
 Pomegr retains earlier reports privately; the task window shows the latest report.
 Identical reports with identical results change nothing.
 
+This recovery needs a Pomegr build that supports updated reports and plugin 0.9.14 or later.
+Update both before retrying. An older plugin can call a recorded completion unavailable when the task stays blocked.
+That message does not prove the report failed; check the task window's latest report.
+See [Update the plugin](reporting-plugins.md#update-the-plugin).
+
 A session that ends without a report leaves the task **Stalled**, but only once Pomegr
 has established the session's end, for example a **Closed** session or a **Stopped**
 Claude Code session.
