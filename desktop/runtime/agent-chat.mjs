@@ -3,8 +3,9 @@
 // and changes the board only when the owner approves a proposal, through the fixed task actions.
 
 import { spawn as spawnChild } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
+import { createServer } from "node:http";
 import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
@@ -139,6 +140,42 @@ export function createAgentChat(options = {}) {
     } catch { return null; }
   }
 
+  // One memory-only capability per turn. Only this bridge knows the repository and desktop credential.
+  async function taskReadServer(turn) {
+    if (!mcpServer) return null;
+    const key = randomBytes(32).toString("base64url");
+    const server = createServer(async (request, response) => {
+      const supplied = request.headers["x-pomegr-chat-task-key"];
+      const authenticated = typeof supplied === "string" && /^[A-Za-z0-9_-]{43}$/u.test(supplied)
+        && timingSafeEqual(Buffer.from(supplied), Buffer.from(key));
+      let url = null;
+      try { url = new URL(request.url || "/", "http://127.0.0.1"); } catch { /* malformed request is refused */ }
+      const taskId = url?.searchParams.get("task_id");
+      const valid = authenticated && request.headers.origin === undefined
+        && request.headers.host === `127.0.0.1:${server.address()?.port}`
+        && request.method === "GET" && url?.pathname === "/task" && TASK_ID.test(taskId ?? "")
+        && [...url.searchParams.keys()].length === 1 && !request.headers["transfer-encoding"]
+        && !(Number(request.headers["content-length"] || 0) > 0) && active === turn && !disposed && !turn.stopped;
+      let answer = { ok: false };
+      if (valid) {
+        try { answer = await monitor(`/internal/agent-chat/task?${new URLSearchParams({ repositoryId: turn.repositoryId, taskId })}`, { method: "GET" }); }
+        catch { /* fixed unavailable answer */ }
+      }
+      response.writeHead(valid ? 200 : 403, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      response.end(JSON.stringify(answer));
+    });
+    const close = () => { server.close(); server.closeAllConnections(); };
+    turn.closeTaskRead = close;
+    try {
+      await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+      if (disposed || turn.stopped || active !== turn) { close(); return null; }
+      return { ...mcpServer, env: { ...mcpServer.env,
+        POMEGR_CHAT_TASK_ORIGIN: `http://127.0.0.1:${server.address().port}`,
+        POMEGR_CHAT_TASK_KEY: key,
+      } };
+    } catch { close(); return mcpServer; }
+  }
+
   // The observed runs the task form's Claude model list reads, cut to the source and the model of each. A committed GET;
   // no answer leaves the Claude list to the board's own tasks.
   async function readRuns() {
@@ -211,6 +248,7 @@ export function createAgentChat(options = {}) {
 
   // The one turn is free again: the oldest follow-up that waits takes it.
   function release(holder) {
+    holder?.closeTaskRead?.();
     if (active === holder) active = null;
     startFollowUp();
   }
@@ -264,14 +302,19 @@ export function createAgentChat(options = {}) {
         withdrawRun(sessionId);
         return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
       }
+      const taskServer = await taskReadServer(turn);
+      if (disposed || turn.stopped) {
+        withdrawRun(sessionId);
+        return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
+      }
       const run = runTurn({
-        spawn, executable: command, provider: turn.provider, model: turn.model, mcpServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null, sessionId,
+        spawn, executable: command, provider: turn.provider, model: turn.model, mcpServer: taskServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null, sessionId,
         cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
-      turn.stop = run.stop;
-      void run.done.finally(() => withdrawRun(sessionId)).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
+      turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
+      void run.done.finally(() => { turn.closeTaskRead?.(); withdrawRun(sessionId); }).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
     } catch { await finishTurn(turn, null); }
   }
 
@@ -321,6 +364,8 @@ export function createAgentChat(options = {}) {
     const reservation = { reserved: true, repositoryId, conversationId };
     active = reservation;
     let started = false;
+    let turn = null;
+    let sessionId = null;
     try {
       const command = executable(provider);
       if (!command) return refused("cli_missing");
@@ -352,18 +397,25 @@ export function createAgentChat(options = {}) {
       // The run may read the folder of this conversation's images, and nothing else outside the repository.
       const newest = new Set(attached.map((image) => image.id));
       const runImages = shown.length > 0 ? { folder: images.folder(repositoryId, conversation.id), files: shown.filter((image) => newest.has(image.id)).map((image) => image.file) } : null;
-      const sessionId = await declareRun(provider);
+      sessionId = await declareRun(provider);
       if (disposed) { withdrawRun(sessionId); return UNAVAILABLE; }
-      const turn = { repositoryId, conversationId: conversation.id, provider, model, startedAt: at, activity: "starting", text: "", stop: () => {} };
+      turn = { repositoryId, conversationId: conversation.id, provider, model, startedAt: at, activity: "starting", text: "", stopped: false,
+        stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
       started = true;
+      const taskServer = await taskReadServer(turn);
+      if (disposed || turn.stopped) {
+        withdrawRun(sessionId);
+        await finishTurn(turn, { status: "stopped", text: "" });
+        return UNAVAILABLE;
+      }
       const run = runTurn({
-        spawn, executable: command, provider, model, mcpServer, images: runImages, sessionId, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        spawn, executable: command, provider, model, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
-      turn.stop = run.stop;
-      void run.done.finally(() => withdrawRun(sessionId)).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
+      turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
+      void run.done.finally(() => { turn.closeTaskRead?.(); withdrawRun(sessionId); }).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
       return { ok: true, conversationId: conversation.id };
     } catch {
       return UNAVAILABLE;

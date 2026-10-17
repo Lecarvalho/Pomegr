@@ -375,8 +375,8 @@ test("a prompt past the limit is refused, and one at the limit is kept", () => {
   assert.equal(composePrompt({ board: fullBoard(), message: "x".repeat(PROMPT_LIMIT + 1), now }), null);
 });
 
-test("the instructions name every board operation, the proposal fence, and the seven read tools of the chat server", () => {
-  assert.equal(POMEGR_READ_TOOLS.length, 7);
+test("the instructions name every board operation, the proposal fence, and the seven observation tools and task read of the chat server", () => {
+  assert.equal(POMEGR_READ_TOOLS.length, 8);
   for (const operation of BOARD_OPERATIONS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`{"op":"${operation}"`), true, operation);
   assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`\`\`\`${PROPOSAL_FENCE}\n{"summary"`), true);
   for (const tool of POMEGR_READ_TOOLS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(tool), true, tool);

@@ -311,14 +311,16 @@ test("dispose stops a running turn once, and a send that is still preparing neve
   assert.doesNotThrow(() => idle.chat.dispose());
 });
 
-test("an explicit MCP server option, or none, is passed to the turn as given", async (context) => {
+test("an explicit MCP server receives a turn capability, while none stays absent", async (context) => {
   const none = await chatHarness(context, { mcpServer: null });
   await send(none);
   assert.equal(none.runs[0].options.mcpServer, null);
   const given = { command: desktopExecutable, args: [mcpScript], env: { ELECTRON_RUN_AS_NODE: "1" } };
   const custom = await chatHarness(context, { mcpServer: given });
   await send(custom);
-  assert.equal(custom.runs[0].options.mcpServer, given);
+  assert.deepEqual({ ...custom.runs[0].options.mcpServer, env: given.env }, given);
+  assert.match(custom.runs[0].options.mcpServer.env.POMEGR_CHAT_TASK_KEY, /^[A-Za-z0-9_-]{43}$/u);
+  assert.deepEqual(given.env, { ELECTRON_RUN_AS_NODE: "1" });
 });
 
 test("the MCP server is the desktop executable running the bundled read-only server as Node, and null when it is not built", () => {

@@ -57,7 +57,7 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
 | `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
-| `mcp/agent-chat-server.mjs` | The chat's own MCP server with the seven read tools | Register a signal, task, or feature tool |
+| `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and one read-only task tool | Register a signal, write, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device | Forward a chat request to the web host |
 | `shared/agent-chat-contract.ts` | Browser-visible types and bounds | Import `server/` or `desktop/` |
 | `app/agent-chat-client.ts`, `app/components/agent-chat/` | The transport, the chat state, and the panel | Keep conversation content in browser storage, or change the board except through the chat's `apply` |
@@ -109,11 +109,11 @@ session ID desktop main made for the run vary.
 - **Claude Code:** print mode with JSON lines, `--no-session-persistence`,
   `--session-id` with the run's own ID, `--restricted`, `--strict-mcp-config` with one `--mcp-config`, `--permission-mode
   dontAsk`, `--tools Read,Grep,Glob`, and an allow list of those three tools and the
-  seven Pomegr read tools. A conversation with images adds `--add-dir` with the folder of
+  seven Pomegr observation tools and `get_task`. A conversation with images adds `--add-dir` with the folder of
   that conversation's images, because restricted mode confines Read to the working
   directories.
 - **Codex:** `exec --json --ephemeral --sandbox read-only --skip-git-repo-check
-  --ignore-user-config --ignore-rules --disable apps`, the MCP server as three `-c`
+  --ignore-user-config --ignore-rules --disable apps`, the MCP server as fixed `-c`
   values, and `-` for the prompt on stdin. A message with images adds `--image` with
   its files after the `-`: the flag takes a list of values, so before the `-` it would
   take the `-` as a file.
@@ -122,7 +122,7 @@ What this gives the run, on every computer:
 
 - It reads the repository's files. Claude Code has Read, Grep, and Glob. Codex has its
   shell inside the read-only sandbox.
-- It has the seven Pomegr read tools (see [Tools](#tools)).
+- It has the seven Pomegr observation tools and `get_task` (see [Tools](#tools)).
 - It sees the images the owner sent in this conversation. Claude Code reads their files
   in the one added folder. Codex gets the files of the newest message attached, and can
   read the folder inside its sandbox. The folder holds image files and nothing else.
@@ -184,13 +184,17 @@ The chat's MCP server is `mcp/agent-chat-server.mjs`, bundled as
 command is the desktop executable with `ELECTRON_RUN_AS_NODE=1`, so it needs no Node on
 the computer and no Pomegr plugin in the repository.
 
-It registers the seven observation tools of
-[MCP observation queries](mcp-queries.md) and nothing else: `list_sessions`,
+It registers `get_task` and the seven observation tools of
+[MCP observation queries](mcp-queries.md): `list_sessions`,
 `get_session_report`, `list_session_agents`, `get_agent_context`,
 `get_recent_failures`, `get_usage_limits`, and `get_provider_health`. They use the same
 loopback routes, the same local descriptor, and the same answers as the plugin's tools.
 No host session is bound, so a session tool needs an explicit session reference. The
 board snapshot gives the reference of each task's session.
+
+`get_task` takes only `task_id` (`T-n`) and reads that task of the chat's repository. It reuses the [served-task shape](tasks.md#agent-task-read) from T-118 through `shared/task-agent-read.mjs`, with uncut text (at most 4,000 characters) and own condition, and adds only `report: { attention, block_reason }` as the snapshot shapes those lines. Aril calls it when a task it needs has `text_cut`, instead of guessing from the preview. Unknown and cross-repository IDs, malformed answers, and unavailable reads all answer the fixed line `Pomegr task unavailable on this chat's board.`
+
+Desktop main gives each message and follow-up a temporary loopback bridge, bound in a closure to the same repository as the snapshot. The MCP worker inherits its loopback origin and random read capability (`POMEGR_CHAT_TASK_ORIGIN` and `POMEGR_CHAT_TASK_KEY`) through the provider process environment; the runner removes their values from inline MCP configuration and passes only the variable names to Codex through `env_vars`. Neither value enters provider command-line arguments, the prompt, or a file. This temporary capability permits only the same repository task read offered by the tool, and grants no monitor or write access. The bridge accepts only `GET /task?task_id=T-n`, with its capability header, the exact loopback Host, and no Origin or body. It forwards the read to `GET /internal/agent-chat/task?repositoryId=…&taskId=…` under the existing desktop authorization gate. The monitor uses the non-writing task reader, including its exact editability rule; it neither seeds a board nor reads providers. No session is fabricated. The bridge closes on stop, dispose, or turn settlement; nothing is persisted. The observation credential and plugin task endpoints are unchanged.
 
 When the bundle is missing, the run starts without an MCP server and Aril works from the
 board snapshot and the files.
@@ -731,14 +735,15 @@ never a session's.
   family, from the sessions of every repository in the last 90 days, and the Codex
   catalog (task T-110). A model name carries no session, path, or repository. This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
-  own session. The run can also read the repository's files and call the seven read
-  tools, so file content and normalized session evidence can reach the provider in the
+  own session. The run can also read the repository's files and call the seven observation
+  tools and the repository-bound `get_task`, so file content and normalized session evidence can reach the provider in the
   same run, as they can in any session the owner starts in that folder. The images the
   owner sent in the conversation reach the provider too: the run reads their files. This
   is the widening of 2026-10-13 (task T-86). The prompt names the absolute file of each
   image, so the path of the chat's image folder under the desktop data root, which holds
   the user's folder name, reaches the provider. A task's session has had the path of its
   task's image folder in the same way.
+- **What the task read exposes.** `get_task` can send the full text omitted by the snapshot's shared budget to the same chat provider, with the T-118 task fields and only the snapshot's attention and block lines added. It exposes no path, credential, capability, repository ID, column ID, feature ID, session, image, dispatch fact, feature description, or app version. Both monitor and MCP worker apply the shared allowlist. It writes nothing, and the snapshot and its 48,000-character text budget are unchanged.
 - **What never enters a prompt.** Credentials, tokens, the desktop token, a path other
   than the working directory the process starts in and the files of the conversation's
   images, the images of a task, an image of another conversation, and the description or

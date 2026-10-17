@@ -126,6 +126,7 @@ export async function chatHarness(context, overrides = {}) {
     ...(viaDataRoot ? { dataRoot } : { store, images }),
     ...rest,
   });
+  context.after(() => chat.dispose());
   const calls = state.calls;
   // After an Apply or a Dismiss, Pomegr asks Aril for one follow-up: a run whose prompt ends with the outcome.
   const followUps = () => runs.filter((run) => run.options.prompt.includes("</proposal_outcome>"));

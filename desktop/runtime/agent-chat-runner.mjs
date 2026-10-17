@@ -12,10 +12,11 @@ export const CHAT_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9
 
 // The read tools of the chat's own MCP server (`mcp/agent-chat-server.mjs`); it has no tool that writes.
 export const POMEGR_READ_TOOLS = Object.freeze([
-  "list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health",
+  "list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health", "get_task",
 ]);
 export const CLAUDE_FILE_TOOLS = Object.freeze(["Read", "Grep", "Glob"]);
 const MCP_SERVER_NAME = "pomegr";
+const CHAT_TASK_ENV = Object.freeze(["POMEGR_CHAT_TASK_ORIGIN", "POMEGR_CHAT_TASK_KEY"]);
 
 // A server the desktop itself names: an absolute executable, absolute script arguments, and fixed environment values.
 function validServer(server) {
@@ -55,6 +56,9 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
   const identity = typeof sessionId === "string" && CHAT_SESSION_ID.test(sessionId) ? sessionId : null;
   const server = validServer(mcpServer) ? { command: mcpServer.command, args: [...mcpServer.args], env: { ...mcpServer.env } } : null;
+  // Pass the turn capability through process environments, never provider argv or an on-disk config.
+  const inherited = server ? CHAT_TASK_ENV.filter((name) => Object.hasOwn(server.env, name)) : [];
+  for (const name of inherited) delete server.env[name];
   const shown = validImages(images);
   if (provider === "claude") {
     return [
@@ -81,6 +85,7 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
         "-c", `mcp_servers.${MCP_SERVER_NAME}.command=${tomlString(server.command)}`,
         "-c", `mcp_servers.${MCP_SERVER_NAME}.args=[${server.args.map(tomlString).join(", ")}]`,
         "-c", `mcp_servers.${MCP_SERVER_NAME}.env={${Object.entries(server.env).map(([name, value]) => `${name}=${tomlString(value)}`).join(", ")}}`,
+        ...(inherited.length > 0 ? ["-c", `mcp_servers.${MCP_SERVER_NAME}.env_vars=[${inherited.map(tomlString).join(", ")}]`] : []),
       ] : []),
       ...(chosen ? ["--model", chosen] : []),
       "-",
@@ -207,7 +212,10 @@ export function runChatTurn({ spawn, executable, provider, model = null, mcpServ
   };
   const kill = () => { try { child?.kill?.(); } catch { /* already gone */ } };
   try {
-    child = spawn(executable, args, { cwd, env, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+    const capability = validServer(mcpServer) ? Object.fromEntries(CHAT_TASK_ENV
+      .filter((name) => Object.hasOwn(mcpServer.env, name)).map((name) => [name, mcpServer.env[name]])) : {};
+    const processEnvironment = Object.keys(capability).length > 0 ? { ...env, ...capability } : env;
+    child = spawn(executable, args, { cwd, env: processEnvironment, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
     child.stdout?.setEncoding?.("utf8");
     child.stdout?.on?.("data", (chunk) => reader.push(String(chunk)));
     child.once("error", () => finish(null));

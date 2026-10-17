@@ -149,7 +149,9 @@ test("send reads the board, the root, and the observed runs with the desktop hea
   assert.equal(options.executable, claudeExecutable);
   assert.equal(options.provider, "claude");
   assert.equal(options.model, "claude-opus-4-1");
-  assert.deepEqual(options.mcpServer, { command: desktopExecutable, args: [mcpScript], env: { ELECTRON_RUN_AS_NODE: "1" } });
+  assert.deepEqual({ ...options.mcpServer, env: { ELECTRON_RUN_AS_NODE: options.mcpServer.env.ELECTRON_RUN_AS_NODE } }, { command: desktopExecutable, args: [mcpScript], env: { ELECTRON_RUN_AS_NODE: "1" } });
+  assert.match(options.mcpServer.env.POMEGR_CHAT_TASK_ORIGIN, /^http:\/\/127\.0\.0\.1:[0-9]+$/u);
+  assert.match(options.mcpServer.env.POMEGR_CHAT_TASK_KEY, /^[A-Za-z0-9_-]{43}$/u);
   assert.equal(options.cwd, root);
   assert.equal(options.timeoutMs, 4321);
   assert.equal(options.spawn, h.spawn);

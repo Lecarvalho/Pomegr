@@ -29,6 +29,8 @@ turns no queue on or off by itself either: it proposes that, and you apply it.
 > Pomegr's observations. It cannot write a file, run a command that changes something,
 > or use your other tools and plugins.
 
+When a task's text was shortened in the board snapshot, Aril can read the whole task on demand with `get_task`. It reads only the selected repository's board, including the task's conditions and attention or block line; it changes nothing.
+
 ## Ask Aril
 
 1. Select **Aril** at the bottom right. The panel opens on your newest conversation.
