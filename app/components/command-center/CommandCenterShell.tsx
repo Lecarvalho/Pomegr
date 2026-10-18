@@ -207,7 +207,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
     const routedDestination = destinationTerms.find(([pattern]) => pattern.test(normalized))?.[1];
     const routed = routedDestination ? destinations.filter((result) => result.href === routedDestination) : [];
     const ordered = [...routed, ...destinations.filter((result) => result.href !== routedDestination)];
-    const candidates = onSessions ? [...recentSessions, ...ordered, ...recentRepositories]
+    const candidates: PaletteResult[] = onSessions ? [...recentSessions, ...ordered, ...recentRepositories]
       : pathname === "/repositories" || pathname.startsWith("/repositories/") ? [...recentRepositories, ...ordered, ...recentSessions]
         : [...ordered, ...recentSessions, ...recentRepositories];
     const matched = normalized ? candidates.filter((result) => `${result.label} ${result.detail} ${result.keywords ?? ""}`.toLowerCase().includes(normalized)) : candidates;

@@ -236,6 +236,18 @@ describe("Command Center app shell", () => {
     expect(navigation.push).toHaveBeenCalledWith("/tasks");
   });
 
+  it("searches repository palette results without optional session keywords", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => String(input).startsWith("/api/repositories")
+      ? response({ revision: 1, readiness: "ready", repositories: [{ id: "alpha", name: "Alpha", displayName: "Alpha Project" }] })
+      : response({ sessions }));
+    render(<AppShell><main>Home content</main></AppShell>);
+    await user.click(await screen.findByRole("button", { name: "Search Pomegr" }));
+    const search = screen.getByRole("combobox", { name: "Search Pomegr" });
+    await user.type(search, "Alpha Project");
+    expect(screen.getByRole("option", { name: /Alpha Project.*Repository/ })).toBeInTheDocument();
+  });
+
   it("finds a session by its full ID from the Sessions page and opens it", async () => {
     const user = userEvent.setup();
     navigation.pathname = "/sessions";
