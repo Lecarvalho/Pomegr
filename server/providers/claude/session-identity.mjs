@@ -122,9 +122,9 @@ export async function scanSessionTitleState(file, stat, initial = {}, start = 0)
     input?.destroy();
   }
 }
-export function runtimeMetadata(records) {
-  let model = "unknown";
-  let effort = "unspecified";
+export function runtimeMetadata(records, initial = {}) {
+  let model = initial.model ?? "unknown";
+  let effort = initial.effort ?? "unspecified";
   for (const record of records) {
     if (record.type !== "assistant" || record.message?.model === "<synthetic>") continue;
     if (typeof record.message?.model === "string") model = record.message.model;

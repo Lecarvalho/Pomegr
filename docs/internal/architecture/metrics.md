@@ -34,6 +34,12 @@ classification is separate from agent/task status and agent-reported progress.
 
 `Agent.label` is the stable display identity, such as a provider codename. `Agent.assignment` is an optional bounded work title from a recognized provider delegation record or explicitly named child thread. Pomegr shows the assignment first when available and keeps the label as secondary identity; it does not infer an assignment from conversation content, automatic catalog titles, session-index fallbacks, or activity.
 
+An agent's model and reasoning effort come from its own recorded runtime evidence.
+Claude retains the latest non-synthetic assistant model and effort independently across append-only refreshes, even when those records leave the acquisition tail.
+Missing fields retain their earlier recorded values for that source generation.
+A complete source replacement rebuilds these values without inherited evidence.
+An agent with no model evidence stays `unknown`; it never inherits its parent's model.
+
 ## Agent roles
 
 `Agent.role` is a bounded display enum: `orchestrator`, `explore`, `plan`, `builder`, `reviewer`, `tester`, `researcher`, `general-purpose`, `workflow-worker`, `fork`, `compaction`, or `unknown`. The monitor resolves it from primary-agent identity, a valid repository mapping, built-in exact types, ordered keyword matches, and finally verified workflow association. Keyword matches use this deterministic order: review/audit/critic/judge/lint; test/qa/spec/verify; explore/search/locate/investigate/discover/scan/map; plan/design/architect; research/docs/guide/study; then build/implement/edit/fix/migrate/refactor/apply/transform/synthesize/writer. Full provider-native kinds and mapping contents remain monitor-private; the browser and reports never reinterpret them.
