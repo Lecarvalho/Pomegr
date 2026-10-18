@@ -69,7 +69,7 @@ const destinationTerms: Array<[RegExp, string]> = [
   [/home/i, "/"],
 ];
 
-type PaletteResult = { id: string; href?: string; scopeId?: string; label: string; detail: string; icon: CommandIconName };
+type PaletteResult = { id: string; href?: string; scopeId?: string; label: string; detail: string; icon: CommandIconName; keywords?: string };
 
 const SCOPE_RESULT_LIMIT = 20;
 
@@ -199,15 +199,18 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
       { id: "usage-limits", href: "/usage-limits", label: "Usage limits", detail: "Provider account windows", icon: "chart" },
       { id: "settings", href: "/settings", label: "Settings", detail: "Local preferences", icon: "settings" },
     ];
-    const recentSessions = sessions.slice(0, 5).map((session) => ({ id: `session-${session.id}`, href: `/sessions/${encodeSessionRoute(session.id)}`, label: session.title, detail: `Session · ${session.project}`, icon: "session" as const }));
+    const onSessions = pathname === "/sessions" || pathname.startsWith("/sessions/");
+    const sessionResults = sessions.map((session) => ({ id: `session-${session.id}`, href: `/sessions/${encodeSessionRoute(session.id)}`, label: session.title, detail: `Session · ${session.project}`, icon: "session" as const, keywords: session.id }));
+    const idSearch = onSessions && normalized.length > 0;
+    const recentSessions = sessionResults.filter((result, index) => index < 5 || (idSearch && result.keywords.toLowerCase().includes(normalized)));
     const recentRepositories = repositorySnapshot.repositories.slice(0, 5).map((repository) => ({ id: `repository-${repository.id}`, href: `/repositories/${repository.id}`, label: repository.displayName, detail: "Repository", icon: "repositories" as const }));
     const routedDestination = destinationTerms.find(([pattern]) => pattern.test(normalized))?.[1];
     const routed = routedDestination ? destinations.filter((result) => result.href === routedDestination) : [];
     const ordered = [...routed, ...destinations.filter((result) => result.href !== routedDestination)];
-    const candidates = pathname === "/sessions" || pathname.startsWith("/sessions/") ? [...recentSessions, ...ordered, ...recentRepositories]
+    const candidates = onSessions ? [...recentSessions, ...ordered, ...recentRepositories]
       : pathname === "/repositories" || pathname.startsWith("/repositories/") ? [...recentRepositories, ...ordered, ...recentSessions]
         : [...ordered, ...recentSessions, ...recentRepositories];
-    const matched = normalized ? candidates.filter((result) => `${result.label} ${result.detail}`.toLowerCase().includes(normalized)) : candidates;
+    const matched = normalized ? candidates.filter((result) => `${result.label} ${result.detail} ${result.keywords ?? ""}`.toLowerCase().includes(normalized)) : candidates;
     const scoped: PaletteResult[] = scope ? matchPaletteScopeItems(scope.items, normalized, SCOPE_RESULT_LIMIT).map((item) => ({ id: `scope-${item.id}`, scopeId: item.id, label: item.label, detail: item.detail, icon: "grid" })) : [];
     return [...scoped, ...matched];
   }, [pathname, query, repositorySnapshot.repositories, scope, sessions]);

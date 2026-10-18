@@ -236,6 +236,31 @@ describe("Command Center app shell", () => {
     expect(navigation.push).toHaveBeenCalledWith("/tasks");
   });
 
+  it("finds a session by its full ID from the Sessions page and opens it", async () => {
+    const user = userEvent.setup();
+    navigation.pathname = "/sessions";
+    const older = Array.from({ length: 6 }, (_, index) => ({ ...sessions[2], id: `codex:older-${index}`, title: `Older ${index}` }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [...sessions, ...older] }));
+    render(<AppShell><main>Sessions content</main></AppShell>);
+    await user.click(await screen.findByRole("button", { name: "Search Pomegr" }));
+    const search = screen.getByRole("combobox", { name: "Search Pomegr" });
+    await user.type(search, "codex:older-5");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option", { name: /Older 5/ })).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(navigation.push).toHaveBeenCalledWith("/sessions/codex-older-5");
+  });
+
+  it("shows no session for an unknown ID on the Sessions page", async () => {
+    const user = userEvent.setup();
+    navigation.pathname = "/sessions";
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    render(<AppShell><main>Sessions content</main></AppShell>);
+    await user.click(await screen.findByRole("button", { name: "Search Pomegr" }));
+    await user.type(screen.getByRole("combobox", { name: "Search Pomegr" }), "codex:missing-id");
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+  });
+
   it("opens and dismisses the foldable primary menu", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
