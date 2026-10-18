@@ -1,5 +1,5 @@
 // `POST /api/agent/v1/tasks/get` and `/list` (task T-118): the bound session reads the tasks of its own board. This
-// module owns the one served-task shape; the store builds the entries (server/tasks/task-agent-read.mjs), and each one
+// module reuses the one served-task shape (shared/task-agent-read.mjs); the store builds the entries (server/tasks/task-agent-read.mjs), and each one
 // is bounded again here on the way out. No body names a repository or a path, and nothing is written.
 
 import { AGENT_SESSION_REF_PATTERN, AGENT_TASK_ID_PATTERN, JSON_HEADERS, agentBoardRepository, isPlainObject, readAgentJson } from "./task-routes.mjs";
@@ -7,53 +7,15 @@ import { AGENT_SESSION_REF_PATTERN, AGENT_TASK_ID_PATTERN, JSON_HEADERS, agentBo
 export const AGENT_TASK_GET_PATH = "/api/agent/v1/tasks/get";
 export const AGENT_TASK_LIST_PATH = "/api/agent/v1/tasks/list";
 export const AGENT_TASK_READ_PATHS = Object.freeze([AGENT_TASK_GET_PATH, AGENT_TASK_LIST_PATH]);
-export const AGENT_TASK_READ_BOUNDS = Object.freeze({ listTasks: 100, listTextLength: 300, queryLength: 80 });
+export { AGENT_TASK_READ_BOUNDS, servedAgentTask } from "../../shared/task-agent-read.mjs";
+import { AGENT_TASK_READ_BOUNDS, servedAgentTask, servedChatTask } from "../../shared/task-agent-read.mjs";
 const AGENT_READ_BODY_LIMIT_BYTES = 1024;
 const AGENT_READ_STATUS = Object.freeze({ invalid: 400, session_not_found: 404, repository_unavailable: 409, not_found: 404, unavailable: 503 });
 const LIST_KEYS = Object.freeze(["query", "state", "feature", "editable"]);
 const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u;
-// The record's bounds and fixed values (server/tasks/task-record.mjs), held again here: serving does not import tasks/.
-const TEXT_LIMIT = 4000;
-const OWN_CONDITION_LIMIT = 500;
-const MODEL_LIMIT = 120;
-const FEATURE_TITLE_LIMIT = 80;
-const COLUMN_NAME_LIMIT = 40;
-const RUNS_AFTER_LIMIT = 8;
-const CHECKS = Object.freeze(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"]);
 const STATES = Object.freeze(["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"]);
-const PROVIDERS = Object.freeze(["claude", "codex"]);
-const EFFORTS = Object.freeze(["low", "medium", "high", "xhigh"]);
-
-const boundedText = (value, limit) => typeof value === "string" && value.length > 0 && value.length <= limit;
-const nullableEnum = (value, allowed) => value === null || allowed.includes(value);
-const oneLine = (value, limit) => boundedText(value, limit) && ONE_LINE.test(value);
-
-// The served task: these thirteen fields, each inside its bound, or null. With `cut` a text over the list's length is
-// cut and says so. Never a report, an attention line, a block reason, a session, an image, who added the task, a path,
-// a token, or a repository, column, or feature ID.
-export function servedAgentTask(entry, { cut = false } = {}) {
-  if (!isPlainObject(entry) || typeof entry.id !== "string" || !AGENT_TASK_ID_PATTERN.test(entry.id) || !boundedText(entry.text, TEXT_LIMIT)
-    || !(entry.ownCondition === null || boundedText(entry.ownCondition, OWN_CONDITION_LIMIT))
-    || !Array.isArray(entry.completeWhen) || !entry.completeWhen.every((check) => CHECKS.includes(check))
-    || !nullableEnum(entry.provider, PROVIDERS) || !nullableEnum(entry.effort, EFFORTS)
-    || !(entry.model === null || boundedText(entry.model, MODEL_LIMIT))
-    || !(entry.feature === null || boundedText(entry.feature, FEATURE_TITLE_LIMIT))
-    || !boundedText(entry.column, COLUMN_NAME_LIMIT) || !STATES.includes(entry.state) || typeof entry.editable !== "boolean"
-    || !Array.isArray(entry.runsAfter) || entry.runsAfter.length > RUNS_AFTER_LIMIT
-    || !entry.runsAfter.every((id) => typeof id === "string" && AGENT_TASK_ID_PATTERN.test(id))) return null;
-  const limit = AGENT_TASK_READ_BOUNDS.listTextLength;
-  const textCut = cut && entry.text.length > limit;
-  return {
-    id: entry.id,
-    text: textCut ? `${entry.text.slice(0, limit - 1)}…` : entry.text,
-    textCut,
-    ownCondition: entry.ownCondition,
-    completeWhen: CHECKS.filter((check) => entry.completeWhen.includes(check)),
-    provider: entry.provider, model: entry.model, effort: entry.effort,
-    feature: entry.feature, column: entry.column, state: entry.state, editable: entry.editable,
-    runsAfter: [...entry.runsAfter],
-  };
-}
+const oneLine = (value, limit) => typeof value === "string" && value.length > 0 && value.length <= limit && ONE_LINE.test(value);
+const FEATURE_TITLE_LIMIT = 80;
 
 // The list's search: every filter that is set must match. `query` is a case-insensitive part of the text or the own condition.
 export function matchAgentTasks(entries, { query, state, feature, editable } = {}) {
@@ -130,4 +92,29 @@ export async function serveAgentTaskReadRoute({ request, response, requestUrl, t
   } catch {
     writeAgentReadResult(response, "unavailable");
   }
+}
+
+// Desktop-only read for the repository-bound chat bridge. No observed session is fabricated.
+export const CHAT_TASK_READ_PATH = "/internal/agent-chat/task";
+export function serveChatTaskReadRoute({ request, response, requestUrl, taskStore, authorized }) {
+  const unavailable = () => writeAgentReadResult(response, "unavailable");
+  if (!authorized) { response.writeHead(401, { ...JSON_HEADERS, "Cache-Control": "no-store" }); response.end(JSON.stringify({ ok: false })); return; }
+  if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
+  const repositoryId = requestUrl.searchParams.get("repositoryId");
+  const taskId = requestUrl.searchParams.get("taskId");
+  if (!/^repo-[a-f0-9]{24}$/u.test(repositoryId ?? "") || !AGENT_TASK_ID_PATTERN.test(taskId ?? "")
+    || [...requestUrl.searchParams.keys()].length !== 2
+    || ![...requestUrl.searchParams.keys()].every((key) => ["repositoryId", "taskId"].includes(key))
+    || Number(request.headers["content-length"] || 0) > 0 || request.headers["transfer-encoding"] !== undefined) {
+    writeAgentReadResult(response, "invalid"); return;
+  }
+  try {
+    const entries = taskStore?.readAgentTasks(repositoryId, { includeChatReport: true });
+    if (!Array.isArray(entries)) return unavailable();
+    const entry = entries.find((candidate) => candidate?.id === taskId);
+    if (!entry) { writeAgentReadResult(response, "not_found"); return; }
+    const task = servedChatTask(entry);
+    if (!task) return unavailable();
+    writeAgentReadResult(response, null, { task });
+  } catch { unavailable(); }
 }

@@ -15,10 +15,10 @@ const files = names.map((name) => `${folder}\\${name}`);
 const READ_TOOL_ARGUMENT = POMEGR_READ_TOOLS.map((name) => `mcp__pomegr__${name}`);
 
 const claudeBase = (mcp) => [
-  "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence", "--restricted", "--strict-mcp-config", "--mcp-config", mcp,
+  "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence", "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config", mcp,
   "--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools", ["Read", "Grep", "Glob", ...READ_TOOL_ARGUMENT].join(","),
 ];
-const codexBase = ["exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps"];
+const codexBase = ["exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps", "-c", 'approval_policy="never"', "-c", "features.prefer_mxc=true", "-c", 'windows.sandbox="elevated"'];
 const codexServer = [
   "-c", `mcp_servers.pomegr.command=${JSON.stringify(server.command)}`,
   "-c", `mcp_servers.pomegr.args=[${JSON.stringify(server.args[0])}]`,

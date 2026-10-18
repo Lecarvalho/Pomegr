@@ -2091,11 +2091,9 @@ How it is built:
   `{ schemaVersion: 1, ok: true, tasks, matched, truncated }` for `list`. A refusal is
   `{ schemaVersion: 1, ok: false, reason }` with `invalid` (400), `session_not_found`
   (404), `repository_unavailable` (409), `not_found` (404), or `unavailable` (503).
-- `servedAgentTask` of the route module is the one served-task shape. It bounds each
+- `servedAgentTask` in `shared/task-agent-read.mjs`, re-exported by the route module, is the one served-task shape. It bounds each
   field again on the way out, as `servedFeature` does, and an entry outside the shape
-  answers `unavailable`. The agent chat's `get_task` (task T-104) uses the same route
-  and shape. This supersedes the line of T-104 that kept the tool off the plugin's
-  server.
+  answers `unavailable`. The agent chat's `get_task` (task T-104) uses that shape through its desktop-only bridge, without changing the plugin server.
 - The MCP tools are in `mcp/task-tools.mjs`. The Claude Code hook binds and signs
   each as its own tool name, and approves both (`permissionDecision: "allow"`) as it
   approves `get_feature`: they read the session's own board and change nothing. Codex
@@ -2769,8 +2767,9 @@ fixed values.
   `ok` or one fixed reason (see [Agent task update](#agent-task-update)). The fields it
   writes are the ones the desktop `update` action writes, kept and served as that
   action's are.
+- The chat's repository-bound `get_task` reuses the served-task projection through `shared/task-agent-read.mjs` (task T-104). Its desktop-only `GET /internal/agent-chat/task` uses the existing desktop authorization gate and the non-writing task reader. Only this chat read adds the snapshot-shaped attention and block lines; plugin reads remain unchanged. [Agent chat: Privacy](agent-chat.md#privacy) owns that provider boundary.
 - A task's text, own condition, checks, Run on, effort, feature title, column name,
-  state, and the task IDs it runs after (added by task T-111) are served to an agent only by `POST /api/agent/v1/tasks/get` and `list`, to an
+  state, and the task IDs it runs after (added by task T-111) are served to a coding session only by `POST /api/agent/v1/tasks/get` and `list`, to an
   agent whose session is bound to that board (task T-118, 2026-10-15). This is a
   deliberate widening: before it, no agent path returned a task's text. With `get_task`
   and `list_tasks`, the fields of any task of the board reach the provider through the

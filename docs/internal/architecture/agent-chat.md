@@ -57,7 +57,7 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
 | `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
-| `mcp/agent-chat-server.mjs` | The chat's own MCP server with the seven read tools | Register a signal, task, or feature tool |
+| `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and one read-only task tool | Register a signal, write, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device | Forward a chat request to the web host |
 | `shared/agent-chat-contract.ts` | Browser-visible types and bounds | Import `server/` or `desktop/` |
 | `app/agent-chat-client.ts`, `app/components/agent-chat/` | The transport, the chat state, and the panel | Keep conversation content in browser storage, or change the board except through the chat's `apply` |
@@ -106,34 +106,49 @@ no credential, and offers no sign-in of its own. The arguments are fixed
 desktop's own MCP server, the desktop's own image folder and image files, and the
 session ID desktop main made for the run vary.
 
-- **Claude Code:** print mode with JSON lines, `--no-session-persistence`,
-  `--session-id` with the run's own ID, `--restricted`, `--strict-mcp-config` with one `--mcp-config`, `--permission-mode
-  dontAsk`, `--tools Read,Grep,Glob`, and an allow list of those three tools and the
-  seven Pomegr read tools. A conversation with images adds `--add-dir` with the folder of
-  that conversation's images, because restricted mode confines Read to the working
-  directories.
+- **Claude Code:** print mode with JSON lines, `--no-session-persistence`, and `--session-id` with the run's own ID.
+  Empty `--setting-sources` excludes user, project, and local settings.
+  Inline `--settings` disables hooks and auto memory.
+  `--strict-mcp-config` loads only the given `--mcp-config`.
+  `--permission-mode dontAsk` refuses tools outside the allow list without asking.
+  `--tools Read,Grep,Glob` exposes three native tools.
+  The allow list contains those tools, the seven Pomegr observation tools, and `get_task`.
+  A conversation with images adds `--add-dir` with its image folder.
+  Native Read can reach files outside the working directory, subject to provider permissions.
 - **Codex:** `exec --json --ephemeral --sandbox read-only --skip-git-repo-check
-  --ignore-user-config --ignore-rules --disable apps`, the MCP server as three `-c`
-  values, and `-` for the prompt on stdin. A message with images adds `--image` with
+  --ignore-user-config --ignore-rules --disable apps`, the MCP server as fixed `-c`
+  values, and `-` for the prompt on stdin.
+  Fixed overrides set `approval_policy="never"`, `features.prefer_mxc=true`, and `windows.sandbox="elevated"`.
+  Ignoring user configuration also omits its Windows sandbox selection; these overrides select a native implementation without allowing writes.
+  MXC is preferred when supported. The provisioned elevated sandbox is the fallback; administrator-managed requirements still apply.
+  See the [Windows sandbox documentation](https://developers.openai.com/codex/windows) for device support and provisioning.
+  A message with images adds `--image` with
   its files after the `-`: the flag takes a list of values, so before the `-` it would
   take the `-` as a file.
 
-What this gives the run, on every computer:
+What the configured run permits, subject to the installed provider's permission policy:
 
 - It reads the repository's files. Claude Code has Read, Grep, and Glob. Codex has its
   shell inside the read-only sandbox.
-- It has the seven Pomegr read tools (see [Tools](#tools)).
+- It has the seven Pomegr observation tools and `get_task` (see [Tools](#tools)).
 - It sees the images the owner sent in this conversation. Claude Code reads their files
   in the one added folder. Codex gets the files of the newest message attached, and can
   read the folder inside its sandbox. The folder holds image files and nothing else.
 - It has no tool that writes a file, runs a command that changes something, or reaches
-  another MCP server. The owner's settings, hooks, plugins, and other MCP servers are not
-  loaded.
+  another MCP server. User, project, and local settings are excluded; hooks and auto memory are disabled.
+  Only the explicit MCP server is configured. Administrator-managed provider policies still apply.
 - It cannot wait for an approval. A tool outside the allow list is refused.
 - It leaves no session file, so nothing can resume it. Claude Code still registers the
   process in its local session registry, where Pomegr finds live sessions; the
   declaration below keeps that registration out of the Sessions list. A Codex run
   registers nothing that Pomegr reads.
+
+For T-136, the owner chose normal provider read access on 2026-10-17, including outside-repository reads permitted by the provider.
+Pomegr adds no separate filesystem reader, path filter, or repository-confinement layer.
+The selected repository remains the working directory. Provider permissions and the read-only configuration govern file access.
+The instructions distinguish Claude's Read, Glob, and Grep from Codex's sandboxed shell.
+A shell command is not an available Claude tool. A denied command does not prove that a file is missing.
+Aril must report unavailable evidence and must not bypass permissions.
 
 The process starts with `spawn`, an argument array, and `shell: false`. The prompt
 travels on stdin. Nothing the owner typed and nothing from the board is in an argument,
@@ -184,13 +199,17 @@ The chat's MCP server is `mcp/agent-chat-server.mjs`, bundled as
 command is the desktop executable with `ELECTRON_RUN_AS_NODE=1`, so it needs no Node on
 the computer and no Pomegr plugin in the repository.
 
-It registers the seven observation tools of
-[MCP observation queries](mcp-queries.md) and nothing else: `list_sessions`,
+It registers `get_task` and the seven observation tools of
+[MCP observation queries](mcp-queries.md): `list_sessions`,
 `get_session_report`, `list_session_agents`, `get_agent_context`,
 `get_recent_failures`, `get_usage_limits`, and `get_provider_health`. They use the same
 loopback routes, the same local descriptor, and the same answers as the plugin's tools.
 No host session is bound, so a session tool needs an explicit session reference. The
 board snapshot gives the reference of each task's session.
+
+`get_task` takes only `task_id` (`T-n`) and reads that task of the chat's repository. It reuses the [served-task shape](tasks.md#agent-task-read) from T-118 through `shared/task-agent-read.mjs`, with uncut text (at most 4,000 characters) and own condition, and adds only `report: { attention, block_reason }` as the snapshot shapes those lines. Aril calls it when a task it needs has `text_cut`, instead of guessing from the preview. Unknown and cross-repository IDs, malformed answers, and unavailable reads all answer the fixed line `Pomegr task unavailable on this chat's board.`
+
+Desktop main gives each message and follow-up a temporary loopback bridge, bound in a closure to the same repository as the snapshot. The MCP worker inherits its loopback origin and random read capability (`POMEGR_CHAT_TASK_ORIGIN` and `POMEGR_CHAT_TASK_KEY`) through the provider process environment; the runner removes their values from inline MCP configuration and passes only the variable names to Codex through `env_vars`. Neither value enters provider command-line arguments, the prompt, or a file. This temporary capability permits only the same repository task read offered by the tool, and grants no monitor or write access. The bridge accepts only `GET /task?task_id=T-n`, with its capability header, the exact loopback Host, and no Origin or body. It forwards the read to `GET /internal/agent-chat/task?repositoryId=…&taskId=…` under the existing desktop authorization gate. The monitor uses the non-writing task reader, including its exact editability rule; it neither seeds a board nor reads providers. No session is fabricated. The bridge closes on stop, dispose, or turn settlement; nothing is persisted. The observation credential and plugin task endpoints are unchanged.
 
 When the bundle is missing, the run starts without an MCP server and Aril works from the
 board snapshot and the files.
@@ -232,8 +251,19 @@ provider, model and effort, complete-when checks and own condition, the linked s
 reference, state and observed model, the report's results (each one passed, failed, or
 unavailable), block reason and attention
 line, the GitHub issue number, the scheduled time, the update time, and the task text.
-Task text shares a budget of 48,000 characters. Unfinished tasks get their whole text
-first; past the budget a task carries 240 characters and `text_cut`.
+Task text shares a budget of 48,000 UTF-16 code units.
+Pomegr reserves each source first line, excluding its LF or CRLF separator, before allocating bodies.
+Bodies follow In progress, Review, Ready in actual queue order, Done by newest update, then Backlog.
+Ready cards outside `queue.order` follow queued cards by position and numeric task ID.
+Other column ties use position then numeric task ID; Done update ties use numeric task ID.
+Backlog and custom columns stay last regardless of task state. State supplies priority only when the column projection is absent.
+If the remaining text fits, Pomegr includes it whole. Otherwise, it adds at most 240 units of prefix and continues.
+That prefix includes any line separator after the title. A cut never splits a Unicode code point.
+If titles alone exceed the budget, Pomegr allocates one code point per nonempty task per round, in numeric ID order.
+It stops when no next code point fits. A source starting with a newline retains that character; empty source stays empty.
+The owner approved this bounded title-overflow rule for T-141 on 2026-10-17.
+Each shortened source prefix carries `text_cut`. The snapshot always includes `task_text: { cut, total }`, counting shortened and total tasks.
+Allocation changes neither snapshot card order nor report fields. Aril retrieves needed omitted text with `get_task` instead of guessing.
 
 `models` holds one list for `claude` and one for `codex`. Each list starts with the
 models the Run on list of the task form offers for that provider, from the same code
@@ -731,14 +761,19 @@ never a session's.
   family, from the sessions of every repository in the last 90 days, and the Codex
   catalog (task T-110). A model name carries no session, path, or repository. This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
-  own session. The run can also read the repository's files and call the seven read
-  tools, so file content and normalized session evidence can reach the provider in the
+  own session. The run can also read the repository's files and call the seven observation
+  tools and the repository-bound `get_task`, so file content and normalized session evidence can reach the provider in the
   same run, as they can in any session the owner starts in that folder. The images the
   owner sent in the conversation reach the provider too: the run reads their files. This
   is the widening of 2026-10-13 (task T-86). The prompt names the absolute file of each
   image, so the path of the chat's image folder under the desktop data root, which holds
   the user's folder name, reaches the provider. A task's session has had the path of its
   task's image folder in the same way.
+- **Native file access.** The owner-approved native read surface can include files outside the selected repository, subject to provider permissions.
+  Pomegr does not filter source filenames or inspect source contents before the provider reads them.
+  Instructions prohibit reading credentials and private session transcripts; this instruction is not a filesystem enforcement boundary.
+  Native tool results can reach the chosen provider. Pomegr drops tool results and keeps only the conversation answer under the existing rules.
+- **What the task read exposes.** `get_task` can send the full text omitted by the snapshot's shared budget to the same chat provider, with the T-118 task fields and only the snapshot's attention and block lines added. It exposes no path, credential, capability, repository ID, column ID, feature ID, session, image, dispatch fact, feature description, or app version. Both monitor and MCP worker apply the shared allowlist. It writes nothing. The snapshot retains its 48,000-unit text bound under the allocation rule above.
 - **What never enters a prompt.** Credentials, tokens, the desktop token, a path other
   than the working directory the process starts in and the files of the conversation's
   images, the images of a task, an image of another conversation, and the description or
@@ -828,14 +863,16 @@ never a session's.
 
 ## Limits and unproven parts
 
-1. **Provider versions.** The Claude Code run needs a version with `--restricted`
-   (2.1.248 or later). An older CLI ends the turn as `failed`. Probed on a device on
-   2026-10-11 with Claude Code 2.1.296 and Codex 0.162.1: both providers answered, called
-   a read tool of the bundled MCP server, and wrote a valid proposal. The probes are
-   deleted.
-2. **Packaged MCP server.** In those probes the bundled server ran under the
-   development Electron binary with `ELECTRON_RUN_AS_NODE=1`. The same start from an
-   installed build, out of the unpacked application folder, is not proven on a device.
+1. **Provider versions.** The run needs the native flags listed above. An unsupported flag ends the turn as `failed`.
+   Native reads were probed on Windows on 2026-10-17 with Claude Code 2.1.302 (`haiku`) and Codex 0.162.1 (`gpt-6-luna`).
+   Both read synthetic source, discovered paths, searched text, read an authorized outside file, and retrieved full task text through `get_task`.
+   Claude exposed only Read, Grep, Glob, and the eight Pomegr tools; its synthetic project hook did not run.
+   Codex used MXC; an actual write command failed, and its guard file stayed unchanged.
+   The elevated fallback was not exercised. Codex labels `prefer_mxc` under development.
+   Every probe ended naturally, and its temporary files were deleted.
+2. **Packaged MCP server.** The 2026-10-17 native-read probes ran the source MCP entry under Node.js.
+   Earlier probes on 2026-10-11 ran the bundled server under development Electron with `ELECTRON_RUN_AS_NODE=1`.
+   Native reads with the current configuration remain unproven from an installed build.
 3. **Windows.** The executable lookup is the one a task start uses, which finds the
    Windows executables. On another platform `send` answers `cli_missing`.
 4. **Feature context.** Aril cannot read a feature's description or app version, and a

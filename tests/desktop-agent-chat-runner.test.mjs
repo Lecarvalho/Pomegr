@@ -25,7 +25,7 @@ test("the runner's fixed names and bounds", () => {
   assert.equal(TURN_TIMEOUT_MS, 10 * 60_000);
   assert.equal(STDOUT_LINE_LIMIT, 4 * 1024 * 1024);
   assert.equal(ANSWER_LIMIT, 32_000);
-  assert.deepEqual([...POMEGR_READ_TOOLS], ["list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health"]);
+  assert.deepEqual([...POMEGR_READ_TOOLS], ["list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health", "get_task"]);
   assert.deepEqual([...CLAUDE_FILE_TOOLS], ["Read", "Grep", "Glob"]);
   assert.equal(Object.isFrozen(POMEGR_READ_TOOLS), true);
   assert.equal(Object.isFrozen(CLAUDE_FILE_TOOLS), true);
@@ -34,7 +34,7 @@ test("the runner's fixed names and bounds", () => {
 test("the Claude arguments are fixed, with the model and the MCP server as the only variable parts", () => {
   const fixed = [
     "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
-    "--restricted", "--strict-mcp-config", "--mcp-config",
+    "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config",
   ];
   const tail = ["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools", ["Read", "Grep", "Glob", ...READ_TOOL_ARGUMENT].join(",")];
   assert.deepEqual(chatArguments("claude"), [...fixed, '{"mcpServers":{}}', ...tail]);
@@ -45,7 +45,7 @@ test("the Claude arguments are fixed, with the model and the MCP server as the o
 });
 
 test("the Codex arguments are fixed, read-only, and end with the stdin marker", () => {
-  const fixed = ["exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps"];
+  const fixed = ["exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps", "-c", 'approval_policy="never"', "-c", "features.prefer_mxc=true", "-c", 'windows.sandbox="elevated"'];
   assert.deepEqual(chatArguments("codex"), [...fixed, "-"]);
   assert.deepEqual(chatArguments("codex", "gpt-6-sol"), [...fixed, "--model", "gpt-6-sol", "-"]);
   const servers = [
@@ -98,11 +98,11 @@ test("an MCP server that the desktop did not shape exactly is dropped", () => {
 
 test("the arguments allow only file reading and Pomegr's read tools and never ask for a permission", () => {
   const claude = chatArguments("claude", "claude-opus-4-1", server);
-  for (const required of ["--restricted", "--strict-mcp-config", "--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--no-session-persistence"]) assert.ok(claude.includes(required), required);
+  for (const required of ["--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--no-session-persistence"]) assert.ok(claude.includes(required), required);
   assert.equal(claude[claude.indexOf("--permission-mode") + 1], "dontAsk");
   assert.equal(claude[claude.indexOf("--tools") + 1], "Read,Grep,Glob");
   assert.equal(claude.some((argument) => /^--dangerously/u.test(argument)), false);
-  for (const forbidden of ["bypassPermissions", "acceptEdits", "default", "plan", "--add-dir", "--settings", "--setting-sources", "--plugin-dir", "--resume", "--continue", "--agents", "--append-system-prompt"]) {
+  for (const forbidden of ["bypassPermissions", "acceptEdits", "default", "plan", "--add-dir", "--restricted", "--plugin-dir", "--resume", "--continue", "--agents", "--append-system-prompt"]) {
     assert.equal(claude.includes(forbidden), false, forbidden);
   }
   const allowed = claude[claude.indexOf("--allowedTools") + 1].split(",");
@@ -361,6 +361,25 @@ function startTurn(overrides = {}, childOptions = {}) {
 }
 
 const sendStream = (child, lines) => child.stdout.emit("data", Buffer.from(`${lines.join("\n")}\n`));
+
+test("the task capability reaches MCP through inherited environment, never provider arguments or stdin", async () => {
+  const capability = { POMEGR_CHAT_TASK_ORIGIN: "http://127.0.0.1:12345", POMEGR_CHAT_TASK_KEY: "synthetic-turn-capability" };
+  for (const provider of ["claude", "codex"]) {
+    const mcpServer = { ...server, env: { ...server.env, ...capability } };
+    const { child, spawns, done, options } = startTurn({ provider, mcpServer });
+    const [, args, spawnOptions] = spawns[0];
+    for (const [name, value] of Object.entries(capability)) {
+      assert.equal(spawnOptions.env[name], value);
+      assert.equal(JSON.stringify(args).includes(value), false);
+      assert.equal(JSON.stringify(child.stdin.writes).includes(value), false);
+      assert.equal(Object.hasOwn(options.env, name), false);
+    }
+    if (provider === "codex") assert.ok(args.includes('mcp_servers.pomegr.env_vars=["POMEGR_CHAT_TASK_ORIGIN", "POMEGR_CHAT_TASK_KEY"]'));
+    else assert.deepEqual(JSON.parse(args[args.indexOf("--mcp-config") + 1]).mcpServers.pomegr.env, server.env);
+    child.emit("close", 1);
+    await done;
+  }
+});
 
 test("a turn starts the provider with the fixed arguments and options and sends the prompt on stdin only", async () => {
   const { child, spawns, options, done } = startTurn();

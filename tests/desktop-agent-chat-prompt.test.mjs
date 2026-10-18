@@ -126,6 +126,7 @@ test("a task with no run, session, report, or source gets plain defaults and no 
   assert.deepEqual(snapshot.queue, { status: "idle", order: [], blocked_by: null, start_threshold_percent: null, usage: { claude: null, codex: null } });
   assert.deepEqual(snapshot.models, { claude: [], codex: [] });
   assert.equal(snapshot.repository, "");
+  assert.deepEqual(snapshot.task_text, { cut: 0, total: 1 });
 });
 
 test("the queue, the usage gate, and the model lists are read from the board", () => {
@@ -224,37 +225,118 @@ test("usage percentages are kept only as integers from 0 to 100", () => {
   assert.equal(boardSnapshot({ queue: { gates: { threshold: 80.5 } } }, { now }).queue.start_threshold_percent, null);
 });
 
-test("unfinished tasks keep their whole text before done tasks when the board text budget is exceeded", () => {
-  // Five unfinished and fifteen done tasks of 5000 characters: 100,000 characters against a 48,000 budget.
-  const tasks = Array.from({ length: 20 }, (_, index) => ({ id: `T-${index + 1}`, text: `${index + 1}:`.padEnd(5000, "x"), state: index < 5 ? "needs_review" : "done" }));
-  const snapshot = boardSnapshot({ tasks }, { now });
-  assert.deepEqual(snapshot.tasks.map((task) => task.id), tasks.map((task) => task.id), "tasks are listed in ID order");
-  const byId = new Map(snapshot.tasks.map((task) => [task.id, task]));
-  for (let id = 1; id <= 5; id += 1) {
-    assert.equal(byId.get(`T-${id}`).text.length, 5000, `unfinished T-${id} is whole`);
-    assert.equal(Object.hasOwn(byId.get(`T-${id}`), "text_cut"), false);
+const budgetColumns = [
+  { id: "backlog", name: "Backlog" }, { id: "ready", name: "Ready" },
+  { id: "progress", name: "Working", role: "in_progress" }, { id: "review", name: "Review", role: "review" },
+  { id: "done", name: "Done", role: "done" },
+];
+const budgetTask = (id, columnId, length = 4000, overrides = {}) => ({
+  id: `T-${id}`, text: `Task ${id}\n`.padEnd(length, "x"), columnId, position: id, ...overrides,
+});
+const snapshotById = (snapshot) => new Map(snapshot.tasks.map((task) => [task.id, task]));
+
+function assertTextBudget(snapshot, tasks) {
+  assert.deepEqual(snapshot.task_text, { cut: snapshot.tasks.filter((task) => task.text_cut).length, total: tasks.length });
+  assert.ok(snapshot.tasks.reduce((sum, task) => sum + task.text.length, 0) <= BOARD_TEXT_BUDGET);
+  const originals = new Map(tasks.map((task) => [task.id, task.text]));
+  for (const shown of snapshot.tasks) {
+    const original = originals.get(shown.id);
+    assert.equal(original.startsWith(shown.text), true, shown.id);
+    assert.equal(shown.text_cut === true, shown.text.length < original.length, shown.id);
+
   }
-  // 48,000 - 25,000 leaves 23,000: the four newest done tasks fit whole, then 3,000 remain.
-  for (const id of [20, 19, 18, 17]) assert.equal(byId.get(`T-${id}`).text.length, 5000, `T-${id}`);
-  const cut = snapshot.tasks.filter((task) => task.text_cut === true);
-  assert.equal(cut.length, 11);
-  assert.equal(cut.every((task) => task.state === "done" && task.text.length === BOARD_TEXT_PREVIEW), true);
-  assert.equal(byId.get("T-16").text, tasks[15].text.slice(0, 240));
-  assert.equal(snapshot.tasks.reduce((sum, task) => sum + task.text.length, 0) <= BOARD_TEXT_BUDGET, true);
+}
+
+test("body priority is In progress, Review, Ready, Done, Backlog, with moved Backlog and custom cards last and reports intact", () => {
+  const tasks = [
+    budgetTask(1, "backlog", 4000, { state: "done", updatedAt: "2026-10-17T00:00:00Z" }),
+    budgetTask(2, "backlog", 4000, { state: "needs_review" }),
+    budgetTask(3, "backlog"),
+    budgetTask(4, "custom", 4000, { state: "needs_review" }),
+    ...[5, 6, 7, 8].map((id) => budgetTask(id, "done", 4000, { state: "done", updatedAt: `2026-10-${String(id).padStart(2, "0")}T00:00:00Z` })),
+    ...[9, 10, 11, 12].map((id) => budgetTask(id, "ready", 4000, { state: "queued" })),
+    ...[13, 14].map((id) => budgetTask(id, "review", 4000, { state: "needs_review" })),
+    ...[15, 16].map((id) => budgetTask(id, "progress", 4000, { report: { attention: "Check migration", blockReason: "Waiting", results: [{ check: "pr_open", passed: false }] } })),
+  ];
+  const snapshot = boardSnapshot({ columns: [...budgetColumns, { id: "custom", name: "Later" }], tasks: tasks.toReversed(), queue: { order: ["T-12", "T-11", "T-10", "T-9"] } }, { now });
+  assert.deepEqual(snapshot.tasks.map((task) => task.id), tasks.map((task) => task.id));
+  assert.deepEqual(snapshot.tasks.filter((task) => !task.text_cut).map((task) => task.id), ["T-6", "T-7", "T-8", "T-9", "T-10", "T-11", "T-12", "T-13", "T-14", "T-15", "T-16"]);
+  assert.deepEqual(snapshotById(snapshot).get("T-16").report, { attention: "Check migration", block_reason: "Waiting", results: [{ check: "pr_open", passed: false }] });
+  assertTextBudget(snapshot, tasks);
 });
 
-test("a cut task never takes more than the budget that is left, and keeps nothing when none is left", () => {
-  // Twelve done tasks of 4,000 characters spend the 48,000 budget exactly; the oldest one is cut to nothing.
-  const tasks = Array.from({ length: 13 }, (_, index) => ({ id: `T-${index + 1}`, text: "q".repeat(4000), state: "done" }));
+test("Ready bodies use actual queue order before card position or task ID", () => {
+  const tasks = [
+    ...Array.from({ length: 11 }, (_, index) => budgetTask(index + 1, "progress")),
+    budgetTask(30, "ready", 2000, { state: "queued", position: 0 }),
+    budgetTask(31, "ready", 2000, { state: "queued", position: 1 }),
+    budgetTask(32, "ready", 2000, { state: "queued", position: 2 }),
+  ];
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks, queue: { order: ["T-32", "T-30", "T-31"] } }, { now });
+  const byId = snapshotById(snapshot);
+  assert.equal(byId.get("T-32").text_cut, undefined);
+  assert.equal(byId.get("T-30").text_cut, true);
+  assert.equal(byId.get("T-31").text_cut, true);
+  assertTextBudget(snapshot, tasks);
+});
+
+test("Done bodies use newest updated time with deterministic task ID ties", () => {
+  const tasks = [
+    ...Array.from({ length: 11 }, (_, index) => budgetTask(index + 1, "progress")),
+    budgetTask(30, "done", 2000, { state: "done", updatedAt: "2026-10-02T00:00:00Z" }),
+    budgetTask(31, "done", 2000, { state: "done", updatedAt: "2026-10-02T00:00:00Z" }),
+    budgetTask(32, "done", 2000, { state: "done", updatedAt: "2026-10-01T00:00:00Z" }),
+  ];
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  const byId = snapshotById(snapshot);
+  assert.equal(byId.get("T-30").text_cut, undefined);
+  assert.equal(byId.get("T-31").text_cut, true);
+  assert.equal(byId.get("T-32").text_cut, true);
+  assert.deepEqual(boardSnapshot({ columns: budgetColumns, tasks: tasks.toReversed() }, { now }), snapshot);
+  assertTextBudget(snapshot, tasks);
+});
+
+test("an oversized priority body takes a bounded preview and leaves later bodies and every first line visible", () => {
+  const tasks = [budgetTask(1, "progress", 100_000), budgetTask(2, "review"), budgetTask(3, "backlog")];
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  assert.equal(snapshot.tasks[0].text, tasks[0].text.slice(0, "Task 1".length + BOARD_TEXT_PREVIEW));
+  assert.equal(snapshot.tasks[1].text, tasks[1].text);
+  assert.equal(snapshot.tasks[2].text, tasks[2].text);
+  assertTextBudget(snapshot, tasks);
+});
+
+test("aggregate body overflow reserves every source first line and truthfully cuts later tasks", () => {
+  const tasks = Array.from({ length: 40 }, (_, index) => budgetTask(index + 1, "progress"));
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  for (const task of snapshot.tasks) assert.equal(task.text.startsWith(task.id.replace("T-", "Task ")), true);
+  assert.equal(snapshot.tasks.at(-1).text, "Task 40");
+  assertTextBudget(snapshot, tasks);
+});
+
+test("titles alone overflow into fair nonempty prefixes, deterministically inside the same budget", () => {
+  const tasks = Array.from({ length: 500 }, (_, index) => ({ id: `T-${index + 1}`, text: "t".repeat(120) + "\nbody" }));
   const snapshot = boardSnapshot({ tasks }, { now });
-  assert.equal(snapshot.tasks.filter((task) => task.text.length === 4000).length, 12);
-  assert.deepEqual(snapshot.tasks[0].text, "");
-  assert.equal(snapshot.tasks[0].text_cut, true);
-  // With 100 characters left, a cut task shows 100 characters, not 240.
-  const nearly = [{ id: "T-1", text: "n".repeat(500), state: "done" }, { id: "T-2", text: "m".repeat(BOARD_TEXT_BUDGET - 100), state: "needs_review" }];
-  const shown = boardSnapshot({ tasks: nearly }, { now }).tasks[0];
-  assert.equal(shown.text.length, 100);
-  assert.equal(shown.text_cut, true);
+  assert.equal(snapshot.tasks.every((task) => task.text.length === 96 && task.text_cut), true);
+  assert.deepEqual(boardSnapshot({ tasks: tasks.toReversed() }, { now }), snapshot);
+  assertTextBudget(snapshot, tasks);
+});
+
+test("Unicode cuts preserve code points, source first lines, empty tasks, and nonempty overflow prefixes", () => {
+  const titleTasks = Array.from({ length: 498 }, (_, index) => ({ id: `T-${index + 1}`, text: "🥑".repeat(101) + "\nbody" }));
+  const tasks = [...titleTasks, { id: "T-499", text: "\nleading newline" }, { id: "T-500", text: "" }];
+  const snapshot = boardSnapshot({ tasks }, { now });
+  assert.ok(snapshot.tasks.slice(0, 499).every((task) => task.text.length > 0));
+  assert.equal(snapshotById(snapshot).get("T-499").text, "\n");
+  assert.equal(snapshotById(snapshot).get("T-500").text, "");
+  assert.equal(snapshotById(snapshot).get("T-500").text_cut, undefined);
+  for (const task of snapshot.tasks) assert.equal(task.text.isWellFormed(), true);
+  assertTextBudget(snapshot, tasks);
+  const bodyTasks = [{ id: "T-1", text: "A\r\n" + "🥑".repeat(50_000) }, { id: "T-2", text: "Second\nbody" }];
+  const bodySnapshot = boardSnapshot({ tasks: bodyTasks }, { now });
+  assert.equal(bodySnapshot.tasks[0].text.startsWith("A\r\n"), true);
+  assert.equal(bodySnapshot.tasks[0].text.isWellFormed(), true);
+  assert.equal(bodySnapshot.tasks[1].text, bodyTasks[1].text);
+  assertTextBudget(bodySnapshot, bodyTasks);
 });
 
 test("a board within the budget keeps every text whole", () => {
@@ -266,6 +348,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
   for (const board of [null, undefined, "board", 5, [], {}, { tasks: "none", columns: 3, features: {}, queue: [] }, { tasks: [null, 5, "T-1", { id: "T-1" }, { id: 7, text: "x" }] }]) {
     const snapshot = boardSnapshot(board, { now });
     assert.deepEqual(snapshot.tasks, []);
+    assert.deepEqual(snapshot.task_text, { cut: 0, total: 0 });
     assert.deepEqual(snapshot.columns, []);
     assert.equal(snapshot.queue.status, "idle");
   }
@@ -375,8 +458,8 @@ test("a prompt past the limit is refused, and one at the limit is kept", () => {
   assert.equal(composePrompt({ board: fullBoard(), message: "x".repeat(PROMPT_LIMIT + 1), now }), null);
 });
 
-test("the instructions name every board operation, the proposal fence, and the seven read tools of the chat server", () => {
-  assert.equal(POMEGR_READ_TOOLS.length, 7);
+test("the instructions name every board operation, the proposal fence, and the seven observation tools and task read of the chat server", () => {
+  assert.equal(POMEGR_READ_TOOLS.length, 8);
   for (const operation of BOARD_OPERATIONS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`{"op":"${operation}"`), true, operation);
   assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`\`\`\`${PROPOSAL_FENCE}\n{"summary"`), true);
   for (const tool of POMEGR_READ_TOOLS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(tool), true, tool);
@@ -500,4 +583,13 @@ test("the instructions teach the images: the create_task key, attach_images, the
   assert.match(AGENT_CHAT_INSTRUCTIONS, /\[image:<image id>\]/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /You cannot make, change, or fetch an image\./u);
   assert.ok(AGENT_CHAT_INSTRUCTIONS.indexOf("attach_images") < AGENT_CHAT_INSTRUCTIONS.indexOf('{"op":"start_session"'));
+});
+
+test("native repository guidance distinguishes provider tools and acknowledges unavailable evidence", () => {
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /With Claude Code, use Read for file contents, Glob for paths, and Grep for text/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /no Bash or PowerShell tool is available/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /With Codex, use the shell inside its read-only sandbox/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /native permissions may permit reading elsewhere/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /never bypass permissions/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /task_text.cut counts shortened task texts out of task_text.total/u);
 });

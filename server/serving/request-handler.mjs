@@ -21,7 +21,7 @@ import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
 import { TASK_FEATURE_ACTIONS, serveTaskFeatureRoute } from "./task-feature-routes.mjs";
 import { CHAT_RUN_PATHS, serveChatRunRoute } from "./chat-run-routes.mjs";
-import { AGENT_TASK_READ_PATHS, serveAgentTaskReadRoute } from "./task-agent-read-routes.mjs";
+import { AGENT_TASK_READ_PATHS, CHAT_TASK_READ_PATH, serveAgentTaskReadRoute, serveChatTaskReadRoute } from "./task-agent-read-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -74,6 +74,10 @@ export function createRequestHandler({
     const sameComputerRead = request.headers.host === expectedHost
       && request.headers.origin === undefined
       && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
+    if (requestUrl.pathname === CHAT_TASK_READ_PATH) {
+      serveChatTaskReadRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead });
+      return;
+    }
     if (requestUrl.pathname === "/api/tasks" && isTaskHomeRequest(requestUrl)) {
       serveTaskHomeRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead, resolveSessionFacts });
       return;

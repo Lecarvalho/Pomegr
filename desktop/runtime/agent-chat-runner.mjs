@@ -12,10 +12,11 @@ export const CHAT_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9
 
 // The read tools of the chat's own MCP server (`mcp/agent-chat-server.mjs`); it has no tool that writes.
 export const POMEGR_READ_TOOLS = Object.freeze([
-  "list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health",
+  "list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health", "get_task",
 ]);
 export const CLAUDE_FILE_TOOLS = Object.freeze(["Read", "Grep", "Glob"]);
 const MCP_SERVER_NAME = "pomegr";
+const CHAT_TASK_ENV = Object.freeze(["POMEGR_CHAT_TASK_ORIGIN", "POMEGR_CHAT_TASK_KEY"]);
 
 // A server the desktop itself names: an absolute executable, absolute script arguments, and fixed environment values.
 function validServer(server) {
@@ -47,14 +48,17 @@ function validImages(images) {
 /**
  * The fixed arguments of one turn. Only a validated model identifier, the desktop's own MCP server, and the
  * desktop's own image folder and files vary.
- * The run sees the repository's files, the images the owner sent in this conversation, and Pomegr's read tools, and
- * nothing else: no user settings, hooks, plugins, or other MCP servers, no tool that writes, and no way to wait for
- * an approval.
+ * The run uses provider-native read access, the conversation images, and Pomegr's read tools. Native permissions
+ * can permit reads outside the repository. User settings and hooks are excluded; managed provider policy still
+ * applies. No write access or interactive approval is enabled.
  */
 export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null) {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
   const identity = typeof sessionId === "string" && CHAT_SESSION_ID.test(sessionId) ? sessionId : null;
   const server = validServer(mcpServer) ? { command: mcpServer.command, args: [...mcpServer.args], env: { ...mcpServer.env } } : null;
+  // Pass the turn capability through process environments, never provider argv or an on-disk config.
+  const inherited = server ? CHAT_TASK_ENV.filter((name) => Object.hasOwn(server.env, name)) : [];
+  for (const name of inherited) delete server.env[name];
   const shown = validImages(images);
   if (provider === "claude") {
     return [
@@ -62,14 +66,14 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
       // Claude Code registers even a run that keeps no session file. The ID desktop main gave the run is the one the
       // monitor holds for the turn, so the registration never shows as a session.
       ...(identity ? ["--session-id", identity] : []),
-      // Restricted mode leaves out the user's, the project's, and the local settings, and every tool that runs code.
-      "--restricted", "--strict-mcp-config", "--mcp-config", JSON.stringify({ mcpServers: server ? { [MCP_SERVER_NAME]: server } : {} }),
+      // Leave out user/project/local settings and hooks; native tool allowlists keep the run read-only without confining reads to cwd.
+      "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config", JSON.stringify({ mcpServers: server ? { [MCP_SERVER_NAME]: server } : {} }),
       // A tool outside the allow list is refused, never asked about.
       "--permission-mode", "dontAsk",
       "--tools", CLAUDE_FILE_TOOLS.join(","),
       "--allowedTools", [...CLAUDE_FILE_TOOLS, ...POMEGR_READ_TOOLS.map((name) => `mcp__${MCP_SERVER_NAME}__${name}`)].join(","),
       ...(chosen ? ["--model", chosen] : []),
-      // Restricted mode confines Read to the working directories: this adds the folder that holds the conversation's images.
+      // The conversation image folder remains a desktop-owned working directory.
       ...(shown ? ["--add-dir", shown.folder] : []),
     ];
   }
@@ -77,10 +81,14 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
     return [
       // The read-only sandbox lets the shell read files and write nothing; a tool that needs an approval is refused.
       "exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps",
+      // Ignoring user config also drops the Windows sandbox selection. Prefer native MXC, with the provisioned
+      // elevated sandbox as fallback; managed policy still applies. Never request an unsandboxed retry.
+      "-c", 'approval_policy="never"', "-c", "features.prefer_mxc=true", "-c", 'windows.sandbox="elevated"',
       ...(server ? [
         "-c", `mcp_servers.${MCP_SERVER_NAME}.command=${tomlString(server.command)}`,
         "-c", `mcp_servers.${MCP_SERVER_NAME}.args=[${server.args.map(tomlString).join(", ")}]`,
         "-c", `mcp_servers.${MCP_SERVER_NAME}.env={${Object.entries(server.env).map(([name, value]) => `${name}=${tomlString(value)}`).join(", ")}}`,
+        ...(inherited.length > 0 ? ["-c", `mcp_servers.${MCP_SERVER_NAME}.env_vars=[${inherited.map(tomlString).join(", ")}]`] : []),
       ] : []),
       ...(chosen ? ["--model", chosen] : []),
       "-",
@@ -207,7 +215,10 @@ export function runChatTurn({ spawn, executable, provider, model = null, mcpServ
   };
   const kill = () => { try { child?.kill?.(); } catch { /* already gone */ } };
   try {
-    child = spawn(executable, args, { cwd, env, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+    const capability = validServer(mcpServer) ? Object.fromEntries(CHAT_TASK_ENV
+      .filter((name) => Object.hasOwn(mcpServer.env, name)).map((name) => [name, mcpServer.env[name]])) : {};
+    const processEnvironment = Object.keys(capability).length > 0 ? { ...env, ...capability } : env;
+    child = spawn(executable, args, { cwd, env: processEnvironment, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
     child.stdout?.setEncoding?.("utf8");
     child.stdout?.on?.("data", (chunk) => reader.push(String(chunk)));
     child.once("error", () => finish(null));
