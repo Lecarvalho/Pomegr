@@ -221,6 +221,106 @@ test("fresh quota over threshold blocks even when the board cache still says ok"
   await h.activate(); await h.pilot.tick(); assert.equal(h.calls.length, 0);
 });
 
+test("task quota waits survive changing observations and restart without spending decision rounds", async (t) => {
+  const h = await harness(t);
+  h.board.tasks[0].run = { provider: "claude", model: null, effort: "high" };
+  const claude = h.usage.providers[0].usageLimits;
+  claude.limits[0].percent = 97;
+  claude.limits[0].resetsAt = "2026-10-18T13:00:00.000Z";
+  await h.activate();
+  for (let i = 0; i < 30; i += 1) {
+    for (const row of h.usage.providers) row.usageLimits.fetchedAt = h.time.toISOString();
+    h.usage.providers[1].usageLimits.limits[0].percent = 20 + i;
+    h.board.queue.gates.usage.codex.fiveHourPercent = 20 + i;
+    h.board.tasks[0].text += ".";
+    await h.pilot.tick();
+    if (i === 10) { h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options); }
+    h.advance();
+  }
+  assert.equal(h.calls.length, 0);
+  assert.equal((await h.read()).roundsUsed, 0);
+  assert.equal((await h.read()).status, "active");
+  assert.equal((await h.read()).nextWakeAt, "2026-10-18T13:00:00.000Z");
+  h.time = new Date("2026-10-18T13:00:00.000Z");
+  await h.pilot.tick();
+  assert.equal(h.refreshes, 1);
+  assert.equal(h.calls.length, 0);
+  h.advance();
+  for (const row of h.usage.providers) row.usageLimits.fetchedAt = h.time.toISOString();
+  claude.limits[0].percent = 0;
+  claude.limits[0].resetsAt = "2026-10-18T18:00:00.000Z";
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 1);
+});
+
+test("fresh task capacity can release a quota wait before its reset hint", async (t) => {
+  const h = await harness(t);
+  h.board.tasks[0].run = { provider: "claude", model: null, effort: "high" };
+  h.usage.providers[0].usageLimits.limits[0].percent = 97;
+  await h.activate(); await h.pilot.tick();
+  assert.equal(h.calls.length, 0);
+  h.advance();
+  h.usage.providers[0].usageLimits.fetchedAt = h.time.toISOString();
+  h.usage.providers[0].usageLimits.limits[0].percent = 10;
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 1);
+});
+
+test("capacity recovery wakes a grant even when it matches the last successful decision readings", async (t) => {
+  const h = await harness(t);
+  h.board.tasks[0].run = { provider: "claude", model: null, effort: "high" };
+  await h.activate(); await h.pilot.tick();
+  assert.equal(h.calls.length, 1);
+  h.advance(); h.usage.providers[0].usageLimits.limits[0].percent = 97;
+  await h.pilot.tick(); assert.equal(h.calls.length, 1);
+  h.advance();
+  h.usage.providers[0].usageLimits.fetchedAt = h.time.toISOString();
+  h.usage.providers[0].usageLimits.limits[0].percent = 20;
+  await h.pilot.tick(); assert.equal(h.calls.length, 2);
+});
+
+test("a held task provider does not prevent another authorized provider from working", async (t) => {
+  const h = await harness(t, { action: "start" });
+  h.board.tasks.push(task("T-2", { run: { provider: "claude", model: null, effort: "high" } }));
+  h.usage.providers[0].usageLimits.limits[0].percent = 97;
+  await h.activate({ taskIds: ["T-1", "T-2"] }); await h.pilot.tick();
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.starts[0][1], "T-1");
+});
+
+test("read-only decision failures retry with durable backoff and stop after three consecutive failures", async (t) => {
+  const h = await harness(t);
+  h.options.decide = async () => { h.calls.push(true); return { status: "failed" }; };
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  await h.activate(); await h.pilot.tick();
+  assert.equal((await h.read()).status, "active");
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  h.advance(4); h.board.tasks[0].text += " changed";
+  await h.pilot.tick(); assert.equal(h.calls.length, 1);
+  h.advance(1); await h.pilot.tick(); assert.equal(h.calls.length, 2);
+  assert.equal((await h.read()).status, "active");
+  h.advance(5); await h.pilot.tick(); assert.equal(h.calls.length, 2);
+  h.advance(5);
+  for (const row of h.usage.providers) row.usageLimits.fetchedAt = h.time.toISOString();
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 3); assert.equal(h.starts.length, 0);
+  assert.equal((await h.read()).status, "needs_you");
+});
+
+test("an invalid decision retries without launch and a valid response recovers", async (t) => {
+  const h = await harness(t, { action: "start" });
+  const decide = h.options.decide;
+  h.options.decide = async (request) => h.calls.length ? decide(request) : (h.calls.push(request), { status: "complete", text: "invalid private output" });
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  await h.activate(); await h.pilot.tick();
+  assert.equal(h.starts.length, 0);
+  assert.equal((await h.read()).summary, "The decision response was invalid.");
+  assert.equal(JSON.stringify(await h.read()).includes("invalid private output"), false);
+  h.advance(); await h.pilot.tick();
+  assert.equal(h.starts.length, 1);
+  assert.equal((await h.read()).status, "active");
+});
+
 test("quota changes after inference hold the launch and never repeat it", async (t) => {
   const h = await harness(t, { action: "start" });
   const decide = h.options.decide;
@@ -444,7 +544,7 @@ test("a deterministic gate refusal is retried only after changed evidence with a
   await h.activate(); await h.pilot.tick();
   assert.equal((await h.read()).status, "active"); assert.equal((await h.read()).receipts.at(-1).status, "blocked");
   h.advance(); await h.pilot.tick(); assert.equal(h.starts.length, 1);
-  h.board.queue.gates.usage.codex.fiveHourPercent = 18;
+  h.board.queue.gates.workingTree = "dirty";
   await h.pilot.tick(); assert.equal(h.starts.length, 2);
   assert.notEqual(h.starts[0][2].attemptId, h.starts[1][2].attemptId);
   assert.equal((await h.read()).startsUsed, 2);
@@ -471,6 +571,32 @@ test("a selected task's schedule becomes a one-time wake without board revision 
   await h.activate(); await h.pilot.tick(); assert.equal(h.calls.length, 1);
   h.advance(); await h.pilot.tick(); assert.equal(h.calls.length, 2);
   h.advance(); await h.pilot.tick(); assert.equal(h.calls.length, 2);
+});
+
+test("telemetry drift does not wake an explicit future wait but a task transition does", async (t) => {
+  const h = await harness(t);
+  const decide = h.options.decide;
+  h.options.decide = async (request) => {
+    const result = await decide(request);
+    return { ...result, text: JSON.stringify({ ...JSON.parse(result.text), waitUntil: "2026-10-18T13:00:00.000Z" }) };
+  };
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  await h.activate(); await h.pilot.tick();
+  for (let i = 0; i < 25; i += 1) {
+    h.advance();
+    for (const row of h.usage.providers) {
+      row.usageLimits.fetchedAt = h.time.toISOString();
+      row.usageLimits.limits[0].percent = 20 + i;
+      row.usageLimits.limits[0].resetsAt = new Date(Date.parse("2026-10-18T15:00:00.000Z") + i).toISOString();
+    }
+    h.board.queue.gates.usage.codex.fiveHourPercent = 20 + i;
+    await h.pilot.tick();
+  }
+  assert.equal(h.calls.length, 1);
+  assert.equal((await h.read()).roundsUsed, 1);
+  h.board.tasks[0].state = "needs_review";
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 2);
 });
 
 test("an idle or unknown linked session and an unbound started receipt occupy concurrency", async (t) => {

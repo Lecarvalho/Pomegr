@@ -51,7 +51,7 @@ describe("Aril pilot on a repository board", () => {
     await user.click(screen.getByRole("checkbox", { name: /T-1 Finish the existing task/ }));
     await user.click(screen.getByRole("button", { name: "Review grant" }));
 
-    expect(screen.getByText("Start a new session for a selected task, or fill an unset task run configuration.")).toBeInTheDocument();
+    expect(screen.getByText("Start a new session for a selected task in its own worktree, or fill an unset task run configuration. Uncommitted changes in the repository are not copied.")).toBeInTheDocument();
     expect(screen.getByText("Claude Code · Default model")).toBeInTheDocument();
     expect(screen.getByText("Codex · gpt-5-codex")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Confirm and activate pilot" }));

@@ -113,6 +113,7 @@ The head actions appear in this order:
 - The owner explicitly selects each allowed task provider and model pair and the inference provider and model; neither provider is preselected, and a blank model means that provider's default model.
 - **Review grant** opens a review step showing the goal, selected task IDs, deadline, granted actions, allowed runs, inference run, and every limit.
 - **Confirm and activate pilot** is the only activation action and follows the review step.
+- The grant review states that each task starts in its own worktree, excluding uncommitted repository changes.
 - The status section shows the current state, expiry, used limits, next wake, wait reason, needs-you state, and final summary when present.
 - The collapsed **Grant details** disclosure shows the active grant's goal, selected task IDs, allowed runs, inference run, concurrency, and minimum interval between rounds.
 - For an uncertain or unbound start receipt on a needs-you pilot, **Reconcile T-n** appears only when that selected task still exists and has no linked session; it asks the owner to verify no session started, requeues the task through the existing task action, then revokes the grant.

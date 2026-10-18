@@ -191,13 +191,15 @@ export function startAbort({ database, transaction, repositoryId, payload }) {
 
 // Recheck the committed start gates after native worktree preparation. It never mints or returns a plan.
 export function startCheck({ database, repositoryId, payload, gatesHold, now }) {
-  const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id", "token"]) : undefined;
+  const separate = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.hasOwn(payload, "worktree");
+  if (separate && payload.worktree !== true) return { ok: false, error: "invalid" };
+  const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id", "token", ...(separate ? ["worktree"] : [])]) : undefined;
   if (number === undefined || typeof payload.token !== "string" || !TOKEN_PATTERN.test(payload.token)) return { ok: false, error: "invalid" };
   const row = loadRow(database, repositoryId, number);
   const stored = parseStoredDispatch(row?.dispatch_token);
   if (!row || !stored?.autonomous || !isLive(stored, now()) || (row.session_id ?? null) !== null || !STARTABLE_STATES.has(row.state)
     || !crypto.timingSafeEqual(Buffer.from(digestOf(payload.token), "hex"), Buffer.from(stored.digest, "hex"))) return { ok: false, error: "not_startable" };
-  const held = gatesHold(payload.id, { autonomous: true, ignoreOwnClaim: true });
+  const held = gatesHold(payload.id, { autonomous: true, ignoreOwnClaim: true, separateWorktree: separate });
   return held === false ? { ok: true } : { ok: false, error: held === "tree_dirty" ? "tree_dirty" : "gate_held" };
 }
 

@@ -709,9 +709,10 @@ paths stay desktop-private and never reach the monitor store or browser state.
   the queue (`taskRunsInGroup` in `task-groups.mjs`). A task that is in no group, or whose
   group has dropped to one member, runs in the repository root, whatever its feature,
   unless the owner asked for a separate worktree for that one manual start (see
-  [Separate worktree](#separate-worktree-for-a-dirty-repository)). The monitor decides
-  this when it answers the start plan (`worktree`, a boolean); it never learns where the
-  worktree is.
+  [Separate worktree](#separate-worktree-for-a-dirty-repository)), or the temporary Aril
+  pilot starts it. Every autonomous pilot start requests the task's separate worktree,
+  including when the root is clean. The monitor decides this when it answers the start
+  plan (`worktree`, a boolean); it never learns where the worktree is.
 - **Where.** `<repository root>/.pomegr/worktrees/<task ID>`, inside the repository (task
   T-27, product-owner decision of 2026-10-11). The root is the one the monitor answers in
   the start plan and the task ID is a validated identifier, so no task text shapes the
@@ -2219,11 +2220,11 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
 - An autonomous launcher outcome can be uncertain after spawn. Desktop main then keeps its claim and worktree instead of aborting or retrying.
-- The private autonomous `start-plan` payload adds `{ autonomous: { attemptId, expectedUpdatedAt, expectedTaskDigest, expectedRun, run? } }` beside `id`.
+- The private autonomous `start-plan` payload adds `worktree: true` and `{ autonomous: { attemptId, expectedUpdatedAt, expectedTaskDigest, expectedRun, run? } }` beside `id`.
 - `expectedTaskDigest` is a SHA-256 digest of the persisted task fields. A same-millisecond edit still invalidates the selection.
 - Task revision and explicit execution configuration must still match. A fallback provider/model fills only an unset provider; explicit effort and flags remain unchanged.
 - The monitor records the attempt tombstone and execution configuration in the same transaction as the dispatch claim.
-- Before spawn, `start-check` with `{ id, token }` rechecks the claim and current quota, provider, tree, dependency, order, and schedule gates.
+- Before spawn, autonomous `start-check` sends `{ id, token, worktree: true }` and rechecks the claim and current quota, provider, tree, dependency, order, and schedule gates. It may waive only the sole dirty-root gate because the planned session runs in its separate worktree.
 - Desktop main then validates the grant again against the actual plan provider, model, and effort.
 - The owner's existing Requeue or Mark done action can reconcile an unbound autonomous claim. Neither action controls a running session.
 - Starting never changes the task's state or column. The card moves
@@ -2690,6 +2691,7 @@ serves no other client.
 ## Privacy
 
 - A [temporary pilot](agent-chat.md#temporary-autonomous-pilot) sends only scoped task IDs, revision guards, a task digest, execution configuration, and opaque attempt identifiers to dispatch.
+- Every autonomous pilot start requests a separate worktree. Its final `start-check` repeats that request and may waive only the sole `tree_dirty` gate for the repository root; every other gate still holds the start.
 - Its durable autonomous dispatch marker holds a dispatch token digest and timestamp, plus a fixed autonomous flag.
 - A per-repository attempt tombstone retains only a bounded opaque attempt identifier, never an objective, reason, or inference answer.
 - These private dispatch values never enter `GET /api/tasks`, `/api/state`, observation checkpoints, reports, logs, notifications, or diagnostics.

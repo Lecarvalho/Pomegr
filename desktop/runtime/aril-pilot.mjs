@@ -197,7 +197,20 @@ export function createArilPilotCoordinator(options = {}) {
 
   async function waitFor(grant, reason, nextWakeAt = null) {
     if (grant.waiting === reason && grant.nextWakeAt === nextWakeAt) return;
-    await change(grant.id, (saved) => { if (saved.status === "active") { saved.waiting = reason; saved.summary = reason; saved.nextWakeAt = nextWakeAt; saved.waitDeadline = nextWakeAt; } });
+    await change(grant.id, (saved) => { if (saved.status === "active") { saved.waiting = reason; saved.summary = reason; saved.nextWakeAt = nextWakeAt; saved.waitDeadline = nextWakeAt; saved.lastFingerprint = null; } });
+  }
+
+  function taskCapacityWait(grant, board, evidence) {
+    const candidates = board.tasks.filter((task) => grant.taskIds.includes(task.id) && STARTABLE.has(task.state) && !task.session);
+    if (!candidates.length) return null;
+    const providers = new Set(candidates.flatMap((task) => task.run?.provider ? [task.run.provider] : grant.allowedRuns.map((run) => run.provider)));
+    if ([...providers].some((provider) => capacity(grant, board, evidence, provider))) return null;
+    // Account observations can change while every permitted task provider remains held.
+    // Rechecking those deterministic gates needs no model call and spends no decision round.
+    const resets = evidence.usage.filter((row) => providers.has(row.provider)).flatMap((row) => row.limits)
+      .filter((limit) => limit.resetsAt && atMs(limit.resetsAt) > date().getTime() && (limit.usedPercent === null || limit.usedPercent >= board.queue.gates.threshold))
+      .map((limit) => limit.resetsAt).sort();
+    return { nextWakeAt: resets[0] ?? null };
   }
 
   async function runGrant(grantId) {
@@ -255,15 +268,19 @@ export function createArilPilotCoordinator(options = {}) {
       await waitFor(grant, "Waiting for fresh provider capacity before another decision.", reset); return;
     }
     if (activeCount(board, grant) >= grant.concurrency) { await waitFor(grant, "Waiting for running work to finish."); return; }
-    if (grant.nextWakeAt && atMs(grant.nextWakeAt) > now && grant.lastFingerprint === evidence.evidenceRevision) return;
+    const taskWait = taskCapacityWait(grant, board, evidence);
+    if (taskWait) { await waitFor(grant, "Waiting for fresh capacity for the authorized task providers.", taskWait.nextWakeAt); return; }
+    const lastInference = grant.receipts.findLast((row) => row.action === "inference");
+    if (lastInference?.status === "failed" && grant.nextWakeAt && atMs(grant.nextWakeAt) > now) return;
+    if (grant.nextWakeAt && atMs(grant.nextWakeAt) > now && grant.lastFingerprint === evidence.wakeRevision) return;
     if (grant.lastRoundAt && now - atMs(grant.lastRoundAt) < grant.minIntervalMinutes * 60_000) return;
     const explicitWake = grant.waitDeadline && atMs(grant.waitDeadline) <= now && grant.wakeConsumed !== grant.waitDeadline;
     const scheduleWake = board.tasks.filter((task) => grant.taskIds.includes(task.id) && task.scheduledAt && atMs(task.scheduledAt) <= now && (!grant.lastRoundAt || atMs(task.scheduledAt) > atMs(grant.lastRoundAt))).map((task) => task.scheduledAt).sort().at(-1);
-    if ((grant.lastFingerprint === evidence.evidenceRevision && !explicitWake && !scheduleWake) || options.isBusy?.()) return;
+    if ((grant.lastFingerprint === evidence.wakeRevision && !explicitWake && !scheduleWake) || options.isBusy?.()) return;
     const before = grant.revision;
     const reserve = await change(grant.id, (saved) => {
       if (saved.revision !== before || saved.status !== "active" || atMs(saved.expiresAt) <= date().getTime()) return { ok: false, error: "conflict" };
-      saved.roundsUsed += 1; saved.lastRoundAt = iso(); saved.lastFingerprint = evidence.evidenceRevision;
+      saved.roundsUsed += 1; saved.lastRoundAt = iso(); saved.lastFingerprint = evidence.wakeRevision;
       if (explicitWake) saved.wakeConsumed = grant.waitDeadline;
       saved.waitDeadline = null;
       saved.waiting = null; saved.nextWakeAt = new Date(date().getTime() + saved.minIntervalMinutes * 60_000).toISOString();
@@ -281,10 +298,24 @@ export function createArilPilotCoordinator(options = {}) {
       const pending = saved.receipts.findLast((row) => row.action === "inference" && row.status === "pending");
       if (!pending) return { ok: false, error: "conflict" };
       pending.status = result?.status === "busy" ? "busy" : result?.status === "interrupted" ? "interrupted" : decision ? "complete" : "failed";
-      pending.reason = decision ? decision.reason : result?.status === "busy" ? "The interactive chat owns the provider slot." : "The decision did not complete safely.";
+      pending.reason = decision ? decision.reason : result?.status === "busy" ? "The interactive chat owns the provider slot."
+        : result?.status === "complete" ? "The decision response was invalid." : "The decision run did not complete.";
       if (result?.status === "busy") { saved.receipts.splice(saved.receipts.indexOf(pending), 1); saved.roundsUsed -= 1; saved.lastFingerprint = grant.lastFingerprint; saved.lastRoundAt = grant.lastRoundAt; if (saved.status === "active") { saved.nextWakeAt = grant.nextWakeAt; saved.wakeConsumed = grant.wakeConsumed; saved.waitDeadline = grant.waitDeadline; } }
       else if (result?.status === "interrupted" && saved.status === "active") { saved.lastFingerprint = null; saved.waiting = "Waiting after the interactive chat took priority."; saved.summary = saved.waiting; }
-      else if (!decision && saved.status === "active") { saved.status = "needs_you"; saved.summary = pending.reason; saved.nextWakeAt = null; }
+      else if (!decision && saved.status === "active") {
+        let failures = 0;
+        for (const row of saved.receipts.filter((row) => row.action === "inference").reverse()) {
+          if (row.status !== "failed") break;
+          failures += 1;
+        }
+        saved.summary = pending.reason;
+        if (failures >= 3) { saved.status = "needs_you"; saved.nextWakeAt = null; saved.waiting = null; }
+        else {
+          saved.waiting = "Waiting before retrying a failed read-only decision.";
+          saved.nextWakeAt = new Date(Math.min(atMs(saved.expiresAt), date().getTime() + saved.minIntervalMinutes * 60_000 * failures)).toISOString();
+          saved.waitDeadline = saved.nextWakeAt; saved.lastFingerprint = null;
+        }
+      }
     });
     if (!settle.ok || !decision || disposed) return;
     grant = (await store.read()).grants.find((entry) => entry.id === grant.id);
@@ -341,7 +372,7 @@ export function createArilPilotCoordinator(options = {}) {
       const pending = saved.receipts.findLast((row) => row.action === "start" && row.taskId === task.id && row.status === "pending");
       if (!pending) return { ok: false, error: "conflict" };
       pending.status = outcome?.status === "started" ? "started" : NO_LAUNCH.has(outcome?.status) ? "blocked" : "uncertain";
-      pending.reason = pending.status === "started" ? decision.reason : pending.status === "blocked" ? "The start was held by an authorization or monitor gate." : "The start has no confirmed outcome. Review the task before another attempt.";
+      pending.reason = pending.status === "started" ? decision.reason : pending.status === "blocked" ? `The start was refused (${outcome.status}); no session was launched.` : "The start has no confirmed outcome. Review the task before another attempt.";
       if (saved.status === "active") saved.summary = pending.reason;
       if (pending.status !== "started" && saved.status === "active") {
         if (pending.status === "blocked" && TRANSIENT_START.has(outcome?.status)) { saved.waiting = "Waiting for changed evidence after a refused start."; saved.nextWakeAt = null; }

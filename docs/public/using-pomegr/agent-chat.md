@@ -177,6 +177,9 @@ The phone must have an active pairing before it can read or change a pilot grant
 Aril reads normalized evidence and chooses work with a reason. Pomegr validates every decision before a new task starts.
 Explicit task settings take precedence. A task configured for one provider waits when that provider lacks capacity.
 A reset wakes a fresh quota check; the clock alone never permits a start.
+Waiting for task-provider capacity uses no decision rounds.
+Each pilot task runs in its own worktree. Uncommitted changes in the repository are not copied.
+Failed planning runs retry twice with increasing waits. Three consecutive failures need your attention.
 The pilot never creates tasks, marks them done, changes the queue, or controls existing sessions.
 It never approves tools, merges, deploys, or enables additional spending.
 

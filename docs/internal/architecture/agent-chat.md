@@ -774,6 +774,10 @@ Only the owner's confirmation creates a persistent grant. The owner may keep one
 The coordinator reads committed board and usage projections for each active repository while the desktop remains open, including with the panel closed.
 It coalesces relevant changes into one evidence revision per grant and runs at most one inference round at a time globally.
 Unchanged observations do not start inference. A stored wait deadline also wakes the grant that recorded it.
+Capacity transitions can wake decisions; percentage changes within the same capacity state and reset-time drift cannot.
+Exact evidence revisions still guard decisions and starts against changed readings.
+When all remaining task providers lack capacity, deterministic checks wait without an inference call or a consumed decision round.
+Fresh evidence of restored capacity can release that wait before the reset hint.
 At a quota reset, desktop main requests ordinary usage acquisition through its private worker channel.
 Provider backoff still applies. Time alone never establishes capacity: missing or stale quota evidence continues to wait.
 
@@ -781,6 +785,9 @@ Aril receives the objective, scope, permitted models, budgets, normalized board 
 It weighs work type, explicit owner choices, dependencies, current capacity, and authorized models.
 It returns one structured decision: start, wait, needs-you, or finish, with evidence revision and a reason.
 Desktop main rejects malformed decisions, stale revisions, foreign IDs, unauthorized models, and overridden explicit settings.
+Failed read-only runs and malformed answers retry after one and two minimum intervals; three consecutive failures require owner attention.
+Each failed provider run still consumes its decision round. Pause, expiry, and budget limits also stop retries.
+Receipts distinguish invalid answers from incomplete runs through fixed reasons; no raw errors or rejected output are retained.
 Ordinary chat proposals never pass through this executor.
 
 The inference uses the chat's existing read-only runner, tool allowlist, run declaration, and single global turn slot shared by every grant.
@@ -788,10 +795,13 @@ An interactive message takes priority, stops the background inference, and disca
 It never stops a task session. The pilot stores no conversation and never auto-applies a generic chat proposal.
 
 An accepted start uses the existing dispatcher, its exclusive launch slot, start-plan gates, and atomic task claim.
+Every pilot start uses its task's separate worktree; the review explains that uncommitted repository changes are not copied.
+Only a dirty repository root is bypassed; dirty task worktrees and all other start gates remain authoritative.
 Desktop main revalidates grant revision, expiry, scope, budgets, and current evidence at each effect boundary.
 The monitor compares a digest of persisted task fields and explicit configuration before claiming or selecting execution configuration.
 A timestamp alone cannot validate the revision. Same-millisecond task edits invalidate the digest.
 A changed task or closed gate refuses the start. Queue and dependency rules remain authoritative.
+Known refusals retain their fixed status in the receipt, without provider errors or paths.
 Human decisions hold only work that the existing dependency and queue rules hold.
 
 Before dispatch, a durable receipt reserves the attempt and the start budget.

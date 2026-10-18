@@ -14,17 +14,21 @@ for (const provider of ["claude", "codex"]) test(`pilot decision through real st
   store.apply(REPOSITORY, "create", { text: "Synthetic task: no real provider or filesystem effects", run: provider === "claude" ? { ...chosen, effort: "high" } : { effort: "high" } });
   const routes = [];
   const spawns = [];
+  const worktreeRequests = [];
+  const worktreeDirectory = path.join(root, "synthetic-task-worktree");
+  const gateFacts = { ...GATE_FACTS, treeClean: false };
   const starter = createTaskStart({
     monitorOrigin: "http://127.0.0.1:4317", authorizationToken: "synthetic-desktop-key", platform: "win32",
     environment: { ...environment, POMEGR_CLAUDE_EXECUTABLE: exe, POMEGR_CODEX_EXECUTABLE: codexExe },
     fileExists: (file) => [exe, codexExe, powershell].includes(file), directoryExists: (directory) => directory === root,
+    worktrees: { ensure: async (request) => { worktreeRequests.push(request); return { ok: true, directory: worktreeDirectory }; } },
     fetch: async (url, init) => {
       const route = new URL(url).pathname.split("/").at(-1);
       const { repositoryId, payload } = JSON.parse(init.body);
       assert.equal(repositoryId, REPOSITORY);
       routes.push(route);
-      const answer = route === "start-plan" ? store.planStart(repositoryId, payload, () => ({ root, pluginReady: true }), () => GATE_FACTS)
-        : route === "start-check" ? store.checkStart(repositoryId, payload, () => GATE_FACTS) : store.abortStart(repositoryId, payload);
+      const answer = route === "start-plan" ? store.planStart(repositoryId, payload, () => ({ root, pluginReady: true }), () => gateFacts)
+        : route === "start-check" ? store.checkStart(repositoryId, payload, () => gateFacts) : store.abortStart(repositoryId, payload);
       return json(answer);
     },
     spawn: (...args) => { spawns.push(args); return fakeChild(); },
@@ -32,7 +36,7 @@ for (const provider of ["claude", "codex"]) test(`pilot decision through real st
   t.after(() => starter.dispose());
   const pilot = createArilPilot({
     directory: path.join(directory, "pilot"), now: () => new Date(clock.now), starter,
-    readBoard: async () => store.readBoard(REPOSITORY, { resolveGateFacts: () => GATE_FACTS }),
+    readBoard: async () => store.readBoard(REPOSITORY, { resolveGateFacts: () => gateFacts }),
     readUsage: async () => ({ providers: ["claude", "codex"].map((provider) => ({ provider, readiness: "ready", usageLimits: {
       available: true, fetchedAt: new Date(clock.now).toISOString(), limits: [{ window: "5 hours", percent: 10, active: false, resetsAt: new Date(clock.now + 3_600_000).toISOString() }],
     } })) }),
@@ -45,6 +49,8 @@ for (const provider of ["claude", "codex"]) test(`pilot decision through real st
   assert.equal((await pilot.activate({ repositoryId: REPOSITORY, goal: "Synthetic finite goal", taskIds: ["T-1"], allowedRuns: [chosen], inference: chosen })).ok, true);
   await pilot.tick();
   assert.equal(spawns.length, 1);
+  assert.deepEqual(worktreeRequests, [{ repositoryRoot: root, repositoryId: REPOSITORY, taskId: "T-1" }]);
+  assert.equal(spawns[0][2].cwd, worktreeDirectory);
   assert.deepEqual(routes, ["start-plan", "start-check"]);
   assert.equal((await pilot.read(REPOSITORY)).pilot.receipts.at(-1).status, "started");
   assert.equal(store.readBoard(REPOSITORY).tasks[0].run.provider, chosen.provider);

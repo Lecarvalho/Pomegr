@@ -279,9 +279,12 @@ export function createTaskStart(options = {}) {
     let started = false;
     if (autonomous) {
       let check;
-      try { check = await post("start-check", repositoryId, { id: taskId, token: plan.token }); } catch { check = null; }
+      try { check = await post("start-check", repositoryId, { id: taskId, token: plan.token, worktree: true }); } catch { check = null; }
       if (check?.ok !== true) {
         await abort(repositoryId, taskId, plan.token);
+        if (made?.created === true) {
+          try { await worktrees.remove({ repositoryRoot: plan.root, repositoryId, taskId, deleteBranch: made.branchCreated === true }); } catch { /* kept */ }
+        }
         return result(MONITOR_ERRORS.has(check?.error) ? check.error : "unavailable");
       }
     }
@@ -374,7 +377,7 @@ export function createTaskStart(options = {}) {
     // Copy all decision fields before awaiting the grant, so a caller cannot replace a selection during authorization.
     const autonomous = JSON.parse(JSON.stringify({ attemptId: request.attemptId, expectedUpdatedAt: request.expectedUpdatedAt, expectedTaskDigest: request.expectedTaskDigest, expectedRun: request.expectedRun,
       ...(request.run === undefined ? {} : { run: request.run }) }));
-    return exclusive({ confirmRequired: false, isAuthorized: request.isAuthorized, autonomous }, repositoryId, taskId);
+    return exclusive({ confirmRequired: false, separateWorktree: true, isAuthorized: request.isAuthorized, autonomous }, repositoryId, taskId);
   }
 
   async function openWorktree(event, repositoryId, taskId) {

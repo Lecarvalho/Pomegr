@@ -354,12 +354,18 @@ test("autonomous starts respect Ready order, dependencies, and final committed g
   assert.equal(env.store.apply(REPOSITORY_ID, "after_set", { id: "T-1", after: ["T-2"] }).ok, true);
   refused(await plan(env, pilot(env, "T-1")), 409, "gate_held");
   assert.equal(env.store.apply(REPOSITORY_ID, "after_set", { id: "T-1", after: [] }).ok, true);
-  const answer = await plan(env, pilot(env));
+  gateFacts = { ...GATE_FACTS, treeClean: false };
+  refused(await plan(env, pilot(env)), 409, "tree_dirty");
+  const answer = await plan(env, { ...pilot(env), worktree: true });
   assert.equal(answer.status, 200);
-  const payload = { id: "T-1", token: answer.json.plan.token };
+  const payload = { id: "T-1", token: answer.json.plan.token, worktree: true };
   assert.equal((await call(env.port, "start-check", payload)).status, 200);
   gateFacts = { ...GATE_FACTS, treeClean: false };
-  refused(await call(env.port, "start-check", payload), 409, "tree_dirty");
+  assert.equal((await call(env.port, "start-check", payload)).status, 200, "the already prepared separate worktree is independent of root dirt");
+  gateFacts = { ...GATE_FACTS, providerStatus: { ...GATE_FACTS.providerStatus, claude: "incident" } };
+  refused(await call(env.port, "start-check", payload), 409, "gate_held");
+  gateFacts = { ...GATE_FACTS, treeClean: false };
+  refused(await call(env.port, "start-check", { id: payload.id, token: payload.token }), 409, "tree_dirty");
   refused(await call(env.port, "start-check", { ...payload, token: "w".repeat(43) }), 409, "not_startable");
 });
 

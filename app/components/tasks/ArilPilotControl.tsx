@@ -179,7 +179,7 @@ export function ArilPilotControl({ repositoryId, tasks, desktop, paired = false,
           <p><strong>Goal</strong><span>{payload.goal}</span></p>
           <p><strong>Selected tasks</strong><span>{payload.taskIds.map((id) => `${id} · ${taskById.get(id)?.text.split("\n")[0] ?? "Task no longer on board"}`).join("; ")}</span></p>
           <p><strong>Deadline</strong><span>{deadlinePreview ? dateLine(deadlinePreview) : `${durationHours} hours from activation`} ({durationHours} hours from activation)</span></p>
-          <p><strong>Granted actions</strong><span>Start a new session for a selected task, or fill an unset task run configuration.</span></p>
+          <p><strong>Granted actions</strong><span>Start a new session for a selected task in its own worktree, or fill an unset task run configuration. Uncommitted changes in the repository are not copied.</span></p>
           <p><strong>Allowed task runs</strong><span>{payload.allowedRuns.map((run) => `${providerLabel(run.provider)} · ${run.model ?? "Default model"}`).join("; ")}</span></p>
           <p><strong>Inference run</strong><span>{providerLabel(payload.inference.provider)} · {payload.inference.model ?? "Default model"}</span></p>
           <p><strong>Limits</strong><span>{payload.roundLimit} rounds · {payload.startLimit} starts · concurrency {payload.concurrency} · at least {payload.minIntervalMinutes} minutes between rounds</span></p>
