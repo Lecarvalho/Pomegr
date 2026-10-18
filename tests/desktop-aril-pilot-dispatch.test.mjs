@@ -5,13 +5,17 @@ import test from "node:test";
 import { createArilPilot } from "../desktop/runtime/aril-pilot.mjs";
 import { createTaskStart } from "../desktop/runtime/task-dispatch.mjs";
 import { environment, exe, codexExe, powershell, fakeChild, json, root } from "./helpers/task-dispatch-harness.mjs";
-import { GATE_FACTS, REPOSITORY, openTemporaryStore } from "./server/tasks/queue-test-support.mjs";
+import { GATE_FACTS, REPOSITORY, openTemporaryStore, queueSettings } from "./server/tasks/queue-test-support.mjs";
 
-for (const provider of ["claude", "codex"]) test(`pilot decision through real store/dispatcher starts ${provider} once and binds its durable claim`, async (t) => {
+for (const provider of ["claude", "codex"]) for (const queueOn of [false, true]) test(`pilot directly starts an unqueued Backlog task with ${provider} while queue is ${queueOn ? "on" : "off"}`, async (t) => {
   const { store, clock, directory } = await openTemporaryStore(t, "pomegr-pilot-dispatch-");
   const chosen = { provider, model: provider === "claude" ? "synthetic-small" : "synthetic-large" };
   // An unset task permits model selection; an explicit task preserves its choice.
   store.apply(REPOSITORY, "create", { text: "Synthetic task: no real provider or filesystem effects", run: provider === "claude" ? { ...chosen, effort: "high" } : { effort: "high" } });
+  const unqueued = store.readBoard(REPOSITORY);
+  assert.equal(unqueued.tasks[0].state, "not_queued");
+  assert.equal(unqueued.columns.find((column) => column.id === unqueued.tasks[0].columnId).name, "Backlog");
+  assert.equal(queueSettings(store, queueOn).ok, true);
   const routes = [];
   const spawns = [];
   const worktreeRequests = [];
@@ -46,7 +50,8 @@ for (const provider of ["claude", "codex"]) test(`pilot decision through real st
     },
   });
   t.after(() => pilot.dispose());
-  assert.equal((await pilot.activate({ repositoryId: REPOSITORY, goal: "Synthetic finite goal", taskIds: ["T-1"], allowedRuns: [chosen], inference: chosen })).ok, true);
+  const activation = await pilot.activate({ repositoryId: REPOSITORY, goal: "Synthetic finite goal", taskIds: ["T-1"], allowedRuns: [chosen], inference: chosen });
+  assert.equal(activation.ok, true, JSON.stringify(activation));
   await pilot.tick();
   assert.equal(spawns.length, 1);
   assert.deepEqual(worktreeRequests, [{ repositoryRoot: root, repositoryId: REPOSITORY, taskId: "T-1" }]);

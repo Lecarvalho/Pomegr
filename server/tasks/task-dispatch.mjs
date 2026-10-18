@@ -4,7 +4,7 @@ import { taskStartRevision } from "../../shared/task-start-revision.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
-import { withTaskRemoteControl } from "./task-remote-control.mjs";
+import { withTaskRemoteControl, writeTaskRemoteControl } from "./task-remote-control.mjs";
 import { taskSourceOf, withTaskSource } from "./task-source.mjs";
 import { taskRunsInGroup } from "./task-groups.mjs";
 import { withTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
@@ -120,7 +120,8 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   if (autonomous && (task.updatedAt !== autonomous.expectedUpdatedAt || !sameRun(task.run, autonomous.expectedRun))) return { ok: false, error: "not_startable" };
   // An explicit provider (including its default model) is the owner's selection. Only an unset provider may be filled.
   const selectedRun = autonomous?.run && task.run.provider === null
-    ? normalizeRun({ ...task.run, provider: autonomous.run.provider, model: autonomous.run.model, effort: task.run.effort ?? autonomous.run.effort }) : task.run;
+    ? normalizeRun({ ...task.run, provider: autonomous.run.provider, model: autonomous.run.model, effort: task.run.effort ?? autonomous.run.effort,
+      remoteControl: autonomous.run.provider === "codex" ? false : task.run.remoteControl }) : task.run;
   if (!selectedRun) return { ok: false, error: "invalid" };
   task = { ...task, run: selectedRun };
   const at = now();
@@ -149,6 +150,7 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
       preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run(attemptKey, task.id);
       preparedStatement(database, "UPDATE tasks SET run_provider = ?, run_model = ?, run_effort = ? WHERE repository_id = ? AND number = ?")
         .run(selectedRun.provider, selectedRun.model, selectedRun.effort, repositoryId, number);
+      writeTaskRemoteControl(database, repositoryId, number, selectedRun.remoteControl);
     }
     preparedStatement(database, "UPDATE tasks SET dispatch_token = ? WHERE repository_id = ? AND number = ?")
       .run(`${digestOf(token)}:${at}${autonomous ? ":autonomous" : ""}`, repositoryId, number);

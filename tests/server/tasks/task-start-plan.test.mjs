@@ -78,6 +78,8 @@ function withDatabase(directory, work) {
   try { return work(database); } finally { database.close(); }
 }
 const dispatchOf = (directory, number) => withDatabase(directory, (database) => database.prepare("SELECT dispatch_token FROM tasks WHERE number = ?").get(number).dispatch_token);
+const remoteControlMetaOf = (directory, number) => withDatabase(directory, (database) => database.prepare("SELECT value FROM meta WHERE key = ?")
+  .get(`task_remote_control:${REPOSITORY_ID}:T-${number}`)?.value ?? null);
 
 test("a startable task yields the plan with null model and effort", async (context) => {
   const env = await setup(context);
@@ -276,17 +278,41 @@ const pilot = (env, id = "T-1", overrides = {}) => {
 
 test("autonomous selection is atomic, preserves effort and owner flags, and is private", async (context) => {
   const env = await setup(context);
-  create(env, { run: { effort: "xhigh", keepWorktree: true } });
+  create(env, { run: { effort: "xhigh", keepWorktree: true, remoteControl: true } });
+  const initial = env.store.readBoard(REPOSITORY_ID).tasks[0];
   const request = pilot(env, "T-1", { run: { provider: "codex", model: "gpt-6-sol", effort: "low" } });
+  assert.equal(request.autonomous.expectedRun.remoteControl, true);
+  assert.equal(request.autonomous.expectedTaskDigest, taskStartRevision(initial));
   const answer = await plan(env, request);
   assert.equal(answer.status, 200);
   assert.equal(answer.json.plan.provider, "codex");
   assert.equal(answer.json.plan.model, "gpt-6-sol");
   assert.equal(answer.json.plan.effort, "xhigh");
+  assert.equal(answer.json.plan.remoteControl, false);
   const task = env.store.readBoard(REPOSITORY_ID).tasks[0];
   assert.equal(task.run.keepWorktree, true);
+  assert.equal(task.run.remoteControl, false);
+  assert.equal(remoteControlMetaOf(env.directory, 1), null, "the persistent owner flag is cleared in the same commit as Codex selection");
   assert.ok(!JSON.stringify(task).includes(request.autonomous.attemptId));
   refused(await plan(env, request), 409, "already_attempted");
+});
+
+test("autonomous Claude selection preserves Remote Control for an unset provider", async (context) => {
+  const env = await setup(context);
+  create(env, { run: { effort: "high", keepWorktree: true, remoteControl: true } });
+  const initial = env.store.readBoard(REPOSITORY_ID).tasks[0];
+  const request = pilot(env, "T-1", { run: { provider: "claude", model: "claude-sonnet-4-5" } });
+  assert.equal(request.autonomous.expectedRun.remoteControl, true);
+  assert.equal(request.autonomous.expectedTaskDigest, taskStartRevision(initial));
+  const answer = await plan(env, request);
+  assert.equal(answer.status, 200);
+  assert.equal(answer.json.plan.provider, "claude");
+  assert.equal(answer.json.plan.remoteControl, true);
+  assert.equal(answer.json.plan.effort, "high");
+  const task = env.store.readBoard(REPOSITORY_ID).tasks[0];
+  assert.equal(task.run.remoteControl, true);
+  assert.equal(task.run.keepWorktree, true);
+  assert.equal(remoteControlMetaOf(env.directory, 1), "1");
 });
 
 test("autonomous plans preserve explicit provider default models and reject stale run/revision selections", async (context) => {

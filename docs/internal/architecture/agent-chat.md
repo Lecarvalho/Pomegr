@@ -764,6 +764,7 @@ Only the owner's confirmation creates a persistent grant. The owner may keep one
 - Desktop main keeps the objective, grant revision, checkpoint, bounded decision receipts, and final summary before effects.
 - A grant permits only new session starts and filling unset execution configuration for selected tasks.
 - Explicit provider, model, default-model selection, effort, and other task settings take precedence.
+- When an unset provider is filled, existing effort and other flags stay as set; Remote Control remains enabled for Claude and is cleared for Codex.
 - No grant permits task creation, generic proposal approval, queue changes, completion, merge, deploy, extra spending, or session control.
 - Pausing, revoking, or expiring a grant prevents new effects. Running task sessions continue untouched.
 - A new activation is a new authorization. Older summaries remain available in the pilot's history.
@@ -783,6 +784,8 @@ Provider backoff still applies. Time alone never establishes capacity: missing o
 
 Aril receives the objective, scope, permitted models, budgets, normalized board evidence, quota evidence, and previous bounded receipts.
 It weighs work type, explicit owner choices, dependencies, current capacity, and authorized models.
+The grant authorizes direct starts of selected tasks in Backlog or state `not_queued`; those tasks need no queue membership, and queue status or queue position does not hold a direct start. The pilot still honors each task's `runs_after` dependencies and scheduled start time, plus the established order rules for queued tasks. Queue snapshot fields do not by themselves establish that a direct start is blocked.
+An artifact, plan, owner review, or final approval in a task's deliverable is not itself a start gate. Aril must not infer that a tool or provider capability is unavailable from fields omitted by the board or grant. The authorized task session inspects the repository and actually available tools after it starts, then reports blockers only from concrete evidence. It never invents a capability, downgrades the requested deliverable, or skips required owner approval.
 It returns one structured decision: start, wait, needs-you, or finish, with evidence revision and a reason.
 Desktop main rejects malformed decisions, stale revisions, foreign IDs, unauthorized models, and overridden explicit settings.
 Failed read-only runs and malformed answers retry after one and two minimum intervals; three consecutive failures require owner attention.

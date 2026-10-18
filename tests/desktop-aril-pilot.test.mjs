@@ -514,6 +514,27 @@ test("prompt boundary excludes raw transcript credentials paths and usage error 
   assert.equal(h.calls[0].prompt.includes(sentinel), false);
   assert.match(h.calls[0].prompt, /BOTH allowed providers/u);
   assert.match(h.calls[0].prompt, /an unrelated hold is never a grant-wide veto/u);
+  assert.match(h.calls[0].prompt, /including tasks in Backlog or state not_queued/u);
+  assert.match(h.calls[0].prompt, /queue on\/off status or its position relative to queue\.order is not a blocker/u);
+  assert.match(h.calls[0].prompt, /deliverable includes a plan, artifact, owner review, or final approval; these are part of finishing the task, not start gates/u);
+  assert.match(h.calls[0].prompt, /Do not infer a tool or provider capability is unavailable because the board or grant omits it/u);
+});
+
+test("an owner grant can directly start a Backlog task while the queue is either off or on", async (t) => {
+  for (const status of ["off", "running"]) {
+    const h = await harness(t, { action: "start" });
+    h.board.tasks[0].state = "not_queued";
+    h.board.tasks[0].text = "Draft a plan, create the requested artifact, then get the owner's final approval.";
+    h.board.tasks[0].columnId = "backlog";
+    h.board.columns = [{ id: "backlog", name: "Backlog", position: 0, role: null }];
+    h.board.queue.status = status;
+    h.board.queue.order = [];
+    await h.activate(); await h.pilot.tick();
+    assert.equal(h.starts.length, 1, status);
+    assert.equal((await h.read()).receipts.at(-1).status, "started", status);
+    assert.equal(h.board.tasks[0].state, "not_queued", status);
+    assert.match(h.calls[0].prompt, /queue on\/off status or its position relative to queue\.order is not a blocker/u);
+  }
 });
 
 test("owner-held work does not stop another eligible authorized task", async (t) => {
@@ -548,6 +569,18 @@ test("a deterministic gate refusal is retried only after changed evidence with a
   await h.pilot.tick(); assert.equal(h.starts.length, 2);
   assert.notEqual(h.starts[0][2].attemptId, h.starts[1][2].attemptId);
   assert.equal((await h.read()).startsUsed, 2);
+});
+
+test("an invalid start-plan refusal is blocked because dispatch never spawned", async (t) => {
+  const h = await harness(t, { action: "start" });
+  h.options.starter.startAutonomous = async (...args) => { h.starts.push(args); return { status: "invalid" }; };
+  await h.activate();
+  await h.pilot.tick();
+  const state = await h.read();
+  assert.equal(state.status, "needs_you");
+  assert.equal(state.receipts.at(-1).status, "blocked");
+  assert.match(state.receipts.at(-1).reason, /refused \(invalid\); no session was launched/u);
+  assert.equal(h.starts.length, 1);
 });
 
 test("an explicit wait deadline is one semantic wake and an ordinary wait has no periodic inference", async (t) => {

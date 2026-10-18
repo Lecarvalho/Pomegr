@@ -6,7 +6,7 @@ import { composePilotPrompt, parsePilotDecision, pilotEvidence } from "./aril-pi
 const DEFAULTS = Object.freeze({ durationHours: 24, roundLimit: 20, startLimit: 3, concurrency: 1, minIntervalMinutes: 5 });
 const TERMINAL = new Set(["revoked", "expired", "finished"]);
 const STARTABLE = new Set(["not_queued", "queued", "scheduled"]);
-const NO_LAUNCH = new Set(["cancelled", "busy", "gate_held", "tree_dirty", "not_startable", "not_found", "cli_missing", "plugin_missing", "unsupported_platform", "worktree_dirty"]);
+const NO_LAUNCH = new Set(["invalid", "cancelled", "busy", "gate_held", "tree_dirty", "not_startable", "not_found", "cli_missing", "plugin_missing", "unsupported_platform", "worktree_dirty"]);
 const TRANSIENT_START = new Set(["busy", "gate_held", "tree_dirty", "cancelled"]);
 const FINISHED_TASK = new Set(["done", "needs_review", "blocked", "stalled"]);
 const FINISHED_SESSION = new Set(["completed", "complete", "ended", "failed", "stopped"]);

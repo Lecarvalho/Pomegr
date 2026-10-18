@@ -2222,7 +2222,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
 - An autonomous launcher outcome can be uncertain after spawn. Desktop main then keeps its claim and worktree instead of aborting or retrying.
 - The private autonomous `start-plan` payload adds `worktree: true` and `{ autonomous: { attemptId, expectedUpdatedAt, expectedTaskDigest, expectedRun, run? } }` beside `id`.
 - `expectedTaskDigest` is a SHA-256 digest of the persisted task fields. A same-millisecond edit still invalidates the selection.
-- Task revision and explicit execution configuration must still match. A fallback provider/model fills only an unset provider; explicit effort and flags remain unchanged.
+- Task revision and explicit execution configuration must still match. A fallback provider/model fills only an unset provider; effort and `keepWorktree` remain unchanged. A selected Codex provider clears the task's Remote Control flag because Codex does not support it; a selected Claude provider preserves it.
 - The monitor records the attempt tombstone and execution configuration in the same transaction as the dispatch claim.
 - Before spawn, autonomous `start-check` sends `{ id, token, worktree: true }` and rechecks the claim and current quota, provider, tree, dependency, order, and schedule gates. It may waive only the sole dirty-root gate because the planned session runs in its separate worktree.
 - Desktop main then validates the grant again against the actual plan provider, model, and effort.
