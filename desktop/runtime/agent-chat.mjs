@@ -11,7 +11,7 @@ import path from "node:path";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
-import { composePrompt } from "./agent-chat-prompt.mjs";
+import { composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
 import { runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
@@ -255,7 +255,7 @@ export function createAgentChat(options = {}) {
 
   // After the owner applied or dismissed a proposal, Aril answers once more in that conversation, with the outcome and
   // a board read after it. The follow-up is a read-only run like any turn: it applies nothing, retries nothing, and its
-  // answer carries no proposal. Desktop main asks for it once per stored outcome, so no click, reconnect, or redraw of a
+  // next proposal waits for owner approval. Desktop main asks once per stored outcome, so no click, reconnect, or redraw of a
   // client can ask for a second one.
   function requestFollowUp(repositoryId, conversation, proposalId) {
     if (disposed) return;
@@ -293,6 +293,7 @@ export function createAgentChat(options = {}) {
       if (!board || !root) return await finishTurn(turn, null);
       const held = conversationImages(conversation.messages);
       const shown = images && held.length > 0 ? await images.files(turn.repositoryId, conversation.id, held) : [];
+      turn.followUpOutcome = proposalOutcome(proposal)?.outcome;
       const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
@@ -341,8 +342,14 @@ export function createAgentChat(options = {}) {
       if (read.proposal && !proposalImages(read.proposal).every((id) => sent.has(id))) read = { text: read.text, proposal: null, unreadable: true };
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at, provider: turn.provider, model: turn.model, status };
-      // A follow-up reports an outcome and offers nothing: a block in it is taken out of the text and never stored.
-      if (turn.followUp) { message.followUp = turn.followUp; read = { text: read.text, proposal: null, unreadable: false }; }
+      // Only a successful or partial outcome may offer another board proposal. It still waits for the owner.
+      if (turn.followUp) {
+        message.followUp = turn.followUp;
+        if (read.proposal && (!["applied", "partial"].includes(turn.followUpOutcome)
+          || startProposalTask(read.proposal) || queueProposalState(read.proposal) !== null)) {
+          read = { text: read.text, proposal: null, unreadable: true };
+        }
+      }
       if (read.proposal) message.proposal = { id: newProposalId(), summary: read.proposal.summary, operations: read.proposal.operations, state: "pending" };
       if (read.unreadable) message.proposalUnreadable = true;
       await store.save(turn.repositoryId, { ...conversation, updatedAt: at, messages: [...conversation.messages, message] });

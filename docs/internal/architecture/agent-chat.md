@@ -12,7 +12,8 @@
 > T-75). The images that the owner sends, and their way to a task, were added on
 > 2026-10-13 (task T-86), and the follow-up after an answered proposal on the same day
 > (task T-95). Proposals of a change that Aril recommends by itself were added on
-> 2026-10-15 (task T-123). A change that widens exposure changes the
+> 2026-10-15 (task T-123). Follow-up proposals with owner approval were added on
+> 2026-10-17 (task T-120). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -66,9 +67,11 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 ## One turn
 
-Each message of the owner starts one provider run. The run answers and exits. An Apply
-or a Dismiss that was stored starts one too, for Aril's follow-up (see
-[Follow-up](#follow-up)); it takes the same one turn and the same provider run.
+Each message of the owner starts one provider run. The run answers and exits. Every
+stored Apply or Dismiss starts exactly one provider run for a follow-up (see
+[Follow-up](#follow-up)). A follow-up may contain one board-change proposal only after
+any applied or partial outcome. The owner must Apply or Dismiss it, which starts its own
+single follow-up run; no proposal starts a run or applies itself. Follow-ups never propose a session start or queue change.
 
 1. The client sends `send` with the repository, the conversation or none, the message,
    the provider, the model or none, and the IDs of the images it added, when it added
@@ -310,7 +313,11 @@ message would lead to materially different proposals.
 - An answer with two blocks, an unclosed block, malformed JSON, or one operation outside
   the contract carries no proposal. The message is marked `proposalUnreadable`, and the
   panel says so. Nothing is offered and nothing is guessed.
-- Only a `complete` answer can carry a proposal.
+- Only a `complete` answer can carry a proposal. A follow-up may carry one only
+  after any applied or partial outcome, and only as a board-change proposal continuing
+  the owner's earlier request. Follow-ups never propose `start_session` or
+  `set_queue`. An ineligible or invalid block is removed and marked
+  `proposalUnreadable`; the block is not stored.
 - While the answer is written, a block that has begun is not shown.
 
 | Operation | Fields | Task action when approved |
@@ -546,9 +553,16 @@ another message.
   `placed: false` when its placement failed.
 - **The board is read again.** The follow-up reads `GET /api/tasks` after the outcome
   was stored, so the snapshot of its prompt shows the board as the apply left it.
-- **The request is fixed.** One sentence that the owner sent no message and that the
-  answer is short and carries no proposal block, then one fixed text for the kind and
-  the outcome. It tells Aril what is confirmed and what is not.
+- **The request is fixed.** It tells Aril that the owner sent no message, gives one fixed
+  text for the kind and outcome, and says what is confirmed. After an applied or partial
+  outcome, Aril may return one proposal of board changes that continues the owner's
+  earlier request. The ordinary parser and validator accept at most one
+  proposal block, with 1 to 40 operations. A complete follow-up after a dismissed,
+  refused, or failed outcome cannot offer a proposal; any block is rejected and the
+  message is marked `proposalUnreadable`. A follow-up never proposes
+  `start_session` or `set_queue`. Applying or dismissing an eligible follow-up
+  proposal starts one provider run for its follow-up; it does not start an automatic
+  chain.
 
 | Outcome | When |
 | --- | --- |
@@ -568,13 +582,22 @@ another message.
   tell Aril not to ask why, not to offer a variant, and not to propose it again unless
   the owner asks. The stored proposal is `dismissed`, and every later prompt says so in
   its conversation line.
-- **It changes nothing and offers nothing.** A follow-up sends no task action, retries no
-  operation, starts no session, and changes no queue: it is a read-only run. Its answer
-  never carries a proposal. A block in it is taken out of the text and not stored, so a
-  follow-up leaves nothing to apply and never causes another follow-up.
+- **It changes nothing by itself.** A follow-up sends no task action, retries no
+  operation, starts no session, and changes no queue: it is a read-only run. Only a
+  complete follow-up after any applied or partial outcome may carry one board-change
+  proposal. It continues the owner's earlier request and uses the ordinary
+  parser and validator. The owner must Apply or Dismiss it. Each answer starts one
+  follow-up run, with no automatic chain. A follow-up never proposes `start_session` or
+  `set_queue`. A block that is invalid or ineligible is removed from the answer and
+  the message is stored with `proposalUnreadable`; its block is not kept.
+The instruction to continue only the owner's earlier request is prompt guidance.
+Runtime checks enforce the outcome and operation types; the owner reviews the proposed
+work before Apply.
+
 - **What is stored.** One agent message with `followUp`, the ID of the proposal it
-  answers, and the status of the run. A message with `followUp` and a proposal is
-  outside the stored contract.
+  answers, and the run status. It may also hold the one validated board-change proposal,
+  or `proposalUnreadable` when a block is rejected. The outcome record is built for
+  the prompt from the stored proposal and is not kept by itself.
 - **A turn that already runs.** The follow-up waits for the one turn, in memory, oldest
   first. The proposal's outcome is stored at once and the board is usable meanwhile.
   `read` of its conversation answers a `turn` that is `starting` while it waits, so the
@@ -826,8 +849,10 @@ never a session's.
   The prompt of a follow-up holds what any prompt holds, and the outcome record: the
   proposal's summary, the operation names, the task IDs, a feature title and a column
   name the proposal wrote, and fixed result words. It holds no task text beyond the
-  snapshot's, no path, and no error text. That prompt holds the owner's messages, Aril's earlier
-  answers, and the board snapshot: task text, own conditions, feature titles, block
+  snapshot's, no path, and no error text. If the owner answers an eligible follow-up
+  proposal, the next outcome record includes that stored proposal in the same form. That
+  prompt holds the owner's messages, Aril's earlier answers, and the board snapshot: task
+  text, own conditions, feature titles, block
   reasons, attention lines, session references, model names, the task IDs each task
   runs after (task T-101), and each card's position in its column (task T-103). The model
   names include the models the task form offers: Claude's newest observed model of each
@@ -865,8 +890,11 @@ never a session's.
   prompt, repository root, worktree path, image file, dispatch token, or launcher output.
   A paired device that reads the conversation sees that status like the rest of it.
 - **What Pomegr keeps of a follow-up.** The answer text, the status, and the ID of the
-  proposal it follows, in the conversation file. The outcome record is built for the
-  prompt from the stored proposal and is not kept by itself.
+  proposal it follows, in the conversation file. A valid eligible follow-up may also
+  store one validated board-change proposal in the same conversation record. A rejected
+  block is removed and leaves only `proposalUnreadable`; the block text is not stored.
+  The outcome record is built for the prompt from the stored proposal and is not kept by
+  itself.
 - **What Pomegr keeps of a queue change.** The state the proposal asked for and one
   fixed result, in the conversation file: `on`, `blocked`, `off`, or a fixed error. No
   task ID, blocker, pause reason, gate reading, or board content is kept with it, and
@@ -923,9 +951,13 @@ never a session's.
   proposal.
 - A failed apply changes nothing further and reports each operation. Pomegr retries
   nothing by itself.
-- A follow-up is asked for once per stored outcome, by desktop main only. It applies no
-  proposal, retries no operation, starts and steers no session, changes no queue, and
-  carries no proposal.
+- Desktop main asks once for a follow-up per stored Apply or Dismiss. A complete
+  follow-up may carry one board-change proposal continuing the owner's earlier request
+  after any applied or partial outcome. Dismissed, refused, and failed outcomes yield no
+  proposal; any block is rejected and marked `proposalUnreadable`. A follow-up applies
+  no proposal, retries no operation, starts and steers no session, and changes no queue.
+  The owner must Apply or Dismiss each follow-up proposal; each answer starts one
+  provider run and no automatic chain.
 - A follow-up that cannot run, or whose run fails, changes nothing of the proposal's
   stored outcome and never blocks the board.
 - A dismissed proposal is never reported as a failure, and nothing of it is applied.
@@ -1009,8 +1041,8 @@ Implementation never activates a grant against the owner's real board.
 16. **Follow-ups from a live provider.** Not probed. That desktop main asks once, what
     the prompt holds for each outcome, what is stored, the waiting behind a running
     turn, and a provider that cannot answer are covered by tests with fakes. Whether
-    Claude Code and Codex keep a follow-up short, write no block in it, and say nothing
-    beyond the outcome and the snapshot is not proven on a device.
+    Claude Code and Codex keep a follow-up short and limit any eligible proposal to the
+    owner's earlier request remains unproven on a device.
 17. **A follow-up costs a run.** Every Apply and every Dismiss starts one provider run
     with the board in its prompt, a dismissal included. The chat has no setting that
     turns follow-ups off.

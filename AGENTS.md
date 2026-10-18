@@ -95,15 +95,22 @@ These rules always apply:
   sessions and never stops, attaches to, answers, or approves work in a running session.
   Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
-  starts one for each message of the owner, one for an authorized pilot round, and one for the follow-up after the owner
-  applies or dismisses a proposal. A follow-up applies, retries, and proposes nothing. It
-  changes the board only through the fixed task actions, after the owner applies a
-  proposal. It puts an image on a task only through the task image route, with an image
-  the owner sent in that conversation, after the owner applies a proposal. It starts a
-  task's session only through the manual start, after the owner confirms a start proposal
-  in the desktop app. A temporary pilot grant permits only the scoped effects listed in the [agent chat contract](docs/internal/architecture/agent-chat.md#temporary-autonomous-pilot). It turns a queue on or off only through the queue action of the
-  Tasks page, with the state the proposal names, after the owner applies a queue proposal
-  in the desktop app or on a paired device.
+  starts one for each message of the owner, one for an authorized pilot round, and one
+  for the follow-up after the owner applies or dismisses a proposal. After any applied
+  or partial outcome, a
+  follow-up may offer one proposal of board changes that continues the owner's earlier request.
+  The owner must Apply or Dismiss that proposal; no proposal applies itself or starts an
+  automatic chain. A follow-up after a dismissed, refused, or failed proposal carries no
+  proposal. Follow-ups never propose a session start or queue change. They apply and
+  retry nothing. Board changes still use the fixed task actions after the owner applies
+  each proposal. An image reaches a task only through the task image route, with an image
+  the owner sent in that conversation, after the owner applies a proposal. A task's
+  session starts only through the manual start, after the owner confirms a start proposal
+  in the desktop app. A temporary pilot grant permits only the scoped effects listed in
+  the [agent chat contract](docs/internal/architecture/agent-chat.md#temporary-autonomous-pilot).
+  The queue changes only through the Tasks page's queue action, with the state the
+  proposal names, after the owner applies a queue proposal in the desktop
+  app or on a paired device.
 - Start processes with `execFile` or `spawn` and an argument array. Never put
   session-derived text into a command line or a path.
 - Never commit `.env`, transcripts, credentials, build output, or Wrangler state.

@@ -116,8 +116,13 @@ need to send a message.
   queue, or a queue that is on, is not a running session. Check **Sessions** or the
   Board for that.
 
-The follow-up changes nothing: it applies no proposal, tries nothing again, and starts
-no session. It carries no proposal of its own. Select **Stop** to end it early.
+A follow-up never applies a proposal or retries an operation. After an applied or partial
+outcome, it may offer one board-change proposal that continues your earlier
+request. Read it, then select **Apply changes** or **Dismiss** yourself. Each choice runs
+one more read-only follow-up; Pomegr never applies a proposal or continues the chain by
+itself. After a dismissed, refused, or failed proposal, the follow-up has no proposal. A
+follow-up cannot propose a session start or queue change; send Aril a new message to ask
+for either. Select **Stop** to end a follow-up early.
 
 The result beside each line of the proposal is Pomegr's own record. Trust it over the
 follow-up when they differ.
@@ -255,7 +260,7 @@ always a proposal of its own.
 | Aril could not be reached | Check that Pomegr shows **Local monitor**, then send again. |
 | No follow-up after you applied or dismissed a proposal | Aril was answering in another conversation, so the follow-up waits for it. If Pomegr closed meanwhile, ask Aril what happened: the result is saved. |
 | The follow-up says that Aril could not finish | The proposal's result is saved and shown on its lines. Check the coding tool as for any answer. |
-| Aril wrote a proposal that Pomegr could not read | Ask for the proposal again. Nothing was changed. |
+| Aril wrote a proposal that Pomegr could not read | Ask for the proposal again. Nothing was changed. A rejected follow-up proposal has no card. |
 | A line says **No longer possible** or **Not found** | The board changed after Aril wrote the proposal. Ask again. |
 | A line says **Not attached.** | Read the reason on the line. A task that has started takes no image, and a task holds up to four. |
 | A line says a task was created, but its images could not be attached | Open the task and put the image in again, if the task has not started. |
