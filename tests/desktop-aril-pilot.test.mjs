@@ -6,7 +6,8 @@ import path from "node:path";
 import test from "node:test";
 import { createArilPilotCoordinator } from "../desktop/runtime/aril-pilot.mjs";
 import { createArilPilotStore, normalizePilotGrant } from "../desktop/runtime/aril-pilot-store.mjs";
-import { parsePilotDecision, pilotEvidence } from "../desktop/runtime/aril-pilot-prompt.mjs";
+import { composePilotPrompt, parsePilotDecision, pilotEvidence } from "../desktop/runtime/aril-pilot-prompt.mjs";
+import { pilotRunningTaskIds } from "../desktop/runtime/aril-pilot-concurrency.mjs";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const secondRepository = "repo-abcdef0123456789abcdef01";
@@ -557,6 +558,46 @@ test("owner-held work does not stop another eligible authorized task", async (t)
   assert.equal((await h.read()).receipts.at(-1).status, "started");
   assert.equal(h.board.tasks[0].state, "needs_review");
   assert.equal(h.board.tasks[1].state, "queued");
+});
+
+test("decision evidence does not count live sessions of reviewed tasks as occupied slots", async (t) => {
+  const h = await harness(t, { action: "start" });
+  for (const [index, state] of ["needs_review", "done", "blocked", "stalled"].entries()) {
+    h.board.tasks.push(task(`T-${index + 2}`, { state, session: { id: `claude:synthetic-${index}`, state: "live" } }));
+  }
+  // Review releases concurrency but still holds an explicit dependency.
+  h.board.tasks.push(task("T-6", { after: ["T-2"] }));
+  await h.activate({ taskIds: ["T-1", "T-6"] });
+  await h.pilot.tick();
+  const evidence = JSON.parse(h.calls[0].prompt.match(/<evidence>(.*?)<\/evidence>/su)[1]);
+  assert.deepEqual(evidence.concurrency.running_task_ids, []);
+  assert.deepEqual(evidence.snapshot.tasks.find((row) => row.id === "T-6").runs_after, ["T-2"]);
+  assert.equal(evidence.snapshot.tasks.find((row) => row.id === "T-2").state, "needs_review");
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.starts[0][1], "T-1");
+});
+
+test("decision concurrency and guard share reserved, live, idle and terminal task rules", () => {
+  const current = board();
+  current.tasks = [
+    task("T-1", { session: { id: "codex:live", state: "live" } }),
+    task("T-2", { session: { id: "codex:idle", state: "idle" } }),
+    task("T-3"),
+    task("T-4", { session: { id: "codex:finished", state: "completed" } }),
+    task("T-5", { state: "needs_review", session: { id: "claude:open", state: "live" } }),
+    task("T-6", { state: "needs_review" }),
+  ];
+  const grant = { ...spec(), receipts: [
+    { action: "start", status: "started", taskId: "T-1" },
+    { action: "start", status: "pending", taskId: "T-3" },
+    { action: "start", status: "started", taskId: "T-6" },
+  ] };
+  const evidence = pilotEvidence(current, usage());
+  const prompt = composePilotPrompt(grant, evidence);
+  const sent = JSON.parse(prompt.match(/<evidence>(.*?)<\/evidence>/su)[1]);
+  assert.deepEqual(sent.concurrency.running_task_ids, ["T-1", "T-2", "T-3"]);
+  assert.deepEqual(sent.concurrency.running_task_ids, pilotRunningTaskIds(current, grant));
+  assert.deepEqual(evidence.concurrency.running_task_ids, ["T-1", "T-2"], "adding reservations to the prompt does not mutate its evidence");
 });
 
 test("a deterministic gate refusal is retried only after changed evidence with a new durable attempt", async (t) => {

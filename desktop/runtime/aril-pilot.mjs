@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { taskStartRevision } from "../../shared/task-start-revision.mjs";
 import { createArilPilotStore, PILOT_HISTORY_LIMIT, PILOT_REPOSITORY, PILOT_TASK, bounded, plain, pilotProjection, runChoice } from "./aril-pilot-store.mjs";
 import { composePilotPrompt, parsePilotDecision, pilotEvidence } from "./aril-pilot-prompt.mjs";
+import { pilotRunningTaskIds } from "./aril-pilot-concurrency.mjs";
 
 const DEFAULTS = Object.freeze({ durationHours: 24, roundLimit: 20, startLimit: 3, concurrency: 1, minIntervalMinutes: 5 });
 const TERMINAL = new Set(["revoked", "expired", "finished"]);
@@ -9,7 +10,6 @@ const STARTABLE = new Set(["not_queued", "queued", "scheduled"]);
 const NO_LAUNCH = new Set(["invalid", "cancelled", "busy", "gate_held", "tree_dirty", "not_startable", "not_found", "cli_missing", "plugin_missing", "unsupported_platform", "worktree_dirty"]);
 const TRANSIENT_START = new Set(["busy", "gate_held", "tree_dirty", "cancelled"]);
 const FINISHED_TASK = new Set(["done", "needs_review", "blocked", "stalled"]);
-const FINISHED_SESSION = new Set(["completed", "complete", "ended", "failed", "stopped"]);
 // Match the monitor gate's ten-minute evidence lifetime; its status remains authoritative.
 const USAGE_MAX_AGE_MS = 10 * 60_000;
 const integer = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
@@ -187,12 +187,7 @@ export function createArilPilotCoordinator(options = {}) {
   }
 
   function activeCount(board, grant = null) {
-    const active = new Set(board.tasks.filter((task) => task.session && !FINISHED_TASK.has(task.state) && !FINISHED_SESSION.has(task.session.state)).map((task) => task.id));
-    for (const row of grant?.receipts ?? []) if (row.action === "start" && ["pending", "started"].includes(row.status)) {
-      const task = board.tasks.find((entry) => entry.id === row.taskId);
-      if (task && !task.session && !FINISHED_TASK.has(task.state)) active.add(row.taskId);
-    }
-    return active.size;
+    return pilotRunningTaskIds(board, grant).length;
   }
 
   async function waitFor(grant, reason, nextWakeAt = null) {
