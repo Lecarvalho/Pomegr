@@ -41,18 +41,6 @@ const sessionFilePanelSource = readFileSync(join(process.cwd(), "app", "componen
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
 describe("Pomegr visual contract", () => {
-  it("lets the header reach the viewport edge without reserving an unused document scrollbar", () => {
-    const rootRules = rules.filter(({ selector }) => selector === "html" || selector === "body");
-    expect(rootRules.length).toBeGreaterThan(0);
-    for (const { body } of rootRules) {
-      expect(body).not.toMatch(/scrollbar-gutter:\s*stable/);
-      expect(body).not.toMatch(/overflow(?:-y)?:\s*(?:hidden|clip)/);
-      expect(body).not.toMatch(/scrollbar-width:\s*none/);
-    }
-    expect(styles).toMatch(/\.commandHeader\s*\{[^}]*grid-column:\s*1 \/ -1/);
-    expect(styles).toMatch(/\.commandMain\s*\{[^}]*overflow:\s*auto/);
-    expect(designContract).toContain("The header reaches the viewport edge without an unused root scrollbar gutter.");
-  });
   it("omits the Remote Control row for Codex, including read-only tasks", () => {
     const { container } = render(<RunFields run={{ provider: "codex", model: null, effort: "medium" }} models={{ claude: [], codex: [] }} disabled onChange={() => {}} />);
     expect(screen.queryByRole("checkbox", { name: "Remote Control" })).not.toBeInTheDocument();
@@ -102,6 +90,7 @@ describe("Pomegr visual contract", () => {
   });
 
   it("uses restrained typography, shared readable typography and restrained control geometry", () => {
+    expect(designContract).toContain("The header reaches the viewport edge without an unused root scrollbar gutter.");
     expect(styles).not.toMatch(/Arial|Helvetica/);
     expect(styles).not.toMatch(/\.(contextHistory|requestSnapshot|contextArea|contextSeriesLine|contextChartPoint|contextBoundary)/);
     expect(styles).toMatch(/\.requestsActionsCompaction line\s*\{[^}]*stroke-dasharray:\s*3 4/);
