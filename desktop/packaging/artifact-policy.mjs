@@ -36,6 +36,10 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/agent-chat-proposal.mjs",
   "desktop/runtime/agent-chat-runner.mjs",
   "desktop/runtime/agent-chat-store.mjs",
+  "desktop/runtime/aril-pilot.mjs",
+  "desktop/runtime/aril-pilot-ipc.mjs",
+  "desktop/runtime/aril-pilot-prompt.mjs",
+  "desktop/runtime/aril-pilot-store.mjs",
   "desktop/runtime/claude-auth.mjs",
   "desktop/runtime/codex-auth.mjs",
   "desktop/runtime/claude-usage-setup.mjs",
@@ -88,6 +92,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "shared/release-notification.mjs",
   "shared/model-notification.mjs",
   "shared/task-run-models.mjs",
+  "shared/task-start-revision.mjs",
   "server/web/server.mjs",
 ]);
 

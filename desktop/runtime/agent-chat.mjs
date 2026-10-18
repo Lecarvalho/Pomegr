@@ -360,6 +360,13 @@ export function createAgentChat(options = {}) {
     if (!REPOSITORY_ID.test(String(repositoryId)) || !(conversationId === null || (typeof conversationId === "string" && CONVERSATION_ID.test(conversationId)))
       || !text || text.length > MESSAGE_LENGTH || !MESSAGE_TEXT.test(text) || !PROVIDERS.has(provider)
       || !(model === null || (typeof model === "string" && MODEL.test(model)))) return INVALID;
+    // An interactive message takes priority over the pilot's read-only inference.
+    // The stopped background answer is discarded before the pilot can execute it.
+    if (active?.pilot) {
+      const background = active;
+      background.stop();
+      await background.settled;
+    }
     if (active) return refused("busy");
     const reservation = { reserved: true, repositoryId, conversationId };
     active = reservation;
@@ -427,7 +434,7 @@ export function createAgentChat(options = {}) {
   async function list(payload) {
     if (!exactly(payload, ["repositoryId"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
     const conversations = await store.list(payload.repositoryId);
-    const running = active && !active.reserved && active.repositoryId === payload.repositoryId ? active.conversationId : null;
+    const running = active && !active.reserved && !active.pilot && active.repositoryId === payload.repositoryId ? active.conversationId : null;
     return { ok: true, conversations: conversations.map(summary), running };
   }
 
@@ -576,9 +583,42 @@ export function createAgentChat(options = {}) {
     try { return await imageHandlers[operation](payload); } catch { return UNAVAILABLE; }
   }
 
+  // Internal desktop-only inference. It shares the chat slot, runner, read-only
+  // tools and run declaration, but never creates a conversation or a proposal.
+  async function decidePilot({ repositoryId, provider, model, prompt }) {
+    if (disposed || active || followUps.size > 0) return { status: "busy", text: "" };
+    if (!REPOSITORY_ID.test(String(repositoryId)) || !PROVIDERS.has(provider)
+      || !(model === null || (typeof model === "string" && MODEL.test(model)))
+      || typeof prompt !== "string" || !prompt || prompt.length > 200_000) return { status: "failed", text: "" };
+    let settle;
+    const turn = { pilot: true, repositoryId, stopped: false, stop: () => { turn.stopped = true; },
+      settled: new Promise((resolve) => { settle = resolve; }) };
+    active = turn;
+    let sessionId = null;
+    try {
+      const command = executable(provider);
+      const root = await repositoryRoot(repositoryId);
+      if (!command || !root || disposed) return { status: "failed", text: "" };
+      if (turn.stopped) return { status: "interrupted", text: "" };
+      sessionId = await declareRun(provider);
+      const server = await taskReadServer(turn);
+      if (disposed || turn.stopped) return { status: "interrupted", text: "" };
+      const run = runTurn({ spawn, executable: command, provider, model, mcpServer: server, sessionId,
+        cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs });
+      turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
+      const outcome = await run.done;
+      if (turn.stopped || disposed) return { status: "interrupted", text: "" };
+      return outcome?.status === "complete" && typeof outcome.text === "string"
+        ? { status: "complete", text: outcome.text } : { status: "failed", text: "" };
+    } catch { return { status: "failed", text: "" }; }
+    finally { withdrawRun(sessionId); release(turn); settle(); }
+  }
+
   return Object.freeze({
     handle,
     image,
+    decidePilot,
+    isBusy: () => Boolean(active) || followUps.size > 0,
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
     dispose() { disposed = true; followUps.clear(); try { active?.stop?.(); } catch { /* already gone */ } },
   });

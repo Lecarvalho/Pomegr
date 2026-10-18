@@ -105,6 +105,23 @@ The head actions appear in this order:
 - The **Promote issues** link has a 14px circle-dot glyph and opens the Promote issues page.
 - Like the other desktop-only actions, the **Promote issues** link is decided at first render.
 
+### Aril pilot
+
+- The Aril pilot control appears only on a ready repository board in the desktop app; a paired device or browser reads the muted **Aril pilot is available in the Pomegr desktop app only** line.
+- The control sits above the Board and uses the shared Secondary button role.
+- A new grant starts with a goal of up to 2,000 characters, up to 32 existing task checkboxes, a 24-hour expiry, and editable round, start, concurrency, and interval limits.
+- The owner explicitly selects each allowed task provider and model pair and the inference provider and model; neither provider is preselected, and a blank model means that provider's default model.
+- **Review grant** opens a review step showing the goal, selected task IDs, deadline, granted actions, allowed runs, inference run, and every limit.
+- **Confirm and activate pilot** is the only activation action and follows the review step.
+- The status section shows the current state, expiry, used limits, next wake, wait reason, needs-you state, and final summary when present.
+- The collapsed **Grant details** disclosure shows the active grant's goal, selected task IDs, allowed runs, inference run, concurrency, and minimum interval between rounds.
+- For an uncertain or unbound start receipt on a needs-you pilot, **Reconcile T-n** appears only when that selected task still exists and has no linked session; it asks the owner to verify no session started, requeues the task through the existing task action, then revokes the grant.
+- The status section shows saved decisions and receipts with task, provider, reason, evidence revision, result, and time when those fields are present.
+- Previous grants are available in a collapsed **Previous grants** disclosure with their state, expiry, summary or goal, and receipt count.
+- An active pilot offers **Pause** and **Revoke** behind a confirmation; a paused or needs-you pilot must be revoked before a new grant can be created.
+- A revoked, expired, or finished pilot can be followed by a new grant; resuming requires a new grant.
+- The pilot status read refreshes every ten seconds while the board is mounted.
+
 ### Repository selection
 
 - The repository comes from the validated `repository` URL parameter.

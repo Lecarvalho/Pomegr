@@ -34,6 +34,31 @@ function refreshUsageAfterSignIn(child, provider, timeoutMs) {
 }
 
 let sessionWindowOwnerRequests = 0;
+let pilotUsageRequests = 0;
+
+/** Ordinary acquisition at a pilot wait/reset deadline. No browser route or sign-in bypass. */
+export function refreshPilotUsage(child, timeoutMs = 15_000) {
+  if (!child) return Promise.resolve();
+  pilotUsageRequests = (pilotUsageRequests + 1) % Number.MAX_SAFE_INTEGER;
+  const requestId = pilotUsageRequests;
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      child.removeListener("message", onMessage);
+      child.removeListener("exit", finish);
+      child.removeListener("error", finish);
+      resolve();
+    };
+    const onMessage = (message) => {
+      if (message?.type === "pilot-usage-refreshed" && message.requestId === requestId) finish();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    child.on("message", onMessage);
+    child.once("exit", finish);
+    child.once("error", finish);
+    try { child.postMessage({ type: "pilot-usage-refresh", requestId }); } catch { finish(); }
+  });
+}
 
 /** Ask the monitor for the live session's unique owning process. Desktop-main only; null when unknown. */
 export function requestSessionWindowOwner(child, sessionId, timeoutMs = 2_000) {

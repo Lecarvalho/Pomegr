@@ -156,6 +156,33 @@ session cannot start a second one.
 - To start in a separate worktree while the repository has uncommitted changes, use the
   task window.
 
+## Run a temporary pilot
+
+The desktop app can authorize Aril to coordinate a finite set of existing tasks while you are away.
+The pilot is off by default. Keep the desktop app open; the panel can stay closed.
+A paired phone and a browser show that this feature requires the desktop app.
+
+1. Open a repository's task board and select **Aril pilot**.
+2. Enter your objective and select existing tasks. Check their execution settings and dependencies first.
+3. Choose the inference provider and model, then the allowed providers and models for task sessions.
+4. Set the deadline and limits. Defaults are 24 hours, 20 rounds, three starts, one concurrent task, and five-minute intervals.
+5. Review the objective, task IDs, deadline, granted actions, provider/model choices, and limits.
+6. Confirm the authorization. Closing the form before confirmation starts nothing.
+
+Aril reads normalized evidence and chooses work with a reason. Pomegr validates every decision before a new task starts.
+Explicit task settings take precedence. A task configured for one provider waits when that provider lacks capacity.
+A reset wakes a fresh quota check; the clock alone never permits a start.
+The pilot never creates tasks, marks them done, changes the queue, or controls existing sessions.
+It never approves tools, merges, deploys, or enables additional spending.
+
+Open **Aril pilot** to read decisions, evidence revisions, waits, used limits, and the saved summary.
+**Pause** and **Revoke** stop new pilot effects. They leave running task sessions alone.
+A new activation requires another review and confirmation. Earlier summaries remain available.
+An uncertain start shows **Needs you**. Inspect the task and its session before resolving it; do not blindly start it again.
+If you confirm that no session started, select **Reconcile T-n** to requeue the task and revoke the grant.
+A replacement grant requires another review and confirmation. Pomegr keeps the old receipt.
+When the deadline or budget ends, the pilot keeps its final state and starts no more work.
+
 ## Turn the queue on or off from the chat
 
 Ask Aril to turn this repository's queue on or off, for example "turn the queue on".

@@ -38,6 +38,13 @@ gets one (`tests/server/tasks/task-session-link.test.mjs`, `tests/ui/sessions-vi
 
 ## Server layout
 
+Temporary Aril pilot work starts at [Agent chat: Temporary autonomous pilot](../architecture/agent-chat.md#temporary-autonomous-pilot).
+Desktop main owns `desktop/runtime/aril-pilot*.mjs`, its IPC, and the chat inference slot.
+The existing task dispatcher owns starts, execution configuration, claims, and gate rechecks.
+Run `node --test tests/desktop-aril-pilot*.test.mjs tests/desktop-agent-chat-pilot.test.mjs tests/desktop-task-*.test.mjs tests/server/tasks/*.test.mjs`.
+Run `npx vitest run tests/ui/aril-pilot.test.tsx` for activation and summary rendering.
+Keep objectives and receipts outside observation, and never auto-apply ordinary chat proposals.
+
 `server/` is the private loopback backend (the "monitor" process). Each folder owns one
 behavior, and `npm run check:boundaries` enforces the import column with one
 dependency-cruiser rule per folder. A post-edit agent hook

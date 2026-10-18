@@ -18,7 +18,7 @@ copying it here.
   talks to Aril, an agent that reads the task board and Pomegr's observations and
   proposes board changes and, when the owner asks, the start of one task's session or
   turning the repository's queue on or off. Aril changes and starts nothing: the owner
-  applies a proposal.
+  applies a proposal. The desktop's temporary [Aril pilot](docs/internal/architecture/agent-chat.md#temporary-autonomous-pilot) also permits bounded new task starts after the owner confirms its grant.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -95,13 +95,13 @@ These rules always apply:
   sessions and never stops, attaches to, answers, or approves work in a running session.
   Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
-  starts one for each message of the owner, and one for the follow-up after the owner
+  starts one for each message of the owner, one for an authorized pilot round, and one for the follow-up after the owner
   applies or dismisses a proposal. A follow-up applies, retries, and proposes nothing. It
   changes the board only through the fixed task actions, after the owner applies a
   proposal. It puts an image on a task only through the task image route, with an image
   the owner sent in that conversation, after the owner applies a proposal. It starts a
   task's session only through the manual start, after the owner confirms a start proposal
-  in the desktop app. It turns a queue on or off only through the queue action of the
+  in the desktop app. A temporary pilot grant permits only the scoped effects listed in the [agent chat contract](docs/internal/architecture/agent-chat.md#temporary-autonomous-pilot). It turns a queue on or off only through the queue action of the
   Tasks page, with the state the proposal names, after the owner applies a queue proposal
   in the desktop app or on a paired device.
 - Start processes with `execFile` or `spawn` and an argument array. Never put

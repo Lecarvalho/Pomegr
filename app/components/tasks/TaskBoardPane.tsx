@@ -17,6 +17,7 @@ import { queueStatusLine } from "./task-queue-banner";
 import { taskSearchItems } from "./task-search";
 import { useTaskBoardEdits } from "./use-task-board-edits";
 import { useTaskIssuesAvailability } from "./use-promote-issues";
+import { ArilPilotControl } from "./ArilPilotControl";
 
 type OpenModal = { kind: "new" } | { kind: "task"; id: string; focus?: "after" } | { kind: "newFeature" } | { kind: "feature"; id: string } | null;
 
@@ -111,6 +112,8 @@ export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadc
         {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
+      {ready && access !== "pending" && <ArilPilotControl key={repositoryId} repositoryId={repositoryId} tasks={board.tasks} desktop={desktop}
+        onReconcile={desktop ? (taskId) => edits.resolveTask(taskId, false) : undefined} />}
       <TaskBoardView board={board} reveal={reveal} featureSelection={featureSelection} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
         newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} features={desktop ? featureEntry : undefined} />
       {editable && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onFollowUpFailed={openCreated} onClose={close} />}

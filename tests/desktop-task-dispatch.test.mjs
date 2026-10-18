@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import {
@@ -15,59 +14,67 @@ import {
   windowsArgument,
 } from "../desktop/runtime/task-dispatch.mjs";
 
-const repositoryId = "repo-0123456789abcdef01234567";
-const trusted = { trusted: true };
-const origin = "http://127.0.0.1:4317";
-const exe = "C:\\Users\\tester\\.local\\bin\\claude.exe";
-const codexExe = "C:\\Users\\tester\\.local\\bin\\codex.exe";
-const root = "C:\\Work\\repo";
-const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
-const token = "A".repeat(43);
-// The session gets the user's environment as inherited; only this app's own runtime variables are left out.
-const sessionEnvironment = { USERPROFILE: "C:\\Users\\tester", PATH: "C:\\Windows;C:\\Program Files\\nodejs", SystemRoot: "C:\\Windows", APPDATA: "C:\\Users\\tester\\AppData\\Roaming", HTTPS_PROXY: "http://proxy.test:8080" };
-const environment = { ...sessionEnvironment, ELECTRON_RUN_AS_NODE: "1", POMEGR_MONITOR_TOKEN: "app-private", POMEGR_SMOKE_NO_SYSTEM_NODE: "1", POMEGR_TASK_TOKEN: "stale" };
+import { repositoryId, trusted, origin, exe, codexExe, root, powershell, token, sessionEnvironment, environment, json, basePlan, fakeChild, harness, go, aborted } from "./helpers/task-dispatch-harness.mjs";
 
-const json = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
-const basePlan = () => ({ taskId: "T-3", provider: "claude", model: null, effort: null, repositoryRoot: root, prompt: "Do the thing", token });
+const autonomousRequest = (isAuthorized = () => true) => ({
+  attemptId: `pilot-${"a".repeat(24)}_T-3`, expectedUpdatedAt: "2026-10-18T12:00:00.000Z", expectedTaskDigest: "a".repeat(64),
+  expectedRun: { provider: null, model: null, effort: null }, isAuthorized,
+});
 
-/** The launcher process: exits with `outcome` as its code, emits an error, or never ends ("hang"). */
-function fakeChild(outcome = 0) {
-  const child = new EventEmitter();
-  child.killed = false;
-  child.kill = () => { child.killed = true; };
-  if (outcome === "error") queueMicrotask(() => child.emit("error", new Error("x")));
-  else if (outcome !== "hang") queueMicrotask(() => child.emit("exit", outcome));
-  return child;
-}
+test("autonomous starts require a grant callback, skip confirmation, and share the native slot", async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const seen = [];
+  const h = harness({ answer: async (url) => {
+    if (url.endsWith("start-check")) return json({ ok: true });
+    await pending;
+    return json({ ok: true, plan: basePlan() });
+  } });
+  assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", { ...autonomousRequest(), isAuthorized: undefined }), { status: "invalid" });
+  const started = h.start.startAutonomous(repositoryId, "T-3", autonomousRequest((selection) => { seen.push(selection); return true; }));
+  assert.deepEqual(await go(h), { status: "busy" });
+  assert.deepEqual(await h.start.startQueued(repositoryId, "T-3"), { status: "busy" });
+  release();
+  assert.deepEqual(await started, { status: "started" });
+  assert.deepEqual(h.log, ["start-plan", "start-check"]);
+  assert.deepEqual(seen.at(-1), { taskId: "T-3", provider: "claude", model: null, effort: null });
+  const { isAuthorized: _callback, ...decision } = autonomousRequest();
+  assert.deepEqual(h.calls[0].body.payload, { id: "T-3", autonomous: decision });
+});
 
-function harness({ plan = basePlan(), answer, spawnImpl, confirmImpl, overrides = {} } = {}) {
-  const log = [];
-  const calls = [];
-  const spawns = [];
-  const start = createTaskStart({
-    isTrustedEvent: (e) => e?.trusted === true,
-    monitorOrigin: origin,
-    authorizationToken: "secret",
-    platform: "win32",
-    environment,
-    fileExists: (f) => f === exe || f === powershell,
-    directoryExists: (d) => d === root,
-    confirm: confirmImpl || (async (info) => { log.push("confirm"); assert.deepEqual(info, { taskId: "T-3", separateWorktree: false }); return true; }),
-    fetch: async (url, options) => {
-      log.push(url.split("/").pop());
-      calls.push({ url, options, body: JSON.parse(options.body) });
-      if (url.endsWith("start-abort")) return json({ ok: true });
-      if (typeof answer === "function") return answer(url, options);
-      return answer || json({ ok: true, plan });
-    },
-    spawn: spawnImpl || ((...args) => { spawns.push(args); return fakeChild(); }),
-    ...overrides,
-  });
-  return { start, log, calls, spawns };
-}
+test("autonomous grant revocation prevents worktree effects and aborts the claimed dispatch", async () => {
+  let ensured = false;
+  const h = harness({ plan: { ...basePlan(), worktree: true }, overrides: { worktrees: { ensure: async () => { ensured = true; } } } });
+  assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", autonomousRequest((selection) => selection === undefined)), { status: "cancelled" });
+  assert.equal(ensured, false);
+  assert.equal(h.spawns.length, 0);
+  assert.equal(aborted(h).length, 1);
+});
 
-const go = (h, id = "T-3", repo = repositoryId, event = trusted) => h.start.start(event, repo, id);
-const aborted = (h) => h.calls.filter((c) => c.url.endsWith("start-abort"));
+test("autonomous final gate revalidation and revoked grant each prevent spawning", async () => {
+  for (const revoke of [false, true]) {
+    let valid = true;
+    const h = harness({ answer: async (url) => {
+      if (url.endsWith("start-check")) {
+        valid = !revoke;
+        return json(revoke ? { ok: true } : { ok: false, error: "gate_held" });
+      }
+      return json({ ok: true, plan: basePlan() });
+    } });
+    assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", autonomousRequest(() => valid)), { status: revoke ? "cancelled" : "gate_held" });
+    assert.equal(h.spawns.length, 0);
+    assert.equal(aborted(h).length, 1);
+  }
+});
+
+test("an ambiguous autonomous launcher outcome keeps the durable claim and worktree", async () => {
+  let removed = false;
+  const h = harness({ plan: { ...basePlan(), worktree: true }, answer: async (url) => json(url.endsWith("start-check") ? { ok: true } : { ok: true, plan: { ...basePlan(), worktree: true } }),
+    spawnImpl: () => fakeChild(1), overrides: { worktrees: { ensure: async () => ({ ok: true, directory: root, created: true }), remove: async () => { removed = true; } } } });
+  assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", autonomousRequest()), { status: "uncertain" });
+  assert.equal(aborted(h).length, 0);
+  assert.equal(removed, false);
+});
 
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");

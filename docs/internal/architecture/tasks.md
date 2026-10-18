@@ -2179,7 +2179,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   [start gate](#start-gates) holds the task, or with `tree_dirty` when the only hold is
   the root's uncommitted changes and the payload does not ask for a worktree.
 - The monitor stores only the SHA-256 digest of the token and its mint time. An unbound
-  dispatch is live for ten minutes; after that the task can be started again. The
+  ordinary dispatch is live for ten minutes; after that the task can be started again. An autonomous claim remains live until binding or explicit owner reconciliation. The
   session's first report of the token binds it (see [Session binding](#session-binding)),
   which discards the digest and ends the expiry.
 - Desktop main validates the plan, then opens the terminal through one fixed PowerShell
@@ -2218,6 +2218,14 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
 - When the plan is malformed, its provider executable is missing, or the launcher fails or does not end within 15 seconds,
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
+- An autonomous launcher outcome can be uncertain after spawn. Desktop main then keeps its claim and worktree instead of aborting or retrying.
+- The private autonomous `start-plan` payload adds `{ autonomous: { attemptId, expectedUpdatedAt, expectedTaskDigest, expectedRun, run? } }` beside `id`.
+- `expectedTaskDigest` is a SHA-256 digest of the persisted task fields. A same-millisecond edit still invalidates the selection.
+- Task revision and explicit execution configuration must still match. A fallback provider/model fills only an unset provider; explicit effort and flags remain unchanged.
+- The monitor records the attempt tombstone and execution configuration in the same transaction as the dispatch claim.
+- Before spawn, `start-check` with `{ id, token }` rechecks the claim and current quota, provider, tree, dependency, order, and schedule gates.
+- Desktop main then validates the grant again against the actual plan provider, model, and effort.
+- The owner's existing Requeue or Mark done action can reconcile an unbound autonomous claim. Neither action controls a running session.
 - Starting never changes the task's state or column. The card moves
   only when the started session links.
 - The agent chat is a second caller of the same manual start (task T-72, 2026-10-12).
@@ -2539,7 +2547,7 @@ serves no other client.
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status. The agent chat's applied start proposal reaches the same starter in desktop main, with the event of its own trusted `pomegr:agent-chat` call; its confirmation is **Start session** on the proposal card, not the native one |
 | `POST /api/tasks/start` | A paired device through the desktop LAN gateway, behind confirmation on that device and repeated authorization checks | `{ repositoryId, taskId, confirmed: true, worktree?: true }`, at most 512 bytes; answers only `{ status }` from the IPC start allowlist; never forwards or exposes a start plan |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
-| `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
+| `POST /internal/tasks/start-plan`, `start-check`, and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan holds the private root, prompt, image files, and dispatch token; `start-check` returns fixed success or refusal. No plan reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `POST /internal/tasks/worktree-cleanups`, `worktree-root`, and `worktree-cleaned` | Desktop main and its queue runner, with the desktop token; not reachable through `pomegr:task-action` | `worktree-cleanups`: at most 64 `{ repositoryId, taskId, repositoryRoot }` done tasks whose worktree waits for removal. `worktree-root`: the root of one repository, or `not_found`. `worktree-cleaned`: a task ID in. The root reaches desktop main only, as in the start plan; no task content either way |
 | `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. The payload cap is the 16 KiB cap of `pomegr:task-action`. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
@@ -2670,6 +2678,12 @@ serves no other client.
   `feature-get`.
 
 ## Privacy
+
+- A [temporary pilot](agent-chat.md#temporary-autonomous-pilot) sends only scoped task IDs, revision guards, a task digest, execution configuration, and opaque attempt identifiers to dispatch.
+- Its durable autonomous dispatch marker holds a dispatch token digest and timestamp, plus a fixed autonomous flag.
+- A per-repository attempt tombstone retains only a bounded opaque attempt identifier, never an objective, reason, or inference answer.
+- These private dispatch values never enter `GET /api/tasks`, `/api/state`, observation checkpoints, reports, logs, notifications, or diagnostics.
+- The private `start-check` route returns only a fixed success or refusal, under the existing desktop-token gate.
 
 - The block-hold marker stays only in the task store. It is served indirectly through existing queue status and `blockedBy`, never as task content.
 - Superseded report history stays only in the task store, under the bounded retention in [Completion](#completion).
@@ -2986,6 +3000,13 @@ fixed values.
   worktree (see [Repository context inventory](observation-cache.md#repository-context-inventory)).
 
 ## Invariants and failure behavior
+
+- The [temporary Aril pilot](agent-chat.md#temporary-autonomous-pilot) adds a separate owner-confirmed authorization for scoped starts.
+- Its decisions come from a read-only agent run. The queue, start gates, claims, and task completion checks remain deterministic.
+- Autonomous start-plan requests compare the expected task revision and execution configuration before claiming a task.
+- Explicit execution configuration wins. A selected fallback fills only unset fields through the existing start path.
+- Autonomous claims survive the ordinary unbound-dispatch timeout. An uncertain launch requires owner reconciliation before another attempt.
+- The task store retains only an opaque autonomous attempt marker and dispatch standing, never the pilot objective or decision text.
 
 - Observation is unchanged and independent. If the task store, a route, or the dispatcher
   fails, observation, serving, and notifications continue, and the Tasks page reports
