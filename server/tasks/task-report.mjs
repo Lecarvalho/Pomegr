@@ -5,6 +5,7 @@ import { sessionAssignedTasks } from "./task-assignments.mjs";
 import { deleteTaskAttention, readTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
+import { parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { writeTaskGroup } from "./task-groups.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
@@ -148,12 +149,12 @@ export function reportBlock({ database, transaction, payload, now }) {
   return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state };
 }
 
-const awaitingReport = (row) => rowInFlight(row) && unreported(row);
+const awaitingReport = (row) => (rowInFlight(row) || parseStoredDispatch(row.dispatch_token)?.autonomous === true) && unreported(row);
 
 function unresolvedTask(database, repositoryId, payload) {
   const input = normalizeQueueTaskPayload(payload);
   if (!input) return { error: "invalid" };
-  const task = preparedStatement(database, "SELECT state, session_id, report_at FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT state, session_id, dispatch_token, report_at FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { error: "not_found" };
   return UNRESOLVED_STATES.includes(task.state) || awaitingReport(task) ? { number: input.number } : { error: "conflict" };
 }
@@ -161,7 +162,7 @@ function unresolvedTask(database, repositoryId, payload) {
 export function resolveDone({ database, repositoryId, now }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
-  preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
+  preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, target.number);
   moveTaskToRole(database, repositoryId, target.number, "done");
   deleteTaskBlockHold(database, repositoryId, target.number);

@@ -8,7 +8,7 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
-import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
+import { bindDispatch, startAbort, startCheck, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { deleteTaskReportHistory } from "./task-report-history.mjs";
@@ -743,19 +743,24 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   }
 
   // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
+  const startGateHold = (repositoryId, resolveGateFacts) => (taskId, { run, autonomous = false, ignoreOwnClaim = false } = {}) => {
+    let rows = loadRows(repositoryId);
+    if (ignoreOwnClaim) rows = { ...rows, tasks: rows.tasks.map((row) => Number(row.number) === Number(taskId.slice(2)) ? { ...row, dispatch_token: null } : row) };
+    let board = projectBoard(repositoryId, rows, { at: now() });
+    if (!board) return true;
+    if (run) board = { ...board, tasks: board.tasks.map((task) => task.id === taskId ? { ...task, run } : task) };
+    const gates = startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at: now(), manual: !autonomous, autonomous });
+    if (gates.ok) return false;
+    return gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty" ? "tree_dirty" : true;
+  };
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
+    taskOf: (taskId) => projectBoard(repositoryId, loadRows(repositoryId), { at: now() })?.tasks.find((task) => task.id === taskId) ?? null,
     featureOf: (featureId) => readFeature({ database, repositoryId, feature: featureId }),
     imagePaths: (taskId) => taskImagePaths({ database, directory, repositoryId, taskId }),
-    gatesHold: (taskId) => {
-      const rows = loadRows(repositoryId);
-      const board = projectBoard(repositoryId, rows, { at: now() });
-      if (!board) return true;
-      const gates = startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at: now(), manual: true });
-      if (gates.ok) return false;
-      return gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty" ? "tree_dirty" : true;
-    },
+    gatesHold: startGateHold(repositoryId, resolveGateFacts),
   });
+  const checkStart = (repositoryId, payload, resolveGateFacts = null) => dispatch(startCheck, { repositoryId, payload, now, gatesHold: startGateHold(repositoryId, resolveGateFacts) });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
   const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
   const completeTask = (payload, resolveFacts) => dispatch(reportComplete, { payload, resolveFacts, now });
@@ -787,6 +792,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const addImage = (repositoryId, payload) => image(addTaskImage, repositoryId, payload);
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
-  return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, checkStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

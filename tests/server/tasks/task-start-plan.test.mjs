@@ -11,6 +11,7 @@ import { TASK_DISPATCH_UNBOUND_TTL_MS, TASK_PROMPT_OPENING, buildTaskPrompt } fr
 import { TASK_ACTIONS } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { GATE_FACTS } from "./queue-test-support.mjs";
+import { taskStartRevision } from "../../../shared/task-start-revision.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "d".repeat(40);
@@ -268,6 +269,141 @@ test("token, digest, mint time and root never reach the board, other action resu
 
 const queue = (env, ...ids) => ids.forEach((id) => assert.equal(env.store.apply(REPOSITORY_ID, "queue_add", { id }).ok, true));
 const group = (env, ...ids) => assert.equal(env.store.apply(REPOSITORY_ID, "queue_group", { ids }).ok, true);
+const pilot = (env, id = "T-1", overrides = {}) => {
+  const task = env.store.readBoard(REPOSITORY_ID).tasks.find((entry) => entry.id === id);
+  return { id, autonomous: { attemptId: `pilot-${"a".repeat(24)}_${id}`, expectedUpdatedAt: task.updatedAt, expectedTaskDigest: taskStartRevision(task), expectedRun: task.run, ...overrides } };
+};
+
+test("autonomous selection is atomic, preserves effort and owner flags, and is private", async (context) => {
+  const env = await setup(context);
+  create(env, { run: { effort: "xhigh", keepWorktree: true } });
+  const request = pilot(env, "T-1", { run: { provider: "codex", model: "gpt-6-sol", effort: "low" } });
+  const answer = await plan(env, request);
+  assert.equal(answer.status, 200);
+  assert.equal(answer.json.plan.provider, "codex");
+  assert.equal(answer.json.plan.model, "gpt-6-sol");
+  assert.equal(answer.json.plan.effort, "xhigh");
+  const task = env.store.readBoard(REPOSITORY_ID).tasks[0];
+  assert.equal(task.run.keepWorktree, true);
+  assert.ok(!JSON.stringify(task).includes(request.autonomous.attemptId));
+  refused(await plan(env, request), 409, "already_attempted");
+});
+
+test("autonomous plans preserve explicit provider default models and reject stale run/revision selections", async (context) => {
+  const env = await setup(context);
+  create(env, { run: { provider: "claude" } });
+  refused(await plan(env, pilot(env, "T-1", { expectedUpdatedAt: new Date(0).toISOString() })), 409, "not_startable");
+  refused(await plan(env, pilot(env, "T-1", { expectedRun: { provider: "codex" } })), 409, "not_startable");
+  assert.equal(dispatchOf(env.directory, 1), null);
+  const answer = await plan(env, pilot(env, "T-1", { run: { provider: "codex", model: "gpt-6-sol" } }));
+  assert.equal(answer.json.plan.provider, "claude");
+  assert.equal(answer.json.plan.model, null);
+});
+
+test("autonomous digest refuses same-millisecond text and condition edits without claiming or selecting a run", async (context) => {
+  const env = await setup(context);
+  for (const [index, change] of [
+    { text: "Changed task text", checks: "[]", own: null },
+    { text: TEXT, checks: '["tree_clean"]', own: "Changed completion condition" },
+  ].entries()) {
+    create(env, {});
+    const id = `T-${index + 1}`;
+    const request = pilot(env, id, { run: { provider: "codex", model: "gpt-6-sol" } });
+    withDatabase(env.directory, (database) => database.prepare("UPDATE tasks SET text = ?, checks = ?, own_condition = ? WHERE number = ?")
+      .run(change.text, change.checks, change.own, index + 1));
+    const changed = env.store.readBoard(REPOSITORY_ID).tasks.find((task) => task.id === id);
+    assert.equal(changed.updatedAt, request.autonomous.expectedUpdatedAt, "the edit deliberately retains the exact timestamp");
+    assert.notEqual(taskStartRevision(changed), request.autonomous.expectedTaskDigest);
+    refused(await plan(env, request), 409, "not_startable");
+    assert.equal(dispatchOf(env.directory, index + 1), null);
+    assert.equal(changed.run.provider, null);
+  }
+});
+
+test("task revision canonicalizes absent flags and arrays and excludes borrowed session facts", async (context) => {
+  const env = await setup(context);
+  create(env, {});
+  const task = env.store.readBoard(REPOSITORY_ID).tasks[0];
+  const digest = taskStartRevision(task);
+  assert.match(digest, /^[a-f0-9]{64}$/u);
+  assert.equal(taskStartRevision({ ...task, after: [], images: [], run: { ...task.run, remoteControl: false, keepWorktree: false },
+    session: { id: "codex:borrowed", title: "new observation", state: "working" }, assigned: [{ id: "claude:assigned" }], report: { at: "ignored" } }), digest);
+  for (const expectedTaskDigest of [undefined, "bad", "A".repeat(64)]) {
+    refused(await plan(env, pilot(env, "T-1", { expectedTaskDigest })), 400, "invalid");
+  }
+});
+
+test("autonomous selection gates the chosen provider before writing its run or durable claim", async (context) => {
+  let gateFacts = { ...GATE_FACTS, usage: { ...GATE_FACTS.usage, codex: { fiveHourPercent: 99 } } };
+  const env = await setup(context, { gateFacts: () => gateFacts });
+  create(env, {});
+  const request = pilot(env, "T-1", { run: { provider: "codex", model: "gpt-6-sol" } });
+  refused(await plan(env, request), 409, "gate_held");
+  assert.equal(env.store.readBoard(REPOSITORY_ID).tasks[0].run.provider, null);
+  assert.equal(dispatchOf(env.directory, 1), null);
+  gateFacts = GATE_FACTS;
+  assert.equal((await plan(env, request)).status, 200);
+});
+
+test("autonomous starts respect Ready order, dependencies, and final committed gate changes", async (context) => {
+  let gateFacts = GATE_FACTS;
+  const env = await setup(context, { gateFacts: () => gateFacts });
+  create(env, {}); create(env, {});
+  queue(env, "T-1", "T-2");
+  refused(await plan(env, pilot(env, "T-2")), 409, "gate_held");
+  assert.equal(env.store.apply(REPOSITORY_ID, "after_set", { id: "T-1", after: ["T-2"] }).ok, true);
+  refused(await plan(env, pilot(env, "T-1")), 409, "gate_held");
+  assert.equal(env.store.apply(REPOSITORY_ID, "after_set", { id: "T-1", after: [] }).ok, true);
+  const answer = await plan(env, pilot(env));
+  assert.equal(answer.status, 200);
+  const payload = { id: "T-1", token: answer.json.plan.token };
+  assert.equal((await call(env.port, "start-check", payload)).status, 200);
+  gateFacts = { ...GATE_FACTS, treeClean: false };
+  refused(await call(env.port, "start-check", payload), 409, "tree_dirty");
+  refused(await call(env.port, "start-check", { ...payload, token: "w".repeat(43) }), 409, "not_startable");
+});
+
+test("an autonomous durable claim survives monitor reopen and expiry, blocks every start, and can bind late", async (context) => {
+  const env = await setup(context);
+  create(env, {});
+  const answer = await plan(env, pilot(env));
+  const payload = { id: "T-1", token: answer.json.plan.token };
+  env.clock.now += TASK_DISPATCH_UNBOUND_TTL_MS * 3;
+  const reopened = openTaskStore({ directory: env.directory, now: () => env.clock.now });
+  try {
+    assert.deepEqual(reopened.planStart(REPOSITORY_ID, { id: "T-1" }, () => ({ root: ROOT, pluginReady: true }), () => GATE_FACTS), { ok: false, error: "not_startable" });
+    assert.deepEqual(reopened.checkStart(REPOSITORY_ID, payload, () => GATE_FACTS), { ok: true });
+    assert.deepEqual(reopened.bindSession({ token: payload.token, sessionId: "codex:late-session" }), { ok: true });
+    assert.equal(reopened.readBoard(REPOSITORY_ID).tasks[0].session.id, "codex:late-session");
+  } finally { reopened.close(); }
+});
+
+test("an aborted autonomous attempt cannot be replayed, and a new grant is independent", async (context) => {
+  const env = await setup(context);
+  create(env, {});
+  const request = pilot(env);
+  const answer = await plan(env, request);
+  assert.equal((await call(env.port, "start-abort", { id: "T-1", token: answer.json.plan.token })).status, 200);
+  refused(await plan(env, request), 409, "already_attempted");
+  assert.equal((await plan(env, pilot(env, "T-1", { attemptId: `pilot-${"b".repeat(24)}_T-1` }))).status, 200);
+});
+
+test("only an explicit owner resolution frees a durable uncertain launch and refuses its late binding", async (context) => {
+  const env = await setup(context);
+  create(env, {}); create(env, {});
+  const first = await plan(env, pilot(env));
+  // Ordinary edits cannot turn an uncertain launch back into startable work.
+  assert.equal(env.store.apply(REPOSITORY_ID, "update", { id: "T-1", text: "new" }).error, "conflict");
+  assert.equal(env.store.apply(REPOSITORY_ID, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(dispatchOf(env.directory, 1), null);
+  assert.equal(env.store.bindSession({ token: first.json.plan.token, sessionId: "codex:requeued-late" }).error, "not_found");
+  const second = await plan(env, pilot(env, "T-1", { attemptId: `pilot-${"b".repeat(24)}_T-1` }));
+  assert.equal(second.status, 200);
+  assert.equal(env.store.apply(REPOSITORY_ID, "resolve_done", { id: "T-1" }).ok, true);
+  assert.equal(dispatchOf(env.directory, 1), null);
+  assert.equal(env.store.bindSession({ token: second.json.plan.token, sessionId: "codex:done-late" }).error, "not_found");
+  assert.equal(env.store.readBoard(REPOSITORY_ID).tasks[1].run.provider, null);
+});
 const worktree = async (env, id) => {
   const { json } = await plan(env, { id });
   assert.equal(json.plan.repositoryRoot, ROOT, "the plan names the root, never a worktree path");

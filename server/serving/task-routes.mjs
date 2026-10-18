@@ -12,9 +12,9 @@ const TASK_PAYLOAD_LIMIT_BYTES = 16 * 1024;
 export const TASK_BODY_LIMIT_BYTES = TASK_PAYLOAD_LIMIT_BYTES + 1024;
 const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, conflict: 409, unsupported: 501 });
 // Session-start actions answer through their own handler, not the renderer's `pomegr:task-action` list above.
-const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
+const START_ACTIONS = Object.freeze(["start-plan", "start-check", "start-abort"]);
 const START_STATUS = Object.freeze({
-  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, gate_held: 409, tree_dirty: 409, unsupported_provider: 422, unavailable: 503,
+  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, gate_held: 409, tree_dirty: 409, already_attempted: 409, unsupported_provider: 422, unavailable: 503,
 });
 // Queue actions answer through their own handlers too.
 const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
@@ -222,14 +222,15 @@ export function isPlainObject(value) {
 function serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId, payload }) {
   try {
     const planning = action === "start-plan";
-    const call = planning ? taskStore?.planStart : taskStore?.abortStart;
+    const checking = action === "start-check";
+    const call = planning ? taskStore?.planStart : checking ? taskStore?.checkStart : taskStore?.abortStart;
     if (typeof call !== "function") {
       writeActionResult(response, 503, rejected("unavailable"));
       return;
     }
     const result = planning
       ? call(repositoryId, payload, (provider) => (typeof resolveStart === "function" ? resolveStart(repositoryId, provider) : null), resolveGateFacts)
-      : call(repositoryId, payload);
+      : checking ? call(repositoryId, payload, resolveGateFacts) : call(repositoryId, payload);
     if (result?.ok === true) {
       writeActionResult(response, 200, planning ? { ok: true, plan: result.plan } : { ok: true });
       return;

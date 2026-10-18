@@ -23,7 +23,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const TOKEN = /^[A-Za-z0-9_-]{32,128}$/u;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
-const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "tree_dirty", "unavailable"]);
+const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "tree_dirty", "already_attempted", "unavailable"]);
 const PROMPT_MAX = 8000;
 const IMAGE_MAX = 4;
 const IMAGE_FILE = /^img-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/u;
@@ -208,7 +208,7 @@ export function createTaskStart(options = {}) {
     try { await post("start-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ }
   }
 
-  async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false, isAuthorized }) {
+  async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false, isAuthorized, autonomous }) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
@@ -222,15 +222,15 @@ export function createTaskStart(options = {}) {
     if (!launcher) return result("unavailable");
     if (confirmRequired && await confirm({ taskId, separateWorktree }) !== true) return result("cancelled");
     if (disposed) return result("cancelled");
-    const authorized = async () => {
+    const authorized = async (plan) => {
       if (disposed) return false;
       if (typeof isAuthorized !== "function") return true;
-      try { return await isAuthorized() === true && !disposed; } catch { return false; }
+      try { return await isAuthorized(plan ? { taskId, provider: plan.provider, model: plan.model, effort: plan.effort } : undefined) === true && !disposed; } catch { return false; }
     };
     if (!await authorized()) return result("cancelled");
 
     let answer;
-    try { answer = await post("start-plan", repositoryId, separateWorktree ? { id: taskId, worktree: true } : { id: taskId }); } catch { return result("unavailable"); }
+    try { answer = await post("start-plan", repositoryId, { id: taskId, ...(separateWorktree ? { worktree: true } : {}), ...(autonomous ? { autonomous } : {}) }); } catch { return result("unavailable"); }
     if (!isPlainObject(answer)) return result("unavailable");
     if (answer.ok !== true) {
       return result(typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
@@ -255,6 +255,10 @@ export function createTaskStart(options = {}) {
       await abort(repositoryId, taskId, plan.token);
       return result("cli_missing");
     }
+    if (!await authorized(plan)) {
+      await abort(repositoryId, taskId, plan.token);
+      return result("cancelled");
+    }
     let directory = plan.root;
     let made = null;
     if (plan.worktree) {
@@ -273,9 +277,17 @@ export function createTaskStart(options = {}) {
       ...(plan.images.length > 0 ? provider.imageFlags(plan) : []),
     ];
     let started = false;
-    if (!await authorized()) {
+    if (autonomous) {
+      let check;
+      try { check = await post("start-check", repositoryId, { id: taskId, token: plan.token }); } catch { check = null; }
+      if (check?.ok !== true) {
+        await abort(repositoryId, taskId, plan.token);
+        return result(MONITOR_ERRORS.has(check?.error) ? check.error : "unavailable");
+      }
+    }
+    if (!await authorized(plan)) {
       await abort(repositoryId, taskId, plan.token);
-      if (made?.created === true) {
+      if (!autonomous && made?.created === true) {
         try { await worktrees.remove({ repositoryRoot: plan.root, repositoryId, taskId, deleteBranch: made.branchCreated === true }); } catch { /* kept */ }
       }
       return result("cancelled");
@@ -297,6 +309,9 @@ export function createTaskStart(options = {}) {
       started = await waitForLaunch(child, launchTimeoutMs);
     } catch { started = false; }
     if (!started) {
+      // A launcher may have opened the provider before its own outcome became unknowable. The durable
+      // autonomous claim must survive this ambiguity, including a desktop or monitor restart.
+      if (autonomous) return result("uncertain");
       await abort(repositoryId, taskId, plan.token);
       if (made?.created === true) {
         try { await worktrees.remove({ repositoryRoot: plan.root, repositoryId, taskId, deleteBranch: made.branchCreated === true }); } catch { /* kept */ }
@@ -349,6 +364,19 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: false, separateWorktree: separateWorktree === true, isAuthorized }, repositoryId, taskId);
   }
 
+  // Desktop main's stored grant is the confirmation. No renderer or LAN handler exposes this entry point.
+  function startAutonomous(repositoryId, taskId, request) {
+    if (!isPlainObject(request) || !Object.keys(request).every((key) => ["isAuthorized", "attemptId", "expectedUpdatedAt", "expectedTaskDigest", "expectedRun", "run"].includes(key))
+      || typeof request.isAuthorized !== "function" || typeof request.attemptId !== "string" || !/^[A-Za-z0-9_-]{16,128}$/u.test(request.attemptId)
+      || typeof request.expectedUpdatedAt !== "string" || !Number.isFinite(Date.parse(request.expectedUpdatedAt))
+      || typeof request.expectedTaskDigest !== "string" || !/^[a-f0-9]{64}$/u.test(request.expectedTaskDigest)
+      || !isPlainObject(request.expectedRun) || (request.run !== undefined && !isPlainObject(request.run))) return Promise.resolve(result("invalid"));
+    // Copy all decision fields before awaiting the grant, so a caller cannot replace a selection during authorization.
+    const autonomous = JSON.parse(JSON.stringify({ attemptId: request.attemptId, expectedUpdatedAt: request.expectedUpdatedAt, expectedTaskDigest: request.expectedTaskDigest, expectedRun: request.expectedRun,
+      ...(request.run === undefined ? {} : { run: request.run }) }));
+    return exclusive({ confirmRequired: false, isAuthorized: request.isAuthorized, autonomous }, repositoryId, taskId);
+  }
+
   async function openWorktree(event, repositoryId, taskId) {
     if (!isTrustedEvent(event)) return result("invalid");
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
@@ -364,7 +392,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startApproved, startQueued, startPaired, openWorktree, cleanWorktree, dispose() { disposed = true; } });
+  return Object.freeze({ start, startApproved, startQueued, startPaired, startAutonomous, openWorktree, cleanWorktree, dispose() { disposed = true; } });
 }
 
 export function installTaskStartIpc(options = {}) {

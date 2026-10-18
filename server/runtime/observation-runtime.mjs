@@ -708,6 +708,9 @@ export function createObservationRuntime(options = {}) {
     serveSessionDomain: sessionDomainServing.serveSessionDomain,
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
+    // A desktop pilot reset wakes ordinary acquisition. Provider backoff and
+    // freshness remain authoritative; this never uses the sign-in override.
+    refreshUsageForPilot: () => refreshUsageResponses(),
     async refreshUsageAfterClaudeSignIn() {
       // Native completion is a deliberate U1 trigger, never a browser GET.
       if (usageRefreshInFlight) await usageRefreshInFlight;
