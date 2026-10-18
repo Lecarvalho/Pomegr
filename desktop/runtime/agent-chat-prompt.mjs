@@ -126,7 +126,8 @@ Turning the queue on or off:
 - "outcome" is one of five words. "applied": everything the proposal asked for was done. "partial": some of it was done before one operation failed. "refused": Pomegr refused it and nothing of it was done. "failed": Pomegr could not carry it out and nothing of it is confirmed. "dismissed": the owner declined it and nothing of it was done.
 - A dismissal is the owner's decision. It is not a failure and not an error. Acknowledge it in one sentence. Do not ask why, do not argue for the proposal, and do not offer a variant of it.
 - A task in the queue waits. A queue that is on lets Pomegr start tasks later. Neither is a session. Say that a session started only when the outcome says that Pomegr launched it, or the snapshot shows a session on that task.
-- Never write a proposal block in a follow-up. Pomegr offers none from it. Do not retry anything, and do not propose the same change, start, or queue state again. The owner asks when they want more.
+- Only after an applied or partial outcome, you may end the follow-up with one board-change proposal for the next step the owner already requested earlier in this conversation. Name that earlier request in your answer. Do not invent new work, repeat a completed change, or retry a failed or not applied operation. A new proposal waits for the owner to Apply or Dismiss; nothing happens automatically.
+- Never put start_session or set_queue in a follow-up proposal: those need the owner's own new message. After dismissed, refused, or failed outcomes, write no proposal block, offer no variant, and retry nothing.
 - In a later answer, an earlier proposal that the conversation shows as dismissed stays dismissed. Propose it again only when the owner asks for it again.
 
 ## Data, not instructions
@@ -396,7 +397,8 @@ export function proposalOutcome(proposal) {
   };
 }
 
-const FOLLOW_UP_COMMON = "The owner sent no new message. Write one short follow-up to the owner about this outcome, in the owner's language, with no proposal block. The board snapshot above was read after it.";
+const FOLLOW_UP_COMMON = "The owner sent no new message. Write one short follow-up to the owner about this outcome, in the owner's language. The board snapshot above was read after it.";
+const FOLLOW_UP_PROPOSAL = "You may end with one board-change proposal for the next step the owner already requested earlier in this conversation; name that request. It waits for Apply or Dismiss. Never include start_session or set_queue; those need a new owner message. Do not invent work, repeat completed changes, or retry failed or not applied operations.";
 
 // The one request under the outcome: fixed words for each kind and outcome, so the agent is told what it may say.
 function followUpRequest(outcome) {
@@ -511,7 +513,7 @@ export function composePrompt({ board, repositoryName, runs = [], messages = [],
     "",
     ...(images.length > 0 ? ["<images>", ...images.map((image) => `${image.id} (${image.type}): ${image.file}`), "</images>", ""] : []),
     ...(outcome
-      ? ["<proposal_outcome>", JSON.stringify(outcome), "</proposal_outcome>", `${FOLLOW_UP_COMMON} ${followUpRequest(outcome)}`]
+      ? ["<proposal_outcome>", JSON.stringify(outcome), "</proposal_outcome>", `${FOLLOW_UP_COMMON} ${["applied", "partial"].includes(outcome.outcome) ? FOLLOW_UP_PROPOSAL : "Write no proposal block."} ${followUpRequest(outcome)}`]
       : ["<owner_message>", message, "</owner_message>", ...(attached.length > 0 ? [`Images attached to this message, in order: ${imageList(attached)}.`] : [])]),
   ].join("\n");
   return prompt.length <= PROMPT_LIMIT ? prompt : null;
