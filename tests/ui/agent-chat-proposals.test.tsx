@@ -160,6 +160,31 @@ describe("proposals", () => {
     }
   });
 
+  it("offers Apply and Dismiss on a follow-up proposal and waits for the owner's next answer", async () => {
+    chat.followUps = true;
+    withProposal();
+    render(<AgentChatDock />);
+    const person = await openPanel();
+    await person.click(within(card()).getByRole("button", { name: "Apply changes" }));
+    await settle();
+    const nextId = "p-aaaaaaaaaaaa";
+    chat.finish("Next is the deletion you requested.", "complete", {
+      followUp: PROPOSAL_ID,
+      proposal: proposalOf([{ op: "delete_task", id: "T-14" }], "pending", { id: nextId }),
+    });
+    await settle(500);
+    const nextCard = within(log()).getAllByRole("region", { name: "Proposed board changes" }).at(-1)!;
+    expect(within(nextCard).getByRole("button", { name: "Apply changes" })).toBeEnabled();
+    expect(within(nextCard).getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    expect(chat.calls("apply")).toHaveLength(1);
+    expect(chat.calls("send")).toHaveLength(0);
+    await person.click(within(nextCard).getByRole("button", { name: "Apply changes" }));
+    await settle();
+    expect(chat.calls("apply")).toHaveLength(2);
+    expect(chat.calls("apply")[1].proposalId).toBe(nextId);
+    expect(within(log()).getByRole("status")).toHaveTextContent("Starting\u2026");
+  });
+
   it("keeps both actions disabled and the card busy while the answer is in flight", async () => {
     withProposal();
     const person = user();

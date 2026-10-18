@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 
 import { normalizeChatImages } from "./agent-chat-images.mjs";
-import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION } from "./agent-chat-proposal.mjs";
+import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION, startProposalTask } from "./agent-chat-proposal.mjs";
 
 export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
 export const CONVERSATION_LIMIT = 50;
@@ -125,9 +125,10 @@ function storedMessage(message) {
     stored.proposal = proposal;
   }
   if (message.proposalUnreadable === true) stored.proposalUnreadable = true;
-  // The answer Pomegr asked for after the owner applied or dismissed that proposal. It offers no proposal of its own.
+  // A follow-up may offer another board proposal, but never a session start or queue-state change.
   if (message.followUp !== undefined) {
-    if (typeof message.followUp !== "string" || !PROPOSAL_ID.test(message.followUp) || stored.proposal || stored.proposalUnreadable) return null;
+    if (typeof message.followUp !== "string" || !PROPOSAL_ID.test(message.followUp)) return null;
+    if (stored.proposal && (startProposalTask(stored.proposal) || queueProposalState(stored.proposal) !== null)) return null;
     stored.followUp = message.followUp;
   }
   return stored;

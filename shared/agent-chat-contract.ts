@@ -115,10 +115,11 @@ export type AgentChatAgentMessage = {
   model: string | null;
   status: AgentChatTurnStatus;
   proposal?: AgentChatProposal;
-  // The agent wrote a proposal the desktop could not read, so nothing is offered.
+  // The agent wrote a proposal the desktop could not read or permit in this follow-up, so nothing is offered.
   proposalUnreadable?: boolean;
   // The ID of the proposal this answer follows up: the desktop asked for it after the owner applied or dismissed that
-  // proposal, with no message of the owner before it. Such an answer never carries a proposal.
+  // proposal, with no message of the owner before it. After an applied or partial outcome it may carry
+  // another board proposal that waits for the owner; never start_session or set_queue.
   followUp?: string;
 };
 export type AgentChatMessage = AgentChatUserMessage | AgentChatAgentMessage;

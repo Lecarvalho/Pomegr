@@ -51,7 +51,7 @@ test("a full success asks Aril for one follow-up with the outcome and a board re
     kind: "board_changes", summary: "Tidy the board", outcome: "applied", succeeded: 2, failed: 0, not_applied: 0,
     operations: [{ n: 1, op: "create_task", result: "succeeded", created: "T-9" }, { n: 2, op: "queue_task", task: "T-2", result: "succeeded" }],
   });
-  assert.match(request, /^The owner sent no new message\. Write one short follow-up .* with no proposal block\./u);
+  assert.match(request, /^The owner sent no new message\. Write one short follow-up .*The board snapshot above was read after it\./u);
   assert.match(request, /Pomegr applied every operation\..*it has not started unless the snapshot shows a session on it\.$/u);
   assert.ok(snapshotOf(prompt).tasks.some((task) => task.id === "T-9"), "the snapshot was read after the apply");
   assert.match(prompt, /\[Proposal "Tidy the board" with 2 operation\(s\): the owner applied it; created T-9\.\]/u);
@@ -268,7 +268,7 @@ test("Stop ends a follow-up like any turn, and takes back one that has not start
   assert.deepEqual([after.messages.at(-1).status, after.messages.at(-1).text, after.messages.at(-1).followUp], ["stopped", "T-1 was", proposalId]);
 });
 
-test("a follow-up offers no proposal: a block in it is taken out and nothing can be applied from it", async (context) => {
+test("a dismissed follow-up strips and records a proposal block", async (context) => {
   const h = await chatHarness(context);
   const conversation = await seed(h, { messages: withProposal() });
   await answer(h, "dismiss", conversation.id);
@@ -277,7 +277,7 @@ test("a follow-up offers no proposal: a block in it is taken out and nothing can
   const last = after.messages.at(-1);
   assert.equal(last.text, "Understood.");
   assert.equal(Object.hasOwn(last, "proposal"), false);
-  assert.equal(Object.hasOwn(last, "proposalUnreadable"), false);
+  assert.equal(last.proposalUnreadable, true);
   assert.equal(after.messages.filter((message) => message.proposal?.state === "pending").length, 0, "nothing is left to apply");
   assert.deepEqual(h.actionCalls(), []);
   assert.equal(h.followUps().length, 1, "a follow-up never causes another");
@@ -359,18 +359,18 @@ test("deleting the conversation and closing the app drop a follow-up that waits"
   assert.equal((await stored(closing, other.id))[1].proposal.state, "dismissed", "the dismissal was stored before");
 });
 
-test("the stored contract keeps a follow-up marker and refuses one beside a proposal", () => {
+test("the stored contract keeps a follow-up marker, board proposal or refusal marker, and rejects controls", () => {
   const conversation = (message) => ({ id: "chat-0123456789ab", title: "T", provider: "claude", model: null, createdAt: stamp, updatedAt: stamp, messages: [userMessage(1), agentMessage(2, { proposal: pendingProposal({ state: "dismissed" }) }), message] });
   const kept = normalizeConversation(conversation(agentMessage(3, { followUp: proposalId })));
   assert.equal(kept.messages[2].followUp, proposalId);
   assert.equal(Object.hasOwn(kept.messages[1], "followUp"), false);
-  for (const bad of [{ followUp: "p-1" }, { followUp: 7 }, { followUp: null }, { followUp: proposalId, proposalUnreadable: true }, { followUp: proposalId, proposal: pendingProposal({ id: "p-bbbbbbbbbbbb" }) }]) {
+  for (const bad of [{ followUp: "p-1" }, { followUp: 7 }, { followUp: null }, { followUp: proposalId, proposal: pendingProposal({ operations: [{ op: "start_session", id: "T-1" }] }) }, { followUp: proposalId, proposal: pendingProposal({ operations: [{ op: "set_queue", on: true }] }) }]) {
     assert.equal(normalizeConversation(conversation(agentMessage(3, bad))), null);
   }
   assert.match(conversationHistory(kept.messages).lines[2], /^Aril \(follow-up after the owner answered a proposal\): An answer$/u);
 });
 
-test("the instructions tell Aril how to follow up: confirmed facts only, a dismissal is no failure, and no proposal", () => {
+test("the instructions limit follow-up proposals to previously requested board work after applied or partial outcomes", () => {
   for (const words of [
     "## After the owner answers a proposal",
     "<proposal_outcome>",
@@ -378,8 +378,95 @@ test("the instructions tell Aril how to follow up: confirmed facts only, a dismi
     "Never report a failed or not applied operation as done.",
     "A dismissal is the owner's decision. It is not a failure and not an error.",
     "Say that a session started only when the outcome says that Pomegr launched it, or the snapshot shows a session on that task.",
-    "Never write a proposal block in a follow-up.",
-    "Do not retry anything, and do not propose the same change, start, or queue state again.",
+    "Only after an applied or partial outcome",
+    "Name that earlier request in your answer.",
+    "Never put start_session or set_queue in a follow-up proposal",
+    "After dismissed, refused, or failed outcomes, write no proposal block",
     "an earlier proposal that the conversation shows as dismissed stays dismissed",
   ]) assert.ok(AGENT_CHAT_INSTRUCTIONS.includes(words), words);
+});
+
+test("applied and partial follow-ups persist a next board proposal and wait for a separate Apply", async (context) => {
+  for (const partial of [false, true]) {
+    const h = await chatHarness(context);
+    h.state.actions = (action) => partial && action === "queue_add" ? { ok: false, error: "conflict" } : { ok: true, board: h.state.board };
+    const conversation = await seed(h, { messages: withProposal() });
+    await answer(h, "apply", conversation.id);
+    const request = outcomeOf((await h.followUp()).options.prompt);
+    assert.equal(request.outcome.outcome, partial ? "partial" : "applied");
+    assert.match(request.request, /next step the owner already requested earlier in this conversation/u);
+    const actions = h.actionCalls().length;
+    const next = await h.finishFollowUp(conversation.id, { status: "complete", text: `Next, the deletion you requested.\n${fence({ summary: "Delete the probe", operations: [{ op: "delete_task", id: "T-3" }] })}` });
+    const follow = next.messages.at(-1);
+    assert.equal(follow.followUp, proposalId);
+    assert.equal(follow.proposal.state, "pending");
+    assert.deepEqual(follow.proposal.operations, [{ op: "delete_task", id: "T-3" }]);
+    assert.equal(follow.proposalUnreadable, undefined);
+    assert.deepEqual((await stored(h, conversation.id)).at(-1), follow, "reopening retains the pending follow-up proposal");
+    assert.equal(h.actionCalls().length, actions, "generating a proposal applies nothing");
+    assert.equal(h.followUps().length, 1, "generating a proposal starts no further run");
+    // The ordinary handle, also used by a paired device, applies it once and schedules one further follow-up.
+    assert.deepEqual(await answer(h, "apply", conversation.id, follow.proposal.id), { ok: true });
+    await h.finishFollowUp(conversation.id);
+    assert.equal(h.actionCalls().length, actions + 1);
+    assert.equal(h.actionCalls().at(-1).pathname, "/internal/tasks/delete");
+    assert.equal(h.followUps().length, 2);
+    assert.deepEqual(await answer(h, "apply", conversation.id, follow.proposal.id), { ok: false, error: "conflict" });
+    assert.equal(h.followUps().length, 2);
+  }
+});
+
+test("follow-ups reject control proposals for every outcome and board proposals after refusal or failure", async (context) => {
+  for (const outcome of ["applied", "partial", "dismissed", "refused", "failed"]) {
+    for (const operation of [{ op: "start_session", id: "T-1" }, { op: "set_queue", on: true }, { op: "delete_task", id: "T-3" }]) {
+      if (operation.op === "delete_task" && ["applied", "partial"].includes(outcome)) continue;
+      const h = await chatHarness(context);
+      h.state.actions = (action) => {
+        if (outcome === "failed") throw new Error("offline");
+        if (outcome === "refused" || (outcome === "partial" && action === "queue_add")) return { ok: false, error: "conflict" };
+        return { ok: true, board: h.state.board };
+      };
+      const conversation = await seed(h, { messages: withProposal() });
+      await answer(h, outcome === "dismissed" ? "dismiss" : "apply", conversation.id);
+      assert.equal(outcomeOf((await h.followUp()).options.prompt).outcome.outcome, outcome);
+      const actions = h.actionCalls().length;
+      const after = await h.finishFollowUp(conversation.id, { status: "complete", text: `Outcome noted.\n${fence({ summary: "Forbidden", operations: [operation] })}` });
+      const last = after.messages.at(-1);
+      assert.equal(last.text, "Outcome noted.");
+      assert.equal(last.proposal, undefined, `${outcome}: ${operation.op}`);
+      assert.equal(last.proposalUnreadable, true);
+      assert.equal((await stored(h, conversation.id)).at(-1).proposalUnreadable, true);
+      assert.equal(h.actionCalls().length, actions);
+      assert.equal(h.followUps().length, 1);
+    }
+  }
+});
+
+test("an unreadable or foreign-image proposal stays rejected in an otherwise eligible follow-up", async (context) => {
+  for (const block of ["```pomegr-board\n{broken}\n```", fence({ summary: "Attach", operations: [{ op: "attach_images", id: "T-1", images: ["img-aaaaaaaaaaaa"] }] })]) {
+    const h = await chatHarness(context);
+    const conversation = await seed(h, { messages: withProposal() });
+    await answer(h, "apply", conversation.id);
+    const after = await h.finishFollowUp(conversation.id, { status: "complete", text: `Next.\n${block}` });
+    assert.equal(after.messages.at(-1).proposal, undefined);
+    assert.equal(after.messages.at(-1).proposalUnreadable, true);
+  }
+});
+
+test("an applied start or queue outcome permits a pending board proposal without another action", async (context) => {
+  // T-120 permits any applied/partial parent outcome. Only the follow-up's operation kinds are restricted.
+  // All provider runs, starts, and monitor actions in this harness are synthetic; no process can be spawned.
+  for (const operation of [{ op: "start_session", id: "T-3" }, { op: "set_queue", on: true }]) {
+    const h = await chatHarness(context, { startTask: async () => ({ status: "started" }) });
+    h.state.actions = () => ({ ok: true, board: { ...readyBoard(), queue: { status: "running", order: ["T-1"] } } });
+    const conversation = await seed(h, { messages: withProposal(pendingProposal({ operations: [operation] })) });
+    assert.deepEqual(await h.chat.handle("apply", { repositoryId, conversationId: conversation.id, proposalId }, { event: { sender: {} } }), { ok: true });
+    assert.equal(outcomeOf((await h.followUp()).options.prompt).outcome.outcome, "applied");
+    const actions = h.actionCalls().length;
+    const after = await h.finishFollowUp(conversation.id, { status: "complete", text: `Next, the board change you requested.\n${fence({ summary: "Update the note", operations: [{ op: "update_task", id: "T-1", text: "The next requested note" }] })}` });
+    assert.equal(after.messages.at(-1).proposal.state, "pending");
+    assert.equal(after.messages.at(-1).proposal.operations[0].op, "update_task");
+    assert.equal(h.actionCalls().length, actions);
+    assert.equal(h.followUps().length, 1);
+  }
 });
