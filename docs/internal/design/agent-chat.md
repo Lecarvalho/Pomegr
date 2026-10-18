@@ -130,7 +130,9 @@ The task board is in [Task board design](task-board.md).
 - The answer follows as Markdown.
 - An answer that did not complete ends with one muted line of fixed words.
 - Aril's follow-up after an applied or dismissed proposal is drawn as any message of Aril, with no message of the owner before it.
-- A follow-up draws no proposal card.
+- An eligible follow-up proposal draws the same pending card as any other proposal.
+- Its card has its own Apply and Dismiss actions.
+- A rejected or ineligible follow-up block draws no card and uses the unreadable-proposal notice.
 - A follow-up that could not be written is drawn as an answer that did not complete, with the same fixed words.
 
 | Fixed words of an answer that did not complete |
