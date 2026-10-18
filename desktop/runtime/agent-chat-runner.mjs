@@ -48,9 +48,9 @@ function validImages(images) {
 /**
  * The fixed arguments of one turn. Only a validated model identifier, the desktop's own MCP server, and the
  * desktop's own image folder and files vary.
- * The run sees the repository's files, the images the owner sent in this conversation, and Pomegr's read tools, and
- * nothing else: no user settings, hooks, plugins, or other MCP servers, no tool that writes, and no way to wait for
- * an approval.
+ * The run uses provider-native read access, the conversation images, and Pomegr's read tools. Native permissions
+ * can permit reads outside the repository. User settings and hooks are excluded; managed provider policy still
+ * applies. No write access or interactive approval is enabled.
  */
 export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null) {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
@@ -66,14 +66,14 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
       // Claude Code registers even a run that keeps no session file. The ID desktop main gave the run is the one the
       // monitor holds for the turn, so the registration never shows as a session.
       ...(identity ? ["--session-id", identity] : []),
-      // Restricted mode leaves out the user's, the project's, and the local settings, and every tool that runs code.
-      "--restricted", "--strict-mcp-config", "--mcp-config", JSON.stringify({ mcpServers: server ? { [MCP_SERVER_NAME]: server } : {} }),
+      // Leave out user/project/local settings and hooks; native tool allowlists keep the run read-only without confining reads to cwd.
+      "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config", JSON.stringify({ mcpServers: server ? { [MCP_SERVER_NAME]: server } : {} }),
       // A tool outside the allow list is refused, never asked about.
       "--permission-mode", "dontAsk",
       "--tools", CLAUDE_FILE_TOOLS.join(","),
       "--allowedTools", [...CLAUDE_FILE_TOOLS, ...POMEGR_READ_TOOLS.map((name) => `mcp__${MCP_SERVER_NAME}__${name}`)].join(","),
       ...(chosen ? ["--model", chosen] : []),
-      // Restricted mode confines Read to the working directories: this adds the folder that holds the conversation's images.
+      // The conversation image folder remains a desktop-owned working directory.
       ...(shown ? ["--add-dir", shown.folder] : []),
     ];
   }
@@ -81,6 +81,9 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
     return [
       // The read-only sandbox lets the shell read files and write nothing; a tool that needs an approval is refused.
       "exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps",
+      // Ignoring user config also drops the Windows sandbox selection. Prefer native MXC, with the provisioned
+      // elevated sandbox as fallback; managed policy still applies. Never request an unsandboxed retry.
+      "-c", 'approval_policy="never"', "-c", "features.prefer_mxc=true", "-c", 'windows.sandbox="elevated"',
       ...(server ? [
         "-c", `mcp_servers.${MCP_SERVER_NAME}.command=${tomlString(server.command)}`,
         "-c", `mcp_servers.${MCP_SERVER_NAME}.args=[${server.args.map(tomlString).join(", ")}]`,

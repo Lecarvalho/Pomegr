@@ -34,7 +34,7 @@ test("the runner's fixed names and bounds", () => {
 test("the Claude arguments are fixed, with the model and the MCP server as the only variable parts", () => {
   const fixed = [
     "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
-    "--restricted", "--strict-mcp-config", "--mcp-config",
+    "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config",
   ];
   const tail = ["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools", ["Read", "Grep", "Glob", ...READ_TOOL_ARGUMENT].join(",")];
   assert.deepEqual(chatArguments("claude"), [...fixed, '{"mcpServers":{}}', ...tail]);
@@ -45,7 +45,7 @@ test("the Claude arguments are fixed, with the model and the MCP server as the o
 });
 
 test("the Codex arguments are fixed, read-only, and end with the stdin marker", () => {
-  const fixed = ["exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps"];
+  const fixed = ["exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps", "-c", 'approval_policy="never"', "-c", "features.prefer_mxc=true", "-c", 'windows.sandbox="elevated"'];
   assert.deepEqual(chatArguments("codex"), [...fixed, "-"]);
   assert.deepEqual(chatArguments("codex", "gpt-6-sol"), [...fixed, "--model", "gpt-6-sol", "-"]);
   const servers = [
@@ -98,11 +98,11 @@ test("an MCP server that the desktop did not shape exactly is dropped", () => {
 
 test("the arguments allow only file reading and Pomegr's read tools and never ask for a permission", () => {
   const claude = chatArguments("claude", "claude-opus-4-1", server);
-  for (const required of ["--restricted", "--strict-mcp-config", "--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--no-session-persistence"]) assert.ok(claude.includes(required), required);
+  for (const required of ["--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--no-session-persistence"]) assert.ok(claude.includes(required), required);
   assert.equal(claude[claude.indexOf("--permission-mode") + 1], "dontAsk");
   assert.equal(claude[claude.indexOf("--tools") + 1], "Read,Grep,Glob");
   assert.equal(claude.some((argument) => /^--dangerously/u.test(argument)), false);
-  for (const forbidden of ["bypassPermissions", "acceptEdits", "default", "plan", "--add-dir", "--settings", "--setting-sources", "--plugin-dir", "--resume", "--continue", "--agents", "--append-system-prompt"]) {
+  for (const forbidden of ["bypassPermissions", "acceptEdits", "default", "plan", "--add-dir", "--restricted", "--plugin-dir", "--resume", "--continue", "--agents", "--append-system-prompt"]) {
     assert.equal(claude.includes(forbidden), false, forbidden);
   }
   const allowed = claude[claude.indexOf("--allowedTools") + 1].split(",");
