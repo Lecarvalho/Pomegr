@@ -79,7 +79,7 @@ test("a follow-up declares and withdraws its own run as a turn does", async (con
 test("the Claude arguments carry the run's session ID; Codex and a malformed ID get none", () => {
   const plain = chatArguments("claude");
   const named = chatArguments("claude", null, null, null, sessionId);
-  const at = plain.indexOf("--restricted");
+  const at = plain.indexOf("--setting-sources");
   assert.deepEqual(named, [...plain.slice(0, at), "--session-id", sessionId, ...plain.slice(at)]);
   assert.ok(named.includes("--no-session-persistence"), "the run still keeps no session file");
   for (const bad of ["", "not-a-uuid", sessionId.toUpperCase(), `${sessionId} --help`, "--help", 7]) {

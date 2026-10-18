@@ -20,7 +20,7 @@ turns no queue on or off by itself either: it proposes that, and you apply it.
   computer, signed in as you, so it uses your own subscription allowance. Pomegr reads
   and stores no credential. Without the tool, the panel says that it is not installed on
   this computer.
-- **Keep Claude Code current.** The chat needs Claude Code 2.1.248 or later.
+- **Keep the coding tool current.** The chat needs the native launch options provided by current Claude Code and Codex versions.
 - **Have a repository.** Aril works on one repository's board. Pomegr lists a repository
   once it observed a session there.
 
@@ -28,6 +28,17 @@ turns no queue on or off by itself either: it proposes that, and you apply it.
 > proposal you apply or dismiss, for Aril's follow-up. The run can read files and
 > Pomegr's observations. It cannot write a file, run a command that changes something,
 > or use your other tools and plugins.
+
+When a task's text was shortened in the board snapshot, Aril can read the whole task on demand with `get_task`. It reads only the selected repository's board, including the task's conditions and attention or block line; it changes nothing.
+
+Aril uses the coding tool's native read permissions. It starts in the selected repository, but permissions may allow reading files elsewhere.
+Pomegr does not add a separate file filter. Aril remains configured without write access, and you apply its board proposals.
+Codex needs a supported Windows sandbox: native MXC, or a provisioned elevated sandbox.
+Some read commands can still be refused by the coding tool's policy. Aril reports missing evidence instead of guessing.
+
+On large boards, Aril keeps task titles first, then details for In progress, Review, Ready, Done, and Backlog.
+Ready follows queue order; recent Done cards come first. If titles alone exceed the limit, each keeps a shortened prefix.
+Aril sees how many texts were shortened and can retrieve needed full tasks with `get_task`.
 
 ## Ask Aril
 

@@ -637,14 +637,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
 
   // What `get_task` and `list_tasks` read (task-agent-read.mjs): each task of one board in the served-task shape, or null.
   // It seeds nothing and writes nothing; a board that was never written has no task.
-  function readAgentTasks(repositoryId) {
+  function readAgentTasks(repositoryId, { includeChatReport = false } = {}) {
     if (!database || !isRepositoryId(repositoryId)) return null;
     try {
       const rows = loadRows(repositoryId);
       if (!rows.repository) return [];
       const at = now();
       const board = projectBoard(repositoryId, rows, { at });
-      return board ? agentTaskEntries(board, rows, at) : null;
+      return board ? agentTaskEntries(board, rows, at, { includeChatReport }) : null;
     } catch {
       return null;
     }

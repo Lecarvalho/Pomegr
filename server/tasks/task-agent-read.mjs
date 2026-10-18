@@ -5,7 +5,7 @@ import { plainTaskText, rowStarted } from "./task-record.mjs";
 
 // Each task of a projected board, in board order (column, then card). `rows` are the stored rows it was projected
 // from: whether `update_task` can change a task is the rule of the desktop `update` action, which reads a live dispatch.
-export function agentTaskEntries(board, rows, at) {
+export function agentTaskEntries(board, rows, at, { includeChatReport = false } = {}) {
   const columnNames = new Map(board.columns.map((column) => [column.id, column.name]));
   const featureNames = new Map(board.features.map((feature) => [feature.id, feature.name]));
   const stored = new Map(rows.tasks.map((row) => [Number(row.number), row]));
@@ -13,6 +13,7 @@ export function agentTaskEntries(board, rows, at) {
     const row = stored.get(Number(task.id.slice(2)));
     return {
       id: task.id,
+      ...(includeChatReport ? { report: { block_reason: task.report?.blockReason ?? null, attention: task.report?.attention ?? null } } : {}),
       text: plainTaskText(task.text),
       ownCondition: task.completeWhen?.own ?? null,
       completeWhen: [...(task.completeWhen?.checks ?? [])],
