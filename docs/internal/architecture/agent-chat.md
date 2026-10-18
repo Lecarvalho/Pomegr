@@ -753,11 +753,11 @@ come from the desktop window.
 
 ## Temporary autonomous pilot
 
-Task T-158 adds an opt-in desktop coordinator for one repository and a finite set of existing tasks.
+Task T-158 adds an opt-in coordinator for finite sets of existing tasks in multiple repositories.
 It uses Aril's real read-only provider runner. It does not rename the deterministic queue as an agent decision.
-The owner first enters an objective and selects existing task IDs in **Aril pilot** on the repository board.
+The owner enters an objective and selects existing task IDs in **Aril pilot** for each repository.
 The review shows the exact scope, deadline, permitted provider/model pairs, inference configuration, actions, and budgets.
-Only the owner's confirmation creates the persistent grant. A paired device and a browser explicitly report desktop-only availability.
+Only the owner's confirmation creates a persistent grant. The owner may keep one nonterminal grant per repository; a paused or needs-you grant occupies that repository's slot until it is revoked, finished, or expires. Grants in different repositories have independent scope, expiry, budgets, receipts, and pause/revoke state. Paired-device access is described below.
 
 - Default authorization lasts 24 hours, with 20 inference rounds, three task starts, one concurrent task, and five minutes between rounds.
 - The owner edits these limits before confirmation. No grant exists by default.
@@ -767,11 +767,13 @@ Only the owner's confirmation creates the persistent grant. A paired device and 
 - No grant permits task creation, generic proposal approval, queue changes, completion, merge, deploy, extra spending, or session control.
 - Pausing, revoking, or expiring a grant prevents new effects. Running task sessions continue untouched.
 - A new activation is a new authorization. Older summaries remain available in the pilot's history.
+- Grants for different repositories can run concurrently. Each tick visits active grants in rotating order so a waiting or unchanged repository does not hold another repository's decision slot.
+- Desktop main serializes inference through the chat's one global provider turn slot and uses the dispatcher's existing exclusive launch slot. A repository's task IDs are interpreted only against that repository's board.
 - The private journal retains at most 50 grants and 256 receipts per grant; reaching the grant limit refuses activation without deleting evidence.
 
-The coordinator reads committed board and usage projections while the desktop remains open, including with the panel closed.
-It coalesces relevant changes into one evidence revision and runs at most one inference round at a time.
-Unchanged observations do not start inference. A stored wait deadline also wakes the coordinator.
+The coordinator reads committed board and usage projections for each active repository while the desktop remains open, including with the panel closed.
+It coalesces relevant changes into one evidence revision per grant and runs at most one inference round at a time globally.
+Unchanged observations do not start inference. A stored wait deadline also wakes the grant that recorded it.
 At a quota reset, desktop main requests ordinary usage acquisition through its private worker channel.
 Provider backoff still applies. Time alone never establishes capacity: missing or stale quota evidence continues to wait.
 
@@ -781,7 +783,7 @@ It returns one structured decision: start, wait, needs-you, or finish, with evid
 Desktop main rejects malformed decisions, stale revisions, foreign IDs, unauthorized models, and overridden explicit settings.
 Ordinary chat proposals never pass through this executor.
 
-The inference uses the chat's existing read-only runner, tool allowlist, run declaration, and single global turn slot.
+The inference uses the chat's existing read-only runner, tool allowlist, run declaration, and single global turn slot shared by every grant.
 An interactive message takes priority, stops the background inference, and discards its answer.
 It never stops a task session. The pilot stores no conversation and never auto-applies a generic chat proposal.
 
@@ -807,7 +809,7 @@ Its actionable state is persistent and deduplicated; routine progress emits no e
 
 The objective, grant, decisions, checkpoint, receipts, and summaries use the chat's private content boundary.
 Desktop main stores them under its private chat directory, separately from ordinary conversation files.
-Only trusted desktop main-frame IPC serves them. No LAN or same-computer browser route exposes the pilot.
+Trusted desktop main-frame IPC and the authenticated paired-device route serve only the selected repository's bounded pilot projection and history. The paired route is `POST /api/aril-pilot`; it requires the pairing cookie, the gateway's `Origin`, JSON, no query string or transfer encoding, and a body no larger than 17 KiB. The gateway invokes the desktop handler and never forwards pilot content to the web host. Its operations are `read`, `activate`, `pause`, and `revoke`; activation still requires the owner's explicit confirmation. Configure and review stay in the renderer, and reconciliation composes the existing task requeue action with revoking the grant. The response contains only that repository's current grant and history projections: objective, task IDs, state, expiry, limits and usage, allowed and inference models, waiting text, decision receipts and their reasons, and summary. It contains no scheduler internals, conversation, raw session data, provider errors, or provider credentials. An unpaired device and a same-computer browser cannot reach the route. The paired route uses the existing plain-HTTP local-network gateway; its cookie and request content are unencrypted on that network. Revoking paired access closes admission to future phone requests, including phone mutations still waiting to commit; it does not pause or revoke a pilot grant whose activation has already committed. The owner can pause or revoke that grant through desktop controls or a later paired request if pairing remains available.
 The renderer holds them in memory only. No monitor observation store, checkpoint, report, diagnostics, or log receives them.
 The task store receives only the scoped start request, execution configuration, task revision digest, and opaque attempt identifier.
 It stores the bounded dispatch claim and attempt marker under [Tasks: Privacy](tasks.md#privacy).

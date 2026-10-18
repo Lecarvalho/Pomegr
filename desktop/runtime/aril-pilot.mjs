@@ -41,13 +41,13 @@ export function createArilPilotCoordinator(options = {}) {
   let timer = null;
   let started = false;
   let recovery = null;
+  let lastScheduledGrantId = null;
   const date = () => new Date(clock());
   const iso = () => date().toISOString();
-  const current = (state) => state.grants.findLast((grant) => !TERMINAL.has(grant.status)) ?? state.grants.at(-1) ?? null;
   const latestFor = (state, repositoryId) => state.grants.findLast((grant) => grant.repositoryId === repositoryId) ?? null;
   const receipt = (action, status, evidenceRevision, reason = "", taskId = null, run = null) => ({ at: iso(), taskId, action, status, provider: run?.provider ?? null, model: run?.model ?? null, reason, evidenceRevision });
 
-  async function change(id, mutate) {
+  async function change(id, mutate, isAuthorized) {
     return store.update((state) => {
       const grant = state.grants.find((entry) => entry.id === id);
       if (!grant) return { ok: false, error: "conflict" };
@@ -55,16 +55,17 @@ export function createArilPilotCoordinator(options = {}) {
       if (outcome?.ok === false) return outcome;
       grant.revision += 1;
       return { pilot: pilotProjection(grant), ...outcome };
-    });
+    }, isAuthorized);
   }
 
   // Crash recovery never dispatches. A durable reservation consumes its budget, even if its outcome is unknown.
-  async function recover() {
-    if (recovery) return recovery;
-    recovery = (async () => {
+  async function recover(grantIds = null, isAuthorized = async () => true) {
+    if (!grantIds && recovery) return recovery;
+    const pendingRecovery = (async () => {
       const state = await store.read();
       if (!state) return false;
       for (const grant of state.grants) {
+        if (grantIds && !grantIds.has(grant.id)) continue;
         if (!grant.receipts.some((row) => row.status === "pending")) continue;
         let board;
         try { board = await options.readBoard(grant.repositoryId); } catch { /* uncertainty remains private and blocks starts */ }
@@ -81,20 +82,30 @@ export function createArilPilotCoordinator(options = {}) {
           saved.lastRoundAt = iso();
           saved.nextWakeAt = uncertain ? null : new Date(date().getTime() + saved.minIntervalMinutes * 60_000).toISOString();
           saved.waiting = uncertain ? null : "Waiting after an interrupted decision.";
-        });
+        }, isAuthorized);
         if (!result.ok) return false;
       }
       return true;
     })();
-    return recovery;
+    if (!grantIds) recovery = pendingRecovery;
+    try {
+      const result = await pendingRecovery;
+      if (!result && !grantIds && recovery === pendingRecovery) recovery = null;
+      return result;
+    } catch (error) {
+      if (!grantIds && recovery === pendingRecovery) recovery = null;
+      throw error;
+    }
   }
 
-  async function expire() {
+  async function expire(isAuthorized = async () => true) {
     const state = await store.read();
-    if (!state) return;
+    if (!state) return false;
     for (const grant of state.grants) if (!TERMINAL.has(grant.status) && atMs(grant.expiresAt) <= date().getTime()) {
-      await change(grant.id, (saved) => { saved.status = "expired"; saved.summary = "The authorization expired."; saved.waiting = null; saved.nextWakeAt = null; });
+      const result = await change(grant.id, (saved) => { saved.status = "expired"; saved.summary = "The authorization expired."; saved.waiting = null; saved.nextWakeAt = null; }, isAuthorized);
+      if (!result.ok) return false;
     }
+    return true;
   }
 
   async function read(repositoryId) {
@@ -107,11 +118,12 @@ export function createArilPilotCoordinator(options = {}) {
     return { ok: true, pilot: pilotProjection(latest), history: state.grants.filter((grant) => grant.repositoryId === repositoryId && grant.id !== latest?.id).map(pilotProjection).reverse() };
   }
 
-  async function activate(payload) {
+  async function activate(payload, isAuthorized = async () => true) {
     const spec = activation(payload);
     if (!spec) return { ok: false, error: "invalid" };
-    if (!await recover()) return { ok: false, error: "unavailable" };
-    await expire();
+    if (!await isAuthorized()) return { ok: false, error: "conflict" };
+    if (!await recover(null, isAuthorized)) return { ok: false, error: await isAuthorized() ? "unavailable" : "conflict" };
+    if (!await expire(isAuthorized)) return { ok: false, error: await isAuthorized() ? "unavailable" : "conflict" };
     let board;
     try { board = await options.readBoard(spec.repositoryId); } catch { return { ok: false, error: "unavailable" }; }
     if (board?.repositoryId !== spec.repositoryId || board?.readiness !== "ready" || !Array.isArray(board.tasks)) return { ok: false, error: "unavailable" };
@@ -122,27 +134,29 @@ export function createArilPilotCoordinator(options = {}) {
       roundsUsed: 0, startsUsed: 0, nextWakeAt: iso(), waiting: null, receipts: [], summary: "The pilot is watching the authorized tasks.", lastFingerprint: null, lastRoundAt: null, resetRequired: {}, wakeConsumed: null, waitDeadline: null,
     };
     return store.update((state) => {
-      if (state.grants.some((entry) => !TERMINAL.has(entry.status))) return { ok: false, error: "conflict" };
+      if (state.grants.some((entry) => entry.repositoryId === spec.repositoryId && !TERMINAL.has(entry.status))) return { ok: false, error: "conflict" };
       if (state.grants.length >= PILOT_HISTORY_LIMIT) return { ok: false, error: "limit" };
       // A new grant is not a retry mechanism for an old uncertain or completed attempt.
       if (state.grants.some((entry) => entry.repositoryId === spec.repositoryId && entry.receipts.some((row) => row.action === "start" && ["pending", "started", "uncertain"].includes(row.status) && spec.taskIds.includes(row.taskId)
         && !ownerRequeuedAfter(board.tasks.find((task) => task.id === row.taskId), row)))) return { ok: false, error: "conflict" };
       state.grants.push(grant);
       return { pilot: pilotProjection(grant) };
-    });
+    }, isAuthorized);
   }
 
-  async function control(repositoryId, status) {
+  async function control(repositoryId, status, isAuthorized = async () => true) {
     if (!PILOT_REPOSITORY.test(repositoryId)) return { ok: false, error: "invalid" };
-    if (!await recover()) return { ok: false, error: "unavailable" };
+    if (!await isAuthorized()) return { ok: false, error: "conflict" };
+    if (!await recover(null, isAuthorized)) return { ok: false, error: await isAuthorized() ? "unavailable" : "conflict" };
     const state = await store.read();
     if (!state) return { ok: false, error: "unavailable" };
     const grant = latestFor(state, repositoryId);
     if (!grant || TERMINAL.has(grant.status)) return { ok: false, error: "conflict" };
     return change(grant.id, (saved) => {
+      if (TERMINAL.has(saved.status)) return { ok: false, error: "conflict" };
       saved.status = status; saved.nextWakeAt = null; saved.waiting = null;
       saved.summary = status === "paused" ? "The owner paused the pilot." : "The owner revoked this authorization.";
-    });
+    }, isAuthorized);
   }
 
   async function authorized(id, revision, { allowReserved = false } = {}) {
@@ -186,11 +200,11 @@ export function createArilPilotCoordinator(options = {}) {
     await change(grant.id, (saved) => { if (saved.status === "active") { saved.waiting = reason; saved.summary = reason; saved.nextWakeAt = nextWakeAt; saved.waitDeadline = nextWakeAt; } });
   }
 
-  async function runTick() {
-    if (disposed || !await recover()) return;
+  async function runGrant(grantId) {
+    if (disposed) return;
     await expire();
     let state = await store.read();
-    let grant = current(state);
+    let grant = state?.grants.find((entry) => entry.id === grantId);
     if (!grant || grant.status !== "active") return;
     let gathered;
     try { gathered = await gather(grant.repositoryId, grant.taskIds); } catch { return; }
@@ -336,6 +350,22 @@ export function createArilPilotCoordinator(options = {}) {
     });
   }
 
+  async function runTick() {
+    if (disposed || !await recover()) return;
+    await expire();
+    const state = await store.read();
+    if (!state) return;
+    const active = state.grants.filter((grant) => grant.status === "active");
+    if (!active.length) return;
+    const previousIndex = active.findIndex((grant) => grant.id === lastScheduledGrantId);
+    const ordered = previousIndex < 0 ? active : [...active.slice(previousIndex + 1), ...active.slice(0, previousIndex + 1)];
+    lastScheduledGrantId = ordered[0].id;
+    for (const grant of ordered) {
+      if (disposed) return;
+      try { await runGrant(grant.id); } catch { try { await recover(new Set([grant.id])); } catch { /* preserve the durable receipt for restart recovery */ } }
+    }
+  }
+
   function tick() {
     if (running) return running;
     running = runTick().finally(() => { running = null; });
@@ -346,7 +376,7 @@ export function createArilPilotCoordinator(options = {}) {
     timer = setTimer(async () => { timer = null; try { await tick(); } catch { /* no automatic effect retry */ } arm(); }, 15_000);
     timer?.unref?.();
   }
-  return Object.freeze({ read, activate, pause: (id) => control(id, "paused"), revoke: (id) => control(id, "revoked"), tick,
+  return Object.freeze({ read, activate, pause: (id, isAuthorized) => control(id, "paused", isAuthorized), revoke: (id, isAuthorized) => control(id, "revoked", isAuthorized), tick,
     start() { if (started || disposed) return; started = true; arm(); },
     dispose() { disposed = true; if (timer !== null) clearTimer(timer); timer = null; },
   });

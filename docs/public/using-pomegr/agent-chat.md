@@ -163,11 +163,11 @@ session cannot start a second one.
 
 ## Run a temporary pilot
 
-The desktop app can authorize Aril to coordinate a finite set of existing tasks while you are away.
-The pilot is off by default. Keep the desktop app open; the panel can stay closed.
-A paired phone and a browser show that this feature requires the desktop app.
+The desktop app or a paired phone can authorize Aril to coordinate selected tasks while you are away.
+The pilot is off by default. Keep the Pomegr computer open; the panel can stay closed.
+The phone must have an active pairing before it can read or change a pilot grant.
 
-1. Open a repository's task board and select **Aril pilot**.
+1. In the desktop app or on a paired phone, open a repository's task board and select **Aril pilot**.
 2. Enter your objective and select existing tasks. Check their execution settings and dependencies first.
 3. Choose the inference provider and model, then the allowed providers and models for task sessions.
 4. Set the deadline and limits. Defaults are 24 hours, 20 rounds, three starts, one concurrent task, and five-minute intervals.
@@ -244,9 +244,12 @@ always a proposal of its own.
 - **On a paired device.** The conversation crosses your local network without
   encryption, like the rest of phone access. Anyone who holds a paired phone can read
   the conversations and their images, send a message or an image, and apply a proposal
-  of board changes or a queue change. Applying or dismissing a proposal there also runs
-  Aril's follow-up on your computer. Turning the queue on lets Pomegr start queued tasks on your computer. A start
-  that Aril proposed can be applied only in the desktop app.
+  of board changes or a queue change. A paired phone can also read pilot history,
+  confirm a reviewed grant, pause it, revoke it, or reconcile an uncertain start.
+  A confirmed grant starts selected task sessions on the Pomegr computer. Applying or
+  dismissing a proposal there also runs Aril's follow-up on your computer. Turning the
+  queue on lets Pomegr start queued tasks on your computer. A start that Aril proposed
+  can be applied only in the desktop app.
 
 ## If the result is missing
 

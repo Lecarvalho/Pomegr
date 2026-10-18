@@ -5,6 +5,9 @@ import type { Task } from "../../shared/task-contract";
 import type { ArilPilot } from "../../shared/aril-pilot-contract";
 import { ArilPilotControl } from "../../app/components/tasks/ArilPilotControl";
 
+const clientAccessMode = vi.hoisted(() => vi.fn(() => "unknown"));
+vi.mock("../../app/hooks/ClientAccessContext", () => ({ clientAccessMode }));
+
 const repositoryId = "repo-0123456789abcdef01234567";
 const task: Task = {
   id: "T-1", text: "Finish the existing task", columnId: "col-1", position: 0, featureId: null, group: null,
@@ -27,6 +30,7 @@ afterEach(() => {
   delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
   vi.restoreAllMocks();
   vi.clearAllMocks();
+  clientAccessMode.mockReturnValue("unknown");
 });
 
 describe("Aril pilot on a repository board", () => {
@@ -148,9 +152,36 @@ describe("Aril pilot on a repository board", () => {
     expect(screen.queryByRole("button", { name: "Reconcile T-1" })).not.toBeInTheDocument();
   });
 
-  it("explicitly marks paired and browser use unavailable", () => {
+  it("keeps the pilot unavailable to an unpaired same-computer browser", () => {
     render(<ArilPilotControl repositoryId={repositoryId} tasks={[task]} desktop={false} />);
-    expect(screen.getByText("Aril pilot is available in the Pomegr desktop app only.")).toBeInTheDocument();
+    expect(screen.getByText("Aril pilot is available in the Pomegr desktop app or on a paired phone.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Aril pilot" })).not.toBeInTheDocument();
+  });
+
+  it("lets an authenticated paired phone review and explicitly activate through the gateway", async () => {
+    const user = userEvent.setup();
+    clientAccessMode.mockReturnValue("lan");
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { operation: string };
+      return { ok: true, json: async () => request.operation === "read"
+        ? { ok: true, pilot: null, history: [] }
+        : { ok: true, pilot, history: [] } } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ArilPilotControl repositoryId={repositoryId} tasks={[task]} desktop={false} paired />);
+
+    await user.click(await screen.findByRole("button", { name: "Aril pilot" }));
+    await user.type(screen.getByLabelText("Goal"), "Finish the task");
+    await user.click(screen.getByRole("button", { name: "Add allowed pair" }));
+    await user.selectOptions(screen.getByLabelText("Provider"), "claude");
+    await user.selectOptions(screen.getByLabelText("Inference provider"), "codex");
+    await user.click(screen.getByRole("checkbox", { name: /T-1 Finish the existing task/ }));
+    await user.click(screen.getByRole("button", { name: "Review grant" }));
+    await user.click(screen.getByRole("button", { name: "Confirm and activate pilot" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/aril-pilot", expect.objectContaining({ method: "POST" })));
+    const activation = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body))).find((body) => body.operation === "activate");
+    expect(activation).toEqual(expect.objectContaining({ operation: "activate", payload: expect.objectContaining({ repositoryId, taskIds: ["T-1"] }) }));
+    expect(screen.getByRole("region", { name: "Aril pilot status" })).toBeInTheDocument();
   });
 });

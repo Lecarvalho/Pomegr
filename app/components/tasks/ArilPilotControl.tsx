@@ -6,7 +6,7 @@ import type { ArilPilot, ArilPilotActivation, ArilPilotProvider, ArilPilotRun } 
 import { activateArilPilot, callArilPilot } from "../../aril-pilot-client";
 import { TaskDialog, TaskModalChrome } from "./TaskModalFrame";
 
-type Props = { repositoryId: string; tasks: Task[]; desktop: boolean; onReconcile?: (taskId: string) => Promise<boolean> };
+type Props = { repositoryId: string; tasks: Task[]; desktop: boolean; paired?: boolean; onReconcile?: (taskId: string) => Promise<boolean> };
 type RunRow = { provider: ArilPilotProvider | ""; model: string };
 const providerLabel = (provider: ArilPilotProvider) => provider === "claude" ? "Claude Code" : "Codex";
 
@@ -16,7 +16,7 @@ function dateLine(value: string | null): string {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
 }
 
-export function ArilPilotControl({ repositoryId, tasks, desktop, onReconcile }: Props) {
+export function ArilPilotControl({ repositoryId, tasks, desktop, paired = false, onReconcile }: Props) {
   const [pilot, setPilot] = useState<ArilPilot | null>(null);
   const [history, setHistory] = useState<ArilPilot[]>([]);
   const [open, setOpen] = useState(false);
@@ -37,18 +37,18 @@ export function ArilPilotControl({ repositoryId, tasks, desktop, onReconcile }: 
   const opener = useRef<HTMLButtonElement>(null);
 
   const read = useCallback(async () => {
-    if (!desktop) return;
+    if (!desktop && !paired) return;
     const result = await callArilPilot("read", { repositoryId });
     if (result.ok) { setPilot(result.pilot); setHistory(result.history ?? []); }
     else if (result.error !== "desktop_only") setError("Pilot status is unavailable right now.");
-  }, [desktop, repositoryId]);
+  }, [desktop, paired, repositoryId]);
 
   useEffect(() => {
-    if (!desktop) return;
+    if (!desktop && !paired) return;
     const firstRead = window.setTimeout(() => { void read(); }, 0);
     const timer = window.setInterval(() => { void read(); }, 10_000);
     return () => { window.clearTimeout(firstRead); window.clearInterval(timer); };
-  }, [desktop, read]);
+  }, [desktop, paired, read]);
 
   const openSetup = () => {
     setGoal(""); setTaskIds([]); setDurationHours(24); setRoundLimit(20); setStartLimit(3); setConcurrency(1); setMinIntervalMinutes(5);
@@ -110,7 +110,7 @@ export function ArilPilotControl({ repositoryId, tasks, desktop, onReconcile }: 
     }
   };
 
-  if (!desktop) return <p className="taskBoardNote taskPilotUnavailable">Aril pilot is available in the Pomegr desktop app only.</p>;
+  if (!desktop && !paired) return <p className="taskBoardNote taskPilotUnavailable">Aril pilot is available in the Pomegr desktop app or on a paired phone.</p>;
 
   const active = pilot?.status === "active";
   const hasExisting = pilot !== null && ["active", "paused", "needs_you"].includes(pilot.status);

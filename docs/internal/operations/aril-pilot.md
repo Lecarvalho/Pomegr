@@ -1,6 +1,6 @@
 # Validate the temporary Aril pilot
 
-> Scope: local update and real-provider acceptance for the finite repository pilot.
+> Scope: local update and real-provider acceptance for the finite multi-repository pilot.
 > Authority: operational procedure. [Agent chat](../architecture/agent-chat.md#temporary-autonomous-pilot) owns behavior and privacy.
 > Related checks: [Agent workflow](../development/agent-workflow.md#focused-verification).
 
@@ -33,21 +33,22 @@ After merge, replace `origin/tasks/T-158` with `origin/main`.
 Do not publish a release, change a tag, or activate a grant as part of updating.
 The feature name is Aril 0.9.0; this change does not itself change the app version.
 
-## Prepare tomorrow's scope
+## Prepare tomorrow's scopes
 
-Use one repository and a small set of existing, low-risk tasks whose starts you authorize.
+For each repository, select a small set of existing, low-risk tasks whose starts you authorize.
+There may be one nonterminal grant per repository; a paused or needs-you grant occupies that slot until it is revoked, finished, or expires. Each grant has its own objective, deadline, provider/model permissions, and inference and start budgets; the desktop shares one inference slot and the dispatcher's existing launch slot across all grants.
 Inspect each task's **Run on**, model, effort, dependencies, and completion conditions before selecting it.
 Leave explicit provider choices intact. Include both providers only when your permitted work calls for them.
 Provider success is not a required demonstration; an accurate quota wait is a valid outcome.
 
-Open **Aril pilot**, enter the objective, and select that finite set.
+Open **Aril pilot** on each repository board, enter that grant's objective, and select its finite task set.
 Choose an inference provider/model with current capacity and an allowed task provider/model list.
 Review the displayed deadline, granted actions, and every limit before confirming.
-Only this confirmation authorizes real starts. Keep the desktop open throughout the afternoon.
+Confirm each grant separately. A phone can review and confirm a grant through the authenticated paired-device route; the desktop remains open to coordinate decisions and starts.
 
 ## Check the real loop
 
-1. Confirm that the first recorded decision names its evidence revision, chosen provider/model, and reason.
+1. For each grant, confirm that the first recorded decision names its evidence revision, chosen provider/model, and reason.
 2. Close the pilot panel. Verify later that the desktop continues to observe and record results.
 3. Send an ordinary chat message during a round. Confirm that the interactive answer takes priority.
 4. When quota blocks a configured provider, confirm a wait rather than substitution or threshold bypass.

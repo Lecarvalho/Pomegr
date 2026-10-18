@@ -18,6 +18,10 @@ export const runChoice = (value) => plain(value) && Object.keys(value).every((ke
 const integer = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 const exact = (value, keys) => Object.keys(value).every((key) => keys.includes(key));
 const clone = (value) => structuredClone(value);
+const hasUniqueActiveRepositories = (grants) => {
+  const activeRepositories = grants.filter((grant) => !["expired", "finished", "revoked"].includes(grant.status)).map((grant) => grant.repositoryId);
+  return new Set(activeRepositories).size === activeRepositories.length;
+};
 
 export function normalizePilotGrant(value) {
   const keys = ["id", "revision", "repositoryId", "goal", "taskIds", "expiresAt", "status", "roundLimit", "startLimit", "concurrency", "minIntervalMinutes", "allowedRuns", "inference", "roundsUsed", "startsUsed", "nextWakeAt", "waiting", "receipts", "summary", "lastFingerprint", "lastRoundAt", "resetRequired", "wakeConsumed", "waitDeadline"];
@@ -67,7 +71,7 @@ export function createArilPilotStore({ directory, filesystem = fs } = {}) {
       const parsed = JSON.parse(await filesystem.readFile(target, "utf8"));
       if (!plain(parsed) || !exact(parsed, ["version", "grants"]) || parsed.version !== 1 || !Array.isArray(parsed.grants) || parsed.grants.length > PILOT_HISTORY_LIMIT) throw new Error("invalid");
       const grants = parsed.grants.map(normalizePilotGrant);
-      if (grants.some((grant) => !grant) || new Set(grants.map((grant) => grant.id)).size !== grants.length || grants.filter((grant) => !["expired", "finished", "revoked"].includes(grant.status)).length > 1) throw new Error("invalid");
+      if (grants.some((grant) => !grant) || new Set(grants.map((grant) => grant.id)).size !== grants.length || !hasUniqueActiveRepositories(grants)) throw new Error("invalid");
       state = { version: 1, grants };
     } catch (error) {
       if (error?.code === "ENOENT") state = { version: 1, grants: [] };
@@ -77,15 +81,17 @@ export function createArilPilotStore({ directory, filesystem = fs } = {}) {
   }
   return Object.freeze({
     async read() { await chain; const loaded = await load(); return loaded ? clone(loaded) : null; },
-    // The callback is synchronous. Every authorization change and checkpoint shares this serialization.
-    update(change) {
+    // Every authorization change and checkpoint shares this serialization. Paired mutations are
+    // reauthorized here, immediately before their durable state change.
+    update(change, isAuthorized = async () => true) {
       const operation = chain.then(async () => {
         const current = await load();
         if (!current) return { ok: false, error: "unavailable" };
+        if (!await isAuthorized()) return { ok: false, error: "conflict" };
         const next = clone(current);
         const result = change(next);
         if (result?.ok === false) return result;
-        if (next.grants.length > PILOT_HISTORY_LIMIT || next.grants.some((grant) => !normalizePilotGrant(grant)) || next.grants.filter((grant) => !["expired", "finished", "revoked"].includes(grant.status)).length > 1) return { ok: false, error: "invalid" };
+        if (next.grants.length > PILOT_HISTORY_LIMIT || next.grants.some((grant) => !normalizePilotGrant(grant)) || !hasUniqueActiveRepositories(next.grants)) return { ok: false, error: "invalid" };
         const temporary = `${target}.${randomUUID()}.tmp`;
         try {
           await filesystem.mkdir(directory, { recursive: true });

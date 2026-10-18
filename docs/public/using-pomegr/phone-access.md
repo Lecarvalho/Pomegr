@@ -5,10 +5,10 @@ description: "Share Pomegr, read-only, with a phone on your private network, and
 
 # Phone access
 
-Phone access lets a phone browser on the same private network view your Pomegr
-dashboard. It is read-only and off by default, and it works only from the Windows
-desktop app. Pomegr sends the page over unencrypted HTTP, so use it only on a
-network you trust. No cloud account or phone app is needed.
+Phone access lets a paired phone browser on the same private network use your Pomegr
+dashboard, task board, and Aril controls. It is off by default and works only while
+the Windows desktop app is open. Pomegr sends the page over unencrypted HTTP, so use
+it only on a network you trust. No cloud account or phone app is needed.
 
 ## Before you start
 
@@ -34,7 +34,7 @@ network you trust. No cloud account or phone app is needed.
 
 ## What a phone can do
 
-A paired phone shows the same normalized dashboard, read-only: Home, Sessions,
+A paired phone shows the normalized dashboard read-only: Home, Sessions,
 Repositories, Models & delegation, Usage limits, and Settings, where
 **Providers** and **Storage** are view-only. It cannot copy a transcript path,
 use desktop controls, sign in to a coding tool, or change sharing. The **Phone
@@ -42,8 +42,15 @@ access** tab exists only in the desktop app.
 
 A paired phone can also use the [agent chat](agent-chat.md). There you can apply the
 board changes that Aril proposes, and a proposal to turn the queue on or off.
+On a repository task board, **Aril pilot** lets you inspect current and previous
+grants, configure and review a finite grant, then explicitly confirm activation.
+You can pause or revoke it, and reconcile an uncertain start when its task has no
+session. A paused grant must be revoked before you review and confirm a replacement;
+there is no automatic resume. Any task session starts on the Pomegr computer, which
+must stay open. See [Run a temporary pilot](agent-chat.md#run-a-temporary-pilot) for
+the grant's scope and limits.
 
-[Tasks](tasks.md) are the one thing a paired phone can change. It shows each
+[Tasks](tasks.md) is the paired phone's control surface. It shows each
 repository's board with its task text, and you can create, edit, delete, move,
 queue, and schedule tasks, mark a task done, requeue it, and turn the queue on or off.
 Open a task and choose **Start session**, then confirm on the phone, to launch
@@ -57,6 +64,9 @@ HTTP on your network, so pair only on a network you trust.
 
 - **Stop sharing**, or quitting Pomegr, revokes every phone and closes open
   connections.
+- Stopping sharing does not pause or revoke an already-authorized pilot. Its grant
+  continues on the Pomegr computer until it is paused or revoked, reaches a limit,
+  or expires.
 - **Start on a private network** checks for a private network each time Pomegr
   launches. It is the only thing remembered; addresses and pairings are not, so
   after a restart create a new code.
