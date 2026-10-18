@@ -115,14 +115,14 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandProfileMenu > a:hover { background: var(--command-panel-3); color: var(--command-ink); }
 .commandProfileTheme { margin-top: 4px; border-top: 1px solid var(--command-line); }
 .commandProfileTheme .themeToggle { width: 30px; height: 30px; border-radius: var(--control-radius); background: transparent; }
-.commandNotificationTray { position: absolute; z-index: 100; top: calc(100% + 9px); right: -6px; width: min(390px, calc(100vw - 28px)); max-height: calc(100vh - 116px); overflow: auto; border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); animation: commandTrayIn .18s cubic-bezier(.2,.8,.2,1); }
+.commandNotificationTray { position: absolute; z-index: 100; top: calc(100% + 9px); right: -6px; width: min(390px, calc(100vw - 28px)); max-height: calc(100vh - 116px); overflow-x: hidden; overflow-y: auto; border: 1px solid var(--command-line-strong); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); animation: commandTrayIn .18s cubic-bezier(.2,.8,.2,1); }
 @keyframes commandTrayIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 .commandNotificationTray > header { min-height: 70px; padding: 13px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--command-line); }
 .commandNotificationTray h2 { margin: 0; font: 600 var(--text-heading)/1.5 var(--font-ui); }
 .commandNotificationTray header p { margin: 5px 0 0; color: var(--command-muted); font-size: var(--text-xs); }
 .commandNotificationActions { display: flex; align-items: center; gap: 4px; }
 .commandNotificationGroup { min-height: 30px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--command-line); color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); text-transform: none; letter-spacing: 0; }
-.commandNotificationEntry { min-height: 98px; padding: 13px; display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: start; gap: 10px; border-bottom: 1px solid var(--command-line); }
+.commandNotificationEntry { min-height: 98px; padding: 13px; display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: start; gap: 10px; overflow-wrap: anywhere; border-bottom: 1px solid var(--command-line); }
 .commandNotificationMeta { margin-bottom: 5px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .commandNotificationCategory { display: block; color: var(--command-faint); font: var(--text-caption)/1 var(--font-ui); }
 .commandNotificationEntry strong { display: block; font-size: var(--text-xs); }
