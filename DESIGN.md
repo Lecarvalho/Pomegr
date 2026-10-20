@@ -241,6 +241,8 @@ Role tint is the one exception that colors agent roles. [Agents design](docs/int
 
 ### Header
 
+- The header reaches the viewport edge without an unused root scrollbar gutter.
+- The document keeps its vertical scrollbar when content exceeds the viewport height.
 - The header never carries breadcrumbs.
 - The header holds the compact pomegranate product mark, the search trigger, the monitor state, notifications, and the local profile control.
 - The search trigger is 280px wide on desktop and 200px wide on tablet. On phone it is icon-only.
