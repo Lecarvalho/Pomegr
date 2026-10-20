@@ -315,7 +315,7 @@ task state.
 | Needs review | The agent reported complete; the report holds each checked condition's result and the optional attention line | Verification of a `complete_task` report |
 | Stalled | The bound session ended without a report | Observation of an established session end; it leaves when that session reports or is confirmed live again |
 | Blocked by agent | The agent called `block_task` with a reason | The agent |
-| Done | The owner accepted the task | The user's Mark done (`resolve_done`) |
+| Done | The owner accepted the task | The user's Mark done (`resolve_done`) or explicit card move to Done |
 
 **No transient states.** Never show a state and then retract it. The state is decided
 at first observation of its evidence: Stalled is assigned only once the end of the
@@ -439,7 +439,7 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 | `POST /internal/tasks/feature-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action`, and no Next route proxies it | `{ repositoryId, payload: { id } }` in, exactly those keys; `{ ok: true, feature: { description, appVersion } }` out, each field re-bounded (2000 and 40 characters) or null; or one fixed error (`invalid` 400, `not_found` 404, `unavailable` 503). The only desktop path that answers a feature's description and app version |
 | `POST /api/agent/v1/tasks/bind` |
 | `review` | Its state becomes Needs review | Verification of a `complete_task` report |
-| `done` | Its state becomes Done | The user's Mark done (`resolve_done`) |
+| `done` | Its state becomes Done | The user's Mark done (`resolve_done`) or explicit card move to Done |
 
 - **Roles are fixed.** In progress holds `in_progress`, Review holds `review`, and Done
   holds `done`, on every board. The `column_role` action is removed and is refused like
@@ -456,8 +456,13 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 - **A move by hand does not opt a card out.** The user may drag a card anywhere at any
   time, except a card that waits in the queue (see
   [Queued cards stay in Ready](#queued-cards-stay-in-ready)); it stays there until the
-  task's next state change in the table, which moves it again wherever it is. Moving a
-  card by hand never changes its state or chip.
+  task's next state change in the table, which moves it again wherever it is.
+- **Moving to Done accepts the task** (owner decision, T-163, 2026-10-20). The explicit move persists `done` in the same transaction.
+- Acceptance uses the same report retention, dispatch release, queue resolution, and worktree cleanup as Mark done.
+- The cards keep the requested destination order, including every card of an explicitly moved group.
+- Reordering an already Done task changes no acceptance state. Moving it elsewhere does not reopen it.
+- An unfinished card already in Done remains unfinished on reads. An explicit move within Done accepts it.
+- Moves to other columns change no task state or chip. Review never counts as Done for `runs_after`.
 - **No move is taken back.** Only the persisted writes in the table, and the queue
   writes below, move a card. No observation does: not a borrowed session state, not a
   start, not a start gate, and not the clock. So Pomegr never moves a card and later
@@ -671,8 +676,9 @@ after other tasks of the same board: it never starts until each of them is Done 
   keeps its card place and holds nothing behind it: the queue starts the cards after it.
   Once every task it runs after is Done or deleted, it starts at its place by the
   [Queue](#queue) rule. The one ordering rule stays `orderQueue`.
-- **Done or deleted frees it.** Review is not enough: only the owner's Mark done frees a
-  task. A deleted task is taken out of every list in the write that deletes it.
+- **Done or deleted frees it.** Review is not enough. The owner's Mark done or explicit move to Done frees the task.
+- A deleted task leaves every dependency list in the write that deletes it.
+- Dependency checks use the persisted task state, never its column name. Board order, wait reasons, and start eligibility use that state.
 - **Every start.** The queue never starts the task, and `start-plan` answers `gate_held`
   for a manual start (`startGates` in `server/tasks/task-queue-advance.mjs`). It is judged
   before the start gates and is no start gate.
@@ -1333,7 +1339,7 @@ installed plugin from before the rename sends; a body with both names is `invali
 - **A completion sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
   rule that a report whose conditions all passed set Done). Whatever the results, with or
   without an attention line, the card goes to Review with each condition's result, and
-  only the owner sets Done, with Mark done (`resolve_done`). The agent can call
+  only the owner sets Done, with Mark done (`resolve_done`) or an [explicit move to Done](#columns-and-card-moves). The agent can call
   `block_task` with a bounded reason; the state becomes Blocked by agent.
 - **Attention line** (GitHub issue #135, 2026-10-10). `complete_task` takes one optional
   input, `attention`: one line of at most 200 characters that names what in the finished

@@ -355,6 +355,8 @@ Each row below the title shows only when it is set, in this order:
 - The line is under the last card anywhere else in the lane.
 - An empty lane draws no line. A drop that would leave the card where it is draws no line.
 - The dragged card itself does not change.
+- Dropping or moving a card into Done accepts its task and shows the Done chip, including a move within Done.
+- Other column moves preserve the task state. Moving a Done card elsewhere does not reopen it.
 
 ### Auto-scroll
 

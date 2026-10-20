@@ -150,8 +150,8 @@ test("the source survives closing and reopening, closing a task, and a requeue",
     const edited = reopened.apply(REPOSITORY, "update", { id: "T-1", text: "Edited locally" });
     assert.deepEqual(edited.board.tasks[0].source, { kind: "github_issue", number: 12 });
     assert.equal(reopened.readBoard(REPOSITORY).tasks[0].text, "Edited locally");
-    const done = reopened.readBoard(REPOSITORY).columns.at(-1);
-    assert.equal(reopened.apply(REPOSITORY, "move", { id: "T-1", columnId: done.id, position: 0 }).board.tasks[0].source.number, 12);
+    const ready = reopened.readBoard(REPOSITORY).columns[1];
+    assert.equal(reopened.apply(REPOSITORY, "move", { id: "T-1", columnId: ready.id, position: 0 }).board.tasks[0].source.number, 12);
     // Start, report a block, and requeue: the link and report clear, the origin stays.
     const planned = reopened.planStart(REPOSITORY, { id: "T-1" }, () => FACTS, passingGates);
     assert.deepEqual(reopened.bindSession({ token: planned.plan.token, sessionId: SESSION }), { ok: true });
@@ -160,6 +160,11 @@ test("the source survives closing and reopening, closing a task, and a requeue",
     assert.equal(requeued.ok, true);
     assert.equal(requeued.board.tasks[0].session, null);
     assert.equal(requeued.board.tasks[0].source.number, 12);
+    assert.equal(reopened.apply(REPOSITORY, "queue_remove", { id: "T-1" }).ok, true);
+    const done = reopened.readBoard(REPOSITORY).columns.at(-1);
+    const accepted = reopened.apply(REPOSITORY, "move", { id: "T-1", columnId: done.id, position: 0 });
+    assert.equal(accepted.board.tasks[0].state, "done");
+    assert.equal(accepted.board.tasks[0].source.number, 12);
   } finally { reopened.close(); }
 });
 
