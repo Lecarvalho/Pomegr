@@ -90,6 +90,7 @@ describe("Pomegr visual contract", () => {
   });
 
   it("uses restrained typography, shared readable typography and restrained control geometry", () => {
+    expect(designContract).toContain("The header reaches the viewport edge without an unused root scrollbar gutter.");
     expect(styles).not.toMatch(/Arial|Helvetica/);
     expect(styles).not.toMatch(/\.(contextHistory|requestSnapshot|contextArea|contextSeriesLine|contextChartPoint|contextBoundary)/);
     expect(styles).toMatch(/\.requestsActionsCompaction line\s*\{[^}]*stroke-dasharray:\s*3 4/);
