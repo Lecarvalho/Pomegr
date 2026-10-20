@@ -709,9 +709,10 @@ paths stay desktop-private and never reach the monitor store or browser state.
   the queue (`taskRunsInGroup` in `task-groups.mjs`). A task that is in no group, or whose
   group has dropped to one member, runs in the repository root, whatever its feature,
   unless the owner asked for a separate worktree for that one manual start (see
-  [Separate worktree](#separate-worktree-for-a-dirty-repository)). The monitor decides
-  this when it answers the start plan (`worktree`, a boolean); it never learns where the
-  worktree is.
+  [Separate worktree](#separate-worktree-for-a-dirty-repository)), or the temporary Aril
+  pilot starts it. Every autonomous pilot start requests the task's separate worktree,
+  including when the root is clean. The monitor decides this when it answers the start
+  plan (`worktree`, a boolean); it never learns where the worktree is.
 - **Where.** `<repository root>/.pomegr/worktrees/<task ID>`, inside the repository (task
   T-27, product-owner decision of 2026-10-11). The root is the one the monitor answers in
   the start plan and the task ID is a validated identifier, so no task text shapes the
@@ -2219,11 +2220,11 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
 - An autonomous launcher outcome can be uncertain after spawn. Desktop main then keeps its claim and worktree instead of aborting or retrying.
-- The private autonomous `start-plan` payload adds `{ autonomous: { attemptId, expectedUpdatedAt, expectedTaskDigest, expectedRun, run? } }` beside `id`.
+- The private autonomous `start-plan` payload adds `worktree: true` and `{ autonomous: { attemptId, expectedUpdatedAt, expectedTaskDigest, expectedRun, run? } }` beside `id`.
 - `expectedTaskDigest` is a SHA-256 digest of the persisted task fields. A same-millisecond edit still invalidates the selection.
-- Task revision and explicit execution configuration must still match. A fallback provider/model fills only an unset provider; explicit effort and flags remain unchanged.
+- Task revision and explicit execution configuration must still match. A fallback provider/model fills only an unset provider; effort and `keepWorktree` remain unchanged. A selected Codex provider clears the task's Remote Control flag because Codex does not support it; a selected Claude provider preserves it.
 - The monitor records the attempt tombstone and execution configuration in the same transaction as the dispatch claim.
-- Before spawn, `start-check` with `{ id, token }` rechecks the claim and current quota, provider, tree, dependency, order, and schedule gates.
+- Before spawn, autonomous `start-check` sends `{ id, token, worktree: true }` and rechecks the claim and current quota, provider, tree, dependency, order, and schedule gates. It may waive only the sole dirty-root gate because the planned session runs in its separate worktree.
 - Desktop main then validates the grant again against the actual plan provider, model, and effort.
 - The owner's existing Requeue or Mark done action can reconcile an unbound autonomous claim. Neither action controls a running session.
 - Starting never changes the task's state or column. The card moves
@@ -2477,7 +2478,8 @@ serves no other client.
   `{ repositoryId, action, payload }`. Three layers gate it, and each refuses on its own:
   1. The gateway takes the POST only with the session cookie, its own `Origin`, a JSON
      content type, no query, and a declared body of at most 17 KiB. It forwards the body
-     with the desktop token and the `x-pomegr-lan-gateway` mark. Only the start and agent-chat POST paths described below are also accepted.
+  with the desktop token and the `x-pomegr-lan-gateway` mark. Only the start, agent-chat,
+  and pilot POST paths described below are also accepted.
   2. The desktop web gate (`installLocalRequestGate` in `server/web/server.mjs`) lets
      through that one POST path, with the token and no `Origin`. Every other method and
      path stays read-only.
@@ -2523,6 +2525,14 @@ serves no other client.
   Aril proposed can be applied on a paired device (task T-75, 2026-10-12): desktop main
   then sends `queue_settings` with `{ on }`, the action of **Queue control** above, so
   the chat route gives the device no queue authority it did not have.
+- **Aril pilot.** A paired device may read and configure the desktop-owned pilot, review
+  its finite grant, and confirm activation, pause, revoke, or reconcile through the
+  existing actions. Its session starts still run on the desktop computer. The gateway
+  answers `POST /api/aril-pilot` itself, with the pairing cookie, its own `Origin`, JSON,
+  no query or transfer encoding, and a body up to 17 KiB. It never forwards pilot content
+  to the web host.
+  The pilot's data boundary and privacy rules are owned by
+  [Agent chat: Pilot privacy](agent-chat.md#pilot-privacy).
 - **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
   `desktop`, `paired`, `absent`, or `pending` until the client knows which, so no control
   or note is drawn and then taken back. `sendTaskAction` uses the bridge when there is
@@ -2543,6 +2553,7 @@ serves no other client.
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), on a session that is assigned to a task `assignedTasks` (the same reference for each such task), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds, including queue on and off; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board |
+| `POST /api/aril-pilot` | An authenticated paired device through the desktop LAN gateway | `{ operation, payload }` for the existing `read`, `activate`, `pause`, or `revoke` operation; answers the bounded pilot projection or a fixed error, with no forwarding to the web host |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status. The agent chat's applied start proposal reaches the same starter in desktop main, with the event of its own trusted `pomegr:agent-chat` call; its confirmation is **Start session** on the proposal card, not the native one |
 | `POST /api/tasks/start` | A paired device through the desktop LAN gateway, behind confirmation on that device and repeated authorization checks | `{ repositoryId, taskId, confirmed: true, worktree?: true }`, at most 512 bytes; answers only `{ status }` from the IPC start allowlist; never forwards or exposes a start plan |
@@ -2680,6 +2691,7 @@ serves no other client.
 ## Privacy
 
 - A [temporary pilot](agent-chat.md#temporary-autonomous-pilot) sends only scoped task IDs, revision guards, a task digest, execution configuration, and opaque attempt identifiers to dispatch.
+- Every autonomous pilot start requests a separate worktree. Its final `start-check` repeats that request and may waive only the sole `tree_dirty` gate for the repository root; every other gate still holds the start.
 - Its durable autonomous dispatch marker holds a dispatch token digest and timestamp, plus a fixed autonomous flag.
 - A per-repository attempt tombstone retains only a bounded opaque attempt identifier, never an objective, reason, or inference answer.
 - These private dispatch values never enter `GET /api/tasks`, `/api/state`, observation checkpoints, reports, logs, notifications, or diagnostics.
@@ -2694,6 +2706,8 @@ serves no other client.
 - A paired device may send queue on and off through the existing authenticated task action route. Only the desktop queue runner launches sessions.
 - A paired device may also apply a queue proposal of the agent chat. Desktop main then sends the same `queue_settings` action with `{ on }` and nothing else, and the chat keeps only the state asked for and one fixed result.
 - A paired manual start sends only the repository ID, task ID, confirmation flag, and optional separate-worktree flag to the desktop gateway. Its answer exposes only a fixed start status. The private plan, prompt, filesystem paths, image files, credentials, and dispatch token stay on the desktop's existing private launch path.
+- A paired pilot request uses the paired gateway route and the same desktop coordinator as trusted renderer IPC. It carries the repository ID and one existing operation; only `activate` also carries the reviewed grant fields. The response may contain the current and historical grant projections for that repository. A same-computer browser and an unpaired device cannot reach this route.
+- The pilot route uses the paired-device session cookie over the local network. Revoking phone access ends the route immediately. Only the desktop coordinator starts selected task sessions.
 
 Task text, the own condition, and a feature's name, description, and app version are
 user-authored content, a new data class. A description or an app version that an agent

@@ -7,7 +7,7 @@ export const ARIL_PILOT_CHANNEL = "pomegr:aril-pilot";
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const unavailable = () => ({ ok: false, error: "unavailable" });
 
-/** Desktop-only transport. No browser route, provider acquisition in GET, or renderer paths. */
+/** Trusted IPC and paired gateway transport for the desktop-owned pilot. */
 export function installArilPilotIpc(options) {
   const { ipcMain, isTrustedEvent, chat, starter, dataRoot, authorizationToken } = options;
   let origin = null;
@@ -33,18 +33,24 @@ export function installArilPilotIpc(options) {
     refreshUsage: options.refreshUsage,
     decide: (input) => chat.decidePilot(input), isBusy: () => chat.isBusy(), starter,
   });
-  ipcMain.removeHandler(ARIL_PILOT_CHANNEL);
-  ipcMain.handle(ARIL_PILOT_CHANNEL, async (event, operation, payload) => {
-    if (!isTrustedEvent?.(event)) return { ok: false, error: "desktop_only" };
+  const handle = async (operation, payload, isAuthorized = async () => true) => {
     if (!["read", "activate", "pause", "revoke"].includes(operation)
       || !payload || typeof payload !== "object" || Array.isArray(payload)
       || !REPOSITORY_ID.test(payload.repositoryId ?? "")) return { ok: false, error: "invalid" };
     if (operation !== "activate" && Object.keys(payload).length !== 1) return { ok: false, error: "invalid" };
     try {
       if (Buffer.byteLength(JSON.stringify(payload)) > 16_384) return { ok: false, error: "invalid" };
-      return await (operation === "activate" ? pilot.activate(payload) : pilot[operation](payload.repositoryId));
+      if (operation === "read") return await pilot.read(payload.repositoryId);
+      return await (operation === "activate" ? pilot.activate(payload, isAuthorized) : pilot[operation](payload.repositoryId, isAuthorized));
     } catch { return unavailable(); }
+  };
+  ipcMain.removeHandler(ARIL_PILOT_CHANNEL);
+  ipcMain.handle(ARIL_PILOT_CHANNEL, async (event, operation, payload) => {
+    if (!isTrustedEvent?.(event)) return { ok: false, error: "desktop_only" };
+    return handle(operation, payload);
   });
   pilot.start();
-  return () => { ipcMain.removeHandler(ARIL_PILOT_CHANNEL); pilot.dispose(); };
+  const dispose = () => { ipcMain.removeHandler(ARIL_PILOT_CHANNEL); pilot.dispose(); };
+  dispose.handlePaired = handle;
+  return dispose;
 }

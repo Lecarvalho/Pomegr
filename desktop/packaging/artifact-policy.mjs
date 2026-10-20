@@ -37,6 +37,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/agent-chat-runner.mjs",
   "desktop/runtime/agent-chat-store.mjs",
   "desktop/runtime/aril-pilot.mjs",
+  "desktop/runtime/aril-pilot-concurrency.mjs",
   "desktop/runtime/aril-pilot-ipc.mjs",
   "desktop/runtime/aril-pilot-prompt.mjs",
   "desktop/runtime/aril-pilot-store.mjs",

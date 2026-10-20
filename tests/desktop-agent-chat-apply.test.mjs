@@ -515,7 +515,10 @@ test("the chat is wired once into the shell, the LAN gateway, and the preload", 
   const [main, preload, sharing] = await Promise.all(["shell-main.mjs", "preload.cjs", "lan-sharing.mjs"].map(sourceOf));
   assert.match(main, /installAgentChatIpc\(\{ \.\.\.taskBridge, chat: agentChat \}\)/u);
   // A paired device's call carries no origin, so it can never start a session from the chat.
-  assert.match(main, /agentChat: \(operation, payload\) => agentChat\.handle\(operation, payload\), agentChatImage: \(operation, payload\) => agentChat\.image\(operation, payload\), taskStart:/u);
+  assert.match(main, /agentChat: \(operation, payload\) => agentChat\.handle\(operation, payload\)/u);
+  assert.match(main, /agentChatImage: \(operation, payload\) => agentChat\.image\(operation, payload\)/u);
+  assert.match(main, /arilPilot: removePilotBridge\.handlePaired/u);
+  assert.match(main, /taskStart: taskStarter\.startPaired/u);
   assert.match(main, /createAgentChat\(\{\s+monitorOrigin: privateMonitorOrigin, authorizationToken,/u);
   assert.match(main, /startTask: \(event, repositoryId, taskId\) => taskStarter\.startApproved\(event, repositoryId, taskId\) \}\);/u);
   assert.equal([...main.matchAll(/createAgentChat\(/gu)].length, 1);

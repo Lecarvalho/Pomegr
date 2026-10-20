@@ -16,66 +16,6 @@ import {
 
 import { repositoryId, trusted, origin, exe, codexExe, root, powershell, token, sessionEnvironment, environment, json, basePlan, fakeChild, harness, go, aborted } from "./helpers/task-dispatch-harness.mjs";
 
-const autonomousRequest = (isAuthorized = () => true) => ({
-  attemptId: `pilot-${"a".repeat(24)}_T-3`, expectedUpdatedAt: "2026-10-18T12:00:00.000Z", expectedTaskDigest: "a".repeat(64),
-  expectedRun: { provider: null, model: null, effort: null }, isAuthorized,
-});
-
-test("autonomous starts require a grant callback, skip confirmation, and share the native slot", async () => {
-  let release;
-  const pending = new Promise((resolve) => { release = resolve; });
-  const seen = [];
-  const h = harness({ answer: async (url) => {
-    if (url.endsWith("start-check")) return json({ ok: true });
-    await pending;
-    return json({ ok: true, plan: basePlan() });
-  } });
-  assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", { ...autonomousRequest(), isAuthorized: undefined }), { status: "invalid" });
-  const started = h.start.startAutonomous(repositoryId, "T-3", autonomousRequest((selection) => { seen.push(selection); return true; }));
-  assert.deepEqual(await go(h), { status: "busy" });
-  assert.deepEqual(await h.start.startQueued(repositoryId, "T-3"), { status: "busy" });
-  release();
-  assert.deepEqual(await started, { status: "started" });
-  assert.deepEqual(h.log, ["start-plan", "start-check"]);
-  assert.deepEqual(seen.at(-1), { taskId: "T-3", provider: "claude", model: null, effort: null });
-  const { isAuthorized: _callback, ...decision } = autonomousRequest();
-  assert.deepEqual(h.calls[0].body.payload, { id: "T-3", autonomous: decision });
-});
-
-test("autonomous grant revocation prevents worktree effects and aborts the claimed dispatch", async () => {
-  let ensured = false;
-  const h = harness({ plan: { ...basePlan(), worktree: true }, overrides: { worktrees: { ensure: async () => { ensured = true; } } } });
-  assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", autonomousRequest((selection) => selection === undefined)), { status: "cancelled" });
-  assert.equal(ensured, false);
-  assert.equal(h.spawns.length, 0);
-  assert.equal(aborted(h).length, 1);
-});
-
-test("autonomous final gate revalidation and revoked grant each prevent spawning", async () => {
-  for (const revoke of [false, true]) {
-    let valid = true;
-    const h = harness({ answer: async (url) => {
-      if (url.endsWith("start-check")) {
-        valid = !revoke;
-        return json(revoke ? { ok: true } : { ok: false, error: "gate_held" });
-      }
-      return json({ ok: true, plan: basePlan() });
-    } });
-    assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", autonomousRequest(() => valid)), { status: revoke ? "cancelled" : "gate_held" });
-    assert.equal(h.spawns.length, 0);
-    assert.equal(aborted(h).length, 1);
-  }
-});
-
-test("an ambiguous autonomous launcher outcome keeps the durable claim and worktree", async () => {
-  let removed = false;
-  const h = harness({ plan: { ...basePlan(), worktree: true }, answer: async (url) => json(url.endsWith("start-check") ? { ok: true } : { ok: true, plan: { ...basePlan(), worktree: true } }),
-    spawnImpl: () => fakeChild(1), overrides: { worktrees: { ensure: async () => ({ ok: true, directory: root, created: true }), remove: async () => { removed = true; } } } });
-  assert.deepEqual(await h.start.startAutonomous(repositoryId, "T-3", autonomousRequest()), { status: "uncertain" });
-  assert.equal(aborted(h).length, 0);
-  assert.equal(removed, false);
-});
-
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");
   assert.ok(Object.isFrozen(TASK_START_STATUSES));

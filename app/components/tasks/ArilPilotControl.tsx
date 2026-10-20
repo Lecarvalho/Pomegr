@@ -6,7 +6,7 @@ import type { ArilPilot, ArilPilotActivation, ArilPilotProvider, ArilPilotRun } 
 import { activateArilPilot, callArilPilot } from "../../aril-pilot-client";
 import { TaskDialog, TaskModalChrome } from "./TaskModalFrame";
 
-type Props = { repositoryId: string; tasks: Task[]; desktop: boolean; onReconcile?: (taskId: string) => Promise<boolean> };
+type Props = { repositoryId: string; tasks: Task[]; desktop: boolean; paired?: boolean; onReconcile?: (taskId: string) => Promise<boolean> };
 type RunRow = { provider: ArilPilotProvider | ""; model: string };
 const providerLabel = (provider: ArilPilotProvider) => provider === "claude" ? "Claude Code" : "Codex";
 
@@ -16,7 +16,7 @@ function dateLine(value: string | null): string {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
 }
 
-export function ArilPilotControl({ repositoryId, tasks, desktop, onReconcile }: Props) {
+export function ArilPilotControl({ repositoryId, tasks, desktop, paired = false, onReconcile }: Props) {
   const [pilot, setPilot] = useState<ArilPilot | null>(null);
   const [history, setHistory] = useState<ArilPilot[]>([]);
   const [open, setOpen] = useState(false);
@@ -37,18 +37,18 @@ export function ArilPilotControl({ repositoryId, tasks, desktop, onReconcile }: 
   const opener = useRef<HTMLButtonElement>(null);
 
   const read = useCallback(async () => {
-    if (!desktop) return;
+    if (!desktop && !paired) return;
     const result = await callArilPilot("read", { repositoryId });
     if (result.ok) { setPilot(result.pilot); setHistory(result.history ?? []); }
     else if (result.error !== "desktop_only") setError("Pilot status is unavailable right now.");
-  }, [desktop, repositoryId]);
+  }, [desktop, paired, repositoryId]);
 
   useEffect(() => {
-    if (!desktop) return;
+    if (!desktop && !paired) return;
     const firstRead = window.setTimeout(() => { void read(); }, 0);
     const timer = window.setInterval(() => { void read(); }, 10_000);
     return () => { window.clearTimeout(firstRead); window.clearInterval(timer); };
-  }, [desktop, read]);
+  }, [desktop, paired, read]);
 
   const openSetup = () => {
     setGoal(""); setTaskIds([]); setDurationHours(24); setRoundLimit(20); setStartLimit(3); setConcurrency(1); setMinIntervalMinutes(5);
@@ -110,7 +110,7 @@ export function ArilPilotControl({ repositoryId, tasks, desktop, onReconcile }: 
     }
   };
 
-  if (!desktop) return <p className="taskBoardNote taskPilotUnavailable">Aril pilot is available in the Pomegr desktop app only.</p>;
+  if (!desktop && !paired) return <p className="taskBoardNote taskPilotUnavailable">Aril pilot is available in the Pomegr desktop app or on a paired phone.</p>;
 
   const active = pilot?.status === "active";
   const hasExisting = pilot !== null && ["active", "paused", "needs_you"].includes(pilot.status);
@@ -179,7 +179,7 @@ export function ArilPilotControl({ repositoryId, tasks, desktop, onReconcile }: 
           <p><strong>Goal</strong><span>{payload.goal}</span></p>
           <p><strong>Selected tasks</strong><span>{payload.taskIds.map((id) => `${id} · ${taskById.get(id)?.text.split("\n")[0] ?? "Task no longer on board"}`).join("; ")}</span></p>
           <p><strong>Deadline</strong><span>{deadlinePreview ? dateLine(deadlinePreview) : `${durationHours} hours from activation`} ({durationHours} hours from activation)</span></p>
-          <p><strong>Granted actions</strong><span>Start a new session for a selected task, or fill an unset task run configuration.</span></p>
+          <p><strong>Granted actions</strong><span>Start a new session for a selected task in its own worktree, or fill an unset task run configuration. Uncommitted changes in the repository are not copied.</span></p>
           <p><strong>Allowed task runs</strong><span>{payload.allowedRuns.map((run) => `${providerLabel(run.provider)} · ${run.model ?? "Default model"}`).join("; ")}</span></p>
           <p><strong>Inference run</strong><span>{providerLabel(payload.inference.provider)} · {payload.inference.model ?? "Default model"}</span></p>
           <p><strong>Limits</strong><span>{payload.roundLimit} rounds · {payload.startLimit} starts · concurrency {payload.concurrency} · at least {payload.minIntervalMinutes} minutes between rounds</span></p>

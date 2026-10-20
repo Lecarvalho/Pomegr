@@ -177,6 +177,11 @@
   .taskPilotRunRow > button { grid-column: 1 / -1; justify-self: start; }
   .taskPilotReview p { grid-template-columns: 1fr; gap: var(--space-1); }
 }
+@media (max-width: 760px), (pointer: coarse) {
+  .taskPilotForm :is(textarea, input, select) { min-height: 44px; }
+  .taskPilotForm textarea { min-height: 88px; }
+  .taskPilotTaskList label { min-height: 44px; align-items: center; }
+}
 
 /* Loading, unavailable, desktop-only and empty states. */
 .taskBoardSkeleton { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: var(--space-3); overflow-x: auto; }

@@ -1,4 +1,5 @@
 import type { ArilPilot, ArilPilotActivation, ArilPilotOperation, ArilPilotPayload, ArilPilotResult } from "../shared/aril-pilot-contract";
+import { clientAccessMode } from "./hooks/ClientAccessContext";
 
 export type ArilPilotDesktopBridge = {
   arilPilot(operation: ArilPilotOperation, payload: ArilPilotPayload): Promise<unknown>;
@@ -58,10 +59,18 @@ function validateResult(value: unknown): ArilPilotResult {
 
 export async function callArilPilot(operation: ArilPilotOperation, payload: ArilPilotPayload): Promise<ArilPilotResult> {
   const bridge = arilPilotBridge();
-  if (!bridge) return { ok: false, error: "desktop_only" };
+  if (!bridge && (typeof window === "undefined" || clientAccessMode() !== "lan")) return { ok: false, error: "desktop_only" };
   if (!isRecord(payload) || typeof payload.repositoryId !== "string" || !REPOSITORY_ID.test(payload.repositoryId)) return { ok: false, error: "invalid" };
   try {
-    return validateResult(await bridge.arilPilot(operation, payload));
+    if (bridge) return validateResult(await bridge.arilPilot(operation, payload));
+    const body = JSON.stringify({ operation, payload });
+    if (new TextEncoder().encode(body).byteLength > 17 * 1024) return { ok: false, error: "invalid" };
+    const response = await fetch("/api/aril-pilot", {
+      method: "POST", cache: "no-store", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }, body,
+    });
+    if (!response.ok) return { ok: false, error: "unavailable" };
+    return validateResult(await response.json());
   } catch {
     return { ok: false, error: "unavailable" };
   }

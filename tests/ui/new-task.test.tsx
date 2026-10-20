@@ -285,6 +285,14 @@ describe("with the desktop bridge", () => {
 });
 
 describe("on a paired device", () => {
+  function mockAction(answer: () => Response) {
+    const requests = vi.fn(async (_url: Parameters<typeof fetch>[0], _init?: RequestInit) => answer());
+    vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => url === "/api/aril-pilot"
+      ? Promise.resolve(Response.json({ ok: true, pilot: null, history: [] }))
+      : requests(url, init));
+    return requests;
+  }
+
   beforeEach(() => {
     setBridge(undefined);
     access.mode = "lan";
@@ -297,7 +305,7 @@ describe("on a paired device", () => {
   }
 
   it("creates a task through the one paired route, with the fixed action and no board in the answer", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, taskId: "T-7" }));
+    const fetchSpy = mockAction(() => Response.json({ ok: true, taskId: "T-7" }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.getByText("Sessions start on the computer running Pomegr.")).toBeInTheDocument();
@@ -313,7 +321,7 @@ describe("on a paired device", () => {
   });
 
   it("keeps the draft and says so once when the route refuses or cannot be reached", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("Request unavailable", { status: 403 }));
+    const fetchSpy = mockAction(() => new Response("Request unavailable", { status: 403 }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     typeRich(await openPanel(user), "Kept");
@@ -324,7 +332,7 @@ describe("on a paired device", () => {
   });
 
   it("turns the queue on, retries a paused queue, and turns it off", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ ok: true }));
+    const fetchSpy = mockAction(() => Response.json({ ok: true }));
     const queue = (status: "idle" | "running" | "paused") => ({ status, blockedBy: null, pauseReason: null, order: [] });
     const ready = { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }] };
     useTasks.mockReturnValue({ board: { ...ready, queue: queue("idle") }, refresh });

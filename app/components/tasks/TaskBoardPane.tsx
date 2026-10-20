@@ -112,8 +112,8 @@ export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadc
         {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
-      {ready && access !== "pending" && <ArilPilotControl key={repositoryId} repositoryId={repositoryId} tasks={board.tasks} desktop={desktop}
-        onReconcile={desktop ? (taskId) => edits.resolveTask(taskId, false) : undefined} />}
+      {ready && access !== "pending" && <ArilPilotControl key={repositoryId} repositoryId={repositoryId} tasks={board.tasks} desktop={desktop} paired={access === "paired"}
+        onReconcile={editable ? (taskId) => edits.resolveTask(taskId, false) : undefined} />}
       <TaskBoardView board={board} reveal={reveal} featureSelection={featureSelection} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
         newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} features={desktop ? featureEntry : undefined} />
       {editable && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onFollowUpFailed={openCreated} onClose={close} />}

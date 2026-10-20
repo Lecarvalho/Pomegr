@@ -743,7 +743,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   }
 
   // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
-  const startGateHold = (repositoryId, resolveGateFacts) => (taskId, { run, autonomous = false, ignoreOwnClaim = false } = {}) => {
+  const startGateHold = (repositoryId, resolveGateFacts) => (taskId, { run, autonomous = false, ignoreOwnClaim = false, separateWorktree = false } = {}) => {
     let rows = loadRows(repositoryId);
     if (ignoreOwnClaim) rows = { ...rows, tasks: rows.tasks.map((row) => Number(row.number) === Number(taskId.slice(2)) ? { ...row, dispatch_token: null } : row) };
     let board = projectBoard(repositoryId, rows, { at: now() });
@@ -751,6 +751,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     if (run) board = { ...board, tasks: board.tasks.map((task) => task.id === taskId ? { ...task, run } : task) };
     const gates = startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at: now(), manual: !autonomous, autonomous });
     if (gates.ok) return false;
+    if (separateWorktree && gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty") return false;
     return gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty" ? "tree_dirty" : true;
   };
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {

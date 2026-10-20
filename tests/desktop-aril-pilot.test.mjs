@@ -6,7 +6,8 @@ import path from "node:path";
 import test from "node:test";
 import { createArilPilotCoordinator } from "../desktop/runtime/aril-pilot.mjs";
 import { createArilPilotStore, normalizePilotGrant } from "../desktop/runtime/aril-pilot-store.mjs";
-import { parsePilotDecision, pilotEvidence } from "../desktop/runtime/aril-pilot-prompt.mjs";
+import { composePilotPrompt, parsePilotDecision, pilotEvidence } from "../desktop/runtime/aril-pilot-prompt.mjs";
+import { pilotRunningTaskIds } from "../desktop/runtime/aril-pilot-concurrency.mjs";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const secondRepository = "repo-abcdef0123456789abcdef01";
@@ -54,7 +55,7 @@ async function harness(t, overrides = {}) {
 test("bounded defaults persist only private grants and reject scope expansion", async (t) => {
   const h = await harness(t);
   const result = await h.activate();
-  assert.equal(result.ok, true);
+  assert.equal(result.ok, true, JSON.stringify(result));
   assert.deepEqual([result.pilot.roundLimit, result.pilot.startLimit, result.pilot.concurrency, result.pilot.minIntervalMinutes], [20, 3, 1, 5]);
   assert.equal(result.pilot.expiresAt, "2026-10-19T10:00:00.000Z");
   assert.equal(Object.hasOwn(result.pilot, "lastFingerprint"), false);
@@ -144,6 +145,58 @@ test("interactive priority interrupted inference waits with an explicit receipt"
   assert.equal(saved.status, "active"); assert.equal(saved.roundsUsed, 1); assert.equal(saved.receipts[0].status, "interrupted");
 });
 
+test("read and activation during a live provider run do not recover its pending receipt", async (t) => {
+  const entered = deferred(); const release = deferred();
+  const h = await harness(t);
+  const secondBoard = structuredClone(h.board);
+  secondBoard.repositoryId = secondRepository;
+  const boards = new Map([[repositoryId, h.board], [secondRepository, secondBoard]]);
+  h.options.readBoard = async (id) => structuredClone(boards.get(id));
+  const decide = h.options.decide;
+  h.options.decide = async (request) => { entered.resolve(); await release.promise; return decide(request); };
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  await h.activate();
+  const running = h.pilot.tick();
+  await entered.promise;
+
+  assert.equal((await h.pilot.read(repositoryId)).pilot.receipts.at(-1).status, "pending");
+  assert.equal((await h.pilot.activate(spec({ repositoryId: secondRepository }))).ok, true);
+  assert.equal((await h.pilot.read(repositoryId)).pilot.receipts.at(-1).status, "pending");
+  assert.equal((await h.pilot.read(repositoryId)).pilot.status, "active");
+
+  release.resolve();
+  await running;
+  assert.equal((await h.pilot.read(repositoryId)).pilot.receipts.at(-1).status, "complete");
+});
+
+test("activation authorization is rechecked at the serialized commit boundary", async (t) => {
+  const entered = deferred(); const release = deferred();
+  const h = await harness(t);
+  let authorized = true;
+  h.options.readBoard = async () => { entered.resolve(); await release.promise; return structuredClone(h.board); };
+  const activating = h.pilot.activate(spec(), async () => authorized);
+  await entered.promise;
+  authorized = false;
+  release.resolve();
+  assert.deepEqual(await activating, { ok: false, error: "conflict" });
+  assert.equal((await createArilPilotStore({ directory: h.directory }).read()).grants.length, 0);
+  assert.equal((await h.activate()).ok, true);
+  assert.deepEqual(await h.pilot.pause(repositoryId, async () => false), { ok: false, error: "conflict" });
+  assert.deepEqual(await h.pilot.revoke(repositoryId, async () => false), { ok: false, error: "conflict" });
+  assert.equal((await h.read()).status, "active");
+  await h.pilot.revoke(repositoryId);
+  h.action = "start";
+  let pairedAuthorization = true;
+  const approved = await h.pilot.activate(spec(), async () => pairedAuthorization);
+  assert.equal(approved.ok, true);
+  pairedAuthorization = false;
+  const journal = JSON.parse(await readFile(path.join(h.directory, "authority-v1.json"), "utf8"));
+  assert.equal(Object.hasOwn(journal.grants.at(-1), "isAuthorized"), false);
+  await h.pilot.tick();
+  assert.equal(h.starts.length, 1);
+  assert.equal((await h.read()).status, "active");
+});
+
 test("quota holds apply to inference and reset waits require fresh committed acquisition", async (t) => {
   const h = await harness(t);
   h.board.queue.gates.usage.codex.status = "over";
@@ -167,6 +220,106 @@ test("fresh quota over threshold blocks even when the board cache still says ok"
   const h = await harness(t);
   h.usage.providers[1].usageLimits.limits[0].percent = 85;
   await h.activate(); await h.pilot.tick(); assert.equal(h.calls.length, 0);
+});
+
+test("task quota waits survive changing observations and restart without spending decision rounds", async (t) => {
+  const h = await harness(t);
+  h.board.tasks[0].run = { provider: "claude", model: null, effort: "high" };
+  const claude = h.usage.providers[0].usageLimits;
+  claude.limits[0].percent = 97;
+  claude.limits[0].resetsAt = "2026-10-18T13:00:00.000Z";
+  await h.activate();
+  for (let i = 0; i < 30; i += 1) {
+    for (const row of h.usage.providers) row.usageLimits.fetchedAt = h.time.toISOString();
+    h.usage.providers[1].usageLimits.limits[0].percent = 20 + i;
+    h.board.queue.gates.usage.codex.fiveHourPercent = 20 + i;
+    h.board.tasks[0].text += ".";
+    await h.pilot.tick();
+    if (i === 10) { h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options); }
+    h.advance();
+  }
+  assert.equal(h.calls.length, 0);
+  assert.equal((await h.read()).roundsUsed, 0);
+  assert.equal((await h.read()).status, "active");
+  assert.equal((await h.read()).nextWakeAt, "2026-10-18T13:00:00.000Z");
+  h.time = new Date("2026-10-18T13:00:00.000Z");
+  await h.pilot.tick();
+  assert.equal(h.refreshes, 1);
+  assert.equal(h.calls.length, 0);
+  h.advance();
+  for (const row of h.usage.providers) row.usageLimits.fetchedAt = h.time.toISOString();
+  claude.limits[0].percent = 0;
+  claude.limits[0].resetsAt = "2026-10-18T18:00:00.000Z";
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 1);
+});
+
+test("fresh task capacity can release a quota wait before its reset hint", async (t) => {
+  const h = await harness(t);
+  h.board.tasks[0].run = { provider: "claude", model: null, effort: "high" };
+  h.usage.providers[0].usageLimits.limits[0].percent = 97;
+  await h.activate(); await h.pilot.tick();
+  assert.equal(h.calls.length, 0);
+  h.advance();
+  h.usage.providers[0].usageLimits.fetchedAt = h.time.toISOString();
+  h.usage.providers[0].usageLimits.limits[0].percent = 10;
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 1);
+});
+
+test("capacity recovery wakes a grant even when it matches the last successful decision readings", async (t) => {
+  const h = await harness(t);
+  h.board.tasks[0].run = { provider: "claude", model: null, effort: "high" };
+  await h.activate(); await h.pilot.tick();
+  assert.equal(h.calls.length, 1);
+  h.advance(); h.usage.providers[0].usageLimits.limits[0].percent = 97;
+  await h.pilot.tick(); assert.equal(h.calls.length, 1);
+  h.advance();
+  h.usage.providers[0].usageLimits.fetchedAt = h.time.toISOString();
+  h.usage.providers[0].usageLimits.limits[0].percent = 20;
+  await h.pilot.tick(); assert.equal(h.calls.length, 2);
+});
+
+test("a held task provider does not prevent another authorized provider from working", async (t) => {
+  const h = await harness(t, { action: "start" });
+  h.board.tasks.push(task("T-2", { run: { provider: "claude", model: null, effort: "high" } }));
+  h.usage.providers[0].usageLimits.limits[0].percent = 97;
+  await h.activate({ taskIds: ["T-1", "T-2"] }); await h.pilot.tick();
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.starts[0][1], "T-1");
+});
+
+test("read-only decision failures retry with durable backoff and stop after three consecutive failures", async (t) => {
+  const h = await harness(t);
+  h.options.decide = async () => { h.calls.push(true); return { status: "failed" }; };
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  await h.activate(); await h.pilot.tick();
+  assert.equal((await h.read()).status, "active");
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  h.advance(4); h.board.tasks[0].text += " changed";
+  await h.pilot.tick(); assert.equal(h.calls.length, 1);
+  h.advance(1); await h.pilot.tick(); assert.equal(h.calls.length, 2);
+  assert.equal((await h.read()).status, "active");
+  h.advance(5); await h.pilot.tick(); assert.equal(h.calls.length, 2);
+  h.advance(5);
+  for (const row of h.usage.providers) row.usageLimits.fetchedAt = h.time.toISOString();
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 3); assert.equal(h.starts.length, 0);
+  assert.equal((await h.read()).status, "needs_you");
+});
+
+test("an invalid decision retries without launch and a valid response recovers", async (t) => {
+  const h = await harness(t, { action: "start" });
+  const decide = h.options.decide;
+  h.options.decide = async (request) => h.calls.length ? decide(request) : (h.calls.push(request), { status: "complete", text: "invalid private output" });
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  await h.activate(); await h.pilot.tick();
+  assert.equal(h.starts.length, 0);
+  assert.equal((await h.read()).summary, "The decision response was invalid.");
+  assert.equal(JSON.stringify(await h.read()).includes("invalid private output"), false);
+  h.advance(); await h.pilot.tick();
+  assert.equal(h.starts.length, 1);
+  assert.equal((await h.read()).status, "active");
 });
 
 test("quota changes after inference hold the launch and never repeat it", async (t) => {
@@ -238,7 +391,7 @@ test("restart with a pending decision consumes its reservation without rerunning
   assert.equal(h.calls.length, 0); assert.equal((await h.read()).roundsUsed, 1); assert.equal((await h.read()).receipts[0].status, "interrupted");
 });
 
-test("revoke retains historical grants and authorizes only one repository", async (t) => {
+test("one active grant per repository keeps revoked history scoped", async (t) => {
   const h = await harness(t);
   await h.activate(); await h.pilot.revoke(repositoryId);
   h.board.repositoryId = secondRepository;
@@ -247,6 +400,96 @@ test("revoke retains historical grants and authorizes only one repository", asyn
   assert.equal((await h.pilot.read(repositoryId)).pilot.status, "revoked");
   assert.equal((await h.pilot.read(repositoryId)).history.length, 0);
   assert.equal((await h.pilot.activate(spec())).error, "unavailable");
+});
+
+test("different repositories run independent grants with identical task IDs", async (t) => {
+  const h = await harness(t);
+  h.action = "start";
+  const opus = { provider: "claude", model: "claude-opus-4-1" };
+  h.board.queue.status = "off";
+  h.board.tasks[0].run = { ...opus, effort: "high" };
+  const secondBoard = structuredClone(h.board);
+  secondBoard.repositoryId = secondRepository;
+  secondBoard.tasks[0].run = { provider: null, model: null, effort: "high" };
+  secondBoard.tasks[0].group = "grp-0123456789ab";
+  const boards = new Map([[repositoryId, h.board], [secondRepository, secondBoard]]);
+  h.options.readBoard = async (id) => structuredClone(boards.get(id));
+  const decide = h.options.decide;
+  h.options.decide = async (request) => {
+    const result = await decide(request);
+    if (request.repositoryId !== repositoryId) return result;
+    const answer = JSON.parse(result.text);
+    answer.provider = opus.provider; answer.model = opus.model;
+    return { ...result, text: JSON.stringify(answer) };
+  };
+  h.options.starter.startAutonomous = async (...args) => {
+    h.starts.push(args);
+    const selected = args[0] === repositoryId ? opus : choice;
+    assert.equal(await args[2].isAuthorized({ taskId: args[1], ...selected, effort: "high" }), true);
+    return { status: "started" };
+  };
+  assert.equal((await h.options.readBoard(repositoryId)).repositoryId, repositoryId);
+  const first = await h.activate({ allowedRuns: [choice, opus] });
+  assert.equal(first.ok, true, JSON.stringify(first));
+  assert.equal((await h.options.readBoard(secondRepository)).repositoryId, secondRepository);
+  assert.equal((await createArilPilotStore({ directory: h.directory }).read()).grants.length, 1);
+  const second = await h.pilot.activate(spec({ repositoryId: secondRepository, goal: "Finish Pokrr work" }));
+  assert.equal(second.ok, true, JSON.stringify(second));
+  assert.equal((await h.pilot.activate(spec())).error, "conflict");
+
+  await h.pilot.tick();
+  assert.deepEqual(h.calls.map((call) => call.repositoryId).sort(), [repositoryId, secondRepository].sort());
+  assert.equal((await h.pilot.read(repositoryId)).pilot.roundsUsed, 1);
+  assert.equal((await h.pilot.read(secondRepository)).pilot.roundsUsed, 1);
+  assert.equal((await h.pilot.read(repositoryId)).pilot.startsUsed, 1);
+  assert.equal((await h.pilot.read(secondRepository)).pilot.startsUsed, 1);
+  assert.deepEqual(h.starts.map(([id, taskId]) => [id, taskId]).sort(), [[repositoryId, "T-1"], [secondRepository, "T-1"]].sort());
+  assert.notEqual(h.starts[0][2].attemptId, h.starts[1][2].attemptId);
+  assert.equal((await h.pilot.read(repositoryId)).pilot.taskIds[0], "T-1");
+  assert.equal((await h.pilot.read(secondRepository)).pilot.taskIds[0], "T-1");
+  await h.pilot.pause(secondRepository);
+  assert.equal((await h.pilot.read(secondRepository)).pilot.status, "paused");
+  assert.equal((await h.pilot.read(repositoryId)).pilot.status, "active");
+  await h.pilot.revoke(repositoryId);
+  assert.equal((await h.pilot.read(repositoryId)).pilot.status, "revoked");
+  assert.equal((await h.pilot.read(secondRepository)).pilot.status, "paused");
+
+  const store = createArilPilotStore({ directory: h.directory });
+  const duplicate = await store.update((state) => {
+    const copy = structuredClone(state.grants.find((grant) => grant.repositoryId === secondRepository));
+    copy.status = "active";
+    copy.id = `pilot-${"f".repeat(24)}`;
+    state.grants.push(copy);
+  });
+  assert.deepEqual(duplicate, { ok: false, error: "invalid" });
+  const journalPath = path.join(h.directory, "authority-v1.json");
+  const journal = JSON.parse(await readFile(journalPath, "utf8"));
+  const copy = structuredClone(journal.grants.find((grant) => grant.repositoryId === secondRepository));
+  copy.status = "active";
+  copy.id = `pilot-${"e".repeat(24)}`;
+  journal.grants.push(copy);
+  await writeFile(journalPath, JSON.stringify(journal));
+  const restarted = createArilPilotCoordinator({ ...h.options, directory: h.directory });
+  t.after(() => restarted.dispose());
+  assert.equal((await restarted.read(repositoryId)).error, "unavailable");
+});
+
+test("active repositories rotate first visitation across sweeps", async (t) => {
+  const h = await harness(t);
+  const secondBoard = structuredClone(h.board);
+  secondBoard.repositoryId = secondRepository;
+  const boards = new Map([[repositoryId, h.board], [secondRepository, secondBoard]]);
+  h.options.readBoard = async (id) => structuredClone(boards.get(id));
+  await h.activate();
+  assert.equal((await h.pilot.activate(spec({ repositoryId: secondRepository }))).ok, true);
+
+  await h.pilot.tick();
+  assert.deepEqual(h.calls.map((call) => call.repositoryId), [repositoryId, secondRepository]);
+  h.advance();
+  h.board.tasks[0].text += " changed";
+  secondBoard.tasks[0].text += " changed";
+  await h.pilot.tick();
+  assert.deepEqual(h.calls.slice(2).map((call) => call.repositoryId), [secondRepository, repositoryId]);
 });
 
 test("only one tick owns the decider and strict decisions reject instruction-shaped output", async (t) => {
@@ -271,7 +514,90 @@ test("prompt boundary excludes raw transcript credentials paths and usage error 
   await h.activate(); await h.pilot.tick();
   assert.equal(h.calls[0].prompt.includes(sentinel), false);
   assert.match(h.calls[0].prompt, /BOTH allowed providers/u);
-  assert.match(h.calls[0].prompt, /unrelated blocked tasks are not a blanket veto/u);
+  assert.match(h.calls[0].prompt, /an unrelated hold is never a grant-wide veto/u);
+  assert.match(h.calls[0].prompt, /including tasks in Backlog or state not_queued/u);
+  assert.match(h.calls[0].prompt, /queue on\/off status or its position relative to queue\.order is not a blocker/u);
+  assert.match(h.calls[0].prompt, /deliverable includes a plan, artifact, owner review, or final approval; these are part of finishing the task, not start gates/u);
+  assert.match(h.calls[0].prompt, /Do not infer a tool or provider capability is unavailable because the board or grant omits it/u);
+});
+
+test("an owner grant can directly start a Backlog task while the queue is either off or on", async (t) => {
+  for (const status of ["off", "running"]) {
+    const h = await harness(t, { action: "start" });
+    h.board.tasks[0].state = "not_queued";
+    h.board.tasks[0].text = "Draft a plan, create the requested artifact, then get the owner's final approval.";
+    h.board.tasks[0].columnId = "backlog";
+    h.board.columns = [{ id: "backlog", name: "Backlog", position: 0, role: null }];
+    h.board.queue.status = status;
+    h.board.queue.order = [];
+    await h.activate(); await h.pilot.tick();
+    assert.equal(h.starts.length, 1, status);
+    assert.equal((await h.read()).receipts.at(-1).status, "started", status);
+    assert.equal(h.board.tasks[0].state, "not_queued", status);
+    assert.match(h.calls[0].prompt, /queue on\/off status or its position relative to queue\.order is not a blocker/u);
+  }
+});
+
+test("owner-held work does not stop another eligible authorized task", async (t) => {
+  const h = await harness(t);
+  h.board.tasks[0].state = "needs_review";
+  h.board.tasks.push(task("T-2"));
+  h.board.queue.order = ["T-2"];
+  h.options.decide = async (request) => {
+    h.calls.push(request);
+    assert.match(request.prompt, /If another authorized task is eligible, choose that task and continue the grant/u);
+    assert.match(request.prompt, /Use needs_you only when every remaining authorized task requires an owner decision/u);
+    const evidence = JSON.parse(request.prompt.match(/<evidence>(.*?)<\/evidence>/su)[1]);
+    return { status: "complete", text: JSON.stringify({ action: "start", taskId: "T-2", provider: choice.provider, model: choice.model, reason: "T-2 is eligible while T-1 awaits owner validation.", waitUntil: null, evidenceRevision: evidence.evidenceRevision }) };
+  };
+  await h.activate({ taskIds: ["T-1", "T-2"] });
+  await h.pilot.tick();
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.starts[0][1], "T-2");
+  assert.equal((await h.read()).status, "active");
+  assert.equal((await h.read()).receipts.at(-1).status, "started");
+  assert.equal(h.board.tasks[0].state, "needs_review");
+  assert.equal(h.board.tasks[1].state, "queued");
+});
+
+test("decision evidence does not count live sessions of reviewed tasks as occupied slots", async (t) => {
+  const h = await harness(t, { action: "start" });
+  for (const [index, state] of ["needs_review", "done", "blocked", "stalled"].entries()) {
+    h.board.tasks.push(task(`T-${index + 2}`, { state, session: { id: `claude:synthetic-${index}`, state: "live" } }));
+  }
+  // Review releases concurrency but still holds an explicit dependency.
+  h.board.tasks.push(task("T-6", { after: ["T-2"] }));
+  await h.activate({ taskIds: ["T-1", "T-6"] });
+  await h.pilot.tick();
+  const evidence = JSON.parse(h.calls[0].prompt.match(/<evidence>(.*?)<\/evidence>/su)[1]);
+  assert.deepEqual(evidence.concurrency.running_task_ids, []);
+  assert.deepEqual(evidence.snapshot.tasks.find((row) => row.id === "T-6").runs_after, ["T-2"]);
+  assert.equal(evidence.snapshot.tasks.find((row) => row.id === "T-2").state, "needs_review");
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.starts[0][1], "T-1");
+});
+
+test("decision concurrency and guard share reserved, live, idle and terminal task rules", () => {
+  const current = board();
+  current.tasks = [
+    task("T-1", { session: { id: "codex:live", state: "live" } }),
+    task("T-2", { session: { id: "codex:idle", state: "idle" } }),
+    task("T-3"),
+    task("T-4", { session: { id: "codex:finished", state: "completed" } }),
+    task("T-5", { state: "needs_review", session: { id: "claude:open", state: "live" } }),
+    task("T-6", { state: "needs_review" }),
+  ];
+  const grant = { ...spec(), receipts: [
+    { action: "start", status: "started", taskId: "T-1" },
+    { action: "start", status: "pending", taskId: "T-3" },
+    { action: "start", status: "started", taskId: "T-6" },
+  ] };
+  const evidence = pilotEvidence(current, usage());
+  const prompt = composePilotPrompt(grant, evidence);
+  const sent = JSON.parse(prompt.match(/<evidence>(.*?)<\/evidence>/su)[1]);
+  assert.deepEqual(sent.concurrency.running_task_ids, ["T-1", "T-2", "T-3"]);
+  assert.deepEqual(sent.concurrency.running_task_ids, pilotRunningTaskIds(current, grant));
+  assert.deepEqual(evidence.concurrency.running_task_ids, ["T-1", "T-2"], "adding reservations to the prompt does not mutate its evidence");
 });
 
 test("a deterministic gate refusal is retried only after changed evidence with a new durable attempt", async (t) => {
@@ -280,10 +606,22 @@ test("a deterministic gate refusal is retried only after changed evidence with a
   await h.activate(); await h.pilot.tick();
   assert.equal((await h.read()).status, "active"); assert.equal((await h.read()).receipts.at(-1).status, "blocked");
   h.advance(); await h.pilot.tick(); assert.equal(h.starts.length, 1);
-  h.board.queue.gates.usage.codex.fiveHourPercent = 18;
+  h.board.queue.gates.workingTree = "dirty";
   await h.pilot.tick(); assert.equal(h.starts.length, 2);
   assert.notEqual(h.starts[0][2].attemptId, h.starts[1][2].attemptId);
   assert.equal((await h.read()).startsUsed, 2);
+});
+
+test("an invalid start-plan refusal is blocked because dispatch never spawned", async (t) => {
+  const h = await harness(t, { action: "start" });
+  h.options.starter.startAutonomous = async (...args) => { h.starts.push(args); return { status: "invalid" }; };
+  await h.activate();
+  await h.pilot.tick();
+  const state = await h.read();
+  assert.equal(state.status, "needs_you");
+  assert.equal(state.receipts.at(-1).status, "blocked");
+  assert.match(state.receipts.at(-1).reason, /refused \(invalid\); no session was launched/u);
+  assert.equal(h.starts.length, 1);
 });
 
 test("an explicit wait deadline is one semantic wake and an ordinary wait has no periodic inference", async (t) => {
@@ -307,6 +645,32 @@ test("a selected task's schedule becomes a one-time wake without board revision 
   await h.activate(); await h.pilot.tick(); assert.equal(h.calls.length, 1);
   h.advance(); await h.pilot.tick(); assert.equal(h.calls.length, 2);
   h.advance(); await h.pilot.tick(); assert.equal(h.calls.length, 2);
+});
+
+test("telemetry drift does not wake an explicit future wait but a task transition does", async (t) => {
+  const h = await harness(t);
+  const decide = h.options.decide;
+  h.options.decide = async (request) => {
+    const result = await decide(request);
+    return { ...result, text: JSON.stringify({ ...JSON.parse(result.text), waitUntil: "2026-10-18T13:00:00.000Z" }) };
+  };
+  h.pilot.dispose(); h.pilot = createArilPilotCoordinator(h.options);
+  await h.activate(); await h.pilot.tick();
+  for (let i = 0; i < 25; i += 1) {
+    h.advance();
+    for (const row of h.usage.providers) {
+      row.usageLimits.fetchedAt = h.time.toISOString();
+      row.usageLimits.limits[0].percent = 20 + i;
+      row.usageLimits.limits[0].resetsAt = new Date(Date.parse("2026-10-18T15:00:00.000Z") + i).toISOString();
+    }
+    h.board.queue.gates.usage.codex.fiveHourPercent = 20 + i;
+    await h.pilot.tick();
+  }
+  assert.equal(h.calls.length, 1);
+  assert.equal((await h.read()).roundsUsed, 1);
+  h.board.tasks[0].state = "needs_review";
+  await h.pilot.tick();
+  assert.equal(h.calls.length, 2);
 });
 
 test("an idle or unknown linked session and an unbound started receipt occupy concurrency", async (t) => {

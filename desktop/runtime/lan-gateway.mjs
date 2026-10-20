@@ -25,6 +25,8 @@ const IMAGE_MEDIA_TYPES = Object.freeze({ png: "image/png", jpeg: "image/jpeg", 
 const IMAGE_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unavailable"]);
 // The Pomegr agent chat of a paired device: answered here by desktop main, never forwarded upstream.
 const AGENT_CHAT_PATH = "/api/agent-chat";
+// The pilot remains desktop-owned; paired requests are answered in desktop main.
+const ARIL_PILOT_PATH = "/api/aril-pilot";
 // The images a paired device sends to the agent chat, and reads back from a conversation: answered by desktop main too.
 const AGENT_CHAT_IMAGE_ADD_PATH = "/api/agent-chat/image-add";
 const AGENT_CHAT_IMAGE_READ_PATH = "/api/agent-chat/image-read";
@@ -491,6 +493,7 @@ export async function startLanGateway(options = {}) {
       response.writeHead(204); response.end(); return;
     }
     const agentChat = method === "POST" && pathname === AGENT_CHAT_PATH;
+    const arilPilot = method === "POST" && pathname === ARIL_PILOT_PATH;
     const taskAction = method === "POST" && pathname === TASK_ACTION_PATH;
     const taskStart = method === "POST" && pathname === TASK_START_PATH;
     const imageAdd = method === "POST" && pathname === TASK_IMAGE_ADD_PATH;
@@ -498,7 +501,7 @@ export async function startLanGateway(options = {}) {
     const imageRead = method === "GET" && pathname === TASK_IMAGE_READ_PATH;
     const chatImageAdd = method === "POST" && pathname === AGENT_CHAT_IMAGE_ADD_PATH;
     const chatImageRead = method === "GET" && pathname === AGENT_CHAT_IMAGE_READ_PATH;
-    if (method !== "GET" && method !== "HEAD" && !taskAction && !taskStart && !agentChat && !imageAdd && !imageRemove && !chatImageAdd) { fixed(response, 405); return; }
+    if (method !== "GET" && method !== "HEAD" && !taskAction && !taskStart && !agentChat && !arilPilot && !imageAdd && !imageRemove && !chatImageAdd) { fixed(response, 405); return; }
     if (!authenticated(request)) {
       if (pathname.startsWith("/api/")) { fixed(response, 401, "Unauthorized"); return; }
       if (acceptsHtml(request)) { noStore(response); response.writeHead(302, { Location: "/__pomegr/pair" }); response.end(); return; }
@@ -525,12 +528,12 @@ export async function startLanGateway(options = {}) {
       return;
     }
     let actionBody = null;
-    if (taskAction || taskStart || agentChat) {
+    if (taskAction || taskStart || agentChat || arilPilot) {
       // A paired device's own page only: the gateway's origin, a JSON body within the bound, and no query.
       const declared = request.headers["content-length"];
       const bodyLimit = taskStart ? MAX_TASK_START_BODY_BYTES : MAX_TASK_ACTION_BODY_BYTES;
       const contentType = String(request.headers["content-type"] || "");
-      if (url.search || request.headers.origin !== origin || !(taskStart
+      if (url.search || request.headers.origin !== origin || !(taskStart || arilPilot
         ? /^application\/json(?:\s*;\s*charset=utf-8)?$/iu.test(contentType)
         : contentType.startsWith("application/json"))
         || request.headers["transfer-encoding"] !== undefined || !/^\d+$/.test(String(declared ?? "")) || Number(declared) > bodyLimit) { fixed(response, 403); return; }
@@ -561,13 +564,25 @@ export async function startLanGateway(options = {}) {
       response.end(JSON.stringify({ status: TASK_START_STATUSES.includes(answer?.status) ? answer.status : "unavailable" }));
       return;
     }
-    if (agentChat) {
-      // One fixed operation and its payload in; the chat's own bounded answer out. Nothing of it reaches the web host.
+    if (agentChat || arilPilot) {
+      // One fixed operation and its payload in; the desktop-owned answer stays off the web host.
       let answer = { ok: false, error: "invalid" };
       let body = null;
       try { body = JSON.parse(actionBody.toString("utf8")); } catch { body = null; }
-      if (body !== null && typeof body === "object" && !Array.isArray(body) && Object.keys(body).every((key) => key === "operation" || key === "payload")) {
-        try { answer = typeof options.agentChat === "function" ? await options.agentChat(body.operation, body.payload) : { ok: false, error: "unavailable" }; }
+      if (body !== null && typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 2
+        && Object.keys(body).every((key) => key === "operation" || key === "payload")) {
+        try {
+          const handler = agentChat ? options.agentChat : options.arilPilot;
+          const revision = networkRevision;
+          const isAuthorized = async () => {
+            if (!active || suspended || revision !== networkRevision || !authenticated(request) || response.destroyed) return false;
+            await networkAllowed();
+            return active && !suspended && revision === networkRevision && authenticated(request) && !response.destroyed;
+          };
+          answer = typeof handler !== "function" ? { ok: false, error: "unavailable" }
+            : arilPilot ? await handler(body.operation, body.payload, isAuthorized)
+              : await handler(body.operation, body.payload);
+        }
         catch { answer = { ok: false, error: "unavailable" }; }
       }
       if (!active || suspended || !authenticated(request)) { fixed(response, 403); return; }

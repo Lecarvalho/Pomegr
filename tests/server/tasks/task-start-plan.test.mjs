@@ -78,6 +78,8 @@ function withDatabase(directory, work) {
   try { return work(database); } finally { database.close(); }
 }
 const dispatchOf = (directory, number) => withDatabase(directory, (database) => database.prepare("SELECT dispatch_token FROM tasks WHERE number = ?").get(number).dispatch_token);
+const remoteControlMetaOf = (directory, number) => withDatabase(directory, (database) => database.prepare("SELECT value FROM meta WHERE key = ?")
+  .get(`task_remote_control:${REPOSITORY_ID}:T-${number}`)?.value ?? null);
 
 test("a startable task yields the plan with null model and effort", async (context) => {
   const env = await setup(context);
@@ -276,17 +278,41 @@ const pilot = (env, id = "T-1", overrides = {}) => {
 
 test("autonomous selection is atomic, preserves effort and owner flags, and is private", async (context) => {
   const env = await setup(context);
-  create(env, { run: { effort: "xhigh", keepWorktree: true } });
+  create(env, { run: { effort: "xhigh", keepWorktree: true, remoteControl: true } });
+  const initial = env.store.readBoard(REPOSITORY_ID).tasks[0];
   const request = pilot(env, "T-1", { run: { provider: "codex", model: "gpt-6-sol", effort: "low" } });
+  assert.equal(request.autonomous.expectedRun.remoteControl, true);
+  assert.equal(request.autonomous.expectedTaskDigest, taskStartRevision(initial));
   const answer = await plan(env, request);
   assert.equal(answer.status, 200);
   assert.equal(answer.json.plan.provider, "codex");
   assert.equal(answer.json.plan.model, "gpt-6-sol");
   assert.equal(answer.json.plan.effort, "xhigh");
+  assert.equal(answer.json.plan.remoteControl, false);
   const task = env.store.readBoard(REPOSITORY_ID).tasks[0];
   assert.equal(task.run.keepWorktree, true);
+  assert.equal(task.run.remoteControl, false);
+  assert.equal(remoteControlMetaOf(env.directory, 1), null, "the persistent owner flag is cleared in the same commit as Codex selection");
   assert.ok(!JSON.stringify(task).includes(request.autonomous.attemptId));
   refused(await plan(env, request), 409, "already_attempted");
+});
+
+test("autonomous Claude selection preserves Remote Control for an unset provider", async (context) => {
+  const env = await setup(context);
+  create(env, { run: { effort: "high", keepWorktree: true, remoteControl: true } });
+  const initial = env.store.readBoard(REPOSITORY_ID).tasks[0];
+  const request = pilot(env, "T-1", { run: { provider: "claude", model: "claude-sonnet-4-5" } });
+  assert.equal(request.autonomous.expectedRun.remoteControl, true);
+  assert.equal(request.autonomous.expectedTaskDigest, taskStartRevision(initial));
+  const answer = await plan(env, request);
+  assert.equal(answer.status, 200);
+  assert.equal(answer.json.plan.provider, "claude");
+  assert.equal(answer.json.plan.remoteControl, true);
+  assert.equal(answer.json.plan.effort, "high");
+  const task = env.store.readBoard(REPOSITORY_ID).tasks[0];
+  assert.equal(task.run.remoteControl, true);
+  assert.equal(task.run.keepWorktree, true);
+  assert.equal(remoteControlMetaOf(env.directory, 1), "1");
 });
 
 test("autonomous plans preserve explicit provider default models and reject stale run/revision selections", async (context) => {
@@ -354,12 +380,18 @@ test("autonomous starts respect Ready order, dependencies, and final committed g
   assert.equal(env.store.apply(REPOSITORY_ID, "after_set", { id: "T-1", after: ["T-2"] }).ok, true);
   refused(await plan(env, pilot(env, "T-1")), 409, "gate_held");
   assert.equal(env.store.apply(REPOSITORY_ID, "after_set", { id: "T-1", after: [] }).ok, true);
-  const answer = await plan(env, pilot(env));
+  gateFacts = { ...GATE_FACTS, treeClean: false };
+  refused(await plan(env, pilot(env)), 409, "tree_dirty");
+  const answer = await plan(env, { ...pilot(env), worktree: true });
   assert.equal(answer.status, 200);
-  const payload = { id: "T-1", token: answer.json.plan.token };
+  const payload = { id: "T-1", token: answer.json.plan.token, worktree: true };
   assert.equal((await call(env.port, "start-check", payload)).status, 200);
   gateFacts = { ...GATE_FACTS, treeClean: false };
-  refused(await call(env.port, "start-check", payload), 409, "tree_dirty");
+  assert.equal((await call(env.port, "start-check", payload)).status, 200, "the already prepared separate worktree is independent of root dirt");
+  gateFacts = { ...GATE_FACTS, providerStatus: { ...GATE_FACTS.providerStatus, claude: "incident" } };
+  refused(await call(env.port, "start-check", payload), 409, "gate_held");
+  gateFacts = { ...GATE_FACTS, treeClean: false };
+  refused(await call(env.port, "start-check", { id: payload.id, token: payload.token }), 409, "tree_dirty");
   refused(await call(env.port, "start-check", { ...payload, token: "w".repeat(43) }), 409, "not_startable");
 });
 
