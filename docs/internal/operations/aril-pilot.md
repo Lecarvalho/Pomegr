@@ -7,7 +7,7 @@
 ## Update locally
 
 Use the reviewed branch before merge, or `origin/main` after merge. Do not replace local plans or other uncommitted documents.
-The broad `aril.md` proposal remains context, not authorization for other features.
+The [purpose roadmap](../plans/purpose-roadmap.md) is context, not authorization for other features.
 Keep the current desktop running until you are ready to replace it. A build does not activate a pilot.
 
 1. Fetch the reviewed commit and create a separate checkout.
