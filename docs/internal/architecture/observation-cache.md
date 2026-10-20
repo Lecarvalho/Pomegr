@@ -2383,6 +2383,11 @@ reachability.
   replacements rebuild without inherited runtime evidence; incomplete replacements
   retain the committed revision. This adds no transcript rescans, browser or checkpoint
   fields, GET acquisition, polling lane, or revision mechanism.
+- Claude's existing incremental transcript-facts pass retains each source's latest non-synthetic assistant model and effort independently of its parsed-tail window.
+  Ordinary appends retain missing fields; a validated complete replacement rebuilds them, while an incomplete replacement preserves the committed facts.
+  Cold reads rebuild the same values from the source, and complete-history reads use the complete records directly.
+  No child inherits its parent's runtime evidence.
+  This adds no acquisition pass, GET acquisition, browser field, checkpoint field, or polling lane.
 - Completed approval-review decisions are retained per normalized agent across empty
   and partial Codex deltas. U2 seeds review normalization from the prior normalized
   feed, deduplicates all incoming decisions before applying the 100-row display cap,
