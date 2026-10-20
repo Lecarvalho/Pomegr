@@ -396,7 +396,9 @@ export function createClaudeProvider(options = {}) {
       const whole = facts && facts.toolUses >= toolEvidence.calls ? facts : null;
       const calls = whole ? whole.toolUses : toolEvidence.calls;
       updatedAt = mergeUpdatedAt(updatedAt, toolEvidence.updatedAt);
-      const runtime = runtimeMetadata(records);
+      // The byte-bounded tail can contain only request metadata after an earlier response.
+      // The whole-transcript facts retain this agent's own runtime across those appends.
+      const runtime = facts?.runtime ?? runtimeMetadata(records);
       const recordedTiming = agentTiming(records, stat.mtime.toISOString());
       const timing = actor.id === "primary" && primaryStartedAt
         ? {

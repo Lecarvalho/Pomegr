@@ -8,6 +8,7 @@ import { createToolChangeState, markToolChangeGap, reduceToolChange, toolChangeC
 import { createIncrementalJsonlIngestor } from "../kernel/incremental-jsonl-ingestor.mjs";
 import { incrementalSourceDescriptor } from "../kernel/incremental-provider-observer.mjs";
 import { claudeUsageEvidenceRecord } from "./context.mjs";
+import { runtimeMetadata } from "./session-identity.mjs";
 
 const CHUNK_BYTES = 256 * 1024;
 const MAX_FRAGMENT_BYTES = 8 * 1024 * 1024;
@@ -63,6 +64,7 @@ export function createClaudeSessionWorkStartReader(options = {}) {
       skills: [],
       toolChangeCauses: new Map(),
       usageEvidence: null,
+      runtime: runtimeMetadata([]),
       pending: Promise.resolve(),
       ingestor: createIncrementalJsonlIngestor({
         readChunk(offset, bytes) {
@@ -75,7 +77,7 @@ export function createClaudeSessionWorkStartReader(options = {}) {
         },
         parseRecord: (line) => JSON.parse(line.toString("utf8")),
         initialState: () => ({ workStart: createClaudeSessionWorkStartState(), userMessages: createClaudeUserMessageTimeState(), toolKinds: {}, skills: {},
-          toolChanges: createToolChangeState({ expectedSessionId, inlineSidechains }), usage: { records: [], complete: true } }),
+          toolChanges: createToolChangeState({ expectedSessionId, inlineSidechains }), usage: { records: [], complete: true }, runtime: runtimeMetadata([]) }),
         reduce: (state, record) => ({
           workStart: reduceClaudeSessionWorkStart(state.workStart, record),
           userMessages: reduceClaudeUserMessageTimes(state.userMessages, record),
@@ -83,6 +85,7 @@ export function createClaudeSessionWorkStartReader(options = {}) {
           skills: reduceSkillUsage(state.skills, record),
           toolChanges: reduceToolChange(state.toolChanges, record),
           usage: reduceUsageEvidence(state.usage, record),
+          runtime: runtimeMetadata([record], state.runtime),
         }),
         reduceGap: (state) => ({ ...state, toolChanges: markToolChangeGap(state.toolChanges), usage: markUsageEvidenceGap(state.usage) }),
         chunkBytes: CHUNK_BYTES,
@@ -109,6 +112,7 @@ export function createClaudeSessionWorkStartReader(options = {}) {
     const previous = entry.source;
     const appendCompatible = previous && previous.identity === source.identity
       && source.size >= previous.size && source.mtimeMs >= previous.mtimeMs
+      && (source.size > previous.size || source.mtimeMs === previous.mtimeMs)
       && (previous.size === 0 || priorFileSuffixStillMatches(file, previous));
     if (!appendCompatible) entry.identity = `${source.identity}:work-start:${++entry.generation}`;
     entry.source = source;
@@ -119,10 +123,11 @@ export function createClaudeSessionWorkStartReader(options = {}) {
       entry.startedAt = state.workStart.startedAt;
     });
     if (!confirmed) assertSourceStillHolds(file, source);
-    const committed = /** @type {{ candidate: { userMessages: { times: number[] }, toolKinds: Record<string, number>, skills: Record<string, { calls: number, lastUsed: string | null }>, toolChanges: ReturnType<typeof createToolChangeState>, usage: { records: object[], complete: boolean } }, completeOffset: number } | null} */ (entry.ingestor.snapshot());
+    const committed = /** @type {{ candidate: { userMessages: { times: number[] }, toolKinds: Record<string, number>, skills: Record<string, { calls: number, lastUsed: string | null }>, toolChanges: ReturnType<typeof createToolChangeState>, usage: { records: object[], complete: boolean }, runtime: ReturnType<typeof runtimeMetadata> }, completeOffset: number } | null} */ (entry.ingestor.snapshot());
     entry.userMessageTimes = committed ? claudeUserMessageTimesFromState(committed.candidate.userMessages) : [];
     entry.toolKinds = committed ? { ...committed.candidate.toolKinds } : {};
     entry.skills = committed ? skillUsageFromState(committed.candidate.skills) : [];
+    entry.runtime = committed ? { ...committed.candidate.runtime } : runtimeMetadata([]);
     entry.toolChangeCauses = committed ? toolChangeCauses(committed.candidate.toolChanges) : new Map();
     // A copy: the next observation appends to the committed list while this one is in use.
     entry.usageEvidence = committed ? { key: `${entry.identity}:${committed.completeOffset}`, records: committed.candidate.usage.records.slice(),
@@ -151,7 +156,7 @@ export function createClaudeSessionWorkStartReader(options = {}) {
   function readTranscriptFacts(file, context) {
     return observed(file, context).then((entry) => ({ startedAt: entry.startedAt, userMessageTimes: entry.userMessageTimes,
       toolUses: toolUseTotal(entry.toolKinds), toolKinds: { ...entry.toolKinds }, skills: entry.skills.map((skill) => ({ ...skill })),
-      toolChangeCauses: entry.toolChangeCauses, usageEvidence: entry.usageEvidence }));
+      toolChangeCauses: entry.toolChangeCauses, usageEvidence: entry.usageEvidence, runtime: { ...entry.runtime } }));
   }
 
   function readToolUseCount(file) {
