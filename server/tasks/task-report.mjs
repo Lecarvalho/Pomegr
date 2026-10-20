@@ -162,14 +162,20 @@ function unresolvedTask(database, repositoryId, payload) {
 export function resolveDone({ database, repositoryId, now }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
-  preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(Date.now(), repositoryId, target.number);
-  moveTaskToRole(database, repositoryId, target.number, "done");
-  deleteTaskBlockHold(database, repositoryId, target.number);
-  requestWorktreeCleanup(database, repositoryId, target.number);
-  releaseQueue(database, repositoryId);
-  releasePause({ database, repositoryId, now }, taskIdFromNumber(target.number));
+  markTaskDone({ database, repositoryId, now }, target.number);
   return { ok: true };
+}
+
+// The owner's acceptance, shared by Mark done and an explicit card move to Done.
+// Callers validate the task and perform this write inside their action's transaction.
+export function markTaskDone({ database, repositoryId, now }, number) {
+  preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
+    .run(Date.now(), repositoryId, number);
+  moveTaskToRole(database, repositoryId, number, "done");
+  deleteTaskBlockHold(database, repositoryId, number);
+  requestWorktreeCleanup(database, repositoryId, number);
+  releaseQueue(database, repositoryId);
+  releasePause({ database, repositoryId, now }, taskIdFromNumber(number));
 }
 
 // `resolve_requeue`: the user sends the task back to the end of the queue for a new session.

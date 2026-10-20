@@ -21,8 +21,7 @@ Select **Tasks** in the sidebar.
   beside the heading switches repository.
 - A repository's own **Tasks** tab links to the same board.
 
-You cannot add, rename, reorder, or delete a column. Moving a card never changes its
-state.
+You cannot add, rename, reorder, or delete a column. Moving a card to **Done** also accepts its task.
 
 ## Move cards
 
@@ -48,6 +47,9 @@ Pomegr moves a card to another column when its task changes state:
   queue.
 - **You can still move a card by hand.** It stays where you put it until its task's
   next state change in the table, which moves it again.
+- Moving a card to **Done** also accepts the task, like **Mark done**. Its dependent tasks can then become eligible.
+- A move within **Done** also accepts an unfinished card already there. Reading the board never accepts a task.
+- Other moves do not change the task's state. Moving a Done card elsewhere does not reopen it.
 - The card lands last in its new column.
 
 ### Queued cards stay in Ready
@@ -89,7 +91,7 @@ lists its tasks before the usual destinations.
 | **Needs review** | The agent reported complete. The task window shows each checked condition's result and the agent's attention line, if it gave one. | Pomegr, when it verifies the report. |
 | **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. It leaves Stalled when that session reports or works again. |
 | **Blocked by agent** | The latest report says the agent cannot continue. A later completion changes the task to **Needs review**. | The agent sets the block; you resolve it. |
-| **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done**. |
+| **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done** or a move to **Done**. |
 
 A task has no **Running** state. Once a session is linked to a task that has no outcome
 yet, its card shows that session's observed state, such as **In progress** (see
