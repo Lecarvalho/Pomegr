@@ -129,6 +129,53 @@ test("move leaves state and every other field untouched except column, position,
   assert.deepEqual([moved.board.columns, moved.board.features, moved.board.queue], [before.columns, before.features, before.queue]);
 });
 
+test("moving a blocked task to Done retains its report and link, releases its queue hold, and keeps the drop position", async (t) => {
+  const { store, databasePath } = await temporaryStore(t);
+  for (const text of ["Blocked", "Accepted first", "Accepted last"]) store.apply(REPOSITORY, "create", { text });
+  const done = store.readBoard(REPOSITORY).columns.find((column) => column.role === "done");
+  for (const id of ["T-2", "T-3"]) assert.equal(store.apply(REPOSITORY, "move", { id, columnId: done.id, position: 99 }).ok, true);
+  withRawDatabase(databasePath, (database) => {
+    database.prepare("UPDATE tasks SET session_id = ? WHERE number = 1").run("claude:blocked");
+  });
+  assert.equal(store.blockTask({ sessionId: "claude:blocked", reason: "Needs owner" }).ok, true);
+  assert.equal(store.apply(REPOSITORY, "queue_settings", { on: true }).ok, true);
+  const before = store.readBoard(REPOSITORY);
+  assert.equal(before.queue.status, "blocked");
+  const blocked = before.tasks.find((task) => task.id === "T-1");
+  const moved = store.apply(REPOSITORY, "move", { id: "T-1", columnId: done.id, position: 1 });
+  assert.equal(moved.ok, true);
+  const accepted = moved.board.tasks.find((task) => task.id === "T-1");
+  assert.equal(accepted.state, "done");
+  assert.deepEqual(accepted.report, blocked.report);
+  assert.deepEqual(accepted.session, blocked.session);
+  assert.deepEqual(ids(moved.board, done.id), ["T-2", "T-1", "T-3"]);
+  assertDense(moved.board);
+  assert.equal(moved.board.queue.status, "running");
+  assert.equal(moved.board.queue.blockedBy, null);
+  assert.ok(store.worktreeCleanups().cleanups.some((entry) => entry.taskId === "T-1"));
+  assert.deepEqual(store.completeTask({ sessionId: "claude:blocked" }, () => null), { ok: false, error: "already_reported" });
+});
+
+test("a group move to Done accepts every moved card in order, while queued cards still cannot leave Ready", async (t) => {
+  const { store } = await temporaryStore(t);
+  for (const text of ["First", "Second", "Waiting"]) store.apply(REPOSITORY, "create", { text });
+  assert.equal(store.apply(REPOSITORY, "queue_group", { ids: ["T-1", "T-2"] }).ok, true);
+  const done = store.readBoard(REPOSITORY).columns.find((column) => column.role === "done");
+  assert.equal(store.apply(REPOSITORY, "queue_add", { id: "T-3" }).ok, true);
+  const before = store.readBoard(REPOSITORY);
+  assert.deepEqual(store.apply(REPOSITORY, "move", { id: "T-3", columnId: done.id, position: 0 }), { ok: false, error: "conflict" });
+  assert.deepEqual(store.readBoard(REPOSITORY), before);
+  const moved = store.apply(REPOSITORY, "move", { id: "T-1", columnId: done.id, position: 0, group: "block" });
+  assert.equal(moved.ok, true);
+  assert.deepEqual(ids(moved.board, done.id), ["T-1", "T-2"]);
+  for (const task of moved.board.tasks.filter((task) => task.columnId === done.id)) {
+    assert.equal(task.state, "done");
+    assert.equal(task.group, null);
+  }
+  assert.deepEqual(moved.board.queue.order, ["T-3"]);
+  assertDense(moved.board);
+});
+
 test("dropping a card where it already is changes nothing, update time included", async (t) => {
   const { store } = await temporaryStore(t);
   const board = seededBoard(store);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FACTS, REPOSITORY, START_TIME, createTask, openTemporaryStore, passingGates, queueSettings, queueTask, startedTask, updateTask, withDatabase } from "./queue-test-support.mjs";
+import { FACTS, GATE_FACTS, REPOSITORY, START_TIME, createTask, openTemporaryStore, passingGates, queueSettings, queueTask, startedTask, updateTask, withDatabase } from "./queue-test-support.mjs";
 import { nextQueueStart } from "../../../server/tasks/task-queue.mjs";
 import { explainQueueWaits } from "../../../server/tasks/task-queue-waits.mjs";
 
@@ -88,6 +88,72 @@ test("a manual start of a task that waits for an unfinished task is held", async
   assert.deepEqual(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, passingGates), { ok: false, error: "gate_held" });
   updateTask(directory, 1, { state: "done" });
   assert.equal(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, passingGates).ok, true);
+});
+
+test("moving a dependency to Done releases board waits and starts only after every dependency is Done or deleted", async (context) => {
+  const { store, directory } = await withTasks(context, 4);
+  queueTask(store, "T-2");
+  queueTask(store, "T-3");
+  assert.equal(after(store, "T-2", "T-1", "T-4").ok, true);
+  queueSettings(store, true);
+  startedTask(directory, 1, { session: "claude:dependency" });
+  assert.equal(store.completeTask({ sessionId: "claude:dependency" }, () => null).state, "needs_review");
+  const read = () => store.readBoard(REPOSITORY, { resolveGateFacts: passingGates });
+  const before = read();
+  const readyCards = (board) => board.tasks.filter((task) => task.columnId === board.columns[1].id).map(({ id, position }) => ({ id, position }));
+  const done = before.columns.find((column) => column.role === "done");
+  assert.equal(taskOf(before, "T-1").state, "needs_review");
+  assert.deepEqual(before.queue.order, ["T-3"]);
+  assert.deepEqual(before.queue.waits.find((wait) => wait.taskId === "T-2").reasons, [because("runs_after", ["T-1", "T-4"])]);
+  assert.deepEqual(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, passingGates), { ok: false, error: "gate_held" });
+
+  assert.equal(store.apply(REPOSITORY, "move", { id: "T-1", columnId: done.id, position: 0 }).ok, true);
+  const partlyDone = read();
+  assert.equal(taskOf(partlyDone, "T-1").state, "done");
+  assert.equal(taskOf(partlyDone, "T-1").report.at, taskOf(before, "T-1").report.at);
+  assert.deepEqual(partlyDone.queue.order, ["T-3"]);
+  assert.deepEqual(partlyDone.queue.waits.find((wait) => wait.taskId === "T-2").reasons, [because("runs_after", ["T-4"])]);
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }).starts, [{ repositoryId: REPOSITORY, taskId: "T-3" }]);
+  assert.deepEqual(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, passingGates), { ok: false, error: "gate_held" });
+
+  assert.equal(store.apply(REPOSITORY, "delete", { id: "T-4" }).ok, true);
+  const freed = read();
+  assert.deepEqual(freed.queue.order, ["T-2", "T-3"]);
+  assert.deepEqual(freed.queue.waits.find((wait) => wait.taskId === "T-2"), { taskId: "T-2", place: 1, reasons: [] });
+  assert.equal(freed.queue.gates.next.taskId, "T-2");
+  assert.deepEqual(readyCards(freed), readyCards(before));
+  assert.equal(freed.queue.status, "running");
+  // Completion removes only the dependency hold; the other start gates still apply.
+  const dirty = () => ({ ...GATE_FACTS, treeClean: false });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: dirty }).starts, []);
+  assert.deepEqual(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, dirty), { ok: false, error: "tree_dirty" });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }).starts, [{ repositoryId: REPOSITORY, taskId: "T-2" }]);
+  assert.equal(store.planStart(REPOSITORY, { id: "T-2" }, () => FACTS, passingGates).ok, true);
+});
+
+test("a Not queued card explicitly moved to Done is completed, including an old unfinished card already in Done", async (context) => {
+  const { store, directory } = await withTasks(context, 3);
+  const board = store.readBoard(REPOSITORY);
+  const done = board.columns.find((column) => column.role === "done");
+  // Reproduce the screenshot's old stored combination: Done column, Not queued state.
+  updateTask(directory, 1, { column_id: done.id, position: 0 });
+  queueTask(store, "T-2");
+  assert.equal(after(store, "T-2", "T-1").ok, true);
+  const before = store.readBoard(REPOSITORY);
+  assert.equal(taskOf(before, "T-1").state, "not_queued");
+  assert.deepEqual(before.queue.order, []);
+  // Reading a column is no acceptance; only the owner's explicit move completes it.
+  const accepted = store.apply(REPOSITORY, "move", { id: "T-1", columnId: done.id, position: 0 });
+  assert.equal(accepted.ok, true);
+  assert.equal(taskOf(accepted.board, "T-1").state, "done");
+  assert.equal(taskOf(accepted.board, "T-1").report, null);
+  assert.deepEqual(accepted.board.queue.order, ["T-2"]);
+  // A new Not queued card also becomes Done when it first enters the column.
+  const moved = store.apply(REPOSITORY, "move", { id: "T-3", columnId: done.id, position: 0 });
+  assert.equal(moved.ok, true);
+  assert.equal(taskOf(moved.board, "T-3").state, "done");
+  assert.deepEqual(moved.board.tasks.filter((task) => task.columnId === done.id).map((task) => task.id), ["T-3", "T-1"]);
+  assert.deepEqual(store.apply(REPOSITORY, "move", { id: "T-3", columnId: done.id, position: 0 }).board, moved.board);
 });
 
 test("deleting a task frees every task that ran after it, in the same write, and drops its own list", async (context) => {

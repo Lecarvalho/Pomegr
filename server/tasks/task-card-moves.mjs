@@ -2,14 +2,16 @@
 // "Queue group" that takes a planned group into the queue in the order it holds.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { readyColumnId, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
+import { readColumnRoles, readyColumnId, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { groupCardsNotStarted, pruneTaskGroups, readTaskGroups, writeTaskGroup } from "./task-groups.mjs";
 import { normalizeMovePayload } from "./task-record.mjs";
+import { markTaskDone } from "./task-report.mjs";
 
 const columnExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
-// A move changes the task's column, position, and update time. A grouped card that has not started moves with its group
+// A move to Done also accepts the task. Other moves change only its column, position, and update time.
+// A grouped card that has not started moves with its group
 // ("block"), or leaves it ("leave", and any move that lands it away from every other card of its group in that column).
 export function moveTask({ database, repositoryId, now }, payload) {
   const input = normalizeMovePayload(payload);
@@ -48,6 +50,14 @@ export function moveTask({ database, repositoryId, now }, payload) {
     const index = cards.indexOf(input.number);
     const beside = [cards[index - 1], cards[index + 1]].some((number) => number !== undefined && siblings.has(number));
     if (input.group === "leave" || !beside) writeTaskGroup(database, repositoryId, input.number, null);
+  }
+  // Accept after placing the cards, so Mark done's effects keep the owner's chosen order.
+  // Reordering an already Done card is only a move; an old unfinished card in Done can be accepted in place.
+  if (readColumnRoles(database, repositoryId).get(input.columnId) === "done") {
+    const state = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?");
+    for (const number of block) {
+      if (state.get(repositoryId, number).state !== "done") markTaskDone({ database, repositoryId, now }, number);
+    }
   }
   return { ok: true };
 }
