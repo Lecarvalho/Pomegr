@@ -3,10 +3,10 @@
 > Status: active; the owner reviews this roadmap before work starts. The retrospective of the first autonomous pilot is complete.
 > Created: 2026-10-17 as a Portuguese Aril proposal; replaced on 2026-10-19 by this English roadmap.
 > Scope: the small versions that move Pomegr toward its purpose, the scorecard that measures each step, the 0.8.1 release without the pilot, how the other plans fit, and the readiness for a second autonomous experiment.
-> Continuation owner: the product owner decides; the agent that picks up a version records its evidence and scorecard values here.
+> Continuation owner: the product owner decides; the agent that picks up a version records its evidence here, without scorecard values.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [Agent chat](../architecture/agent-chat.md), [Metrics](../architecture/metrics.md), and [Observation cache](../architecture/observation-cache.md) govern shipped behavior. Each other plan keeps its own scope until the owner accepts its placement here.
-> Next task or decision: the owner answers the [open decisions](#open-decisions); then the [0.8.1 release](#081-without-the-pilot) starts.
-> Completion criteria: 0.8.1 ships without the pilot; each version ships with its scorecard values recorded here; each gap is shipped, moved to its own plan, or dropped; the [readiness criteria](#readiness-for-experiment-2) pass; experiment 2 runs and its result is recorded here.
+> Next task or decision: the owner answers the remaining [open decisions](#open-decisions); the [0.8.1 release](#081-without-the-pilot) can start in parallel.
+> Completion criteria: 0.8.1 ships without the pilot; each version ships with its scorecard values in the desktop; each gap is shipped, moved to its own plan, or dropped; the [readiness criteria](#readiness-for-experiment-2) pass; experiment 2 runs, and whether each target passed is recorded here.
 > Permanent destinations: Tasks, Agent chat, Metrics, Observation cache, [session evidence privacy](../architecture/privacy/session-evidence.md), [desktop releases](../operations/desktop-releases.md) for the release-branch procedure, and [PRODUCT.md](../../../PRODUCT.md) for purpose wording.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
 
@@ -47,6 +47,15 @@ The roadmap has three steps:
 | 2026-10-19 | The **Aril pilot** panel is rejected. Shipped pilot code stays when it helps the new direction. |
 | 2026-10-19 | The roadmap covers all of Pomegr, not only Aril. Other plans that serve the purpose join it. |
 | 2026-10-19 | Every document is written in English. |
+| 2026-10-21 | The owner spends about 5 minutes with Aril before leaving. The departure briefing (G7) is named the **five-minute plan**. |
+| 2026-10-21 | T-128 and T-132 stay out of 0.8.1. |
+| 2026-10-21 | The experiment 2 targets are accepted: a median owner time per pull request below 20 minutes, and no pull request without the proof that its repository requires. |
+| 2026-10-21 | The version order and the plan placements are accepted. |
+| 2026-10-21 | Closeout reconciliation (G17) joins the roadmap: one place that compares merged pull requests, open sessions, and tasks still in Review. It needs its own debrief before design. |
+| 2026-10-21 | Scorecard values stay in the desktop, for now. Release notes, **What's new**, and public documents show no scorecard values. |
+| 2026-10-21 | The task outcome record (G1) is stored locally, in SQLite. |
+| 2026-10-21 | 0.8.1 includes #269. #270 goes to 0.9.0. |
+| 2026-10-21 | The dependency proposal (G10) is accepted as a starting point. It will change, and it must adapt to each user's repositories and way of working, not only to the owner's. |
 
 ## Purpose scorecard
 
@@ -60,13 +69,13 @@ A measure with no source yet shows "no data"; that is an honest state, not zero.
 | S2 First-pass acceptance | Share of tasks merged with no commit after Review | G1 | Clapline: 1 of 7 (#869–#875) |
 | S3 Proof present | Share of pull requests with the proof that their repository's own template requires | G4 | Clapline: 2 of 6 visible changes; Pomegr: 0 of 4 |
 | S4 Silent failures | Tasks that stopped with no state change or report | G5 | Pokrr: 4 of 5 tasks |
-| S5 Manual cleanups | Worktrees of merged tasks that Pomegr did not remove within a day | G12 | Many, removed by hand; not counted |
+| S5 Manual closeouts | Merged tasks that still have a Review card, an open session, or a worktree one day after the merge | G12, G17 | Many, closed by hand one window at a time; not counted |
 | S6 Model reasons | Share of starts with a recorded model reason | G6 | 0 of 14 |
 | S7 Owner interventions during absence | Grants revoked or reset, and needs-you items | Pilot journal and inbox | 6 of 10 grants revoked |
 
 The baseline values come from the retrospective. S2 compares each pull request's final commits with the head that the pilot opened; the count is an inference from commit lists.
-The release notes and the **What's new** announcement of each version state the measure it targeted, with its value before and after.
-Where the scorecard lives is an [open decision](#open-decisions).
+The scorecard lives in the desktop only. The desktop computes it from G1 and keeps a local snapshot for each version, with its formula version, so it can show each value before and after.
+Release notes, **What's new**, and this roadmap may name the measure that a version targeted, but never its values. [Metrics](../architecture/metrics.md) holds the definitions.
 
 ## Versions
 
@@ -77,8 +86,8 @@ A dry run on 2026-10-19 showed that #262 and #263 are the only pilot changes.
 The steps below gave no conflicts, and their tree equals main without #262 and #263.
 
 1. Create `release/0.8.1` from `v0.8.0` (`a598cbde`).
-2. Cherry-pick #260, #261, #264, #265, #266, and #267, in that order.
-3. Bump the version to 0.8.1 on the branch. Adapt T-155, which assumes main.
+2. Cherry-pick #260, #261, #264, #265, #266, #267, and #269, in that order.
+3. Bump the version to 0.8.1 on the branch.
 4. Dispatch `verify.yml` and `checks.yml` on the branch. They run automatically only for pull requests into main.
 5. The owner validates #266 visually. Its pull request says this validation is pending.
 6. Tag `v0.8.1` on the branch tip and run the release from a clean checkout of the tag. `release:windows` requires main for a new tag, so the tag is created by hand.
@@ -87,24 +96,31 @@ The steps below gave no conflicts, and their tree equals main without #262 and #
 
 Main stays at 0.8.0 until its next bump, which must be 0.9.0.
 A failed release burns the tag, so the CI dispatch in step 4 comes first.
-Whether T-128 and T-132 enter 0.8.1 is an [open decision](#open-decisions).
+T-128 and T-132 stay out.
+
+Two changes merged after this cut was planned:
+
+- #269 (T-163, complete tasks explicitly moved to Done) is a bug fix, and it starts worktree removal for those tasks. It enters 0.8.1 after #267, with one conflict in `server/tasks/task-report.mjs`: #262 added `dispatch_token = NULL` to the Done update. The resolution keeps the v0.8.0 update without that column. In a dry run on 2026-10-21, all 723 task server tests passed.
+- #270 (calm task modal, tags from brackets) changes 86 files. It is a feature, so it goes to 0.9.0.
+
+Step 3 replaces board task T-155, which bumps the version on main.
 
 ### Small versions after 0.8.1
 
 Each version ships one small change and names the scorecard measure it must move.
 The first version ships the scorecard itself, because no later version can show progress without it.
-The order is a proposal. Version numbers after 0.9.0 are illustrative.
-The parts of other plans in the third column are proposals until the owner accepts them (see [Other plans](#other-plans)).
+The owner accepted this order on 2026-10-21. Version numbers after 0.9.0 are illustrative.
+The parts of other plans in the third column follow the accepted placements in [Other plans](#other-plans).
 
 | Version | Change | Gaps and plan parts | Measure it must move |
 | --- | --- | --- | --- |
-| 0.9.0 | The task outcome record, the model evidence fix, and the scorecard with the first pilot as baseline. The **Aril pilot** panel goes. | G1, G2, G16; durable session store task 2 if G1 lives in `monitor.sqlite` | The scorecard turns from no data to measured |
-| 0.9.1 | Worktree removal after merge; dead sessions become stalled; block reasons are retained | G5, G12 | S5 manual cleanups, S4 silent failures |
+| 0.9.0 | The task outcome record, the model evidence fix, and the scorecard with the first pilot as baseline. The **Aril pilot** panel goes. | G1, G2, G16 | The scorecard turns from no data to measured |
+| 0.9.1 | Worktree removal after merge; closeout hints for merged tasks; dead sessions become stalled; block reasons are retained | G5, G12, G17 after its debrief | S5 manual closeouts, S4 silent failures |
 | 0.9.2 | Proof presence, repository compliance checks, and a task prompt that points to the repository's own definition of done | G3, G4; guidance impact tasks 1–3 | S3 proof present, S2 first-pass acceptance |
 | 0.9.3 | The review-ready check and the send-back session | G8, G9 | S2 first-pass acceptance, S1 owner time |
 | 0.9.4 | Model calibration with a recorded reason for each start | G6 | S6 model reasons, S2 by model and type of work |
 | 0.9.5 | The owner inbox and takeover | G13, G14; product expansion direction 6; the notification delivery path | S1 owner time |
-| 0.9.6 | The departure briefing, dependencies without the owner, discovery capture, and scheduling fixes | G7, G10, G11, G15 | S7 owner interventions during absence |
+| 0.9.6 | The five-minute plan, dependencies without the owner, discovery capture, and scheduling fixes | G7, G10, G11, G15 | S7 owner interventions during absence |
 
 Each version also takes bug fixes. Each gap gets a board task when its version starts.
 
@@ -112,12 +128,12 @@ Each version also takes bug fixes. Each gap gets a board task when its version s
 
 On 2026-10-19 each plan in this folder was checked for purpose fit.
 A plan fits when it reduces the owner's supervision, review, or rework, or gives Aril and agents evidence they need.
-Adoption and polish alone do not fit. The placements below are proposals. Each plan changes in its own change after the owner accepts.
+Adoption and polish alone do not fit. The owner accepted the placements below on 2026-10-21. Each plan changes in its own change.
 
 | Plan | State on 2026-10-19 | Proposed placement |
 | --- | --- | --- |
 | [Guidance impact](guidance-impact.md) | Design approved; no code | Tasks 1–3 in 0.9.2, after the plan's own check over recorded sessions. Park cohorts, the regression flag, and experiments. |
-| [Durable session store](durable-session-store.md) | Proposed; no code | Task 2, versioned migrations, in 0.9.0 only if G1 lives in `monitor.sqlite`. Park the rest. |
+| [Durable session store](durable-session-store.md) | Proposed; no code | Park. G1 uses `tasks.sqlite`, so its task 2 (versioned migrations of `monitor.sqlite`) is not needed for 0.9.0. |
 | [Provider notifications](provider-notifications.md) | Parts 1–5 built; owner's native OS acceptance open | Finish the acceptance and retire the plan. The inbox in 0.9.5 reuses its delivery path. |
 | [Session allowance](session-allowance.md) | Design approved; no code | Park. Revisit after 0.9.4 if budgets need cost per task. Its token split by agent and model may serve G2. |
 | [Mobile pairing](mobile-pairing-cloudflare.md) | Proposed; no code | Outside the roadmap. Revisit after 0.9.5: reach outside the home network would let the owner use the inbox away from home. |
@@ -132,8 +148,8 @@ Adoption and polish alone do not fit. The placements below are proposals. Each p
 
 Product expansion directions:
 
-- **Into the roadmap:** 4 durable store (the minimum, in 0.9.0); 6 control tower (the inbox, in 0.9.5); 7 changes by agent (evidence for G3 in 0.9.2 and for G10 in 0.9.6); 9 compare runs (guidance impact tasks 1–3, in 0.9.2); 13 the agent reads its own metrics (the `list_session_agents` fix, in 0.9.0).
-- **Park:** 1 limit movement per session; 2 plain-sentence explanations; 8 limit forecast, after 0.9.6; 10 subagent return, after G2; agent blame; the export feed.
+- **Into the roadmap:** 6 control tower (the inbox, in 0.9.5); 7 changes by agent (evidence for G3 in 0.9.2 and for G10 in 0.9.6); 9 compare runs (guidance impact tasks 1–3, in 0.9.2); 13 the agent reads its own metrics (the `list_session_agents` fix, in 0.9.0).
+- **Park:** 4 durable store, because G1 does not need it; 1 limit movement per session; 2 plain-sentence explanations; 8 limit forecast, after 0.9.6; 10 subagent return, after G2; agent blame; the export feed.
 - **Close:** 3 session receipt; 5 search across past sessions; 11 weekly digest, which the scorecard replaces; 12 chart library.
 
 ### Conflicts to resolve
@@ -156,7 +172,7 @@ Pomegr Core collects facts deterministically. Aril makes inferences and labels t
 
 | Gap | What is missing | Reuse | Closed when |
 | --- | --- | --- | --- |
-| G1 Task outcome record | For each task: pull request and state, CI on the merged head, commits after Review, owner turns in sessions of the task after Review, time from Review to Done, and requeues. Counts and times only. | Session events (`pull_request_opened`, `commit_observed`, `user_message` times) and task checks | The record exists for every task, and the numbers of the retrospective are reproducible from it |
+| G1 Task outcome record | For each task: pull request and state, CI on the merged head, commits after Review, owner turns in sessions of the task after Review, time from Review to Done, and requeues. Counts and times only. | Session events (`pull_request_opened`, `commit_observed`, `user_message` times) and task checks. Stored locally in SQLite. The proposed store is `tasks.sqlite`, because the record belongs to the task control plane and observation must not depend on tasks. That store accepts only schema version 1, so G1 adds its first versioned migration. | The record exists for every task, and the numbers of the retrospective are reproducible from it |
 | G2 Model evidence for each agent | Requested and observed model and effort for the main agent and for each subagent, bound to the task and its type of work | #267 model retention; the agents contract | `list_session_agents` works, and every task session shows both values |
 | G3 Repository process compliance | Deterministic checks that the repository declares; Core never parses repository prose. Aril reads the repository's own rules and labels its reading as an inference. | Compliance checks in the [guidance impact plan](guidance-impact.md) (task 2) | Aril reports met, unmet, or unknown for each repository rule before Review |
 | G4 Proof presence | Whether the pull request has the images and sections that the repository's own template requires, and CI on its head. Presence only, never quality. | Repository snapshot and pull-request facts | A pull request without the required proof cannot look ready |
@@ -169,7 +185,7 @@ Proof and privacy: Pomegr is a public repository. A pull request there must not 
 | Gap | What is missing | Closed when |
 | --- | --- | --- |
 | G6 Model calibration | Aril chooses each task session's model from the type of work and from G1 and G2 outcomes. With no evidence, it does not choose the cheaper model. It moves to a cheaper model only when outcomes show equal quality. An owner correction applies at once and is recorded as a data point. No model allowlist is typed by hand; the owner sets budgets and may exclude models. | Every start has a recorded reason that cites evidence or the no-evidence rule |
-| G7 Departure briefing | Before the owner leaves, Aril checks each selected card. It checks the delivery path (push and pull request), the repository's proof recipe, dependencies, and decisions only the owner can make. It asks all questions in one batch. | The Pokrr cards of the first pilot are flagged in a replay |
+| G7 Five-minute plan | The departure briefing. Before the owner leaves, Aril checks each selected card. It checks the delivery path (push and pull request), the repository's proof recipe, dependencies, and decisions only the owner can make. It asks all questions in one batch. | The Pokrr cards of the first pilot are flagged in a replay |
 | G8 Review-ready check | Before a task reaches the owner, G3 and G4 pass, or Aril sends the task back with reasons | No task reaches Review with unmet repository rules unless Aril states why |
 | G9 Send-back | A follow-up session for the same task, in the same worktree, starts from a brief of what failed. This stays inside the current dispatch boundary because it starts a new session. Managed messages to a running session stay deferred. | A synthetic task with missing proof goes back and returns with proof |
 
@@ -177,7 +193,7 @@ Proof and privacy: Pomegr is a public repository. A pull request there must not 
 
 | Gap | What is missing | Closed when |
 | --- | --- | --- |
-| G10 Dependencies without the owner | A dependent task may start from its parent's branch when the repository allows stacked pull requests. Each brief lists sibling branches and shared resources, such as migration numbers. | A replay of the Clapline chain needs no owner action between tasks |
+| G10 Dependencies without the owner | Each dependency states its kind. An order dependency is satisfied when the parent passes the review-ready check (G8). A code dependency starts from the parent's branch only where the repository's rules allow stacked pull requests; otherwise it waits for Done. After the parent merges, an agent rebases the child. Aril proposes the kind in the five-minute plan. Each brief lists sibling branches and shared resources, such as migration numbers. This is a starting point: it adapts to each user's repositories and way of working. | A replay of the Clapline chain needs no owner action between tasks |
 | G11 Scheduling defects | Quota waits never consume decision rounds. A task that the grant cannot reach is reported when the grant starts. A worktree starts from a commit that exists on the remote. | Each case of findings 5 and 6 has a synthetic test |
 | G12 Worktree cleanup after merge | Verify the cause of finding 9. Start the removal when the task's pull request is merged, not only after **Mark done**. Never remove uncommitted work. Show why a worktree is kept, for example a folder in use. | No merged task leaves a worktree that needs manual removal |
 
@@ -188,7 +204,8 @@ Proof and privacy: Pomegr is a public repository. A pull request there must not 
 | G13 Owner inbox | An ordered list of owner actions only. Each item has one action, its reason, an estimated time, and a link to the proof. The item that unblocks the most work comes first. | The board needs no reading beyond the inbox to know what to do |
 | G14 Takeover | One action opens a new terminal titled with the task and pull request, in the task's worktree. The session starts from a brief: goal, pull request, proof, open comments, decisions, and a link to the old session. | The owner reaches any task's work in one action |
 | G15 Discovery capture | Agents record unrelated discoveries in a findings list without asking the owner. Nothing becomes a task automatically. | No session waits for an answer about an unrelated discovery |
-| G16 Pilot panel replacement | The rejected **Aril pilot** panel goes. Its controls move to the briefing and the inbox after a design pass. | The panel is removed |
+| G16 Pilot panel replacement | The rejected **Aril pilot** panel goes. Its controls move to the five-minute plan and the inbox after a design pass. | The panel is removed |
+| G17 Closeout reconciliation | One place that compares, for each task, its pull request (open, merged, or closed), its sessions (open or ended), its board state, and its worktree. It shows hints, such as "pull request merged; task still in Review; session still open". Today the owner checks each window by hand. An action for all merged tasks at once comes only after the debrief. Pomegr never closes a session; it only names the sessions that the owner can close. | After a merge, the owner closes out every merged task from one place |
 
 ## Readiness for experiment 2
 
@@ -201,8 +218,8 @@ The owner may start experiment 2 only when all of these are true:
 5. The inbox shows only owner actions, and the pilot panel is gone.
 6. Claude is configured for the coordinator and for the task sessions.
 
-Experiment 2 measures the scorecard values during the owner's absence, and the number of pull requests delivered.
-The targets are an [open decision](#open-decisions).
+Experiment 2 measures the scorecard values during the owner's absence, and the number of pull requests delivered. The values stay in the desktop; this roadmap records only whether each target passed.
+Its targets are a median owner time per pull request below 20 minutes, and no pull request without the proof that its repository requires.
 
 ## Retrospective of the first pilot
 
@@ -285,28 +302,26 @@ The 2026-10-17 proposal held these ideas. They are outside the versions in this 
 
 ## Open decisions
 
-1. **Departure briefing (G7).** Will the owner spend about 5 minutes with Aril before leaving?
-2. **0.8.1 scope.** Do T-128 and T-132 enter 0.8.1? The proposal is no, unless they are Done before the cut.
-3. **Dependencies (G10).** Stacked branches, Review that satisfies a dependency, or both?
-4. **Experiment 2 targets.** For example: a median owner time per pull request below 20 minutes, and no pull request without the proof that its repository requires. These values are proposals.
-5. **Scorecard home.** A desktop view only, or also a table of each version's values in this roadmap?
-6. **Version order.** Accept or change the order of the [small versions](#small-versions-after-081).
-7. **Plan placements.** Accept or change the placements in [Other plans](#other-plans).
-8. **G1 storage.** The task store (`tasks.sqlite`) or the monitor store (`monitor.sqlite`). The monitor store needs versioned migrations first.
+The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#owner-decisions)). This one remains:
+
+1. **Closeout debrief (G17).** A dedicated session with the owner that records the current manual closeout steps and their order before design. It also answers whether worktrees were removed before or after **Mark done**.
 
 ## Work and verification
 
-- [ ] The owner answers the open decisions.
+- [x] The owner answers the open decisions (2026-10-21), except the closeout debrief.
+- [ ] Hold the closeout debrief (G17).
 - [ ] Ship 0.8.1 with the steps above and record the procedure.
 - [ ] Verify the cause of finding 9 (worktree cleanup).
 - [ ] Verify whether #263 stops quota waits from consuming decision rounds.
 - [ ] Fix `list_session_agents` "malformed observation".
-- [ ] Ship 0.9.0 with the outcome record and the scorecard, and record the first measured values.
+- [ ] Ship 0.9.0 with the outcome record and the scorecard, with the first measured values in the desktop.
 - [ ] Apply each accepted plan placement in that plan's own change.
 - [ ] Create a board task for each gap when its version starts.
 - [ ] Pass the readiness criteria.
-- [ ] Run experiment 2 and record its result here.
+- [ ] Run experiment 2 and record here whether each target passed.
 
 ## Continuation checkpoint
 
 2026-10-19: the retrospective is complete, from read-only evidence. The 0.8.1 cut was tested in a disposable worktree with no conflicts. Each other plan was checked for purpose fit. The Portuguese proposal and its attachments were replaced by this roadmap. Next action: the owner reviews this roadmap and answers the open decisions.
+
+2026-10-21: the owner accepted the five-minute plan, the experiment 2 targets, the version order, and the plan placements, and kept T-128 and T-132 out of 0.8.1. Closeout reconciliation became G17. A dry run put #269 on the 0.8.1 cut with one resolved conflict. The owner also decided that scorecard values stay in the desktop, that G1 is stored locally in SQLite, that #269 enters 0.8.1 and #270 waits for 0.9.0, and that the dependency proposal is a starting point that adapts to each user. Next action: build `release/0.8.1`; the owner gives the go for its push, tag, and release, and schedules the closeout debrief.
