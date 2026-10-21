@@ -104,7 +104,7 @@ test("the title joins every leading line of only tags into the tags, and keeps a
     task(3, { state: "needs_review", text: "Title\n[a]\nBody", updatedAt: "2026-10-08T10:00:01.000Z" }),
     task(4, { state: "needs_review", text: "[ui]\n\n[TODO] write tests", updatedAt: "2026-10-08T10:00:00.000Z" }),
   ]) }]);
-  assert.deepEqual(home.attention.map((item) => item.title), ["Make plan-intent consume atomic", "[a] [b]", "Title", "[TODO] write tests"]);
+  assert.deepEqual(home.attention.map((item) => item.title), ["Make plan-intent consume atomic", "[a] [b]", "Title", "write tests"]);
   assert.ok(!JSON.stringify(home).includes("SECOND-LINE"));
 });
 

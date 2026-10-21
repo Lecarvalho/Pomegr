@@ -116,8 +116,10 @@ test("the server parser follows the display rule", () => {
     tags: ["frontend", "tech-debt", "ui"], title: "Make plan-intent consume atomic", rest: "",
   });
   assert.deepEqual(titleOnServer("[a]\n[b]"), { tags: [], title: "[a] [b]", rest: "" });
-  assert.deepEqual(titleOnServer("[ui]\n\n[TODO] write tests\nmore"), { tags: ["ui"], title: "[TODO] write tests", rest: "more" });
-  assert.deepEqual(splitOnServer("[ui]\n\n[x] one\n[x] two"), { tags: ["ui"], text: "[x] one\n[x] two", runLength: 6 });
+  assert.deepEqual(titleOnServer("[ui]\n\n[TODO] write tests\nmore"), { tags: ["ui", "TODO"], title: "write tests", rest: "more" });
+  assert.deepEqual(splitOnServer("[ui]\n\n[x] one\n[x] two"), { tags: ["ui", "x"], text: "one\n[x] two", runLength: 10 });
+  assert.deepEqual(splitOnServer("[ frontend ] [ tech-debt ]\r\n\r\n[ test ] Make plan-intent").tags, ["frontend", "tech-debt", "test"]);
+  assert.deepEqual(splitOnServer("[ frontend ] [ tech-debt ]\n \n[ test ] Make plan-intent").tags, ["frontend", "tech-debt", "test"]);
   assert.deepEqual(splitOnServer("[ui]\n[x] one").tags, ["ui", "x"]);
   assert.deepEqual(splitOnServer("Fix [ bug ] in the cart").tags, []);
   assert.deepEqual(splitOnServer("[Bug] [bug] [ui] Title").tags, ["Bug", "ui"]);

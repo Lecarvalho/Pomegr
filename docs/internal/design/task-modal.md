@@ -168,8 +168,8 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - The tag run is every `[ word ]` token at the very start of the text.
 - Any whitespace separates the tokens, line breaks included, so leading lines that hold only tags all join the run.
 - The run stops at the first thing that is not a token, and at a token that touches other text.
-- A blank line ends the run: two line breaks with only spaces and tabs between them.
-- A single line break joins the lines, so a body paragraph that starts with a bracket stays text below a blank line.
+- Blank lines between tokens do not end the run, so the tokens at the start of the title line are always tags.
+- A body paragraph that starts with a bracket, such as “[TODO] write tests” below a tags line, has that token as a tag, and its title is “write tests”.
 - The run starts at the very start of the text, and its leading whitespace is whatever the parser skips, so a text that starts with a no-break space, a byte order mark, or an em space has chips.
 - The shared parser (`splitTaskTags` in `app/components/tasks/task-tags.ts`) reads the run.
 - The run is a display heuristic.

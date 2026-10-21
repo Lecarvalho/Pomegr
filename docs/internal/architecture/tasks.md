@@ -1164,8 +1164,8 @@ it looks.
   projected boards and returns plain values, like the other rule modules.
 - **Title.** An attention item's title is the bound session's title, else the title line
   of the task text: the first text after its leading tags, which may sit on several
-  leading lines (any whitespace, line breaks included, separates the tokens, and a blank
-  line ends the run). A blank line never leads, and a leading Markdown heading mark is left out. A text of only
+  leading lines (any whitespace, blank lines and line breaks included, separates the
+  tokens). A blank line never leads, and a leading Markdown heading mark is left out. A text of only
   tags keeps them, its lines joined on one line. The tag split and the title
   line are a display heuristic; the [board design](../design/task-board.md#tags) owns
   the rule. The stored text keeps its brackets. `server/tasks/task-tags.mjs` is the

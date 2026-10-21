@@ -145,7 +145,7 @@ stays at the start of the title.
 - A tag is a label for you. The task text keeps its brackets.
 - The character count, the saved text, and what the agent reads are the same as if you had typed the brackets.
 - Tags can sit on their own lines. Every line at the start that holds only tags joins the tags, and the title is the first text after them.
-- A blank line ends the tags, so a paragraph below it that starts with a bracket stays text.
+- Blank lines between tags do not matter: a tag typed at the start of the title line joins the tags above it.
 - A tag needs no space after it. If text follows it right away, Pomegr adds one space.
 - A pasted line of tags that touch each other, such as `[a][b]Title`, gets the same spaces.
 - If you press **Backspace** right after typing the closing bracket, the tag becomes text again, without its last bracket, so you can correct it.

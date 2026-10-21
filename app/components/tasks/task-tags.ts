@@ -3,8 +3,6 @@ export const TASK_TAG_LIMIT = 8;
 const TAG_TOKEN = /^\[[ \t]*([\p{L}\p{N}][\p{L}\p{N}\p{M}._-]{0,23})[ \t]*\]/u;
 /** The word that stands for an image in a plain task text. It is never a tag. */
 const IMAGE_WORD = "image";
-/** Two line breaks with only spaces and tabs between them: a blank line, which ends a run of tags. */
-const BLANK_LINE = /(?:\r\n|\n|\r(?!\n))[^\S\r\n]*(?:\r\n|\n|\r)/u;
 /** What may follow a token for it to be a tag: whitespace, or the end of the text. */
 const isGap = (character: string | undefined) => character === undefined || character === " " || character === "\t" || character === "\n" || character === "\r";
 
@@ -19,7 +17,8 @@ export type TaskTagged = {
 
 /**
  * The leading run of `[ word ]` tokens at the very start of a task text, as tags. Any whitespace, line breaks included, separates the
- * tokens, so leading lines that hold only tags all join the run. A token that touches other text ends the run, and so does a blank line.
+ * tokens, so leading lines that hold only tags, with blank lines between them, all join the run. A token that touches other text ends the run.
+ * The first text after the run is the title line, so the tokens at the start of the title line are always tags.
  * A display heuristic: the stored text keeps its brackets.
  */
 export function splitTaskTags(text: string): TaskTagged {
@@ -42,11 +41,6 @@ export function splitTaskTags(text: string): TaskTagged {
     }
     index = after;
     while (/\s/u.test(text[index] ?? "")) index += 1;
-    // A blank line ends the run: the text after it is the body, even when it starts with a bracket.
-    if (BLANK_LINE.test(text.slice(after, index))) {
-      runLength = index;
-      break;
-    }
     runLength = index;
   }
   if (tags.length === 0) return { tags, text, runLength: 0 };
@@ -56,7 +50,7 @@ export function splitTaskTags(text: string): TaskTagged {
 /**
  * The text with one space after each token of the leading run that touches the text after it, for the tokens that end in `[from, to]`, and how many
  * spaces that added; null when there is none. The editor calls it after the person types or pastes there, so the token is a tag, as it is when
- * it is typed one character at a time. A token that is outside the run, that holds the image word, or that follows a blank line is left alone.
+ * it is typed one character at a time. A token that is outside the run, or that holds the image word, is left alone.
  */
 export function spaceGluedTokens(text: string, from: number, to: number): { text: string; added: number } | null {
   let value = text;
@@ -68,7 +62,7 @@ export function spaceGluedTokens(text: string, from: number, to: number): { text
     if (run.tags.length === 0) {
       stop = value.length - value.trimStart().length;
       if (value.slice(0, stop).includes("\n")) break;
-    } else if (BLANK_LINE.test(value.slice(0, stop).match(/\s*$/u)![0])) break;
+    }
     const match = TAG_TOKEN.exec(value.slice(stop));
     if (!match || match[1].toLowerCase() === IMAGE_WORD) break;
     const after = stop + match[0].length;

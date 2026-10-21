@@ -23,16 +23,16 @@ describe("splitTaskTags", () => {
     expect(splitTaskTags("[a]\n\n\nTitle").text).toBe("Title");
   });
 
-  it("ends the run at a blank line, so a body paragraph that starts with a bracket stays text", () => {
-    expect(splitTaskTags("[ui]\n\n[TODO] write tests")).toEqual({ tags: ["ui"], text: "[TODO] write tests", runLength: 6 });
-    expect(splitTaskTags("[ui]\n\n[x] one\n[x] two")).toEqual({ tags: ["ui"], text: "[x] one\n[x] two", runLength: 6 });
-    // Spaces and tabs between the two line breaks, and Windows line breaks, are still a blank line.
-    expect(splitTaskTags("[ui]\n  \t\n[x] one").tags).toEqual(["ui"]);
-    expect(splitTaskTags("[ui]\r\n\r\n[x] one").tags).toEqual(["ui"]);
-    expect(splitTaskTags("[a] [b]\n\n\n[c] Title").tags).toEqual(["a", "b"]);
-    // A single line break, with any spaces, still joins the lines.
-    expect(splitTaskTags("[ui]  \n  [x] one").tags).toEqual(["ui", "x"]);
-    // A blank line after the last tag only ends the run: the text is the body, not tags.
+  it("joins the tokens at the start of the title line into the run, however many blank lines separate them from the tags", () => {
+    expect(splitTaskTags("[ frontend ] [ tech-debt ]\n\n[ test ] Make plan-intent")).toEqual({
+      tags: ["frontend", "tech-debt", "test"], text: "Make plan-intent", runLength: 37,
+    });
+    for (const gap of ["\n\n", "\r\n\r\n", "\n \n", "\n  \t\n", "\n\n\n"]) {
+      expect(splitTaskTags(`[ frontend ] [ tech-debt ]${gap}[ test ] Make plan-intent`).tags, JSON.stringify(gap)).toEqual(["frontend", "tech-debt", "test"]);
+    }
+    // A body paragraph that starts with a bracket is the title line, so its leading tokens are tags.
+    expect(splitTaskTags("[ui]\n\n[TODO] write tests")).toEqual({ tags: ["ui", "TODO"], text: "write tests", runLength: 13 });
+    expect(splitTaskTags("[ui]\n\n[x] one\n[x] two")).toEqual({ tags: ["ui", "x"], text: "one\n[x] two", runLength: 10 });
     expect(splitTaskTags("[ui]\n\n")).toEqual({ tags: ["ui"], text: "", runLength: 6 });
   });
 
@@ -111,11 +111,15 @@ describe("spaceGluedTokens", () => {
   it("leaves a token alone that is outside the range, outside the run, after a blank line, or the image word", () => {
     expect(spaceGluedTokens("[ui]Fix", 5, 7)).toBeNull();
     expect(spaceGluedTokens("Fix [ui]x", 0, 9)).toBeNull();
-    expect(spaceGluedTokens("[ui]\n\n[x]y", 0, 10)).toBeNull();
     expect(spaceGluedTokens("[image]x", 0, 8)).toBeNull();
     expect(spaceGluedTokens("\n[ui]x", 0, 6)).toBeNull();
     expect(spaceGluedTokens("[ui] Fix", 0, 8)).toBeNull();
     expect(spaceGluedTokens("[ui", 0, 3)).toBeNull();
+  });
+
+  it("spaces a glued token below blank lines, which are part of the run", () => {
+    expect(spaceGluedTokens("[ui]\n\n[x]y", 0, 10)).toEqual({ text: "[ui]\n\n[x] y", added: 1 });
+    expect(spaceGluedTokens("[ui]\r\n\r\n[x]y", 0, 12)).toEqual({ text: "[ui]\r\n\r\n[x] y", added: 1 });
   });
 
   it("stops at the limit, and does not space a token the run cannot take", () => {
@@ -133,11 +137,11 @@ describe("splitTaskTitle", () => {
     });
     expect(splitTaskTitle("[a]\n[b]\n\nTitle")).toEqual({ tags: ["a", "b"], title: "Title", rest: "" });
     expect(splitTaskTitle("[a]\n[b]")).toEqual({ tags: [], title: "[a] [b]", rest: "" });
-    // A blank line ends the run: the paragraph after it leads, even when it starts with a bracket.
-    expect(splitTaskTitle("[ui]\n\n[TODO] write tests\nmore")).toEqual({ tags: ["ui"], title: "[TODO] write tests", rest: "more" });
-    expect(splitTaskTitle("[ui]\n\n[x] one\n[x] two")).toEqual({ tags: ["ui"], title: "[x] one", rest: "[x] two" });
+    // The leading tokens of the title line are tags, also below a blank line.
+    expect(splitTaskTitle("[ui]\n\n[TODO] write tests\nmore")).toEqual({ tags: ["ui", "TODO"], title: "write tests", rest: "more" });
+    expect(splitTaskTitle("[ui]\n\n[x] one\n[x] two")).toEqual({ tags: ["ui", "x"], title: "one", rest: "[x] two" });
     expect(splitTaskTitle("[ frontend ] [ tech-debt ]\n[ ui ]\n")).toEqual({ tags: [], title: "[ frontend ] [ tech-debt ] [ ui ]", rest: "" });
-    expect(splitTaskTitle("[ frontend ] [ tech-debt ]\n\n[ ui ]\n")).toEqual({ tags: ["frontend", "tech-debt"], title: "[ ui ]", rest: "" });
+    expect(splitTaskTitle("[ frontend ] [ tech-debt ]\n\n[ ui ]\n")).toEqual({ tags: [], title: "[ frontend ] [ tech-debt ] [ ui ]", rest: "" });
   });
 
   it("takes the tags, then the rest of the first line as the title, then the rest", () => {

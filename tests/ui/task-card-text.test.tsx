@@ -48,7 +48,7 @@ describe("taskTextPreview", () => {
       lead: "Make plan-intent consume atomic across browser tabs", rest: "Problem: two tabs", tags: ["frontend", "tech-debt", "ui"],
     });
     expect(taskTextPreview("[a]\n[b]\r\n\r\nTitle")).toEqual({ lead: "Title", rest: "", tags: ["a", "b"] });
-    expect(taskTextPreview("[ui]\n\n[TODO] write tests\nmore")).toEqual({ lead: "[TODO] write tests", rest: "more", tags: ["ui"] });
+    expect(taskTextPreview("[ui]\n\n[TODO] write tests\nmore")).toEqual({ lead: "write tests", rest: "more", tags: ["ui", "TODO"] });
     expect(taskTextPreview("Title\n[a]\nBody").tags).toEqual([]);
   });
 

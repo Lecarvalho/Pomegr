@@ -7,12 +7,10 @@ export const TASK_TAG_LIMIT = 8;
 const TAG_TOKEN = /^\[[ \t]*([\p{L}\p{N}][\p{L}\p{N}\p{M}._-]{0,23})[ \t]*\]/u;
 // The word that stands for an image in a plain task text. It is never a tag.
 const IMAGE_WORD = "image";
-// Two line breaks with only spaces and tabs between them: a blank line, which ends a run of tags.
-const BLANK_LINE = /(?:\r\n|\n|\r(?!\n))[^\S\r\n]*(?:\r\n|\n|\r)/u;
 
 // Returns `{ tags, text, runLength }`: the tags as typed without repeats, the text after the run (which has taken the
-// whitespace after its last token, line breaks included), and the characters the run took. A token that touches other
-// text ends the run, and so does a blank line.
+// whitespace after its last token, line breaks and blank lines included), and the characters the run took. A token that
+// touches other text ends the run.
 export function splitTaskTags(text) {
   const tags = [];
   const seen = new Set();
@@ -34,11 +32,6 @@ export function splitTaskTags(text) {
     }
     index = after;
     while (/\s/u.test(text[index] ?? "")) index += 1;
-    // A blank line ends the run: the text after it is the body, even when it starts with a bracket.
-    if (BLANK_LINE.test(text.slice(after, index))) {
-      runLength = index;
-      break;
-    }
     runLength = index;
   }
   if (tags.length === 0) return { tags, text, runLength: 0 };

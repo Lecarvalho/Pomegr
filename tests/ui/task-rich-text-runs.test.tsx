@@ -74,21 +74,47 @@ describe("an image against a chip that nothing follows", () => {
   });
 });
 
-describe("a blank line ends the run of tags", () => {
-  it("draws a body paragraph that starts with a bracket as text, after the chips of the line above", () => {
+describe("tokens at the start of the title line are tags, below a blank line too", () => {
+  const TITLE = "Make plan-intent consume atomic across browser tabs";
+  const GAPS = ["\n", "\n\n", "\r\n\r\n", "\n \n", "\n\t\n"];
+
+  it("draws the tokens of a body paragraph that starts with a bracket as chips, with the blank line kept in the chip before", () => {
     renderField("[ui]\n\n[TODO] write tests");
-    expect(chips()).toEqual(["ui"]);
-    expect(title()?.textContent).toBe("[TODO] write tests");
-    expect(richLayout("[ui]\n\n[x] one\n[x] two")).toEqual({ chips: [{ label: "ui", source: "[ui]\n\n" }], title: "[x] one", rest: "\n[x] two" });
-    expect(richLayout("[ui]\n[x] one").chips.map((chip) => chip.label)).toEqual(["ui", "x"]);
-    expect(richLayout("[ui]\n  \t\n[x] one").chips.map((chip) => chip.label)).toEqual(["ui"]);
+    expect(chips()).toEqual(["ui", "TODO"]);
+    expect(title()?.textContent).toBe("write tests");
+    expect(richLayout("[ui]\n\n[x] one\n[x] two")).toEqual({
+      chips: [{ label: "ui", source: "[ui]\n\n" }, { label: "x", source: "[x] " }], title: "one", rest: "\n[x] two",
+    });
+    expect(richLayout("[ui]\n  \t\n[x] one").chips.map((chip) => chip.label)).toEqual(["ui", "x"]);
   });
 
-  it("keeps a bracket token typed below a blank line as text", () => {
-    const { last } = renderField("[ui]\n\nBody");
-    typeInto(titleText(), "[x]Body", 3);
-    expect(last()).toBe("[ui]\n\n[x]Body");
-    expect(chips()).toEqual(["ui"]);
+  it("converts a token typed at the start of the title line under a blank line, and keeps the blank line", () => {
+    for (const gap of GAPS) {
+      const { last } = renderField(`[ frontend ] [ tech-debt ]${gap}${TITLE}`);
+      expect(chips()).toEqual(["frontend", "tech-debt"]);
+      typeInto(titleText(), `[ test ]${TITLE}`, 8);
+      expect(chips(), JSON.stringify(gap)).toEqual(["frontend", "tech-debt", "test"]);
+      expect(title()?.textContent).toBe(TITLE);
+      expect(last()).toBe(`[ frontend ] [ tech-debt ]${gap}[ test ] ${TITLE}`);
+      cleanup();
+    }
+  });
+
+  it("converts a token typed with a space, and a pasted token, the same way", () => {
+    for (const gap of GAPS) {
+      const typed = renderField(`[ frontend ] [ tech-debt ]${gap}${TITLE}`);
+      typeInto(titleText(), `[ test ] ${TITLE}`, 9);
+      expect(chips(), JSON.stringify(gap)).toEqual(["frontend", "tech-debt", "test"]);
+      expect(typed.last()).toBe(`[ frontend ] [ tech-debt ]${gap}[ test ] ${TITLE}`);
+      cleanup();
+      const pasted = renderField(`[ frontend ] [ tech-debt ]${gap}${TITLE}`);
+      caretAt(titleText(), 0);
+      beforeInput("insertFromPaste");
+      typeInto(titleText(), `[ test ] ${TITLE}`, 9, "insertFromPaste");
+      expect(chips(), JSON.stringify(gap)).toEqual(["frontend", "tech-debt", "test"]);
+      expect(pasted.last()).toBe(`[ frontend ] [ tech-debt ]${gap}[ test ] ${TITLE}`);
+      cleanup();
+    }
   });
 });
 

@@ -336,8 +336,8 @@ The head actions appear in this order:
 - Any whitespace separates the tokens, line breaks included.
 - Leading lines that hold only tags all join the run.
 - A token that touches other text ends the run.
-- A blank line ends the run: two line breaks with only spaces and tabs between them.
-- A single line break joins the lines, so a body paragraph that starts with a bracket stays text below a blank line.
+- Blank lines between tokens do not end the run, so the tokens at the start of the title line are always tags.
+- A body paragraph that starts with a bracket, such as “[TODO] write tests” below a tags line, has that token as a tag.
 - The run starts at the very start of the text, after any whitespace that is not a line break.
 - The run stops at the first thing that is not a token.
 - Brackets anywhere else stay text.
