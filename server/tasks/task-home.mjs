@@ -1,6 +1,7 @@
 // The Tasks home: one summary of every stored board, built from projected boards only.
 
 import { plainTaskText } from "./task-record.mjs";
+import { splitTaskTitle } from "./task-tags.mjs";
 
 export const TASK_HOME_BOARD_LIMIT = 200;
 export const TASK_HOME_ATTENTION_LIMIT = 50;
@@ -11,12 +12,16 @@ const BOARD_COLUMN_COUNT = 5;
 
 const LINE_CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/gu;
 
-// One bounded line: the session title when the session has one, otherwise the first line of the task text.
+const cleanLine = (line) => line.replace(LINE_CONTROL, " ").trim();
+const firstLineOf = (text) => text.split(/\r?\n/u).map(cleanLine).find((line) => line.length > 0) ?? "";
+
+// One bounded line: the session title when the session has one, otherwise the title line of the task text (a heuristic;
+// the same rule as the board card's title, `splitTaskTitle`). The title line is the first non-empty line after the leading
+// tags and has no Markdown heading mark. A text of only tags keeps them, so a task is never left without a title.
 function attentionTitle(task) {
   const sessionTitle = typeof task.session?.title === "string" ? task.session.title.trim() : "";
-  const firstLine = plainTaskText(typeof task.text === "string" ? task.text : "").split(/\r?\n/u).map((line) => line.replace(LINE_CONTROL, " ").trim())
-    .find((line) => line.length > 0) ?? "";
-  const line = sessionTitle || firstLine;
+  const plain = plainTaskText(typeof task.text === "string" ? task.text : "");
+  const line = sessionTitle || cleanLine(splitTaskTitle(plain).title) || firstLineOf(plain);
   return line.length > TASK_HOME_TITLE_LENGTH ? `${line.slice(0, TASK_HOME_TITLE_LENGTH - 1)}…` : line;
 }
 

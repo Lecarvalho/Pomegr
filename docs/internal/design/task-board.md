@@ -26,6 +26,8 @@ The Tasks page draws committed board facts. The task modal and the task fields a
 - Each row is one link to the task's board, at least 44px tall.
 - A row shows the repository name (12px muted), the task ID (data font, muted), one title line (13px/500), the state chip, and a muted 14px chevron.
 - The title is the session title when the session has one, otherwise the first line of the task text. It is one line with an ellipsis.
+- The first line is read after the task's [tags](#tags).
+- A first line of only tags lets the next non-empty line lead.
 - The state chip is the shared `.commandChip` in the warning tone.
 - With no such task, the panel reads “Nothing waits for you.”
 - When more than 50 tasks wait, a muted line reads “Showing the newest 50 of n.”
@@ -147,7 +149,11 @@ The head actions appear in this order:
 - While a ready task board is in view, the palette trigger reads “Search tasks”.
 - The board's tasks come before the destinations. At most 20 tasks match.
 - Each result row has the `grid` glyph, the first line of the card title, and a detail line.
+- The card title leaves out the task's [tags](#tags).
+- The search still matches the whole stored text, so a tag word finds its task.
 - The detail line holds the ID, the column, the chip, and the feature.
+- The chip there is the task's state, even where its lane leaves the chip out.
+- The next task reads **Queued · next**.
 - Choosing a task opens its task modal in the desktop app.
 - Choosing a task anywhere else focuses its card on the Board.
 
@@ -166,13 +172,16 @@ The head actions appear in this order:
 ### Lanes
 
 - A column is a **lane** (`.taskColumn`).
-- The lane has the raised fill (`--command-panel-2`) and a one-pixel `--command-line` border.
+- A lane has no fill and no border at rest.
+- A lane draws only its header over its rule, and its cards.
+- The lane keeps a one-pixel transparent border, so the drop target below shifts nothing.
 - The lane has the panel radius, 8px padding, and an 8px gap. Its cards use the panel fill.
 - The lane is at least 240px tall.
 - Above 760px, the lane is exactly as tall as the window leaves under the page header, gates, and filter. The page itself does not scroll.
 - Above 760px, each lane scrolls its own cards under a thin scrollbar. Its header and **+ New task** stay in view.
-- The lane under a dragged card cannot take the raised fill, so it takes the strong line (`--command-line-strong`) on its border.
+- While a card is dragged over a lane, the lane takes the raised fill (`--command-panel-2`) and the strong line (`--command-line-strong`) on its border.
 - The drop-target border is two pixels wide, drawn as an inset one-pixel ring, in both themes.
+- The loading placeholder lanes keep the raised fill and the line. See [States](#states).
 
 ### Column header
 
@@ -187,14 +196,13 @@ The head actions appear in this order:
 - Ready is the queue's lane. Its waiting cards start from the top, one at a time, whatever their feature.
 - A waiting card is a Queued or Scheduled card with no session. Any other card of Ready is a plain board card where it is.
 - A waiting card of Ready is the compact card (`.taskReadyCard`): the board card at 10px/12px padding with a 6px gap.
-- A compact card shows the ID and chip, the title, the provider badge with “model · effort” at 11px, its Starts or Waiting line, and its feature line.
-- A compact card shows no excerpt and no Complete when line.
+- A compact card shows the same parts as any card. See [Task card](#task-card).
 - A **parallel group** (`.taskReadyGroup`) is drawn in Backlog and Ready only. It holds the cards that share one group, have not started, and sit together.
 - In Backlog a group is a plan: its cards are Not queued and keep their full card. The frame, caption, and count are the same as in Ready.
 - A Not queued card of Ready is a planned card too: it is drawn in its group's frame like a waiting card.
 - Only the owner makes a group. Two cards that sit next to each other draw no frame and run one after the other.
 - A group may hold cards of different features and cards with no feature.
-- The frame is a one-pixel `--command-line-strong` border with the panel radius, 6px padding, a 6px gap, and no fill.
+- The frame is a one-pixel `--command-line` border with the panel radius, 6px padding, a 6px gap, and no fill.
 - The grouping reads only the lane's card order and each task's group. It reorders no card and stores no value.
 - A card that has started, between two cards of one group, splits the frame into two.
 - The caption (`.taskReadyCaption`) is the first row, with 2px/4px padding and its two parts at the ends. It wraps when narrow.
@@ -202,7 +210,7 @@ The head actions appear in this order:
 - The count is the number of members that have not started. A member that started is not counted.
 - When members started, the left part adds “ · T-4 and T-5 started” (11px/400, muted), with the IDs in the data font, by number.
 - The parallel glyph is 12px: two vertical 1.5px strokes in the current color. It is hidden from assistive technology.
-- The card the monitor names as next keeps the chip **Queued · next**: a waiting card of the group that runs, otherwise the top waiting card.
+- The card the monitor names as next keeps the chip **Next**: a waiting card of the group that runs, otherwise the top waiting card.
 - A waiting card adds one muted 12px wait line (`.taskCardWaiting`) from the monitor's reading of why it has not started.
 - The line of a card past the first place opens with its place in the start order, such as “5th in queue”.
 - Then comes “Waiting: ” and one clause for each reason, joined by “; ”. A place and a reason are joined by “ · ”.
@@ -292,33 +300,94 @@ The head actions appear in this order:
 
 ### Layout
 
-- The card (`.taskCard`) has the panel fill, a one-pixel `--command-line` border, a 6px radius, 12px padding, and an 8px gap.
-- The top row is the task ID (data font, 12px, muted) and the state chip.
+- The card (`.taskCard`) has the panel fill, a one-pixel transparent border, a 6px radius, 12px padding, and a 6px gap.
+- The card draws these parts in order: the meta row, the title, the tags, the run line, and its other lines.
+- Each part shows only when it is set.
+- The card draws no excerpt of the rest of the task text.
+- The card draws no **Complete when** line, because the task modal shows it.
+- The meta row (`.taskCardTop`) is at least 20px tall, with a 6px gap.
+- The meta row wraps.
+- When the ID, the issue chip, the feature name, and the state chip do not fit one line, the state chip moves to a second line, at the end.
+- The feature name keeps at least 64px on the first line, so the state chip wraps before the name is cut shorter.
+- The meta row starts with the task ID (data font, 12px, muted).
+- The issue chip follows the ID when the task has a source.
+- The feature name follows as `· Feature name` (`.taskCardFeature`): 12px, muted, on one line with an ellipsis.
+- The whole feature name is the tooltip of that part.
+- The dot is hidden from assistive technology.
+- The state chip ends the row when the board draws it. See [State chip on a card](#state-chip-on-a-card).
 - The title is 13px/500 ink, clamped to three lines.
 - The title is the first sentence of the first line of the task text until its session has a title. The split is a heuristic.
+- The first line is read after the task's [tags](#tags).
 - A first line of one sentence is the whole title, and a Markdown heading mark is left out.
-- The rest of the task text follows as one muted 12px excerpt (`.taskCardExcerpt`), on one run of text clamped to two lines.
-- A card with a session title, and a grouped card, shows no excerpt.
-- A backtick span in the title or the excerpt is drawn in the data font, without its backticks.
-- The tooltip of the title is the whole task text, or the session title.
+- A backtick span in the title is drawn in the data font, without its backticks.
+- The tooltip of the title is the task text from its title line on, or the session title.
+- The tooltip never starts with a blank line.
 - A Done card's title is muted.
 - In the desktop app, the title is the Quiet role drawn as plain title text, with no underline and no fill on hover or press. It opens the task modal.
 - A click anywhere on a card that opens, except on another control of the card, opens the task modal too. Focus returns to the title.
 - A card that opens shows the pointer cursor.
 
+### Tags
+
+- The tags are the run of tokens at the very start of the task text.
+- A token is `[`, optional spaces, a word, optional spaces, and `]`.
+- A word has 1 to 24 letters, digits, `.`, `_`, or `-`.
+- A word starts with a letter or a digit.
+- Any whitespace separates the tokens, line breaks included.
+- Leading lines that hold only tags all join the run.
+- A token that touches other text ends the run.
+- Blank lines between tokens do not end the run, so the tokens at the start of the title line are always tags.
+- A body paragraph that starts with a bracket, such as “[TODO] write tests” below a tags line, has that token as a tag.
+- The run starts at the very start of the text, after any whitespace that is not a line break.
+- The run stops at the first thing that is not a token.
+- Brackets anywhere else stay text.
+- A run holds at most 8 tags.
+- A repeated word is dropped, and the comparison ignores case.
+- The first spelling of a repeated word stays.
+- The word `image` is never a tag, so the `[image]` marker of an inline image stays text.
+- The run is removed from the title.
+- The first text after the run leads, so lines of only tags at the start never lead.
+- A blank line never leads, also one that holds only spaces or a Windows line break.
+- The first non-empty line after the run is the title line.
+- A leading Markdown heading mark (`#` to `######` and a space) is left out of the title line on every surface.
+- A text of only tags keeps them as its title, its lines joined on one line, and draws no chips.
+- The rich Task field is the exception: it draws the tags of such a text as chips over an empty title line, see [task-modal.md](task-modal.md#tags-in-rich-text).
+- Tags are display only.
+- The stored task text keeps its brackets.
+- No stored field or request shape changes because of a tag.
+- The tag split is a display heuristic, like the title split.
+- The tag split is not a stored field and not a judgment.
+- The parser is `splitTaskTags` in `app/components/tasks/task-tags.ts`.
+- The Tasks home title uses its server twin in `server/tasks/task-tags.mjs`.
+- The title rule is `splitTaskTitle` in the same files.
+- The title rule returns the tags, the title line, and the rest.
+- A parity test runs the same cases against both parsers and both title rules.
+- Every surface that names a task by its title uses the title without tags: the card, the search result, the feature task list, the Runs after rows, the related rows and the lead line of the Task tab, the read view of a started task, and the Tasks home.
+- The Aril chat and the Aril pilot picker show the first line as stored.
+- A card draws its tags as one wrapping row (`.taskTags`) under the title, with a 4px gap.
+- The row shows only when the task has tags.
+- A tag is the shared neutral [`.commandChip`](../../../DESIGN.md#chips) (`.taskTag`): muted text, no tone, and no color for each tag.
+- The row is a group named Tags.
+- A card with a session title draws its tags too.
+
 ### Content
 
-Each row below the title shows only when it is set, in this order:
+Each row below the tags shows only when it is set, in this order:
 
-- The provider badge with the planned “model · effort” in the data font.
+- The run line (`.taskCardPlanned`) is the planned “model · effort” in the data font, 11px, muted.
+- The run line has no provider badge, because a model names its provider.
+- When the model is the provider's default, the run line leads with the provider's name, such as “Claude Code · medium”.
 - The muted **Observed model:** line.
 - When the planned model and the observed model differ, the single amber line “Planned x, observed y”. It is a text color, never a fill.
 - The muted **Starts** line of a scheduled task, until its session is linked. It reads “Starts today 22:00”, or “Starts Oct 9, 22:00” on another day, with the time in the data font.
-- One muted **Complete when** line.
-- The feature line: the name of the task's feature, and nothing else.
-- A card that is not waiting in the queue and runs after an unfinished task adds one muted 12px line (`.taskCardWaiting.taskCardAfter`), “Runs after T-13 and T-14”, before the feature line.
+- The muted wait line of a waiting card. See [Ready parallel groups](#ready-parallel-groups).
+- A card that is not waiting in the queue and runs after an unfinished task adds one muted 12px line (`.taskCardWaiting.taskCardAfter`), “Runs after T-13 and T-14”, before the sessions line.
 - The line names only the tasks that are not Done. A card whose tasks are all Done draws no line.
 - The sessions line: **Open session**, a Text link that is not stretched, for the first session.
+- **Open session** is muted 12px text with a 12px arrow-up-right glyph.
+- The glyph is hidden from assistive technology.
+- **Open session** turns ink on hover, with no underline.
+- **Open session** never takes the brand link color.
 - The first session is the one Pomegr started, or else the first assigned session.
 - When the task has more sessions, the muted “+N more” follows the link.
 - When Pomegr started none, the muted word “Assigned” ends the line.
@@ -326,9 +395,15 @@ Each row below the title shows only when it is set, in this order:
 
 ### States
 
+- The border is the only colored chrome of a card.
+- At rest the border is transparent, so a border that appears shifts nothing.
+- A card that opens shows the `--command-line` border on hover and on focus within.
 - The border turns green while the bound session works.
 - An assigned session never changes the chip or the border.
-- The border turns amber for Needs review, Stalled, and Blocked by agent.
+- The border turns amber for Needs review, Stalled, Blocked by agent, and Needs input.
+- Needs input is the bound session's state, which the card borrows. See [State chips](#state-chips).
+- The green and amber borders stay while the card is hovered.
+- The border follows the state whether or not the lane leaves the chip out.
 
 ## State chips
 
@@ -338,7 +413,8 @@ Each row below the title shows only when it is set, in this order:
 | --- | --- |
 | Not queued | Neutral and muted. |
 | Queued | Neutral, in ink on the raised fill, with no border. It differs from Not queued. |
-| **Queued · next** | The label of the one task the monitor names as next. |
+| **Queued · next** | The label of the one task the monitor names as next, on every surface but the board. |
+| **Next** | The board's label for that task. |
 | Scheduled | Info. The card's Starts line carries its time. |
 | Needs review | Warning. |
 | Stalled | Warning. |
@@ -349,6 +425,28 @@ Each row below the title shows only when it is set, in this order:
 - In that case, In progress is positive, Needs input is warning, and the rest are neutral.
 - There is no Running task state.
 - A session state that the monitor has not committed leaves the task's own chip.
+
+### State chip on a card
+
+- A card on the board draws its state chip only when its lane does not already say that state.
+- The rule compares the chip's words with the lane's.
+- Backlog says Not queued, Ready says Queued, In progress says In progress, Review says Needs review, and Done says Done.
+- The lane is the column's role: In progress, Review, or Done.
+- The first column is Backlog and the second is Ready.
+- A card without a known lane always draws its chip.
+- The border of the card follows the state whether or not the chip is drawn.
+
+| Lane | No chip for | Chip for |
+| --- | --- | --- |
+| Backlog | Not queued | Every other state |
+| Ready | Queued, when the card is not next | **Next**, Scheduled, Not queued, and every other state |
+| In progress | The borrowed session state In progress | Needs input, Idle, Open, Stopped, Closed, and every task state |
+| Review | Needs review | Stalled, Blocked by agent, and every other state |
+| Done | Done | Every other state |
+
+- **Next** replaces **Queued · next** on the board only.
+- The task modal header and the feature task list keep **Queued · next**.
+- A queued card with no chip relies on the lane order and on its wait line.
 
 ### Issue chip
 
@@ -412,6 +510,11 @@ Each row below the title shows only when it is set, in this order:
 - The frame of a group is draggable from its caption and its padding. The whole group then moves as one block, also from Backlog to Ready.
 - A group with a queued card cannot be dragged out of Ready.
 - The caption's toolbar (`.taskReadyActions`) holds two [Icon](../../../DESIGN.md#buttons) arrows, “Move the group up” and “Move the group down”, and the Quiet **Ungroup**.
+- The toolbar sits at the end of the caption row.
+- The toolbar is invisible (opacity 0, never `display: none`, so it stays keyboard-reachable) until the group is hovered or holds focus.
+- The toolbar is always visible on a coarse pointer and at 760px and narrower.
+- Its actions are 44px high there.
+- The toolbar has no transition.
 - An arrow moves the group past the card, or the whole group, beside it. An arrow that cannot move is disabled.
 - A group with a Not queued card adds the Quiet **Queue group** (`.taskReadyQueue`) before **Ungroup**.
 - **Queue group** queues every Not queued card of the group. The group's cards move to the end of Ready in the order they had.
@@ -432,7 +535,7 @@ Each row below the title shows only when it is set, in this order:
 - The move toolbar of a card that has not started ends with the Quiet **Runs after…** (`.taskMoveLeave.taskMoveAfter`), after **Take out of group**.
 - **Runs after…** is 32px high with 12px underlined ink, 44px high on phone and coarse pointers. It has `aria-haspopup="dialog"`.
 - Its accessible name is “Choose what T-n runs after”.
-- It opens the Task modal with focus on the Runs after select. See [Task modal design](task-modal.md#body).
+- It opens the Task modal with focus on the Runs after select. See [Task modal design](task-modal.md#body-a-task-that-has-not-started).
 - A browser on the same computer draws the Runs after line and no action.
 - A browser on the same computer draws the frames and captions and no action.
 
@@ -521,7 +624,8 @@ In the desktop app the section holds these parts:
 
 - A time field (`.taskTimeInput`) is a native `time` or `datetime-local` input.
 - It is at control height with the stronger control line, the control radius, and the data font.
-- The task modal's **Start at** field uses it for a task's own start time.
+- The task modal's **Start at** row uses it for a task's own start time.
+- In that row the field is compact: 32px high on a fine pointer, 44px on a coarse pointer and at 760px and narrower, about 220px wide, and never wider than the row's value. See [Start at](task-modal.md#start-at).
 
 ### Scheduled task
 
@@ -620,10 +724,12 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 
 `/design-system` renders these parts from synthetic tasks:
 
-- The cards in every state.
+- One card for each state a lane can draw, with the chip each lane leaves out.
+- Cards with tags and with a long text.
+- A card promoted from a GitHub issue with an attention chip, in a lane of the narrowest width, where the chip wraps to a second line.
 - Column headers.
 - Lanes: the first lane with its + New task forced visible, an empty lane, and a lane in the drop-target state.
-- The Ready lane with a parallel group and the wait line of each waiting card, in its browser and desktop forms, and a card outside Ready with its feature line.
+- The Ready lane with a parallel group and the wait line of each waiting card, in its browser and desktop forms, the group at rest, and a card outside Ready with its feature name.
 - The Ready lane with a join target and with a held member, and a card with its Take out of group action.
 - Under **Planning and runs after**: the Backlog lane with a plan, in its browser and desktop forms, the Ready lane with a card that runs after an unfinished task, and a card with its Runs after… action.
 - The feature filter and the capacity strip, with the strip's Board form.

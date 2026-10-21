@@ -97,6 +97,22 @@ describe("SessionTaskTab", () => {
     expect(panel.querySelector(".sessionTaskText")).toHaveTextContent("One line");
   });
 
+  it("leads with the title line of the shared rule: no tags, no blank line, no heading mark", () => {
+    expect(taskBrief("[ui] [bug]\nFix X")).toEqual({ lead: null, body: "Fix X" });
+    expect(taskBrief("[ui]\n[bug]\n\nFix X\nSteps")).toEqual({ lead: "Fix X", body: "Steps" });
+    expect(taskBrief("[ui]\n\nFix X\n\nMore text")).toEqual({ lead: "Fix X", body: "More text" });
+    expect(taskBrief("[ui] [bug]\r\n\r\nFix X\r\nSteps")).toEqual({ lead: "Fix X", body: "Steps" });
+    expect(taskBrief("# Fix X\nSteps")).toEqual({ lead: "Fix X", body: "Steps" });
+    expect(taskBrief("[ui] [bug]")).toEqual({ lead: null, body: "[ui] [bug]" });
+    expect(taskBrief("")).toEqual({ lead: null, body: "" });
+    setBoard(board({ tasks: [{ ...mine, text: "[ui] [bug]\nFix X" }, ...siblings] }));
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    const panel = screen.getByRole("region", { name: "Task T-14" });
+    expect(panel.querySelector(".sessionTaskLead")).toBeNull();
+    expect(panel.querySelector(".sessionTaskText")).toHaveTextContent("Fix X");
+    expect(panel).not.toHaveTextContent("[ui]");
+  });
+
   it("draws no expander for a text that fits", () => {
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();

@@ -111,6 +111,11 @@
   from { background-color: var(--demo-red-wash); }
 }
 
+/* A card that needs the owner has the amber border of the real board. The column, Review, says why. */
+.card[data-attention="true"] {
+  border-color: var(--demo-red);
+}
+
 .cardId {
   color: var(--demo-muted);
   font: 500 11px/1.3 var(--demo-mono);
@@ -144,16 +149,10 @@
 }
 
 /* Tone is never color alone: the label carries the state. */
-.chip[data-tone="live"],
 .chip[data-tone="positive"] {
   border-color: var(--demo-ink);
   color: var(--demo-ink);
   font-weight: 650;
-}
-
-.chip[data-tone="attention"] {
-  border-color: var(--demo-red);
-  color: var(--demo-red);
 }
 
 .group {

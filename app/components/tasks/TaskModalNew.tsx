@@ -6,6 +6,7 @@ import { CommandSplitAction, type CommandSplitItem } from "../command-center/Com
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateCheckbox, useIssueCreateOption } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
+import { RunSettings } from "./TaskRows";
 import { CompleteWhenField, RunFields, TaskTextField, type TaskTextHandle } from "./TaskFields";
 import {
   QUEUE_ADD_FAILURE_MESSAGE, addDesktopQueueTask, createDesktopTask, createFailureMessage, rememberCreateFollowUp, startDesktopTask, useTaskEditAvailability,
@@ -128,9 +129,11 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     <TaskTextField ref={field} value={text} onChange={setText} readOnly={busy !== null} error={failure}
       images={imagesOffered ? { urls: images.urls, disabled: busy !== null, error: images.error, onAttach: images.attach } : undefined} />
     <IssueCreateCheckbox option={issueOption} checked={issueChecked} disabled={busy !== null} onChange={setWantIssue} />
-    <FeatureFields draft={feature} board={board} error={featureError}
-      onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />
-    <RunFields run={run} models={models} onChange={setRun} />
-    <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
+    <RunSettings>
+      <FeatureFields draft={feature} board={board} error={featureError}
+        onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />
+      <RunFields run={run} models={models} onChange={setRun} />
+      <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
+    </RunSettings>
   </TaskModalFrame>;
 }

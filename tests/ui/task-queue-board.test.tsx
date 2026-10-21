@@ -162,37 +162,37 @@ describe("a task that already started", () => {
     expect(card("T-3").closest(".taskReadyGroup")).toBeNull();
     expect(within(card("T-2")).getByText(/Waiting: the working tree has uncommitted changes/)).toBeInTheDocument();
     expect(card("T-2").closest(".taskReadyGroup")).not.toBeNull();
-    expect(chipText("T-2")).toBe("Queued · next");
+    expect(chipText("T-2")).toBe("Next");
   });
 
-  it("started by a live dispatch with no session yet keeps its own chip, no next marker and no Waiting line", () => {
+  it("started by a live dispatch with no session yet keeps its own state, no next marker and no Waiting line", () => {
     setBoard({ queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-2", "T-4", "T-6", "T-7", "T-13"], gates } });
     renderBoard();
-    expect(chipText("T-9")).toBe("Queued");
+    // The Ready lane already says Queued, so the card draws no chip for it.
+    expect(chipText("T-9")).toBeUndefined();
     expect(within(card("T-9")).queryByText(/Waiting/)).not.toBeInTheDocument();
     expect(within(card("T-9")).queryByRole("combobox")).not.toBeInTheDocument();
   });
 });
 
-describe("Queued · next on the board and in the Task modal", () => {
-  it("marks exactly the first task of queue.order as Queued · next", () => {
+describe("Next on the board, Queued · next in the Task modal", () => {
+  it("marks exactly the first task of queue.order as Next, and leaves the other cards of Ready and Backlog without a chip", () => {
     renderBoard();
-    expect(chipText("T-2")).toBe("Queued · next");
-    expect([...document.querySelectorAll("li[data-task-id]")].filter((li) => li.querySelector(".commandChip")?.textContent === "Queued · next")).toHaveLength(1);
-    expect(chipText("T-4")).toBe("Queued");
-    expect(chipText("T-7")).toBe("Queued");
-    expect(chipText("T-9")).toBe("Queued");
+    expect(chipText("T-2")).toBe("Next");
+    expect(card("T-2").querySelector(".taskCardChip")).toHaveClass("commandChip", "isInk");
+    expect([...document.querySelectorAll("li[data-task-id]")].filter((li) => li.querySelector(".commandChip")?.textContent === "Next")).toHaveLength(1);
+    // The lane already says Queued and Not queued.
+    for (const id of ["T-4", "T-7", "T-9", "T-5", "T-11"]) expect(card(id).querySelector(".taskCardChip"), id).toBeNull();
+    // This fixture's columns carry no role, so the lanes after Ready are not known and their cards keep their chip.
     expect(chipText("T-1")).toBe("Done");
-    expect(chipText("T-5")).toBe("Not queued");
-    expect(card("T-5").querySelector(".commandChip")).not.toHaveClass("isInk");
-    expect(card("T-4").querySelector(".commandChip")).toHaveClass("isInk");
+    expect(document.body).not.toHaveTextContent("Queued · next");
   });
 
   it("follows queue.order when another task is first", () => {
     setBoard({ queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-6", "T-2", "T-4", "T-7", "T-13", "T-9"] } });
     renderBoard();
-    expect(chipText("T-6")).toBe("Queued · next");
-    expect(chipText("T-2")).toBe("Queued");
+    expect(chipText("T-6")).toBe("Next");
+    expect(card("T-2").querySelector(".taskCardChip")).toBeNull();
   });
 
   it("reads it in the feature task list inside the Task modal", async () => {
@@ -216,7 +216,7 @@ describe("without the desktop bridge", () => {
     expect(screen.queryByRole("button", { name: /Run .* in parallel|Ungroup|Take .* out of/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "+ New feature" })).not.toBeInTheDocument();
     expect(document.querySelector(".taskBoardFootnote")).toBeNull();
-    expect(chipText("T-2")).toBe("Queued · next");
+    expect(chipText("T-2")).toBe("Next");
     expect(taskAction).not.toHaveBeenCalled();
   });
 });
@@ -246,12 +246,11 @@ describe("Add to queue and Remove from queue", () => {
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_remove", { id: "T-9" }));
   });
 
-  it("disables Remove from queue on a task in progress", async () => {
+  it("offers no Remove from queue on a task in progress, which has left the queue", async () => {
     // The card of a started task reads its session's title.
     const dialog = await openModal("Column session");
-    const remove = dialog.getByRole("button", { name: "Remove from queue" });
-    expect(remove).toBeDisabled();
-    await userEvent.click(remove);
+    expect(dialog.queryByRole("button", { name: "Remove from queue" })).not.toBeInTheDocument();
+    expect(dialog.queryByRole("button", { name: "Add to queue" })).not.toBeInTheDocument();
     expect(taskAction).not.toHaveBeenCalled();
   });
 

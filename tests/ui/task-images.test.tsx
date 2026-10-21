@@ -195,8 +195,8 @@ describe("Task modal", () => {
     expect(inline).toHaveClass("isPending");
     await waitFor(() => expect(inline).toHaveAttribute("src", "blob:pomegr/1"));
     expect(taskImage).toHaveBeenCalledWith(repositoryId, "read", { taskId: "T-9", imageId: STORED });
-    expect(field().firstChild?.textContent).toBe("Match this: ");
-    expect(field().lastChild?.textContent).toBe(" exactly");
+    expect(inline.previousSibling?.textContent).toBe("Match this: ");
+    expect(inline.nextSibling?.textContent).toBe(" exactly");
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(calls("add")).toHaveLength(0);
     expect(calls("remove")).toHaveLength(0);

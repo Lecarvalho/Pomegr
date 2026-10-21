@@ -78,7 +78,8 @@ export function readDesktopTaskImage(repositoryId: string, taskId: string, image
 }
 
 const MEGABYTES = TASK_BOUNDS.imageBytes / (1024 * 1024);
-export const TASK_IMAGE_HELPER = `Paste or drop an image into the text, or attach one: it shows where you put it, and Backspace removes it. PNG, JPEG, GIF or WebP; up to ${TASK_BOUNDS.imagesPerTask} images of ${MEGABYTES} MB each.`;
+/** The muted hint beside Attach image in the foot of the Task field. The formats are named by the error line when a file is refused. */
+export const TASK_IMAGE_HINT = `or paste one · up to ${TASK_BOUNDS.imagesPerTask}, ${MEGABYTES} MB each`;
 export const TASK_IMAGE_TYPE_MESSAGE = "Only PNG, JPEG, GIF and WebP images can be attached.";
 export const TASK_IMAGE_SIZE_MESSAGE = `An image can be at most ${MEGABYTES} MB.`;
 export const TASK_IMAGE_LIMIT_MESSAGE = `A task holds at most ${TASK_BOUNDS.imagesPerTask} images.`;

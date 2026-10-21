@@ -2,6 +2,7 @@ import type { SessionActivityStatus } from "../../../shared/monitor-contract";
 import { plainTaskText, type Task, type TaskBoard, type TaskColumnRole, type TaskState } from "../../../shared/task-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { sessionState } from "../../dashboard-utils";
+import { splitTaskTitle } from "./task-tags";
 
 export const taskStateLabels: Record<TaskState, string> = {
   not_queued: "Not queued",
@@ -21,8 +22,11 @@ export function taskAwaitsReport(task: Pick<Task, "state" | "session">): boolean
 
 const OUTCOME_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked", "done"]);
 
-export const STARTED_NOTE = "This task has started, so it cannot be changed.";
-export const STARTED_REQUEUE_NOTE = `${STARTED_NOTE} Requeue it to change it.`;
+/** The lock line of a started task, beside the lock glyph under its Task label. */
+export const STARTED_NOTE = "Started, so read-only.";
+export const STARTED_REQUEUE_NOTE = `${STARTED_NOTE} Requeue to edit.`;
+/** The footer note of a modal whose task started while it held unsaved edits: the session works from the stored text, so the edits are dropped. */
+export const EDITS_DROPPED_NOTE = "This task started before your changes were saved.";
 
 /** A task with a session or an outcome has started: the monitor refuses a change to it until it is requeued. */
 export function taskStarted(task: Pick<Task, "state" | "session">): boolean {
@@ -47,16 +51,37 @@ function borrowedSessionState(task: Task) {
   return BORROWED_STATUSES.has(status) ? sessionState({ activityStatus: status }) : null;
 }
 
-export function taskChip(task: Task, nextQueued = false): TaskChip {
+/** The label of the one task the monitor names as next, on every surface but the board. */
+export const QUEUED_NEXT_LABEL = "Queued · next";
+/** The same task's label on the board, where the Ready lane already says it is queued. */
+export const BOARD_NEXT_LABEL = "Next";
+
+export function taskChip(task: Task, nextQueued = false, nextLabel = QUEUED_NEXT_LABEL): TaskChip {
   const borrowed = borrowedSessionState(task);
   if (borrowed) {
     const tone: ChipTone = borrowed.state === "active" ? "positive" : borrowed.state === "attention" ? "warning" : "neutral";
-    return { label: borrowed.label, tone, ink: false, border: borrowed.state === "active" ? "live" : "none" };
+    return { label: borrowed.label, tone, ink: false, border: borrowed.state === "active" ? "live" : borrowed.state === "attention" ? "attention" : "none" };
   }
   const attention = ATTENTION_STATES.has(task.state);
   const tone: ChipTone = attention ? "warning" : task.state === "scheduled" ? "info" : "neutral";
-  const label = task.state === "queued" && nextQueued ? "Queued · next" : taskStateLabels[task.state];
+  const label = task.state === "queued" && nextQueued ? nextLabel : taskStateLabels[task.state];
   return { label, tone, ink: task.state === "queued", border: attention ? "attention" : "none" };
+}
+
+/** The five fixed lanes of a board, by the state each one already says. */
+export type TaskLane = "backlog" | "ready" | "in_progress" | "review" | "done";
+
+const LANE_STATE_WORDS: Record<TaskLane, string> = {
+  backlog: taskStateLabels.not_queued,
+  ready: taskStateLabels.queued,
+  in_progress: sessionState({ activityStatus: "working" }).label,
+  review: taskStateLabels.needs_review,
+  done: taskStateLabels.done,
+};
+
+/** A board card draws its chip only when the lane it sits in does not already say that state. */
+export function laneSaysChip(lane: TaskLane, chip: Pick<TaskChip, "label">): boolean {
+  return chip.label === LANE_STATE_WORDS[lane];
 }
 
 const ISSUE_NUMBER_MAX = 999_999_999;
@@ -76,11 +101,13 @@ export function taskSessionTitle(task: Task): string | null {
   return typeof title === "string" && title.trim() !== "" ? title : null;
 }
 
+/** The title a card, a search result, or a related row names a task by: the session title, else the task text from its title line on (see `splitTaskTitle`). */
 export function taskCardTitle(task: Task) {
-  return taskSessionTitle(task) ?? plainTaskText(task.text);
+  const { title, rest } = splitTaskTitle(plainTaskText(task.text));
+  return taskSessionTitle(task) ?? (rest.trim() === "" ? title : `${title}\n${rest.trimEnd()}`);
 }
 
-export type TaskTextPreview = { lead: string; rest: string };
+export type TaskTextPreview = { lead: string; rest: string; tags: string[] };
 
 const LEAD_MIN = 24;
 const SENTENCE_START = /^[\p{Lu}\p{N}`"'“(\[*-]/u;
@@ -96,14 +123,16 @@ function sentenceEnd(line: string): number {
   return -1;
 }
 
-/** A task text as a card draws it: the first sentence of its first line, then the remaining text on one line. A heuristic split, not a summary. */
+/**
+ * A task text as a card draws it: the tags of its first line, then the first sentence of the title line (`splitTaskTitle`), then the remaining text on one line.
+ * A heuristic split, not a summary.
+ */
 export function taskTextPreview(text: string): TaskTextPreview {
-  const lines = plainTaskText(text).split(/\r?\n/u).map((line) => line.trim()).filter((line) => line !== "");
-  const first = (lines[0] ?? "").replace(/^#{1,6}\s+/u, "");
-  const end = sentenceEnd(first);
-  const lead = end === -1 ? first : first.slice(0, end);
-  const rest = [end === -1 ? "" : first.slice(end).trim(), ...lines.slice(1)].filter((line) => line !== "").join(" ");
-  return { lead, rest };
+  const { tags, title, rest } = splitTaskTitle(plainTaskText(text));
+  const end = sentenceEnd(title);
+  const lead = end === -1 ? title : title.slice(0, end);
+  const lines = rest.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+  return { lead, rest: [end === -1 ? "" : title.slice(end).trim(), ...lines].filter((line) => line !== "").join(" "), tags };
 }
 
 /** A line split at its backtick code spans: the odd entries are code. */
@@ -119,7 +148,7 @@ export function taskSessionHref(sessionId: string): string | null {
   }
 }
 
-export type TaskColumnView = { id: string; name: string; role: TaskColumnRole | null; tasks: Task[] };
+export type TaskColumnView = { id: string; name: string; role: TaskColumnRole | null; /** The fixed lane the column is: its role, else Backlog first and Ready second. */ lane: TaskLane | null; tasks: Task[] };
 
 function idNumber(id: string) {
   return Number(id.slice(2));
@@ -132,10 +161,11 @@ export function taskColumns(board: Pick<TaskBoard, "columns" | "tasks">): TaskCo
   }
   return [...board.columns]
     .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id))
-    .map((column) => ({
+    .map((column, index) => ({
       id: column.id,
       name: column.name,
       role: column.role ?? null,
+      lane: column.role ?? (index === 0 ? "backlog" as const : index === 1 ? "ready" as const : null),
       tasks: (byColumn.get(column.id) ?? []).sort((left, right) => left.position - right.position || idNumber(left.id) - idNumber(right.id)),
     }));
 }

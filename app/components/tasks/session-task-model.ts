@@ -3,6 +3,7 @@ import type { Task, TaskBoard, TaskCheck, TaskCheckOutcome, TaskFeature, TaskRun
 import { AGENT_REPORTED_LABEL, CHECK_LABELS, CHECK_OUTCOME_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, checkOutcome, isAgentJudged, observedModelDiffers } from "./task-fields";
 import { featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
+import { splitTaskTitle } from "./task-tags";
 
 // Pure rules for the session view's task surfaces (the header meta and the Task tab).
 
@@ -93,12 +94,11 @@ export function completionSummary(task: Task): string | null {
   return OUTCOME_STATES.has(task.state) ? null : "Not yet reported";
 }
 
-/** The first line leads the task text when more text follows it. */
+/** The title line (the shared rule: no tags, no blank line, no heading mark) leads the task text when more text follows it. */
 export function taskBrief(text: string): { lead: string | null; body: string } {
-  const trimmed = text.trim();
-  const split = trimmed.indexOf("\n");
-  const body = split === -1 ? "" : trimmed.slice(split).trim();
-  return body === "" ? { lead: null, body: trimmed } : { lead: trimmed.slice(0, split).trim(), body };
+  const { title, rest } = splitTaskTitle(text);
+  const body = rest.trim();
+  return body === "" ? { lead: null, body: title } : { lead: title, body };
 }
 
 export function definitionStatus(task: Task): string {

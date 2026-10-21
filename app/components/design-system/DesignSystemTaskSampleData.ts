@@ -50,6 +50,12 @@ export const T7_SCHEDULED = sampleTask("T-7", "Rotate the sample logs nightly", 
 export const T8_IDLE = sampleTask("T-8", "Rename the config key", { columnId: "col-backlog" });
 export const T11_LONG = sampleTask("T-11", "Show a row in the upload log when a job calls `retry_upload`. Today the log adds a row for `start_upload` and `cancel_upload` only, so a reader cannot see a retry.\n\n- Map `retry_upload` to a new `retried` action.\n- Cover it with a test.", { columnId: "col-backlog" });
 export const T9_ISSUE = sampleTask("T-10", "Retry a failed upload from the queue", { columnId: "col-backlog", source: { kind: "github_issue", number: 142 } });
+// Tags are the bracket words at the start of the first line: the card draws them as chips and leaves them out of the title.
+export const T17_TAGGED = sampleTask("T-17", "[ frontend ] [ tech-debt ] Make plan-intent consume atomic across browser tabs", { columnId: "col-backlog", featureId: "feature-cleanup" });
+// A card of Ready that is planned but not queued: the lane does not say it, so its chip stays.
+export const T18_PLANNED = sampleTask("T-18", "Review the export wording", { run: { provider: "claude", model: "model-small", effort: "medium" } });
+// The bound session waits for the owner: the amber border and the Needs input chip.
+export const T19_NEEDS_INPUT = { ...T6_WORKING, id: "T-19", session: session("t19", "Cache header check", "needs_input", "model-large") } satisfies Task;
 
 export const GATES_HELD: TaskGates = {
   threshold: 85, usage: { claude: { status: "over", fiveHourPercent: 91, sevenDayPercent: 37 }, codex: { status: "ok", fiveHourPercent: 38, sevenDayPercent: 12 } },

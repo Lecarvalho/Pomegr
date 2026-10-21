@@ -1,12 +1,24 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { TaskIssueChip } from "./TaskIssueChip";
+import { TaskRow, TaskRowNone } from "./TaskRows";
 import {
   createTaskIssue, issueCreateFailure, issueCreateFailureMessage, readGitHubStatus, taskIssuesAvailable,
   type GitHubStatus, type TaskIssueCreateError, type TaskIssueResult,
 } from "./task-issues-desktop";
 
+/** The New task checkbox's helper. The confirmation of an existing task says the same in `ISSUE_CONFIRM_FACTS`. */
 export const ISSUE_CREATE_HELPER = "The task text is sent to GitHub once, with its first line as the issue title. Anyone who can see the repository can read it. Later edits here are not sent.";
+/**
+ * What creating an issue from a saved task sends and who can read it, as the confirmation states it before anything is sent.
+ * The monitor posts the first line as the title and the whole saved text as the body (`createIssue` in `server/serving/task-issue-routes.mjs`).
+ */
+export const ISSUE_CONFIRM_FACTS = [
+  "Title: the task's first line. Body: the whole text.",
+  "Anyone who can see the repository can read it.",
+  "Sent once. Later edits here stay here.",
+] as const;
 
 export type IssueCreateReason = "not_signed_in" | "cli_missing" | "issues_disabled" | "no_access" | "unreadable";
 export type IssueCreateOption = { kind: "hidden" } | { kind: "can" } | { kind: "cannot"; reason: IssueCreateReason };
@@ -59,15 +71,34 @@ export function IssueCreateCheckbox({ option, checked, disabled, onChange }: {
   </div>;
 }
 
-export function IssueCreateRow({ repositoryId, taskId, unsaved, saveFirst, onChanged }: {
+/** The GitHub issue row of the task modal: the issue chip for a task that has one, else None and, where offered, Create issue… with its confirmation. */
+export function TaskIssueRow({ number, offered, repositoryId, repositoryName, taskId, unsaved, saveFirst, onChanged }: {
+  number: number | null;
+  /** The desktop can create an issue for this task. */
+  offered: boolean;
   repositoryId: string;
+  repositoryName: string | null;
   taskId: string;
   unsaved: boolean;
   saveFirst: string | null;
   /** The board must be read again. */
   onChanged(): void;
 }) {
-  const helperId = useId();
+  if (number !== null) return <TaskRow label="GitHub issue"><TaskIssueChip number={number} /></TaskRow>;
+  if (!offered) return <TaskRow label="GitHub issue"><TaskRowNone>None</TaskRowNone></TaskRow>;
+  return <IssueCreateRow repositoryId={repositoryId} repositoryName={repositoryName} taskId={taskId} unsaved={unsaved} saveFirst={saveFirst} onChanged={onChanged} />;
+}
+
+function IssueCreateRow({ repositoryId, repositoryName, taskId, unsaved, saveFirst, onChanged }: {
+  repositoryId: string;
+  repositoryName: string | null;
+  taskId: string;
+  unsaved: boolean;
+  saveFirst: string | null;
+  onChanged(): void;
+}) {
+  const factsId = useId();
+  const [confirming, setConfirming] = useState(false);
   const [creating, setCreating] = useState(false);
   const [failure, setFailure] = useState<TaskIssueCreateError | null>(() => issueCreateFailure(repositoryId, taskId));
   const create = async () => {
@@ -80,28 +111,65 @@ export function IssueCreateRow({ repositoryId, taskId, unsaved, saveFirst, onCha
     setFailure(result.error);
     if (result.error === "conflict") onChanged();
   };
-  return <IssueCreateRowView helperId={helperId} creating={creating} disabled={unsaved} saveFirst={unsaved ? saveFirst : null}
-    failure={failure} onCreate={() => void create()} />;
+  return <IssueCreateRowView factsId={factsId} repositoryName={repositoryName} confirming={confirming} creating={creating} disabled={unsaved}
+    saveFirst={unsaved ? saveFirst : null} failure={failure}
+    onOpen={() => setConfirming(true)} onCancel={() => { setConfirming(false); setFailure(null); }} onCreate={() => void create()} />;
 }
 
-export function IssueCreateRowView({ helperId, creating, disabled, saveFirst, failure, onCreate }: {
-  helperId: string;
+/** The row for a task that is not on GitHub. Nothing is sent before **Create issue** in the confirmation. */
+export function IssueCreateRowView({ factsId, repositoryName, confirming, creating, disabled, saveFirst, failure, onOpen, onCancel, onCreate }: {
+  factsId: string;
+  repositoryName: string | null;
+  confirming: boolean;
   creating: boolean;
   disabled: boolean;
   saveFirst: string | null;
   failure: TaskIssueCreateError | null;
+  onOpen(): void;
+  onCancel(): void;
   onCreate(): void;
 }) {
-  return <div className="taskIssueSource">
-    <div className="taskSourceRow">
-      <span className="taskSourceLabel">Source</span>
-      <span className="taskSourceNone">Not on GitHub</span>
-      <button type="button" className="commandSecondaryAction taskIssueCreateAction" disabled={creating || disabled} aria-describedby={helperId} onClick={onCreate}>
-        {creating ? "Creating…" : "Create GitHub issue"}
-      </button>
-    </div>
-    <p id={helperId} className="newTaskHelper">{ISSUE_CREATE_HELPER}</p>
+  const open = !confirming;
+  const titleId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const group = useRef<HTMLDivElement>(null);
+  // The row moves focus only after the owner opens or closes the group, never when a sample draws it open.
+  const moveFocus = useRef<"group" | "trigger" | null>(null);
+  useEffect(() => {
+    const target = moveFocus.current === "group" && confirming ? cancel.current : moveFocus.current === "trigger" && !confirming ? trigger.current : null;
+    if (!target) return;
+    moveFocus.current = null;
+    target.focus({ preventScroll: true });
+  }, [confirming]);
+  const openGroup = () => { moveFocus.current = "group"; onOpen(); };
+  const closeGroup = () => { moveFocus.current = "trigger"; onCancel(); };
+  // Create issue disables itself while the create runs, and a disabled button drops focus to the dialog, where Escape would close the
+  // whole modal. The group takes focus first, so Escape stays with the group, and Cancel takes it back when the create fails.
+  const startCreate = () => { group.current?.focus({ preventScroll: true }); onCreate(); };
+  useEffect(() => {
+    if (!creating && group.current && document.activeElement === group.current) cancel.current?.focus({ preventScroll: true });
+  }, [creating]);
+  // Escape closes the group and nothing else: the dialog stays open, and a create in flight is not abandoned.
+  const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!creating) closeGroup();
+  };
+  return <TaskRow label="GitHub issue" top={confirming ? "check" : undefined}
+    end={open && <button ref={trigger} type="button" className="commandQuietAction taskIssueCreateAction" disabled={disabled} onClick={openGroup}>Create issue…</button>}>
+    {confirming
+      ? <div ref={group} className="taskIssueConfirm" role="group" aria-label="Confirm GitHub issue" aria-describedby={titleId} tabIndex={-1} onKeyDown={keyDown}>
+        <p id={titleId} className="taskIssueConfirmTitle">Create an issue in {repositoryName ?? "this repository"}?</p>
+        <ul id={factsId} className="taskIssueConfirmFacts">{ISSUE_CONFIRM_FACTS.map((fact) => <li key={fact}>{fact}</li>)}</ul>
+        <div className="taskIssueConfirmActions">
+          <button type="button" className="commandSecondaryAction" disabled={creating || disabled} aria-describedby={factsId} onClick={startCreate}>{creating ? "Creating…" : "Create issue"}</button>
+          <button ref={cancel} type="button" className="commandQuietAction" disabled={creating} onClick={closeGroup}>Cancel</button>
+        </div>
+      </div>
+      : <TaskRowNone>None</TaskRowNone>}
     {saveFirst && <p className="newTaskHelper" role="status">{saveFirst}</p>}
     {failure && <p className="newTaskError" role="status">{issueCreateFailureMessage(failure)}</p>}
-  </div>;
+  </TaskRow>;
 }

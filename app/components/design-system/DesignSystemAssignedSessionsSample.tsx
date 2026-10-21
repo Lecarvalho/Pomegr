@@ -5,13 +5,16 @@ import type { SessionTaskReference } from "../../../shared/session-catalog-contr
 import type { Task, TaskAssignedSession } from "../../../shared/task-contract";
 import { SessionTaskCell } from "../tasks/SessionTaskCell";
 import { TaskCard } from "../tasks/TaskCard";
-import { CompleteWhenField, TaskTextField } from "../tasks/TaskFields";
+import { TaskReadView } from "../tasks/TaskReadView";
+import { RunSettings } from "../tasks/TaskRows";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { TaskSessionsField, type TaskSessionCandidate } from "../tasks/TaskSessionsField";
+import { STARTED_REQUEUE_NOTE } from "../tasks/task-presentation";
 import { Sample, Section } from "./DesignSystemKit";
 import { SAMPLE_FEATURE_ID, SAMPLE_REPOSITORY_ID, T2_STALLED, T6_WORKING, T8_IDLE } from "./DesignSystemTaskSampleData";
 
 const noop = () => undefined;
+const NO_IMAGES = new Map<string, string | null>();
 const assignedSession = (id: string, title: string | null, state: string): TaskAssignedSession => ({ id: `claude:design-system-${id}`, title, state, observedModel: "model-large" });
 const RESUME = assignedSession("resume", "Resume the retry back-off", "working");
 const REVIEWER = assignedSession("review", "Review the upload changes", "idle");
@@ -52,11 +55,9 @@ function ModalSample({ task, chip, subtitle }: { task: Task; chip: { label: stri
       footer={<>
         <button type="button" className="commandQuietAction" onClick={noop}>Delete task</button>
         <span className="taskModalSpacer" aria-hidden="true" />
-        <button type="button" className="commandPrimaryAction" disabled onClick={noop}>Save</button>
       </>}>
-      <TaskTextField value={task.text} onChange={noop} readOnly />
-      <CompleteWhenField draft={{ checks: task.completeWhen.checks, ownText: task.completeWhen.own ?? "" }} disabled onDraftChange={noop} />
-      <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} onAssign={assign} onUnassign={unassign} />
+      {task.session !== null && <TaskReadView text={task.text} urls={NO_IMAGES} note={STARTED_REQUEUE_NOTE} />}
+      <RunSettings><TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} onAssign={assign} onUnassign={unassign} /></RunSettings>
     </TaskModalChrome>
   </div>;
 }
@@ -65,24 +66,24 @@ export function AssignedSessionsSection() {
   return <Section id="assigned-sessions" title="Assigned sessions" lede="A session can be assigned to any task of its repository's board, and a task can hold many assigned sessions beside the one Pomegr started for it. Assigning changes no state, column, or queue place: it only lets the session report the task and shows it here. The session assigns itself with the assign_task tool, or the owner assigns it in the Task modal.">
     <div className="designSystemGrid">
       <Sample label="Card, stalled and resumed" note="The first session ended with no report, and a session started by hand is assigned. The card keeps its Stalled chip until that session reports; the sessions line opens the started session and counts the other.">
-        <div className="designSystemTaskFrame"><ul className="taskColumnList"><TaskCard task={STALLED_RESUMED} /></ul></div>
+        <div className="designSystemTaskFrame"><ul className="taskColumnList"><TaskCard task={STALLED_RESUMED} lane="in_progress" /></ul></div>
       </Sample>
-      <Sample label="Card, started session and two assigned" note="The chip and the green border still follow the session Pomegr started. The sessions line stays one line whatever the count.">
-        <div className="designSystemTaskFrame"><ul className="taskColumnList"><TaskCard task={WORKING_SHARED} /></ul></div>
+      <Sample label="Card, started session and two assigned" note="The green border still follows the session Pomegr started, and the lane says In progress, so the card draws no chip. The sessions line stays one line whatever the count.">
+        <div className="designSystemTaskFrame"><ul className="taskColumnList"><TaskCard task={WORKING_SHARED} lane="in_progress" /></ul></div>
       </Sample>
       <Sample label="Card, not started, one assigned" note="Assigning is a marker only: the task stays Not queued in its column. The line names the session as Assigned, because Pomegr started none.">
-        <div className="designSystemTaskFrame"><ul className="taskColumnList"><TaskCard task={BACKLOG_ASSIGNED} /></ul></div>
+        <div className="designSystemTaskFrame"><ul className="taskColumnList"><TaskCard task={BACKLOG_ASSIGNED} lane="backlog" /></ul></div>
       </Sample>
     </div>
-    <div className="designSystemGrid">
-      <Sample label="Task modal, Sessions" note="Sessions closes the body: one ruled row per session with its title as a Text link, its role, its own state chip, and a Quiet Unassign for an assigned session. The session Pomegr started has no Unassign. Under the rows, a select of the repository's other sessions and the Secondary Assign session. Try both.">
-        <ModalSample task={STALLED_RESUMED} chip={{ label: "Stalled", tone: "warning" }} subtitle="pomegr · in In progress" />
+    <div className="designSystemGrid designSystemModalGrid">
+      <Sample label="Task modal, Sessions" note="Sessions is a row of the Run settings list: an item for each session with its title as a Text link, its role, its own state chip, and a Quiet Unassign for an assigned session. The session Pomegr started has no Unassign. Then one add line: the borderless select of the repository's other sessions and the Secondary Assign session, with one muted hint. Try both.">
+        <ModalSample task={STALLED_RESUMED} chip={{ label: "Stalled", tone: "warning" }} subtitle="pomegr" />
       </Sample>
-      <Sample label="Task modal, Sessions, none yet" note="A task with no session shows only the assign control and its one helper line.">
-        <ModalSample task={T8_IDLE} chip={{ label: "Not queued", tone: "neutral" }} subtitle="pomegr · in Backlog" />
+      <Sample label="Task modal, Sessions, none yet" note="A task with no session shows only the add line and its one hint.">
+        <ModalSample task={T8_IDLE} chip={{ label: "Not queued", tone: "neutral" }} subtitle="pomegr" />
       </Sample>
       <Sample label="Sessions, paired phone or browser without assign" note="A client that cannot assign draws the rows only.">
-        <div className="designSystemTaskFrame"><TaskSessionsField started={WORKING_SHARED.session} assigned={WORKING_SHARED.assigned ?? []} /></div>
+        <div className="designSystemTaskFrame"><RunSettings><TaskSessionsField started={WORKING_SHARED.session} assigned={WORKING_SHARED.assigned ?? []} /></RunSettings></div>
       </Sample>
     </div>
     <div className="designSystemGrid">

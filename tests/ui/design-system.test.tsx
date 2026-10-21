@@ -130,13 +130,17 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(efforts[0]).toHaveAttribute("aria-pressed", "true");
     expect(efforts[0].parentElement).toHaveClass("commandSegmented");
     expect(within(section).getAllByRole("checkbox", { name: "PR open" })[0]).toBeChecked();
-    // Complete when, reported, and the edit modal sample that needs review each show the agent report's outcomes.
+    // Complete when, reported, the edit modal that needs review, and the done task's panel (3 Passed) show the report's outcomes.
     expect(within(section).getAllByText("Not passed")).toHaveLength(2);
-    expect(within(section).getAllByText("Passed")).toHaveLength(2);
+    expect(within(section).getAllByText("Passed")).toHaveLength(5);
     // A condition Pomegr could not verify is muted: it takes neither result color.
     const unverified = within(section).getAllByText("Not verified");
     expect(unverified.length).toBeGreaterThan(0);
     for (const note of unverified) expect(note.className).toBe("taskCheckResult");
+    // The rich text sample with tags draws them as the chips row above the title line.
+    const tagged = within(section).getByRole("group", { name: "Tags: backend, recce, bug" });
+    expect(tagged.parentElement).toHaveClass("taskRichText");
+    expect(tagged.nextElementSibling).toHaveClass("taskRichTitle");
     expect(fetchSpy).not.toHaveBeenCalled();
   }, 40_000);
 
@@ -265,32 +269,45 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders every task card state from synthetic tasks, with the chip tone and border each state takes", () => {
+  it("renders every task card state from synthetic tasks, with the chip the lane leaves and the border each state takes", () => {
     render(<DesignSystemView />);
     const board = sectionOf("Task cards and board");
     const card = (label: string) => sample(board, label).querySelector(".taskCard") as HTMLElement;
-    const chip = (label: string) => card(label).querySelector(".taskCardChip") as HTMLElement;
+    const chip = (label: string) => card(label).querySelector(".taskCardChip") as HTMLElement | null;
 
-    expect(chip("Not queued")).toHaveTextContent("Not queued");
-    expect(card("Not queued")).not.toHaveClass("isLive", "isAttention");
-    expect(chip("Queued · next")).toHaveTextContent("Queued · next");
-    expect(chip("Queued · next")).toHaveClass("commandChip", "isInk");
-    expect(card("Queued · next").querySelector(".taskCardFeature")?.textContent).toBe("Client cleanup");
-    expect(chip("Scheduled")).toHaveClass("info");
-    expect(card("Scheduled").querySelector(".taskCardStarts")?.textContent).toMatch(/^Starts /);
+    // A lane that already says the state leaves the chip out: Backlog says Not queued, Ready says Queued, In progress says In progress, Review says Needs review, Done says Done.
+    for (const label of ["Backlog, Not queued", "Backlog, tags", "Backlog, long text", "Ready, Queued", "In progress, Working", "Review, Needs review", "Done"]) expect(chip(label), label).toBeNull();
+    expect(card("Backlog, Not queued")).not.toHaveClass("isLive", "isAttention");
+    expect(card("Backlog, Not queued").querySelector(".taskCardTop .taskCardFeature")?.textContent).toBe("· Client cleanup");
+    expect(card("Backlog, tags").querySelector(".taskCardTitle")?.textContent).toBe("Make plan-intent consume atomic across browser tabs");
+    expect([...card("Backlog, tags").querySelectorAll(".taskTags .taskTag")].map((tag) => tag.textContent)).toEqual(["frontend", "tech-debt"]);
+    expect(card("Backlog, long text").querySelector(".taskCardExcerpt")).toBeNull();
+    // The queued card relies on its place in the lane and its wait line; a task on the provider's default model names the provider.
+    expect(card("Ready, Queued").querySelector(".taskCardWaiting")?.textContent).toMatch(/^3rd in queue · Waiting: /);
+    expect(card("Ready, Queued").querySelector(".taskCardPlanned")?.textContent).toBe("Claude Code");
+    // The one task the monitor names as next is labeled Next on the board.
+    expect(chip("Ready, Next")).toHaveTextContent(/^Next$/);
+    expect(chip("Ready, Next")).toHaveClass("commandChip", "isInk");
+    expect(chip("Ready, Scheduled")).toHaveClass("info");
+    expect(card("Ready, Scheduled").querySelector(".taskCardStarts")?.textContent).toMatch(/^Starts /);
+    expect(chip("Ready, Not queued")).toHaveTextContent("Not queued");
     // A bound session's state is borrowed; a differing planned model is the one amber line.
-    expect(card("Session working")).toHaveClass("isLive");
-    expect(chip("Session working")).toHaveTextContent("In progress");
-    expect(chip("Session working")).toHaveClass("positive");
-    expect(card("Session working").querySelector(".taskCardModelDiffers")).toHaveTextContent("Planned model-large, observed model-small");
-    for (const label of ["Needs review", "Stalled", "Blocked by agent"]) {
-      expect(card(label)).toHaveClass("isAttention");
-      expect(chip(label)).toHaveTextContent(label);
+    expect(card("In progress, Working")).toHaveClass("isLive");
+    expect(card("In progress, Working").querySelector(".taskCardModelDiffers")).toHaveTextContent("Planned model-large, observed model-small");
+    expect(chip("In progress, Needs input")).toHaveTextContent("Needs input");
+    expect(chip("In progress, Needs input")).toHaveClass("warning");
+    for (const label of ["In progress, Needs input", "In progress, Stalled", "In progress, Blocked by agent", "Review, Needs review"]) expect(card(label), label).toHaveClass("isAttention");
+    for (const [label, state] of [["In progress, Stalled", "Stalled"], ["In progress, Blocked by agent", "Blocked by agent"]]) {
+      expect(chip(label)).toHaveTextContent(state);
       expect(chip(label)).toHaveClass("warning");
     }
+    expect(card("From a GitHub issue").querySelector(".taskCardTop .taskIssueChip")).toHaveTextContent("#142");
     expect(card("Done")).toHaveClass("isDone");
-    expect(within(card("Done")).getByRole("link", { name: "Open session" })).toHaveClass("commandTextLink", "taskCardLink");
-    expect(within(card("Done")).getByRole("link", { name: "Open session" }).getAttribute("href")).toMatch(/^\/sessions\//);
+    // Open session is muted with an arrow glyph, never the brand link color.
+    const open = within(card("Done")).getByRole("link", { name: "Open session" });
+    expect(open).toHaveClass("commandTextLink", "taskCardLink");
+    expect(open.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(open.getAttribute("href")).toMatch(/^\/sessions\//);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -625,7 +642,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(within(sample(cells, "Table footnote")).getByText(/^Task shows the task a session was started for, and the tasks it is assigned to\./)).toHaveClass("commandUnavailableNote");
 
     const fields = sectionOf("Task fields");
-    expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(3);
+    expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(4);
     expect(within(fields).queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })[0]).toHaveTextContent("Upload reliability");
     const created = sample(fields, "New feature");

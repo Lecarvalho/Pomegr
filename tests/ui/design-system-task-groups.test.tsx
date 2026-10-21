@@ -33,6 +33,15 @@ describe("the design-system samples of the Ready lane's parallel groups", { time
     expect([...toolbar.querySelectorAll("[data-group-move]")].map((arrow) => arrow.getAttribute("data-group-move"))).toEqual(["up", "down"]);
     expect(within(toolbar).getByRole("button", { name: "Ungroup" })).toHaveClass("commandQuietAction", "taskReadyUngroup");
     expect(lane.querySelector(".designSystemRevealLink .taskReadyLink .taskReadyLinkAction")).toHaveTextContent("Run in parallel");
+    // Both hover-only actions are forced visible in this sample.
+    expect(lane.querySelector(".designSystemRevealGroup")).not.toBeNull();
+  });
+
+  it("draws the group at rest: the toolbar stays in the tree, and no sample forces it visible", () => {
+    render(<DesignSystemView />);
+    const lane = sample(sectionOf("Task cards and board"), "Ready lane, group at rest, desktop app");
+    expect(within(lane).getByRole("toolbar", { name: "Parallel group of T-2 and T-3" })).toHaveClass("taskReadyActions");
+    expect(lane.querySelector(".designSystemRevealGroup, .designSystemRevealLink")).toBeNull();
   });
 
   it("draws the join target on the group and no drop line", () => {
@@ -49,10 +58,10 @@ describe("the design-system samples of the Ready lane's parallel groups", { time
     expect(lane.querySelector('[data-task-id="T-2"] .taskCardWaiting')?.textContent).toMatch(/ · T-3 started$/);
   });
 
-  it("draws Take out of group on a waiting member's card, and a feature line of the name only", () => {
+  it("draws Take out of group on a waiting member's card, and the feature's name in the meta row", () => {
     render(<DesignSystemView />);
     const board = sectionOf("Task cards and board");
     expect(within(sample(board, "Card, desktop app, in a parallel group")).getByRole("button", { name: "Take T-3 out of its parallel group" })).toHaveClass("commandQuietAction", "taskMoveLeave");
-    expect(sample(board, "Card outside Ready, feature line").querySelector(".taskCardFeature")?.textContent).toBe("Upload reliability");
+    expect(sample(board, "Card outside Ready, feature name").querySelector(".taskCardTop .taskCardFeature")?.textContent).toBe("· Upload reliability");
   });
 });

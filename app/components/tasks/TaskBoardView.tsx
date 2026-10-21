@@ -217,7 +217,7 @@ export function TaskColumn({ column, lines, afterLines, nextId, onOpen, dropTarg
     const line = ready && waitsInQueue(task) ? waitCardLine(ready.queue, task) : null;
     return line && started.length > 0 && line.includes("Waiting:") ? `${line} · ${idList(started)} started` : line;
   };
-  const card = (task: Task, started: readonly string[] = []) => <TaskCard key={task.id} task={task} compact={ready !== undefined && waitsInQueue(task)} now={ready?.now} waiting={waiting(task, started)}
+  const card = (task: Task, started: readonly string[] = []) => <TaskCard key={task.id} task={task} lane={column.lane} compact={ready !== undefined && waitsInQueue(task)} now={ready?.now} waiting={waiting(task, started)}
     dropLine={!dropLine ? undefined : dropLine.beforeId === task.id ? "before" : dropLine.beforeId === null && task.id === lastId ? "after" : undefined}
     featureLine={lines.get(task.id)} after={afterLines?.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />;
   // Between two waiting cards, or groups, that sit next to each other: the action that makes them one group.

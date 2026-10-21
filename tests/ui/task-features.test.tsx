@@ -228,9 +228,9 @@ describe("Task modal: Feature", () => {
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Task board v1");
     await closeModal(user);
     const old = await openTask(user, "Old work", "T-5");
-    // A done task has started, so its feature only shows.
-    expect(old.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Finished work");
-    expect(old.getByRole("combobox", { name: "Feature" })).toBeDisabled();
+    // A done task has started, so its feature only shows, as a value of the Run settings.
+    expect(old.getByText("Feature", { selector: "dt" }).nextElementSibling).toHaveTextContent("Finished work");
+    expect(old.queryByRole("combobox", { name: "Feature" })).not.toBeInTheDocument();
   });
 
   it("folds the other tasks, in board order, with this task counted but not listed", async () => {
@@ -480,17 +480,20 @@ describe("Feature filter and card feature line", () => {
     expect(screen.getByRole("dialog", { name: "New feature" })).toBeInTheDocument();
   });
 
-  it("shows only the feature name on a card", () => {
+  it("shows only the feature name on a card, after the ID in the meta row", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect(featureLine("T-1")).toHaveClass("taskCardDetail");
-    expect(featureLine("T-1")?.textContent).toBe("Task board v1");
-    expect(featureLine("T-2")?.textContent).toBe("Task board v1");
-    expect(featureLine("T-9")?.textContent).toBe("Task board v1");
+    expect(featureLine("T-1")?.closest(".taskCardTop")).not.toBeNull();
+    expect(featureLine("T-1")?.textContent).toBe("· Task board v1");
+    expect(featureLine("T-1")).toHaveAttribute("title", "Task board v1");
+    expect(featureLine("T-1")?.firstElementChild).toHaveAttribute("aria-hidden", "true");
+    expect(featureLine("T-2")?.textContent).toBe("· Task board v1");
+    expect(featureLine("T-9")?.textContent).toBe("· Task board v1");
     expect(featureLine("T-1")?.querySelector("svg")).toBeNull();
     expect(within(card("T-5")).getByText("Finished work")).toBeInTheDocument();
     expect(card("T-6")).not.toHaveTextContent("step");
-    // It is the card's last line; only the keyboard move toolbar follows it.
-    expect(card("T-2").querySelector(".taskCardFeature")?.nextElementSibling).toHaveClass("taskCardMoves");
+    // The card draws no feature line at its bottom any more: only the keyboard move toolbar ends it.
+    expect(card("T-2").querySelectorAll(".taskCardFeature")).toHaveLength(1);
+    expect(card("T-2").querySelector(".taskCardTop")?.nextElementSibling).not.toHaveClass("taskCardFeature");
   });
 });
 
@@ -504,7 +507,7 @@ describe("without the desktop bridge", () => {
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
     // The filter is the only Feature select: no Task modal field is drawn outside it.
     expect(screen.getAllByRole("combobox", { name: "Feature" })).toEqual([within(group).getByRole("combobox", { name: "Feature" })]);
-    expect(featureLine("T-2")?.textContent).toBe("Task board v1");
+    expect(featureLine("T-2")?.textContent).toBe("· Task board v1");
     chooseCommandOption(within(group).getByRole("combobox", { name: "Feature" }), "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
     expect(card("T-6")).not.toHaveAttribute("draggable");
@@ -529,7 +532,11 @@ describe("feature styles", () => {
   };
 
   it("maps the Feature row, disclosure and filter contract lines to tokens", () => {
-    expect(rule(".taskFeatureRow")).toMatch(/grid-template-columns: minmax\(0, 1fr\); gap: var\(--space-4\)/);
+    // In the Feature row the folded list is the value's second line, without rules of its own.
+    expect(rule(".taskRow .taskFeatureDetails")).toMatch(/border: 0/);
+    // The 32px summary is for a fine pointer at 761px and wider; a phone and a coarse pointer keep the 44px summary.
+    expect(styles).toMatch(/@media \(min-width: 761px\) and \(pointer: fine\) \{ \.taskRow \.taskFeatureDetails > summary \{ min-height: var\(--control-compact\); \} \}/);
+    expect(styles).not.toMatch(/\n\.taskRow \.taskFeatureDetails > summary \{/);
     expect(rule(".taskFeatureDetails")).toMatch(/border-top: 1px solid var\(--command-line\); border-bottom: 1px solid var\(--command-line\)/);
     expect(rule(".taskFeatureDetails > summary")).toMatch(/min-height: 44px[^}]*500 var\(--text-sm\)/);
     expect(rule(".taskFeatureItem")).toMatch(/gap: var\(--space-2\); min-height: var\(--control-compact\); padding-block: var\(--space-2\)/);

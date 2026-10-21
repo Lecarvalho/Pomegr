@@ -390,33 +390,35 @@ describe("mode issue", () => {
   });
 });
 
-describe("mode edit, the Source block", () => {
+describe("mode edit, the GitHub issue row", () => {
   function editModal(source: Task["source"]) {
     return <TaskModal mode="edit" repositoryId={repositoryId} repositoryName="Example project" task={task({ source })} board={board} refresh={refresh}
       onChanged={vi.fn()} onDeleted={vi.fn()} onClose={onClose} />;
   }
 
-  it("starts the body with Source, the issue chip and the caption for a promoted task, and keeps the text editable", async () => {
+  it("shows the issue chip in the GitHub issue row for a promoted task, with no Source block, and keeps the text editable", async () => {
     const user = userEvent.setup();
     render(editModal({ kind: "github_issue", number: 142 }));
     const body = document.querySelector(".taskModalBody") as HTMLElement;
-    const source = body.firstElementChild as HTMLElement;
-    expect(source).toHaveClass("taskIssueSource");
-    expect(source.querySelector(".taskSourceLabel")).toHaveTextContent("Source");
-    expect(within(source).getByRole("img", { name: "GitHub issue #142" })).toHaveClass("commandChip", "taskIssueChip");
-    expect(source.querySelector(".taskSourceCaption")).toHaveTextContent("GitHub issue");
-    // No promoted-at time: none is stored.
-    expect(source).not.toHaveTextContent(/promoted|\d{4}/i);
+    // The Source block at the top of the body is gone: the row of the Run settings replaces it.
+    expect(body.querySelector(".taskIssueSource, .taskSourceLabel, .taskSourceCaption")).toBeNull();
+    const row = screen.getByText("GitHub issue", { selector: "dt" }).closest(".taskRow") as HTMLElement;
+    expect(within(row).getByRole("img", { name: "GitHub issue #142" })).toHaveClass("commandChip", "taskIssueChip");
+    // A task that is on GitHub offers no second issue, and no promoted-at time: none is stored.
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+    expect(row).not.toHaveTextContent(/promoted|\d{4}/i);
     const text = screen.getByRole("textbox", { name: "Task" });
     expect(text).not.toHaveAttribute("readonly");
     await user.type(text, " More.");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
-  it("draws no issue chip for a task with no source; on the desktop its Source row says Not on GitHub", () => {
+  it("draws no issue chip for a task with no source; on the desktop its GitHub issue row says None", () => {
     render(editModal(null));
     expect(document.querySelector(".taskIssueChip")).toBeNull();
-    expect(screen.getByText("Not on GitHub")).toBeInTheDocument();
+    const row = screen.getByText("GitHub issue", { selector: "dt" }).closest(".taskRow") as HTMLElement;
+    expect(within(row).getByText("None")).toHaveClass("taskRowNone");
+    expect(within(row).getByRole("button", { name: "Create issue…" })).toHaveClass("commandQuietAction");
   });
 });
 
@@ -529,7 +531,7 @@ describe("the Promote issues page", () => {
 });
 
 describe("the /design-system sample and the source", () => {
-  it("draws mode issue from static data with the conflict and not-saved states, and the Source block in mode edit", () => {
+  it("draws mode issue from static data with the conflict and not-saved states, and the GitHub issue row in mode edit", () => {
     setBridge(undefined);
     const { container } = render(<TaskFieldsSection />);
     expect(screen.getByText("Task modal, promote issue")).toBeInTheDocument();
@@ -539,7 +541,10 @@ describe("the /design-system sample and the source", () => {
     expect(screen.getByRole("button", { name: "Show new version" })).toHaveClass("commandSecondaryAction");
     expect(screen.getByText("The issue was promoted to T-40, but the run settings could not be saved. Open the task to set them.")).toBeInTheDocument();
     expect(container.querySelector(".taskIssueHidden")).not.toBeNull();
-    expect(container.querySelectorAll(".taskSourceCaption")).toHaveLength(1);
+    // Mode edit draws no Source block or caption: its issue is a row of the Run settings.
+    expect(container.querySelectorAll(".taskSourceCaption")).toHaveLength(0);
+    expect(container.querySelectorAll(".taskSourceLabel")).toHaveLength(3);
+    expect(screen.getAllByText("GitHub issue", { selector: "dt" }).length).toBeGreaterThan(3);
     expect(taskIssues).not.toHaveBeenCalled();
   });
 

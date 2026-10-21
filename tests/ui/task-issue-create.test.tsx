@@ -64,7 +64,14 @@ const editModal = (overrides: Partial<Task> = {}) => <TaskModal mode="edit" repo
   refresh={refresh} onChanged={onChanged} onDeleted={vi.fn()} onClose={onClose} />;
 const checkbox = () => screen.queryByRole("checkbox", { name: "Also create a GitHub issue" }) as HTMLInputElement | null;
 const createTaskButton = () => screen.getByRole("button", { name: /^Creat(e task|ing…)$/u });
-const issueButton = () => screen.queryByRole("button", { name: "Create GitHub issue" });
+// The GitHub issue row of mode edit: Create issue… opens the confirmation, and its Create issue sends.
+const issueButton = () => screen.queryByRole("button", { name: "Create issue…" });
+const confirmGroup = () => screen.queryByRole("group", { name: "Confirm GitHub issue" });
+const confirmButton = () => screen.queryByRole("button", { name: "Create issue" });
+async function openConfirm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(issueButton() as HTMLElement);
+  return within(confirmGroup() as HTMLElement);
+}
 
 async function check(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(checkbox()).toBeEnabled());
@@ -251,15 +258,99 @@ describe("New task on the Tasks page, a failed issue", () => {
 });
 
 describe("Edit, the action", () => {
-  it("shows Source, Not on GitHub, the action and the helper for a task with no source, and reads no status", () => {
+  it("shows a GitHub issue row that says None and offers Create issue… for a task with no source, and reads no status", () => {
     render(editModal({ id: "T-70" }));
     const dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(document.querySelector(".taskSourceLabel")).toHaveTextContent("Source");
-    expect(dialog.getByText("Not on GitHub")).toBeInTheDocument();
+    // The Source block is gone: the row of the Run settings stands in its place, at the end of the list.
+    expect(document.querySelector(".taskSourceLabel")).toBeNull();
+    const row = dialog.getByText("GitHub issue", { selector: "dt" }).closest(".taskRow") as HTMLElement;
+    expect(within(row).getByText("None")).toBeInTheDocument();
     expect(issueButton()).toBeEnabled();
-    expect(issueButton()).toHaveClass("commandSecondaryAction");
-    expect(issueButton()).toHaveAccessibleDescription(HELPER);
+    expect(issueButton()).toHaveClass("commandQuietAction");
+    // It follows Complete when, and Runs after and Start at close the same list.
+    expect(row.previousElementSibling).toHaveTextContent(/^Complete when/);
+    expect(row.nextElementSibling).toHaveTextContent(/^Runs after/);
+    // Nothing is explained or sent until the confirmation is opened.
+    expect(confirmGroup()).toBeNull();
+    expect(screen.queryByText(HELPER)).toBeNull();
     expect(taskIssues).not.toHaveBeenCalled();
+  });
+
+  it("opens the confirmation with what is sent and who can read it, and sends nothing until Create issue", async () => {
+    const user = userEvent.setup();
+    render(editModal({ id: "T-75" }));
+    const group = await openConfirm(user);
+    expect(group.getByText("Create an issue in Example project?")).toBeInTheDocument();
+    expect(group.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Title: the task's first line. Body: the whole text.",
+      "Anyone who can see the repository can read it.",
+      "Sent once. Later edits here stay here.",
+    ]);
+    expect(group.getByRole("button", { name: "Create issue" })).toHaveClass("commandSecondaryAction");
+    expect(group.getByRole("button", { name: "Create issue" })).toHaveAccessibleDescription(/Anyone who can see the repository can read it\./u);
+    expect(group.getByRole("button", { name: "Cancel" })).toHaveClass("commandQuietAction");
+    // The trigger gives way to the group, and nothing has been sent.
+    expect(issueButton()).toBeNull();
+    expect(createCalls()).toHaveLength(0);
+    await user.click(group.getByRole("button", { name: "Cancel" }));
+    expect(confirmGroup()).toBeNull();
+    expect(issueButton()).toBeEnabled();
+    expect(createCalls()).toHaveLength(0);
+  });
+
+  it("moves focus into the confirmation, back to the trigger on Cancel, and names the group by its question", async () => {
+    const user = userEvent.setup();
+    render(editModal({ id: "T-77" }));
+    await user.click(issueButton() as HTMLElement);
+    // The safe button takes focus, so Enter never sends by accident, and the group is described by its question.
+    expect(within(confirmGroup() as HTMLElement).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    expect(confirmGroup()).toHaveAccessibleDescription("Create an issue in Example project?");
+    await user.keyboard("{Enter}");
+    expect(confirmGroup()).toBeNull();
+    expect(issueButton()).toHaveFocus();
+    expect(createCalls()).toHaveLength(0);
+    await user.click(issueButton() as HTMLElement);
+    expect(within(confirmGroup() as HTMLElement).getByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
+  it("cancels the confirmation on Escape, returns focus to the trigger, and keeps the dialog open", async () => {
+    const user = userEvent.setup();
+    render(editModal({ id: "T-78" }));
+    await user.click(issueButton() as HTMLElement);
+    await user.keyboard("{Escape}");
+    expect(confirmGroup()).toBeNull();
+    expect(issueButton()).toHaveFocus();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(createCalls()).toHaveLength(0);
+    // With no confirmation open, Escape closes the dialog as before.
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the confirmation open on Escape while the issue is being created, from the keyboard", async () => {
+    let finish: (value: GitHubAnswer) => void = () => {};
+    taskIssues.mockImplementation((_repository, operation) => operation === "create" ? new Promise<GitHubAnswer>((resolve) => { finish = resolve; }) : Promise.resolve(CREATE_ISSUES));
+    const user = userEvent.setup();
+    render(editModal({ id: "T-79" }));
+    await user.click(issueButton() as HTMLElement);
+    // Focus starts on Cancel. Shift+Tab reaches Create issue, and Enter sends.
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Create issue" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+    // The disabled button gave focus to the group, not to the dialog, so Escape reaches the group and closes nothing.
+    expect(confirmGroup()).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(confirmGroup()).not.toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    // A failed create keeps the group open and puts focus back on Cancel, so the keyboard is not lost.
+    finish({ ok: false, error: "failed" });
+    expect(await screen.findByText("GitHub did not accept the issue. Try again.")).toBeInTheDocument();
+    expect(within(confirmGroup() as HTMLElement).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(confirmGroup()).toBeNull();
+    expect(issueButton()).toHaveFocus();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("is absent for a task with a source and in a browser", () => {
@@ -269,8 +360,9 @@ describe("Edit, the action", () => {
     unmount();
     setBridge({ taskAction });
     render(editModal({ id: "T-72" }));
+    // In a browser the row still says None, and offers nothing.
     expect(issueButton()).toBeNull();
-    expect(screen.queryByText("Not on GitHub")).toBeNull();
+    expect(screen.getByText("None")).toHaveClass("taskRowNone");
   });
 
   it("is disabled with the save-first line while the draft is unsaved", async () => {
@@ -284,12 +376,23 @@ describe("Edit, the action", () => {
     expect(issueButton()).toBeEnabled();
   });
 
+  it("disables Create issue in an open confirmation while the draft is unsaved", async () => {
+    const user = userEvent.setup();
+    render(editModal({ id: "T-76" }));
+    await openConfirm(user);
+    expect(confirmButton()).toBeEnabled();
+    await user.type(screen.getByRole("textbox", { name: "Task" }), " More.");
+    expect(confirmButton()).toBeDisabled();
+    expect(createCalls()).toHaveLength(0);
+  });
+
   it("creates the issue from the task ID only, disables the action while it runs, and reads the board on success", async () => {
     let finish: (value: GitHubAnswer) => void = () => {};
     taskIssues.mockImplementation(() => new Promise<GitHubAnswer>((resolve) => { finish = resolve; }));
     const user = userEvent.setup();
     render(editModal({ id: "T-74" }));
-    await user.click(issueButton() as HTMLElement);
+    const group = await openConfirm(user);
+    await user.click(group.getByRole("button", { name: "Create issue" }));
     expect(createCalls()).toEqual([[repositoryId, "create", { taskId: "T-74" }]]);
     expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
     finish({ ok: true, number: 88 });
@@ -308,9 +411,11 @@ describe("Edit, the action", () => {
     taskIssues.mockResolvedValue({ ok: false, error });
     const user = userEvent.setup();
     render(editModal({ id: `T-8${error.length}` }));
-    await user.click(issueButton() as HTMLElement);
+    const group = await openConfirm(user);
+    await user.click(group.getByRole("button", { name: "Create issue" }));
     expect(await screen.findByText(message)).toHaveAttribute("role", "status");
-    expect(issueButton()).toBeEnabled();
+    // The confirmation stays open, so the action is offered again.
+    expect(confirmButton()).toBeEnabled();
     expect(onChanged).not.toHaveBeenCalled();
   });
 
@@ -318,7 +423,8 @@ describe("Edit, the action", () => {
     taskIssues.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
     render(editModal({ id: "T-90" }));
-    await user.click(issueButton() as HTMLElement);
+    const group = await openConfirm(user);
+    await user.click(group.getByRole("button", { name: "Create issue" }));
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(screen.getByText("This task already has a GitHub issue, or one is being created.")).toBeInTheDocument();
   });

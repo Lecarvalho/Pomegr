@@ -422,13 +422,14 @@ describe("the paused Queue banner", () => {
   });
 });
 
-describe("Queued · next while the queue is held", () => {
+describe("Next while the queue is held", () => {
   it("follows queue.order", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12", order: ["T-16", "T-15"] });
     renderBoard();
-    expect(chipText("T-16")).toBe("Queued · next");
+    expect(chipText("T-16")).toBe("Next");
+    // These cards sit in Backlog, which does not say Queued.
     expect(chipText("T-15")).toBe("Queued");
-    expect(screen.getAllByText("Queued · next")).toHaveLength(1);
+    expect(screen.getAllByText("Next")).toHaveLength(1);
   });
 });
 

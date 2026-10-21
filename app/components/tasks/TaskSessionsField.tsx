@@ -6,9 +6,10 @@ import type { SessionActivityStatus } from "../../../shared/monitor-contract";
 import type { TaskAssignedSession, TaskSession } from "../../../shared/task-contract";
 import { sessionState } from "../../dashboard-utils";
 import { CommandSelect } from "../command-center/CommandSelect";
+import { TaskRow } from "./TaskRows";
 import { taskSessionHref } from "./task-presentation";
 
-export const ASSIGN_HELPER = "An assigned session can report this task complete or blocked. Pomegr does not start or stop it.";
+export const ASSIGN_HELPER = "An assigned session can report this task complete or blocked.";
 const UNTITLED = "Untitled session";
 
 export type TaskSessionCandidate = Pick<TaskAssignedSession, "id" | "title" | "state">;
@@ -38,7 +39,10 @@ function SessionRow({ session, started, disabled, onUnassign }: {
   </li>;
 }
 
-/** The sessions of one task: the one Pomegr started for it, then every assigned session, and the owner's assign control. */
+/**
+ * The sessions of one task, as a row of the Run settings list: the value holds the one Pomegr started for it, then every assigned
+ * session, then one add line with the owner's select.
+ */
 export function TaskSessionsField({ started, assigned, candidates, busy, error, onAssign, onUnassign }: {
   started: TaskSession | null;
   assigned: TaskAssignedSession[];
@@ -51,26 +55,28 @@ export function TaskSessionsField({ started, assigned, candidates, busy, error, 
 }) {
   const selectId = useId();
   const helperId = useId();
+  const labelId = useId();
   const [chosen, setChosen] = useState<string | null>(null);
   const offered = onAssign !== undefined && candidates !== undefined;
   if (!offered && started === null && assigned.length === 0) return null;
   const options = (candidates ?? []).map((candidate) => ({ value: candidate.id, label: `${candidate.title?.trim() || UNTITLED} · ${stateOf(candidate.state).label}` }));
   const value = options.some((option) => option.value === chosen) ? chosen : null;
-  return <fieldset className="taskSessions">
-    <legend>Sessions</legend>
-    {(started !== null || assigned.length > 0) && <ul className="taskSessionsList">
-      {started && <SessionRow session={started} started />}
-      {assigned.map((session) => <SessionRow key={session.id} session={session} started={false} disabled={busy} onUnassign={onUnassign} />)}
-    </ul>}
-    {offered && <>
-      <div className="taskSessionsAssign">
-        <CommandSelect id={selectId} aria-label="Session to assign" options={options} value={value} placeholder={options.length > 0 ? "Choose a session" : "No other session in this repository"}
-          disabled={busy || options.length === 0} onChange={setChosen} />
-        <button type="button" className="commandSecondaryAction" disabled={busy || value === null} aria-describedby={helperId}
-          onClick={() => { if (value !== null) { onAssign(value); setChosen(null); } }}>Assign session</button>
-      </div>
-      <p id={helperId} className="newTaskHelper">{ASSIGN_HELPER}</p>
-    </>}
-    {error && <p className="newTaskError" role="alert">{error}</p>}
-  </fieldset>;
+  return <TaskRow label="Sessions" labelId={labelId} top="control">
+    <div className="taskSessions" role="group" aria-labelledby={labelId}>
+      {(started !== null || assigned.length > 0) && <ul className="taskSessionsList">
+        {started && <SessionRow session={started} started />}
+        {assigned.map((session) => <SessionRow key={session.id} session={session} started={false} disabled={busy} onUnassign={onUnassign} />)}
+      </ul>}
+      {offered && <>
+        <div className="taskSessionsAssign">
+          <CommandSelect id={selectId} aria-label="Session to assign" className="taskValueSelect" options={options} value={value}
+            placeholder={options.length > 0 ? "Choose a session" : "No other session in this repository"} disabled={busy || options.length === 0} onChange={setChosen} />
+          <button type="button" className="commandSecondaryAction" disabled={busy || value === null} aria-describedby={helperId}
+            onClick={() => { if (value !== null) { onAssign(value); setChosen(null); } }}>Assign session</button>
+        </div>
+        <span id={helperId} className="newTaskHelper">{ASSIGN_HELPER}</span>
+      </>}
+      {error && <p className="newTaskError" role="alert">{error}</p>}
+    </div>
+  </TaskRow>;
 }

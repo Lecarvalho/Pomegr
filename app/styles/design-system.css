@@ -16,6 +16,12 @@
 .designSystemNote { margin: var(--space-4) 0 0; padding: var(--space-2) var(--space-3); border-left: 2px solid var(--command-line-strong); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
 .designSystemGrid { margin-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-3); align-items: start; }
 .designSystemGrid > .panel { min-width: 0; }
+/* A grid of task modals gives each cell the room of a modal: its rows are 148px of label and the value. */
+.designSystemModalGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 680px), 1fr)); }
+/* Samples of Run settings rows give each cell the room of a row, one under another inside a sample. */
+.designSystemRowGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
+.designSystemRows { display: grid; gap: var(--space-4); }
+.designSystemSampleBody > :is(.taskReview, .taskRead, .taskRunSettings) { flex: 1 1 100%; }
 .designSystemPanelBody { padding: 0 var(--space-4) var(--space-2); }
 .designSystemPanelBody .commandSettingRow:first-child { border-top: 0; }
 .designSystemSession { margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
@@ -39,6 +45,9 @@
 /* The + New task action is hidden until its lane is hovered or focused; the reference holds it open. */
 .designSystemRevealAdd .taskColumnAdd { opacity: 1; }
 .designSystemRevealLink .taskReadyLinkAction { opacity: 1; }
+.designSystemRevealGroup .taskReadyActions { opacity: 1; }
+/* The cards of the narrowest lane: 220px less the lane's 8px padding on each side. */
+.designSystemNarrowLane { max-width: 204px; }
 .designSystemType { margin-top: var(--space-4); display: grid; gap: var(--space-3); }
 .designSystemType > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: baseline; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 .designSystemType > div > span:first-child { min-width: 0; overflow-wrap: anywhere; }
