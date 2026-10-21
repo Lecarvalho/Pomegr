@@ -5,7 +5,7 @@
 > Scope: the small versions that move Pomegr toward its purpose, the scorecard that measures each step, the 0.8.1 release without the pilot, how the other plans fit, and the readiness for a second autonomous experiment.
 > Continuation owner: the product owner decides; the agent that picks up a version records its evidence here, without scorecard values.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [Agent chat](../architecture/agent-chat.md), [Metrics](../architecture/metrics.md), and [Observation cache](../architecture/observation-cache.md) govern shipped behavior. Each other plan keeps its own scope until the owner accepts its placement here.
-> Next task or decision: the owner answers the remaining [open decisions](#open-decisions); the [0.8.1 release](#081-without-the-pilot) can start in parallel.
+> Next task or decision: the owner holds the closeout debrief (G17); 0.9.0 starts.
 > Completion criteria: 0.8.1 ships without the pilot; each version ships with its scorecard values in the desktop; each gap is shipped, moved to its own plan, or dropped; the [readiness criteria](#readiness-for-experiment-2) pass; experiment 2 runs, and whether each target passed is recorded here.
 > Permanent destinations: Tasks, Agent chat, Metrics, Observation cache, [session evidence privacy](../architecture/privacy/session-evidence.md), [desktop releases](../operations/desktop-releases.md) for the release-branch procedure, and [PRODUCT.md](../../../PRODUCT.md) for purpose wording.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -63,23 +63,25 @@ The scorecard shows whether Pomegr gives the owner time back. It uses the owner'
 Every measure is a heuristic proxy with its sample size beside it. Owner time is never measured directly.
 A measure with no source yet shows "no data"; that is an honest state, not zero.
 
-| Measure | Definition | Source | First pilot baseline |
-| --- | --- | --- | --- |
-| S1 Owner time per accepted pull request | Owner turns and owner-started sessions on a task after it reaches Review, and wall time from the owner's first action to merge | G1 | 30–114 minutes per pull request, from GitHub events |
-| S2 First-pass acceptance | Share of tasks merged with no commit after Review | G1 | Clapline: 1 of 7 (#869–#875) |
-| S3 Proof present | Share of pull requests with the proof that their repository's own template requires | G4 | Clapline: 2 of 6 visible changes; Pomegr: 0 of 4 |
-| S4 Silent failures | Tasks that stopped with no state change or report | G5 | Pokrr: 4 of 5 tasks |
-| S5 Manual closeouts | Merged tasks that still have a Review card, an open session, or a worktree one day after the merge | G12, G17 | Many, closed by hand one window at a time; not counted |
-| S6 Model reasons | Share of starts with a recorded model reason | G6 | 0 of 14 |
-| S7 Owner interventions during absence | Grants revoked or reset, and needs-you items | Pilot journal and inbox | 6 of 10 grants revoked |
+| Measure | Definition | Source |
+| --- | --- | --- |
+| S1 Owner time per accepted pull request | Owner turns and owner-started sessions on a task after it reaches Review, and wall time from the owner's first action to merge | G1 |
+| S2 First-pass acceptance | Share of tasks merged with no commit after Review | G1 |
+| S3 Proof present | Share of pull requests with the proof that their repository's own template requires | G4 |
+| S4 Silent failures | Tasks that stopped with no state change or report | G5 |
+| S5 Manual closeouts | Merged tasks that still have a Review card, an open session, or a worktree one day after the merge | G12, G17 |
+| S6 Model reasons | Share of starts with a recorded model reason | G6 |
+| S7 Owner interventions during absence | Grants revoked or reset, and needs-you items | Pilot journal and inbox |
 
-The baseline values come from the retrospective. S2 compares each pull request's final commits with the head that the pilot opened; the count is an inference from commit lists.
+The first pilot is the baseline. The desktop computes its values from the sources of the retrospective. S2 compares each pull request's final commits with the head that the pilot opened, so its count is an inference from commit lists.
 The scorecard lives in the desktop only. The desktop computes it from G1 and keeps a local snapshot for each version, with its formula version, so it can show each value before and after.
 Release notes, **What's new**, and this roadmap may name the measure that a version targeted, but never its values. [Metrics](../architecture/metrics.md) holds the definitions.
 
 ## Versions
 
 ### 0.8.1 without the pilot
+
+Shipped on 2026-10-21 from `release/0.8.1`, with the procedure recorded in [desktop releases](../operations/desktop-releases.md#release-from-a-release-branch).
 
 A dry run on 2026-10-19 showed that #262 and #263 are the only pilot changes.
 #260 (Aril read access) and #261 (owner-applied follow-up proposals) are ordinary Aril chat work.
@@ -233,11 +235,11 @@ Every grant used Codex GPT-6 Luna for Aril's own decisions.
 
 | Repository | Grants | Starts | Result |
 | --- | --- | --- | --- |
-| Clapline (private) | 4: 3 revoked, 1 expired | 8, plus 1 uncertain | Pull requests #868–#875; serial owner review of #869–#874 took about 8.2 hours. #876 and #877 came from later owner starts. |
-| Pomegr (public) | 3: 2 revoked, 1 finished | 4 | Pull requests #264–#267; owner spot checks |
-| Pokrr (private) | 3: 1 revoked, 1 expired, 1 finished | 2 | No pull request |
+| Clapline (private) | 4 | 8, plus 1 uncertain | Pull requests #868–#875, reviewed by the owner one after another. #876 and #877 came from later owner starts. |
+| Pomegr (public) | 3 | 4 | Pull requests #264–#267; owner spot checks |
+| Pokrr (private) | 3 | 2 | No pull request |
 
-After the pilot, owner actions still remained on the boards: 5 in Clapline and 3 in Pokrr.
+After the pilot, owner actions still remained on the Clapline and Pokrr boards.
 
 ### Where the owner's time went
 
@@ -250,11 +252,11 @@ After the pilot, owner actions still remained on the boards: 5 in Clapline and 3
    Pomegr recorded no outcome for each model, so there was nothing to calibrate from.
 2. **The repository's own process was skipped.**
    Clapline requires red-team review, blind cold review, architecture reviewers, and a pull-request template. None of them ran.
-   Codex review found about 18 issues across #869–#874, 5 of them P1.
+   Codex review found issues across #869–#874, some of them P1.
    Pomegr's fixed task prompt (`server/tasks/task-dispatch.mjs`, `buildTaskPrompt`) defines done as the **Complete when** checks. It does not point to the repository's own definition of done. This may have let sessions stop early; it is not proven.
 3. **Proof was missing.**
-   In Clapline, 2 of 6 visible changes had a screenshot, each of one Mock state, with no before and after.
-   In Pomegr, 0 of 4 pull requests had a screenshot. #266 was merged with "Owner visual validation is pending" in its body.
+   In Clapline, few visible changes had a screenshot, each of one Mock state, with no before and after.
+   In Pomegr, no pull request had a screenshot. #266 was merged with "Owner visual validation is pending" in its body.
    Clapline CI runs only when a pull request opens, so the merged heads of #869–#874 have no CI result.
    Each repository already had the tools to make the proof.
 4. **Dependencies waited for the owner.**
@@ -270,7 +272,7 @@ After the pilot, owner actions still remained on the boards: 5 in Clapline and 3
    Pokrr T-1, T-4, and T-5 were queued while the queue was off. The pilot starts only tasks that are not queued, so they never started, and no needs-you item said so.
    One Pokrr grant used all 20 decision rounds on quota waits before the quota reset.
 7. **The owner watched the pilot.**
-   The owner revoked 6 of 10 grants, after failed inferences, needs-you items, an uncertain start, and the dirty-root gate.
+   The owner revoked most grants, after failed inferences, needs-you items, an uncertain start, and the dirty-root gate.
 8. **Pomegr's own evidence had gaps.**
    `list_session_agents` returned "malformed observation" for every session.
    The block reasons of Pomegr T-151 and T-140 were not retained.
@@ -284,8 +286,7 @@ After the pilot, owner actions still remained on the boards: 5 in Clapline and 3
     Resuming an old, long conversation costs context and time.
     Agents ask whether to create a task for an unrelated discovery while the owner is away.
 
-For #869–#874, the time from the owner's first action to merge was 30 to 114 minutes per pull request.
-These times come from GitHub events. That the gaps were manual testing is an inference.
+GitHub events give the time from the owner's first action to merge for #869–#874. That the owner spent this time on manual testing is an inference.
 
 ## Deferred ideas from the first proposal
 
@@ -310,7 +311,7 @@ The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#own
 
 - [x] The owner answers the open decisions (2026-10-21), except the closeout debrief.
 - [ ] Hold the closeout debrief (G17).
-- [ ] Ship 0.8.1 with the steps above and record the procedure.
+- [x] Ship 0.8.1 with the steps above and record the procedure (2026-10-21).
 - [ ] Verify the cause of finding 9 (worktree cleanup).
 - [ ] Verify whether #263 stops quota waits from consuming decision rounds.
 - [ ] Fix `list_session_agents` "malformed observation".
@@ -325,3 +326,5 @@ The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#own
 2026-10-19: the retrospective is complete, from read-only evidence. The 0.8.1 cut was tested in a disposable worktree with no conflicts. Each other plan was checked for purpose fit. The Portuguese proposal and its attachments were replaced by this roadmap. Next action: the owner reviews this roadmap and answers the open decisions.
 
 2026-10-21: the owner accepted the five-minute plan, the experiment 2 targets, the version order, and the plan placements, and kept T-128 and T-132 out of 0.8.1. Closeout reconciliation became G17. A dry run put #269 on the 0.8.1 cut with one resolved conflict. The owner also decided that scorecard values stay in the desktop, that G1 is stored locally in SQLite, that #269 enters 0.8.1 and #270 waits for 0.9.0, and that the dependency proposal is a starting point that adapts to each user. Next action: build `release/0.8.1`; the owner gives the go for its push, tag, and release, and schedules the closeout debrief.
+
+2026-10-21, later: 0.8.1 shipped from `release/0.8.1`. Both checks passed on the branch, the release workflow passed, and the release description lists the included pull requests. The baseline values were removed from this roadmap at the owner's request; the desktop will show them. Next action: the owner holds the closeout debrief, and 0.9.0 starts.
