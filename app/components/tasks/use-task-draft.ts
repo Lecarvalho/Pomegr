@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { TASK_BOUNDS, type Task, type TaskRun } from "../../../shared/task-contract";
 import type { TaskFieldsInput } from "./task-desktop";
 import { completeWhenFromTask, toCompleteWhen, type CompleteWhenDraft } from "./task-fields";
@@ -39,10 +39,13 @@ export function taskDraftCanSave(task: Task, draft: TaskDraft): boolean {
 
 export function useTaskDraft(task: Task) {
   const [draft, setDraft] = useState<TaskDraft>(() => taskDraftFromTask(task));
+  const reset = useCallback(() => setDraft(taskDraftFromTask(task)), [task]);
   return {
     draft,
     dirty: taskDraftPatch(task, draft) !== null,
     canSave: taskDraftCanSave(task, draft),
+    /** Drops the edits: the draft is the stored task again. */
+    reset,
     setText: (text: string) => setDraft((current) => ({ ...current, text })),
     setRun: (run: TaskRun) => setDraft((current) => ({ ...current, run })),
     setCompleteWhen: (completeWhen: CompleteWhenDraft) => setDraft((current) => ({ ...current, completeWhen })),

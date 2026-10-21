@@ -86,7 +86,7 @@ lists its tasks before the usual destinations.
 | State | Meaning | Set by |
 | --- | --- | --- |
 | **Not queued** | On the board, not in the queue. | Creating the task, or **Remove from queue**. |
-| **Queued** | Waiting for its turn and the start gates. The next one reads **Queued · next**. | **Add to queue**, or **Requeue task**. |
+| **Queued** | Waiting for its turn and the start gates. The next one reads **Queued · next**, and **Next** on its card. | **Add to queue**, or **Requeue task**. |
 | **Scheduled** | Queued with its own start time. | Setting **Start at** on the task. |
 | **Needs review** | The agent reported complete. The task window shows each checked condition's result and the agent's attention line, if it gave one. | Pomegr, when it verifies the report. |
 | **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. It leaves Stalled when that session reports or works again. |
@@ -94,15 +94,29 @@ lists its tasks before the usual destinations.
 | **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done** or a move to **Done**. |
 
 A task has no **Running** state. Once a session is linked to a task that has no outcome
-yet, its card shows that session's observed state, such as **In progress** (see
+yet, its state is that session's observed state, such as **In progress** (see
 [Sessions and agents](sessions-and-agents.md#read-a-sessions-state)). Until Pomegr has
-observed the session, the card keeps the task's own state, so a state is never shown
+observed the session, the task keeps its own state, so a state is never shown
 and then taken back.
 
 **Stalled** means Pomegr observed the session end with no report, not that the work
 failed. Pomegr confirms the end with a second reading about 20 seconds after the first,
 so a session that reads as ended for a moment does not stall its task. If the same
 session reports or works again later, the task leaves **Stalled** by itself.
+
+## Read a card
+
+A card shows the task ID, its feature, and its title. A tag is a word in brackets at the
+start of the first line, such as `[ backend ]`. It shows as a small label under the title.
+The card also shows the planned model and effort, and **Open session** when a session is
+linked.
+
+- **The column says the state.** A card shows its state label only when its column does
+  not already say it. A **Queued** card in **Ready** has no label.
+- **Next.** The card that starts next in **Ready** reads **Next**.
+- **The border.** A green border means the session works. An amber border means the task
+  needs you: **Needs review**, **Stalled**, **Blocked by agent**, or a session that
+  needs input.
 
 ## Board limits
 

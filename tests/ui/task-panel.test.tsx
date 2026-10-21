@@ -68,6 +68,8 @@ const card = (title: string) => screen.getByRole("button", { name: title });
 // The Sessions rows repeat the started session's title and state, so the header and the title line are read by their own element.
 const header = () => within(document.querySelector(".taskModalHeader") as HTMLElement);
 const save = (dialog: ReturnType<typeof within>) => dialog.getByRole("button", { name: "Save" });
+// A Run settings row of a started task: the value beside its label.
+const rowValue = (dialog: ReturnType<typeof within>, label: string) => dialog.getByText(label, { selector: "dt" }).nextElementSibling as HTMLElement;
 async function openReviewPanel(user: ReturnType<typeof userEvent.setup>) {
   await user.click(card("Task store and privacy rules"));
   return within(screen.getByRole("dialog", { name: "Task" }));
@@ -81,7 +83,7 @@ async function openDraftPanel(user: ReturnType<typeof userEvent.setup>) {
 const updateCalls = () => taskAction.mock.calls.filter((call) => call[1] === "update");
 
 describe("task cards", () => {
-  it("show the provider chip, model, effort and Complete when summary only when set", () => {
+  it("show the planned run line, naming the provider only for its default model, and no Complete when line", () => {
     setBoard([
       task(1, { run: { provider: "claude", model: "model-a", effort: "high" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: null } }),
       task(2, { run: { provider: "codex", model: null, effort: null }, completeWhen: { checks: ["tree_clean"], own: "Looks right" } }),
@@ -90,17 +92,18 @@ describe("task cards", () => {
     ]);
     render(<TaskBoardView board={useTasks().board} />);
     const cards = screen.getAllByRole("listitem");
-    expect(within(cards[0]).getByText("Claude Code")).toHaveClass("commandChip");
-    expect(within(cards[0]).getByText("model-a · high")).toBeInTheDocument();
-    expect(within(cards[0]).getByText("Complete when: 2 checks + agent report")).toBeInTheDocument();
-    expect(within(cards[1]).getByText("Codex")).toBeInTheDocument();
-    expect(within(cards[1]).queryByText(/·/, { selector: ".taskCardPlanned" })).not.toBeInTheDocument();
-    expect(within(cards[1]).getByText("Complete when: 1 check + own condition + agent report")).toBeInTheDocument();
-    expect(cards[2]).toHaveTextContent("low");
-    expect(within(cards[2]).queryByText("Claude Code")).not.toBeInTheDocument();
-    expect(within(cards[2]).queryByText(/Complete when/)).not.toBeInTheDocument();
-    expect(cards[3]).not.toHaveTextContent(/Claude Code|Codex|Complete when/);
-    expect(cards[3].querySelector(".taskCardRun")).toBeNull();
+    // The run line is the planned text in the data font. A model names its provider, so there is no provider chip.
+    expect(cards[0].querySelector(".taskCardPlanned")).toHaveTextContent(/^model-a · high$/);
+    expect(within(cards[0]).queryByText("Claude Code")).not.toBeInTheDocument();
+    // The provider's default model does not, so the line leads with the provider.
+    expect(cards[1].querySelector(".taskCardPlanned")).toHaveTextContent(/^Codex$/);
+    expect(cards[2].querySelector(".taskCardPlanned")).toHaveTextContent(/^low$/);
+    expect(cards[3].querySelector(".taskCardPlanned")).toBeNull();
+    // No card draws a Complete when line: the task modal shows it.
+    for (const item of cards) {
+      expect(item).not.toHaveTextContent(/Complete when/);
+      expect(item.querySelector(".providerBadge")).toBeNull();
+    }
   });
 
   it("are plain text, not controls, without the desktop bridge", () => {
@@ -122,20 +125,28 @@ describe("Task modal, mode edit", () => {
     expect(dialog.getByRole("heading", { level: 2, name: "Task" })).toBeInTheDocument();
     expect(dialog.getByText("Task store and privacy rules", { selector: ".taskModalSessionTitle" })).toBeInTheDocument();
     expect(dialog.getByText(/Title from the session/)).toBeInTheDocument();
-    expect(dialog.getByText("in Backlog")).toHaveClass("taskModalSubtitle");
+    // In mode edit the subtitle is the repository alone: the column is no longer named there.
+    expect(header().queryByText(/in Backlog/)).not.toBeInTheDocument();
+    expect(document.querySelector(".taskModalSubtitle")).toHaveTextContent(/^$/);
     expect(dialog.getByRole("link", { name: "Open session" })).toHaveAttribute("href", expect.stringMatching(/^\/sessions\//));
-    expect((dialog.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement).value).toBe("Add a private task store.");
-    expect(dialog.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Claude Code · model-a");
-    expect(dialog.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
-    expect(dialog.getByRole("button", { name: "Low" })).toHaveAttribute("aria-pressed", "false");
-    expect(dialog.getByRole("checkbox", { name: "PR open" })).toBeChecked();
-    expect(dialog.getByRole("checkbox", { name: "CI passed" })).not.toBeChecked();
-    expect((dialog.getByRole("textbox", { name: "Own condition" }) as HTMLInputElement).value).toBe("Tests pass.");
-    expect(dialog.queryByRole("checkbox", { name: "Use your own condition" })).not.toBeInTheDocument();
-    expect(dialog.getByText("25 / 4,000")).toHaveClass("taskTextCounter");
+    // A task that has started is read, not edited: the text, then the settings as values, and no control.
+    expect(dialog.getByRole("region", { name: "Task" })).toHaveTextContent("Add a private task store.");
+    expect(dialog.getByText("Add a private task store.", { selector: ".taskReadTitle" })).toBeInTheDocument();
+    expect(dialog.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(rowValue(dialog, "Run on")).toHaveTextContent("Claude Code · model-a");
+    expect(rowValue(dialog, "Effort")).toHaveTextContent("High");
+    expect(rowValue(dialog, "Feature")).toHaveTextContent("No feature");
+    expect(dialog.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(dialog.queryByRole("checkbox")).not.toBeInTheDocument();
+    // The conditions are listed with their results in the Review panel, so the Run settings do not list them again.
+    const conditions = within(dialog.getByRole("list", { name: "Complete when" }));
+    expect(conditions.getByText("PR open")).toBeInTheDocument();
+    expect(conditions.queryByText("CI passed")).not.toBeInTheDocument();
+    expect(conditions.getByText("Tests pass.")).toBeInTheDocument();
+    expect(dialog.queryByText("Complete when", { selector: "dt" })).not.toBeInTheDocument();
+    expect(dialog.queryByText("25 / 4,000")).not.toBeInTheDocument();
     expect(dialog.getByRole("button", { name: "Close" })).toHaveClass("commandIconAction");
     expect(dialog.getByRole("button", { name: "Delete task" })).toHaveClass("commandQuietAction");
-    expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
     expect(dialog.queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
     // Nothing is written by opening the modal.
     expect(taskAction).not.toHaveBeenCalled();
@@ -162,11 +173,14 @@ describe("Task modal, mode edit", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Plain task"));
     const dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect((dialog.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement).value).toBe("Plain task");
+    expect(dialog.getByText("Plain task", { selector: ".taskReadTitle" })).toBeInTheDocument();
     expect(dialog.queryByText(/Title from the session/)).not.toBeInTheDocument();
     expect(dialog.queryByText(/^Passed$|Not passed|Agent reported/)).not.toBeInTheDocument();
     expect(dialog.queryByText("Observed model differs")).not.toBeInTheDocument();
-    expect(dialog.getByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).toBeInTheDocument();
+    // No report means no Review panel: the conditions are one row of the settings, and the form's helper is not drawn.
+    expect(dialog.queryByRole("heading", { name: "Ready for your review" })).not.toBeInTheDocument();
+    expect(rowValue(dialog, "Complete when")).toHaveTextContent("PR open");
+    expect(dialog.queryByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).not.toBeInTheDocument();
   });
 
   it("words the observed-model notice from the contract", async () => {
@@ -211,7 +225,7 @@ describe("Task modal, mode edit", () => {
     await user.click(screen.getByRole("button", { name: "Close" }));
     await user.click(card("Own title"));
     dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect((dialog.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement).value).toBe("Own title");
+    expect(dialog.getByText("Own title", { selector: ".taskReadTitle" })).toBeInTheDocument();
     expect(document.querySelector(".taskModalSessionTitle")).toBeNull();
     expect(dialog.queryByText(/Title from the session/)).not.toBeInTheDocument();
     expect(dialog.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/codex-s6");
@@ -262,37 +276,40 @@ describe("Task modal, mode edit", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Linked session"));
     const dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+    // A started task never starts again: the action is not drawn, and the footer says why.
+    expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
     expect(dialog.getByRole("status")).toHaveTextContent("A session is already linked to this task.");
-    await user.click(dialog.getByRole("button", { name: "Start session" }));
     expect(taskStart).not.toHaveBeenCalled();
   });
 
   it("is read-only once the task has started, and says that a requeue opens it again", async () => {
     const user = userEvent.setup();
     const started: Array<[string, Partial<Task>, string]> = [
-      ["Linked", { session: { id: "claude:abc123", title: null, state: "working", observedModel: null } }, "This task has started, so it cannot be changed. Requeue it to change it."],
-      ["In review", { state: "needs_review" }, "This task has started, so it cannot be changed. Requeue it to change it."],
-      ["Blocked", { state: "blocked" }, "This task has started, so it cannot be changed. Requeue it to change it."],
-      ["Stalled", { state: "stalled" }, "This task has started, so it cannot be changed. Requeue it to change it."],
-      ["Finished", { state: "done" }, "This task has started, so it cannot be changed."],
+      ["Linked", { session: { id: "claude:abc123", title: null, state: "working", observedModel: null } }, "Started, so read-only. Requeue to edit."],
+      ["In review", { state: "needs_review" }, "Started, so read-only. Requeue to edit."],
+      ["Blocked", { state: "blocked" }, "Started, so read-only. Requeue to edit."],
+      ["Stalled", { state: "stalled" }, "Started, so read-only. Requeue to edit."],
+      ["Finished", { state: "done" }, "Started, so read-only."],
     ];
     for (const [text, overrides, note] of started) {
       setBoard([task(30, { text, run: { provider: "claude", model: "model-a", effort: "high" }, completeWhen: { checks: ["pr_open"], own: "Judged" }, ...overrides })]);
       const view = render(<TaskBoardPane repositoryId={repositoryId} />);
       await user.click(card(text));
       const dialog = within(screen.getByRole("dialog", { name: "Task" }));
-      expect(dialog.getByText(note), text).toHaveClass("newTaskHelper");
-      expect(dialog.getByRole("textbox", { name: "Task" }), text).toHaveAttribute("readonly");
-      expect(dialog.getByRole("textbox", { name: "Own condition" }), text).toHaveAttribute("readonly");
-      for (const name of ["Run on", "Feature"]) expect(dialog.getByRole("combobox", { name }), `${text} ${name}`).toBeDisabled();
-      expect(dialog.queryByRole("combobox", { name: "Step" }), text).not.toBeInTheDocument();
-      for (const name of ["Low", "High"]) expect(dialog.getByRole("button", { name }), `${text} ${name}`).toBeDisabled();
-      for (const name of ["PR open", "CI passed", "Remote Control"]) expect(dialog.getByRole("checkbox", { name }), `${text} ${name}`).toBeDisabled();
+      // The lock line sits under the Task label, with a decorative glyph beside it.
+      expect(dialog.getByText(note, { exact: true }), text).toHaveClass("taskReadNote");
+      expect(document.querySelector(".taskReadLock > svg"), text).toHaveAttribute("aria-hidden", "true");
+      expect(dialog.getByRole("region", { name: "Task" }), text).toHaveTextContent(text);
+      // Nothing is a control: no text field, no select, no segment, no checkbox, and no Save.
+      for (const role of ["textbox", "combobox", "checkbox"] as const) expect(dialog.queryByRole(role), `${text} ${role}`).not.toBeInTheDocument();
+      for (const name of ["Low", "High"]) expect(dialog.queryByRole("button", { name }), `${text} ${name}`).not.toBeInTheDocument();
       expect(dialog.queryByRole("button", { name: "Save" }), text).not.toBeInTheDocument();
       // The stored values still show, and the task can still be deleted.
-      expect(dialog.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
-      expect(dialog.getByRole("checkbox", { name: "PR open" })).toBeChecked();
+      expect(rowValue(dialog, "Run on"), text).toHaveTextContent("Claude Code · model-a");
+      expect(rowValue(dialog, "Effort"), text).toHaveTextContent("High");
+      expect(rowValue(dialog, "Remote Control"), text).toHaveTextContent("Off");
+      expect(rowValue(dialog, "When done"), text).toHaveTextContent("Remove worktree and branch");
+      expect(rowValue(dialog, "Complete when"), text).toHaveTextContent("PR open, Judged");
       expect(dialog.getByRole("button", { name: "Delete task" })).toBeEnabled();
       view.unmount();
     }
@@ -581,31 +598,38 @@ describe("Task modal resolutions", () => {
     setBoard([task(15, { text: "Stalled work", state: "stalled", completeWhen: { checks: ["pr_open"], own: null },
       session: { id: "claude:abc125", title: null, state: "closed", observedModel: null } })]);
     const { user, dialog } = await open("Stalled work");
-    expect(dialog.getByText("Stalled")).toHaveClass("commandChip", "warning");
+    expect(header().getByText("Stalled")).toHaveClass("commandChip", "warning");
     expect(header().queryByText("Closed")).not.toBeInTheDocument();
+    // The Review panel names the state, says the session ended with no report, and lists no result.
+    expect(dialog.getByRole("heading", { level: 3, name: "Stalled" })).toBeInTheDocument();
     expect(dialog.getByText("The session ended with no report.")).toBeInTheDocument();
+    expect(dialog.queryByRole("list", { name: "Complete when" })).not.toBeInTheDocument();
+    expect(rowValue(dialog, "Complete when")).toHaveTextContent("PR open");
     expect(dialog.queryByText(/Agent reported/u)).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
     expect(dialog.getByRole("button", { name: "Requeue task" })).toHaveClass("commandSecondaryAction");
+    expect(dialog.getByRole("button", { name: "Mark done and resume queue" })).toHaveClass("commandPrimaryAction");
     await user.click(dialog.getByRole("button", { name: "Mark done and resume queue" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-15" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
   });
 
-  it("leads the footer of a task in review with Mark done and Requeue, before Delete", async () => {
+  it("draws the footer of a task in review as one row: Delete, then Requeue, then Mark done as the one primary", async () => {
     const { user, dialog } = await open("Task store and privacy rules");
     // A task in review holds no queue, so the action does not speak of resuming one.
     const done = dialog.getByRole("button", { name: "Mark done" });
     expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
     const requeue = dialog.getByRole("button", { name: "Requeue task" });
     const remove = dialog.getByRole("button", { name: "Delete task" });
-    // The resolutions are secondary and sit above the footer row; a started task has nothing to save.
-    expect(done).toHaveClass("commandSecondaryAction");
+    // Mark done is the one primary, Requeue is secondary, and a started task has nothing to save.
+    expect(done).toHaveClass("commandPrimaryAction");
     expect(requeue).toHaveClass("commandSecondaryAction");
     expect(dialog.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(remove).toHaveClass("commandQuietAction");
-    expect(done.compareDocumentPosition(requeue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(requeue.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(remove.compareDocumentPosition(requeue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(requeue.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(done.closest(".taskModalFooter")).toBe(remove.closest(".taskModalFooter"));
+    expect(document.querySelector(".taskModalResolve")).toBeNull();
     expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
     await user.click(done);
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-12" }));
@@ -616,7 +640,8 @@ describe("Task modal resolutions", () => {
   it("requeues a task the agent blocked and shows its reason", async () => {
     setBoard([reviewTask, blockedTask]);
     const { user, dialog } = await open("Task text 14");
-    expect(dialog.getByText("Blocked by agent")).toHaveClass("commandChip");
+    expect(header().getByText("Blocked by agent")).toHaveClass("commandChip");
+    expect(dialog.getByRole("heading", { level: 3, name: "Blocked by agent" })).toBeInTheDocument();
     expect(dialog.getByText(/Agent reported it cannot continue/).textContent).toMatch(/^Agent reported it cannot continue \(.+\):$/u);
     expect(dialog.getByText("The schema needs a decision.")).toHaveClass("taskReportNotice");
     await user.click(dialog.getByRole("button", { name: "Requeue task" }));
@@ -646,12 +671,15 @@ describe("Task modal resolutions", () => {
     const requeue = dialog.getByRole("button", { name: "Requeue task" });
     // The session's own state stays on the chip; both exits are secondary so Start session keeps the one primary role.
     expect(header().getByText("In progress")).toHaveClass("commandChip");
+    // The task does not need the user yet, so both exits are secondary and the view has no primary action.
     expect(done).toHaveClass("commandSecondaryAction");
     expect(requeue).toHaveClass("commandSecondaryAction");
-    expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+    expect(dialog.getAllByRole("button").some((button) => button.classList.contains("commandPrimaryAction"))).toBe(false);
+    expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
     expect(dialog.getByText("The session has not reported. Mark done and Requeue do not stop it.")).toHaveClass("taskModalNote");
-    expect(done.compareDocumentPosition(dialog.getByRole("button", { name: "Delete task" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(dialog.getByRole("button", { name: "Delete task" }).compareDocumentPosition(requeue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(requeue.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(requeue);
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-20" }));
     await waitFor(() => expect(done).toBeEnabled());
@@ -743,7 +771,8 @@ describe("task field styles", () => {
   };
 
   it("maps the Run on, Effort, Complete when and Task modal contract lines to tokens", () => {
-    expect(rule(".taskRunRow")).toMatch(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*align-items: end;[^}]*gap: var\(--space-4\)/);
+    expect(rule(".taskRow")).toMatch(/grid-template-columns: 148px minmax\(0, 1fr\);[^}]*min-height: 40px;[^}]*border-top: 1px solid var\(--command-line\)/);
+    expect(rule(".taskRow > dt")).toMatch(/color: var\(--command-muted\);[^}]*400 var\(--text-xs\)/);
     expect(styles).toMatch(/\.taskEffort > button \{ min-height: var\(--control-height\); \}/);
     expect(rule(".taskModelNotice")).toMatch(/border: 1px solid var\(--command-amber\)[^}]*border-radius: var\(--control-radius\)[^}]*background: var\(--color-amber-soft\)/);
     expect(rule(".taskReportNotice")).toMatch(/border: 1px solid var\(--command-amber\)[^}]*background: var\(--color-amber-soft\)[^}]*color: var\(--command-ink\)[^}]*400 var\(--text-sm\)/);

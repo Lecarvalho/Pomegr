@@ -212,8 +212,9 @@ type TaskBoard = {
   part of it as optional: a provider with a model or its "Default model", and an effort. `model` is
   validated like the request model identifier in [AGENTS.md](../../../AGENTS.md): at
   most 120 identifier characters, never a path, markup, or prose. A card shows the
-  planned provider and model beside the observed model; the observed model is
-  evidence, the planned one is intent. The Run on list offers Claude's newest observed
+  planned model and effort, led by the provider's name when the model is the default,
+  and the observed model on its own line; the observed model is evidence, the planned
+  one is intent. The Run on list offers Claude's newest observed
   model of each family and, for Codex, only `runModels.codex`: the last committed Codex
   client catalog (visible, non-alias rows) that the hourly model read already holds in
   memory. The GET never triggers a catalog read, the list is a client catalog and never
@@ -232,7 +233,7 @@ type TaskBoard = {
 - `run.keepWorktree` says that the task's own worktree and branch stay when the task is
   marked done. It is one boolean, on the run only when it is `true`: removing them is the
   default (task T-27, product-owner decision of 2026-10-11), and the task forms show it as
-  the checked box **Remove worktree and branch when done**. It is valid alone and on
+  the checked box **Remove worktree and branch** in the **When done** row. It is valid alone and on
   either provider. Only the `create` and `update` actions set it; `add_task` has no input
   for it, so an agent's task removes its worktree. A new task never takes it from the
   newest task on the board. It changes nothing for a task that runs in the repository
@@ -418,8 +419,8 @@ For a started task:
   `queue_ungroup` act on waiting cards, which have not started (see
   [Parallel groups](#parallel-groups)).
 - **The task window shows it.** The Task modal draws a task with a session or an outcome
-  read-only, with no Save and one fixed line: "This task has started, so it cannot be
-  changed.", followed by "Requeue it to change it." when Requeue is offered. The board
+  read-only, with no Save and one fixed line beside a lock glyph under its Task label:
+  "Started, so read-only.", followed by "Requeue to edit." when Requeue is offered. The board
   carries no dispatch, so in the minutes between a start and its link the window is
   still editable and Save answers the fixed failure line.
 
@@ -1132,7 +1133,7 @@ not started (no linked session and no live dispatch).
 - **Shown.** A waiting card of Ready adds its place and a Waiting line, and the Task
   modal of a waiting task starts with a Queue block.
   [Task board design](../design/task-board.md#ready-parallel-groups) and
-  [Task modal design](../design/task-modal.md#body) own how they look.
+  [Task modal design](../design/task-modal.md#body-a-task-that-has-not-started) own how they look.
 
 ## Tasks home
 
@@ -1161,6 +1162,14 @@ it looks.
   such a repository from the repository inventory, as an empty board with the queue off.
 - **Pure summary.** `summarizeTaskHome(entries)` in `server/tasks/task-home.mjs` takes
   projected boards and returns plain values, like the other rule modules.
+- **Title.** An attention item's title is the bound session's title, else the title line
+  of the task text: the first line after its leading tags, or the next non-empty line
+  when the first line holds only tags. A blank line never leads, and a leading Markdown
+  heading mark is left out. A text of only tags keeps them. The tag split and the title
+  line are a display heuristic; the [board design](../design/task-board.md#tags) owns
+  the rule. The stored text keeps its brackets. `server/tasks/task-tags.mjs` is the
+  server twin of `app/components/tasks/task-tags.ts` (`splitTaskTags` and
+  `splitTaskTitle`), and a parity test keeps the two equal.
 - **Committed facts only.** The read is a committed-store read like the board's. A
   session title comes from the same memory lookup. It reads no gate fact, no check
   fact, and no run-model catalog.
@@ -2363,11 +2372,14 @@ so it reads nothing and says that issues are read in the desktop app.
   a GitHub issue**, unchecked, with one line saying that the text is sent once and who can
   read it; otherwise the box is disabled with one fixed reason. **Create task** creates
   the task first and asks for the issue only after the task exists. If the issue fails,
-  the modal closes on the created task, which has no chip. In the edit mode a task with
-  no source offers **Create GitHub issue**, disabled while the draft is unsaved because
-  the monitor sends the saved text. A failure shows its fixed reason as one line, kept
-  in renderer memory only, and the action stays offered. Opening a task reads nothing
-  from GitHub.
+  the modal closes on the created task, which has no chip. In the edit mode the GitHub
+  issue row of a task with no source offers **Create issue…**, disabled while the draft is
+  unsaved because the monitor sends the saved text. It opens a confirmation in the row
+  that says what is sent (the first line as the title and the whole text as the body), that anyone
+  who can see the repository can read it, and that it is sent once and later edits stay in
+  Pomegr. Nothing is sent before **Create issue** in the confirmation. A failure shows its
+  fixed reason as one line, kept in renderer memory only, and the confirmation stays open
+  so the action is offered again. Opening a task reads nothing from GitHub.
 - **The `#N` chip.** A task with a source shows a `#N` chip right after its ID on a board
   card and on a card of the Queue view (`TaskIssueChip`: the shared outline chip with a circle-dot
   glyph and the number in the data font). The session view's Task tab shows one
@@ -2434,6 +2446,9 @@ them through the gateway's own routes (see [Paired devices](#paired-devices)).
   forms is rich text (`TaskRichText` in `app/components/tasks/TaskImages.tsx`): a
   `contenteditable="plaintext-only"` region whose value is still that one string. It
   draws each marker as the image, inline, and serializes an image back to its marker.
+  It also draws a leading run of `[ word ]` tokens as tag chips, and serializes each
+  chip back to its token text, so the value is the same as if the brackets had been
+  typed (see [Tags in rich text](../design/task-modal.md#tags-in-rich-text)).
   Every other surface shows the plain word `[image]` (`plainTaskText`): cards, the
   Search bar, the session's Task tab, and the text sent to GitHub.
 - The renderer makes the image ID (`newTaskImageId`, `img-<12 random hex>`) when an
@@ -2743,8 +2758,10 @@ fixed values.
   under that same gate, so it reaches no new client. It serves less than a board: of
   user-authored content, only one title line for each of at most 50 tasks that need
   review, are stalled, or are blocked. The line is the bound session's title, or the
-  first line of the task text, cut at 160 characters. No own condition, block reason,
-  attention line, feature name, image, model, or session ID enters it.
+  title line of the task text, cut at 160 characters. The title line is the first line
+  after the task text's leading tags, or the next non-empty line when the first line
+  holds only tags. It is still one line of at most 160 characters. No own condition,
+  block reason, attention line, feature name, image, model, or session ID enters it.
 - A feature's description and app version live only in the task store and are served
   only by `POST /api/agent/v1/tasks/feature-get`, to an agent whose session is bound to
   that board (task T-33, 2026-10-10). This is a deliberate widening: an agent could

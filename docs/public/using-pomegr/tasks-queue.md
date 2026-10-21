@@ -32,7 +32,7 @@ The **Ready** column shows what runs when. It reads top to bottom, and a frame m
   has reported and is in **Review** or **Done**. A task in **Review** is finished work
   that waits for you, so the next card starts.
 - **The queue does not skip a card.** If a start gate holds the top card, the cards
-  after it wait, and the Board marks that card **Queued · next** with the reasons. Cards
+  after it wait, and the Board marks that card **Next** with the reasons. Cards
   of its own group still start.
 - **Started tasks.** A task whose session has started is no longer shown as next or as
   waiting. It keeps its state and shows its session's state. While it runs, a waiting
@@ -105,7 +105,7 @@ A task in review without an earlier block does not stop the queue. Its
 card waits in **Review**, and the queue goes on to the next
 waiting card once every task of its group is in **Review** or **Done**. Open the task
 when you have time and choose **Mark done** or **Requeue task**. If the agent asked for
-your attention, the task window shows its line under **Complete when**, in the agent's
+your attention, the panel at the top of the task window shows its line, in the agent's
 own words.
 
 Each checked condition shows one of three results in the task window:

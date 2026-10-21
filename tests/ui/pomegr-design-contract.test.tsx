@@ -7,7 +7,6 @@ import { FileHistoryPanel } from "../../app/components/repositories/FileHistoryP
 import { FileTree } from "../../app/components/repositories/FileTree";
 import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 import { StorageUsageBar } from "../../app/settings/StorageSettings";
-import { RunFields } from "../../app/components/tasks/TaskFields";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
@@ -41,12 +40,6 @@ const sessionFilePanelSource = readFileSync(join(process.cwd(), "app", "componen
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
 describe("Pomegr visual contract", () => {
-  it("omits the Remote Control row for Codex, including read-only tasks", () => {
-    const { container } = render(<RunFields run={{ provider: "codex", model: null, effort: "medium" }} models={{ claude: [], codex: [] }} disabled onChange={() => {}} />);
-    expect(screen.queryByRole("checkbox", { name: "Remote Control" })).not.toBeInTheDocument();
-    expect(container.querySelector(".taskRemoteControl")).toBeNull();
-    expect(screen.getByRole("checkbox", { name: "Remove worktree and branch when done" })).toBeDisabled();
-  });
   it("keeps consecutive-event counts in a separate non-shrinking data column", () => {
     const styles = readFileSync(join(process.cwd(), "app", "styles", "session.css"), "utf8");
     expect(styles).toMatch(/\.sessionEventRow\.isGrouped\s*\{\s*grid-template-columns: 40px 16px minmax\(0, 1fr\) auto 12px/);
@@ -362,14 +355,13 @@ describe("Pomegr visual contract", () => {
     expect(screen.getByText("How to read this")).toBeInTheDocument();
   });
 
-  it("draws a task column as a lane, marks the drop target with the strong line, and keeps + New task to the first lane", () => {
-    // G26-G30: the raised fill with a one-pixel rule and the panel radius; the header carries its own rule; cards stay on the panel fill.
-    expect(styles).toMatch(/\.taskColumn \{[^}]*padding: var\(--space-2\)[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel-2\)/);
+  it("draws a task column as a lane with no fill or border at rest, marks the drop target, and keeps + New task to the first lane", () => {
+    // A lane has no fill and no border at rest (the border is transparent, so the drop target shifts nothing); the header carries its own rule; cards stay on the panel fill.
+    expect(styles).toMatch(/\.taskColumn \{[^}]*padding: var\(--space-2\); border: 1px solid transparent; border-radius: var\(--panel-radius\); \}/);
     expect(styles).toMatch(/\.taskColumnHeader \{[^}]*padding: var\(--space-1\) var\(--space-1\) var\(--space-2\)[^}]*border-bottom: 1px solid var\(--command-line\)/);
     expect(styles).toMatch(/\.taskCard \{[^}]*background: var\(--command-panel\)/);
-    // The raised fill is the lane itself, so the lane under a dragged card is marked by the strong line on its border instead.
-    expect(styles).toMatch(/\.taskColumn\.isDropTarget \{[^}]*border-color: var\(--command-line-strong\)/);
-    expect(styles).not.toMatch(/\.taskColumn\.isDropTarget \{[^}]*background/);
+    // The lane under a dragged card takes the raised fill and the strong line, because it has no border at rest.
+    expect(styles).toMatch(/\.taskColumn\.isDropTarget \{[^}]*border-color: var\(--command-line-strong\)[^}]*background: var\(--command-panel-2\)[^}]*box-shadow: inset 0 0 0 1px var\(--command-line-strong\)/);
     // The drop line is a two-pixel ink rule where the dragged card would land.
     expect(styles).toMatch(/\.taskCard\.isDropBefore::before, \.taskCard\.isDropAfter::after \{[^}]*height: 2px[^}]*background: var\(--command-ink\)/);
     // The skeleton keeps the lane shape.
@@ -386,8 +378,8 @@ describe("Pomegr visual contract", () => {
     expect(readFileSync(join(process.cwd(), "app", "components", "tasks", "NewTaskAction.tsx"), "utf8")).toMatch(/className="commandQuietAction taskColumnAdd"/);
     expect(readFileSync(join(process.cwd(), "app", "components", "tasks", "TaskColumnHeader.tsx"), "utf8")).not.toMatch(/<button/);
     // The design contract and the design-system sample document the same rules.
-    expect(designContract).toMatch(/lane has the raised fill[^.]*one-pixel `--command-line` border/);
-    expect(designContract).toMatch(/The lane under a dragged card cannot take the raised fill, so it takes the strong line \(`--command-line-strong`\) on its border/);
+    expect(designContract).toMatch(/A lane has no fill and no border at rest/);
+    expect(designContract).toMatch(/the lane takes the raised fill \(`--command-panel-2`\) and the strong line \(`--command-line-strong`\) on its border/);
     expect(designContract).toMatch(/`\.taskCard\.isDropBefore`, `\.isDropAfter`\) is a two-pixel `--command-ink` rule/);
     expect(designContract).toMatch(/\*\*first lane only\*\* ends with the \[Quiet\]\([^)]*\) \*\*\+ New task\*\*/);
     expect(designContract).toMatch(/invisible \(opacity 0, never `display: none`/);
@@ -400,8 +392,8 @@ describe("Pomegr visual contract", () => {
   });
 
   it("draws the Ready lane's parallel groups with tokens, frames each group, and keeps grouping to Ready", () => {
-    // The frame is the strong line at the panel radius with no fill. The join target is the one fill of the lane's groups.
-    expect(styles).toMatch(/\.taskReadyGroup \{[^}]*gap: 6px; padding: 6px; border: 1px solid var\(--command-line-strong\); border-radius: var\(--panel-radius\); \}/);
+    // The frame is the plain line at the panel radius with no fill. The join target is the one fill of the lane's groups.
+    expect(styles).toMatch(/\.taskReadyGroup \{[^}]*gap: 6px; padding: 6px; border: 1px solid var\(--command-line\); border-radius: var\(--panel-radius\); \}/);
     const unfilled = styles.replace(/\.taskReadyGroup\.isJoinTarget \{[^}]*\}/, "").replace(/\.taskReadyLinkAction\.commandQuietAction \{[^}]*\}/, "");
     expect(unfilled).not.toMatch(/\.taskReady[A-Za-z]*[^{]*\{[^}]*(?:background|transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
     expect(styles).toMatch(/\.taskReadyCaption \{[^}]*justify-content: space-between[^}]*padding: 2px var\(--space-1\)/);
@@ -429,7 +421,7 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/A card behind a running task reads “Waiting: T-n is running”./);
     expect(designContract).toMatch(/The description reads “Work for this repository\. Ready is the queue: cards start from the top\.”/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
-    for (const label of ["Ready lane, parallel group", "Ready lane, desktop app", "Ready lane, join target", "Ready lane, a member held", "Card outside Ready, feature line", "Card, desktop app, in a parallel group"]) expect(sample).toContain(`label="${label}"`);
+    for (const label of ["Ready lane, parallel group", "Ready lane, desktop app", "Ready lane, group at rest, desktop app", "Ready lane, join target", "Ready lane, a member held", "Card outside Ready, feature name", "Card, desktop app, in a parallel group"]) expect(sample).toContain(`label="${label}"`);
   });
 
   it("puts every queue control on the Board: the strip's end, the Queue settings panel, the banner and the filter line", () => {
@@ -465,7 +457,7 @@ describe("Pomegr visual contract", () => {
 
   it("groups cards on the Board with the shared group actions, tokens, and the shared toolbar", () => {
     // The group under a dragged waiting card takes the panel fill and the lane's two-pixel strong-line border.
-    expect(styles).toMatch(/\.taskReadyGroup\.isJoinTarget \{ background: var\(--command-panel\); box-shadow: inset 0 0 0 1px var\(--command-line-strong\); \}/);
+    expect(styles).toMatch(/\.taskReadyGroup\.isJoinTarget \{ border-color: var\(--command-line-strong\); background: var\(--command-panel\); box-shadow: inset 0 0 0 1px var\(--command-line-strong\); \}/);
     // Run in parallel takes no room, is invisible until the lane is hovered or it holds focus, and is always drawn on a coarse pointer.
     expect(styles).toMatch(/\.taskReadyLink \{[^}]*height: 0; margin-block: calc\(var\(--space-2\) \/ -2\);/);
     expect(styles).toMatch(/\.taskReadyLinkAction\.commandQuietAction \{[^}]*min-height: 20px;[^}]*border: 1px solid var\(--command-line-strong\); border-radius: var\(--panel-radius\); background: var\(--command-panel\); color: var\(--command-ink\); font-size: var\(--text-caption\); opacity: 0; \}/);
@@ -520,7 +512,7 @@ describe("Pomegr visual contract", () => {
     expect(tasksStyles).toMatch(/\.taskModalFooter :is\(\.commandPrimaryAction, \.commandSecondaryAction, \.commandQuietAction\) \{ min-height: 44px; width: auto/);
     expect(tasksStyles).toMatch(/@media \(min-width: 761px\) and \(pointer: fine\) \{\s*\.taskModalFooter :is\(\.commandPrimaryAction, \.commandSecondaryAction, \.commandQuietAction\) \{ min-height: var\(--control-height\); \}/);
     // G138-G152: Run on and Effort sit in a two-column row, the checks wrap, and the own condition is a 36px input.
-    expect(tasksStyles).toMatch(/\.taskRunRow \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(tasksStyles).toMatch(/\.taskRow \{[^}]*grid-template-columns: 148px minmax\(0, 1fr\)/);
     expect(tasksStyles).toMatch(/\.taskChecks \{[^}]*flex-wrap: wrap[^}]*gap: var\(--space-1\) var\(--space-4\)/);
     expect(tasksStyles).toMatch(/\.taskCompleteWhen \.taskOwnInput \{ min-height: var\(--control-height\)/);
     expect(tasksStyles).toMatch(/\.taskTextCounter \{[^}]*align-self: flex-end[^}]*font: 400 var\(--text-xs\)\/1\.4 var\(--font-data\)/);
@@ -617,12 +609,12 @@ describe("Pomegr visual contract", () => {
     expect(readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemView.tsx"), "utf8")).toMatch(/<CommandSplitAction label="Create task"/);
     expect(designContract).toMatch(/A split action is a composition of the Primary role\. It is not a seventh role[^]*^### Create and queue, create and start$/m);
     expect(modalNew).not.toMatch(/add another|Goes to Backlog/);
-    // D5: mode edit has Save as its one primary; the resolutions, queue and start actions are Secondary.
-    expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
+    // D5: mode edit has Save as the primary of a task that has not started and Mark done as the primary of one that needs the user.
+    expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(2);
     expect(modalEdit).toMatch(/className="commandPrimaryAction"[^\n]*>Save<\/button>/);
     expect(modalEdit).toMatch(/className="commandQuietAction"[^\n]*>Delete task<\/button>/);
-    expect(modalEdit).toMatch(/className="commandSecondaryAction"[^\n]*Mark done and resume queue[^\n]*<\/button>/);
-    expect(modalEdit).toMatch(/className="taskModalResolve"/);
+    expect(modalEdit).toMatch(/\{unresolved && <button type="button" className="commandPrimaryAction"[^\n]*>\{resolveName\}<\/button>\}/);
+    expect(modalEdit).toMatch(/const resolveName = [^\n]*"Mark done and resume queue"/);
     expect(tasksStyles).toMatch(/\.taskModalResolve \{[^}]*flex: 1 0 100%/);
     // The design contract and the design-system sample document both modes.
     expect(designContract).toMatch(/^## Mode new$/m);
@@ -670,9 +662,9 @@ describe("Pomegr visual contract", () => {
     expect(issuesStyles).toMatch(/\.taskIssuePreview \.taskIssueCount \{ align-self: flex-end; \}/);
     expect(issuesStyles).toMatch(/\.taskModalCloses \{[^}]*flex: 1 1 auto/);
     expect(issuesStyles).not.toMatch(/#[0-9a-fA-F]{3,8}|rgba?\(|transition|animation/);
-    // Mode edit starts with the Source block for a promoted task only, and keeps Save as its one primary.
-    expect(modalEdit).toMatch(/\{issueNumber !== null && <TaskModalSource number=\{issueNumber\} caption="GitHub issue" \/>\}/);
-    expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
+    // Mode edit has no Source block: its GitHub issue is a row of the Run settings, and Save and Mark done are its two primaries.
+    expect(modalEdit).not.toMatch(/TaskModalSource/);
+    expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(2);
     // The design contract and the design-system sample document the mode, the Source block and the issue chip.
     expect(designContract).toMatch(/^## Mode promote$/m);
     expect(designContract).toMatch(/There is no Task field/);
@@ -680,8 +672,7 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/primary \*\*Promote issue\*\*/);
     expect(designContract).toMatch(/Secondary \*\*Show new version\*\*/);
     expect(designContract).toMatch(/offers only a Secondary \*\*Close\*\*/);
-    expect(designContract).toMatch(/starts the body with a \*\*Source\*\* block/);
-    expect(designContract).toMatch(/the muted caption “GitHub issue”/);
+    expect(designContract).not.toMatch(/starts the body with a \*\*Source\*\* block|the muted caption “GitHub issue”/);
     expect(designContract).toMatch(/issue chip\*\* is the same outline `\.commandChip` with the class `taskIssueChip`/);
     expect(designContract).toMatch(/the number follows the ID as plain muted `--text-xs` data-font text/);
     expect(designContract).toMatch(/^## GitHub$/m);

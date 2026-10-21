@@ -86,8 +86,8 @@ the issue as it is now, so you can review it before promoting. "This issue is no
 longer open." means it was closed or removed.
 
 **Where the issue shows.** A promoted task carries a **#N** chip after its ID on the
-board, and its task window shows **Source** with **GitHub
-issue**. The **Sessions** list prints the number as plain text after the task number.
+board, and its task window shows the same chip in the **GitHub issue** row. The
+**Sessions** list prints the number as plain text after the task number.
 It is a label, not a link. A session started for the task is asked to write `Closes
 #N` in its pull request description.
 
@@ -104,9 +104,13 @@ It is a label, not a link. A session started for the task is asked to write `Clo
    Everyone can read an issue on a public repository; on a private one, people with
    access can.
 2. Select **Create task**. Pomegr creates the task first and asks GitHub second.
-3. For a task that has no issue, open its window and select **Create GitHub issue**
-   in the **Source** row ("Not on GitHub"). It needs saved text, so it is off
-   while you have unsaved changes ("Save your changes first.").
+3. For a task that has no issue, open its window. The **GitHub issue** row reads
+   "None". Select **Create issue…** at the end of the row. A box asks "Create an issue in
+   (repository)?" It lists what Pomegr sends. The first line is the title, and the
+   whole text is the body. Anyone who can see the repository can read the issue. Pomegr
+   sends it once. Select **Create issue** to send it, or **Cancel** to send nothing.
+   Press **Escape** to close the box and send nothing. **Create issue…** needs saved text,
+   so it is off while you have unsaved changes ("Save your changes first.").
 
 The first line becomes the title (one line, at most 120 characters) and the whole
 task text becomes the body. The text is sent once through your GitHub CLI session.
@@ -122,10 +126,10 @@ GitHub could not be read.
 ## If creating an issue fails
 
 A failed create never changes, blocks, or undoes the task. From **New task**, the
-window closes on the new task, which has no **#N** chip. Open it: the **Source** row
-shows the reason and offers **Create GitHub issue** again; a create from the task's
-own window shows its reason in the same place. Pomegr remembers the reason only
-while the app stays open, and retries nothing by itself.
+window closes on the new task. That task has no **#N** chip. Open it. The **GitHub
+issue** row shows the reason and offers **Create issue…** again. A create from the
+task's own window shows its reason under the box, and the box stays open. Pomegr
+remembers the reason only while the app stays open. It retries nothing by itself.
 
 | Reason shown | What to do |
 | --- | --- |

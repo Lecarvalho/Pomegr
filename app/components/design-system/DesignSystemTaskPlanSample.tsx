@@ -28,7 +28,7 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 function Lane({ index, desktop = false }: { index: number; desktop?: boolean }) {
-  return <Frame><div className={`taskBoardGrid${desktop ? " designSystemRevealLink" : ""}`} style={{ "--task-columns": 1 } as CSSProperties}>
+  return <Frame><div className={`taskBoardGrid${desktop ? " designSystemRevealLink designSystemRevealGroup" : ""}`} style={{ "--task-columns": 1 } as CSSProperties}>
     <TaskColumn column={COLUMNS[index]} lines={NO_LINES} afterLines={AFTER_LINES} nextId={BOARD_PLAN.queue.order[0]} dropTarget={false} cardMoveFor={() => undefined} ready={lane(index, desktop)} />
   </div></Frame>;
 }
@@ -48,7 +48,7 @@ export function TaskPlanSection() {
     </div>
     <div className="designSystemGrid">
       <Sample label="Card, desktop app, Runs after…" note="The move toolbar of a card that has not started ends with the Quiet Runs after…, in underlined ink at 32px. It opens the Task modal with focus on the Runs after select. Tab into the card to draw it.">
-        <Frame><ul className="taskColumnList"><TaskCard task={P15_AFTER} after={AFTER_LINES.get("T-15")} onOpen={noop} move={MOVE} /></ul></Frame>
+        <Frame><ul className="taskColumnList"><TaskCard task={P15_AFTER} lane="backlog" after={AFTER_LINES.get("T-15")} onOpen={noop} move={MOVE} /></ul></Frame>
       </Sample>
       <Sample label="Task modal, Runs after" note="One fieldset after Complete when, built like Sessions: a ruled row for each task with its title, ID, column, state chip, and the Quiet Remove; then a select and the Secondary Add. It saves by itself.">
         <Frame><TaskAfterField task={P15_AFTER} tasks={BOARD_PLAN.tasks} columnName={columnName} editable onChange={noop} /></Frame>

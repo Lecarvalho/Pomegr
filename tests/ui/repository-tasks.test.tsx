@@ -307,12 +307,14 @@ describe("task board", () => {
     expect(screen.queryByText("No tasks on this board yet.")).not.toBeInTheDocument();
   });
 
-  it("shows a card's ID, state chip and text", () => {
-    render(<TaskBoardView board={board({ tasks: [task(7, { text: "Board keyboard navigation" })] })} />);
-    const card = within(column("Backlog")).getByRole("listitem");
-    expect(within(card).getByText("T-7")).toBeInTheDocument();
-    expect(within(card).getByText("Not queued")).toHaveClass("commandChip");
-    expect(within(card).getByText("Board keyboard navigation")).toBeInTheDocument();
+  it("shows a card's ID and text, and its state chip only where the lane does not say the state", () => {
+    render(<TaskBoardView board={board({ tasks: [task(7, { text: "Board keyboard navigation" }), task(8, { columnId: "col-2", text: "Planned work" })] })} />);
+    const backlog = within(column("Backlog")).getByRole("listitem");
+    expect(within(backlog).getByText("T-7")).toBeInTheDocument();
+    expect(within(backlog).getByText("Board keyboard navigation")).toBeInTheDocument();
+    // Backlog already says Not queued; Ready does not.
+    expect(within(backlog).queryByText("Not queued")).not.toBeInTheDocument();
+    expect(within(within(column("Ready")).getByRole("listitem")).getByText("Not queued")).toHaveClass("commandChip");
   });
 
   it.each<[TaskState, string, string]>([
@@ -324,7 +326,8 @@ describe("task board", () => {
     ["blocked", "Blocked by agent", "warning"],
     ["done", "Done", ""],
   ])("labels the %s state %s as an outline chip", (state, label, modifier) => {
-    render(<TaskBoardView board={board({ tasks: [task(1, { state })] })} />);
+    // Each card sits in a lane that does not say its state: Backlog says Not queued, Ready says Queued.
+    render(<TaskBoardView board={board({ tasks: [task(1, { state, columnId: state === "queued" ? "col-1" : "col-2" })] })} />);
     const card = screen.getByRole("listitem");
     const chip = within(card).getByText(label);
     expect(chip).toHaveClass("commandChip");

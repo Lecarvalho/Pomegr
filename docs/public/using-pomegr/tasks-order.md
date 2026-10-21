@@ -72,8 +72,8 @@ That folder ignores its own contents, so the worktrees do not show as changes in
 repository.
 
 - When you mark a task done, Pomegr removes the task's worktree and its
-  `tasks/<task ID>` branch. To keep them, clear **Remove worktree and branch when done**
-  in the task. The box is checked for every new task.
+  `tasks/<task ID>` branch. To keep them, clear **Remove worktree and branch** in the
+  **When done** row of the task. The box is checked for every new task.
 - Pomegr never removes a worktree that has uncommitted changes or a commit that exists
   nowhere else, and never forces a removal. Such a worktree stays until you commit,
   push, or remove it. A worktree whose folder is still in use, for example by an open

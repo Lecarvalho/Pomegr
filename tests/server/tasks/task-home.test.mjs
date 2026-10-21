@@ -68,6 +68,35 @@ test("the title is one bounded line: the session title, else the first line of t
   assert.ok(!JSON.stringify(home).includes("SECOND-LINE"));
 });
 
+test("the title leaves out the leading tags, lets the next line lead after a line of only tags, and keeps a text of only tags", () => {
+  const home = summarizeTaskHome([{ repositoryId: REPOSITORY, board: board([
+    task(1, { state: "needs_review", text: "[ backend ] [ recce ] Coverage opens a shot only on an action line.\nSECOND-LINE-never-served", updatedAt: "2026-10-08T10:00:05.000Z" }),
+    task(2, { state: "needs_review", text: "[ frontend ] [ tech-debt ]\nMake plan-intent atomic\nSECOND-LINE-never-served", updatedAt: "2026-10-08T10:00:04.000Z" }),
+    task(3, { state: "needs_review", text: "[wip] [ui]", updatedAt: "2026-10-08T10:00:03.000Z" }),
+    task(4, { state: "needs_review", text: "Fix [ bug ] in the cart", updatedAt: "2026-10-08T10:00:02.000Z" }),
+    task(5, { state: "needs_review", text: "[ ui ] Polish the board", session: { id: "claude:abc", title: "Session title" }, updatedAt: "2026-10-08T10:00:01.000Z" }),
+  ]) }]);
+  assert.deepEqual(home.attention.map((item) => item.title), [
+    "Coverage opens a shot only on an action line.", "Make plan-intent atomic", "[wip] [ui]", "Fix [ bug ] in the cart", "Session title",
+  ]);
+  assert.ok(!JSON.stringify(home).includes("SECOND-LINE"));
+});
+
+test("the title skips blank lines and a Windows line break after the tags, leaves out a heading mark, and keeps a text of only tags", () => {
+  const home = summarizeTaskHome([{ repositoryId: REPOSITORY, board: board([
+    task(1, { state: "needs_review", text: "[ui]\n\nFix the login\nSECOND-LINE-never-served", updatedAt: "2026-10-08T10:00:06.000Z" }),
+    task(2, { state: "needs_review", text: "[ui] [x]\r\n  \r\nFix on Windows\r\nSECOND-LINE-never-served", updatedAt: "2026-10-08T10:00:05.000Z" }),
+    task(3, { state: "needs_review", text: "\n\n## Heading title\nSECOND-LINE-never-served", updatedAt: "2026-10-08T10:00:04.000Z" }),
+    task(4, { state: "needs_review", text: "[wip] [ui]\n\n  \n", updatedAt: "2026-10-08T10:00:03.000Z" }),
+    task(5, { state: "needs_review", text: "[ui] # Tagged heading", updatedAt: "2026-10-08T10:00:02.000Z" }),
+    task(6, { state: "needs_review", text: "   \n\u0001\nAfter a control line", updatedAt: "2026-10-08T10:00:01.000Z" }),
+  ]) }]);
+  assert.deepEqual(home.attention.map((item) => item.title), [
+    "Fix the login", "Fix on Windows", "Heading title", "[wip] [ui]", "Tagged heading", "After a control line",
+  ]);
+  assert.ok(!JSON.stringify(home).includes("SECOND-LINE"));
+});
+
 test("the list of what waits is capped, and the total still counts every task", () => {
   const tasks = Array.from({ length: TASK_HOME_ATTENTION_LIMIT + 7 }, (_, index) => task(index + 1, { state: "stalled" }));
   const home = summarizeTaskHome([{ repositoryId: REPOSITORY, board: board(tasks) }]);

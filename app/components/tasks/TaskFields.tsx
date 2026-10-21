@@ -2,11 +2,11 @@
 
 import { useId, useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref } from "react";
 import { TaskImageAttach, TaskRichText, type TaskFieldImages, type TaskRichTextHandle } from "./TaskImages";
-import { TASK_IMAGE_HELPER } from "./task-images-desktop";
-import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, type TaskCheckOutcome, type TaskRun } from "../../../shared/task-contract";
+import { TaskRow } from "./TaskRows";
+import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  AGENT_REPORTED_LABEL, CHECK_OUTCOME_CLASSES, CHECK_OUTCOME_LABELS, CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, REMOVE_WORKTREE_LABEL, canRemoteControl, isAgentJudged, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withKeepWorktree, withRemoteControl,
+  CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, REMOVE_WORKTREE_LABEL, canRemoteControl, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withKeepWorktree, withRemoteControl,
   type CompleteWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
@@ -14,22 +14,20 @@ const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 
 export type TaskTextHandle = { focus(options?: FocusOptions): void };
 
-export function TaskTextField({ value, onChange, onBlur, images, readOnly, helper, error, ref }: {
+export function TaskTextField({ value, onChange, onBlur, images, readOnly, error, ref }: {
   value: string;
   onChange(value: string): void;
   onBlur?(): void;
   images?: TaskFieldImages;
   readOnly?: boolean;
-  helper?: ReactNode;
   error?: string | null;
   ref?: Ref<TaskTextHandle>;
 }) {
   const fieldId = useId();
   const labelId = useId();
   const counterId = useId();
-  const helperId = useId();
   const errorId = useId();
-  const imageHelperId = useId();
+  const hintId = useId();
   const editor = useRef<TaskRichTextHandle>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const hasImages = Boolean(images);
@@ -54,8 +52,9 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
     observer.observe(textarea.current);
     return () => observer.disconnect();
   }, [value, hasImages]);
-  const describedBy = [helper ? helperId : null, error ? errorId : null, counterId].filter(Boolean).join(" ");
+  const describedBy = [error ? errorId : null, counterId].filter(Boolean).join(" ");
   const over = value.length > TASK_BOUNDS.textLength;
+  const counter = <span id={counterId} className={`taskTextCounter${over ? " isOver" : ""}`}>{`${COUNT_FORMAT.format(value.length)} / ${COUNT_FORMAT.format(TASK_BOUNDS.textLength)}`}</span>;
   return <div className="newTaskField taskTextField">
     {images
       ? <>
@@ -63,8 +62,8 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
         <div className="taskComposer">
           <TaskRichText ref={editor} labelledBy={labelId} describedBy={describedBy} value={value} onChange={onChange} onBlur={onBlur}
             readOnly={readOnly} images={images} placeholder="What should the session do?" />
-          <TaskImageAttach held={taskImageIds(value).length} disabled={readOnly || images.disabled} describedBy={imageHelperId}
-            onAttach={(files) => editor.current?.attach(files)} />
+          <TaskImageAttach held={taskImageIds(value).length} disabled={readOnly || images.disabled} hintId={hintId}
+            onAttach={(files) => editor.current?.attach(files)}>{counter}</TaskImageAttach>
         </div>
       </>
       : <>
@@ -72,85 +71,83 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
         <textarea ref={textarea} id={fieldId} rows={6} maxLength={TASK_BOUNDS.textLength} value={value} readOnly={readOnly}
           placeholder="What should the session do?" aria-describedby={describedBy}
           onChange={(event) => onChange(event.currentTarget.value)} onBlur={onBlur} />
+        {counter}
       </>}
-    <span id={counterId} className={`taskTextCounter${over ? " isOver" : ""}`}>{`${COUNT_FORMAT.format(value.length)} / ${COUNT_FORMAT.format(TASK_BOUNDS.textLength)}`}</span>
-    {images && <p id={imageHelperId} className="newTaskHelper">{TASK_IMAGE_HELPER}</p>}
     {images?.error && <p className="newTaskError" role="alert">{images.error}</p>}
-    {helper && <p id={helperId} className="newTaskHelper">{helper}</p>}
     {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
   </div>;
 }
 
-export function RunFields({ run, models, disabled, onChange }: { run: TaskRun; models: TaskModelOptions; disabled?: boolean; onChange(run: TaskRun): void }) {
+/** Run on, Effort, Remote Control and When done: four rows of the Run settings list. */
+export function RunFields({ run, models, notice, onChange }: {
+  run: TaskRun;
+  models: TaskModelOptions;
+  /** A notice under Run on, such as the observed model that differs from the plan. */
+  notice?: ReactNode;
+  onChange(run: TaskRun): void;
+}) {
   const selectId = useId();
   const effortId = useId();
   const remoteId = useId();
-  const remoteHelperId = useId();
+  const remoteHintId = useId();
   const removeId = useId();
-  const removeHelperId = useId();
+  const removeHintId = useId();
   const remote = canRemoteControl(run);
-  return <div className="taskRunRow">
-    <div className="newTaskField taskRunOn">
-      <label htmlFor={selectId}>Run on</label>
-      <CommandSelect id={selectId} aria-label="Run on" options={runSelectOptions(models, run)} value={runSelectValue(run)} disabled={disabled}
+  return <>
+    <TaskRow label="Run on" htmlFor={selectId} className="taskRunOn" top={notice ? "control" : undefined}>
+      <CommandSelect id={selectId} aria-label="Run on" className="taskValueSelect" options={runSelectOptions(models, run)} value={runSelectValue(run)}
         onChange={(value) => onChange(withRemoteControl(withKeepWorktree(runFromSelectValue(value, run.effort), run.keepWorktree === true), run.remoteControl === true))} />
-    </div>
-    <div className="newTaskField">
-      <span id={effortId} className="newTaskEffortLabel">Effort</span>
+      {notice}
+    </TaskRow>
+    <TaskRow label="Effort" labelId={effortId}>
       <div className="commandSegmented taskEffort" role="group" aria-labelledby={effortId}>
-        {TASK_EFFORTS.map((effort) => <button key={effort} type="button" aria-pressed={run.effort === effort} disabled={disabled}
+        {TASK_EFFORTS.map((effort) => <button key={effort} type="button" aria-pressed={run.effort === effort}
           onClick={() => { if (run.effort !== effort) onChange({ ...run, effort }); }}>{EFFORT_LABELS[effort]}</button>)}
       </div>
-    </div>
-    {remote && <div className="newTaskField taskRemoteControl">
+    </TaskRow>
+    {remote && <TaskRow label={REMOTE_CONTROL_LABEL} htmlFor={remoteId} className="taskRemoteControl">
       <div className="taskCheckRow">
-        <input id={remoteId} type="checkbox" checked={run.remoteControl === true} disabled={disabled} aria-describedby={remoteHelperId}
+        <input id={remoteId} type="checkbox" checked={run.remoteControl === true} aria-describedby={remoteHintId}
           onChange={(event) => onChange(withRemoteControl(run, event.currentTarget.checked))} />
-        <label htmlFor={remoteId}>{REMOTE_CONTROL_LABEL}</label>
+        <span id={remoteHintId} className="newTaskHelper">Open the session on your phone too</span>
       </div>
-      <p id={remoteHelperId} className="newTaskHelper">Starts the session with Remote Control, so you can also open it on your phone.</p>
-    </div>}
-    <div className="newTaskField taskRemoveWorktree">
+    </TaskRow>}
+    <TaskRow label="When done" className="taskRemoveWorktree">
       <div className="taskCheckRow">
-        <input id={removeId} type="checkbox" checked={run.keepWorktree !== true} disabled={disabled} aria-describedby={removeHelperId}
+        <input id={removeId} type="checkbox" checked={run.keepWorktree !== true} aria-describedby={removeHintId}
           onChange={(event) => onChange(withKeepWorktree(run, !event.currentTarget.checked))} />
         <label htmlFor={removeId}>{REMOVE_WORKTREE_LABEL}</label>
+        <span id={removeHintId} className="newTaskHelper">Unpushed work is kept</span>
       </div>
-      <p id={removeHelperId} className="newTaskHelper">For a task that runs in its own worktree. Uncommitted or unpushed work is never removed.</p>
-    </div>
-  </div>;
+    </TaskRow>
+  </>;
 }
 
-export function CompleteWhenField({ draft, results, ownNote, footnote, disabled, onDraftChange, onCommit }: {
+/** Complete when: the six checks in a wrapping row, then the own condition the agent judges. A row of the Run settings list. */
+export function CompleteWhenField({ draft, onDraftChange, onCommit }: {
   draft: CompleteWhenDraft;
-  results?: ReadonlyMap<TaskCheck, TaskCheckOutcome>;
-  ownNote?: string | null;
-  footnote?: ReactNode;
-  disabled?: boolean;
   onDraftChange(next: CompleteWhenDraft): void;
   onCommit?(next: CompleteWhenDraft): void;
 }) {
   const prefix = useId();
+  const labelId = useId();
   const change = (next: CompleteWhenDraft) => { onDraftChange(next); onCommit?.(next); };
-  return <fieldset className="taskCompleteWhen">
-    <legend>Complete when</legend>
-    <div className="taskChecks">
-      {TASK_CHECKS.map((check) => {
-        const id = `${prefix}-${check}`;
-        const result = draft.checks.includes(check) ? results?.get(check) : undefined;
-        return <div className="taskCheckRow" key={check}>
-          <input id={id} type="checkbox" checked={draft.checks.includes(check)} disabled={disabled} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
-          <label htmlFor={id}>{CHECK_SHORT_LABELS[check]}</label>
-          {result !== undefined && <span className={`taskCheckResult${CHECK_OUTCOME_CLASSES[result]}`}>{CHECK_OUTCOME_LABELS[result]}</span>}
-          {results !== undefined && isAgentJudged(check) && draft.checks.includes(check) && <span className="taskCheckResult">{AGENT_REPORTED_LABEL}</span>}
-        </div>;
-      })}
+  return <TaskRow label="Complete when" labelId={labelId} className="taskCompleteWhen" top="check">
+    <div className="taskCompleteWhenBody" role="group" aria-labelledby={labelId}>
+      <div className="taskChecks">
+        {TASK_CHECKS.map((check) => {
+          const id = `${prefix}-${check}`;
+          return <div className="taskCheckRow" key={check}>
+            <input id={id} type="checkbox" checked={draft.checks.includes(check)} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
+            <label htmlFor={id}>{CHECK_SHORT_LABELS[check]}</label>
+          </div>;
+        })}
+      </div>
+      <div className="taskOwnRow">
+        <input type="text" className="taskOwnInput" aria-label="Own condition" maxLength={TASK_BOUNDS.ownConditionLength} placeholder="Own condition, judged by the agent (optional)"
+          value={draft.ownText} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
+      </div>
+      <span className="newTaskHelper">Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.</span>
     </div>
-    <div className="taskOwnRow">
-      <input type="text" className="taskOwnInput" aria-label="Own condition" maxLength={TASK_BOUNDS.ownConditionLength} placeholder="Own condition, judged by the agent (optional)"
-        value={draft.ownText} readOnly={disabled} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
-      {ownNote && <span className="taskCheckResult">{ownNote}</span>}
-    </div>
-    {footnote ?? <span className="newTaskHelper taskCompleteWhenNote">Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.</span>}
-  </fieldset>;
+  </TaskRow>;
 }

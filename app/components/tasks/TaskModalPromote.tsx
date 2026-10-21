@@ -7,6 +7,7 @@ import { FeatureFields } from "./FeatureFields";
 import { IssueBody, IssueCharacterCount, IssueNotices, IssueStatusChip } from "./IssuePreview";
 import { TaskIssueChip } from "./TaskIssueChip";
 import { TaskModalFrame } from "./TaskModalFrame";
+import { RunSettings } from "./TaskRows";
 import { CompleteWhenField, RunFields } from "./TaskFields";
 import { canPromote, tasksHref } from "./promote-issues-model";
 import { updateDesktopTask } from "./task-desktop";
@@ -20,13 +21,12 @@ import {
 import { useTaskModelOptions } from "./task-panel-hooks";
 import { useFeatureCreation } from "./use-feature-creation";
 
-export function TaskModalSource({ number, caption, status, children }: { number: number; caption?: string; status?: ReactNode; children?: ReactNode }) {
+export function TaskModalSource({ number, status, children }: { number: number; status?: ReactNode; children?: ReactNode }) {
   return <div className="taskIssueSource">
     <div className="taskSourceRow">
       <span className="taskSourceLabel">Source</span>
       <TaskIssueChip number={number} />
       {status}
-      {caption && <span className="taskSourceCaption">{caption}</span>}
     </div>
     {children}
   </div>;
@@ -153,11 +153,11 @@ export function TaskModalPromote({ repositoryId, repositoryName, issue, board, r
         <button type="button" className="commandPrimaryAction" disabled={!canSubmit} onClick={() => void submit()}>Promote issue</button>
       </>}>
     <PromoteIssueSummary issue={issue} notices={notices} />
-    {!unsaved && <>
+    {!unsaved && <RunSettings>
       <FeatureFields draft={feature} board={board} error={featureError}
         onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />
       <RunFields run={run} models={models} onChange={setRun} />
       <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
-    </>}
+    </RunSettings>}
   </TaskModalFrame>;
 }

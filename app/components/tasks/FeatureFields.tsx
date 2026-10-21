@@ -7,6 +7,7 @@ import { CommandSelect } from "../command-center/CommandSelect";
 import {
   featureCounts, featureDraftFromSelect, featureSelectOptions, featureSelectValue, featureSiblings, type FeatureDraft,
 } from "./task-features";
+import { TaskRow } from "./TaskRows";
 import { taskCardTitle, taskChip } from "./task-presentation";
 
 type BoardShape = Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
@@ -45,12 +46,12 @@ export function FeatureSiblings({ board, featureId, selfId, label = "In this fea
   </details>;
 }
 
-export function FeatureFields({ draft, board, selfId, error, disabled, onChange, onCommitName, onCancelName, onOpenTask }: {
+/** Feature: a row of the Run settings list, with the folded list of the feature's other tasks under the select. */
+export function FeatureFields({ draft, board, selfId, error, onChange, onCommitName, onCancelName, onOpenTask }: {
   draft: FeatureDraft;
   board: BoardShape;
   selfId?: string;
   error?: string | null;
-  disabled?: boolean;
   onChange(next: FeatureDraft): void;
   onCommitName?(): void;
   onCancelName?(): void;
@@ -65,18 +66,13 @@ export function FeatureFields({ draft, board, selfId, error, disabled, onChange,
     event.preventDefault();
     onCancelName?.();
   };
-  return <>
-    <div className="taskFeatureRow">
-      <div className="newTaskField">
-        <label htmlFor={featureId}>Feature</label>
-        <CommandSelect id={featureId} aria-label="Feature" options={featureSelectOptions(board.features, draft.featureId)} value={featureSelectValue(draft)} disabled={disabled}
-          onChange={(value) => onChange(featureDraftFromSelect(value, draft))} />
-        {draft.creating && <input className="taskOwnInput taskFeatureName" type="text" aria-label="Feature name" placeholder="Feature name" maxLength={TASK_BOUNDS.featureNameLength}
-          value={draft.name} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange({ ...draft, name: event.currentTarget.value })}
-          onKeyDown={nameKeys} onBlur={onCommitName} />}
-        {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
-      </div>
-    </div>
+  return <TaskRow label="Feature" htmlFor={featureId} top={known || draft.creating || error ? "control" : undefined}>
+    <CommandSelect id={featureId} aria-label="Feature" className="taskValueSelect" options={featureSelectOptions(board.features, draft.featureId)} value={featureSelectValue(draft)}
+      onChange={(value) => onChange(featureDraftFromSelect(value, draft))} />
+    {draft.creating && <input className="taskOwnInput taskFeatureName" type="text" aria-label="Feature name" placeholder="Feature name" maxLength={TASK_BOUNDS.featureNameLength}
+      value={draft.name} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange({ ...draft, name: event.currentTarget.value })}
+      onKeyDown={nameKeys} onBlur={onCommitName} />}
+    {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
     {known && draft.featureId !== null && <FeatureSiblings key={draft.featureId} board={board} featureId={draft.featureId} selfId={selfId} onOpenTask={onOpenTask} />}
-  </>;
+  </TaskRow>;
 }

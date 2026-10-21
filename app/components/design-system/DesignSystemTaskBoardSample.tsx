@@ -11,14 +11,15 @@ import { TaskBoardView, TaskColumn, type ReadyLane } from "../tasks/TaskBoardVie
 import { TaskCard, type TaskCardMove } from "../tasks/TaskCard";
 import { TaskColumnHeader } from "../tasks/TaskColumnHeader";
 import { ALL_FEATURES, featureLines, type FeatureFilterValue } from "../tasks/task-features";
-import { taskColumns } from "../tasks/task-presentation";
+import { taskColumns, type TaskLane } from "../tasks/task-presentation";
 import { readySegments } from "../tasks/task-ready-groups";
+import { waitCardLine } from "../tasks/task-wait-model";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_HELD_MEMBER, BOARD_RUNNING, SAMPLE_FEATURE_ID, SAMPLE_GROUP_ID, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T11_LONG, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
+  BOARD_BLOCKED, BOARD_HELD_MEMBER, BOARD_RUNNING, SAMPLE_FEATURE_ID, SAMPLE_GROUP_ID, SAMPLE_FUTURE, SAMPLE_FUTURE_STOP, SAMPLE_REPOSITORY_ID, T1_DONE, T11_LONG, T17_TAGGED, T18_PLANNED, T19_NEEDS_INPUT, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T4_QUEUED, T5_IDLE, T6_WORKING, T7_SCHEDULED, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
-const LINES = featureLines(BOARD_BLOCKED);
+const LINES = featureLines({ ...BOARD_BLOCKED, tasks: [...BOARD_BLOCKED.tasks, T17_TAGGED] });
 const EDITS = inertEdits(BOARD_RUNNING);
 const EDITS_BLOCKED = inertEdits(BOARD_BLOCKED);
 const noop = () => undefined;
@@ -41,17 +42,25 @@ const MOVE: TaskCardMove = { drag: {}, available: { up: false, down: true, left:
 const GROUP_MOVE: TaskCardMove = { ...MOVE, group: { onLeave: noop } };
 const JOIN_TARGET_LANE: ReadyLane = { ...READY_LANE, overGroup: SAMPLE_GROUP_ID };
 
-const CARD_STATES: { label: string; note: string; task: Task; next?: boolean }[] = [
-  { label: "Not queued", note: "Task text only; nothing else is set.", task: T8_IDLE },
-  { label: "Long text", note: "The title is the first sentence of the text, clamped to three lines. The rest follows as a muted excerpt of two lines. A backtick span is code in the data font. The whole text is the tooltip.", task: T11_LONG },
-  { label: "Queued · next", note: "The first task the monitor would start. Queued reads in ink on the raised fill.", task: T3_QUEUED, next: true },
-  { label: "Scheduled", note: "Info tone, plus the muted Starts line until a session is linked.", task: T7_SCHEDULED },
-  { label: "Session working", note: "The chip is the bound session's state, borrowed from the Sessions list, with a green border. A differing model is one amber line.", task: T6_WORKING },
-  { label: "Needs review", note: "Amber border and chip: the agent reported the task complete, and the owner marks it done.", task: T2_REVIEW },
-  { label: "Stalled", note: "The session ended with no report.", task: T2_STALLED },
-  { label: "Blocked by agent", note: "The agent reported it cannot continue.", task: T2_BLOCKED },
-  { label: "Done", note: "Muted title and Open session.", task: T1_DONE },
-  { label: "From a GitHub issue", note: "A task promoted from an issue carries its #N chip right after the task ID: the outline chip in the data font with a circle-dot glyph. It is a label, not a link.", task: T9_ISSUE },
+type CardState = { label: string; note: string; task: Task; lane: TaskLane; next?: boolean; compact?: boolean; waiting?: string | null; narrow?: boolean };
+
+// One card for each state a lane can draw, with the chip the lane leaves out: the lane already says it.
+const CARD_STATES: CardState[] = [
+  { label: "Backlog, Not queued", lane: "backlog", note: "The lane already says Not queued, so the card draws no chip. The meta row holds the ID and the feature's name, which gives way first with an ellipsis.", task: T5_IDLE },
+  { label: "Backlog, tags", lane: "backlog", note: "The tags at the start of the first line are drawn as neutral chips under the title and left out of the title. They are display only: the stored text keeps its brackets. The card draws no excerpt of the rest of the text.", task: T17_TAGGED },
+  { label: "Backlog, long text", lane: "backlog", note: "The title is the first sentence of the text, clamped to three lines. A backtick span is code in the data font. The whole text is the tooltip.", task: T11_LONG },
+  { label: "Ready, Queued", lane: "ready", compact: true, waiting: waitCardLine(BOARD_RUNNING.queue, T4_QUEUED), note: "The lane already says Queued, so the card draws no chip and relies on its place in the lane and its wait line. A task on its provider's default model names the provider in the run line.", task: T4_QUEUED },
+  { label: "Ready, Next", lane: "ready", compact: true, next: true, note: "The one task the monitor names as next keeps a chip: Next on the board, in ink on the raised fill. Other surfaces keep Queued · next.", task: T3_QUEUED },
+  { label: "Ready, Scheduled", lane: "ready", compact: true, note: "Info tone, plus the muted Starts line until a session is linked.", task: T7_SCHEDULED },
+  { label: "Ready, Not queued", lane: "ready", compact: true, note: "A planned card in Ready: the lane says Queued, so the Not queued chip stays.", task: T18_PLANNED },
+  { label: "In progress, Working", lane: "in_progress", note: "The lane already says In progress, so the card draws no chip. The green border shows that the bound session works. A differing model is one amber line.", task: T6_WORKING },
+  { label: "In progress, Needs input", lane: "in_progress", note: "The bound session waits for the owner: the Needs input chip and an amber border.", task: T19_NEEDS_INPUT },
+  { label: "In progress, Stalled", lane: "in_progress", note: "The session ended with no report. A stalled card stays where it is.", task: { ...T2_STALLED, columnId: "col-progress" } },
+  { label: "In progress, Blocked by agent", lane: "in_progress", note: "The agent reported it cannot continue.", task: { ...T2_BLOCKED, columnId: "col-progress" } },
+  { label: "Review, Needs review", lane: "review", note: "The lane already says Needs review, so the card draws no chip. The amber border shows that the owner marks the task done.", task: T2_REVIEW },
+  { label: "Done", lane: "done", note: "Muted title and Open session, and no chip: the lane says Done.", task: T1_DONE },
+  { label: "From a GitHub issue, needs attention", lane: "review", narrow: true, note: "A promoted card in the narrowest lane (220px). The ID, the #N chip and the feature name keep the first line, and the Blocked by agent chip wraps to a second line at the end. The border is amber.", task: { ...T2_BLOCKED, source: T9_ISSUE.source } },
+  { label: "From a GitHub issue", lane: "backlog", note: "A task promoted from an issue carries its #N chip right after the task ID: the outline chip in the data font with a circle-dot glyph. It is a label, not a link.", task: T9_ISSUE },
 ];
 
 function Frame({ children }: { children: ReactNode }) {
@@ -69,38 +78,41 @@ function FilterSample({ desktop, initial = ALL_FEATURES }: { desktop: boolean; i
 export function TaskBoardSection() {
   return <Section id="task-board" title="Task cards and board" lede="The Tasks page composes these pieces from the shipped components: the task card and its state chip, lanes with their headers, the feature filter row, the capacity strip and the Queue banner above the board, and the board itself. Everything below is the real component with synthetic tasks; actions that exist only in the desktop app are drawn with every action answered no.">
     <div className="designSystemGrid">
-      {CARD_STATES.map(({ label, note, task, next }) => <Sample key={label} label={label} note={note}>
-        <Frame><ul className="taskColumnList"><TaskCard task={task} nextQueued={next} featureLine={LINES.get(task.id)} /></ul></Frame>
+      {CARD_STATES.map(({ label, note, task, lane, next, compact, waiting, narrow }) => <Sample key={label} label={label} note={note}>
+        <Frame><ul className={narrow ? "taskColumnList designSystemNarrowLane" : "taskColumnList"}><TaskCard task={task} lane={lane} compact={compact} waiting={waiting} nextQueued={next} featureLine={LINES.get(task.id)} /></ul></Frame>
       </Sample>)}
     </div>
     <div className="designSystemGrid">
       <Sample label="Card, desktop app" note="The title opens the Task modal, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
-        <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} nextQueued featureLine={LINES.get("T-3")} onOpen={noop} move={MOVE} /></ul></Frame>
+        <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} lane="ready" nextQueued featureLine={LINES.get("T-3")} onOpen={noop} move={MOVE} /></ul></Frame>
       </Sample>
       <Sample label="Card, desktop app, in a parallel group" note="A waiting card of a parallel group adds the Quiet Take out of group after the four arrows, in underlined ink at 32px. The card then starts on its own, at its place in Ready or right after the group.">
-        <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} compact featureLine={LINES.get("T-3")} onOpen={noop} move={GROUP_MOVE} /></ul></Frame>
+        <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} lane="ready" compact featureLine={LINES.get("T-3")} onOpen={noop} move={GROUP_MOVE} /></ul></Frame>
       </Sample>
       <Sample label="Column header" note="The name and a data-font count over a one-pixel rule, with no control: the board has five fixed columns, in the desktop app and in a browser alike.">
         <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress" }} headingId="design-system-column-header" taskCount={1} /></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Lane, + New task revealed" note="A column is a lane: the raised fill with a one-pixel rule, cards on the panel fill. The first lane alone ends with the Quiet + New task, invisible until the lane is hovered or holds focus (always shown on a coarse pointer). Here it is forced visible.">
+      <Sample label="Lane, + New task revealed" note="A column is a lane: no fill and no border at rest, only the header over its rule and the cards on the panel fill. The first lane alone ends with the Quiet + New task, invisible until the lane is hovered or holds focus (always shown on a coarse pointer). Here it is forced visible.">
         <Frame><div className="designSystemRevealAdd taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[0]} lines={LINES} nextId={null} dropTarget={false} cardMoveFor={noMove} newTask={REVEALED_ENTRY} /></div></Frame>
       </Sample>
       <Sample label="Lane, empty" note="The action is still the lane's last item when it holds no card.">
         <Frame><div className="designSystemRevealAdd taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={{ ...COLUMNS[0], tasks: [] }} lines={LINES} nextId={null} dropTarget={false} cardMoveFor={noMove} newTask={newTaskEntry()} /></div></Frame>
       </Sample>
-      <Sample label="Lane, drop target" note="The raised fill is the lane itself, so the lane under a dragged card takes the strong line on its border instead. The two-pixel ink drop line shows where the card will land, here under the last card.">
+      <Sample label="Lane, drop target" note="A lane has no border at rest, so the lane under a dragged card takes the raised fill and a two-pixel strong-line ring. The two-pixel ink drop line shows where the card will land, here under the last card.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[2]} lines={LINES} nextId={null} dropTarget dropLine={{ beforeId: null }} cardMoveFor={noMove} /></div></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Ready lane, parallel group" note="Ready is the queue's lane: its waiting cards start from the top, one at a time, whatever their feature. Only the cards the owner put in a parallel group run together. The group is a strong-line frame under the parallel glyph and the count of its members that still wait. Two cards that only sit next to each other draw no frame. A waiting card is compact and names its feature. It adds one muted line: its place in the start order past the first, then Waiting with each reason it has not started.">
+      <Sample label="Ready lane, parallel group" note="Ready is the queue's lane: its waiting cards start from the top, one at a time, whatever their feature. Only the cards the owner put in a parallel group run together. The group is a frame in the plain line under the parallel glyph and the count of its members that still wait. Two cards that only sit next to each other draw no frame. A waiting card is compact and names its feature. It adds one muted line: its place in the start order past the first, then Waiting with each reason it has not started.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={READY_LANE} /></div></Frame>
       </Sample>
-      <Sample label="Ready lane, desktop app" note="The caption adds the two Icon arrows that move the whole group and the Quiet Ungroup. Between two waiting cards, the Quiet Run in parallel puts them in one group. It is drawn while the lane is hovered or the action holds focus, and always on a coarse pointer. Here it is forced visible.">
-        <Frame><div className="designSystemRevealLink taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={READY_LANE_DESKTOP} /></div></Frame>
+      <Sample label="Ready lane, desktop app" note="The caption's end adds the two Icon arrows that move the whole group and the Quiet Ungroup. They are invisible until the group is hovered or holds focus, and always drawn on a coarse pointer and at 760px and narrower, at 44px. Between two waiting cards, the Quiet Run in parallel puts them in one group. It is drawn while the lane is hovered or the action holds focus. Here both are forced visible.">
+        <Frame><div className="designSystemRevealLink designSystemRevealGroup taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={READY_LANE_DESKTOP} /></div></Frame>
+      </Sample>
+      <Sample label="Ready lane, group at rest, desktop app" note="With the group neither hovered nor focused, the caption holds only the parallel glyph and the count. The toolbar is still in the tab order and the accessibility tree.">
+        <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={{ ...READY_LANE, groupActionsFor: () => GROUP_ACTIONS }} /></div></Frame>
       </Sample>
       <Sample label="Ready lane, join target" note="While a waiting card is dragged over a group it is not in, the group takes the panel fill and the lane's two-pixel strong-line border. Dropping puts the card in that group. No drop line is drawn over a join target.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={COLUMNS[1]} lines={LINES} nextId={BOARD_RUNNING.queue.order[0]} dropTarget cardMoveFor={noMove} ready={JOIN_TARGET_LANE} /></div></Frame>
@@ -108,8 +120,8 @@ export function TaskBoardSection() {
       <Sample label="Ready lane, a member held" note="A start gate holds one member while its sibling started. The caption counts the one card that still waits and names the member that started. The held card says why it waits and that its sibling started. The next card of Ready waits for the whole group.">
         <Frame><div className="taskBoardGrid" style={{ "--task-columns": 1 } as CSSProperties}><TaskColumn column={HELD_COLUMNS[1]} lines={LINES} nextId={BOARD_HELD_MEMBER.queue.order[0]} dropTarget={false} cardMoveFor={noMove} ready={HELD_LANE} /></div></Frame>
       </Sample>
-      <Sample label="Card outside Ready, feature line" note="The feature line is the feature's name. A feature gives a task context only, so the line names no step and no other task.">
-        <Frame><ul className="taskColumnList"><TaskCard task={T2_REVIEW} featureLine={LINES.get("T-2")} /><TaskCard task={T1_DONE} featureLine={LINES.get("T-1")} /></ul></Frame>
+      <Sample label="Card outside Ready, feature name" note="The feature's name follows the ID in the meta row, after a dot. A feature gives a task context only, so it names no step and no other task.">
+        <Frame><ul className="taskColumnList"><TaskCard task={T2_REVIEW} lane="review" featureLine={LINES.get("T-2")} /><TaskCard task={T1_DONE} lane="done" featureLine={LINES.get("T-1")} /></ul></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">

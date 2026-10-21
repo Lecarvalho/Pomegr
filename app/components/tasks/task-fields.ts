@@ -37,6 +37,13 @@ export function plannedRunText(run: TaskRun) {
   return [run.model, run.effort && EFFORT_LABELS[run.effort].toLowerCase(), run.remoteControl === true && REMOTE_CONTROL_LABEL].filter(Boolean).join(" · ");
 }
 
+/** The planned run as a board card prints it. A model names its provider; the provider's default model does not, so the line then leads with the provider's name. */
+export function cardRunText(run: TaskRun) {
+  const planned = plannedRunText(run);
+  if (run.model !== null || !run.provider) return planned;
+  return [PROVIDER_LABELS[run.provider], planned].filter(Boolean).join(" · ");
+}
+
 export function canRemoteControl(run: TaskRun): boolean {
   return run.provider !== "codex";
 }
@@ -47,7 +54,8 @@ export function withRemoteControl(run: TaskRun, on: boolean): TaskRun {
   return on && canRemoteControl(run) ? { provider, model, effort, remoteControl: true, ...kept } : { provider, model, effort, ...kept };
 }
 
-export const REMOVE_WORKTREE_LABEL = "Remove worktree and branch when done";
+export const REMOVE_WORKTREE_LABEL = "Remove worktree and branch";
+export const KEEP_WORKTREE_LABEL = "Keep worktree and branch";
 
 /** Removal is the default, so the run carries the choice only when the worktree is kept. */
 export function withKeepWorktree(run: TaskRun, keep: boolean): TaskRun {
@@ -137,14 +145,6 @@ export function createPayload(text: string, run: TaskRun, draft: CompleteWhenDra
 
 export function isAgentJudged(check: TaskCheck): boolean {
   return AGENT_JUDGED_CHECKS.includes(check);
-}
-
-export function completeWhenSummary(completeWhen: Task["completeWhen"]): string | null {
-  const parts = [
-    completeWhen.checks.length > 0 && `${completeWhen.checks.length} ${completeWhen.checks.length === 1 ? "check" : "checks"}`,
-    completeWhen.own !== null && "own condition",
-  ].filter(Boolean);
-  return parts.length === 0 ? null : `Complete when: ${[...parts, "agent report"].join(" + ")}`;
 }
 
 export function observedModelDiffers(planned: string | null, observed: string | null | undefined): boolean {

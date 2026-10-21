@@ -467,9 +467,11 @@ describe("Run on, Effort and Complete when", () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Keep my worktree");
-    const remove = () => checkbox("Remove worktree and branch when done");
+    const remove = () => checkbox("Remove worktree and branch");
     expect(remove()).toBeChecked();
-    expect(screen.getByText("For a task that runs in its own worktree. Uncommitted or unpushed work is never removed.")).toBeInTheDocument();
+    // The row is When done, and its hint says what stays.
+    expect(screen.getByText("When done", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByText("Unpushed work is kept")).toBeInTheDocument();
     await user.click(remove());
     expect(remove()).not.toBeChecked();
     // The choice stays through a change of Run on and of Remote Control.
@@ -543,7 +545,7 @@ describe("Run on, Effort and Complete when", () => {
     expect(effort("High")).toHaveAttribute("aria-pressed", "true");
     expect(checkbox("Remote Control")).toBeChecked();
     // Removing the worktree when done is not taken from the newest task: it is always on for a new one.
-    expect(checkbox("Remove worktree and branch when done")).toBeChecked();
+    expect(checkbox("Remove worktree and branch")).toBeChecked();
     expect(checkbox("PR open")).toBeChecked();
     expect(checkbox("CI passed")).toBeChecked();
     expect(checkbox("Tree clean")).not.toBeChecked();

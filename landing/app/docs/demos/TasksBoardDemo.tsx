@@ -26,10 +26,10 @@ function entriesOf(cards: readonly DemoCard[]): Entry[] {
 
 function Card({ card, changed }: { card: DemoCard; changed: boolean }) {
   return (
-    <li className={styles.card} data-changed={changed ? "true" : undefined}>
+    <li className={styles.card} data-changed={changed ? "true" : undefined} data-attention={card.attention ? "true" : undefined}>
       <span className={styles.cardId}>{card.id}</span>
       <span className={styles.cardTitle}>{card.title}</span>
-      <span className={styles.chip} data-tone={card.chip === "Working" ? "live" : card.chip === "Needs review" ? "attention" : undefined}>{card.chip}</span>
+      {card.chip ? <span className={styles.chip} data-tone="ink">{card.chip}</span> : null}
       {card.note ? <span className={styles.cardNote}>{card.note}</span> : null}
     </li>
   );

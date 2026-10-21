@@ -135,21 +135,23 @@ describe("the Ready lane's parallel groups", () => {
     render(<TaskBoardView board={board()} />);
     expect(card("T-1")).toHaveClass("taskReadyCard");
     expect(card("T-1").querySelector(".taskCardPlanned")).toHaveTextContent("model-large · high");
-    expect(card("T-1").querySelector(".taskCardFeature")?.textContent).toBe("Tasks adjustments");
-    expect(card("T-2").querySelector(".taskCardFeature")?.textContent).toBe("Aril chat polish");
-    expect([...card("T-1").querySelectorAll(".taskCardDetail")].map((item) => item.className)).toEqual(["taskCardDetail taskCardFeature"]);
+    expect(card("T-1").querySelector(".taskCardFeature")?.textContent).toBe("· Tasks adjustments");
+    expect(card("T-2").querySelector(".taskCardFeature")?.textContent).toBe("· Aril chat polish");
+    // No excerpt, no Complete when line, and no feature line under the title: the feature is in the meta row.
+    expect(card("T-1").querySelectorAll(".taskCardDetail")).toHaveLength(0);
+    expect(card("T-1").querySelector(".taskCardFeature")?.closest(".taskCardTop")).not.toBeNull();
     // A card of Ready that does not wait in the queue stays a plain board card where it is.
     expect(card("T-7")).not.toHaveClass("taskReadyCard");
     // The started sibling is a plain card of its own lane, named by its feature.
     expect(card("T-3").closest(".taskReadyGroup")).toBeNull();
-    expect(card("T-3").querySelector(".taskCardFeature")?.textContent).toBe("Tasks adjustments");
+    expect(card("T-3").querySelector(".taskCardFeature")?.textContent).toBe("· Tasks adjustments");
   });
 
-  it("keeps Queued · next and adds the Waiting line only while the queue is on", () => {
+  it("labels the next card Next and adds the Waiting line only while the queue is on", () => {
     const next = { taskId: "T-1", provider: "claude" as const, blockedBy: null, reasons: ["usage_over" as const] };
     const open = (status: "running" | "idle") => board({ queue: { status, blockedBy: null, pauseReason: null, order: ["T-1", "T-2", "T-4"], gates: gates(next, { usage: { claude: { status: "over", fiveHourPercent: 91, sevenDayPercent: 37 }, codex: { status: "ok", fiveHourPercent: 1, sevenDayPercent: 1 } } }) } });
     const { unmount } = render(<TaskBoardView board={open("running")} />);
-    expect(card("T-1").querySelector(".taskCardChip")).toHaveTextContent("Queued · next");
+    expect(card("T-1").querySelector(".taskCardChip")).toHaveTextContent(/^Next$/);
     expect(card("T-1").querySelector(".taskCardWaiting")?.textContent).toBe("Waiting: Claude Code is above 85% of the five-hour window · T-3 started");
     // Without the monitor's waits only the next task reads the gates; its sibling reads nothing of its own.
     expect(card("T-2").querySelector(".taskCardWaiting")).toBeNull();

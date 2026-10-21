@@ -28,8 +28,8 @@ session starts. For the main path, see [Tasks](tasks.md).
    select **New task** under its last card. On a touch screen the action is always
    shown.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
-   field. A card shows the first sentence of this text as its title and the start of
-   the rest below it, until its session has a title, then the title.
+   field. A card shows the first sentence of this text as its title, without its tags,
+   until its session has a title. Then the card shows the session title.
 3. To show the agent a screenshot or a mock-up, paste an image into the text or select
    **Attach image**; see [Attach images](#attach-images).
 4. Set the optional fields; see [Task fields](#task-fields).
@@ -59,12 +59,23 @@ Select a card to open its task window. Your changes stay a draft until you selec
 
 Once a task has started, you cannot change it. The session works from the task as it
 was when it started, so a later change would not reach it. The task window then shows
-the fields read-only, without **Save**, and says "This task has started, so it cannot
-be changed." This applies from the start of the session on, and to a task that is in
+the task as text, without **Save**. A lock and the line "Started, so read-only." sit
+beside the **Task** label. The line adds "Requeue to edit." when **Requeue task** is
+available. This applies from the start of the session on, and to a task that is in
 review, blocked, stalled, or done.
 
+A task can start while its window holds unsaved changes. Pomegr then drops the changes.
+A line in the footer says "This task started before your changes were saved."
+
+- A task that needs you opens with a panel: **Ready for your review**, or the state
+  name for a stalled or blocked task. The panel holds the agent's report and the result
+  of each condition; see [Review a report](tasks-queue.md#review-a-report).
+- The text shows its tags, its first line as a title, and the rest as paragraphs and
+  lists. A line that starts with `- `, or with a number and a period, is a list item. Code between backticks,
+  UUIDs, and dates show in a code font.
+- **Run settings** lists the task's settings as plain values.
 - **Requeue task** makes the task editable again until its next session starts.
-- While a queued task is in progress, **Remove from queue** is unavailable.
+- While a queued task is in progress, the task window offers no **Remove from queue**.
 - You can still move, delete, mark done, and requeue a started task.
 
 ## Task fields
@@ -73,8 +84,8 @@ review, blocked, stalled, or done.
 | --- | --- |
 | **Run on** | Required. The provider and model of the started session's main agent: under **Claude Code** or **Codex**, a model or **Default model**. A new task starts with the choice of the newest task on the board, or with **Claude Code** and **Default model** on an empty board. Subagents are not set. A task that an agent added without a provider shows **Not set** until you choose one, and starts on Claude Code. |
 | **Effort** | Required. **Low**, **Medium**, **High**, or **Xhigh**. A new task starts with the effort of the newest task on the board, or with **Medium** on an empty board. You cannot clear it. |
-| **Remote Control** | Starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
-| **Remove worktree and branch when done** | When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It is on by default. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Worktrees](tasks-order.md#worktrees). |
+| **Remote Control** | The box "Open the session on your phone too" starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
+| **When done** | The box **Remove worktree and branch** is on by default. When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Worktrees](tasks-order.md#worktrees). |
 | **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |
 | **Feature** | The feature the task belongs to. A feature is shared context and a way to group tasks on the board. It does not set when the task runs; see [Features](tasks-features.md). |
 | **Runs after** | The tasks that must be done before this task starts; see [Runs after](tasks-order.md#runs-after). |
@@ -116,6 +127,27 @@ seconds. If Pomegr cannot read a fact, the condition does not pass and the task 
 in **Needs review**. A command that is still running, such as a development server,
 keeps **Tree clean** from passing until it ends. [Review a report](tasks-queue.md#review-a-report)
 explains the results.
+
+## Tag a task
+
+In the desktop app or on a paired phone, the first line of **Task** is the title line.
+It uses larger type.
+
+Start it with one or more words in brackets, such as `[ backend ]`, each followed by a
+space. Each word turns into a tag label above the title line while you type. The caret
+stays at the start of the title.
+
+- A tag is one word of 1 to 24 letters, digits, `.`, `_`, or `-`.
+- Spaces inside the brackets are allowed.
+- A task shows at most eight tags, and a repeated word shows once.
+- Brackets anywhere else in the text stay text.
+- To remove the last tag, press **Backspace** at the very start of the title line.
+- A tag is a label for you. The task text keeps its brackets.
+- The character count, the saved text, and what the agent reads are the same as if you had typed the brackets.
+- A pasted line that starts with tags turns all of them into labels.
+- **Ctrl+A** (**Cmd+A** on a Mac) selects the tags too, and **Copy** includes them. **Cut**, **Delete**, or typing over that selection removes them, and **Undo** brings them back.
+- Selecting only the title line and retyping it keeps the tags.
+- A saved task whose text is only tags opens as plain text. The labels come back when you type after the tags.
 
 ## Attach images
 

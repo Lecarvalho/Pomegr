@@ -205,20 +205,23 @@ describe("Start session", () => {
     // A task in review holds no queue, so its first resolution does not speak of one.
     expect(dialog.getByRole("button", { name: state === "needs_review" ? "Mark done" : "Mark done and resume queue" })).toBeInTheDocument();
     expect(dialog.getByRole("button", { name: "Requeue task" })).toBeInTheDocument();
-    // A started task is read-only, so the modal offers no Save and has no primary action.
-    expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction"))).toEqual([]);
+    // A started task is read-only, so the modal offers no Save: the first resolution is its one primary action.
+    expect(dialog.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction")).map((button) => button.textContent))
+      .toEqual([state === "needs_review" ? "Mark done" : "Mark done and resume queue"]);
   });
 
   it.each([
     ["a linked session", { session: { id: "s", title: "Linked work", state: "idle", observedModel: null } }, "A session is already linked to this task.", "Linked work"],
     ["done", { state: "done" as const }, "This task is done.", "Write the thing"],
-  ])("is disabled with its reason for %s", async (_name, overrides, reason, cardName) => {
+  ])("is not offered, and says why, for %s", async (_name, overrides, reason, cardName) => {
     setBoard(task(overrides));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: cardName }));
     const dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+    // A started or done task never starts again, so the disabled action is not drawn; its reason stays as the footer's note.
+    expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
     expect(dialog.getByRole("status")).toHaveTextContent(reason);
     expect(taskStart).not.toHaveBeenCalled();
   });
@@ -260,7 +263,7 @@ describe("Start session", () => {
     it("follows the board once the session links", async () => {
       const { dialog } = await startThen(linked);
       expect(dialog.getByRole("status")).toHaveTextContent("A session is already linked to this task.");
-      expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+      expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
       expect(dialog.queryByText(/Install or update the Pomegr plugin/u)).not.toBeInTheDocument();
     });
 
@@ -278,7 +281,7 @@ describe("Start session", () => {
     it("reads done once the task is done", async () => {
       const { dialog } = await startThen({ ...linked, state: "done" });
       expect(dialog.getByRole("status")).toHaveTextContent("This task is done.");
-      expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+      expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
     });
 
     it("stays locked while the board shows the task unchanged", async () => {

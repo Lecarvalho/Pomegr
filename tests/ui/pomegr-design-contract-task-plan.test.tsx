@@ -19,9 +19,9 @@ describe("Planning and runs after visual contract", () => {
     expect(designContract).toMatch(/A group with a Not queued card adds the Quiet \*\*Queue group\*\* \(`\.taskReadyQueue`\) before \*\*Ungroup\*\*\./);
     expect(designContract).toMatch(/### Runs after/);
     expect(designContract).toMatch(/ends with the Quiet \*\*Runs after…\*\* \(`\.taskMoveLeave\.taskMoveAfter`\)/);
-    expect(designContract).toMatch(/“Runs after T-13 and T-14”, before the feature line\./);
+    expect(designContract).toMatch(/“Runs after T-13 and T-14”, before the sessions line\./);
     const modalContract = readFileSync(join(process.cwd(), "docs", "internal", "design", "task-modal.md"), "utf8");
-    expect(modalContract).toMatch(/\*\*Runs after\*\* follows Complete when\. It is a fieldset with the 12px\/500 legend \*\*Runs after\*\*, built like Sessions\./);
+    expect(modalContract).toMatch(/\*\*Runs after\*\* follows the Run settings\.\s+- Runs after is a fieldset with the 12px\/500 legend \*\*Runs after\*\*, built like Sessions\./);
     expect(modalContract).toMatch(/“These tasks would wait for each other, so nothing was changed\.”/);
     const field = read("TaskAfterField.tsx");
     expect(field).toMatch(/<fieldset className="taskSessions taskAfter">/);

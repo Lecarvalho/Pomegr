@@ -7,10 +7,13 @@ export const DEMO_COLUMNS: readonly DemoColumn[] = ["Backlog", "Ready", "In prog
 export interface DemoCard {
   id: string;
   title: string;
-  chip: string;
+  /** The state chip. The board draws it only where the lane does not already say the state, so the demo has one: Next, on the card that starts next in Ready. */
+  chip?: "Next";
+  /** The task needs the owner, so its border is amber on the board. The lane, Review, says why. */
+  attention?: boolean;
   /** Cards that share a group id are drawn in one Parallel frame. */
   group?: string;
-  /** A muted line under the chip, such as a wait reason. */
+  /** A muted line under the title, such as a wait reason. */
   note?: string;
 }
 
@@ -45,14 +48,12 @@ function board(columns: Partial<Record<DemoColumn, DemoCard[]>>) {
   return { ...empty(), ...columns };
 }
 
-const backlog = (task: { id: string; title: string }): DemoCard => ({ ...task, chip: "Not queued" });
-
 export const DEMO_STEPS: readonly DemoStep[] = [
   {
     action: "New task",
     caption: "This is a demo with sample tasks, not the Pomegr app. It starts nothing.",
     queueOn: false,
-    columns: board({ Backlog: [backlog(T1), backlog(T2), backlog(T3)] }),
+    columns: board({ Backlog: [T1, T2, T3] }),
     proposal: null,
     changed: [],
   },
@@ -60,7 +61,7 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     action: "Add to queue",
     caption: "Create task puts the new card in Backlog, not queued.",
     queueOn: false,
-    columns: board({ Backlog: [backlog(T1), backlog(T2), backlog(T3), backlog(T4)] }),
+    columns: board({ Backlog: [T1, T2, T3, T4] }),
     proposal: null,
     changed: [T4.id],
   },
@@ -69,8 +70,8 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     caption: "Add to queue moves a card to Ready. Ready starts from the top, one card at a time.",
     queueOn: false,
     columns: board({
-      Backlog: [backlog(T4)],
-      Ready: [{ ...T1, chip: "Queued · next" }, { ...T2, chip: "Queued" }, { ...T3, chip: "Queued" }],
+      Backlog: [T4],
+      Ready: [{ ...T1, chip: "Next" }, T2, T3],
     }),
     proposal: null,
     changed: [T1.id, T2.id, T3.id],
@@ -80,8 +81,8 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     caption: "Run in parallel puts T-2 and T-3 in one group. The group starts together.",
     queueOn: false,
     columns: board({
-      Backlog: [backlog(T4)],
-      Ready: [{ ...T1, chip: "Queued · next" }, { ...T2, chip: "Queued", group: "g" }, { ...T3, chip: "Queued", group: "g" }],
+      Backlog: [T4],
+      Ready: [{ ...T1, chip: "Next" }, { ...T2, group: "g" }, { ...T3, group: "g" }],
     }),
     proposal: null,
     changed: [T2.id, T3.id],
@@ -91,12 +92,12 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     caption: "The queue is On. It starts the top card, T-1. The group waits until T-1 is in Review.",
     queueOn: true,
     columns: board({
-      Backlog: [backlog(T4)],
+      Backlog: [T4],
       Ready: [
-        { ...T2, chip: "Queued", group: "g", note: "Waiting: T-1 is running" },
-        { ...T3, chip: "Queued", group: "g", note: "Waiting: T-1 is running" },
+        { ...T2, group: "g", note: "Waiting: T-1 is running" },
+        { ...T3, group: "g", note: "Waiting: T-1 is running" },
       ],
-      "In progress": [{ ...T1, chip: "Working" }],
+      "In progress": [T1],
     }),
     proposal: null,
     changed: [T1.id],
@@ -106,9 +107,9 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     caption: "T-1's agent reported the work complete, so T-1 is in Review. The group starts.",
     queueOn: true,
     columns: board({
-      Backlog: [backlog(T4)],
-      "In progress": [{ ...T2, chip: "Working" }, { ...T3, chip: "Working" }],
-      Review: [{ ...T1, chip: "Needs review" }],
+      Backlog: [T4],
+      "In progress": [T2, T3],
+      Review: [{ ...T1, attention: true }],
     }),
     proposal: null,
     changed: [T1.id, T2.id, T3.id],
@@ -118,9 +119,9 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     caption: "Aril proposes a task. Nothing changes until you select Apply changes.",
     queueOn: true,
     columns: board({
-      Backlog: [backlog(T4)],
-      "In progress": [{ ...T2, chip: "Working" }, { ...T3, chip: "Working" }],
-      Review: [{ ...T1, chip: "Needs review" }],
+      Backlog: [T4],
+      "In progress": [T2, T3],
+      Review: [{ ...T1, attention: true }],
     }),
     proposal: { operation: "Create task", text: PROPOSAL_TEXT, applied: false },
     changed: [],
@@ -130,9 +131,9 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     caption: "Apply changes adds T-5 to Backlog. Only you mark T-1 done.",
     queueOn: true,
     columns: board({
-      Backlog: [backlog(T4), backlog(T5)],
-      "In progress": [{ ...T2, chip: "Working" }, { ...T3, chip: "Working" }],
-      Review: [{ ...T1, chip: "Needs review" }],
+      Backlog: [T4, T5],
+      "In progress": [T2, T3],
+      Review: [{ ...T1, attention: true }],
     }),
     proposal: { operation: "Create task", text: PROPOSAL_TEXT, applied: true },
     changed: [T5.id],

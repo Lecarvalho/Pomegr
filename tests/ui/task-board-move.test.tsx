@@ -505,7 +505,9 @@ describe("optimistic move", () => {
     dragTo("T-2", column("Done"));
     dragTo("T-3", card("T-1"));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
-    expect(chips()).toEqual(before);
+    // The Ready lane says Queued, so T-3 draws no chip there; its state is the same.
+    expect(chips()).toEqual(["Done", "Needs review", undefined]);
+    expect(card("T-3")).toHaveAttribute("data-task-state", "queued");
     expect(card("T-1")).toHaveClass("isDone");
     expect(card("T-2")).toHaveClass("isAttention");
     expect(card("T-1")).toHaveAttribute("data-task-state", "done");
