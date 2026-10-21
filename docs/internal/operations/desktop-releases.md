@@ -71,6 +71,28 @@ the extracted archive, allowing deliberate privacy sentinels only under its root
 `tests/` directory. Raw ZIP bytes cannot apply that path allowance. Executables
 and other published files retain their strict raw-byte privacy scans.
 
+### Release from a release branch
+
+Use a release branch when a patch release must leave out changes that are already on `main`. Pomegr 0.8.1 used one to leave out the Aril pilot.
+
+1. Create `release/X.Y.Z` from the previous release tag.
+2. Cherry-pick the merge commits to include, in merge order, with `git cherry-pick -x`. When a commit conflicts, keep the release branch's behavior and explain the resolution in the commit message.
+3. Bump the version on the branch with `npm version X.Y.Z --no-git-tag-version --ignore-scripts`, and commit `package.json` and `package-lock.json` as `chore: bump version to X.Y.Z`.
+4. Push the branch and dispatch both checks on it. They run automatically only for pull requests into `main`. Wait until both pass, because a failed release uses up its tag.
+5. Create the annotated tag on the branch tip and push it. The release command creates a new tag only on `main`.
+6. From a clean checkout of the tag or of the branch tip, run the release command. GitHub already has the tag, so the command only checks the tag and dispatches the workflow.
+7. Edit the published release notes to list the included pull requests. Generated notes list none, because GitHub does not link cherry-picked commits to their pull requests.
+
+```powershell
+gh workflow run verify.yml --ref release/X.Y.Z
+gh workflow run checks.yml --ref release/X.Y.Z
+git tag -a vX.Y.Z -m "Pomegr X.Y.Z"
+git push origin refs/tags/vX.Y.Z
+npm run release:windows -- --tag vX.Y.Z
+```
+
+`main` keeps its own version. Its next bump must be higher than the version released from the branch.
+
 ## Release checklist
 
 The workflow enforces the release gates, so a normal release needs no manual checklist beyond confirming that the run and the published release succeeded.
