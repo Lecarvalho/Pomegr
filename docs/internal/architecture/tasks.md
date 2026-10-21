@@ -1163,9 +1163,10 @@ it looks.
 - **Pure summary.** `summarizeTaskHome(entries)` in `server/tasks/task-home.mjs` takes
   projected boards and returns plain values, like the other rule modules.
 - **Title.** An attention item's title is the bound session's title, else the title line
-  of the task text: the first line after its leading tags, or the next non-empty line
-  when the first line holds only tags. A blank line never leads, and a leading Markdown
-  heading mark is left out. A text of only tags keeps them. The tag split and the title
+  of the task text: the first text after its leading tags, which may sit on several
+  leading lines (any whitespace, line breaks included, separates the tokens, and a blank
+  line ends the run). A blank line never leads, and a leading Markdown heading mark is left out. A text of only
+  tags keeps them, its lines joined on one line. The tag split and the title
   line are a display heuristic; the [board design](../design/task-board.md#tags) owns
   the rule. The stored text keeps its brackets. `server/tasks/task-tags.mjs` is the
   server twin of `app/components/tasks/task-tags.ts` (`splitTaskTags` and
@@ -2758,9 +2759,9 @@ fixed values.
   under that same gate, so it reaches no new client. It serves less than a board: of
   user-authored content, only one title line for each of at most 50 tasks that need
   review, are stalled, or are blocked. The line is the bound session's title, or the
-  title line of the task text, cut at 160 characters. The title line is the first line
-  after the task text's leading tags, or the next non-empty line when the first line
-  holds only tags. It is still one line of at most 160 characters. No own condition,
+  title line of the task text, cut at 160 characters. The title line is the first text
+  after the task text's leading tags, which may sit on several leading lines, and a text
+  of only tags is its own title. It is still one line of at most 160 characters. No own condition,
   block reason, attention line, feature name, image, model, or session ID enters it.
 - A feature's description and app version live only in the task store and are served
   only by `POST /api/agent/v1/tasks/feature-get`, to an agent whose session is bound to

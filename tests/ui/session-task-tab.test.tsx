@@ -99,6 +99,7 @@ describe("SessionTaskTab", () => {
 
   it("leads with the title line of the shared rule: no tags, no blank line, no heading mark", () => {
     expect(taskBrief("[ui] [bug]\nFix X")).toEqual({ lead: null, body: "Fix X" });
+    expect(taskBrief("[ui]\n[bug]\n\nFix X\nSteps")).toEqual({ lead: "Fix X", body: "Steps" });
     expect(taskBrief("[ui]\n\nFix X\n\nMore text")).toEqual({ lead: "Fix X", body: "More text" });
     expect(taskBrief("[ui] [bug]\r\n\r\nFix X\r\nSteps")).toEqual({ lead: "Fix X", body: "Steps" });
     expect(taskBrief("# Fix X\nSteps")).toEqual({ lead: "Fix X", body: "Steps" });

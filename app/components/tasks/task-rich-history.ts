@@ -14,8 +14,6 @@ export type RichStep = {
   caret: RichCaret;
   /** The chips were drawn with a title line of their own (see `RichLayoutOptions`). */
   ownTitleLine: boolean;
-  /** The text was drawn from outside, not typed (see `RichLayoutOptions`). */
-  stored: boolean;
 };
 
 /** What changed the text. Typing, Backspace, and Delete join the run before them when the caret goes on from it. */

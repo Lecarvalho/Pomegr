@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
+import { TaskRow } from "./TaskRows";
 import { AFTER_HELPER, AFTER_LIMIT, afterCandidates } from "./task-after-model";
 import { taskChip, taskSessionTitle, taskTextPreview } from "./task-presentation";
 
@@ -29,7 +30,10 @@ function AfterRow({ task, columnName, disabled, onRemove }: {
   </li>;
 }
 
-/** What one task runs after: a ruled row for each task, then the owner's select. It saves by itself. */
+/**
+ * What one task runs after, as a row of the Run settings list: the value holds a row for each task, then one add line with the
+ * owner's select. It saves by itself. A started task shows the rows only, and none when it runs after none.
+ */
 export function TaskAfterField({ task, tasks, columnName, editable, busy, error, focusSelect = false, onChange }: {
   task: AfterTask;
   tasks: readonly AfterTask[];
@@ -44,6 +48,7 @@ export function TaskAfterField({ task, tasks, columnName, editable, busy, error,
 }) {
   const selectId = useId();
   const helperId = useId();
+  const labelId = useId();
   const [chosen, setChosen] = useState<string | null>(null);
   useEffect(() => {
     if (focusSelect) document.getElementById(selectId)?.focus({ preventScroll: false });
@@ -54,22 +59,23 @@ export function TaskAfterField({ task, tasks, columnName, editable, busy, error,
   const value = options.some((option) => option.value === chosen) ? chosen : null;
   const full = listed.length >= AFTER_LIMIT;
   const current = listed.map((other) => other.id);
-  return <fieldset className="taskSessions taskAfter">
-    <legend>Runs after</legend>
-    {listed.length > 0 && <ul className="taskSessionsList">
-      {listed.map((other) => <AfterRow key={other.id} task={other} columnName={columnName(other.columnId)} disabled={busy}
-        onRemove={editable && onChange ? () => onChange(current.filter((id) => id !== other.id)) : undefined} />)}
-    </ul>}
-    {editable && onChange && <>
-      <div className="taskSessionsAssign">
-        <CommandSelect id={selectId} aria-label="Task this one runs after" options={options} value={value}
-          placeholder={full ? `It runs after ${AFTER_LIMIT} tasks, the most it can` : options.length > 0 ? "Choose a task" : "No other open task on this board"}
-          disabled={busy || full || options.length === 0} onChange={setChosen} />
-        <button type="button" className="commandSecondaryAction" disabled={busy || value === null || full} aria-describedby={helperId}
-          onClick={() => { if (value !== null) { onChange([...current, value]); setChosen(null); } }}>Add</button>
-      </div>
-      <p id={helperId} className="newTaskHelper">{AFTER_HELPER}</p>
-    </>}
-    {error && <p className="newTaskError" role="alert">{error}</p>}
-  </fieldset>;
+  return <TaskRow label="Runs after" labelId={labelId} top="control" className="taskAfter">
+    <div className="taskSessions" role="group" aria-labelledby={labelId}>
+      {listed.length > 0 && <ul className="taskSessionsList">
+        {listed.map((other) => <AfterRow key={other.id} task={other} columnName={columnName(other.columnId)} disabled={busy}
+          onRemove={editable && onChange ? () => onChange(current.filter((id) => id !== other.id)) : undefined} />)}
+      </ul>}
+      {editable && onChange && <>
+        <div className="taskSessionsAssign">
+          <CommandSelect id={selectId} aria-label="Task this one runs after" className="taskValueSelect" options={options} value={value}
+            placeholder={full ? `It runs after ${AFTER_LIMIT} tasks, the most it can` : options.length > 0 ? "Choose a task" : "No other open task on this board"}
+            disabled={busy || full || options.length === 0} onChange={setChosen} />
+          <button type="button" className="commandSecondaryAction" disabled={busy || value === null || full} aria-describedby={helperId}
+            onClick={() => { if (value !== null) { onChange([...current, value]); setChosen(null); } }}>Add</button>
+        </div>
+        <span id={helperId} className="newTaskHelper">{AFTER_HELPER}</span>
+      </>}
+      {error && <p className="newTaskError" role="alert">{error}</p>}
+    </div>
+  </TaskRow>;
 }

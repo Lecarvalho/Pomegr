@@ -164,7 +164,7 @@ describe("Task modal, mode edit", () => {
     expect(dialog.getByText(/Agent reported complete/).textContent).toMatch(/^Agent reported complete \(.+\)\.$/u);
     expect(dialog.getByText("Observed model differs")).toBeInTheDocument();
     expect(dialog.getByText("model-b")).toBeInTheDocument();
-    expect(dialog.queryByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).not.toBeInTheDocument();
+    expect(dialog.queryByText("The agent judges Validated with the user and your own condition.")).not.toBeInTheDocument();
   });
 
   it("omits results, the report line and the notice for a task with no report and no differing model", async () => {
@@ -180,7 +180,7 @@ describe("Task modal, mode edit", () => {
     // No report means no Review panel: the conditions are one row of the settings, and the form's helper is not drawn.
     expect(dialog.queryByRole("heading", { name: "Ready for your review" })).not.toBeInTheDocument();
     expect(rowValue(dialog, "Complete when")).toHaveTextContent("PR open");
-    expect(dialog.queryByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).not.toBeInTheDocument();
+    expect(dialog.queryByText("The agent judges Validated with the user and your own condition.")).not.toBeInTheDocument();
   });
 
   it("words the observed-model notice from the contract", async () => {

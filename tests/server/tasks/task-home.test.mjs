@@ -97,6 +97,17 @@ test("the title skips blank lines and a Windows line break after the tags, leave
   assert.ok(!JSON.stringify(home).includes("SECOND-LINE"));
 });
 
+test("the title joins every leading line of only tags into the tags, and keeps a text of only tags on one line", () => {
+  const home = summarizeTaskHome([{ repositoryId: REPOSITORY, board: board([
+    task(1, { state: "needs_review", text: "[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent consume atomic\nSECOND-LINE-never-served", updatedAt: "2026-10-08T10:00:03.000Z" }),
+    task(2, { state: "needs_review", text: "[a]\n[b]\n", updatedAt: "2026-10-08T10:00:02.000Z" }),
+    task(3, { state: "needs_review", text: "Title\n[a]\nBody", updatedAt: "2026-10-08T10:00:01.000Z" }),
+    task(4, { state: "needs_review", text: "[ui]\n\n[TODO] write tests", updatedAt: "2026-10-08T10:00:00.000Z" }),
+  ]) }]);
+  assert.deepEqual(home.attention.map((item) => item.title), ["Make plan-intent consume atomic", "[a] [b]", "Title", "[TODO] write tests"]);
+  assert.ok(!JSON.stringify(home).includes("SECOND-LINE"));
+});
+
 test("the list of what waits is capped, and the total still counts every task", () => {
   const tasks = Array.from({ length: TASK_HOME_ATTENTION_LIMIT + 7 }, (_, index) => task(index + 1, { state: "stalled" }));
   const home = summarizeTaskHome([{ repositoryId: REPOSITORY, board: board(tasks) }]);

@@ -21,7 +21,8 @@ export function afterCardLine(task: AfterTask, tasks: readonly AfterTask[]): str
 /** The fixed line of a list that would make tasks wait for each other. */
 export const AFTER_LOOP_MESSAGE = "These tasks would wait for each other, so nothing was changed.";
 export const AFTER_FAILURE_MESSAGE = "The change could not be saved.";
-export const AFTER_HELPER = "This task starts only when every task here is Done or deleted. Pomegr starts and stops nothing for it.";
+/** The muted hint beside the Runs after add line. That Pomegr starts and stops nothing for it is the contract's (tasks.md), not repeated here. */
+export const AFTER_HELPER = "Starts only when every task here is Done or deleted.";
 export const AFTER_LIMIT = TASK_BOUNDS.afterPerTask;
 
 /** Whether `taskId` running after `list` would make tasks wait for each other, by the lists the board holds. */

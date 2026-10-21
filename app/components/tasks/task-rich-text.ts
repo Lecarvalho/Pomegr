@@ -10,47 +10,37 @@ const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAI
 const TAGS = "data-rich-tags";
 const TITLE = "data-rich-title";
 
-/** One tag chip: the word as typed, and the exact text it stands for (its token, the spaces after it, and a line break that ends the run). */
+/** One tag chip: the word as typed, and the exact text it stands for (its token, and the whitespace after it up to the next token or the text, line breaks included). */
 export type RichChip = { label: string; source: string };
 
 /** The value in drawing order. `chips`, `title` and `rest` joined are the value. */
 export type RichLayout = { chips: RichChip[]; title: string; rest: string };
 
-const TOKEN = /\s*\[[^\]]*\][ \t]*/gu;
+// The leading whitespace is the parser's (`splitTaskTags` skips whatever `trimStart` does), so every text it reads tags from gets chips.
+const TOKEN = /\s*\[[^\]]*\]\s*/gu;
 
 export type RichLayoutOptions = {
-  /** The value is a stored text being drawn, not text being typed: a text of only tags is drawn as plain text, as a card and the read view show it. */
-  stored?: boolean;
   /** The field already draws chips with a title line of their own, so a line break that text follows stays between that line and the rest. */
   ownTitleLine?: boolean;
 };
 
 /**
- * Splits a task text for the editor. The leading tag run is the parser's (`splitTaskTags`), except that the last token must be followed
- * by whitespace: a token at the very end of the text is still being typed. The title is the rest of the first line, without its line break;
- * a first line that held only tags leaves the next line to be the title, unless the person emptied a title line that the field already draws.
- * With `stored`, a text of only tags has no chips: it is plain text, as a card shows it.
+ * Splits a task text for the editor. The leading tag run is the parser's (`splitTaskTags`), and every token of it is a chip as soon as its
+ * closing bracket is there, also at the very end of the text and also when the text holds nothing but tags. A chip stands for its token and
+ * the whitespace after it, line breaks included, so the title is the first text after the run. The title line ends at its line break.
+ * With `ownTitleLine`, the line break after the last token belongs to the text that follows: the person emptied a title line that the field draws.
  */
 export function richLayout(value: string, options: RichLayoutOptions = {}): RichLayout {
-  const { tags, text: untagged, runLength } = splitTaskTags(value);
-  if (options.stored && tags.length > 0 && untagged.trim() === "") {
-    const lineEnd = value.indexOf("\n");
-    const title = lineEnd < 0 ? value : value.slice(0, lineEnd);
-    return { chips: [], title, rest: value.slice(title.length) };
-  }
+  const { tags, runLength } = splitTaskTags(value);
   let pieces: string[] = [];
-  let separator = "";
   if (tags.length > 0) {
-    const run = value.slice(0, runLength);
-    pieces = run.match(TOKEN) ?? [];
-    if (pieces.join("") !== run) pieces = [];
-    separator = value.startsWith("\r\n", runLength) ? "\r\n" : value.startsWith("\n", runLength) ? "\n" : "";
-    // Without a line break or a space after it, the last token is the end of the text: the person is still typing it.
-    if (separator === "" && !/\s$/u.test(run)) pieces.pop();
-    if (pieces.length === 0) separator = "";
-    // A line break with text after it is the title line's own end, not the chips', when the field draws that title line already.
-    // A line break with only blank lines after it is the person pressing Enter after the tags, and the chips keep it.
-    if (options.ownTitleLine && value.slice(runLength + separator.length).trim() !== "") separator = "";
+    pieces = value.slice(0, runLength).match(TOKEN) ?? [];
+    if (pieces.join("") !== value.slice(0, runLength)) pieces = [];
+    // The line break that the last chip takes is looked for after its closing bracket, not in the whitespace before the token.
+    const last = pieces.at(-1);
+    const close = last === undefined ? -1 : last.indexOf("]");
+    const cut = last === undefined ? -1 : last.slice(close + 1).search(/[\r\n]/u);
+    if (options.ownTitleLine && cut >= 0 && value.length > runLength) pieces[pieces.length - 1] = last!.slice(0, close + 1 + cut);
   }
   const chips: RichChip[] = [];
   const seen = new Set<string>();
@@ -62,7 +52,6 @@ export function richLayout(value: string, options: RichLayoutOptions = {}): Rich
     else chips.push({ label, source: piece });
     seen.add(key);
   }
-  if (chips.length > 0) chips[chips.length - 1].source += separator;
   const taken = chips.reduce((total, chip) => total + chip.source.length, 0);
   const text = value.slice(taken);
   const lineEnd = text.indexOf("\n");
@@ -175,14 +164,22 @@ export function hasOwnTitleLine(host: HTMLElement): boolean {
 }
 
 /**
- * A browser leaves a lone line break behind when the last text of a line is deleted. After chips with a title line of their own, that break is dropped,
- * so a deleted title leaves the chips and an empty title line, not a second line. Pressing Enter there leaves two breaks, and they stay.
+ * A browser leaves a lone line break behind when the last text of a line is deleted, and a second one when Enter is pressed at the end of the text.
+ * After chips, also chips that end in a line break, the lone break of a deletion is dropped, so a deleted title leaves the chips and an empty title
+ * line, and the stored text does not grow with each delete. The second break of an Enter is dropped, so Enter leaves one line break after the chips.
+ * Any other insertion keeps its text.
  */
-export function withoutPlaceholder(host: HTMLElement, value: string): string {
+export function withoutPlaceholder(host: HTMLElement, value: string, inputType = ""): string {
+  const chips = host.firstChild instanceof HTMLElement && host.firstChild.hasAttribute(TAGS) ? sourcesOf(host.firstChild).join("") : "";
+  if (chips === "") return value;
+  if (inputType === "insertParagraph" || inputType === "insertLineBreak") return value === `${chips}\n\n` ? `${chips}\n` : value;
+  return !inputType.startsWith("insert") && value === `${chips}\n` ? chips : value;
+}
+
+/** The characters of the value that the chips stand for. */
+export function chipsLength(host: HTMLElement): number {
   const first = host.firstChild;
-  if (!hasOwnTitleLine(host) || !(first instanceof HTMLElement)) return value;
-  const chips = sourcesOf(first).join("");
-  return value === `${chips}\n` ? chips : value;
+  return first instanceof HTMLElement && first.hasAttribute(TAGS) ? sourcesOf(first).join("").length : 0;
 }
 
 /** The title line node, or null while the field draws none. */

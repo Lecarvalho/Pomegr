@@ -25,16 +25,18 @@ export function ModelDiffersNotice({ planned, observed }: { planned: string | nu
 
 /**
  * The Run settings of a started task as a label/value list. Nothing here is a control: the session works from the task as it was
- * when it started. `issue` is the GitHub issue row and `notice` the observed-model notice under Run on. `conditionsListed` leaves out
+ * when it started. `issue` is the GitHub issue row, `extra` the rows after it, and `notice` the observed-model notice under Run on. `conditionsListed` leaves out
  * the Complete when row when the Review panel already lists the conditions with their results.
  */
-export function TaskRunSettingsRead({ task, board, models, conditionsListed, notice, issue, onOpenTask }: {
+export function TaskRunSettingsRead({ task, board, models, conditionsListed, notice, issue, extra, onOpenTask }: {
   task: Pick<Task, "id" | "featureId" | "run" | "completeWhen">;
   board: BoardShape;
   models: TaskModelOptions;
   conditionsListed: boolean;
   notice?: ReactNode;
   issue: ReactNode;
+  /** More rows of the same list after GitHub issue: Runs after and Sessions. */
+  extra?: ReactNode;
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
 }) {
   const { run } = task;
@@ -55,5 +57,6 @@ export function TaskRunSettingsRead({ task, board, models, conditionsListed, not
     <TaskRow label="When done">{run.keepWorktree === true ? KEEP_WORKTREE_LABEL : REMOVE_WORKTREE_LABEL}</TaskRow>
     {!conditionsListed && <TaskRow label="Complete when">{conditions ?? <TaskRowNone>None</TaskRowNone>}</TaskRow>}
     {issue}
+    {extra}
   </RunSettings>;
 }

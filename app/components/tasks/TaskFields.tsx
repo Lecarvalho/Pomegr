@@ -12,6 +12,9 @@ import {
 
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 
+/** The muted hint under Own condition: what the agent judges. Pomegr verifies the other conditions, as the owner page says. */
+export const COMPLETE_WHEN_HINT = "The agent judges Validated with the user and your own condition.";
+
 export type TaskTextHandle = { focus(options?: FocusOptions): void };
 
 export function TaskTextField({ value, onChange, onBlur, images, readOnly, error, ref }: {
@@ -147,7 +150,7 @@ export function CompleteWhenField({ draft, onDraftChange, onCommit }: {
         <input type="text" className="taskOwnInput" aria-label="Own condition" maxLength={TASK_BOUNDS.ownConditionLength} placeholder="Own condition, judged by the agent (optional)"
           value={draft.ownText} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
       </div>
-      <span className="newTaskHelper">Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.</span>
+      <span className="newTaskHelper">{COMPLETE_WHEN_HINT}</span>
     </div>
   </TaskRow>;
 }

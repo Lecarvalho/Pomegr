@@ -59,7 +59,7 @@ describe("the Run settings list", () => {
   });
 
   it("names the rows and their words in the owner page", () => {
-    expect(modalPage).toMatch(/The list holds these rows in order: Feature, Run on, Effort, Remote Control, When done, Complete when, and, in mode edit, GitHub issue\./);
+    expect(modalPage).toMatch(/The list holds these rows in order: Feature, Run on, Effort, Remote Control, When done, Complete when, and, in mode edit, GitHub issue, Runs after, Sessions, and Start at\./);
     expect(modalPage).toMatch(/one native checkbox with the muted hint “Open the session on your phone too”/);
     expect(modalPage).toMatch(/native checkbox labelled \*\*Remove worktree and branch\*\*, with the muted hint “Unpushed work is kept”/);
     expect(modalPage).not.toMatch(/Remove worktree and branch when done|Starts the session with Remote Control/);
@@ -113,7 +113,7 @@ describe("the Review panel and the Task read view", () => {
 
   it("documents the lock line, the order of the body, and the panel's words", () => {
     expect(modalPage).toMatch(/The lock line reads “Started, so read-only\. Requeue to edit\.” while Requeue is offered/);
-    expect(modalPage).toMatch(/The body order is the Review panel, the Task read view, the Run settings as values, Runs after, and Sessions\./);
+    expect(modalPage).toMatch(/The body order is the Review panel, the Task read view, and the Run settings as values, which end with the rows Runs after and Sessions\./);
     expect(modalPage).toMatch(/\*\*Ready for your review\*\* for Needs review, and the state's own name for Stalled and Blocked by agent/);
     expect(modalPage).toMatch(/The subtitle is the repository name alone\./);
     expect(modalPage).toMatch(/In modes new and promote the subtitle reads “repository · in column”\./);
@@ -159,6 +159,42 @@ describe("the footer", () => {
     expect(rule(tasksStyles, ".taskModalNotes")).toMatch(/flex: 1 1 160px; min-width: 0/);
     expect(modalPage).toMatch(/Then the actions, in this order: \*\*Open folder\*\*, \*\*Start in separate worktree\*\*, \*\*Add to queue\*\* or \*\*Remove from queue\*\*, \*\*Start session\*\*, \*\*Requeue task\*\*, \*\*Mark done\*\*, and \*\*Save\*\*\./);
     expect(modalPage).toMatch(/\| Needs review \| \*\*Delete task\*\*, \*\*Requeue task\*\*, primary \*\*Mark done\*\* \|/);
+  });
+});
+
+describe("Runs after, Sessions, and Start at rows", () => {
+  it("draws the items without rules or a legend, then one add line with the borderless select and the Secondary action", () => {
+    expect(rule(tasksStyles, ".taskSessions")).toMatch(/align-self: stretch;[^}]*flex-direction: column/);
+    expect(rule(tasksStyles, ".taskSessionsItem")).toMatch(/min-height: var\(--control-height\)/);
+    expect(rule(tasksStyles, ".taskSessionsItem")).not.toMatch(/border/);
+    expect(tasksStyles).not.toMatch(/\.taskSessions legend/);
+    expect(rule(tasksStyles, ".taskSessionsAssign")).toMatch(/display: flex; align-items: center/);
+    expect(rule(tasksStyles, ".taskSessionsAssign > .commandSelect.taskValueSelect")).toMatch(/margin-inline-start: calc\(-1 \* var\(--space-3\) - 1px\)/);
+    expect(rule(tasksStyles, ".taskRow .commandQuietAction, .taskRow .commandSecondaryAction")).toMatch(/width: auto/);
+    for (const name of ["TaskAfterField.tsx", "TaskSessionsField.tsx"]) {
+      const source = read(tasks, name);
+      expect(source).not.toMatch(/<fieldset|<legend/);
+      expect(source).toMatch(/<CommandSelect id=\{selectId\}[^>]*className="taskValueSelect"/);
+    }
+  });
+
+  it("sizes Start at compact: about 220px, never wider than the value, 32px on a fine pointer and 44px otherwise", () => {
+    expect(rule(tasksStyles, ".taskStartTimeField input[type=\"datetime-local\"]")).toMatch(/width: 220px; max-width: 100%; min-height: var\(--control-compact\)/);
+    expect(tasksStyles).toMatch(/@media \(max-width: 760px\), \(pointer: coarse\) \{ \.taskStartTimeField input\[type="datetime-local"\] \{ min-height: 44px; \} \}/);
+    expect(rule(tasksStyles, ".taskRowInline")).toMatch(/display: flex; flex-wrap: wrap; align-items: center/);
+    // The base time field of the Schedule panel keeps its control height.
+    expect(rule(tasksStyles, ".taskTimeInput")).toMatch(/min-height: var\(--control-height\)/);
+  });
+
+  it("states the rows, the hints, and the field's size in the owner pages", () => {
+    expect(modalPage).toMatch(/\*\*Runs after\*\*, \*\*Sessions\*\*, and \*\*Start at\*\* are the last rows of the same Run settings list, in that order, after GitHub issue\./);
+    expect(modalPage).toMatch(/One muted hint closes the value: “Starts only when every task here is Done or deleted\.”/);
+    expect(modalPage).toMatch(/One muted hint closes the value: “An assigned session can report this task complete or blocked\.”/);
+    expect(modalPage).toMatch(/One muted hint closes the value: “The agent judges Validated with the user and your own condition\.”/);
+    expect(modalPage).toMatch(/the muted hint “Starts at this time or later; setting it queues the task\.”/);
+    expect(modalPage).toMatch(/The field is compact: 32px high on a fine pointer, and 44px at 760px and narrower and on a coarse pointer\./);
+    expect(modalPage).not.toMatch(/Runs after is a fieldset|Sessions\*\* follows Runs after\. It is a fieldset/);
+    expect(read("docs", "internal", "design", "task-board.md")).toMatch(/In that row the field is compact: 32px high on a fine pointer, 44px on a coarse pointer and at 760px and narrower, about 220px wide/);
   });
 });
 

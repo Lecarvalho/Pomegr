@@ -221,6 +221,11 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   // The row can create an issue only from the saved text, so an unsaved draft holds it. The footer already says so when it can.
   const issueRow = <TaskIssueRow number={issueNumber} offered={issueOffered} repositoryId={repositoryId} repositoryName={repositoryName} taskId={task.id}
     unsaved={dirty} saveFirst={saveLine || confirming ? null : SAVE_FIRST_LINE} onChanged={onChanged} />;
+  // Runs after, Sessions and Start at are rows of the same list as the settings above them.
+  const afterRow = <TaskAfterField task={task} tasks={board.tasks} columnName={(columnId) => board.columns.find((column) => column.id === columnId)?.name ?? null}
+    editable={!locked} busy={afterBusy || blocked} error={afterError} focusSelect={focus === "after"} onChange={(after) => void changeAfter(after)} />;
+  const sessionsRow = <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} busy={assigning || blocked} error={assignError}
+    onAssign={(sessionId) => void changeAssignment(sessionId, true)} onUnassign={(sessionId) => void changeAssignment(sessionId, false)} />;
   const modelNotice = observedModelDiffers(draft.run.model, task.session?.observedModel)
     ? <ModelDiffersNotice planned={draft.run.model} observed={task.session?.observedModel} />
     : undefined;
@@ -272,7 +277,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
             {images.error && <p className="newTaskError" role="alert">{images.error}</p>}
             {failure && <p className="newTaskError" role="alert">{failure}</p>}
           </>} />
-        <TaskRunSettingsRead task={task} board={board} models={models} conditionsListed={reviewListsConditions(task)} notice={modelNotice} issue={issueRow} onOpenTask={onOpenTask} />
+        <TaskRunSettingsRead task={task} board={board} models={models} conditionsListed={reviewListsConditions(task)} notice={modelNotice} issue={issueRow}
+          extra={<>{afterRow}{sessionsRow}</>} onOpenTask={onOpenTask} />
       </>
       : <>
         <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure}
@@ -282,12 +288,10 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
           <RunFields run={draft.run} models={models} notice={modelNotice} onChange={setRun} />
           <CompleteWhenField draft={draft.completeWhen} onDraftChange={setCompleteWhen} />
           {issueRow}
+          {afterRow}
+          {sessionsRow}
+          {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}
         </RunSettings>
       </>}
-    <TaskAfterField task={task} tasks={board.tasks} columnName={(columnId) => board.columns.find((column) => column.id === columnId)?.name ?? null}
-      editable={!locked} busy={afterBusy || blocked} error={afterError} focusSelect={focus === "after"} onChange={(after) => void changeAfter(after)} />
-    <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} busy={assigning || blocked} error={assignError}
-      onAssign={(sessionId) => void changeAssignment(sessionId, true)} onUnassign={(sessionId) => void changeAssignment(sessionId, false)} />
-    {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}
   </TaskModalFrame>;
 }

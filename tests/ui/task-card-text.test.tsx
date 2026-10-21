@@ -43,6 +43,19 @@ describe("taskTextPreview", () => {
     });
   });
 
+  it("joins every leading line of only tags into the tags, and leads with the first text after them", () => {
+    expect(taskTextPreview("[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent consume atomic across browser tabs\nProblem: two tabs")).toEqual({
+      lead: "Make plan-intent consume atomic across browser tabs", rest: "Problem: two tabs", tags: ["frontend", "tech-debt", "ui"],
+    });
+    expect(taskTextPreview("[a]\n[b]\r\n\r\nTitle")).toEqual({ lead: "Title", rest: "", tags: ["a", "b"] });
+    expect(taskTextPreview("[ui]\n\n[TODO] write tests\nmore")).toEqual({ lead: "[TODO] write tests", rest: "more", tags: ["ui"] });
+    expect(taskTextPreview("Title\n[a]\nBody").tags).toEqual([]);
+  });
+
+  it("keeps a text of only tags as its title on one line, with no chips, however many lines hold the tags", () => {
+    expect(taskTextPreview("[a]\n[b]\n")).toEqual({ lead: "[a] [b]", rest: "", tags: [] });
+  });
+
   it("leaves brackets elsewhere as text, and keeps a text of only tags as its title", () => {
     expect(taskTextPreview("Fix [ bug ] in the cart")).toEqual({ lead: "Fix [ bug ] in the cart", rest: "", tags: [] });
     expect(taskTextPreview("[wip] [ui]")).toEqual({ lead: "[wip] [ui]", rest: "", tags: [] });
@@ -81,6 +94,11 @@ describe("taskCardTitle", () => {
     expect(taskCardTitle(task({ text: "\n\n  # Fix the cart\n\nMore\n\n" }))).toBe("Fix the cart\n\nMore");
     expect(taskCardTitle(task({ text: "[ bug ]\n\n" }))).toBe("[ bug ]");
     expect(taskCardTitle(task({ text: "" }))).toBe("");
+  });
+
+  it("leaves the tags of every leading tag line out of the title and its tooltip", () => {
+    expect(taskCardTitle(task({ text: "[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent atomic\nProblem: two tabs" }))).toBe("Make plan-intent atomic\nProblem: two tabs");
+    expect(taskCardTitle(task({ text: "[a]\n[b]" }))).toBe("[a] [b]");
   });
 
   it("is the same text the card's tooltip carries", () => {

@@ -384,7 +384,7 @@ describe("Run on, Effort and Complete when", () => {
     expect(own()).toHaveValue("");
     expect(own()).toHaveAttribute("maxlength", String(TASK_BOUNDS.ownConditionLength));
     expect(own()).toHaveAttribute("placeholder", "Own condition, judged by the agent (optional)");
-    expect(screen.getByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).toBeInTheDocument();
+    expect(screen.getByText("The agent judges Validated with the user and your own condition.")).toBeInTheDocument();
   });
 
   it("groups the options by provider from the served model list and always offers Default model", async () => {

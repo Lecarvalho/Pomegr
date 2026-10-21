@@ -49,8 +49,10 @@ describe("TaskSessionsField", () => {
     const onUnassign = vi.fn();
     render(<TaskSessionsField started={started} assigned={[first, second]} onUnassign={onUnassign} />);
     const group = screen.getByRole("group", { name: "Sessions" });
-    expect(group.tagName).toBe("FIELDSET");
+    // Sessions is a row of the Run settings list: a group in the value, named by the row's label.
     expect(group).toHaveClass("taskSessions");
+    expect(group.closest(".taskRow")?.querySelector("dt")).toHaveTextContent("Sessions");
+    expect(document.querySelector("fieldset, legend")).toBeNull();
     const rows = within(group).getAllByRole("listitem");
     expect(rows).toHaveLength(3);
     expect(within(rows[0]).getByRole("link", { name: "Started session" })).toHaveAttribute("href", "/sessions/claude-started");

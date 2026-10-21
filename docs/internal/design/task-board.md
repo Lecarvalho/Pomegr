@@ -329,12 +329,16 @@ The head actions appear in this order:
 
 ### Tags
 
-- The tags are the leading run of tokens at the start of the first line of the task text.
+- The tags are the run of tokens at the very start of the task text.
 - A token is `[`, optional spaces, a word, optional spaces, and `]`.
 - A word has 1 to 24 letters, digits, `.`, `_`, or `-`.
 - A word starts with a letter or a digit.
-- Whitespace separates the tokens.
+- Any whitespace separates the tokens, line breaks included.
+- Leading lines that hold only tags all join the run.
 - A token that touches other text ends the run.
+- A blank line ends the run: two line breaks with only spaces and tabs between them.
+- A single line break joins the lines, so a body paragraph that starts with a bracket stays text below a blank line.
+- The run starts at the very start of the text, after any whitespace that is not a line break.
 - The run stops at the first thing that is not a token.
 - Brackets anywhere else stay text.
 - A run holds at most 8 tags.
@@ -342,11 +346,12 @@ The head actions appear in this order:
 - The first spelling of a repeated word stays.
 - The word `image` is never a tag, so the `[image]` marker of an inline image stays text.
 - The run is removed from the title.
-- A first line of only tags lets the next non-empty line lead.
+- The first text after the run leads, so lines of only tags at the start never lead.
 - A blank line never leads, also one that holds only spaces or a Windows line break.
 - The first non-empty line after the run is the title line.
 - A leading Markdown heading mark (`#` to `######` and a space) is left out of the title line on every surface.
-- A text of only tags keeps them as its title and draws no chips.
+- A text of only tags keeps them as its title, its lines joined on one line, and draws no chips.
+- The rich Task field is the exception: it draws the tags of such a text as chips over an empty title line, see [task-modal.md](task-modal.md#tags-in-rich-text).
 - Tags are display only.
 - The stored task text keeps its brackets.
 - No stored field or request shape changes because of a tag.
@@ -619,7 +624,8 @@ In the desktop app the section holds these parts:
 
 - A time field (`.taskTimeInput`) is a native `time` or `datetime-local` input.
 - It is at control height with the stronger control line, the control radius, and the data font.
-- The task modal's **Start at** field uses it for a task's own start time.
+- The task modal's **Start at** row uses it for a task's own start time.
+- In that row the field is compact: 32px high on a fine pointer, 44px on a coarse pointer and at 760px and narrower, about 220px wide, and never wider than the row's value. See [Start at](task-modal.md#start-at).
 
 ### Scheduled task
 

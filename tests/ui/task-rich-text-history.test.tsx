@@ -357,7 +357,7 @@ describe("select all is the person's intent, not a place of the selection", () =
     expect(chips()).toEqual(["backend"]);
   });
 
-  it("keeps the break of an Enter pressed after the tags", () => {
+  it("keeps one line break after the tags for an Enter, and drops the placeholder break", () => {
     const { last } = renderField("");
     field().append("[a] ");
     window.getSelection()!.selectAllChildren(field());
@@ -366,7 +366,7 @@ describe("select all is the person's intent, not a place of the selection", () =
     title()!.append("\n\n");
     caretAt(titleText(), 1);
     fireEvent.input(field(), { inputType: "insertParagraph" });
-    expect(last()).toBe("[a] \n\n");
+    expect(last()).toBe("[a] \n");
   });
 
   it("puts an image over a select all in place of everything, chips too, as typing does", () => {

@@ -267,7 +267,9 @@ describe("Edit, the action", () => {
     expect(within(row).getByText("None")).toBeInTheDocument();
     expect(issueButton()).toBeEnabled();
     expect(issueButton()).toHaveClass("commandQuietAction");
-    expect(row.parentElement?.lastElementChild).toBe(row);
+    // It follows Complete when, and Runs after and Start at close the same list.
+    expect(row.previousElementSibling).toHaveTextContent(/^Complete when/);
+    expect(row.nextElementSibling).toHaveTextContent(/^Runs after/);
     // Nothing is explained or sent until the confirmation is opened.
     expect(confirmGroup()).toBeNull();
     expect(screen.queryByText(HELPER)).toBeNull();

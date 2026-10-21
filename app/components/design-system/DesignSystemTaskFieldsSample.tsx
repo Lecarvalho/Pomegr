@@ -8,12 +8,16 @@ import { ISSUE_CONFIRM_FACTS, IssueCreateCheckbox, IssueCreateRowView, TaskIssue
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { TaskQueueWait } from "../tasks/TaskQueueWait";
 import { PromoteIssueSummary, PromoteOutcomeNotice } from "../tasks/TaskModalPromote";
+import { TaskAfterField } from "../tasks/TaskAfterField";
 import { TaskReadView } from "../tasks/TaskReadView";
 import { TaskReviewPanel } from "../tasks/TaskReviewPanel";
 import { RunSettings } from "../tasks/TaskRows";
 import { ModelDiffersNotice, TaskRunSettingsRead } from "../tasks/TaskRunSettingsRead";
 import { TaskSessionLine } from "../tasks/TaskSessionLine";
+import { TaskSessionsField, type TaskSessionCandidate } from "../tasks/TaskSessionsField";
+import { StartAtRowView } from "../tasks/TaskStartTimeField";
 import { CompleteWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
+import { TASK_SCHEDULE_FAILURE_MESSAGE } from "../tasks/task-desktop";
 import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_COMPLETE_WHEN, DEFAULT_RUN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
@@ -23,7 +27,7 @@ import { NO_KNOWN_HOLD } from "../tasks/task-wait-model";
 import { SAVE_FIRST_LINE } from "../tasks/use-task-draft";
 import type { Task, TaskRun } from "../../../shared/task-contract";
 import { Sample, Section } from "./DesignSystemKit";
-import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
+import { BOARD_PLAN, BOARD_RUNNING, P15_AFTER, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
 
 const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] } as const;
 const noop = () => undefined;
@@ -57,6 +61,16 @@ const REVIEWED_REPORT = {
 };
 const DONE_REPORT = { at: "", blockReason: null, results: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: true }, { check: "ci_passed" as const, passed: true }] };
 const SAMPLE_SESSION = <TaskSessionLine title="Add a retry budget to the uploader" sessionId="claude:design-system-review" />;
+const columnName = (id: string) => BOARD_PLAN.columns.find((column) => column.id === id)?.name ?? null;
+const CANDIDATES: TaskSessionCandidate[] = [{ id: "claude:design-system-c1", title: "Fix the flaky upload test", state: "working" }];
+const ASSIGNED = [{ id: "claude:design-system-resume", title: "Resume the retry back-off", state: "working", observedModel: "model-large" }];
+const STARTED_SESSION = { id: "claude:design-system-review", title: "Add a retry budget to the uploader", state: "idle", observedModel: "model-large" };
+
+/** The Start at row with a field of its own state. It sends nothing here. */
+function StartAtDemo({ initial = "", failure = null }: { initial?: string; failure?: string | null }) {
+  const [value, setValue] = useState(initial);
+  return <StartAtRowView value={value} failure={failure} onChange={setValue} onCommit={noop} />;
+}
 
 export function TaskFieldsSection() {
   const [run, setRun] = useState<TaskRun>({ provider: "claude", model: "model-large", effort: "high" });
@@ -92,6 +106,10 @@ export function TaskFieldsSection() {
       </Sample>
       <Sample label="Complete when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">
         <RunSettings><CompleteWhenField draft={fresh} onDraftChange={setFresh} /></RunSettings>
+      </Sample>
+      <Sample label="Start at, in the Task modal" note="A task that still waits for a session ends the list with Start at: a compact date-and-time field (32px high, about 220px wide, left-aligned) with the hint under it. The field saves by itself when it loses focus. A refused time shows one fixed line under it.">
+        <RunSettings><StartAtDemo /></RunSettings>
+        <RunSettings><StartAtDemo initial="2026-10-22T02:00" failure={TASK_SCHEDULE_FAILURE_MESSAGE} /></RunSettings>
       </Sample>
       <Sample label="Review panel, needs review" note="A started task that needs the user opens with this panel on the raised fill: the state in words, the agent's report line, the agent's own words in an amber notice when it gave any, and each checked condition with its result. Passed is green with a check glyph. Not verified is muted: Pomegr had no current evidence, so the condition is neither passed nor failed. Validated with the user and the own condition are judged by the agent, so they show Agent-reported. The session closes the panel.">
         <TaskReviewPanel task={{ state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT }} session={SAMPLE_SESSION} />
@@ -154,7 +172,7 @@ export function TaskFieldsSection() {
         <TaskQueueWait detail={{ place: "Not in the start order yet", lines: ["Its own start time has not come."] }} />
         <TaskQueueWait detail={{ place: "Next to start", lines: [NO_KNOWN_HOLD] }} />
       </Sample>
-      <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel and a task's own start time.">
+      <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel. The task modal's Start at row draws it compact: 32px, about 220px wide, with its hint under it.">
         <div className="taskGateField">
           <label className="taskGateFieldLabel" htmlFor="design-system-task-time">Stop starting tasks after</label>
           <input id="design-system-task-time" type="time" className="taskTimeInput" value={startAt} onChange={(event) => setStartAt(event.currentTarget.value)} />
@@ -222,6 +240,9 @@ function TaskModalEditSamples() {
             <RunFields run={run} models={MODELS} onChange={setRun} />
             <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
             <IssueRowDemo disabled={dirty} />
+            <TaskAfterField task={P15_AFTER} tasks={BOARD_PLAN.tasks} columnName={columnName} editable onChange={noop} />
+            <TaskSessionsField started={null} assigned={ASSIGNED} candidates={CANDIDATES} onAssign={noop} onUnassign={noop} />
+            <StartAtDemo initial="2026-10-22T02:00" />
           </RunSettings>
         </TaskModalChrome>
       </div>
@@ -242,7 +263,11 @@ function TaskModalEditSamples() {
           <TaskReviewPanel task={{ state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT }} session={SAMPLE_SESSION} />
           <TaskReadView text={DOCUMENT_TEXT} urls={SAMPLE_IMAGE_URLS} note={STARTED_REQUEUE_NOTE} />
           <TaskRunSettingsRead task={REVIEWED_TASK} board={BOARD_RUNNING} models={MODELS} conditionsListed
-            issue={<IssueRowDemo disabled={false} />} />
+            issue={<IssueRowDemo disabled={false} />}
+            extra={<>
+              <TaskAfterField task={P15_AFTER} tasks={BOARD_PLAN.tasks} columnName={columnName} editable={false} />
+              <TaskSessionsField started={STARTED_SESSION} assigned={ASSIGNED} candidates={CANDIDATES} onAssign={noop} onUnassign={noop} />
+            </>} />
         </TaskModalChrome>
       </div>
     </Sample>

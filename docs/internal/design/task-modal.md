@@ -78,9 +78,9 @@ The New task and Task forms share these fields. The Promote form shares all but 
 ### Run settings
 
 - The Run settings are a 12px/500 muted `h3` **Run settings** over a ruled label/value list (`dl.taskRows`).
-- The list holds these rows in order: Feature, Run on, Effort, Remote Control, When done, Complete when, and, in mode edit, GitHub issue.
+- The list holds these rows in order: Feature, Run on, Effort, Remote Control, When done, Complete when, and, in mode edit, GitHub issue, Runs after, Sessions, and Start at.
 - Remote Control is a Claude Code row only.
-- Mode new and mode promote draw the same rows, without GitHub issue.
+- Mode new and mode promote draw the same rows, without GitHub issue, Runs after, Sessions, and Start at.
 - Mode new keeps its own checkbox for that.
 - A row (`.taskRow`) is a label (`dt`) and a value (`dd`) in two columns: the label is 148px.
 - The label is muted 12px text.
@@ -165,13 +165,19 @@ The New task and Task forms share these fields. The Promote form shares all but 
 
 ### Tags in rich text
 
-- The tag run is the leading run of `[ word ]` tokens at the start of the first line.
+- The tag run is every `[ word ]` token at the very start of the text.
+- Any whitespace separates the tokens, line breaks included, so leading lines that hold only tags all join the run.
+- The run stops at the first thing that is not a token, and at a token that touches other text.
+- A blank line ends the run: two line breaks with only spaces and tabs between them.
+- A single line break joins the lines, so a body paragraph that starts with a bracket stays text below a blank line.
+- The run starts at the very start of the text, and its leading whitespace is whatever the parser skips, so a text that starts with a no-break space, a byte order mark, or an em space has chips.
 - The shared parser (`splitTaskTags` in `app/components/tasks/task-tags.ts`) reads the run.
 - The run is a display heuristic.
 - The run is not a judgment about the task.
 - A tag is display only.
 - The text keeps its brackets.
-- The editor's title line is the line right after the chips, as typed.
+- A chip stands for its token and the whitespace after it, line breaks included.
+- The editor's title line is the first text after the chips, as typed.
 - Every other surface reads the title with `splitTaskTitle`, which skips blank lines and a heading mark.
 - The editor's title line does not skip blank lines or a heading mark.
 - The field draws the run as chips (`.taskRichTags`) in one wrapping row above the title line.
@@ -188,25 +194,37 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - The line is empty while the field has no chip.
 - The line follows each conversion and each removal of a chip.
 - The row inside the textbox keeps its group name “Tags: backend, bug”.
-- A stored text whose lines after the tag run are all blank, such as “[a] [b]”, is drawn as plain text with no chips.
-- A card and the read view show that text as a bare title with no chips too.
-- A stored text with any other text after the run draws its chips.
-- While typing, whole tokens at the very start of the first line become chips when a space, a tab, or a line break follows the last one.
-- Typing converts a token of a text that was drawn as plain text too.
-- A token at the very end of the text stays text.
-- The person may still be typing that token.
-- A paste at the start converts every leading token.
+- A text that holds only tags draws them as chips with an empty title line, stored or typed.
+- The caret waits in that empty title line.
+- A card, the Search bar, the read view, and the Tasks home show a text of only tags as a bare title with no chips, so a task is never untitled there.
+- A token in the run position becomes a chip as soon as its closing bracket is typed.
+- It needs no space and no text after it, and it converts in an empty field and on a line of its own below other tags.
+- A token that is not complete, that is not in the run position, or that holds the word `image` stays text.
+- A paste converts every token of the run the same way.
+- A token that the person completes against the text after it gets one space after it, so the token is a tag.
+- Text typed against the last chip also gets that space before it.
+- A paste gets the same: every token of the paste that touches the next token or the text gets one space.
+- A paste that holds "[a][b]Title" is "[a] [b] Title", as it is when it is typed one character at a time.
+- A paste in the middle of the text, away from the run, is left as it is.
+- An image put against a chip that nothing follows gets that space too, so the chip stays a tag.
+- The space is part of the text, and the field does not add one where whitespace or the end of the text already follows.
+- Completing a token at the run position always makes it a tag, also when it wraps existing text: “foobar” with “[” before it and “]” after “foo” is “[foo] bar”.
+- Undo gives that text back as it was before the bracket.
+- A space the person types right after the space the field added is that space, not a second one.
+- A key that moves the caret or does more than type a character, a pointer press, a blur, an undo or redo, and Backspace on a chip each end that moment.
 - After a conversion the caret stays at the start of the title line.
 - Typing inside a line that is already drawn does not touch the nodes and does not move the caret.
 - The field changes its nodes only when typing changes where the chips, the title line, and the rest begin.
 - It then moves and splits the text nodes the browser made.
 - A conversion to a chip draws the field again from new nodes, because the token's text leaves the node the browser typed it into.
-- The field also draws its nodes again when a text is set from outside, when Backspace removes the last chip, when undo or redo gives a step back, and when the browser leaves nodes that are not text and images.
+- The field also draws its nodes again when a text is set from outside, when Backspace removes the last chip, when undo or redo gives a step back, when the field adds a space, and when the browser leaves nodes that are not text and images.
 - The selection is put back by its character offset only when a change moved it.
 - A caret inside a chip goes to the start of the title line.
 - While an IME composition is open, the field does not convert or change its nodes.
 - The field does both when the composition ends.
 - Backspace with the caret at the very start of the title line removes the last chip in one key press.
+- A chip that nothing follows, not even a space, was just completed: Backspace turns it back into its text without the closing bracket, and the caret is at the end of that text.
+- That text can be corrected, and its closing bracket typed again makes the chip again.
 - Backspace at the start of the title line with no chip works as it does anywhere else.
 - The field keeps its own undo history (`RichHistory` in `app/components/tasks/task-rich-history.ts`), because the browser's undo steps name the nodes the field moves and draws again.
 - A step is the whole text with the caret, so undo and redo can only give back a text the field has held.
@@ -246,17 +264,22 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - The value is then empty, the typed text, or the image.
 - Undo brings those chips back.
 - Copy and cut of a selection inside the text work as the browser does them.
-- A line break the browser leaves where the last text of the title was deleted is dropped, when chips lead the line with a title line of their own.
+- A line break the browser leaves where the last text of the title was deleted is dropped after chips, also after chips that end in a line break.
 - Deleting the whole title of a task that is only a title leaves its chips and an empty title line.
-- A chip serializes to its token as typed, with the spaces and tabs after it.
-- The field does not normalize the spacing.
+- The stored text does not grow with each cycle of typing a title and deleting it.
+- The second line break of an Enter after chips is dropped the same way, so Enter adds one line break.
+- A line break that a paste brings is kept.
+- A chip serializes to its token as typed, with the whitespace after it.
+- The field does not normalize the spacing, apart from the one space it adds after a token.
 - This exact text keeps the value, the counter, the Save draft, and every API value equal to the text as if the brackets had been typed.
 - A repeated token keeps its text inside the chip it repeats, so the text reads back whole.
 - Backspace removes a chip and the repeats it holds together.
 - When the first line holds only tags, the line break after them belongs to the last chip.
 - The next line is then the title line.
-- A line break with only blank lines after it is Enter pressed after the tags, and stays with the chips.
-- A line break with text after it belongs to the title line when the field already draws a title line under the chips.
+- Enter pressed after the tags leaves one line break, which belongs to the last chip.
+- An Enter at the start of the title ends the tag line the same way.
+- Deleting text, not typing, can leave the line break after the last chip with text after it.
+- That line break then belongs to the title line, while the field already draws a title line under the chips.
 - The person who empties a title keeps an empty title line, so the next line stays the next line and typing goes into the title.
 - An image marker is never a tag.
 - A pasted or attached image never goes before the chips.
@@ -325,7 +348,7 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - A blank own condition means no agent-judged condition.
 - The own condition has no checkbox.
 - “Validated with the user” is agent-judged too.
-- A muted helper closes the value: “Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.”
+- One muted hint closes the value: “The agent judges Validated with the user and your own condition.”
 - The results of the agent's report are in the [Review panel](#body-a-task-that-has-started), not here.
 
 ### GitHub issue
@@ -452,43 +475,66 @@ A card's title opens the task modal for one stored task. A task that has not sta
 - The rows are the [Task fields](#task-fields).
 - In the Feature row, the folded list leaves out the open task.
 - In the Feature row, the rows are in board order, and a row has no step number.
-- **Runs after** follows the Run settings.
-- Runs after is a fieldset with the 12px/500 legend **Runs after**, built like Sessions.
-- Runs after lists one ruled row for each task the task runs after, in the order they were added.
-- A row holds the task's title over the muted 12px role “T-13 · Backlog”, with the ID in the data font.
-- A row ends with that task's state chip and the Quiet **Remove**. Its accessible name is “Remove T-13”.
-- Under the rows is one wrapping row: a select of the board's other tasks that are not Done and not listed, and the Secondary **Add**.
-- Each option reads “T-13 · title”. The placeholder is “Choose a task”, or “No other open task on this board” when it has no option.
-- With 8 rows the select is disabled and reads “It runs after 8 tasks, the most it can”.
-- One muted helper line follows: “This task starts only when every task here is Done or deleted. Pomegr starts and stops nothing for it.”
+- **Runs after**, **Sessions**, and **Start at** are the last rows of the same Run settings list, in that order, after GitHub issue.
+- Start at shows only for a task that still waits for a session.
+- These rows have the label column, the rules, and the heights of the other rows.
+- The first control or item of their value aligns with the label's first line.
+
+#### Runs after
+
+- **Runs after** is a row whose value is a group named by its label.
+- The value lists one item for each task the task runs after, in the order they were added.
+- An item holds the task's title over the muted 12px role “T-13 · Backlog”, with the ID in the data font.
+- An item ends with that task's state chip and the Quiet **Remove**. Its accessible name is “Remove T-13”.
+- Under the items is one add line: the borderless value select of the board's other tasks that are not Done and not listed, and the Secondary **Add**.
+- The select is named “Task this one runs after”. Each option reads “T-13 · title”.
+- The placeholder is “Choose a task”, or “No other open task on this board” when it has no option.
+- With 8 items the select is disabled and reads “It runs after 8 tasks, the most it can”.
+- One muted hint closes the value: “Starts only when every task here is Done or deleted.”
+- That Pomegr starts and stops nothing for the list is in [Tasks](../architecture/tasks.md#runs-after).
 - A list that would make tasks wait for each other is refused with the one error line “These tasks would wait for each other, so nothing was changed.”
 - Any other failure reads “The change could not be saved.”
 - Add and Remove save by themselves. They are not part of the draft.
 - Opened from the card's **Runs after…**, the select takes focus.
-- **Sessions** follows Runs after. It is a fieldset with the 12px/500 legend **Sessions**.
-- Sessions lists one ruled row for each session: the session Pomegr started first, then the assigned sessions in the order they were assigned.
-- A row holds the session title as a Text link to the session, over the muted 12px role “Started by Pomegr” or “Assigned”.
+
+#### Sessions
+
+- **Sessions** is a row whose value is a group named by its label.
+- The value lists one item for each session: the session Pomegr started first, then the assigned sessions in the order they were assigned.
+- An item holds the session title as a Text link to the session, over the muted 12px role “Started by Pomegr” or “Assigned”.
 - A session with no title reads “Untitled session”.
-- A row ends with the session's own state chip, in the Sessions list words and tones.
-- An assigned row then holds the Quiet **Unassign**. Its accessible name is “Unassign” and the session title.
-- The row of the session Pomegr started has no Unassign.
-- Under the rows is one wrapping row: a select of sessions and the Secondary **Assign session**.
+- An item ends with the session's own state chip, in the Sessions list words and tones.
+- An assigned item then holds the Quiet **Unassign**. Its accessible name is “Unassign” and the session title.
+- The item of the session Pomegr started has no Unassign.
+- Under the items is one add line: the borderless value select of sessions and the Secondary **Assign session**.
+- The select is named “Session to assign”.
 - The select offers the ten newest sessions of the repository that are not Closed and not on the task. Each option reads “title · state”.
-- The select placeholder is “Choose a session”, or “No other session in this repository” when it has no option, and then it is disabled.
+- The placeholder is “Choose a session”, or “No other session in this repository” when it has no option, and then the select is disabled.
 - **Assign session** is disabled until a session is chosen.
-- One muted helper line follows: “An assigned session can report this task complete or blocked. Pomegr does not start or stop it.”
-- A failed assign or unassign shows one error line under the helper.
+- One muted hint closes the value: “An assigned session can report this task complete or blocked.”
+- That Pomegr does not start or stop an assigned session is in [Tasks](../architecture/tasks.md#assigned-sessions).
+- A failed assign or unassign shows one error line under the hint.
 - Assign and Unassign save by themselves, so they are not part of the draft.
-- A task that still waits for a session ends with **Start at**, its own start time.
-- **Start at** is a `datetime-local` time field that saves by itself.
-- The Schedule design owns the `datetime-local` field. See [task-board.md](task-board.md).
+
+#### Start at
+
+- **Start at** is the row of a task's own start time.
+- The value is one `datetime-local` field and the muted hint “Starts at this time or later; setting it queues the task.”
+- The field is sized to its content: about 220px wide, and never wider than the value.
+- The field is left-aligned in the value, not stretched across it.
+- The field is compact: 32px high on a fine pointer, and 44px at 760px and narrower and on a coarse pointer.
+- The hint sits under the field, because the value column of the 640px modal is too narrow for both on one line.
+- The row is a wrapping line, so a wider value column would put the hint beside the field.
+- The field saves by itself when it loses focus, so it is not part of the draft.
+- A refused time shows one fixed `role="alert"` line under the field.
+- The Schedule design owns the field's behavior and its base look. See [Time field](task-board.md#time-field).
 
 ### Body, a task that has started
 
 A task has started when it has a session or an outcome: Needs review, Stalled, Blocked by agent, or Done. The monitor refuses a change to it until it is requeued.
 
 - The body has no Task field, no Save, no Attach image, no counter, and no control in the Run settings.
-- The body order is the Review panel, the Task read view, the Run settings as values, Runs after, and Sessions.
+- The body order is the Review panel, the Task read view, and the Run settings as values, which end with the rows Runs after and Sessions.
 - A started task has no Queue block and no Start at.
 - The Review panel (`.taskReview`) shows when the task needs the user or has an agent report.
 - A task needs the user in the states Needs review, Blocked by agent, and Stalled.
@@ -520,7 +566,7 @@ A task has started when it has a session or an outcome: Needs review, Stalled, B
 - The tag chips follow as one wrapping row of the shared neutral `.commandChip` (`.taskTags`, a group named “Tags”).
 - A text with no tag draws no row.
 - The title follows as a 16px/650 ink `h3`: the first non-empty line of the text after its tags, with no heading mark.
-- When the first line holds only tags, the next non-empty line is the title.
+- When the leading lines hold only tags, the next non-empty line is the title.
 - A blank line never leads, also one that holds only spaces or a Windows line break.
 - A text of only tags is its own bare title and draws no chips.
 - The rest of the text is a document (`.taskDocument`): 14px/1.6 ink in a 14px-gap column.
@@ -550,12 +596,12 @@ A task has started when it has a session or an outcome: Needs review, Stalled, B
 - The Complete when row is left out when the Review panel lists the conditions with their results.
 - GitHub issue is the [row](#github-issue) of the task modal.
 - An amber notice follows the Run on value when the observed model differs from the planned one.
-- **Runs after** draws its rows only, with no Remove and no select.
-- With no row it draws no Runs after block.
-- **Sessions** lists its rows, and Assign and Unassign still work on a started task.
-- A Done task shows its rows and Unassign, and no select.
-- A client that cannot assign draws the rows only.
-- A task with no session then draws no Sessions block.
+- **Runs after** is a row of the same list. It draws its items only, with no Remove, no select, and no hint.
+- A started task that runs after none has no Runs after row.
+- **Sessions** is a row of the same list. It lists its items, and Assign and Unassign still work on a started task.
+- A Done task shows its items and Unassign, and no select.
+- A client that cannot assign draws the items only.
+- A task with no session then has no Sessions row.
 
 ### Footer
 
@@ -877,7 +923,9 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - `/design-system` renders the Task read view with a tag run, a numbered list, code, a UUID, and a date, and again with an inline image.
 - `/design-system` renders the Run settings of a started task, and again with the **Observed model differs** notice under Run on.
 - `/design-system` renders the Queue block for a task behind earlier cards, a queue that is off, a held start, a scheduled task, and no known hold.
-- `/design-system` renders the Runs after block with rows, with the loop line, and read-only for a started task.
+- `/design-system` renders the Runs after row with items, with the loop line, and read-only for a started task.
+- `/design-system` renders the Sessions row with its add line, and with the items only.
+- `/design-system` renders the Start at row empty and with a refused time.
 - `/design-system` renders the rich text Task field with no image, with tags and a title line, with an image in the text, and full with an error line.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
 - The edit samples are a task that has not started, a task that needs review, a started task that has not reported, and the GitHub issue confirmation open.

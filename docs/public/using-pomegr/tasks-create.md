@@ -133,8 +133,8 @@ explains the results.
 In the desktop app or on a paired phone, the first line of **Task** is the title line.
 It uses larger type.
 
-Start it with one or more words in brackets, such as `[ backend ]`, each followed by a
-space. Each word turns into a tag label above the title line while you type. The caret
+Start it with one or more words in brackets, such as `[ backend ]`. Each word turns into
+a tag label above the title line as soon as you type its closing bracket. The caret
 stays at the start of the title.
 
 - A tag is one word of 1 to 24 letters, digits, `.`, `_`, or `-`.
@@ -144,10 +144,15 @@ stays at the start of the title.
 - To remove the last tag, press **Backspace** at the very start of the title line.
 - A tag is a label for you. The task text keeps its brackets.
 - The character count, the saved text, and what the agent reads are the same as if you had typed the brackets.
+- Tags can sit on their own lines. Every line at the start that holds only tags joins the tags, and the title is the first text after them.
+- A blank line ends the tags, so a paragraph below it that starts with a bracket stays text.
+- A tag needs no space after it. If text follows it right away, Pomegr adds one space.
+- A pasted line of tags that touch each other, such as `[a][b]Title`, gets the same spaces.
+- If you press **Backspace** right after typing the closing bracket, the tag becomes text again, without its last bracket, so you can correct it.
 - A pasted line that starts with tags turns all of them into labels.
 - **Ctrl+A** (**Cmd+A** on a Mac) selects the tags too, and **Copy** includes them. **Cut**, **Delete**, or typing over that selection removes them, and **Undo** brings them back.
 - Selecting only the title line and retyping it keeps the tags.
-- A saved task whose text is only tags opens as plain text. The labels come back when you type after the tags.
+- A task whose text is only tags shows its tags as labels over an empty title line. A card shows the tags' text as its title.
 
 ## Attach images
 

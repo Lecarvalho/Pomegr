@@ -6,6 +6,7 @@ import type { Task, TaskAssignedSession } from "../../../shared/task-contract";
 import { SessionTaskCell } from "../tasks/SessionTaskCell";
 import { TaskCard } from "../tasks/TaskCard";
 import { TaskReadView } from "../tasks/TaskReadView";
+import { RunSettings } from "../tasks/TaskRows";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { TaskSessionsField, type TaskSessionCandidate } from "../tasks/TaskSessionsField";
 import { STARTED_REQUEUE_NOTE } from "../tasks/task-presentation";
@@ -56,7 +57,7 @@ function ModalSample({ task, chip, subtitle }: { task: Task; chip: { label: stri
         <span className="taskModalSpacer" aria-hidden="true" />
       </>}>
       {task.session !== null && <TaskReadView text={task.text} urls={NO_IMAGES} note={STARTED_REQUEUE_NOTE} />}
-      <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} onAssign={assign} onUnassign={unassign} />
+      <RunSettings><TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} onAssign={assign} onUnassign={unassign} /></RunSettings>
     </TaskModalChrome>
   </div>;
 }
@@ -75,14 +76,14 @@ export function AssignedSessionsSection() {
       </Sample>
     </div>
     <div className="designSystemGrid designSystemModalGrid">
-      <Sample label="Task modal, Sessions" note="Sessions closes the body: one ruled row per session with its title as a Text link, its role, its own state chip, and a Quiet Unassign for an assigned session. The session Pomegr started has no Unassign. Under the rows, a select of the repository's other sessions and the Secondary Assign session. Try both.">
+      <Sample label="Task modal, Sessions" note="Sessions is a row of the Run settings list: an item for each session with its title as a Text link, its role, its own state chip, and a Quiet Unassign for an assigned session. The session Pomegr started has no Unassign. Then one add line: the borderless select of the repository's other sessions and the Secondary Assign session, with one muted hint. Try both.">
         <ModalSample task={STALLED_RESUMED} chip={{ label: "Stalled", tone: "warning" }} subtitle="pomegr" />
       </Sample>
-      <Sample label="Task modal, Sessions, none yet" note="A task with no session shows only the assign control and its one helper line.">
+      <Sample label="Task modal, Sessions, none yet" note="A task with no session shows only the add line and its one hint.">
         <ModalSample task={T8_IDLE} chip={{ label: "Not queued", tone: "neutral" }} subtitle="pomegr" />
       </Sample>
       <Sample label="Sessions, paired phone or browser without assign" note="A client that cannot assign draws the rows only.">
-        <div className="designSystemTaskFrame"><TaskSessionsField started={WORKING_SHARED.session} assigned={WORKING_SHARED.assigned ?? []} /></div>
+        <div className="designSystemTaskFrame"><RunSettings><TaskSessionsField started={WORKING_SHARED.session} assigned={WORKING_SHARED.assigned ?? []} /></RunSettings></div>
       </Sample>
     </div>
     <div className="designSystemGrid">

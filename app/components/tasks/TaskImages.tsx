@@ -4,9 +4,10 @@ import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useStat
 import { TASK_BOUNDS } from "../../../shared/task-contract";
 import { ImageGlyph } from "./TaskGlyphs";
 import { TASK_IMAGE_ACCEPT, TASK_IMAGE_HINT } from "./task-images-desktop";
+import { spaceGluedTokens } from "./task-tags";
 import { RichHistory, type RichCaret, type RichEditKind, type RichStep } from "./task-rich-history";
 import {
-  BLANK_IMAGE, chipLabels, chordLetter, clampAfterTags, drawRichText, hasOwnTitleLine, imageNode, imageNodes, layoutMatches, markRest, offsetOf, reconcileRichText, removeChips,
+  BLANK_IMAGE, chipLabels, chordLetter, clampAfterTags, drawRichText, chipsLength, hasOwnTitleLine, imageNode, imageNodes, layoutMatches, markRest, offsetOf, reconcileRichText, removeChips,
   renewCaret, restoreSelection, richLayout, richTextValue, selectEverything, selectionCoversChips, selectionOffsets, selectionText, titleNode,
   withoutPlaceholder,
 } from "./task-rich-text";
@@ -43,6 +44,8 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
   // The field's own undo history. `began` is the caret where the edit that is about to be reported began.
   const [history] = useState(() => new RichHistory());
   const began = useRef<RichCaret | null>(null);
+  // The field added a space after a token, so the space the person types next at the start of the title is that space. Anything else clears it.
+  const spaced = useRef(false);
   const { urls } = images;
 
   // The chips sit inside the textbox, where a screen reader does not look for a group: the tags are also named beside it, and the textbox is described by them.
@@ -64,24 +67,24 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
 
   useLayoutEffect(() => {
     if (!host.current || drawn.current === value) return;
-    // A stored text is drawn as the card and the read view show it: a text of only tags is plain text, with no chips.
-    drawRichText(host.current, richLayout(value, { stored: true }));
+    drawRichText(host.current, richLayout(value));
     drawn.current = value;
     // A text set from outside starts a new history: undo never goes back across it.
-    history.reset({ value, caret: { start: value.length, end: value.length }, ownTitleLine: false, stored: true });
+    history.reset({ value, caret: { start: value.length, end: value.length }, ownTitleLine: false });
     nameTags();
   }, [value, history]);
   useEffect(decorate);
 
   /**
    * Draws the value the way the field shows it: a leading tag run as chips, the first line as the title line, then the rest. Typing
-   * leaves the nodes alone while they already match. When they do not (a space that ends a tag token, an Enter in the title, a paste),
+   * leaves the nodes alone while they already match. When they do not (a closing bracket that ends a tag token, an Enter in the title, a paste),
    * the nodes the browser made are moved and split into place, and a new chip is drawn from new nodes. The selection is put back by
-   * its character offset in the value, so the caret never jumps.
+   * its character offset in the value, so the caret never jumps. `shift` is the characters the field added before the caret.
+   * An insertion lets a line break after the chips belong to the chips; only a deletion keeps an emptied title line.
    */
-  const settle = (element: HTMLElement, next: string) => {
-    const layout = richLayout(next, { ownTitleLine: hasOwnTitleLine(element) });
-    if (layoutMatches(element, layout)) {
+  const settle = (element: HTMLElement, next: string, inserting: boolean, shift: number) => {
+    const layout = richLayout(next, { ownTitleLine: !inserting && hasOwnTitleLine(element) });
+    if (shift === 0 && layoutMatches(element, layout)) {
       markRest(element, layout);
       return;
     }
@@ -92,7 +95,9 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
     // Moving a node takes the selection off it, but splitting one does not: the selection is put back only when it moved.
     // A title line that is new gets the caret, because a caret beside the new node would type outside it.
     const now = selectionOffsets(element);
-    if (caret && (!moved || !titled || now?.start !== caret.start || now?.end !== caret.end)) restoreSelection(element, caret);
+    if (caret && (shift !== 0 || !moved || !titled || now?.start !== caret.start || now?.end !== caret.end)) {
+      restoreSelection(element, { start: caret.start + shift, end: caret.end + shift });
+    }
   };
 
   const commit = (next: string) => {
@@ -103,18 +108,35 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
   };
 
   const snapshot = (element: HTMLElement, value: string): RichStep => ({
-    value, caret: selectionOffsets(element) ?? { start: value.length, end: value.length }, ownTitleLine: hasOwnTitleLine(element), stored: false,
+    value, caret: selectionOffsets(element) ?? { start: value.length, end: value.length }, ownTitleLine: hasOwnTitleLine(element),
   });
 
   // Text composed with an IME is left as the browser has it until the composition ends, and is one step of the history then.
-  const report = (composing = false, edit: RichEditKind = "other") => {
+  const report = (composing = false, inputType = "") => {
     const element = host.current;
     if (!element) return;
-    const next = withoutPlaceholder(element, settled(richTextValue(element)));
+    const inserting = inputType.startsWith("insert");
+    let next = withoutPlaceholder(element, settled(richTextValue(element)), inputType);
+    const caret = selectionOffsets(element);
+    const collapsed = !composing && inserting && caret !== null && caret.start === caret.end;
+    let shift = 0;
+    // The space the person types right after the space the field added is not a second space.
+    if (collapsed && spaced.current && inputType === "insertText" && caret.start === chipsLength(element) + 1 && next.length === (drawn.current ?? "").length + 1 && next[caret.start - 1] === " ") {
+      next = next.slice(0, caret.start - 1) + next.slice(caret.start);
+      shift = -1;
+    }
+    // A token completed against the text after it, text typed against the last chip, and pasted tokens that touch each other or the text, get a
+    // space, so each token is a tag, as it is when it is typed one character at a time.
+    const separated = collapsed && shift === 0 ? spaceGluedTokens(next, began.current?.start ?? Math.max(0, caret.start - 1), caret.start) : null;
+    if (separated !== null) {
+      next = separated.text;
+      shift = separated.added;
+    }
+    if (!composing) spaced.current = separated !== null;
     if (next === "" && element.childNodes.length > 0) element.replaceChildren();
-    else if (!composing) settle(element, next);
+    else if (!composing) settle(element, next, inserting, shift);
     commit(next);
-    if (!composing) history.record(snapshot(element, next), edit, began.current);
+    if (!composing) history.record(snapshot(element, next), EDIT_KINDS[inputType] ?? "other", began.current);
     began.current = null;
   };
 
@@ -122,8 +144,9 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
   const travel = (step: RichStep | null) => {
     const element = host.current;
     if (!element || !step) return;
+    spaced.current = false;
     if (step.value === "") element.replaceChildren();
-    else drawRichText(element, richLayout(step.value, { stored: step.stored, ownTitleLine: step.ownTitleLine }));
+    else drawRichText(element, richLayout(step.value, { ownTitleLine: step.ownTitleLine }));
     restoreSelection(element, step.caret);
     commit(step.value);
   };
@@ -141,10 +164,14 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
     const caret = selectionOffsets(element);
     const range = selection.getRangeAt(0);
     if (layout.chips.length === 0 || offsetOf(element, range.startContainer, range.startOffset) !== layout.chips.reduce((total, chip) => total + chip.source.length, 0)) return false;
+    spaced.current = false;
     const kept = layout.chips.slice(0, -1).map((chip) => chip.source).join("");
-    const next = settled(kept + layout.title + layout.rest);
+    // A chip that nothing follows was completed a moment ago: Backspace turns it back into its text, minus the closing bracket, so it can be corrected.
+    const last = layout.chips.at(-1)!.source;
+    const text = /\s$/u.test(last) ? "" : last.slice(0, -1);
+    const next = settled(kept + text + layout.title + layout.rest);
     drawRichText(element, richLayout(next));
-    restoreSelection(element, { start: kept.length, end: kept.length });
+    restoreSelection(element, { start: kept.length + text.length, end: kept.length + text.length });
     commit(next);
     history.record(snapshot(element, next), "other", caret);
     return true;
@@ -175,7 +202,8 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
     }
     selection?.removeAllRanges();
     selection?.addRange(range);
-    report();
+    // An image is an insertion: against a chip that nothing follows, it gets the space a typed character would.
+    report(false, "insertFromPaste");
   };
 
   useImperativeHandle(ref, () => ({ focus: (options) => host.current?.focus(options), attach }));
@@ -224,14 +252,18 @@ export function TaskRichText({ labelledBy, describedBy, value, onChange, onBlur,
       contentEditable={readOnly ? false : "plaintext-only"} suppressContentEditableWarning
       onInput={(event) => {
         const input = event.nativeEvent as InputEvent;
-        report(input.isComposing === true, EDIT_KINDS[input.inputType] ?? "other");
+        report(input.isComposing === true, input.inputType ?? "");
         // A line break typed at the end of the title line leaves the browser's caret on the title: set it again, so the next text goes to the new line.
         if ((input.inputType === "insertParagraph" || input.inputType === "insertLineBreak") && host.current) renewCaret(host.current);
       }}
-      onCompositionEnd={() => report()} onBlur={onBlur}
+      onCompositionEnd={() => report(false, "insertCompositionText")}
+      onBlur={() => { spaced.current = false; onBlur?.(); }}
+      onPointerDown={() => { spaced.current = false; }}
       onCopy={(event) => copySelection(event, false)} onCut={(event) => copySelection(event, true)}
       onKeyDown={(event) => {
         if (readOnly || event.nativeEvent.isComposing) return;
+        // A key that moves the caret or does anything but type a character ends the moment in which a typed space is the one the field added.
+        if (event.key.length > 1 || event.ctrlKey || event.metaKey || event.altKey) spaced.current = false;
         const chord = (event.ctrlKey || event.metaKey) && !event.altKey;
         const letter = chordLetter(event);
         if (chord && letter === "z") {

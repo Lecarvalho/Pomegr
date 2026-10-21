@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { RICH_HISTORY_CHARACTERS, RICH_HISTORY_LIMIT, RichHistory, type RichStep } from "../../app/components/tasks/task-rich-history";
 
-const step = (value: string, caret = value.length, extra: Partial<RichStep> = {}): RichStep => ({ value, caret: { start: caret, end: caret }, ownTitleLine: false, stored: false, ...extra });
+const step = (value: string, caret = value.length, extra: Partial<RichStep> = {}): RichStep => ({ value, caret: { start: caret, end: caret }, ownTitleLine: false, ...extra });
 
 function started(value = "") {
   const history = new RichHistory();
-  history.reset(step(value, value.length, { stored: true }));
+  history.reset(step(value, value.length));
   return history;
 }
 
@@ -116,17 +116,17 @@ describe("RichHistory", () => {
   it("starts again when a text is set from outside", () => {
     const history = started("one");
     history.record(step("one two"), "other", null);
-    history.reset(step("three", 5, { stored: true }));
+    history.reset(step("three", 5));
     expect(history.undo()).toBeNull();
     expect(history.redo()).toBeNull();
     history.record(step("three!"), "other", null);
-    expect(history.undo()).toMatchObject({ value: "three", stored: true });
+    expect(history.undo()).toMatchObject({ value: "three" });
   });
 
   it("keeps how a step was drawn", () => {
     const history = started("[a] ");
     history.record(step("[a] \nBody", 9, { ownTitleLine: true }), "other", null);
-    expect(history.undo()).toMatchObject({ value: "[a] ", stored: true, ownTitleLine: false });
+    expect(history.undo()).toMatchObject({ value: "[a] ", ownTitleLine: false });
     expect(history.redo()).toMatchObject({ value: "[a] \nBody", ownTitleLine: true });
   });
 

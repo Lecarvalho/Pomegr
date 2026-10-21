@@ -107,7 +107,7 @@ session reports or works again later, the task leaves **Stalled** by itself.
 ## Read a card
 
 A card shows the task ID, its feature, and its title. A tag is a word in brackets at the
-start of the first line, such as `[ backend ]`. It shows as a small label under the title.
+start of the task text, such as `[ backend ]`. It shows as a small label under the title.
 The card also shows the planned model and effort, and **Open session** when a session is
 linked.
 

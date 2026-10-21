@@ -50,6 +50,13 @@ describe("taskDocument", () => {
     expect(taskDocument("[ui] ## Title here\nbody").title).toEqual([text("Title here")]);
   });
 
+  it("takes every leading line of only tags as the tags, with the title below them", () => {
+    expect(taskDocument("[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent atomic\nProblem: two tabs")).toEqual({
+      tags: ["frontend", "tech-debt", "ui"], title: [text("Make plan-intent atomic")], blocks: [{ kind: "paragraph", inlines: [text("Problem: two tabs")], joined: false }],
+    });
+    expect(taskDocument("[a]\n[b]")).toEqual({ tags: [], title: [text("[a] [b]")], blocks: [] });
+  });
+
   it("keeps a text of only tags as the title when blank lines follow it", () => {
     expect(taskDocument("[a] [b]\n\n  \n")).toEqual({ tags: [], title: [text("[a] [b]")], blocks: [] });
   });

@@ -68,10 +68,10 @@ describe("the header of the task modal", () => {
 });
 
 describe("a task that has not started", () => {
-  it("draws the Run settings as rows with controls in place, in order, with the GitHub issue row last", () => {
+  it("draws the Run settings as rows with controls in place, in order, and Runs after and Start at as its last rows", () => {
     open(task({ featureId: "feature-a" }));
     expect(screen.getByRole("heading", { level: 3, name: "Run settings" })).toBeInTheDocument();
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue", "Runs after", "Start at"]);
     expect(row("Feature").querySelector(".commandSelect")).toHaveClass("taskValueSelect");
     expect(row("Run on").querySelector(".commandSelect")).toHaveClass("taskValueSelect");
     expect(within(row("Feature")).getByRole("combobox", { name: "Feature" })).toHaveTextContent("Upload reliability");
@@ -88,7 +88,7 @@ describe("a task that has not started", () => {
     const group = within(row("Complete when")).getByRole("group", { name: "Complete when" });
     expect(within(group).getAllByRole("checkbox")).toHaveLength(6);
     expect(within(group).getByRole("textbox", { name: "Own condition" })).toBeInTheDocument();
-    expect(within(group).getByText(/^Pomegr verifies the listed conditions\./)).toHaveClass("newTaskHelper");
+    expect(within(group).getByText("The agent judges Validated with the user and your own condition.")).toHaveClass("newTaskHelper");
     expect(within(row("GitHub issue")).getByText("None")).toBeInTheDocument();
     // The Source block and the text field's helper paragraph about images are gone.
     expect(document.querySelector(".taskIssueSource, .taskSourceLabel")).toBeNull();
@@ -101,7 +101,7 @@ describe("a task that has not started", () => {
     await user.click(within(row("Remote Control")).getByRole("checkbox"));
     expect(within(row("Remote Control")).getByRole("checkbox")).toBeChecked();
     chooseCommandOption(within(row("Run on")).getByRole("combobox", { name: "Run on" }), "codex:default");
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue", "Runs after", "Start at"]);
     expect(document.querySelector(".taskRemoteControl")).toBeNull();
     chooseCommandOption(within(row("Run on")).getByRole("combobox", { name: "Run on" }), "claude:default");
     expect(within(row("Remote Control")).getByRole("checkbox")).not.toBeChecked();
@@ -156,7 +156,7 @@ describe("a task that needs review", () => {
     // The session title closes the panel.
     expect(panel.querySelector(".taskModalSession")).toHaveTextContent("Retry the uploadsTitle from the session · Open session");
     // The settings are values, and the conditions are not listed twice.
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "GitHub issue"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "GitHub issue", "Sessions"]);
     expect(within(row("Run on")).getByText("Claude Code · model-a")).toBeInTheDocument();
     expect(within(row("GitHub issue")).getByText("None")).toBeInTheDocument();
   });
@@ -222,7 +222,7 @@ describe("a started task with no report", () => {
     const line = document.querySelector(".taskModalSession") as HTMLElement;
     expect(before(line, document.querySelector(".taskRead") as HTMLElement)).toBe(true);
     // Codex has no Remote Control row, and the unset effort reads muted.
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue", "Sessions"]);
     expect(within(row("Effort")).getByText("Not set")).toHaveClass("taskRowNone");
     expect(within(row("Feature")).getByText("No feature")).toHaveClass("taskRowNone");
     expect(within(row("Complete when")).getByText("PR open")).toBeInTheDocument();
@@ -309,7 +309,7 @@ describe("the Complete when row in New task", () => {
   it("is the shared row with the helper, and the GitHub issue row is the checkbox's alone", () => {
     render(<TaskModal mode="new" repositoryId={repositoryId} repositoryName="pomegr" board={boardOf()} refresh={refresh} onCreated={vi.fn()} onClose={onClose} />);
     expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when"]);
-    expect(within(row("Complete when")).getByText(/^Pomegr verifies the listed conditions\./)).toBeInTheDocument();
+    expect(within(row("Complete when")).getByText("The agent judges Validated with the user and your own condition.")).toBeInTheDocument();
     fireEvent.click(within(row("When done")).getByRole("checkbox"));
     expect(within(row("When done")).getByRole("checkbox")).not.toBeChecked();
   });

@@ -34,10 +34,10 @@ const caret = () => ({ node: window.getSelection()!.anchorNode, offset: window.g
 const titleText = () => title()!.firstChild as Text;
 
 /** The browser puts typed text in the node under the caret, then fires `input`. */
-function typeInto(text: Text, value: string, caretOffset: number) {
+function typeInto(text: Text, value: string, caretOffset: number, inputType = "insertText") {
   text.nodeValue = value;
   caretAt(text, caretOffset);
-  fireEvent.input(field());
+  fireEvent.input(field(), { inputType });
 }
 const pressBackspace = () => fireEvent.keyDown(field(), { key: "Backspace" });
 
@@ -84,44 +84,134 @@ describe("the rich Task field draws a leading tag run as chips", () => {
   });
 
   it("splits text into chips, title and rest so that they always join back into the value", () => {
-    for (const value of ["", "x", "[a] ", "[a]", "[ a ]  [b]\t[A] t\nrest", "  [a] [b] \r\nline\r\nbody", "[a] [a] [b] x", "[a]\n", "[a]\n\n\nz", "\n[a] x", "[a] [image] x"]) {
+    for (const value of ["", "x", "[a] ", "[a]", "[ a ]  [b]\t[A] t\nrest", "  [a] [b] \r\nline\r\nbody", "[a] [a] [b] x", "[a]\n", "[a]\n\n\nz", "\n[a] x", "[a] [image] x", "[a]\n[b]\n[c]\nTitle", "[a]\n\n[b]\r\n\r\nTitle\nBody"]) {
       const layout = richLayout(value);
       expect(layout.chips.map((chip) => chip.source).join("") + layout.title + layout.rest).toBe(value);
     }
-    // A token at the very end of the text is still being typed, so it is not a chip yet.
-    expect(richLayout("[ perf ]").chips).toEqual([]);
+    // A token is a chip as soon as its closing bracket is there, also at the very end of the text.
+    expect(richLayout("[ perf ]").chips).toEqual([{ label: "perf", source: "[ perf ]" }]);
     expect(richLayout("[ perf ] ").chips).toEqual([{ label: "perf", source: "[ perf ] " }]);
     expect(richLayout("[ perf ]\n").chips).toEqual([{ label: "perf", source: "[ perf ]\n" }]);
+    expect(richLayout("[perf")).toEqual({ chips: [], title: "[perf", rest: "" });
+    // Every leading line that holds only tags joins the run, and a chip stands for the whitespace after its token, line breaks included.
+    expect(richLayout("[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent")).toEqual({
+      chips: [{ label: "frontend", source: "[ frontend ] " }, { label: "tech-debt", source: "[ tech-debt ]\n" }, { label: "ui", source: "[ ui ]\n" }],
+      title: "Make plan-intent", rest: "",
+    });
+    expect(richLayout("[a]\n\n\nTitle\nBody")).toEqual({ chips: [{ label: "a", source: "[a]\n\n\n" }], title: "Title", rest: "\nBody" });
+    // A text that holds nothing but tags has chips and an empty title line.
+    expect(richLayout("[a] [b]")).toEqual({ chips: [{ label: "a", source: "[a] " }, { label: "b", source: "[b]" }], title: "", rest: "" });
     // A repeated word is no second chip, and its text stays in the chip it repeats.
     expect(richLayout("[Bug] [ui] [bug] x").chips).toEqual([{ label: "Bug", source: "[Bug] " }, { label: "ui", source: "[ui] [bug] " }]);
   });
 });
 
 describe("tags while typing", () => {
-  it("turns whole tokens at the very start into chips when a space follows, and leaves the caret at the start of the title", () => {
+  it("turns a token into a chip as soon as its closing bracket is typed, and leaves the caret at the start of the title", () => {
     const { last } = renderField("");
-    field().append("[ perf ]");
+    field().append("[ perf");
     window.getSelection()!.selectAllChildren(field());
     window.getSelection()!.collapseToEnd();
-    fireEvent.input(field());
-    // The closing bracket alone does not end the token.
+    fireEvent.input(field(), { inputType: "insertText" });
+    // The token is not complete yet.
     expect(chips()).toEqual([]);
-    expect(title()?.textContent).toBe("[ perf ]");
-    expect(last()).toBe("[ perf ]");
+    expect(title()?.textContent).toBe("[ perf");
 
-    typeInto(titleText(), "[ perf ] ", 9);
+    typeInto(titleText(), "[ perf ]", 8);
     expect(chips()).toEqual(["perf"]);
     expect(title()?.textContent).toBe("");
-    expect(last()).toBe("[ perf ] ");
-    expect(counter()).toBe("9 / 4,000");
+    expect(last()).toBe("[ perf ]");
+    expect(counter()).toBe("8 / 4,000");
     expect(caret()).toEqual({ node: title(), offset: 0, collapsed: true });
 
-    // What follows is typed into the title line, after the chips.
+    // What follows is typed into the title line, after the chips. A space belongs to the chip.
+    title()!.append(" ");
+    caretAt(titleText(), 1);
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(last()).toBe("[ perf ] ");
     title()!.append("Fix the cart");
     caretAt(titleText(), 12);
-    fireEvent.input(field());
+    fireEvent.input(field(), { inputType: "insertText" });
     expect(last()).toBe("[ perf ] Fix the cart");
     expect(chips()).toEqual(["perf"]);
+  });
+
+  it("converts a token on a line of its own, below tags, as soon as its bracket is typed", () => {
+    const { last } = renderField("[ frontend ] [ tech-debt ]\nMake plan-intent consume atomic");
+    typeInto(titleText(), "[ ui ]Make plan-intent consume atomic", 6);
+    expect(chips()).toEqual(["frontend", "tech-debt", "ui"]);
+    expect(title()?.textContent).toBe("Make plan-intent consume atomic");
+    expect(last()).toBe("[ frontend ] [ tech-debt ]\n[ ui ] Make plan-intent consume atomic");
+    expect(caret()).toEqual({ node: titleText(), offset: 0, collapsed: true });
+  });
+
+  it("puts one space between a token completed against the text after it and that text, and takes the space the person types next as that one", () => {
+    const { last } = renderField("Fix the cart");
+    typeInto(titleText(), "[ui]Fix the cart", 4);
+    expect(last()).toBe("[ui] Fix the cart");
+    expect(chips()).toEqual(["ui"]);
+    expect(title()?.textContent).toBe("Fix the cart");
+    expect(caret()).toEqual({ node: titleText(), offset: 0, collapsed: true });
+    // The person goes on from the closing bracket with a space: it is the space the field added.
+    titleText().nodeValue = " Fix the cart";
+    caretAt(titleText(), 1);
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(last()).toBe("[ui] Fix the cart");
+    expect(title()?.textContent).toBe("Fix the cart");
+    // A second space is the person's own.
+    titleText().nodeValue = " Fix the cart";
+    caretAt(titleText(), 1);
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(last()).toBe("[ui]  Fix the cart");
+  });
+
+  it("puts a space between the last chip and text typed against it, so the chip stays a tag", () => {
+    const { last } = renderField("");
+    field().append("[ui]");
+    window.getSelection()!.selectAllChildren(field());
+    window.getSelection()!.collapseToEnd();
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(chips()).toEqual(["ui"]);
+    title()!.append("x");
+    caretAt(titleText(), 1);
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(last()).toBe("[ui] x");
+    expect(chips()).toEqual(["ui"]);
+    expect(title()?.textContent).toBe("x");
+    expect(caret()).toEqual({ node: titleText(), offset: 1, collapsed: true });
+  });
+
+  it("converts a pasted token the same way, against text or alone, and adds no space after a pasted space", () => {
+    const against = renderField("Title");
+    typeInto(titleText(), "[a] [b]Title", 7, "insertFromPaste");
+    expect(against.last()).toBe("[a] [b] Title");
+    expect(chips()).toEqual(["a", "b"]);
+    cleanup();
+    const spaced = renderField("Title");
+    typeInto(titleText(), "[a] [b] Title", 8, "insertFromPaste");
+    expect(spaced.last()).toBe("[a] [b] Title");
+    cleanup();
+    const alone = renderField("");
+    field().append("[a] [b]");
+    caretAt(field().firstChild!, 7);
+    fireEvent.input(field(), { inputType: "insertFromPaste" });
+    expect(alone.last()).toBe("[a] [b]");
+    expect(chips()).toEqual(["a", "b"]);
+    expect(title()?.textContent).toBe("");
+  });
+
+  it("leaves a bracket token alone that is not in the run position, or that holds the image word", () => {
+    const { last } = renderField("Fix");
+    typeInto(titleText(), "Fix [x]", 7);
+    expect(last()).toBe("Fix [x]");
+    expect(chips()).toEqual([]);
+    cleanup();
+    const image = renderField("");
+    field().append("[image]");
+    caretAt(field().firstChild!, 7);
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(image.last()).toBe("[image]");
+    expect(chips()).toEqual([]);
   });
 
   it("converts a second tag typed at the start of the title and keeps the caret at the title start", () => {
@@ -217,7 +307,7 @@ describe("Backspace at the very start of the title line", () => {
     expect(last()).toBe("[a] Title");
     expect(chips()).toEqual(["a"]);
     cleanup();
-    // A chip that was typed (a stored text of only tags is drawn as plain text, see below).
+    // A chip that was typed.
     const only = renderField("");
     field().append("[a] ");
     window.getSelection()!.selectAllChildren(field());
@@ -338,7 +428,7 @@ describe("the rich field's type and chips are drawn from tokens", () => {
 describe("a title that is emptied while a tag leads", () => {
   it("stays an empty title line under the chips, so the next line keeps its place and typing goes into the title", () => {
     const { last } = renderField("[backend] Fix the login redirect\nSteps:\n1. Open the app");
-    typeInto(titleText(), "", 0);
+    typeInto(titleText(), "", 0, "deleteContentBackward");
     expect(last()).toBe("[backend] \nSteps:\n1. Open the app");
     expect(chips()).toEqual(["backend"]);
     expect(title()?.textContent).toBe("");
@@ -351,42 +441,49 @@ describe("a title that is emptied while a tag leads", () => {
 
   it("does the same after two Backspaces, and when the browser drops the emptied title node", () => {
     const { last } = renderField("[a] Ti\nBody");
-    typeInto(titleText(), "T", 1);
-    typeInto(titleText(), "", 0);
+    typeInto(titleText(), "T", 1, "deleteContentBackward");
+    typeInto(titleText(), "", 0, "deleteContentBackward");
     expect(last()).toBe("[a] \nBody");
     title()!.remove();
     window.getSelection()!.collapse(field(), 1);
-    fireEvent.input(field());
+    fireEvent.input(field(), { inputType: "deleteContentBackward" });
     expect(last()).toBe("[a] \nBody");
     expect(title()?.textContent).toBe("");
     expect(caret()).toEqual({ node: title(), offset: 0, collapsed: true });
     title()!.append("N");
     caretAt(titleText(), 1);
-    fireEvent.input(field());
+    fireEvent.input(field(), { inputType: "insertText" });
     expect(last()).toBe("[a] N\nBody");
     expect(title()?.textContent).toBe("N");
     expect(field().lastChild?.textContent).toBe("\nBody");
   });
 
-  it("keeps Enter after the tags as the end of a first line of only tags, so the next line is the title", () => {
+  it("keeps Enter after the tags as one line break that ends the tag line, so the next line is the title", () => {
     const { last } = renderField("");
     field().append("[a] ");
     window.getSelection()!.selectAllChildren(field());
     window.getSelection()!.collapseToEnd();
-    fireEvent.input(field());
-    // The browser puts the line break and a placeholder break in the title line.
+    fireEvent.input(field(), { inputType: "insertText" });
+    // The browser puts the line break and a placeholder break in the title line. The placeholder is dropped.
     title()!.append("\n\n");
     caretAt(titleText(), 1);
-    fireEvent.input(field());
-    expect(last()).toBe("[a] \n\n");
+    fireEvent.input(field(), { inputType: "insertParagraph" });
+    expect(last()).toBe("[a] \n");
     expect(chips()).toEqual(["a"]);
     title()!.append("Title");
     caretAt(titleText(), 5);
-    fireEvent.input(field());
-    // The placeholder break stays below the title until text replaces it.
-    expect(last()).toBe("[a] \nTitle\n");
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(last()).toBe("[a] \nTitle");
     expect(title()?.textContent).toBe("Title");
     expect(chips()).toEqual(["a"]);
+  });
+
+  it("lets Enter at the start of the title end the tag line, so the next line is the title and nothing is left over", () => {
+    const { last } = renderField("[a] Make plan");
+    typeInto(titleText(), "\nMake plan", 1, "insertParagraph");
+    expect(last()).toBe("[a] \nMake plan");
+    expect(chips()).toEqual(["a"]);
+    expect(title()?.textContent).toBe("Make plan");
   });
 
   it("reads a stored first line of only tags as before: the next line is the title", () => {
@@ -395,29 +492,37 @@ describe("a title that is emptied while a tag leads", () => {
     expect(title()?.textContent).toBe("Body");
     expect(richLayout("[a] \nBody").title).toBe("Body");
     expect(richLayout("[a] \nBody", { ownTitleLine: true })).toEqual({ chips: [{ label: "a", source: "[a] " }], title: "", rest: "\nBody" });
-    expect(richLayout("[a] \n\n", { ownTitleLine: true }).chips).toEqual([{ label: "a", source: "[a] \n" }]);
+    expect(richLayout("[a] \n\n", { ownTitleLine: true }).chips).toEqual([{ label: "a", source: "[a] \n\n" }]);
+    expect(richLayout("[a]\n[b] \nBody", { ownTitleLine: true })).toEqual({
+      chips: [{ label: "a", source: "[a]\n" }, { label: "b", source: "[b] " }], title: "", rest: "\nBody",
+    });
   });
 });
 
-describe("a stored text of only tags", () => {
-  it("is drawn as plain text, as a card and the read view show it, and chips form once the person types", () => {
+describe("a text that holds only tags", () => {
+  it("draws its tags as chips with an empty title line, stored or typed, and leaves the caret for the title", () => {
     const { last } = renderField("[a] [b]");
-    expect(chips()).toEqual([]);
-    expect(field().querySelector(".taskRichTags")).toBeNull();
-    expect(title()?.textContent).toBe("[a] [b]");
-    expect(richLayout("[a] [b] \n\n", { stored: true })).toEqual({ chips: [], title: "[a] [b] ", rest: "\n\n" });
-    // Typing is the other rule: tokens that whitespace follows become chips.
-    typeInto(titleText(), "[a] [b] x", 9);
+    expect(chips()).toEqual(["a", "b"]);
+    expect(field().querySelector(".taskRichTags")).not.toBeNull();
+    expect(title()?.textContent).toBe("");
+    expect(field().textContent).toBe("ab");
+    title()!.append("x");
+    caretAt(titleText(), 1);
+    fireEvent.input(field(), { inputType: "insertText" });
+    expect(last()).toBe("[a] [b] x");
     expect(chips()).toEqual(["a", "b"]);
     expect(title()?.textContent).toBe("x");
-    expect(last()).toBe("[a] [b] x");
+    cleanup();
+    renderField("[a]\n[b]\n\n");
+    expect(chips()).toEqual(["a", "b"]);
+    expect(title()?.textContent).toBe("");
   });
 
-  it("keeps the typing layout for the same text, and a stored text with a title still draws chips", () => {
-    expect(richLayout("[a] [b] ").chips.map((chip) => chip.label)).toEqual(["a", "b"]);
-    expect(richLayout("[a] [b] Title", { stored: true }).chips.map((chip) => chip.label)).toEqual(["a", "b"]);
-    renderField("[a] [b] Title");
-    expect(chips()).toEqual(["a", "b"]);
+  it("is a text of tags on every line that holds only tags, with the title below them", () => {
+    renderField("[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent consume atomic across browser tabs");
+    expect(chips()).toEqual(["frontend", "tech-debt", "ui"]);
+    expect(title()?.textContent).toBe("Make plan-intent consume atomic across browser tabs");
+    expect(within(field()).getByRole("group", { name: "Tags: frontend, tech-debt, ui" })).toBeInTheDocument();
   });
 });
 

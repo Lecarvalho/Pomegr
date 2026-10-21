@@ -299,6 +299,7 @@
 .taskRowValue { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); overflow-wrap: anywhere; }
 .taskRowValue > :is(.commandSelect, .taskOwnInput, .taskModelNotice, .taskFeatureDetails, .taskCompleteWhenBody, .taskIssueConfirm, p) { align-self: stretch; }
 .taskRow > dd > .commandQuietAction { flex: 0 0 auto; width: auto; }
+.taskRow .commandQuietAction, .taskRow .commandSecondaryAction { width: auto; }
 .taskRowNone { color: var(--command-muted); }
 .taskRow.isTop { align-items: start; padding-block: var(--space-1); }
 .taskRow.isTop > dt { display: flex; align-items: center; min-height: var(--control-height); }
@@ -329,6 +330,14 @@
 .taskEffort { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 280px; max-width: 100%; }
 @media (min-width: 761px) and (pointer: fine) { .taskEffort > button { min-height: var(--control-height); } }
 .taskCheckRow > .newTaskHelper { min-width: 0; }
+/* Start at: the value is a compact date-and-time field sized to its content (about 220px, never wider than the value), left-aligned,
+   with its hint under it: the 640px modal's value column is too narrow for both on one line, so the wrapping row puts the hint below.
+   The field is 32px high on a fine pointer, 44px at 760px and narrower and on a coarse pointer. */
+.taskRowInline { align-self: stretch; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); }
+.taskRowInline > .newTaskError { flex: 1 1 100%; }
+.taskStartTimeField input[type="datetime-local"] { width: 220px; max-width: 100%; min-height: var(--control-compact); }
+@media (min-width: 761px) and (pointer: fine) { .taskRow.taskStartTimeField > dt { min-height: var(--control-compact); } }
+@media (max-width: 760px), (pointer: coarse) { .taskStartTimeField input[type="datetime-local"] { min-height: 44px; } }
 .taskModelNotice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--command-amber); border-radius: var(--control-radius); background: var(--color-amber-soft); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskModelNoticeTitle { color: var(--command-amber); font-weight: 500; }
 .taskModelNotice code { font: 400 var(--text-xs)/1.4 var(--font-data); }
@@ -408,16 +417,17 @@ ul.taskDocBlock { list-style-type: disc; }
 .taskDocCode { font-family: var(--font-data); font-size: var(--text-xs); }
 .taskDocData { color: var(--command-muted); font-family: var(--font-data); font-size: var(--text-xs); }
 .taskModalSessionTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
-/* Sessions of a task: one ruled row per session (title link, role, state chip, Unassign), then the assign control. */
-.taskSessions { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.taskSessions legend { padding: 0; margin-bottom: var(--space-2); color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
-.taskSessionsList { margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--command-line); }
-.taskSessionsItem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-compact); padding-block: var(--space-2); border-top: 1px solid var(--command-line); }
+/* Runs after and Sessions are rows of the Run settings list. The value holds one item for each task or session (title, muted role,
+   state chip, Quiet action), then one add line (the borderless value select and the Secondary action), then one muted hint. */
+.taskSessions { align-self: stretch; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.taskSessionsList { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+.taskSessionsItem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-height); }
 .taskSessionsName { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
 .taskSessionsTitle { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .taskSessionsRole { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskSessionsAssign { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.taskSessionsAssign .commandSelect { flex: 1 1 220px; min-width: 0; display: grid; }
+.taskSessionsAssign { display: flex; align-items: center; gap: var(--space-2); }
+.taskSessionsAssign > .commandSelect.taskValueSelect { flex: 1 1 auto; min-width: 0; display: grid; max-width: none; margin-inline-start: calc(-1 * var(--space-3) - 1px); }
+.taskSessionsAssign > .commandSecondaryAction, .taskSessionsItem > .commandQuietAction { flex: 0 0 auto; width: auto; }
 .taskModalConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 /* The inline confirmation fills the footer, so a spacer inside it pushes the two actions to the right. */
 .taskModalFooter > .taskModalConfirm { flex: 1 1 auto; }

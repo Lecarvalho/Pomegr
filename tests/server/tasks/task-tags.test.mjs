@@ -11,6 +11,29 @@ const CASES = [
   "[ backend ] [ recce ] [bug] Coverage opens a shot.\n\nMore text.",
   "[ frontend ] [ tech-debt ]\nMake plan-intent atomic\nProblem: two tabs",
   "[ frontend ] [ tech-debt ]\r\nMake plan-intent atomic",
+  "[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent consume atomic",
+  "[a]\r\n[b]\t\n\n  [c]\nTitle",
+  "[a]\r\n[b]\t\n  [c]\nTitle",
+  "[ui]\n\n[TODO] write tests",
+  "[ui]\n\n[x] one\n[x] two",
+  "[ui]\n  \t\n[x] one",
+  "[ui]\r\n\r\n[x] one",
+  "[ui]  \n  [x] one",
+  "[ui]\n\n",
+  "[a] [b]\n\n\n[c] Title",
+  "\u00a0[a] Title",
+  "\ufeff[a] Title",
+  "\u2003[a] Title",
+  "\r[a] Title",
+  "[a]\n[b] Title\n[c] more",
+  "[a]\n[b]c\nTitle",
+  "[a]\n[image]\nTitle",
+  "[a]\n[needs design]\nTitle",
+  "[Bug]\n[bug]\n[ui]\nTitle",
+  `${MANY.replaceAll(" ", "\n")}\nTitle`,
+  "[a]\n[b]",
+  "[a]\n\n\n[b]\n\nTitle",
+  "[a] [b]\n",
   "Fix [ bug ] in the cart",
   "\n[ bug ] second line",
   "  [ bug ] indented first line",
@@ -84,8 +107,18 @@ test("the server parser follows the display rule", () => {
     tags: ["backend", "recce", "bug"], text: "Coverage opens a shot.\n\nMore text.", runLength: 28,
   });
   assert.deepEqual(splitOnServer("[ frontend ] [ tech-debt ]\nMake plan-intent atomic"), {
-    tags: ["frontend", "tech-debt"], text: "Make plan-intent atomic", runLength: 26,
+    tags: ["frontend", "tech-debt"], text: "Make plan-intent atomic", runLength: 27,
   });
+  assert.deepEqual(splitOnServer("[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent consume atomic"), {
+    tags: ["frontend", "tech-debt", "ui"], text: "Make plan-intent consume atomic", runLength: 34,
+  });
+  assert.deepEqual(titleOnServer("[ frontend ] [ tech-debt ]\n[ ui ]\nMake plan-intent consume atomic"), {
+    tags: ["frontend", "tech-debt", "ui"], title: "Make plan-intent consume atomic", rest: "",
+  });
+  assert.deepEqual(titleOnServer("[a]\n[b]"), { tags: [], title: "[a] [b]", rest: "" });
+  assert.deepEqual(titleOnServer("[ui]\n\n[TODO] write tests\nmore"), { tags: ["ui"], title: "[TODO] write tests", rest: "more" });
+  assert.deepEqual(splitOnServer("[ui]\n\n[x] one\n[x] two"), { tags: ["ui"], text: "[x] one\n[x] two", runLength: 6 });
+  assert.deepEqual(splitOnServer("[ui]\n[x] one").tags, ["ui", "x"]);
   assert.deepEqual(splitOnServer("Fix [ bug ] in the cart").tags, []);
   assert.deepEqual(splitOnServer("[Bug] [bug] [ui] Title").tags, ["Bug", "ui"]);
 });
