@@ -39,8 +39,7 @@ the desktop app or on a paired device (see [Queue change](#queue-change)). The o
 send images with a message, and a proposal may put those images on a task (see
 [Images](#images)). After the owner applies or dismisses a proposal, Aril writes one
 follow-up about the outcome without another message of the owner (see
-[Follow-up](#follow-up)). The desktop also offers a separately confirmed [temporary autonomous pilot](#temporary-autonomous-pilot).
-That authorization does not approve ordinary chat proposals. The user guide is
+[Follow-up](#follow-up)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -52,7 +51,6 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 | Owner | Responsibility | May not |
 | --- | --- | --- |
-| `desktop/runtime/aril-pilot*.mjs` | Temporary grants, coalesced decisions, durable receipts, and scoped dispatcher requests | Apply generic proposals, change queues, or control running sessions |
 | `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, and the one request of an approved queue change | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; send `queue_settings` with any setting but `on` |
 | `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds |
 | `desktop/runtime/agent-chat-images.mjs` | The image files the owner sends: the staged ones and the ones of each conversation | Write outside the chat's directory; build a path from anything but a validated repository ID, conversation ID, and image ID; serve a file by itself |
@@ -751,94 +749,7 @@ come from the desktop window.
   `reading_sessions`, `reading_usage`, or `writing`. The label is chosen from the tool's
   name. No tool input, tool result, or provider error text is read into an answer.
 
-## Temporary autonomous pilot
-
-Task T-158 adds an opt-in coordinator for finite sets of existing tasks in multiple repositories.
-It uses Aril's real read-only provider runner. It does not rename the deterministic queue as an agent decision.
-The owner enters an objective and selects existing task IDs in **Aril pilot** for each repository.
-The review shows the exact scope, deadline, permitted provider/model pairs, inference configuration, actions, and budgets.
-Only the owner's confirmation creates a persistent grant. The owner may keep one nonterminal grant per repository; a paused or needs-you grant occupies that repository's slot until it is revoked, finished, or expires. Grants in different repositories have independent scope, expiry, budgets, receipts, and pause/revoke state. Paired-device access is described below.
-
-- Default authorization lasts 24 hours, with 20 inference rounds, three task starts, one concurrent task, and five minutes between rounds.
-- The owner edits these limits before confirmation. No grant exists by default.
-- Desktop main keeps the objective, grant revision, checkpoint, bounded decision receipts, and final summary before effects.
-- A grant permits only new session starts and filling unset execution configuration for selected tasks.
-- Explicit provider, model, default-model selection, effort, and other task settings take precedence.
-- When an unset provider is filled, existing effort and other flags stay as set; Remote Control remains enabled for Claude and is cleared for Codex.
-- No grant permits task creation, generic proposal approval, queue changes, completion, merge, deploy, extra spending, or session control.
-- Pausing, revoking, or expiring a grant prevents new effects. Running task sessions continue untouched.
-- A new activation is a new authorization. Older summaries remain available in the pilot's history.
-- Grants for different repositories can run concurrently. Each tick visits active grants in rotating order so a waiting or unchanged repository does not hold another repository's decision slot.
-- Desktop main serializes inference through the chat's one global provider turn slot and uses the dispatcher's existing exclusive launch slot. A repository's task IDs are interpreted only against that repository's board.
-- The private journal retains at most 50 grants and 256 receipts per grant; reaching the grant limit refuses activation without deleting evidence.
-
-The coordinator reads committed board and usage projections for each active repository while the desktop remains open, including with the panel closed.
-It coalesces relevant changes into one evidence revision per grant and runs at most one inference round at a time globally.
-Unchanged observations do not start inference. A stored wait deadline also wakes the grant that recorded it.
-Capacity transitions can wake decisions; percentage changes within the same capacity state and reset-time drift cannot.
-Exact evidence revisions still guard decisions and starts against changed readings.
-When all remaining task providers lack capacity, deterministic checks wait without an inference call or a consumed decision round.
-Fresh evidence of restored capacity can release that wait before the reset hint.
-At a quota reset, desktop main requests ordinary usage acquisition through its private worker channel.
-Provider backoff still applies. Time alone never establishes capacity: missing or stale quota evidence continues to wait.
-
-Aril receives the objective, scope, permitted models, budgets, normalized board evidence, quota evidence, and previous bounded receipts.
-Its decision evidence includes `concurrency.running_task_ids`, derived by the same rule as the dispatch guard: linked unfinished tasks and reserved starts awaiting binding occupy slots; tasks in Review (`needs_review`), Done, blocked, or stalled do not, even when observation still lists their provider sessions as live. Aril uses this list instead of recounting live sessions, and distinguishes an unmet dependency from occupied concurrency. The list contains only task IDs already present in the allowed board projection.
-It weighs work type, explicit owner choices, dependencies, current capacity, and authorized models.
-The grant authorizes direct starts of selected tasks in Backlog or state `not_queued`; those tasks need no queue membership, and queue status or queue position does not hold a direct start. The pilot still honors each task's `runs_after` dependencies and scheduled start time, plus the established order rules for queued tasks. Queue snapshot fields do not by themselves establish that a direct start is blocked.
-An artifact, plan, owner review, or final approval in a task's deliverable is not itself a start gate. Aril must not infer that a tool or provider capability is unavailable from fields omitted by the board or grant. The authorized task session inspects the repository and actually available tools after it starts, then reports blockers only from concrete evidence. It never invents a capability, downgrades the requested deliverable, or skips required owner approval.
-It returns one structured decision: start, wait, needs-you, or finish, with evidence revision and a reason.
-Desktop main rejects malformed decisions, stale revisions, foreign IDs, unauthorized models, and overridden explicit settings.
-Failed read-only runs and malformed answers retry after one and two minimum intervals; three consecutive failures require owner attention.
-Each failed provider run still consumes its decision round. Pause, expiry, and budget limits also stop retries.
-Receipts distinguish invalid answers from incomplete runs through fixed reasons; no raw errors or rejected output are retained.
-Ordinary chat proposals never pass through this executor.
-
-The inference uses the chat's existing read-only runner, tool allowlist, run declaration, and single global turn slot shared by every grant.
-An interactive message takes priority, stops the background inference, and discards its answer.
-It never stops a task session. The pilot stores no conversation and never auto-applies a generic chat proposal.
-
-An accepted start uses the existing dispatcher, its exclusive launch slot, start-plan gates, and atomic task claim.
-Every pilot start uses its task's separate worktree; the review explains that uncommitted repository changes are not copied.
-Only a dirty repository root is bypassed; dirty task worktrees and all other start gates remain authoritative.
-Desktop main revalidates grant revision, expiry, scope, budgets, and current evidence at each effect boundary.
-The monitor compares a digest of persisted task fields and explicit configuration before claiming or selecting execution configuration.
-A timestamp alone cannot validate the revision. Same-millisecond task edits invalidate the digest.
-A changed task or closed gate refuses the start. Queue and dependency rules remain authoritative.
-Known refusals retain their fixed status in the receipt, without provider errors or paths.
-Human decisions hold only work that the existing dependency and queue rules hold.
-
-Before dispatch, a durable receipt reserves the attempt and the start budget.
-The monitor retains an autonomous claim until binding or explicit owner reconciliation; its ordinary dispatch timeout cannot release it.
-Repeated events, process restart, and competing manual or queue starts never replay a stored attempt.
-A crash with an unfinished receipt requires reconciliation. An ambiguous launcher result never causes a blind retry.
-For an unbound uncertain start, **Reconcile T-n** requires the owner to confirm that no session started.
-It uses the board's existing Requeue action, then revokes the grant. It starts nothing and never stops an existing session.
-A later grant requires another explicit confirmation and a fresh owner requeue revision; the old uncertain receipt remains stored.
-Consumed budgets prevent more inference or starts while the coordinator watches already launched tasks for normalized results.
-The panel shows decisions, evidence revisions, provider/model reasons, receipts, waiting, used limits, needs-you state, and final summaries.
-Its actionable state is persistent and deduplicated; routine progress emits no external notification.
-
-### Pilot privacy
-
-The objective, grant, decisions, checkpoint, receipts, and summaries use the chat's private content boundary.
-Desktop main stores them under its private chat directory, separately from ordinary conversation files.
-Trusted desktop main-frame IPC and the authenticated paired-device route serve only the selected repository's bounded pilot projection and history. The paired route is `POST /api/aril-pilot`; it requires the pairing cookie, the gateway's `Origin`, JSON, no query string or transfer encoding, and a body no larger than 17 KiB. The gateway invokes the desktop handler and never forwards pilot content to the web host. Its operations are `read`, `activate`, `pause`, and `revoke`; activation still requires the owner's explicit confirmation. Configure and review stay in the renderer, and reconciliation composes the existing task requeue action with revoking the grant. The response contains only that repository's current grant and history projections: objective, task IDs, state, expiry, limits and usage, allowed and inference models, waiting text, decision receipts and their reasons, and summary. It contains no scheduler internals, conversation, raw session data, provider errors, or provider credentials. An unpaired device and a same-computer browser cannot reach the route. The paired route uses the existing plain-HTTP local-network gateway; its cookie and request content are unencrypted on that network. Revoking paired access closes admission to future phone requests, including phone mutations still waiting to commit; it does not pause or revoke a pilot grant whose activation has already committed. The owner can pause or revoke that grant through desktop controls or a later paired request if pairing remains available.
-The renderer holds them in memory only. No monitor observation store, checkpoint, report, diagnostics, or log receives them.
-The task store receives only the scoped start request, execution configuration, task revision digest, and opaque attempt identifier.
-It stores the bounded dispatch claim and attempt marker under [Tasks: Privacy](tasks.md#privacy).
-No objective, decision reason, inference answer, or conversation enters that store.
-The provider receives the objective and allowed normalized projections under the confirmed grant.
-It receives no raw session transcript, credential, provider error, or conversation log.
-Only a validated decision is retained; tool inputs, results, reasoning, stderr, and malformed output are discarded.
-The existing native read permissions still govern repository reads; the pilot adds no writable provider capability.
-
-The public [pilot procedure](../../public/using-pomegr/agent-chat.md#run-a-temporary-pilot) describes activation and recovery.
-The maintainer [validation procedure](../operations/aril-pilot.md) describes local update and next-day acceptance.
-
 ## Privacy
-
-The pilot's additional private content and transport follow [Pilot privacy](#pilot-privacy).
 
 The conversation is a new data class: text the owner wrote and text the agent wrote. It
 is the one place where Pomegr shows a prompt and a response, and they are the chat's own,
@@ -944,13 +855,13 @@ never a session's.
 - Observation is unchanged for every session. No chat run is observed: a declared run's
   registry entry is dropped before any pipeline stage reads it (see
   [The declared run](#the-declared-run)), and no pipeline stage reads a conversation.
-- Ordinary chat never changes the board. Only `apply` does, on the owner's answer, through the
+- Aril never changes the board. Only `apply` does, on the owner's answer, through the
   fixed task actions.
 - Aril puts no image on a task. Only `apply` does, with an image the owner sent in the
   same conversation, through the monitor's own image route and under its bounds.
 - A proposal that names an image the conversation does not hold is never offered.
 - An image is served only when a message of its conversation names it.
-- Ordinary chat starts a session only through `apply` of a start proposal, from the desktop
+- Aril never starts a session. Only `apply` of a start proposal does, from the desktop
   window, through the manual start and behind every start gate. The owner's **Start
   session** on the card approves the proposal; the shared native dialog confirms the start. One Apply is at most one launch.
 - Aril never turns the queue on or off. Only `apply` of a queue proposal does, on the
@@ -983,10 +894,6 @@ never a session's.
   as unavailable, by instruction.
 
 ## Limits and unproven parts
-
-The temporary pilot is covered with synthetic providers, dispatchers, clocks, stores, and renderer fixtures.
-Its complete loop with a real provider remains unproven until the owner follows the [pilot validation procedure](../operations/aril-pilot.md).
-Implementation never activates a grant against the owner's real board.
 
 1. **Provider versions.** The run needs the native flags listed above. An unsupported flag ends the turn as `failed`.
    Native reads were probed on Windows on 2026-10-17 with Claude Code 2.1.302 (`haiku`) and Codex 0.162.1 (`gpt-6-luna`).

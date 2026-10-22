@@ -152,7 +152,7 @@ export function createLanSharingController(options = {}) {
       try {
         handle = await startGateway({
           host: chosen.address, subnetMask: chosen.subnetMask,
-          upstreamOrigin: options.upstreamOrigin, authorizationToken: options.authorizationToken, agentChat: options.agentChat, agentChatImage: options.agentChatImage, arilPilot: options.arilPilot,
+          upstreamOrigin: options.upstreamOrigin, authorizationToken: options.authorizationToken, agentChat: options.agentChat, agentChatImage: options.agentChatImage,
           taskStart: options.taskStart, taskImage: options.taskImage,
           isNetworkAllowed, onChange: broadcast,
         });

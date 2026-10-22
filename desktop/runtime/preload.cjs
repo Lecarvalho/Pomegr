@@ -13,7 +13,6 @@ const TASK_ACTIONS = new Set([
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
 const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
-const ARIL_PILOT_OPERATIONS = new Set(["read", "activate", "pause", "revoke"]);
 const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
 const TASK_FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
 const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
@@ -167,32 +166,6 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
       return Promise.resolve({ ok: false, error: "invalid" });
     }
     return ipcRenderer.invoke("pomegr:agent-chat", operation, payload);
-  },
-  arilPilot(operation, payload) {
-    const plain = payload && typeof payload === "object" && !Array.isArray(payload)
-      && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);
-    const validRun = (run) => run && typeof run === "object" && !Array.isArray(run)
-      && Object.keys(run).length === 2 && (run.provider === "claude" || run.provider === "codex")
-      && (run.model === null || (typeof run.model === "string" && run.model.length > 0 && run.model.length <= 120));
-    let valid = ARIL_PILOT_OPERATIONS.has(operation) && plain
-      && typeof payload.repositoryId === "string" && REPOSITORY_ID.test(payload.repositoryId);
-    if (valid && operation !== "activate") valid = Object.keys(payload).length === 1;
-    if (valid && operation === "activate") {
-      const keys = ["repositoryId", "goal", "taskIds", "durationHours", "roundLimit", "startLimit", "concurrency", "minIntervalMinutes", "allowedRuns", "inference"];
-      valid = Object.keys(payload).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(payload, key))
-        && typeof payload.goal === "string" && payload.goal.trim().length > 0 && payload.goal.length <= 2000
-        && Array.isArray(payload.taskIds) && payload.taskIds.length > 0 && payload.taskIds.length <= 32
-        && payload.taskIds.every((id) => typeof id === "string" && TASK_ID.test(id)) && new Set(payload.taskIds).size === payload.taskIds.length
-        && Number.isInteger(payload.durationHours) && payload.durationHours >= 1 && payload.durationHours <= 168
-        && Number.isInteger(payload.roundLimit) && payload.roundLimit >= 1 && payload.roundLimit <= 100
-        && Number.isInteger(payload.startLimit) && payload.startLimit >= 1 && payload.startLimit <= 32
-        && Number.isInteger(payload.concurrency) && payload.concurrency >= 1 && payload.concurrency <= Math.min(4, payload.startLimit)
-        && Number.isInteger(payload.minIntervalMinutes) && payload.minIntervalMinutes >= 5 && payload.minIntervalMinutes <= 1440
-        && Array.isArray(payload.allowedRuns) && payload.allowedRuns.length > 0 && payload.allowedRuns.length <= 32
-        && payload.allowedRuns.every(validRun) && validRun(payload.inference);
-    }
-    if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
-    return ipcRenderer.invoke("pomegr:aril-pilot", operation, payload);
   },
   agentChatImage(operation, payload) {
     const plain = payload && typeof payload === "object" && !Array.isArray(payload)

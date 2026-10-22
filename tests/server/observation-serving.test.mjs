@@ -75,40 +75,6 @@ for (const providerId of ["claude", "codex"]) test(`${providerId} native sign-in
   assert.equal(reads.length, 2, "GET serving never starts a usage request");
 });
 
-test("pilot reset requests ordinary coalesced acquisition while GET remains cache-only", async (context) => {
-  const provider = { id: "codex", source: "codex", capabilities: createEmptyProviderCapabilities(),
-    homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } } };
-  const reads = [];
-  let finish;
-  const startup = new Promise((resolve) => { finish = resolve; });
-  const registry = {
-    providers: [provider], defaultProvider: provider, providerForSessionId: () => provider,
-    async resolveCapabilities() { return provider.capabilities; },
-    async readUsageLimits(_provider, options) {
-      reads.push(options.afterSignIn);
-      return reads.length === 1 ? startup : { ...createEmptyUsageLimits(), fetchedAt: "2026-10-18T12:00:00.000Z" };
-    },
-    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
-    unavailableMessage: () => "Unavailable", async startObservers() { return { async stop() {} }; },
-  };
-  const runtime = createMonitorRuntime({ providerRegistry: registry, checkpointStore: false,
-    resourceUsageSampler: { async sample() {}, get() { return null; } } });
-  context.after(() => runtime.stopObservation());
-  await runtime.startObservation();
-  await waitFor(() => reads.length === 1, "startup acquisition starts");
-  const coalesced = runtime.refreshUsageForPilot();
-  runtime.serveUsageLimits();
-  assert.deepEqual(reads, [false]);
-  finish({ ...createEmptyUsageLimits(), fetchedAt: "2026-10-18T11:59:00.000Z" });
-  await coalesced;
-  await runtime.refreshUsageForPilot();
-  assert.deepEqual(reads, [false, false], "reset acquisition never impersonates a sign-in");
-  const served = runtime.serveUsageLimits();
-  assert.equal(served.snapshot.value.providers[0].usageLimits.fetchedAt, "2026-10-18T12:00:00.000Z");
-  runtime.serveUsageLimits();
-  assert.equal(reads.length, 2);
-});
-
 test("repository sidecar loads serialize across stopped startup lifetimes", { timeout: 5_000 }, async () => {
   let releaseFirst;
   const firstLoad = new Promise((resolve) => { releaseFirst = resolve; });

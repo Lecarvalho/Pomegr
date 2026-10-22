@@ -18,7 +18,7 @@ copying it here.
   talks to Aril, an agent that reads the task board and Pomegr's observations and
   proposes board changes and, when the owner asks, the start of one task's session or
   turning the repository's queue on or off. Aril changes and starts nothing: the owner
-  applies a proposal. The desktop's temporary [Aril pilot](docs/internal/architecture/agent-chat.md#temporary-autonomous-pilot) also permits bounded new task starts after the owner confirms its grant.
+  applies a proposal.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -95,9 +95,8 @@ These rules always apply:
   sessions and never stops, attaches to, answers, or approves work in a running session.
   Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
-  starts one for each message of the owner, one for an authorized pilot round, and one
-  for the follow-up after the owner applies or dismisses a proposal. After any applied
-  or partial outcome, a
+  starts one for each message of the owner, and one for the follow-up after the owner
+  applies or dismisses a proposal. After any applied or partial outcome, a
   follow-up may offer one proposal of board changes that continues the owner's earlier request.
   The owner must Apply or Dismiss that proposal; no proposal applies itself or starts an
   automatic chain. A follow-up after a dismissed, refused, or failed proposal carries no
@@ -106,10 +105,8 @@ These rules always apply:
   each proposal. An image reaches a task only through the task image route, with an image
   the owner sent in that conversation, after the owner applies a proposal. A task's
   session starts only through the manual start, after the owner confirms a start proposal
-  in the desktop app. A temporary pilot grant permits only the scoped effects listed in
-  the [agent chat contract](docs/internal/architecture/agent-chat.md#temporary-autonomous-pilot).
-  The queue changes only through the Tasks page's queue action, with the state the
-  proposal names, after the owner applies a queue proposal in the desktop
+  in the desktop app. The queue changes only through the Tasks page's queue action, with
+  the state the proposal names, after the owner applies a queue proposal in the desktop
   app or on a paired device.
 - Start processes with `execFile` or `spawn` and an argument array. Never put
   session-derived text into a command line or a path.
