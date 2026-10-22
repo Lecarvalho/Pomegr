@@ -40,6 +40,12 @@ Delegated agents use the exact IDs returned by
 
 ## Evidence semantics
 
+`list_session_agents` includes nullable `customType`, `model`, and `effort` for the main agent and every delegated agent.
+Custom type permits at most 64 characters; model and effort permit at most 128 characters each.
+Model and effort are provider-reported labels from the committed public agents, never inferred.
+Missing or empty values, model `unknown`, and effort `unspecified` become null.
+Custom type is the validated label for an unknown role; otherwise it is null.
+
 Provider health is public service reporting. It can cover a broader scope than one
 account, model, or session, and it can lag actual failures. **Reported healthy** is
 not an availability guarantee. An incident observed near a session failure does not

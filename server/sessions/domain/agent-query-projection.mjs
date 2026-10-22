@@ -71,6 +71,8 @@ function normalizeAgent(agent) {
     label: boundedText(agent.label, id === "primary" ? "Primary agent" : "Subagent", 256),
     role,
     customType,
+    model: agent.model === "unknown" ? null : boundedText(agent.model, null, 128),
+    effort: agent.effort === "unspecified" ? null : boundedText(agent.effort, null, 128),
     status: AGENT_STATUS_SET.has(agent.status) ? agent.status : "unknown",
     assignment: agent.assignment == null ? null : boundedText(agent.assignment, "", 512),
     currentActivity: agent.currentActivity && typeof agent.currentActivity === "object"

@@ -50,6 +50,8 @@ function projection() {
 test("agent query projection distinguishes primary/delegated and selects latest context", () => {
   const value = projection();
   const agents = value.listSessionAgents("codex:session-1");
+  assert.equal(agents.agents[0].model, "gpt-6-astra");
+  assert.equal(agents.agents[0].effort, "xhigh");
   assert.deepEqual(agents.agents.map((agent) => [agent.id, agent.scope, agent.parentId]), [["primary", "main", null], ["child", "delegated", "primary"]]);
   assert.equal(Object.hasOwn(agents.agents[0], "tokens"), false);
   assert.equal(Object.hasOwn(agents.agents[0], "executionTasks"), false);
@@ -61,6 +63,21 @@ test("agent query projection distinguishes primary/delegated and selects latest 
   });
   assert.equal(value.getAgentContext("codex:session-1", "child").reason, "context_unavailable");
   assert.equal(value.getAgentContext("codex:session-1", "missing").reason, "agent_not_found");
+});
+
+test("agent query projection maps unavailable model and effort to null and bounds labels", () => {
+  for (const [model, effort] of [["unknown", "unspecified"], ["", "  "], [null, undefined], [42, {}]]) {
+    const entry = retained();
+    Object.assign(entry.publicState.agents[0], { model, effort });
+    const agent = buildAgentQueryProjection({ entries: [entry] }).listSessionAgents(entry.qualifiedId).agents[0];
+    assert.equal(agent.model, null);
+    assert.equal(agent.effort, null);
+  }
+  const entry = retained();
+  Object.assign(entry.publicState.agents[0], { model: "m".repeat(129), effort: "e".repeat(129) });
+  const agent = buildAgentQueryProjection({ entries: [entry] }).listSessionAgents(entry.qualifiedId).agents[0];
+  assert.equal(agent.model, "m".repeat(128));
+  assert.equal(agent.effort, "e".repeat(128));
 });
 
 test("agent query projection preserves only bounded custom type labels for unknown roles", () => {
@@ -228,12 +245,15 @@ test("agent-query serialization excludes private evidence and out-of-contract se
     entries: [entry],
     usageLimits: { providers: [{ provider: "codex", readiness: "unavailable", usageLimits: { available: false, fetchedAt: null, attemptedAt: null, retryAt: null, failureKind: "unavailable", error: "RAW_ERROR_SENTINEL", limits: [] } }] },
   });
+  const agent = value.listSessionAgents("codex:session-1").agents[0];
+  assert.equal(agent.model, "MODEL_SENTINEL");
+  assert.equal(agent.effort, "EFFORT_SENTINEL PRIVATE");
   const serialized = JSON.stringify([
     value.listSessions({ scope: "all" }), value.listSessionAgents("codex:session-1"),
     value.getAgentContext("codex:session-1", "primary"), value.getRecentFailures("codex:session-1", null, 1440, 25),
     value.getSessionReport("codex:session-1"), value.usageLimits(), value.providerHealth(),
   ]);
-  for (const sentinel of ["PROMPT_SENTINEL", "RESPONSE_SENTINEL", "CREDENTIAL_SENTINEL", "PATH_SENTINEL", "COMMAND_SENTINEL", "STDOUT_SENTINEL", "STDERR_SENTINEL", "MCP_ARGUMENT_SENTINEL", "MCP_RESULT_SENTINEL", "PROVIDER_KIND_SENTINEL", "MODEL_SENTINEL", "EFFORT_SENTINEL", "TASK_DESCRIPTION_SENTINEL", "TASK_COMMAND_SENTINEL", "TASK_OUTPUT_SENTINEL", "RAW_ERROR_SENTINEL"]) {
+  for (const sentinel of ["PROMPT_SENTINEL", "RESPONSE_SENTINEL", "CREDENTIAL_SENTINEL", "PATH_SENTINEL", "COMMAND_SENTINEL", "STDOUT_SENTINEL", "STDERR_SENTINEL", "MCP_ARGUMENT_SENTINEL", "MCP_RESULT_SENTINEL", "PROVIDER_KIND_SENTINEL", "TASK_DESCRIPTION_SENTINEL", "TASK_COMMAND_SENTINEL", "TASK_OUTPUT_SENTINEL", "RAW_ERROR_SENTINEL"]) {
     assert.doesNotMatch(serialized, new RegExp(sentinel, "u"));
   }
 });

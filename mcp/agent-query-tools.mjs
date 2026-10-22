@@ -102,6 +102,9 @@ const responseSchema = z.object({
   sessionRef: sessionRefSchema.optional(),
   agentId: agentIdSchema.nullable().optional(),
   agents: z.array(z.object({
+    customType: z.string().max(64).nullable(),
+    model: z.string().max(128).nullable(),
+    effort: z.string().max(128).nullable(),
     id: agentIdSchema, scope: z.enum(["main", "delegated"]), parentId: agentIdSchema.nullable(),
     label: z.string().max(256), role: z.enum(["orchestrator", "explore", "plan", "builder", "reviewer", "tester", "researcher", "general-purpose", "workflow-worker", "fork", "compaction", "unknown"]),
     status: z.enum(["active", "waiting", "needs_input", "warm", "finished", "stopped", "idle", "unknown"]),
