@@ -12,6 +12,7 @@ import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { deleteTaskReportHistory } from "./task-report-history.mjs";
+import { deleteTaskEvents, ensureTaskEvents } from "./task-events.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -121,6 +122,7 @@ function runTransaction(database, work) {
 function createFreshStore(database) {
   runTransaction(database, () => {
     createSchema(database);
+    ensureTaskEvents(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
@@ -152,7 +154,10 @@ function openDatabase(directory) {
     database = new (loadSqlite().DatabaseSync)(databasePath);
     // An empty file holds no tasks to protect; any other file must verify before it is trusted.
     if (size === 0) createFreshStore(database);
-    else verifyExistingStore(database);
+    else {
+      verifyExistingStore(database);
+      ensureTaskEvents(database);
+    }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
     return database;
@@ -289,6 +294,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskSource(database, repositoryId, input.number);
   deleteTaskAttention(database, repositoryId, input.number);
   deleteTaskReportHistory(database, repositoryId, input.number);
+  deleteTaskEvents(database, repositoryId, input.number);
   deleteTaskBlockHold(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
@@ -481,7 +487,7 @@ function addToQueue({ database, repositoryId, now }, payload) {
   const task = preparedStatement(database, "SELECT state, session_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
   const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
-  if (!input.block && (input.at === null ? task.state !== "not_queued" && task.state !== "scheduled" : !waiting || (task.session_id ?? null) !== null)) return { ok: false, error: "conflict" };
+  if (!input.block && ((task.session_id ?? null) !== null || (input.at === null ? task.state !== "not_queued" && task.state !== "scheduled" : !waiting))) return { ok: false, error: "conflict" };
   const queue = preparedStatement(database, "UPDATE tasks SET state = ?, scheduled_at = ?, queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?");
   if (!input.block) {
     queue.run(input.at === null ? "queued" : "scheduled", input.at, Date.now(), repositoryId, input.number);
