@@ -148,7 +148,7 @@ describe("parseTaskBoard", () => {
   });
 
   it("keeps a valid ready board with its session and report", () => {
-    const parsed = parseTaskBoard(board({ tasks: [task({ session: { id: "claude:1", title: "Fix parser", state: "working", observedModel: "opus" }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null } })] }), repositoryId);
+    const parsed = parseTaskBoard(board({ tasks: [task({ session: { id: "claude:1", title: "Fix parser", state: "working", observedModel: "opus", observedEffort: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null } })] }), repositoryId);
     expect(parsed?.tasks[0].session?.title).toBe("Fix parser");
     expect(parsed?.queue).toEqual({ status: "idle", blockedBy: null, pauseReason: null, order: [] });
   });

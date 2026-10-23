@@ -42,7 +42,7 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
 const tasks = (): Task[] => [
   task(1, "Route", { featureId: "f1", state: "done", columnId: "col-5" }),
   task(2, "Store", { featureId: "f1", group: GROUP, position: 0 }),
-  task(3, "Columns", { featureId: "f1", group: GROUP, columnId: "col-3", session: { id: "claude:abc", title: "Column session", state: "working", observedModel: null } }),
+  task(3, "Columns", { featureId: "f1", group: GROUP, columnId: "col-3", session: { id: "claude:abc", title: "Column session", state: "working", observedModel: null, observedEffort: null } }),
   task(4, "Ranking", { featureId: "f1", position: 1 }),
   task(5, "Gates", { featureId: "f1", state: "not_queued", columnId: "col-1" }),
   task(6, "Schedule", { featureId: "f1", position: 2 }),

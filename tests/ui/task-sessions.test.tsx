@@ -22,8 +22,8 @@ import { SESSION_CANDIDATES_SHOWN, parseSessionCandidates } from "../../app/comp
 import { parseTaskBoard } from "../../app/tasks-store";
 
 const repositoryId = "repo-0123456789abcdef01234567";
-const started = { id: "claude:started", title: "Started session", state: "working", observedModel: null };
-const session = (id: string, title: string | null, state = "idle"): TaskAssignedSession => ({ id: `claude:${id}`, title, state, observedModel: null });
+const started = { id: "claude:started", title: "Started session", state: "working", observedModel: null, observedEffort: null };
+const session = (id: string, title: string | null, state = "idle"): TaskAssignedSession => ({ id: `claude:${id}`, title, state, observedModel: null, observedEffort: null });
 const first = session("one", "First assigned");
 const second = session("two", "Second assigned", "needs_input");
 
@@ -200,7 +200,7 @@ describe("parseTaskBoard assigned sessions", () => {
   const withAssigned = (assigned: unknown) => ({ ...board([task()]), tasks: [{ ...task(), assigned }] });
 
   it("keeps a valid assigned list and accepts none", () => {
-    const kept = [first, { ...second, title: null, observedModel: "model-a" }];
+    const kept = [first, { ...second, title: null, observedModel: "model-a", observedEffort: null }];
     expect(parseTaskBoard(withAssigned(kept), repositoryId)?.tasks[0].assigned).toEqual(kept);
     expect(parseTaskBoard(board([task()]), repositoryId)?.tasks[0].assigned).toBeUndefined();
     expect(parseTaskBoard(withAssigned([]), repositoryId)?.tasks[0].assigned).toEqual([]);
@@ -213,8 +213,8 @@ describe("parseTaskBoard assigned sessions", () => {
   });
 
   it.each([
-    ["not a list", "x"], ["an entry that is not an object", [7]], ["a missing id", [{ title: "t", state: "idle", observedModel: null }]],
-    ["a numeric title", [{ ...first, title: 4 }]], ["a missing state", [{ id: "claude:a", title: null, observedModel: null }]], ["a numeric model", [{ ...first, observedModel: 3 }]],
+    ["not a list", "x"], ["an entry that is not an object", [7]], ["a missing id", [{ title: "t", state: "idle", observedModel: null, observedEffort: null }]],
+    ["a numeric title", [{ ...first, title: 4 }]], ["a missing state", [{ id: "claude:a", title: null, observedModel: null, observedEffort: null }]], ["a numeric model", [{ ...first, observedModel: 3 }]],
   ])("rejects the board for %s", (_name, assigned) => {
     expect(parseTaskBoard(withAssigned(assigned), repositoryId)).toBeNull();
   });

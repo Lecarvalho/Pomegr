@@ -450,13 +450,13 @@ export function normalizeStoredTask(row) {
   // The store attaches the assigned sessions (task-assignments.mjs). The session Pomegr started is never listed twice.
   const assigned = (Array.isArray(row.assigned_sessions) ? row.assigned_sessions : [])
     .filter((entry) => typeof entry === "string" && SESSION_ID.test(entry) && entry !== sessionId)
-    .map((entry) => ({ id: entry, title: null, state: "unknown", observedModel: null }));
+    .map((entry) => ({ id: entry, title: null, state: "unknown", observedModel: null, observedEffort: null }));
   return {
     id, text, columnId: row.column_id, position, featureId, group, ...(after.length > 0 ? { after } : {}), run,
     completeWhen: { checks, own },
     state: row.state,
     scheduledAt,
-    session: sessionId === null ? null : { id: sessionId, title: null, state: "unknown", observedModel: null },
+    session: sessionId === null ? null : { id: sessionId, title: null, state: "unknown", observedModel: null, observedEffort: null },
     ...(assigned.length > 0 ? { assigned } : {}),
     source,
     // The store attaches the task's image list (task-images.mjs): identifiers, fixed types, and sizes, never bytes.

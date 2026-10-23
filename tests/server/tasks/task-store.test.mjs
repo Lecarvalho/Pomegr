@@ -159,7 +159,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "the export is documented" },
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",
-    session: { id: "session-abc", title: null, state: "unknown", observedModel: null },
+    session: { id: "session-abc", title: null, state: "unknown", observedModel: null, observedEffort: null },
     source: null, images: [],
     report: {
       at: "2023-11-14T22:13:23.000Z",
@@ -202,7 +202,7 @@ test("the served board holds only the contract keys and never private store fiel
   assert.deepEqual(keysOf(task), TASK_KEYS);
   assert.deepEqual(keysOf(task.run), ["effort", "model", "provider", "remoteControl"]);
   assert.deepEqual(keysOf(task.completeWhen), ["checks", "own"]);
-  assert.deepEqual(keysOf(task.session), ["id", "observedModel", "state", "title"]);
+  assert.deepEqual(keysOf(task.session), ["id", "observedEffort", "observedModel", "state", "title"]);
   assert.deepEqual(keysOf(task.report), ["at", "attention", "blockReason", "results"]);
   assert.equal(JSON.stringify(wire).includes("secret-dispatch-token"), false);
   assert.equal(JSON.stringify(wire).includes("queue_position"), false);

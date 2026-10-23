@@ -234,7 +234,7 @@ test("a stored task projects to exactly the contract keys", () => {
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "docs updated" },
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",
-    session: { id: "6f1c-session", title: null, state: "unknown", observedModel: null },
+    session: { id: "6f1c-session", title: null, state: "unknown", observedModel: null, observedEffort: null },
     source: null,
     images: [],
     report: {

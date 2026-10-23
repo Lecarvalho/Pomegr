@@ -20,7 +20,7 @@ function planBoard(): TaskBoard {
     task(15, { columnId: "col-1", state: "not_queued", after: ["T-13", "T-14"], position: 3 }),
     task(9, { after: ["T-21"], position: 0 }),
     task(10, { position: 1 }),
-    task(21, { columnId: "col-3", position: 0, session: { id: "claude:s", title: null, state: "working", observedModel: null } }),
+    task(21, { columnId: "col-3", position: 0, session: { id: "claude:s", title: null, state: "working", observedModel: null, observedEffort: null } }),
     task(22, { columnId: "col-5", position: 0, state: "done" }),
   ];
   return {

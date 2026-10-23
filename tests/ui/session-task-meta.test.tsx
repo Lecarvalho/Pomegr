@@ -27,7 +27,7 @@ const mine = task(14, {
   featureId: "feat-1", state: "queued",
   run: { provider: "claude", model: "opus", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
-  session: { id: "claude:abc", title: "Wire the tools", state: "working", observedModel: "opus" },
+  session: { id: "claude:abc", title: "Wire the tools", state: "working", observedModel: "opus", observedEffort: null },
 });
 
 function board(overrides: Partial<TaskBoard> = {}): TaskBoard {

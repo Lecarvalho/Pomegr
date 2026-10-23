@@ -496,7 +496,7 @@ describe("optimistic move", () => {
   });
 
   it("never changes a card's chip, state or text when it moves", async () => {
-    setBoard({ tasks: [task(1, { state: "done", text: "Ship the guide" }), task(2, { state: "needs_review", session: { id: "claude:abc", title: "Parser session", state: "working", observedModel: null } }), task(3, { state: "queued" })] });
+    setBoard({ tasks: [task(1, { state: "done", text: "Ship the guide" }), task(2, { state: "needs_review", session: { id: "claude:abc", title: "Parser session", state: "working", observedModel: null, observedEffort: null } }), task(3, { state: "queued" })] });
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const chips = () => ["T-1", "T-2", "T-3"].map((id) => card(id).querySelector(".commandChip")?.textContent);
     const before = chips();
@@ -667,7 +667,7 @@ describe("queued cards in Ready", () => {
   });
 
   it("lets a card that started leave Ready, because it no longer waits", () => {
-    setBoard({ tasks: [inReady(1, 0, { session: { id: "claude:abc", title: null, state: "working", observedModel: null } }), task(5, { columnId: "col-3", position: 0, state: "done" })] });
+    setBoard({ tasks: [inReady(1, 0, { session: { id: "claude:abc", title: null, state: "working", observedModel: null, observedEffort: null } }), task(5, { columnId: "col-3", position: 0, state: "done" })] });
     render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-1", column("Done"));
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "move", { id: "T-1", columnId: "col-3", position: 1 });

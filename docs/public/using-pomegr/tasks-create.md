@@ -98,7 +98,7 @@ offers only **Default model**.
 
 A card shows the planned model beside the model the session's main agent last
 recorded. The task window flags a difference with **Observed model differs**. The plan
-is your intent; the recorded model is the evidence.
+is your intent; the recorded model is the evidence. The card also shows the main agent's latest reported effort and flags when it differs from the planned effort.
 
 ## Complete when
 

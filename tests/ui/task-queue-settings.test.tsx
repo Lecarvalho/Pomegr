@@ -37,7 +37,7 @@ const gates: TaskGates = {
   workingTree: "clean",
   next: { taskId: "T-2", provider: "claude", blockedBy: null, reasons: [] },
 };
-const session = { id: "claude:abc123", title: null, state: "working", observedModel: null } as NonNullable<Task["session"]>;
+const session = { id: "claude:abc123", title: null, state: "working", observedModel: null, observedEffort: null } as NonNullable<Task["session"]>;
 /** Seven tasks of one feature: T-1 has a session, the rest wait. */
 const featureTasks = () => [
   task(1, { featureId: FEATURE.id, session }),

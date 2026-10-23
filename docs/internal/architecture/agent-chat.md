@@ -251,7 +251,7 @@ A task in the snapshot holds its ID, column, position in that column (`position`
 from 0 in the order the Board shows, null when the stored value is not a whole number of 0 or more), state, feature title, parallel-group label, the IDs
 of the tasks it runs after (`runs_after`, absent when none), planned
 provider, model and effort, complete-when checks and own condition, the linked session's
-reference, state and observed model, the report's results (each one passed, failed, or
+reference, state, observed model and observed effort, the report's results (each one passed, failed, or
 unavailable), block reason and attention
 line, the GitHub issue number, the scheduled time, the update time, and the task text.
 Task text shares a budget of 48,000 UTF-16 code units.
@@ -780,7 +780,7 @@ never a session's.
   proposal, the next outcome record includes that stored proposal in the same form. That
   prompt holds the owner's messages, Aril's earlier answers, and the board snapshot: task
   text, own conditions, feature titles, block
-  reasons, attention lines, session references, model names, the task IDs each task
+  reasons, attention lines, session references, model names, provider-reported observed effort labels bounded by the [task contract](tasks.md), the task IDs each task
   runs after (task T-101), and each card's position in its column (task T-103). The model
   names include the models the task form offers: Claude's newest observed model of each
   family, from the sessions of every repository in the last 90 days, and the Codex

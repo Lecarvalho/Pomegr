@@ -41,7 +41,7 @@ function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
-const session = { id: "claude:abc", title: "Running", state: "working", observedModel: null };
+const session = { id: "claude:abc", title: "Running", state: "working", observedModel: null, observedEffort: null };
 
 // Retry telemetry holds three tasks, one done. Docs holds none. Single holds one.
 const features = [{ id: "f1", name: "Retry telemetry", done: false }, { id: "f2", name: "Docs", done: false }, { id: "f3", name: "Single", done: false }];

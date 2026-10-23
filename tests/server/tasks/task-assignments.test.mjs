@@ -55,7 +55,7 @@ test("assigning is a marker: it stores the session, shows it on the board, and c
   const queue = store.readBoard(REPOSITORY).queue;
   assert.equal(assign(store, "T-1", HAND).ok, true);
   const after = task(store, "T-1");
-  assert.deepEqual(after.assigned, [{ id: HAND, title: null, state: "unknown", observedModel: null }]);
+  assert.deepEqual(after.assigned, [{ id: HAND, title: null, state: "unknown", observedModel: null, observedEffort: null }]);
   assert.deepEqual({ ...after, assigned: undefined }, { ...before, assigned: undefined });
   assert.deepEqual(store.readBoard(REPOSITORY).queue, queue);
   assert.equal(after.session, null);
@@ -127,10 +127,10 @@ test("the board fills an assigned session with the borrowed facts and no reading
   createTask(store, REPOSITORY, { completeWhen: { checks: ["tree_clean"], own: null } });
   assign(store, "T-1", HAND);
   const board = store.readBoard(REPOSITORY, {
-    resolveSessionFacts: (id) => (id === HAND ? { title: "Resume the work", state: "working", observedModel: "model-large" } : null),
+    resolveSessionFacts: (id) => (id === HAND ? { title: "Resume the work", state: "working", observedModel: "model-large", observedEffort: null } : null),
     resolveCheckFacts: () => { throw new Error("an assigned session reads no condition"); },
   });
-  assert.deepEqual(board.tasks[0].assigned, [{ id: HAND, title: "Resume the work", state: "working", observedModel: "model-large" }]);
+  assert.deepEqual(board.tasks[0].assigned, [{ id: HAND, title: "Resume the work", state: "working", observedModel: "model-large", observedEffort: null }]);
 });
 
 test("an assigned session reports a task that has not started: it goes to Review, and a start still in flight links nothing", async (context) => {

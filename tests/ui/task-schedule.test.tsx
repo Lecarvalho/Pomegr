@@ -44,7 +44,7 @@ const tasks = () => [
   task(1, "Loose end", { state: "queued" }),
   task(2, "Nightly", { state: "scheduled", scheduledAt: FAR }),
   task(3, "Idea"),
-  task(4, "Ran at night", { state: "scheduled", scheduledAt: PAST, session: { id: "claude:s4", title: null, state: "working", observedModel: null } }),
+  task(4, "Ran at night", { state: "scheduled", scheduledAt: PAST, session: { id: "claude:s4", title: null, state: "working", observedModel: null, observedEffort: null } }),
 ];
 function setBoard(queue: Partial<TaskBoard["queue"]> = {}, list: Task[] = tasks()) {
   const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: list, queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-1"], ...queue } };
@@ -292,7 +292,7 @@ describe("a scheduled task", () => {
   });
 
   it("has no start time field once a session works on it or it has an outcome", async () => {
-    setBoard({}, [task(4, "Ran at night", { state: "scheduled", scheduledAt: PAST, session: { id: "claude:s4", title: null, state: "working", observedModel: null } }), task(5, "Shipped", { state: "done" })]);
+    setBoard({}, [task(4, "Ran at night", { state: "scheduled", scheduledAt: PAST, session: { id: "claude:s4", title: null, state: "working", observedModel: null, observedEffort: null } }), task(5, "Shipped", { state: "done" })]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(screen.getByRole("button", { name: "Ran at night" }));
     expect(within(screen.getByRole("dialog", { name: "Task" })).queryByLabelText("Start at")).not.toBeInTheDocument();

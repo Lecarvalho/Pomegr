@@ -19,6 +19,11 @@ function observedModel(value) {
   return model !== null && model.toLowerCase() === "unknown" ? null : model;
 }
 
+function observedEffort(value) {
+  const effort = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return /^[a-z][a-z0-9-]{0,15}$/.test(effort) && effort !== "unspecified" && effort !== "unknown" ? effort : null;
+}
+
 function checksOf(task, resolveCheckFacts) {
   if (typeof resolveCheckFacts !== "function" || task.report || !IN_FLIGHT_STATES.includes(task.state)) return null;
   const checks = task.completeWhen?.checks;
@@ -32,12 +37,13 @@ function checksOf(task, resolveCheckFacts) {
 function sessionOf(id, resolveFacts, reading = {}) {
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts(id) : null; } catch { facts = null; }
-  if (facts === null || typeof facts !== "object") return { id, title: null, state: "unknown", observedModel: null, ...reading };
+  if (facts === null || typeof facts !== "object") return { id, title: null, state: "unknown", observedModel: null, observedEffort: null, ...reading };
   return {
     id,
     title: sessionTitle(facts.title),
     state: TASK_SESSION_STATES.includes(facts.state) ? facts.state : "unknown",
     observedModel: observedModel(facts.observedModel),
+    observedEffort: observedEffort(facts.observedEffort),
     ...reading,
   };
 }

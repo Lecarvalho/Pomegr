@@ -76,7 +76,7 @@ function validTask(value: unknown): value is Task {
   const checks = listOf(completeWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
   const validAssigned = (entry: unknown): entry is Json => {
     const assigned = record(entry);
-    return Boolean(assigned) && text(assigned!.id, LIMITS.label) && nullableText(assigned!.title, LIMITS.label) && text(assigned!.state, 40) && nullableText(assigned!.observedModel, LIMITS.model);
+    return Boolean(assigned) && text(assigned!.id, LIMITS.label) && nullableText(assigned!.title, LIMITS.label) && text(assigned!.state, 40) && nullableText(assigned!.observedModel, LIMITS.model) && nullableText(assigned!.observedEffort, 16);
   };
   if (task.assigned !== undefined && listOf(task.assigned, LIMITS.assignedSessions, validAssigned) === null) return false;
   // What the task runs after: absent, or one to eight task IDs of the same board.
@@ -90,7 +90,7 @@ function validTask(value: unknown): value is Task {
     && (run.keepWorktree === undefined || typeof run.keepWorktree === "boolean")
     && checks !== null && nullableText(completeWhen.own, LIMITS.own)
     && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt)) && validSource(task.source)
-    && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))
+    && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && nullableText(session.observedEffort, 16) && reading !== null))
     && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)
       && (report.attention === undefined || nullableText(report.attention, LIMITS.blockReason))))
     && timestamp(task.createdAt) && timestamp(task.updatedAt);

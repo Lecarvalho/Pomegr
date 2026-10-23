@@ -358,6 +358,8 @@ Each row below the tags shows only when it is set, in this order:
 - The run line has no provider badge, because a model names its provider.
 - When the model is the provider's default, the run line leads with the provider's name, such as “Claude Code · medium”.
 - The muted **Observed model:** line.
+- After the model lines, the muted **Observed effort:** line shows the primary agent's reported effort when no planned effort differs.
+- When the planned and observed effort differ, the amber line “Planned effort x, observed y” replaces the observed effort line; neither line appears without observed effort.
 - When the planned model and the observed model differ, the single amber line “Planned x, observed y”. It is a text color, never a fill.
 - The muted **Starts** line of a scheduled task, until its session is linked. It reads “Starts today 22:00”, or “Starts Oct 9, 22:00” on another day, with the time in the data font.
 - The muted wait line of a waiting card. See [Ready parallel groups](#ready-parallel-groups).

@@ -101,7 +101,7 @@ test("the planned token links the session, clears the digest, and moves the card
   assert.equal(row.session_id, SESSION);
   assert.equal(row.dispatch_token, null);
   const after = env.store.readBoard(REPOSITORY_ID).tasks[0];
-  assert.deepEqual(after.session, { id: SESSION, title: null, state: "unknown", observedModel: null });
+  assert.deepEqual(after.session, { id: SESSION, title: null, state: "unknown", observedModel: null, observedEffort: null });
   const columns = env.store.readBoard(REPOSITORY_ID).columns;
   assert.equal(columns.find((column) => column.id === before.columnId).role, null);
   assert.equal(columns.find((column) => column.id === after.columnId).role, "in_progress");
