@@ -11,8 +11,31 @@ import { buildPomegrMcpServer as buildClaudePomegrMcpServer } from "../plugins/c
 import { AGENT_QUERY_AUTH_HEADER, publishAgentQueryDescriptor } from "../shared/agent-query-transport.mjs";
 import { bindClaudeQuerySession, runClaudeQuerySessionHook } from "../plugin-src/claude-query-session.mjs";
 import { Readable } from "node:stream";
+import { buildAgentQueryProjection } from "../server/sessions/domain/agent-query-projection.mjs";
 
 const readNames = Object.keys(AGENT_QUERY_TOOLS).sort();
+
+test("list_session_agents accepts real projected agents with observed model and effort", async () => {
+  const sessionRef = "claude:fixture-session";
+  const projection = buildAgentQueryProjection({ entries: [{
+    qualifiedId: sessionRef, revision: 1, readiness: { agentEvidence: "ready" },
+    publicState: { agents: [
+      { id: "primary", role: "orchestrator", model: "claude-opus-5-5", effort: "high" },
+      { id: "child", parentId: "primary", role: "unknown", customType: "cavecrew-reviewer", model: "unknown", effort: "unspecified" },
+    ] },
+  }] });
+  const server = buildPomegrMcpServer({ currentSessionRef: sessionRef, query: async (path) => {
+    assert.equal(path, "/api/agent/v1/sessions/claude%3Afixture-session/agents");
+    return projection.listSessionAgents(sessionRef);
+  } });
+  const result = await server._registeredTools.list_session_agents.handler({});
+  assert.equal(result.isError, undefined);
+  assert.equal(result.structuredContent.readiness, "ready");
+  assert.deepEqual(result.structuredContent.agents.map(({ customType, model, effort }) => ({ customType, model, effort })), [
+    { customType: null, model: "claude-opus-5-5", effort: "high" },
+    { customType: "cavecrew-reviewer", model: null, effort: null },
+  ]);
+});
 
 test("both MCP entrypoints register the seven read tools with read-only metadata and guidance", () => {
   for (const build of [buildPomegrMcpServer, buildClaudePomegrMcpServer]) {

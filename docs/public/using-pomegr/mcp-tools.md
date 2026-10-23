@@ -39,7 +39,7 @@ Guide: [MCP queries](mcp-queries.md).
 | `get_provider_health` | The public service status of each provider. |
 | `get_usage_limits` | The current account usage windows. |
 | `list_sessions` | Sessions, with an exact reference for each one. |
-| `list_session_agents` | The agents of one session. |
+| `list_session_agents` | The agents of one session, including nullable `customType`, `model`, and `effort` labels. |
 | `get_agent_context` | The latest context snapshot of one agent. |
 | `get_recent_failures` | The recent failures that Pomegr kept for one session. |
 | `get_session_report` | The Markdown report of one session. |
