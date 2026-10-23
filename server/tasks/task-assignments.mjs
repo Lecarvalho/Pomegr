@@ -2,6 +2,7 @@
 // An assignment is a marker. It changes no state, column, or queue place, and it is never a dispatch.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { recordTaskEvent } from "./task-events.mjs";
 import { isRepositoryId, isTaskId, isTaskSessionId, normalizeQueueTaskPayload, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_ASSIGNED_SESSIONS_MAX = 16;
@@ -91,6 +92,7 @@ export function assignSession({ database, repositoryId }, payload) {
   if (sessionIds.includes(input.sessionId)) return { ok: true };
   if (sessionIds.length >= TASK_ASSIGNED_SESSIONS_MAX || sessionAssignedTasks(database, input.sessionId).length >= SESSION_ASSIGNED_TASKS_MAX) return { ok: false, error: "limit" };
   writeTaskAssigned(database, repositoryId, input.number, [...sessionIds, input.sessionId]);
+  recordTaskEvent(database, repositoryId, input.number, "assigned", Date.now(), input.sessionId);
   return { ok: true };
 }
 

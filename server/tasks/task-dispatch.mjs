@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
+import { recordTaskEvent } from "./task-events.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { withTaskRemoteControl } from "./task-remote-control.mjs";
 import { taskSourceOf, withTaskSource } from "./task-source.mjs";
@@ -176,6 +177,7 @@ export function bindDispatch({ database, transaction, payload, now }) {
       const linked = preparedStatement(database, "UPDATE tasks SET session_id = ?, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ? AND session_id IS NULL AND dispatch_token = ?")
         .run(payload.sessionId, Date.now(), match.repository_id, match.number, match.dispatch_token);
       if (Number(linked.changes) !== 1) return BIND_REFUSED;
+      recordTaskEvent(database, match.repository_id, Number(match.number), "started", at, payload.sessionId);
       moveTaskToRole(database, match.repository_id, Number(match.number), "in_progress");
       return { ok: true };
     } catch (error) {

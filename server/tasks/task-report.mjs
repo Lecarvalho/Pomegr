@@ -9,6 +9,7 @@ import { writeTaskGroup } from "./task-groups.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
 import { archiveTaskReport } from "./task-report-history.mjs";
+import { recordTaskEvent } from "./task-events.mjs";
 import { deleteTaskBlockHold, holdTaskBlock, readTaskBlockHolds } from "./task-block-holds.mjs";
 import { IN_FLIGHT_STATES, isTaskId, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
@@ -85,6 +86,7 @@ function storeReport(database, row, { state, at, results, blockReason, attention
     WHERE repository_id = ? AND number = ?`)
     .run(state, at, JSON.stringify(results), blockReason, at, row.repository_id, row.number);
   if (Number(written.changes) !== 1) return false;
+  recordTaskEvent(database, row.repository_id, Number(row.number), state === "needs_review" ? "review" : "blocked", at, row.session_id);
   if (attention === null) deleteTaskAttention(database, row.repository_id, Number(row.number));
   else writeTaskAttention(database, row.repository_id, Number(row.number), attention);
   if (state === "needs_review") moveTaskToRole(database, row.repository_id, Number(row.number), "review");
@@ -168,8 +170,11 @@ export function resolveDone({ database, repositoryId, now }, payload) {
 // The owner's acceptance, shared by Mark done and an explicit card move to Done.
 // Callers validate the task and perform this write inside their action's transaction.
 export function markTaskDone({ database, repositoryId, now }, number) {
+  const row = taskRow(database, repositoryId, number);
+  const at = Date.now();
   preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(Date.now(), repositoryId, number);
+    .run(at, repositoryId, number);
+  recordTaskEvent(database, repositoryId, number, "done", at, row.session_id);
   moveTaskToRole(database, repositoryId, number, "done");
   deleteTaskBlockHold(database, repositoryId, number);
   requestWorktreeCleanup(database, repositoryId, number);
@@ -187,9 +192,11 @@ export function resolveRequeue({ database, repositoryId, now }, payload) {
     const attention = readTaskAttention(database, repositoryId, target.number);
     archiveTaskReport(database, previous, { ...report, attention });
   }
+  const at = Date.now();
   preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = NULL, scheduled_at = NULL, session_id = NULL, dispatch_token = NULL,
     report_at = NULL, report_results = NULL, report_block_reason = NULL, updated_at = ? WHERE repository_id = ? AND number = ?`)
-    .run(Date.now(), repositoryId, target.number);
+    .run(at, repositoryId, target.number);
+  recordTaskEvent(database, repositoryId, target.number, "requeued", at, previous.session_id);
   deleteTaskAttention(database, repositoryId, target.number);
   deleteTaskBlockHold(database, repositoryId, target.number);
   // A requeued task is an ordinary card again: it left its parallel group when it started over.

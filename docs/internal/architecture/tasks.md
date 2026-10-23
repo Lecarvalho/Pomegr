@@ -58,6 +58,9 @@ reuses the `server/persistence/` primitives (prepared statements, the open and v
 pattern of `monitor-store.mjs`). The file is `tasks-v1/tasks.sqlite` under the monitor's
 private data root, beside `monitor-store-v1` and outside its prune cycle.
 
+- `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
+- Opening a store creates `task_events` when missing; the schema version stays 1 because this additive table changes no existing table or meta key.
+- Version 0.8.x verifies only its listed tables, so it can still open the store.
 - The store is versioned. A malformed or newer store is never overwritten by a routine
   write; the board then reports `unavailable`. Unlike the monitor store, a bad file is
   never rebuilt, and one stored row outside the contract makes the whole board
@@ -2693,6 +2696,8 @@ serves no other client.
 
 ## Privacy
 
+- `task_events` stores only event kind, time, and nullable session ID under its repository and task identifiers, never text.
+- Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
 - A task session and its assigned sessions borrow only the primary agent's provider-reported `observedEffort` per read, bounded as above; it is never stored and adds no value to `/api/state`.
 
 - The block-hold marker stays only in the task store. It is served indirectly through existing queue status and `blockedBy`, never as task content.
