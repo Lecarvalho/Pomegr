@@ -141,60 +141,6 @@
 /* Head actions: the repository switcher, the queue switch, + New feature before a feature exists, and Promote issues (D28, D29). */
 .taskHeadActions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); }
 
-/* Aril's finite pilot is a desktop task-board control with an owner-reviewed grant and a compact evidence trail. */
-.taskPilotStatus { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); color: var(--command-ink); }
-.taskPilotStatusHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.taskPilotStatusHead h2 { flex: 1 1 auto; margin: 0; font: 650 var(--text-sm)/1.4 var(--font-ui); text-transform: capitalize; }
-.taskPilotStatusMeta, .taskPilotWaiting, .taskPilotNeedsYou, .taskPilotSummary { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.45 var(--font-ui); }
-.taskPilotGrantDetails { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotGrantDetails summary { width: fit-content; cursor: pointer; color: var(--command-brand-text); }
-.taskPilotGrantDetails p { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
-.taskPilotGrantDetails strong { color: var(--command-ink); }
-.taskPilotWaiting strong, .taskPilotNeedsYou { color: var(--command-amber); }
-.taskPilotSummary strong { color: var(--command-ink); }
-.taskPilotReceipts { display: flex; flex-direction: column; gap: var(--space-1); }
-.taskPilotReceipts h3, .taskPilotReview h3 { margin: 0; font: 650 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotReceipts ol { display: flex; flex-direction: column; gap: var(--space-2); max-height: 180px; overflow: auto; margin: 0; padding-inline-start: var(--space-5); }
-.taskPilotReceipts li { display: flex; flex-direction: column; gap: 2px; color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotReceiptTop { font-weight: 600; text-transform: capitalize; }
-.taskPilotReceiptMeta { color: var(--command-muted); font-family: var(--font-data); }
-.taskPilotUnavailable { margin: 0; }
-.taskPilotForm, .taskPilotReview { display: flex; flex-direction: column; gap: var(--space-4); }
-.taskPilotForm textarea, .taskPilotForm input, .taskPilotForm select { box-sizing: border-box; min-height: var(--control-height); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotForm textarea { min-height: 88px; padding-block: var(--space-2); resize: vertical; }
-.taskPilotForm :is(textarea, input, select):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.taskPilotTaskPicker, .taskPilotRunSet { min-width: 0; margin: 0; padding: var(--space-3); border: 1px solid var(--command-line); border-radius: var(--control-radius); }
-.taskPilotTaskPicker legend, .taskPilotRunSet legend { padding-inline: var(--space-1); color: var(--command-ink); font: 600 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotTaskList { display: flex; flex-direction: column; gap: var(--space-1); max-height: 180px; overflow-y: auto; }
-.taskPilotTaskList label { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-1); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotTaskList input { flex: 0 0 auto; min-height: 20px; margin: 1px 0 0; accent-color: var(--command-brand); }
-.taskPilotTaskList code { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); white-space: nowrap; }
-.taskPilotTaskPicker small { display: block; margin-top: var(--space-1); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
-.taskPilotGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.taskPilotRunRow { display: grid; grid-template-columns: minmax(110px, .8fr) minmax(130px, 1fr) auto; align-items: center; gap: var(--space-2); }
-.taskPilotRunRow + .taskPilotRunRow { margin-top: var(--space-2); }
-.taskPilotRunRow label { min-width: 0; display: flex; flex-direction: column; }
-.taskPilotRunRow input, .taskPilotRunRow select { width: 100%; min-width: 0; }
-.taskPilotReview p { display: grid; grid-template-columns: minmax(120px, .35fr) minmax(0, 1fr); gap: var(--space-3); margin: 0; padding-top: var(--space-2); border-top: 1px solid var(--command-line); overflow-wrap: anywhere; }
-.taskPilotReview p > strong { color: var(--command-muted); font: 500 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotReviewNotice { color: var(--command-muted); font-size: var(--text-xs); }
-.taskPilotHistory { padding-top: var(--space-2); border-top: 1px solid var(--command-line); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-.taskPilotHistory summary { width: fit-content; cursor: pointer; color: var(--command-brand-text); }
-.taskPilotHistory ol { display: flex; flex-direction: column; gap: var(--space-2); max-height: 160px; overflow: auto; margin: var(--space-2) 0 0; padding-inline-start: var(--space-5); }
-.taskPilotHistory li { display: flex; flex-direction: column; gap: 2px; }
-.taskPilotHistory strong { color: var(--command-ink); text-transform: capitalize; }
-@media (max-width: 520px) {
-  .taskPilotGrid { grid-template-columns: 1fr; }
-  .taskPilotRunRow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .taskPilotRunRow > button { grid-column: 1 / -1; justify-self: start; }
-  .taskPilotReview p { grid-template-columns: 1fr; gap: var(--space-1); }
-}
-@media (max-width: 760px), (pointer: coarse) {
-  .taskPilotForm :is(textarea, input, select) { min-height: 44px; }
-  .taskPilotForm textarea { min-height: 88px; }
-  .taskPilotTaskList label { min-height: 44px; align-items: center; }
-}
-
 /* Loading, unavailable, desktop-only and empty states. */
 .taskBoardSkeleton { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: var(--space-3); overflow-x: auto; }
 .taskBoardSkeletonColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel-2); }

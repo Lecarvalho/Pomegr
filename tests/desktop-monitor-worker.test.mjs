@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn, refreshPilotUsage } from "../desktop/runtime/monitor-worker.mjs";
+import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn } from "../desktop/runtime/monitor-worker.mjs";
 import { startShellRuntime } from "../desktop/runtime/shell-orchestrator.mjs";
 import { waitForMessage } from "../desktop/runtime/utility-lifecycle.mjs";
 import {
@@ -17,23 +17,6 @@ import {
 
 const TOKEN = "A".repeat(43);
 const STOP_OPTIONS = { gracefulTimeoutMs: 100, killTimeoutMs: 5_000 };
-
-test("pilot refresh correlates its acknowledgement without a sign-in override", async () => {
-  const child = new EventEmitter();
-  const sent = [];
-  child.postMessage = (message) => sent.push(message);
-  let settled = false;
-  const pending = refreshPilotUsage(child).then(() => { settled = true; });
-  assert.equal(sent[0].type, "pilot-usage-refresh");
-  child.emit("message", { type: "pilot-usage-refreshed", requestId: sent[0].requestId + 1 });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(settled, false);
-  child.emit("message", { type: "pilot-usage-refreshed", requestId: sent[0].requestId });
-  await pending;
-  assert.equal(child.listenerCount("message"), 0);
-  assert.equal(child.listenerCount("exit"), 0);
-  assert.equal(child.listenerCount("error"), 0);
-});
 
 test("sign-in recovery waits for the fixed worker acknowledgement and releases listeners", async () => {
   const child = new EventEmitter();

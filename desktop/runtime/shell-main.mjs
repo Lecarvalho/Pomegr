@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
 import {
   createAgentQueryCapability,
@@ -34,7 +35,7 @@ import {
 } from "./security-policy.mjs";
 import { waitForMessage } from "./utility-lifecycle.mjs";
 import { CODEX_SIGN_IN_CHANNEL, createCodexSignInAction } from "./codex-auth.mjs";
-import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn, refreshPilotUsage, requestSessionWindowOwner } from "./monitor-worker.mjs";
+import { createMonitorWorker, refreshClaudeUsageAfterSignIn, refreshCodexUsageAfterSignIn, requestSessionWindowOwner } from "./monitor-worker.mjs";
 import { focusSessionWindow } from "./session-window.mjs";
 import { withDeadline } from "./bounded-lifecycle.mjs";
 import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
@@ -62,7 +63,6 @@ import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "
 import { installTaskActionIpc, installTaskFeatureIpc, installTaskImageIpc } from "./task-action.mjs";
 import { createTaskImage } from "./task-image.mjs";
 import { createAgentChat, installAgentChatIpc } from "./agent-chat.mjs";
-import { installArilPilotIpc } from "./aril-pilot-ipc.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
 import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
@@ -673,6 +673,7 @@ async function startDesktop() {
             update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null, lastCheckedAt: null }),
           }),
         });
+        // An applied chat start takes the Tasks page's manual start, including its native confirmation.
         const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           isTrustedEvent: trustedDesktopEvent,
@@ -684,11 +685,8 @@ async function startDesktop() {
           confirm: (request) => confirmTaskStart(dialog, () => mainWindow, request),
         });
         const taskImage = createTaskImage({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
-        const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
-        const removePilotBridge = installArilPilotIpc({ ...taskBridge, isTrustedEvent: (event) => trustedDesktopEvent(event) && event.senderFrame === mainWindow.webContents.mainFrame,
-          chat: agentChat, starter: taskStarter, dataRoot: desktopPaths.dataRoot, refreshUsage: () => refreshPilotUsage(monitorChild) });
         phoneAccess = createLanSharingController({
-          upstreamOrigin: web.origin, agentChat: (operation, payload) => agentChat.handle(operation, payload), agentChatImage: (operation, payload) => agentChat.image(operation, payload), arilPilot: removePilotBridge.handlePaired, taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired,
+          upstreamOrigin: web.origin, agentChat: (operation, payload) => agentChat.handle(operation, payload), agentChatImage: (operation, payload) => agentChat.image(operation, payload), taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired,
           authorizationToken,
           autoStart: desktopSettings.lanSharingAutoStart,
           canPersist: settingsLoad.canPersist,
@@ -724,7 +722,8 @@ async function startDesktop() {
             runPlan: (plan) => repositoryPluginCli?.run(plan) || "unavailable",
           }),
         });
-        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc({ ...taskBridge, action: taskImage }), installTaskFeatureIpc(taskBridge), installAgentChatIpc({ ...taskBridge, chat: agentChat }), removePilotBridge];
+        const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
+        const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc({ ...taskBridge, action: taskImage }), installTaskFeatureIpc(taskBridge), installAgentChatIpc({ ...taskBridge, chat: agentChat })];
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain,

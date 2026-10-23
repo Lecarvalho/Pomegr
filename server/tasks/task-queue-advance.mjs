@@ -57,7 +57,7 @@ function gateFacts(resolveGateFacts, repositoryId) {
 
 const startProvider = (task) => task.run.provider ?? "claude";
 
-export function startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at, manual = false, autonomous = false }) {
+export function startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at, manual = false }) {
   const task = board.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return { ok: false, reasons: [] };
   const gates = evaluateGates({ provider: startProvider(task), blockedBy: manual ? null : earlierTaskBlocker(taskId, queueRecords(rows, at)) },
@@ -65,14 +65,6 @@ export function startGates({ database, repositoryId, board, rows, taskId, resolv
   const early = task.state === "scheduled" && task.scheduledAt !== null && !taskIsDue(Date.parse(task.scheduledAt), at);
   // A task that runs after an unfinished task never starts, by the queue or by hand.
   const after = (task.after ?? []).some((id) => board.tasks.some((other) => other.id === id && other.state !== "done"));
-  if (autonomous) {
-    const records = queueRecords(rows, at);
-    const candidate = nextQueueStart({ status: "running", tasks: records });
-    const queued = task.state === "queued" || task.state === "scheduled";
-    const orderHeld = queued ? !candidate?.starts?.includes(taskId)
-      : records.some((record) => record.inFlight || record.state === "queued" || record.state === "scheduled");
-    if (orderHeld || queueWindowHold(readQueueSchedule(database, repositoryId), at)) return { ok: false, reasons: gates.reasons, early: true };
-  }
   return early || after ? { ok: false, reasons: gates.reasons, early: true, ...(after ? { after: true } : {}) } : gates;
 }
 

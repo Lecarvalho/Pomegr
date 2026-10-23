@@ -49,12 +49,6 @@ this document retains authority over acquisition, committed evidence, and servin
 
 ## Non-negotiable invariants
 
-- The [temporary Aril pilot](agent-chat.md#temporary-autonomous-pilot) consumes committed board and usage projections outside observation.
-- Its private desktop-worker reset request schedules ordinary usage acquisition, with existing provider backoff and atomic cache publication.
-- A reset timestamp is a wake deadline, never evidence of restored capacity. Effects require a fresh committed usage reading.
-- Pilot grants, objectives, decisions, and receipts never enter observation checkpoints, browser caches, session domains, or pipeline logs.
-- Pilot GETs retain cache-only serving, last known-good evidence, and existing independent revisions and readiness.
-
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.

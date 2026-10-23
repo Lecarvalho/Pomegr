@@ -163,7 +163,7 @@ Product expansion directions:
 - `guidance-impact.md` experiments inject repository-authored text into sessions. They stay parked.
 - `mobile-pairing-cloudflare.md` and `remote-platform-and-orgs.md` describe the phone as read-only. The phone already starts sessions and applies Aril proposals.
 - `overview-sparse-and-links.md` says no code is written, but most of it is built.
-- The board feature "Aril 0.9.0" and the [pilot procedure](../operations/aril-pilot.md) name the pilot 0.9.0. This roadmap uses 0.9.0 for the scorecard.
+- The board feature "Aril 0.9.0" and the pilot procedure name the pilot 0.9.0. This roadmap uses 0.9.0 for the scorecard.
 
 ## What is missing
 

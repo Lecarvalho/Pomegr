@@ -24,10 +24,6 @@ const quietLogger = Object.freeze({ log() {} });
 installQuietConsole();
 let handle;
 onParentMessage((message) => {
-  if (message?.type === "pilot-usage-refresh" && Number.isSafeInteger(message.requestId)) {
-    void Promise.resolve(handle?.refreshUsageForPilot?.())
-      .catch(() => {}).finally(() => send({ type: "pilot-usage-refreshed", requestId: message.requestId }));
-  }
   if (message?.type === "codex-sign-in-completed") {
     void Promise.resolve(handle?.refreshUsageAfterCodexSignIn?.())
       .catch(() => {}).finally(() => send({ type: "codex-usage-rechecked" }));

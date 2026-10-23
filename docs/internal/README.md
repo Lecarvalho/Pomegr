@@ -94,7 +94,6 @@ When two pages differ, the owner in this section is correct. Repair the other pa
 | --- | --- |
 | Development JSONL diagnostics and passive analysis | [Pipeline operations](operations/pipeline-diagnostics.md) |
 | Desktop packaging, signing, publication, rollback | [Desktop releases](operations/desktop-releases.md) |
-| Local update and real-provider acceptance for the temporary Aril pilot | [Aril pilot validation](operations/aril-pilot.md) |
 | Beta-candidate acceptance and desktop milestone IDs | [Desktop beta acceptance](operations/desktop-beta-acceptance.md) |
 | Clean-VM checks | [Desktop clean-VM checklist](operations/desktop-clean-vm.md) |
 | Landing site and documentation publication | [Website operations](operations/website.md); [package entrypoint](../../landing/README.md) |
