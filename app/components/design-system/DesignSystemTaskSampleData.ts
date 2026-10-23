@@ -22,7 +22,7 @@ export function sampleTask(id: string, text: string, overrides: Partial<Task> = 
   };
 }
 
-const session = (id: string, title: string, state: string, observedModel: string | null = "model-large") => ({ id: `claude:design-system-${id}`, title, state, observedModel });
+const session = (id: string, title: string, state: string, observedModel: string | null = "model-large") => ({ id: `claude:design-system-${id}`, title, state, observedModel, observedEffort: null });
 const passed = [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: true }];
 
 export const T1_DONE = sampleTask("T-1", "Add retry to the upload client", {

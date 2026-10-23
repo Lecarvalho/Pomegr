@@ -80,7 +80,7 @@ test("a task is mapped field by field, with names for its column and feature and
     id: "T-1", column: "Ready", position: 2, state: "needs_review", feature: "Auth", group: "group A",
     provider: "claude", model: "claude-opus-4-1", effort: "high",
     complete_when: ["pr_open", "tree_clean"], own_condition: "Changelog updated",
-    session: { ref: "claude:abc-1", state: "ended", observed_model: "claude-opus-4-1[1m]" },
+    session: { ref: "claude:abc-1", state: "ended", observed_model: "claude-opus-4-1[1m]", observed_effort: null },
     report: { results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }], block_reason: "Waiting on review", attention: "Look at the migration" },
     github_issue: 42, scheduled_at: "2026-10-03T08:00:00.000Z", updated_at: "2026-10-02T09:00:00.000Z",
     text: "Write the plan",
@@ -374,7 +374,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
   const [first, second] = snapshot.tasks;
   assert.deepEqual(first, {
     id: "T-1", column: null, position: null, state: "", feature: null, provider: null, model: null, effort: null, complete_when: [], own_condition: null,
-    session: { ref: "", state: "", observed_model: null }, report: { results: [], block_reason: null, attention: null }, updated_at: "", text: "ok",
+    session: { ref: "", state: "", observed_model: null, observed_effort: null }, report: { results: [], block_reason: null, attention: null }, updated_at: "", text: "ok",
   });
   assert.equal(second.provider, null);
   assert.deepEqual(second.complete_when, []);
@@ -592,4 +592,12 @@ test("native repository guidance distinguishes provider tools and acknowledges u
   assert.match(AGENT_CHAT_INSTRUCTIONS, /native permissions may permit reading elsewhere/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /never bypass permissions/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /task_text.cut counts shortened task texts out of task_text.total/u);
+});
+
+
+test("the board snapshot carries the session's observed effort", () => {
+  const task = fullTask();
+  task.session.observedEffort = "high";
+  const snapshot = boardSnapshot(fullBoard({ tasks: [task] }), { now });
+  assert.equal(snapshot.tasks[0].session.observed_effort, "high");
 });

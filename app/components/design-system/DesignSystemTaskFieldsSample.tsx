@@ -63,8 +63,8 @@ const DONE_REPORT = { at: "", blockReason: null, results: [{ check: "pr_open" as
 const SAMPLE_SESSION = <TaskSessionLine title="Add a retry budget to the uploader" sessionId="claude:design-system-review" />;
 const columnName = (id: string) => BOARD_PLAN.columns.find((column) => column.id === id)?.name ?? null;
 const CANDIDATES: TaskSessionCandidate[] = [{ id: "claude:design-system-c1", title: "Fix the flaky upload test", state: "working" }];
-const ASSIGNED = [{ id: "claude:design-system-resume", title: "Resume the retry back-off", state: "working", observedModel: "model-large" }];
-const STARTED_SESSION = { id: "claude:design-system-review", title: "Add a retry budget to the uploader", state: "idle", observedModel: "model-large" };
+const ASSIGNED = [{ id: "claude:design-system-resume", title: "Resume the retry back-off", state: "working", observedModel: "model-large", observedEffort: null }];
+const STARTED_SESSION = { id: "claude:design-system-review", title: "Add a retry budget to the uploader", state: "idle", observedModel: "model-large", observedEffort: null };
 
 /** The Start at row with a field of its own state. It sends nothing here. */
 function StartAtDemo({ initial = "", failure = null }: { initial?: string; failure?: string | null }) {

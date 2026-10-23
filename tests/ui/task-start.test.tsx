@@ -212,7 +212,7 @@ describe("Start session", () => {
   });
 
   it.each([
-    ["a linked session", { session: { id: "s", title: "Linked work", state: "idle", observedModel: null } }, "A session is already linked to this task.", "Linked work"],
+    ["a linked session", { session: { id: "s", title: "Linked work", state: "idle", observedModel: null, observedEffort: null } }, "A session is already linked to this task.", "Linked work"],
     ["done", { state: "done" as const }, "This task is done.", "Write the thing"],
   ])("is not offered, and says why, for %s", async (_name, overrides, reason, cardName) => {
     setBoard(task(overrides));
@@ -245,7 +245,7 @@ describe("Start session", () => {
   });
 
   describe("after a start that did not happen", () => {
-    const linked = { session: { id: "s", title: "Write the thing", state: "idle" as const, observedModel: null } };
+    const linked = { session: { id: "s", title: "Write the thing", state: "idle" as const, observedModel: null, observedEffort: null } };
     async function startThen(...changes: Partial<Task>[]) {
       taskStart.mockResolvedValueOnce({ status: "plugin_missing" });
       const user = userEvent.setup();

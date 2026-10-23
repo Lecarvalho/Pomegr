@@ -15,7 +15,7 @@ export type TaskColumn = { id: string; name: string; position: number; role?: Ta
 export type TaskFeature = { id: string; name: string; done: boolean };
 // `keepWorktree` is present only when on: by default a done task's own worktree and branch are removed.
 export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null; remoteControl?: boolean; keepWorktree?: boolean };
-export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null; checks?: { check: TaskCheck; passed: boolean }[] };
+export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null; observedEffort: string | null; checks?: { check: TaskCheck; passed: boolean }[] };
 // A session assigned to a task: the same borrowed facts as the started session, with no reading of the conditions.
 export type TaskAssignedSession = Omit<TaskSession, "checks">;
 export type TaskSource = { kind: "github_issue"; number: number };

@@ -29,6 +29,7 @@ export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogS
     title: sessionTitle(entry?.title) ?? sessionTitle(committed?.session?.title),
     state: entry?.activityStatus ?? "unknown",
     observedModel: typeof primary?.model === "string" ? primary.model : null,
+    observedEffort: typeof primary?.effort === "string" ? primary.effort : null,
     writerReleased: primary?.liveness?.reason === "writer_released",
   };
 }

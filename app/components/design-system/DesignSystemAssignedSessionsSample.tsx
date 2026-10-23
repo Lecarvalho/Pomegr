@@ -15,7 +15,7 @@ import { SAMPLE_FEATURE_ID, SAMPLE_REPOSITORY_ID, T2_STALLED, T6_WORKING, T8_IDL
 
 const noop = () => undefined;
 const NO_IMAGES = new Map<string, string | null>();
-const assignedSession = (id: string, title: string | null, state: string): TaskAssignedSession => ({ id: `claude:design-system-${id}`, title, state, observedModel: "model-large" });
+const assignedSession = (id: string, title: string | null, state: string): TaskAssignedSession => ({ id: `claude:design-system-${id}`, title, state, observedModel: "model-large", observedEffort: null });
 const RESUME = assignedSession("resume", "Resume the retry back-off", "working");
 const REVIEWER = assignedSession("review", "Review the upload changes", "idle");
 const CANDIDATES: TaskSessionCandidate[] = [
@@ -38,7 +38,7 @@ function ModalSample({ task, chip, subtitle }: { task: Task; chip: { label: stri
   const assign = (id: string) => {
     const candidate = candidates.find((entry) => entry.id === id);
     if (!candidate) return;
-    setAssigned([...assigned, { ...candidate, observedModel: null }]);
+    setAssigned([...assigned, { ...candidate, observedModel: null, observedEffort: null }]);
     setCandidates(candidates.filter((entry) => entry.id !== id));
   };
   const unassign = (id: string) => {

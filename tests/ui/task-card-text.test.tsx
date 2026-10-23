@@ -81,7 +81,7 @@ describe("taskTextPreview", () => {
 
 describe("taskCardTitle", () => {
   it("is the session title, else the whole text without its tags", () => {
-    const session = { id: "claude:s1", title: "Session title", state: "working", observedModel: null } as Task["session"];
+    const session = { id: "claude:s1", title: "Session title", state: "working", observedModel: null, observedEffort: null } as Task["session"];
     expect(taskCardTitle(task({ text: "[ bug ] Fix the cart\nSecond line" }))).toBe("Fix the cart\nSecond line");
     expect(taskCardTitle(task({ text: "[ bug ]\nFix the cart" }))).toBe("Fix the cart");
     expect(taskCardTitle(task({ text: "[ bug ] Fix the cart", session }))).toBe("Session title");
@@ -140,7 +140,7 @@ describe("TaskCard text", () => {
   });
 
   it("draws no tag row for a task without tags, and tags beside a session title", () => {
-    const session = { id: "claude:s1", title: "Session title", state: "working", observedModel: null } as Task["session"];
+    const session = { id: "claude:s1", title: "Session title", state: "working", observedModel: null, observedEffort: null } as Task["session"];
     const { container } = render(<ul>
       <TaskCard task={task()} />
       <TaskCard task={task({ id: "T-64", text: "[ ui ] Polish the board", session })} />
@@ -158,7 +158,7 @@ describe("TaskCard text", () => {
   });
 
   it("shows no excerpt and no Complete when line on any card", () => {
-    const session = { id: "claude:s1", title: "Events row for `update_task`", state: "working", observedModel: null } as Task["session"];
+    const session = { id: "claude:s1", title: "Events row for `update_task`", state: "working", observedModel: null, observedEffort: null } as Task["session"];
     const { container } = render(<ul>
       <TaskCard task={task({ completeWhen: { checks: ["pr_open"], own: "Reviewed" } })} />
       <TaskCard task={task({ id: "T-64", text: LONG, completeWhen: { checks: ["pr_open"], own: null } })} compact />
@@ -183,7 +183,7 @@ describe("TaskCard text", () => {
 });
 
 describe("TaskCard open", () => {
-  const session = { id: "claude:s1", title: null, state: "working", observedModel: null } as Task["session"];
+  const session = { id: "claude:s1", title: null, state: "working", observedModel: null, observedEffort: null } as Task["session"];
   const move = { drag: {}, available: { up: true, down: true, left: false, right: true }, onMove: vi.fn() };
 
   it("opens from a click anywhere on the card, with the title as the opener", () => {
@@ -222,5 +222,26 @@ describe("TaskCard open", () => {
     const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
     expect(styles).toContain(".taskCardOpen.commandQuietAction:hover:not(:disabled), .taskCardOpen.commandQuietAction:active:not(:disabled) { padding: 0; justify-content: flex-start; background: transparent;");
     expect(styles).toContain(".taskCard.isOpenable { cursor: pointer; }");
+  });
+});
+
+
+describe("task card observed effort", () => {
+  it.each([
+    ["medium", "high", "Planned effort medium, observed high", true],
+    ["high", "high", "Observed effort: high", false],
+    [null, "high", "Observed effort: high", false],
+    ["medium", null, null, false],
+  ] as const)("renders planned %s and observed %s", (planned, observedEffort, text, differs) => {
+    const { container } = render(<ul><TaskCard task={task({
+      run: { provider: null, model: null, effort: planned },
+      session: { id: "claude:synthetic", title: null, state: "working", observedModel: null, observedEffort },
+    })} /></ul>);
+    const line = [...container.querySelectorAll(".taskCardDetail")].find((element) => /effort/.test(element.textContent ?? ""));
+    if (text === null) expect(line).toBeUndefined();
+    else {
+      expect(line).toHaveTextContent(text);
+      expect(line?.classList.contains("taskCardModelDiffers")).toBe(differs);
+    }
   });
 });

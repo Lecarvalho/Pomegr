@@ -15,7 +15,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
-const session = (state: string): NonNullable<Task["session"]> => ({ id: "claude:abc", title: null, state, observedModel: null });
+const session = (state: string): NonNullable<Task["session"]> => ({ id: "claude:abc", title: null, state, observedModel: null, observedEffort: null });
 
 function board(tasks: Task[], order: string[] = []): TaskBoard {
   return { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks, queue: { status: "idle", blockedBy: null, pauseReason: null, order } };

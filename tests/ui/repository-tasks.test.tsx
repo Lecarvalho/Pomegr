@@ -339,7 +339,7 @@ describe("task board", () => {
 
   it.each(["closed", "stopped", "unknown", "working"])("keeps the Stalled chip while its ended session reads %s", (state) => {
     render(<TaskBoardView board={board({ tasks: [
-      task(4, { state: "stalled", session: { id: "claude:abc124", title: null, state, observedModel: null } }),
+      task(4, { state: "stalled", session: { id: "claude:abc124", title: null, state, observedModel: null, observedEffort: null } }),
     ] })} />);
     const card = screen.getByRole("listitem");
     expect(within(card).getByText("Stalled")).toHaveClass("commandChip", "warning");
@@ -351,9 +351,9 @@ describe("task board", () => {
 
   it("shows the session title instead of the text once the session has one, and that session's state", () => {
     render(<TaskBoardView board={board({ tasks: [
-      task(1, { text: "Refactor the parser", state: "queued", session: { id: "claude:abc", title: "Parser refactor session", state: "working", observedModel: "opus" } }),
-      task(2, { text: "Fix flaky test", state: "queued", session: { id: "claude:def", title: null, state: "needs_input", observedModel: null } }),
-      task(3, { text: "Ship the guide", state: "done", session: { id: "claude:ghi", title: "Guide session", state: "idle", observedModel: null } }),
+      task(1, { text: "Refactor the parser", state: "queued", session: { id: "claude:abc", title: "Parser refactor session", state: "working", observedModel: "opus", observedEffort: null } }),
+      task(2, { text: "Fix flaky test", state: "queued", session: { id: "claude:def", title: null, state: "needs_input", observedModel: null, observedEffort: null } }),
+      task(3, { text: "Ship the guide", state: "done", session: { id: "claude:ghi", title: "Guide session", state: "idle", observedModel: null, observedEffort: null } }),
     ] })} />);
     const [live, waiting, done] = screen.getAllByRole("listitem");
     expect(within(live).getByText("Parser refactor session")).toBeInTheDocument();
@@ -414,7 +414,7 @@ describe("task board", () => {
 });
 
 describe("task card borrowing its session", () => {
-  const session = (overrides: Partial<NonNullable<Task["session"]>> = {}): NonNullable<Task["session"]> => ({ id: "claude:abc123", title: "Parser refactor", state: "working", observedModel: null, ...overrides });
+  const session = (overrides: Partial<NonNullable<Task["session"]>> = {}): NonNullable<Task["session"]> => ({ id: "claude:abc123", title: "Parser refactor", state: "working", observedModel: null, observedEffort: null, ...overrides });
   const onlyCard = (tasks: Task[]) => {
     render(<TaskBoardView board={board({ tasks })} />);
     return screen.getByRole("listitem");
@@ -440,7 +440,7 @@ describe("task card borrowing its session", () => {
   });
 
   it("shows the session title, the observed model and an Open session link to the session view", () => {
-    const card = onlyCard([task(1, { text: "Refactor the parser", state: "queued", run: { provider: "claude", model: "opus", effort: "high" }, session: session({ observedModel: "opus" }) })]);
+    const card = onlyCard([task(1, { text: "Refactor the parser", state: "queued", run: { provider: "claude", model: "opus", effort: "high" }, session: session({ observedModel: "opus", observedEffort: null }) })]);
     expect(within(card).getByText("Parser refactor")).toBeInTheDocument();
     expect(within(card).queryByText("Refactor the parser")).not.toBeInTheDocument();
     expect(within(card).getByText("opus · high")).toBeInTheDocument();
@@ -480,7 +480,7 @@ describe("task card borrowing its session", () => {
     ["blocked", "Blocked by agent"],
     ["done", "Done"],
   ])("keeps the %s outcome over a working session and still links to it", (state, label) => {
-    const card = onlyCard([task(1, { state, session: session({ observedModel: "opus" }) })]);
+    const card = onlyCard([task(1, { state, session: session({ observedModel: "opus", observedEffort: null }) })]);
     expect(within(card).getByText(label)).toHaveClass("commandChip");
     expect(within(card).queryByText("In progress")).not.toBeInTheDocument();
     expect(card.classList.contains("isLive")).toBe(false);
@@ -533,7 +533,7 @@ describe("task card borrowing its session", () => {
     });
 
     it("shows the observed line with no planned run at all", () => {
-      const card = onlyCard([task(1, { session: session({ observedModel: "opus" }) })]);
+      const card = onlyCard([task(1, { session: session({ observedModel: "opus", observedEffort: null }) })]);
       expect(card.querySelector(".taskCardRun")).toBeNull();
       expect(within(card).getByText(/^Observed model:/)).toHaveTextContent("Observed model: opus");
     });

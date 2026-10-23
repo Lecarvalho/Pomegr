@@ -154,9 +154,9 @@ type Task = {
   completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
   scheduledAt: string | null;
-  session: { id: string; title: string | null; state: string; observedModel: string | null;
+  session: { id: string; title: string | null; state: string; observedModel: string | null; observedEffort: string | null;
     checks?: { check: TaskCheck; passed: boolean }[] } | null;
-  assigned?: { id: string; title: string | null; state: string; observedModel: string | null }[];  // absent means none
+  assigned?: { id: string; title: string | null; state: string; observedModel: string | null; observedEffort: string | null }[];  // absent means none
   report: { at: string; results: { check: TaskCheck; passed: boolean; unavailable?: true }[];   // `unavailable`: not verified
     blockReason: string | null;
     attention: string | null } | null;                 // what the agent asked the owner to look at
@@ -275,7 +275,7 @@ type TaskBoard = {
   board (see [Feature context](#feature-context)).
 - `session` is a borrowed, normalized reference to the bound session (see
   [Session binding](#session-binding)); it carries no transcript content. It is null
-  until the session binds, then `{ id, title, state, observedModel }`, filled on every
+  until the session binds, then `{ id, title, state, observedModel, observedEffort }`, filled on every
   board that leaves the monitor by `fillTaskSessions` (`server/tasks/task-board.mjs`)
   from `resolveTaskSessionFacts`, which reads only committed memory: the session
   catalog row and the observation store's public state. `id` is the normalized
@@ -283,10 +283,10 @@ type TaskBoard = {
   placeholder is no title). `state` is the catalog row's `activityStatus`, the value the
   Sessions list State column renders: `working`, `needs_input`, `idle`, `open`,
   `stopped`, `closed`, or `unknown`. `observedModel` is the primary agent's latest
-  reported model. The projection validates each field itself: a title that is not
+  reported model; `observedEffort` is its latest provider-reported effort label. The projection validates each field itself: a title that is not
   one bounded line (160 characters) is null, a state outside that list is `unknown`,
-  and a model that is not a request model identifier is null. With no facts the
-  session is `{ id, title: null, state: "unknown", observedModel: null }`: unknown,
+  and a model that is not a request model identifier is null. Effort is trimmed and lowercased; it is null unless it matches `/^[a-z][a-z0-9-]{0,15}$/` and is neither `unspecified` nor `unknown`. With no facts the
+  session is `{ id, title: null, state: "unknown", observedModel: null, observedEffort: null }`: unknown,
   never guessed. The facts are borrowed per read and never stored.
 - `assigned` lists the sessions assigned to the task, in the order they were assigned
   (see [Assigned sessions](#assigned-sessions)). Each entry is the same borrowed
@@ -2692,6 +2692,8 @@ serves no other client.
   `feature-get`.
 
 ## Privacy
+
+- A task session and its assigned sessions borrow only the primary agent's provider-reported `observedEffort` per read, bounded as above; it is never stored and adds no value to `/api/state`.
 
 - The block-hold marker stays only in the task store. It is served indirectly through existing queue status and `blockedBy`, never as task content.
 - Superseded report history stays only in the task store, under the bounded retention in [Completion](#completion).

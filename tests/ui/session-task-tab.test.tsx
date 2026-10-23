@@ -31,12 +31,12 @@ const mine = task(14, {
   featureId: "feat-1", state: "queued", group: "grp-0123456789ab",
   run: { provider: "claude", model: "opus", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: "Both tools validate their input." },
-  session: { id: sessionId, title: "Wire the tools", state: "working", observedModel: "opus" },
+  session: { id: sessionId, title: "Wire the tools", state: "working", observedModel: "opus", observedEffort: null },
 });
 
 const siblings = [
   task(12, { featureId: "feat-1", state: "done", text: "Store and privacy rules" }),
-  task(13, { featureId: "feat-1", group: "grp-0123456789ab", state: "queued", text: "Queue gate", session: { id: "claude:other", title: "Queue auto-advance", state: "idle", observedModel: null } }),
+  task(13, { featureId: "feat-1", group: "grp-0123456789ab", state: "queued", text: "Queue gate", session: { id: "claude:other", title: "Queue auto-advance", state: "idle", observedModel: null, observedEffort: null } }),
   task(15, { featureId: "feat-1", state: "queued", text: "Run plan" }),
   task(16, { featureId: "feat-1", text: "Fourth step" }),
   task(17, { featureId: "feat-1", state: "done", text: "Parallel next" }),
@@ -262,14 +262,14 @@ describe("SessionTaskTab", () => {
   });
 
   it("shows the monitor's reading of each check while the task waits for its report", () => {
-    const session = { id: sessionId, title: null, state: "working", observedModel: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }] };
+    const session = { id: sessionId, title: null, state: "working", observedModel: null, observedEffort: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }] };
     setBoard(board({ tasks: [{ ...mine, session }, ...siblings] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     expect(within(completePanel()).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openHolds now", "Working tree cleanNot yet"]);
   });
 
   it("keeps a reading out of a task that has an outcome or a report", () => {
-    const session = { id: sessionId, title: null, state: "closed", observedModel: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: true }] };
+    const session = { id: sessionId, title: null, state: "closed", observedModel: null, observedEffort: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: true }] };
     expect(checkRows({ ...mine, session, state: "stalled" }).map((row) => row.result)).toEqual(["No report", "No report"]);
     const report = { at: "2026-10-09T10:00:00.000Z", results: [{ check: "pr_open" as const, passed: false }], blockReason: null };
     expect(checkRows({ ...mine, session, state: "needs_review", report }).map((row) => row.result)).toEqual(["Did not pass", "Not checked"]);
@@ -341,14 +341,14 @@ describe("SessionTaskTab", () => {
   });
 
   it("shows the Not set planned run, and no observed model before one is recorded", () => {
-    setBoard(board({ tasks: [{ ...mine, run: { provider: null, model: null, effort: null }, session: { ...mine.session!, observedModel: null } }] }));
+    setBoard(board({ tasks: [{ ...mine, run: { provider: null, model: null, effort: null }, session: { ...mine.session!, observedModel: null, observedEffort: null } }] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     expect(runPanel()).toHaveTextContent("PlannedNot set");
     expect(runPanel()).toHaveTextContent("ObservedNot recorded yet");
   });
 
   it("flags an observed model that differs from the planned one", () => {
-    setBoard(board({ tasks: [{ ...mine, session: { ...mine.session!, observedModel: "sonnet" } }] }));
+    setBoard(board({ tasks: [{ ...mine, session: { ...mine.session!, observedModel: "sonnet", observedEffort: null } }] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     const observed = runPanel().querySelectorAll("dd")[1];
     expect(observed).toHaveTextContent("sonnetLatest recorded for the main agent, differs from planned");

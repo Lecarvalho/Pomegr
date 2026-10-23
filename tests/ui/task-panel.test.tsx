@@ -37,7 +37,7 @@ const reviewTask = task(12, {
   run: { provider: "claude", model: "model-a", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
   state: "needs_review",
-  session: { id: "claude:abc123", title: "Task store and privacy rules", state: "idle", observedModel: "model-b" },
+  session: { id: "claude:abc123", title: "Task store and privacy rules", state: "idle", observedModel: "model-b", observedEffort: null },
   report: { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open", passed: false }, { check: "tree_clean", passed: true }], blockReason: null },
 });
 
@@ -168,7 +168,7 @@ describe("Task modal, mode edit", () => {
   });
 
   it("omits results, the report line and the notice for a task with no report and no differing model", async () => {
-    setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: "model-a", effort: null }, completeWhen: { checks: ["pr_open"], own: null }, session: { id: "s", title: null, state: "working", observedModel: "model-a" } })]);
+    setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: "model-a", effort: null }, completeWhen: { checks: ["pr_open"], own: null }, session: { id: "s", title: null, state: "working", observedModel: "model-a", observedEffort: null } })]);
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Plain task"));
@@ -200,7 +200,7 @@ describe("Task modal, mode edit", () => {
     ["Default model planned", null, "model-b"],
     ["no observed model yet", "model-a", null],
   ])("shows no notice when the models match or cannot be compared: %s", async (_name, plannedModel, observedModel) => {
-    setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: plannedModel, effort: null }, session: { id: "claude:s5", title: "Plain session", state: "working", observedModel } })]);
+    setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: plannedModel, effort: null }, session: { id: "claude:s5", title: "Plain session", state: "working", observedModel, observedEffort: null } })]);
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Plain session"));
@@ -211,8 +211,8 @@ describe("Task modal, mode edit", () => {
 
   it("names the session as the title source only when the title is borrowed, and links to it either way", async () => {
     setBoard([
-      task(5, { text: "Borrowed title", session: { id: "claude:s5", title: "Session title", state: "idle", observedModel: null } }),
-      task(6, { text: "Own title", session: { id: "codex:s6", title: null, state: "idle", observedModel: null } }),
+      task(5, { text: "Borrowed title", session: { id: "claude:s5", title: "Session title", state: "idle", observedModel: null, observedEffort: null } }),
+      task(6, { text: "Own title", session: { id: "codex:s6", title: null, state: "idle", observedModel: null, observedEffort: null } }),
     ]);
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
@@ -242,7 +242,7 @@ describe("Task modal, mode edit", () => {
   });
 
   it("borrows the session's state in the header only while the task has no outcome and the session has facts", async () => {
-    const session = (state: string) => ({ id: "claude:s5", title: "Chip session", state, observedModel: null });
+    const session = (state: string) => ({ id: "claude:s5", title: "Chip session", state, observedModel: null, observedEffort: null });
     const user = userEvent.setup();
     setBoard([task(5, { state: "queued", session: session("needs_input") })]);
     const view = render(<TaskBoardPane repositoryId={repositoryId} />);
@@ -271,7 +271,7 @@ describe("Task modal, mode edit", () => {
   it("cannot start a session again for a task that already has one", async () => {
     const taskStart = vi.fn(async () => ({ status: "started" }));
     setBridge({ taskAction, taskStart });
-    setBoard([task(5, { state: "queued", run: { provider: "claude", model: null, effort: null }, session: { id: "claude:s5", title: "Linked session", state: "working", observedModel: null } })]);
+    setBoard([task(5, { state: "queued", run: { provider: "claude", model: null, effort: null }, session: { id: "claude:s5", title: "Linked session", state: "working", observedModel: null, observedEffort: null } })]);
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Linked session"));
@@ -285,7 +285,7 @@ describe("Task modal, mode edit", () => {
   it("is read-only once the task has started, and says that a requeue opens it again", async () => {
     const user = userEvent.setup();
     const started: Array<[string, Partial<Task>, string]> = [
-      ["Linked", { session: { id: "claude:abc123", title: null, state: "working", observedModel: null } }, "Started, so read-only. Requeue to edit."],
+      ["Linked", { session: { id: "claude:abc123", title: null, state: "working", observedModel: null, observedEffort: null } }, "Started, so read-only. Requeue to edit."],
       ["In review", { state: "needs_review" }, "Started, so read-only. Requeue to edit."],
       ["Blocked", { state: "blocked" }, "Started, so read-only. Requeue to edit."],
       ["Stalled", { state: "stalled" }, "Started, so read-only. Requeue to edit."],
@@ -584,7 +584,7 @@ describe("Task modal, mode edit", () => {
 
 describe("Task modal resolutions", () => {
   const blockedTask = task(14, {
-    state: "blocked", session: { id: "claude:def456", title: null, state: "idle", observedModel: null },
+    state: "blocked", session: { id: "claude:def456", title: null, state: "idle", observedModel: null, observedEffort: null },
     report: { at: "2026-10-08T12:00:00.000Z", results: [], blockReason: "The schema needs a decision." },
   });
   async function open(text: string) {
@@ -596,7 +596,7 @@ describe("Task modal resolutions", () => {
 
   it("says a stalled task's session ended with no report and offers both resolutions", async () => {
     setBoard([task(15, { text: "Stalled work", state: "stalled", completeWhen: { checks: ["pr_open"], own: null },
-      session: { id: "claude:abc125", title: null, state: "closed", observedModel: null } })]);
+      session: { id: "claude:abc125", title: null, state: "closed", observedModel: null, observedEffort: null } })]);
     const { user, dialog } = await open("Stalled work");
     expect(header().getByText("Stalled")).toHaveClass("commandChip", "warning");
     expect(header().queryByText("Closed")).not.toBeInTheDocument();
@@ -664,7 +664,7 @@ describe("Task modal resolutions", () => {
   });
 
   it("offers Mark done and Requeue for a linked task whose session has not reported, and says neither stops the session", async () => {
-    const session = { id: "claude:abc126", title: "Working session", state: "working", observedModel: null };
+    const session = { id: "claude:abc126", title: "Working session", state: "working", observedModel: null, observedEffort: null };
     setBoard([task(20, { text: "In flight", state: "queued", session })]);
     const { user, dialog } = await open("Working session");
     const done = dialog.getByRole("button", { name: "Mark done" });
@@ -690,7 +690,7 @@ describe("Task modal resolutions", () => {
   });
 
   it("offers those two exits for every waiting state with a linked session, and for no task without one or with an outcome", async () => {
-    const session = { id: "claude:abc127", title: null, state: "unknown", observedModel: null };
+    const session = { id: "claude:abc127", title: null, state: "unknown", observedModel: null, observedEffort: null };
     setBoard([
       task(21, { state: "not_queued", session }), task(22, { state: "scheduled", scheduledAt: "2026-10-09T10:00:00.000Z", session }),
       task(23, { state: "queued" }), task(24, { state: "done", session }),
@@ -707,7 +707,7 @@ describe("Task modal resolutions", () => {
   });
 
   it("hides the exits of a task awaiting a report while the delete confirmation is open", async () => {
-    setBoard([task(20, { text: "In flight", state: "queued", session: { id: "claude:abc126", title: "Working session", state: "working", observedModel: null } })]);
+    setBoard([task(20, { text: "In flight", state: "queued", session: { id: "claude:abc126", title: "Working session", state: "working", observedModel: null, observedEffort: null } })]);
     const { user, dialog } = await open("Working session");
     await user.click(dialog.getByRole("button", { name: "Delete task" }));
     expect(dialog.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
@@ -733,7 +733,7 @@ describe("Task modal resolutions", () => {
 
   it("shows the agent's attention line as the agent's own words, for a task every check of which passed", async () => {
     setBoard([task(19, { text: "Finished with a note", state: "needs_review", completeWhen: { checks: ["pr_open"], own: null },
-      session: { id: "claude:abc129", title: null, state: "closed", observedModel: null },
+      session: { id: "claude:abc129", title: null, state: "closed", observedModel: null, observedEffort: null },
       report: { at: "2026-10-08T12:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "The retry limit of **five** is a guess; confirm `RETRY_LIMIT` and [the PR](https://example.test)." } })]);
     const { dialog } = await open("Finished with a note");
     expect(dialog.getByText("Needs review")).toHaveClass("commandChip", "warning");

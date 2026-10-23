@@ -71,7 +71,7 @@ export function TaskCard({ task, lane, featureLine, nextQueued = false, onOpen, 
       ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title}><span className="taskCardTitle">{heading}</span></button>
       : <p className="taskCardTitle" title={title}>{heading}</p>}
     <TaskTagChips tags={tags} />
-    <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
+    <TaskRunLine run={task.run} observedModel={task.session?.observedModel} observedEffort={task.session?.observedEffort} />
     {starts && <p className="taskCardDetail taskCardStarts">Starts {starts.day} <span className="taskCardStartsTime">{starts.time}</span></p>}
     {waiting && <p className="taskCardWaiting">{waiting}</p>}
     {!waiting && after && <p className="taskCardWaiting taskCardAfter">{after}</p>}

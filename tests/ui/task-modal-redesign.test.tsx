@@ -30,7 +30,7 @@ function task(overrides: Partial<Task> = {}): Task {
   };
 }
 
-const session = { id: "claude:abc123", title: "Retry the uploads", state: "idle", observedModel: "model-a" };
+const session = { id: "claude:abc123", title: "Retry the uploads", state: "idle", observedModel: "model-a", observedEffort: null };
 const report = { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }], blockReason: null };
 
 function boardOf(...tasks: Task[]): Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue: TaskBoard["queue"] } {
@@ -126,7 +126,7 @@ describe("a task that has not started", () => {
   });
 
   it("draws the observed-model notice in the Run on value", () => {
-    open(task({ state: "queued", run: { provider: "claude", model: "model-a", effort: "high" }, session: { ...session, observedModel: "model-z" } }));
+    open(task({ state: "queued", run: { provider: "claude", model: "model-a", effort: "high" }, session: { ...session, observedModel: "model-z", observedEffort: null } }));
     expect(within(row("Run on")).getByText("Observed model differs")).toBeInTheDocument();
     expect(within(row("Run on")).getByText("model-z", { selector: "code" })).toBeInTheDocument();
   });

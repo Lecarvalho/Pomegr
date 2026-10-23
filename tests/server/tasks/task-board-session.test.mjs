@@ -28,8 +28,8 @@ const NUL = String.fromCharCode(0);
 const LONE_SURROGATE = String.fromCharCode(0xd800);
 
 const unlinked = (id) => ({ id, text: `task ${id}`, session: null });
-const linked = (id, sessionId) => ({ id, text: `task ${id}`, session: { id: sessionId, title: null, state: "unknown", observedModel: null } });
-const UNKNOWN = (id) => ({ id, title: null, state: "unknown", observedModel: null });
+const linked = (id, sessionId) => ({ id, text: `task ${id}`, session: { id: sessionId, title: null, state: "unknown", observedModel: null, observedEffort: null } });
+const UNKNOWN = (id) => ({ id, title: null, state: "unknown", observedModel: null, observedEffort: null });
 
 test("a linked task is filled from the resolver and an unlinked task stays null", () => {
   const board = { version: 1, readiness: "ready", tasks: [linked("T-1", SESSION), unlinked("T-2")], queue: { order: [] } };
@@ -37,10 +37,10 @@ test("a linked task is filled from the resolver and an unlinked task stays null"
   const calls = [];
   const filled = fillTaskSessions(board, (id) => {
     calls.push(id);
-    return { title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1" };
+    return { title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1", observedEffort: null };
   });
   assert.deepEqual(calls, [SESSION]);
-  assert.deepEqual(filled.tasks[0].session, { id: SESSION, title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1" });
+  assert.deepEqual(filled.tasks[0].session, { id: SESSION, title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1", observedEffort: null });
   assert.equal(filled.tasks[1], board.tasks[1]);
   assert.equal(filled.tasks[1].session, null);
   assert.deepEqual(filled.queue, board.queue);
@@ -92,16 +92,16 @@ test("an observed model is validated like the request model identifier, else it 
 
 test("a field that fails validation degrades alone", () => {
   const board = { tasks: [linked("T-1", SESSION)] };
-  const [task] = fillTaskSessions(board, () => ({ title: "Good title", state: "bogus", observedModel: "../x" })).tasks;
-  assert.deepEqual(task.session, { id: SESSION, title: "Good title", state: "unknown", observedModel: null });
+  const [task] = fillTaskSessions(board, () => ({ title: "Good title", state: "bogus", observedModel: "../x", observedEffort: null })).tasks;
+  assert.deepEqual(task.session, { id: SESSION, title: "Good title", state: "unknown", observedModel: null, observedEffort: null });
 });
 
 test("the projection adds no key and carries no other fact the resolver returns", () => {
   const board = { tasks: [linked("T-1", SESSION)] };
   const [task] = fillTaskSessions(board, () => ({
-    title: "t", state: "idle", observedModel: "claude-opus-4-1", cwd: "C:/secret", transcript: "path", token: "digest", repositoryId: REPOSITORY_ID,
+    title: "t", state: "idle", observedModel: "claude-opus-4-1", observedEffort: null, cwd: "C:/secret", transcript: "path", token: "digest", repositoryId: REPOSITORY_ID,
   })).tasks;
-  assert.deepEqual(Object.keys(task.session), ["id", "title", "state", "observedModel"]);
+  assert.deepEqual(Object.keys(task.session), ["id", "title", "state", "observedModel", "observedEffort"]);
 });
 
 test("a board without a task list is returned as given", () => {
@@ -157,7 +157,7 @@ test("GET /api/tasks fills a linked session only from the resolver handed in", a
   const runtime = {
     resolveTaskSessionFacts(id) {
       calls.push(id);
-      return { title: "Fix the flaky test", state: "needs_input", observedModel: "claude-opus-4-1" };
+      return { title: "Fix the flaky test", state: "needs_input", observedModel: "claude-opus-4-1", observedEffort: null };
     },
   };
   const { store, port } = await serving(context, runtime);
@@ -168,7 +168,7 @@ test("GET /api/tasks fills a linked session only from the resolver handed in", a
   assert.equal(response.headers["cache-control"], "no-store");
   // The link moved T-1 to the In progress column, so the tasks are read by ID, not by board order.
   const served = (id) => response.json.tasks.find((task) => task.id === id);
-  assert.deepEqual(served("T-1").session, { id: SESSION, title: "Fix the flaky test", state: "needs_input", observedModel: "claude-opus-4-1" });
+  assert.deepEqual(served("T-1").session, { id: SESSION, title: "Fix the flaky test", state: "needs_input", observedModel: "claude-opus-4-1", observedEffort: null });
   assert.equal(served("T-2").session, null);
   assert.deepEqual(calls, [SESSION]);
   // The stored board is untouched: the facts are borrowed per read, never persisted.
@@ -193,7 +193,7 @@ test("a resolver that throws or returns junk degrades each field and never fails
   assert.deepEqual(failed.json.tasks[0].session, UNKNOWN(SESSION));
   assert.ok(!failed.text.includes("SECRET-CATALOG-FAILURE"));
   const junk = await serving(context, {
-    resolveTaskSessionFacts: () => ({ title: `bad${LINE_BREAK}title`, state: "exploding", observedModel: "C:/secret/model", cwd: "C:/secret" }),
+    resolveTaskSessionFacts: () => ({ title: `bad${LINE_BREAK}title`, state: "exploding", observedModel: "C:/secret/model", observedEffort: null, cwd: "C:/secret" }),
   });
   linkTask(junk.store);
   const served = await getBoard(junk.port);
@@ -218,7 +218,7 @@ test("a GET with no linked task never reads the session lookup, and a denied cli
 });
 
 test("the board a mutation answers carries the same filled session", async (context) => {
-  const runtime = { resolveTaskSessionFacts: () => ({ title: "Borrowed title", state: "working", observedModel: "claude-sonnet-4" }) };
+  const runtime = { resolveTaskSessionFacts: () => ({ title: "Borrowed title", state: "working", observedModel: "claude-sonnet-4", observedEffort: null }) };
   const { store, port } = await serving(context, runtime);
   linkTask(store, "original text");
   // A started task takes no update, so the mutation is on another task of the board.
@@ -230,7 +230,7 @@ test("the board a mutation answers carries the same filled session", async (cont
   assert.equal(response.status, 200);
   assert.equal(response.json.ok, true);
   const answered = (id) => response.json.board.tasks.find((task) => task.id === id);
-  assert.deepEqual(answered("T-1").session, { id: SESSION, title: "Borrowed title", state: "working", observedModel: "claude-sonnet-4" });
+  assert.deepEqual(answered("T-1").session, { id: SESSION, title: "Borrowed title", state: "working", observedModel: "claude-sonnet-4", observedEffort: null });
   assert.equal(answered("T-2").text, "edited text");
 });
 
@@ -238,7 +238,7 @@ test("the store fills sessions only when it is handed a resolver", async (contex
   const { store } = await serving(context, {});
   linkTask(store);
   assert.deepEqual(store.readBoard(REPOSITORY_ID).tasks[0].session, UNKNOWN(SESSION));
-  const filled = store.readBoard(REPOSITORY_ID, { resolveSessionFacts: () => ({ title: "t", state: "idle", observedModel: null }) });
+  const filled = store.readBoard(REPOSITORY_ID, { resolveSessionFacts: () => ({ title: "t", state: "idle", observedModel: null, observedEffort: null }) });
   assert.equal(filled.tasks[0].session.state, "idle");
   assert.equal(store.apply(REPOSITORY_ID, "create", { text: "second" }).ok, true);
   const linkedIn = (result) => result.board.tasks.find((task) => task.id === "T-1");
@@ -308,14 +308,14 @@ test("the lookup reads the catalog row's title and the state the Sessions list r
     assert.equal(lookup({ rows: [catalogRow({ activityStatus })] })(SESSION).state, activityStatus);
   }
   const publicState = { session: { title: "From state" }, agents: [{ id: "primary", model: "claude-opus-4-1" }, { id: "agent-2", model: "claude-haiku-4" }] };
-  assert.deepEqual(lookup({ rows: [catalogRow()], publicState })(SESSION), { title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1", writerReleased: false });
+  assert.deepEqual(lookup({ rows: [catalogRow()], publicState })(SESSION), { title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1", observedEffort: null, writerReleased: false });
 });
 
 test("the lookup falls back to the committed public state where the row lacks a title or is missing", () => {
   const publicState = { session: { title: "From state" }, agents: [{ id: "primary", model: "claude-sonnet-4" }] };
-  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })], publicState })(SESSION), { title: "From state", state: "working", observedModel: "claude-sonnet-4", writerReleased: false });
-  assert.deepEqual(lookup({ publicState })(SESSION), { title: "From state", state: "unknown", observedModel: "claude-sonnet-4", writerReleased: false });
-  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })] })(SESSION), { title: null, state: "working", observedModel: null, writerReleased: false });
+  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })], publicState })(SESSION), { title: "From state", state: "working", observedModel: "claude-sonnet-4", observedEffort: null, writerReleased: false });
+  assert.deepEqual(lookup({ publicState })(SESSION), { title: "From state", state: "unknown", observedModel: "claude-sonnet-4", observedEffort: null, writerReleased: false });
+  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })] })(SESSION), { title: null, state: "working", observedModel: null, observedEffort: null, writerReleased: false });
   assert.deepEqual(lookup({ rows: [catalogRow({ title: `a${NUL}b${LINE_BREAK}c` })] })(SESSION).title, "a b c");
   assert.equal(lookup({ rows: [catalogRow({ title: "t".repeat(400) })] })(SESSION).title.length, TASK_SESSION_TITLE_LENGTH);
 });
@@ -344,7 +344,7 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
     repositoryInventory: new Proxy({}, { get(_target, key) { touched.push(["inventory", String(key)]); return undefined; } }),
   });
   assert.deepEqual(Object.keys(lookups).toSorted(), ["readTaskCheckFacts", "resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart", "taskIssues"]);
-  assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, writerReleased: false });
+  assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, observedEffort: null, writerReleased: false });
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
 });
 
@@ -632,4 +632,24 @@ test("a session the monitor does not hold reads nothing", async () => {
   assert.deepEqual(await readTaskCheckFacts("not a session", { observationStore: storeWith(checkState()), readNow }), unknown);
   assert.deepEqual(await readTaskCheckFacts("claude:other", { observationStore: storeWith(checkState()), readNow }), unknown);
   assert.deepEqual(calls, []);
+});
+
+
+test("observed effort is bounded and borrowed for started and assigned sessions", () => {
+  const board = { tasks: [{ ...linked("T-1", SESSION), assigned: [UNKNOWN("codex:assigned")] }] };
+  for (const [value, expected] of [["high", "high"], [" HIGH ", "high"], ["unspecified", null], ["unknown", null], ["", null], [7, null], ["a".repeat(17), null]]) {
+    const task = fillTaskSessions(board, () => ({ observedEffort: value })).tasks[0];
+    assert.equal(task.session.observedEffort, expected);
+    assert.equal(task.assigned[0].observedEffort, expected);
+  }
+  assert.equal(fillTaskSessions(board, () => null).tasks[0].session.observedEffort, null);
+});
+
+
+test("the lookup borrows only the primary agent's reported effort", () => {
+  const facts = (agents) => lookup({ publicState: { agents } })(SESSION);
+  assert.equal(facts([{ id: "primary", effort: "high" }, { id: "worker", effort: "low" }]).observedEffort, "high");
+  for (const agents of [[{ id: "worker", effort: "high" }], [{ id: "primary", effort: 7 }], []]) {
+    assert.equal(facts(agents).observedEffort, null);
+  }
 });

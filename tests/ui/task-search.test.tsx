@@ -42,7 +42,7 @@ function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
 const tasks = [
   task(1, { text: "Fix the login redirect\nSecond line of detail" }),
   task(2, { text: "Write release notes", columnId: "col-4", state: "needs_review", featureId: "feature-1", source: { kind: "github_issue", number: 133 } }),
-  task(3, { text: "Original wording", columnId: "col-3", session: { id: "claude:s-3", title: "Refactor the parser", state: "working", observedModel: null } }),
+  task(3, { text: "Original wording", columnId: "col-3", session: { id: "claude:s-3", title: "Refactor the parser", state: "working", observedModel: null, observedEffort: null } }),
 ];
 const searchBoard = board({ tasks, features: [{ id: "feature-1", name: "Launch", done: false }] });
 

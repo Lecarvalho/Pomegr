@@ -35,7 +35,7 @@ const reviewTask = task(12, {
   run: { provider: "claude", model: "model-a", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
   state: "needs_review",
-  session: { id: "claude:abc123", title: "Task store and privacy rules", state: "idle", observedModel: "model-b" },
+  session: { id: "claude:abc123", title: "Task store and privacy rules", state: "idle", observedModel: "model-b", observedEffort: null },
   report: { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open", passed: false }, { check: "tree_clean", passed: true }], blockReason: null },
 });
 

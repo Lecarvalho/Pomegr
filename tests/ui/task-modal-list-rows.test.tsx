@@ -29,7 +29,7 @@ function task(id: string, overrides: Partial<Task> = {}): Task {
 const done = task("T-13", { state: "done", columnId: "col-5" });
 const waiting = task("T-14");
 const other = task("T-15");
-const session = { id: "claude:abc123", title: "Retry the uploads", state: "idle", observedModel: "model-a" };
+const session = { id: "claude:abc123", title: "Retry the uploads", state: "idle", observedModel: "model-a", observedEffort: null };
 
 function open(value: Task) {
   const tasks = [value, done, waiting, other];
