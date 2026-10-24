@@ -129,4 +129,4 @@ is no archive directory.
 | [Mobile pairing](plans/mobile-pairing-cloudflare.md) | Relay pairing; the only shipped phone feature is same-network [phone access](../public/using-pomegr/phone-access.md) |
 | [Design system gaps](plans/design-system-gaps.md) | Accepted patterns that have no `/design-system` sample |
 | [Purpose roadmap](plans/purpose-roadmap.md) | Small versions toward less supervision and more personal time, with a scorecard, the first pilot retrospective, and the 0.8.1 cut |
-| [Embedded terminal](plans/embedded-terminal.md) | Task sessions in a Terminal tab of the desktop app, through a terminal host that survives restarts; proposed |
+| [Sessions inside Pomegr](plans/embedded-terminal.md) | Task sessions in a Terminal tab of the desktop app, any session's messages in a Conversation tab, and Continue for an ended session; proposed |
