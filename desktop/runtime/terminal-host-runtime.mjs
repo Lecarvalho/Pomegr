@@ -5,6 +5,7 @@ import { restrictDirectory } from "../terminal-host/host.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const integrity = () => new Error("TERMINAL_INTEGRITY");
+const privateParents = new Map();
 export function hostIsAlive(state) {
   if (!Number.isSafeInteger(state?.pid) || state.pid < 1) return false;
   try { process.kill(state.pid, 0); return true; } catch (error) { return error.code !== "ESRCH"; }
@@ -83,7 +84,12 @@ async function prepareCopy(source, userData, withCopy) {
   const parent = path.join(userData, "terminal-host");
   await mkdir(parent, { recursive: true });
   if ((await lstat(parent)).isSymbolicLink()) throw integrity();
-  await restrictDirectory(parent);
+  // Restrict once per desktop-main process, including existing folders. All build
+  // copies and their state inherit this ACL; host startup needs no ACL subprocess.
+  if (!privateParents.has(parent)) {
+    privateParents.set(parent, restrictDirectory(parent).catch((error) => { privateParents.delete(parent); throw error; }));
+  }
+  await privateParents.get(parent);
   const lock = path.join(parent, `${manifest.buildId}.lock`);
   const deadline = Date.now() + 10_000;
   for (;;) {

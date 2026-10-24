@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { EventEmitter, once } from "node:events";
-import { spawn as spawnChild } from "node:child_process";
+import childProcess, { spawn as spawnChild } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -43,6 +43,13 @@ test("a corrupted folder used by a running host is never replaced", async (t) =>
   await writeFile(path.join(copy.directory, "node.exe"), "corrupt");
   await assert.rejects(prepareTerminalHostCopy(options), /TERMINAL_INTEGRITY/);
   assert.equal(await readFile(path.join(copy.directory, "node.exe"), "utf8"), "corrupt");
+});
+
+test("copy reuse does not reapply the directory ACL", async (t) => {
+  const options = await fixture(t);
+  const copy = await prepareTerminalHostCopy(options);
+  t.mock.method(childProcess.ChildProcess.prototype, "spawn", () => { throw new Error("unexpected ACL subprocess"); });
+  assert.deepEqual(await prepareTerminalHostCopy(options), copy);
 });
 
 test("manifest traversal and symlink entries cannot become copy destinations", async (t) => {
@@ -103,6 +110,7 @@ test("ensureHost starts only the copied node with a detached argument-array laun
   const client = createTerminalHostClient({ ...options, spawn(executable, args, spawnOptions) {
     launch = { executable, args, options: spawnOptions };
     const child = new EventEmitter();
+    child.pid = process.pid;
     child.unref = () => {};
     void startTerminalHost({ runtimeDirectory: spawnOptions.cwd, spawnPty() {} }).then((value) => { host = value; });
     return child;
@@ -117,6 +125,19 @@ test("ensureHost starts only the copied node with a detached argument-array laun
   assert.equal(launch.options.shell, false);
   assert.equal(launch.options.env.NODE_OPTIONS, undefined);
   assert.equal(launch.options.env.POMEGR_MONITOR_TOKEN, undefined);
+});
+
+test("ensureHost notices startup exit before unref and fails without waiting for the deadline", async (t) => {
+  const options = await fixture(t);
+  const client = createTerminalHostClient({ ...options, spawn() {
+    const child = new EventEmitter();
+    child.unref = () => {
+      child.emit("exit", 1, null);
+      t.mock.method(globalThis, "setTimeout", () => { assert.fail("an exited host must not poll until the startup deadline"); });
+    };
+    return child;
+  } });
+  await assert.rejects(client.ensureHost(), { message: "TERMINAL_UNAVAILABLE" });
 });
 
 test("a hard-killed host restarts on ensureHost and its old sessions are gone", { skip: process.platform !== "win32" }, async (t) => {
@@ -144,8 +165,22 @@ spawnPty:()=>({pid:process.pid,onData(){},onExit(){},write(){},resize(){}})});`;
   await writeFile(path.join(options.source, "node.exe"), node);
   const files = { "desktop/terminal-host/main.mjs": digest(script), "node.exe": digest(node) };
   await writeFile(path.join(options.source, "manifest.json"), JSON.stringify({ buildId: digest(JSON.stringify(files)), files }));
-  client = createTerminalHostClient({ ...options, spawn(...args) { const child = spawnChild(...args); children.push(child); return child; } });
-  await client.ensureHost();
+  const diagnostics = [];
+  client = createTerminalHostClient({ ...options, spawn(executable, args, spawnOptions) {
+    const diagnostic = { stderr: "", exitCode: null, signal: null };
+    diagnostics.push(diagnostic);
+    const child = spawnChild(executable, args, { ...spawnOptions, stdio: ["ignore", "ignore", "pipe"] });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (data) => { diagnostic.stderr = (diagnostic.stderr + data).slice(-8192); });
+    child.on("exit", (code, signal) => { diagnostic.exitCode = code; diagnostic.signal = signal; });
+    children.push(child);
+    return child;
+  } });
+  async function ensureWithDiagnostics() {
+    try { await client.ensureHost(); }
+    catch (error) { assert.fail(`${error.message}; host startup: ${JSON.stringify(diagnostics)}`); }
+  }
+  await ensureWithDiagnostics();
   await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "gone" });
   assert.equal((await client.list()).length, 1);
   children[0].ref();
@@ -153,9 +188,15 @@ spawnPty:()=>({pid:process.pid,onData(){},onExit(){},write(){},resize(){}})});`;
   assert.equal(children[0].kill(), true);
   await closed;
   await assert.rejects(client.list(), /TERMINAL_UNAVAILABLE/);
-  await client.ensureHost();
+  // The dead host's record remains until its replacement atomically publishes a new one.
+  const buildDirectory = path.join(options.userData, "terminal-host", digest(JSON.stringify(files)));
+  assert.equal(JSON.parse(await readFile(path.join(buildDirectory, "host.json"))).pid, children[0].pid);
+  const oldToken = await readFile(path.join(buildDirectory, "host.token"), "utf8");
+  await ensureWithDiagnostics();
   assert.equal(children.length, 2);
   assert.notEqual(children[1].pid, children[0].pid);
   assert.equal((await client.listHosts())[0].pid, children[1].pid);
+  assert.equal(JSON.parse(await readFile(path.join(buildDirectory, "host.json"))).pid, children[1].pid);
+  assert.notEqual(await readFile(path.join(buildDirectory, "host.token"), "utf8"), oldToken);
   assert.deepEqual(await client.list(), []);
 });

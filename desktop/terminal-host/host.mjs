@@ -32,7 +32,7 @@ export async function restrictDirectory(directory) {
 }
 
 export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer = setTimeout, clearTimer = clearTimeout, idleMilliseconds = 60000, onIdle = () => {} }) {
-  await restrictDirectory(runtimeDirectory);
+  // Desktop main prepares the private directory before launching this process.
   const suffix = createHash('sha256').update(path.resolve(runtimeDirectory).toLowerCase()).digest('hex').slice(0, 32);
   const pipe = process.platform === 'win32' ? `\\\\.\\pipe\\pomegr-terminal-${suffix}` : path.join(runtimeDirectory, 'host.sock');
   const token = randomBytes(32).toString('hex');
@@ -155,10 +155,22 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
     });
     decodeFrames(socket, (frame) => command(client, frame));
   });
-  await new Promise((resolve, reject) => {
-    const failed = () => reject(new Error('TERMINAL_UNAVAILABLE'));
-    server.once('error', failed); server.listen(pipe, () => { server.off('error', failed); resolve(); });
-  });
+  // Windows can retain a pipe instance briefly after its owning process exits.
+  // Binding still decides singleton ownership; publish no token or state until it succeeds.
+  const bindDeadline = Date.now() + 1000;
+  for (;;) {
+    try {
+      await new Promise((resolve, reject) => {
+        const listening = () => { server.off('error', failed); resolve(); };
+        const failed = (error) => { server.off('listening', listening); reject(error); };
+        server.once('error', failed); server.once('listening', listening); server.listen(pipe);
+      });
+      break;
+    } catch (error) {
+      if (error.code !== 'EADDRINUSE' || Date.now() >= bindDeadline) throw new Error('TERMINAL_UNAVAILABLE', { cause: error });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
   async function close() {
     if (closing) return; closing = true;
     if (idleTimer !== undefined) clearTimer(idleTimer);
@@ -171,7 +183,7 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
       try { await writeFile(temporary, data, { mode: 0o600, flag: 'wx' }); await rename(temporary, path.join(runtimeDirectory, name)); }
       finally { await rm(temporary, { force: true }); }
     }
-  } catch { await close(); throw new Error('TERMINAL_RUNTIME_PRIVATE'); }
+  } catch (error) { await close(); throw new Error('TERMINAL_RUNTIME_PRIVATE', { cause: error }); }
   checkIdle();
   return { pipe, protocol: VERSION, close };
 }

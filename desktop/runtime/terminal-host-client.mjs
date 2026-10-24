@@ -118,18 +118,21 @@ export function createTerminalHostClient({ source, userData, spawn = spawnChild 
       if (state && hostIsAlive(state)) { await connect(directory, state); return; }
       // No retry of a create: a timed-out launch may already have started a session.
       let failed = false;
+      let child;
       try {
-        const child = spawn(path.join(directory, "node.exe"), [path.join(directory, "desktop", "terminal-host", "main.mjs")], {
+        child = spawn(path.join(directory, "node.exe"), [path.join(directory, "desktop", "terminal-host", "main.mjs")], {
           cwd: directory, env: minimalRuntimeEnvironment(process.env), detached: true,
           windowsHide: true, stdio: "ignore", shell: false,
         });
         child.once("error", () => { failed = true; });
+        child.once("exit", () => { failed = true; });
         child.unref();
       } catch { throw unavailable(); }
       const deadline = Date.now() + 15_000;
       while (Date.now() < deadline && !failed) {
         const candidate = await readHostState(directory);
-        if (candidate && hostIsAlive(candidate)) { await connect(directory, candidate); return; }
+        // A hard kill leaves the old state behind until the new host publishes it.
+        if (!failed && candidate?.pid === child.pid && hostIsAlive(candidate)) { await connect(directory, candidate); return; }
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
       throw unavailable();

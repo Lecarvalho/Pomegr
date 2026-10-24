@@ -5,9 +5,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter, once } from 'node:events';
-import { spawn } from 'node:child_process';
+import childProcess, { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { startTerminalHost } from '../desktop/terminal-host/host.mjs';
+import { restrictDirectory, startTerminalHost } from '../desktop/terminal-host/host.mjs';
 import { VERSION, encodeFrame, decodeFrames } from '../desktop/terminal-host/protocol.mjs';
 import { Scrollback } from '../desktop/terminal-host/scrollback.mjs';
 
@@ -25,6 +25,7 @@ class FakePty extends EventEmitter {
 }
 async function fixture(t, options = {}) {
   const runtimeDirectory = await mkdtemp(path.join(os.tmpdir(), 'pomegr-terminal-test-'));
+  await restrictDirectory(runtimeDirectory);
   const ptys = [];
   const calls = [];
   const host = await startTerminalHost({ runtimeDirectory, spawnPty(...args) {
@@ -69,6 +70,35 @@ test('framing handles fragmentation and rejects oversized and malformed input', 
   const header = Buffer.alloc(4); header.writeUInt32BE(65537); socket.emit('data', header);
   assert.equal(socket.destroyed, true);
   assert.throws(() => encodeFrame({ data: 'x'.repeat(65536) }));
+});
+
+test('a prepared host starts without any ACL subprocess', async (t) => {
+  const runtimeDirectory = await mkdtemp(path.join(os.tmpdir(), 'pomegr-terminal-test-'));
+  await restrictDirectory(runtimeDirectory);
+  t.after(() => rm(runtimeDirectory, { recursive: true, force: true }));
+  t.mock.method(childProcess.ChildProcess.prototype, 'spawn', () => { throw new Error('unexpected startup subprocess'); });
+  const host = await startTerminalHost({ runtimeDirectory, spawnPty() {} });
+  await host.close();
+});
+
+test('a temporarily occupied pipe is retried without replacing the incumbent token', async (t) => {
+  const f = await fixture(t);
+  // Release the incumbent only after the replacement has actually attempted to bind.
+  const listen = net.Server.prototype.listen;
+  let attempts = 0;
+  t.mock.method(net.Server.prototype, 'listen', function (...args) {
+    attempts++;
+    if (attempts === 1) this.once('error', async (error) => {
+      assert.equal(error.code, 'EADDRINUSE');
+      assert.equal(await readFile(path.join(f.runtimeDirectory, 'host.token'), 'utf8'), f.token);
+      await f.host.close();
+    });
+    return listen.apply(this, args);
+  });
+  const replacement = await startTerminalHost({ runtimeDirectory: f.runtimeDirectory, spawnPty() {} });
+  t.after(() => replacement.close());
+  assert.ok(attempts > 1);
+  assert.notEqual(await readFile(path.join(f.runtimeDirectory, 'host.token'), 'utf8'), f.token);
 });
 
 test('scrollback cap preserves Unicode and complete ANSI across chunks', () => {
@@ -213,6 +243,7 @@ test('scrollback prefers complete lines and drops oversized unfinished ANSI sequ
 
 test('real ConPTY fake CLI supports Unicode, resize, paste, interrupt and natural idle exit', { skip: process.platform !== 'win32', timeout: 60000 }, async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'pomegr-native-terminal-'));
+  await restrictDirectory(directory);
   t.after(() => rm(directory, { recursive: true, force: true }));
   const script = String.raw`
     import net from 'node:net';
