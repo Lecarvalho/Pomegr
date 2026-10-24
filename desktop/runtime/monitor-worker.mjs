@@ -35,6 +35,29 @@ function refreshUsageAfterSignIn(child, provider, timeoutMs) {
 
 let sessionWindowOwnerRequests = 0;
 
+/** Resolve a live host process against committed observation; never expose the PID to the renderer. */
+export function requestTerminalSession(child, pid, timeoutMs = 2_000) {
+  if (!child || !Number.isInteger(pid) || pid <= 0) return Promise.resolve(null);
+  const requestId = ++sessionWindowOwnerRequests;
+  return new Promise((resolve) => {
+    const finish = (sessionId) => {
+      clearTimeout(timer);
+      child.removeListener("message", onMessage);
+      child.removeListener("exit", unavailable);
+      child.removeListener("error", unavailable);
+      resolve(sessionId);
+    };
+    const unavailable = () => finish(null);
+    const onMessage = (message) => {
+      if (message?.type !== "terminal-session-result" || message.requestId !== requestId) return;
+      finish(typeof message.sessionId === "string" && /^(?:claude|codex):[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(message.sessionId) ? message.sessionId : null);
+    };
+    const timer = setTimeout(unavailable, timeoutMs);
+    child.on("message", onMessage); child.once("exit", unavailable); child.once("error", unavailable);
+    try { child.postMessage({ type: "terminal-session", requestId, pid }); } catch { unavailable(); }
+  });
+}
+
 /** Ask the monitor for the live session's unique owning process. Desktop-main only; null when unknown. */
 export function requestSessionWindowOwner(child, sessionId, timeoutMs = 2_000) {
   if (!child || typeof sessionId !== "string") return Promise.resolve(null);

@@ -75,6 +75,10 @@ const PROVIDERS = Object.freeze({
   }),
 });
 
+export function resolveSessionExecutable(provider, environment, fileExists = existsSync, platform = process.platform) {
+  return Object.hasOwn(PROVIDERS, provider) ? PROVIDERS[provider].executable(environment, fileExists, platform) : null;
+}
+
 function trustedMonitorOrigin(value) {
   try {
     const url = new URL(value);
@@ -165,8 +169,8 @@ export function createTaskStart(options = {}) {
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
     if (platform !== "win32") return result("unsupported_platform");
     const executables = {};
-    for (const [name, provider] of Object.entries(PROVIDERS)) {
-      try { executables[name] = provider.executable(sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
+    for (const name of Object.keys(PROVIDERS)) {
+      try { executables[name] = resolveSessionExecutable(name, sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
     }
     if (!Object.values(executables).some(Boolean)) return result("cli_missing");
     if (confirmRequired && await confirm({ taskId, separateWorktree }) !== true) return result("cancelled");

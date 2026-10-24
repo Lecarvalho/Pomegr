@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { subscribeLiveEvents } from "../../../live-events";
+import { encodeSessionRoute } from "../../../../shared/session-route.mjs";
 import "@xterm/xterm/css/xterm.css";
 
-export type ManagedTerminal = { key: string; repositoryId: string; taskId: string; sessionId: string | null; state: "starting" | "live" | "exited" | "host_unavailable"; exitCode?: number };
+export type ManagedTerminal = { key: string; repositoryId: string | null; taskId: string | null; sessionId: string | null; continuedFrom?: string; state: "starting" | "live" | "exited" | "host_unavailable"; exitCode?: number };
 type TerminalEvent = { attachId: string; event: "output" | "exit" | "detached"; data?: string; exitCode?: number; reason?: string };
 type Answer = { ok: boolean; status: string; readOnly?: boolean; sessions?: ManagedTerminal[]; hosts?: { state: string }[] };
 type TerminalBridge = { terminal(operation: string, payload?: Record<string, unknown>): Promise<Answer>; onTerminalOutput(callback: (event: TerminalEvent) => void): () => void };
@@ -17,7 +18,7 @@ export function terminalBridge(): TerminalBridge | undefined {
 // Discovery follows the revisions already supplied by observation; output stays in xterm only.
 export function useManagedTerminals(revision?: unknown) {
   const [listing, setListing] = useState<Answer | null>(null);
-  const refresh = useRef<() => void>(() => {});
+  const refresh = useRef<() => Promise<void>>(async () => {});
   const previousRevision = useRef(revision);
   useEffect(() => {
     const bridge = terminalBridge();
@@ -33,14 +34,14 @@ export function useManagedTerminals(revision?: unknown) {
       } catch { if (!disposed) setListing({ ok: false, status: "host_unavailable", sessions: [] }); }
       finally { reading = false; if (queued) { queued = false; void read(); } }
     };
-    refresh.current = () => { void read(); };
+    refresh.current = read;
     const unsubscribe = subscribeLiveEvents((event) => {
       if ((event.type === "revision" && (event.domain === "session-summary" || event.domain === "sessions")) || (event.type === "connection" && event.state === "connected")) void read();
     });
     const visible = () => { if (document.visibilityState === "visible") void read(); };
     document.addEventListener("visibilitychange", visible);
     queueMicrotask(() => { if (!reading) void read(); });
-    return () => { disposed = true; refresh.current = () => {}; unsubscribe(); document.removeEventListener("visibilitychange", visible); };
+    return () => { disposed = true; refresh.current = async () => {}; unsubscribe(); document.removeEventListener("visibilitychange", visible); };
   }, []);
   useEffect(() => { if (previousRevision.current !== revision) { previousRevision.current = revision; refresh.current(); } }, [revision]);
   return { listing, refresh: () => refresh.current() };
@@ -63,6 +64,11 @@ export function ManagedTerminalSurface({ state, children, onRetry }: { state: Te
       {state === "failed" && onRetry && <button type="button" className="commandQuietAction" onClick={onRetry}>Start session again</button>}
     </div>
   </section>;
+}
+
+export function ContinuedSessionNotice({ terminal }: { terminal: ManagedTerminal }) {
+  if (!terminal.continuedFrom || !terminal.sessionId || terminal.continuedFrom === terminal.sessionId) return null;
+  return <p className="sessionTerminalMuted">This session continued as a new session. <a href={`/sessions/${encodeSessionRoute(terminal.sessionId)}?tab=terminal`}>Open continued session</a></p>;
 }
 
 export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTerminal; onExit?: (code: number) => void }) {
@@ -148,7 +154,10 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
     })().catch(() => { if (!disposed) setState("host_unavailable"); });
     return () => { disposed = true; cleanup(); };
   }, [terminal.key, terminal.state]);
-  return <ManagedTerminalSurface state={state === "live" && terminal.state === "starting" ? "starting" : state}>
-    <div ref={container} className="sessionTerminalEmulator" aria-label="Live session terminal" onClick={() => focus.current()} />
-  </ManagedTerminalSurface>;
+  return <>
+    <ContinuedSessionNotice terminal={terminal} />
+    <ManagedTerminalSurface state={state === "live" && terminal.state === "starting" ? "starting" : state}>
+      <div ref={container} className="sessionTerminalEmulator" aria-label="Live session terminal" onClick={() => focus.current()} />
+    </ManagedTerminalSurface>
+  </>;
 }

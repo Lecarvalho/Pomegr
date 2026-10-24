@@ -97,8 +97,12 @@ These rules always apply:
   task session, attaches to a session it did not start, or approves work in a running session.
   In the desktop app, the owner may type or paste into a session Pomegr started in its
   terminal host. No agent, Aril, queue, MCP tool, or monitor path may send terminal input
-  or end a session. Managed messages and Continue remain deferred. Each other control
-  action needs an explicit confirmation boundary.
+  or end a session. Continue is the second owner-confirmed control action: the desktop
+  resumes an ended session in its terminal host through the provider's own resume.
+  It never resumes a live or unknown session, or resumes through an agent, Aril, queue,
+  or tool. The [Continue plan](docs/internal/architecture/privacy/session-evidence.md#continue-plan)
+  carries the working folder to desktop main only. Managed messages remain deferred.
+  Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
   starts one for each message of the owner, and one for the follow-up after the owner
   applies or dismisses a proposal. After any applied or partial outcome, a

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesCo
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { resetSessionDomainStoreForTests } from "../../app/session-domain-store";
+import { encodeSessionRoute } from "../../shared/session-route.mjs";
 import { SessionTabs } from "../../app/components/dashboard/SessionTabs";
 import { parseSessionTab } from "../../app/components/dashboard/session-route";
 import { SessionTerminalPanel } from "../../app/components/dashboard/session-terminal/SessionTerminalPanel";
@@ -19,6 +20,19 @@ vi.mock("../../app/live-events", () => ({ subscribeLiveEvents: (listener: (event
   return stream.unsubscribe;
 } }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
+vi.mock("@xterm/xterm", () => ({ Terminal: class {
+  options: { disableStdin: boolean };
+  cols = 80;
+  rows = 24;
+  constructor(options: { disableStdin: boolean }) { this.options = options; }
+  loadAddon() {}
+  open() {}
+  focus() {}
+  onData() { return { dispose() {} }; }
+  write(_data: string, done?: () => void) { done?.(); }
+  dispose() {}
+} }));
+vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} } }));
 const cursor = { fingerprint: "first", offset: 100 };
 const older = { fingerprint: "first", offset: 10 };
 const owner = (text: string) => ({ kind: "owner", at: null, text });
@@ -27,7 +41,12 @@ const page = (messages: unknown[] = [owner("Read the change"), agent("I will che
   ok: true, page: { messages, cursor, older: null, reset: false, status: "ok", ...fields },
 });
 const read = vi.fn();
-function bridge(present = true) { Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: present ? { sessionHistory: read } : undefined }); }
+const sessionContinue = vi.fn();
+const terminal = vi.fn();
+let outputListener: ((event: { attachId: string; event: "output" | "exit" | "detached"; exitCode?: number }) => void) | null = null;
+function bridge(present = true, desktop = false) { Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: present ? {
+  sessionHistory: read, ...(desktop ? { sessionContinue, terminal, onTerminalOutput: (listener: typeof outputListener) => { outputListener = listener; return () => {}; } } : {}),
+} : undefined }); }
 function visibility(value: DocumentVisibilityState) {
   Object.defineProperty(document, "visibilityState", { configurable: true, value });
   fireEvent(document, new Event("visibilitychange"));
@@ -35,11 +54,11 @@ function visibility(value: DocumentVisibilityState) {
 function emit(sessionId = "codex:one", domain: "session-summary" | "agents" = "session-summary") {
   act(() => stream.listener?.({ type: "revision", sessionId, domain, revision: 2, epoch: 1 }));
 }
-function mount(live = true) { return render(<SessionTerminalPanel sessionId="codex:one" live={live} />); }
+function mount(live = true, sessionId = "codex:one") { return render(<SessionTerminalPanel sessionId={sessionId} live={live} />); }
 async function loaded() { await screen.findByText("I will check it."); }
 
-beforeEach(() => { read.mockReset().mockResolvedValue(page()); bridge(); visibility("visible"); stream.unsubscribe.mockClear(); });
-afterEach(() => { bridge(false); resetSessionDomainStoreForTests(); vi.restoreAllMocks(); });
+beforeEach(() => { read.mockReset().mockResolvedValue(page()); sessionContinue.mockReset(); terminal.mockReset().mockResolvedValue({ ok: true, sessions: [] }); outputListener = null; bridge(); visibility("visible"); stream.unsubscribe.mockClear(); });
+afterEach(() => { bridge(false); resetSessionDomainStoreForTests(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Terminal tab availability", () => {
   const tabs = (onSelect = vi.fn()) => <SessionTabs active="terminal" task="absent" summary={sessionSummaryFixture()} onSelect={onSelect} />;
@@ -68,6 +87,13 @@ describe("Terminal tab availability", () => {
 });
 
 describe("SessionTerminalPanel", () => {
+  it.each([false, true])("a host exit does not authorize Continue while observation is live (continued=%s)", async (continued) => {
+    bridge(true, true);
+    terminal.mockResolvedValue({ ok: true, sessions: [{ key: "exited", sessionId: "codex:one", state: "exited", exitCode: 0,
+      ...(continued ? { continuedFrom: "codex:one" } : {}) }] });
+    mount(true); await loaded();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+  });
   it("formats saved messages safely, labels the owner block, and keeps the tool line literal", async () => {
     read.mockResolvedValue(page([
       owner("**Review** this"),
@@ -212,6 +238,129 @@ describe("SessionTerminalPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh" })); await loaded();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     view.unmount(); mount(); await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+  });
+  it("offers Continue only for successful ended history from supported providers on desktop", async () => {
+    bridge(true, true);
+    expect(renderToString(<SessionTerminalPanel sessionId="codex:one" live={false} />)).not.toContain("Continue");
+    bridge(true, true); const desktop = mount(false); await loaded();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    desktop.unmount(); bridge(true, false); mount(false); await loaded();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    cleanup(); bridge(true, true); mount(true); await loaded();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    cleanup(); bridge(true, true); read.mockResolvedValue(page([], { status: "unsupported" })); mount(false, "mistral:one");
+    await screen.findByText("This provider does not support reading session history.");
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    cleanup(); read.mockResolvedValue(page([], { status: "missing" })); mount(false);
+    await screen.findByText("Pomegr keeps no separate copy.");
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    cleanup(); bridge(true, true); read.mockResolvedValue(page()); mount(false, "claude:one"); await loaded();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    cleanup(); bridge(true, true); read.mockRejectedValue(new Error("private failure")); mount(false);
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+  });
+  it("keeps a cancelled confirmation quiet and renders a fixed refusal reason", async () => {
+    bridge(true, true); sessionContinue.mockResolvedValueOnce({ status: "cancelled" }).mockResolvedValueOnce({ status: "folder_missing" });
+    const { container } = mount(false); await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(sessionContinue).toHaveBeenCalledWith("codex:one"));
+    expect(screen.queryByRole("status", { name: /Continue unavailable/u })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Read-only · Continue unavailable: working directory is missing");
+    expect(container.querySelectorAll(".sessionTerminalBar")).toHaveLength(1);
+    expect(document.body).not.toHaveTextContent("folder_missing");
+  });
+  it("moves to the continued fork and links to its observed terminal", async () => {
+    bridge(true, true);
+    sessionContinue.mockResolvedValue({ status: "started" });
+    let lists = 0;
+    terminal.mockImplementation(async (operation: string) => operation === "list" ? ({ ok: true, sessions: ++lists === 1 ? [
+      { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+    ] : [
+      { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+      { key: "fork", repositoryId: "repo", taskId: "task", sessionId: "claude:new", continuedFrom: "codex:one", state: "live" },
+    ] }) : ({ ok: true, readOnly: false }));
+    mount(false); await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(terminal).toHaveBeenCalledWith("list"));
+    expect(await screen.findByText("This session continued as a new session.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open continued session" })).toHaveAttribute("href", `/sessions/${encodeSessionRoute("claude:new")}?tab=terminal`);
+  });
+  it("attaches a same-ID continuation ahead of the old exited record and shows its exit history", async () => {
+    bridge(true, true); sessionContinue.mockResolvedValue({ status: "started" });
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    let lists = 0;
+    terminal.mockImplementation(async (operation: string) => {
+      if (operation === "list") return { ok: true, sessions: ++lists === 1 ? [
+        { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+      ] : lists === 2 ? [
+        { key: "continue", repositoryId: null, taskId: null, sessionId: "codex:one", continuedFrom: "codex:one", state: "live" },
+        { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+      ] : [
+        { key: "continue", repositoryId: null, taskId: null, sessionId: "codex:one", continuedFrom: "codex:one", state: "exited" },
+        { key: "continue2", repositoryId: null, taskId: null, sessionId: "codex:one", continuedFrom: "codex:one", state: "live" },
+        { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+      ] };
+      if (operation === "attach") return { ok: true, readOnly: false };
+      return { ok: true };
+    });
+    mount(false); await loaded(); fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(terminal).toHaveBeenCalledWith("attach", expect.objectContaining({ key: "continue" })));
+    const attach = terminal.mock.calls.find(([operation]) => operation === "attach")?.[1] as { attachId: string };
+    act(() => outputListener?.({ attachId: attach.attachId, event: "exit", exitCode: 9 }));
+    expect(await screen.findByText("Process exited with code 9.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Saved session history")).toBeInTheDocument();
+    expect(terminal.mock.calls.filter(([operation]) => operation === "attach")).toHaveLength(1);
+    expect(read).toHaveBeenLastCalledWith("codex:one", {});
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(terminal).toHaveBeenCalledWith("attach", expect.objectContaining({ key: "continue2" })));
+  });
+  it.each(["host_unavailable", "exited"] as const)("leaves the starting state when the continued record is %s", async (state) => {
+    bridge(true, true); sessionContinue.mockResolvedValue({ status: "started" });
+    let lists = 0;
+    terminal.mockImplementation(async (operation: string) => operation === "list" ? { ok: true, sessions: ++lists === 1 ? [
+      { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+    ] : [
+      { key: "continued", repositoryId: null, taskId: null, sessionId: "codex:one", continuedFrom: "codex:one", state, exitCode: 4 },
+    ] } : ({ ok: true }));
+    mount(false); await loaded(); fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    if (state === "host_unavailable") expect(await screen.findByText("Reconnection unavailable. The session may still be running.")).toBeInTheDocument();
+    else expect(await screen.findByText("Process exited with code 4.")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the session to report")).not.toBeInTheDocument();
+  });
+  it("keeps the fork notice after exit and follows a second continuation", async () => {
+    bridge(true, true); sessionContinue.mockResolvedValue({ status: "started" });
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    let lists = 0;
+    terminal.mockImplementation(async (operation: string) => {
+      if (operation !== "list") return { ok: true, readOnly: false };
+      lists++;
+      if (lists === 1) return { ok: true, sessions: [{ key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" }] };
+      if (lists === 2) return { ok: true, sessions: [{ key: "first", repositoryId: null, taskId: null, sessionId: "codex:first", continuedFrom: "codex:one", state: "live" }] };
+      if (lists === 3) return { ok: true, sessions: [
+        { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+        { key: "first", repositoryId: null, taskId: null, sessionId: "codex:first", continuedFrom: "codex:one", state: "exited" },
+      ] };
+      return { ok: true, sessions: [
+        { key: "old", repositoryId: "repo", taskId: "task", sessionId: "codex:one", state: "exited" },
+        { key: "first", repositoryId: null, taskId: null, sessionId: "codex:first", continuedFrom: "codex:one", state: "exited" },
+        { key: "second", repositoryId: null, taskId: null, sessionId: "codex:second", continuedFrom: "codex:first", state: "live" },
+      ] };
+    });
+    mount(false); await loaded(); fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(terminal).toHaveBeenCalledWith("attach", expect.objectContaining({ key: "first" })));
+    const firstAttach = terminal.mock.calls.find(([, payload]) => (payload as { key?: string })?.key === "first")?.[1] as { attachId: string };
+    act(() => outputListener?.({ attachId: firstAttach.attachId, event: "exit", exitCode: 0 }));
+    expect(await screen.findByText("This session continued as a new session.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Live session terminal")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Saved session history")).toBeInTheDocument();
+    expect(read).toHaveBeenLastCalledWith("codex:one", {});
+    expect(screen.getByRole("link", { name: "Open continued session" })).toHaveAttribute("href", `/sessions/${encodeSessionRoute("codex:first")}?tab=terminal`);
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    cleanup(); mount(false, "codex:first"); await loaded(); fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(terminal).toHaveBeenCalledWith("attach", expect.objectContaining({ key: "second" })));
+    expect(screen.getByRole("link", { name: "Open continued session" })).toHaveAttribute("href", `/sessions/${encodeSessionRoute("codex:second")}?tab=terminal`);
   });
   it("Refresh reads with the cursor", async () => {
     mount(); await loaded();

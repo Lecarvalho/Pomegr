@@ -7,6 +7,7 @@ import { createTerminalHostClient } from "./terminal-host-client.mjs";
 export const TERMINAL_CHANNEL = "pomegr:terminal";
 export const TERMINAL_OUTPUT_CHANNEL = "pomegr:terminal-output";
 const KEY = /^(repo-[a-f0-9]{24})\/(T-[1-9][0-9]{0,8})\/[a-f0-9]{32}$/u;
+const CONTINUE_KEY = /^continue\/(claude|codex)\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/[a-f0-9]{32}$/iu;
 const SESSION = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const ATTACH = /^[A-Za-z0-9_-]{1,128}$/u;
 const failed = (status) => ({ ok: false, status });
@@ -19,7 +20,7 @@ export function terminalHostSource(resourcesPath = process.resourcesPath) {
     : fileURLToPath(new URL("../../outputs/terminal-runtime", import.meta.url));
 }
 
-/** Desktop-main memory only: host keys identify tasks; only their confirmed task link identifies a session. */
+/** Desktop-main memory only: dispatch keys bind through tasks; Continue keys name the resumed session. */
 export function createTerminalController(options = {}) {
   const source = options.terminalSource || terminalHostSource();
   const userData = options.userData || (options.worktreeRoot ? path.dirname(options.worktreeRoot) : null);
@@ -80,16 +81,24 @@ export function createTerminalController(options = {}) {
         const rows = await connection.list();
         for (const row of rows) {
           const match = typeof row.key === "string" && KEY.exec(row.key);
-          if (!match) continue;
+          const continued = typeof row.key === "string" && CONTINUE_KEY.exec(row.key);
+          if (!match && !continued) continue;
           seen.add(row.key);
           const previous = records.get(row.key);
-          records.set(row.key, { key: row.key, repositoryId: match[1], taskId: match[2], sessionId: previous?.sessionId ?? null,
+          const continuedFrom = continued ? `${continued[1]}:${continued[2]}` : null;
+          let observed = null;
+          if (continued && !row.exited && Number.isInteger(row.pid) && row.pid > 0) {
+            try { observed = await options.sessionForProcess?.(row.pid); } catch { /* No identity claim without observation. */ }
+          }
+          records.set(row.key, { key: row.key, repositoryId: match ? match[1] : null, taskId: match ? match[2] : null,
+            sessionId: continued ? (typeof observed === "string" && SESSION.test(observed) ? observed : previous?.sessionId ?? continuedFrom) : previous?.sessionId ?? null,
+            ...(continuedFrom ? { continuedFrom } : {}),
             state: row.exited === true ? "exited" : "starting", ...(row.exited === true && Number.isInteger(row.exitCode) ? { exitCode: row.exitCode } : {}), connection });
         }
       } catch { if (metadata) metadata.state = "host_unavailable"; }
     }
     for (const record of records.values()) if (!seen.has(record.key) && record.state !== "exited") record.state = "host_unavailable";
-    const repositories = [...new Set([...records.values()].map((row) => row.repositoryId))];
+    const repositories = [...new Set([...records.values()].map((row) => row.repositoryId).filter(Boolean))];
     const boards = await Promise.all(repositories.map(async (id) => [id, await readBoard(id)]));
     for (const [id, board] of boards) {
       for (const task of board?.tasks || []) {
@@ -155,7 +164,7 @@ export function createTerminalController(options = {}) {
     if (operation === "input" && (typeof payload.data !== "string" || Buffer.byteLength(payload.data) > 16 * 1024)) return failed("invalid");
     if (operation === "resize" && !dimensions(payload.cols, payload.rows)) return failed("invalid");
     if (operation === "attach") {
-      if (typeof payload.key !== "string" || !KEY.test(payload.key) || attachments.has(payload.attachId)) return failed("invalid");
+      if (typeof payload.key !== "string" || (!KEY.test(payload.key) && !CONTINUE_KEY.test(payload.key)) || attachments.has(payload.attachId)) return failed("invalid");
       await snapshot();
       const record = records.get(payload.key);
       if (!record) return failed("not_found");
@@ -189,8 +198,11 @@ export function createTerminalController(options = {}) {
       // Unviewed queue sessions must not occupy the host's capacity after they exit.
       for (const row of await client.list()) {
         const match = typeof row.key === "string" && KEY.exec(row.key);
-        if (!match || row.exited !== true || !Number.isInteger(row.exitCode)) continue;
-        records.set(row.key, { key: row.key, repositoryId: match[1], taskId: match[2], sessionId: records.get(row.key)?.sessionId ?? null,
+        const continued = typeof row.key === "string" && CONTINUE_KEY.exec(row.key);
+        if ((!match && !continued) || row.exited !== true || !Number.isInteger(row.exitCode)) continue;
+        const continuedFrom = continued ? `${continued[1]}:${continued[2]}` : null;
+        records.set(row.key, { key: row.key, repositoryId: match ? match[1] : null, taskId: match ? match[2] : null,
+          sessionId: records.get(row.key)?.sessionId ?? continuedFrom, ...(continuedFrom ? { continuedFrom } : {}),
           state: "exited", exitCode: row.exitCode, connection: client });
         await client.detach(row.key, true);
       }

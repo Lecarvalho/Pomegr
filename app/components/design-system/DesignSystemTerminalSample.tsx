@@ -16,10 +16,11 @@ const history: HistoryPage = {
   ],
 };
 const ignore = () => {};
-const samples: { label: string; page: HistoryPage | null; live?: boolean; failed?: boolean; busy?: boolean }[] = [
+const samples: { label: string; page: HistoryPage | null; live?: boolean; failed?: boolean; busy?: boolean; canContinue?: boolean; continueMessage?: string }[] = [
   { label: "History", page: { ...history, older: { fingerprint: "synthetic", offset: 100 } } },
   { label: "Live with Refresh", page: history, live: true },
-  { label: "Ended", page: history },
+  { label: "Ended", page: history, canContinue: true },
+  { label: "Continue refused", page: history, continueMessage: "Read-only · Continue unavailable: working directory is missing" },
   { label: "Empty", page: { ...history, messages: [] } },
   { label: "Unavailable", page: { ...history, messages: [], status: "missing" } },
   { label: "Failed", page: null, failed: true },
@@ -40,8 +41,8 @@ export function SessionTerminalSection() {
     </Sample>)}
       <Sample label="Queued start" note="A queue start opens no view and takes no focus."><p className="sessionTerminalMuted">T-125 · Waiting in terminal</p><p>Open the task to see its starting terminal. A bound task keeps its existing Open session action.</p></Sample>
     </div>
-    <div className="designSystemGrid">{samples.map(({ label, page, live = false, failed = false, busy = false }) => <Sample key={label} label={label} note="Synthetic messages; sample controls do not read history.">
-      <SessionTerminalSurface page={page} live={live} failed={failed} busy={busy} onRefresh={ignore} onEarlier={ignore} />
+    <div className="designSystemGrid">{samples.map(({ label, page, live = false, failed = false, busy = false, canContinue = false, continueMessage }) => <Sample key={label} label={label} note="Synthetic messages; sample controls do not read history.">
+      <SessionTerminalSurface page={page} live={live} failed={failed} busy={busy} onRefresh={ignore} onEarlier={ignore} onContinue={canContinue ? ignore : undefined} continueMessage={continueMessage} />
     </Sample>)}</div>
   </Section>;
 }

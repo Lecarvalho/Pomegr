@@ -34,14 +34,14 @@ test("dispatch creates exactly one host PTY with validated arguments and the own
   assert.equal(calls.length, 1);
 });
 
-function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, taskSession = sessionId } = {}) {
+function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, taskSession = sessionId, sessionForProcess } = {}) {
   const calls = [];
   const client = {
     listHosts: async () => [], ensureHost: async () => {}, list: async () => sessions,
     attach: async () => ({ readOnly: false, async *[Symbol.asyncIterator]() { yield { event: "output", data: "private" }; }, return: async () => { calls.push("detach"); } }),
     input: async (...args) => { calls.push(["input", ...args]); }, resize: async (...args) => { calls.push(["resize", ...args]); }, close() {}, ...clientOverrides,
   };
-  const controller = createTerminalController({ client, isTrustedEvent: (e) => e.trusted,
+  const controller = createTerminalController({ client, sessionForProcess, isTrustedEvent: (e) => e.trusted,
     monitorOrigin: "http://127.0.0.1:4317", authorizationToken: "secret",
     fetch: async (_url, options) => { assert.equal(options.headers["x-pomegr-desktop-authorization"], "secret"); return json({ readiness: "ready", repositoryId, tasks: [{ id: "T-3", session: taskSession ? { id: taskSession } : null, text: "private" }] }); },
   });
@@ -57,6 +57,33 @@ test("restart binding uses the authenticated task board, and never returns task 
   assert.equal(answer.ok, true);
   assert.deepEqual(answer.sessions, [{ key, repositoryId, taskId: "T-3", sessionId, state: "live" }]);
   assert.equal(JSON.stringify(answer).includes("private"), false);
+});
+
+test("continue keys rebuild their direct binding after restart without a task or persisted mapping", async () => {
+  const continued = "codex:01234567-89ab-4cde-8fab-0123456789ab";
+  const resumeKey = `continue/codex/${continued.slice(6)}/${"c".repeat(32)}`;
+  for (let restart = 0; restart < 2; restart++) {
+    const f = fixture({ sessions: [{ key: resumeKey, pid: 123, exited: false }], taskSession: null });
+    const rows = (await f.controller.run(f.event, "list")).sessions;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].sessionId, continued);
+    assert.equal(rows[0].continuedFrom, continued);
+    assert.equal(rows[0].state, "live");
+    assert.equal(JSON.stringify(rows).includes("pid"), false);
+    assert.equal((await f.controller.run(f.event, "attach", { key: resumeKey, attachId: "resume" })).ok, true);
+    f.controller.dispose();
+  }
+});
+
+test("a different committed process identity replaces the claimed session and retains its origin", async () => {
+  const continued = "claude:01234567-89ab-4cde-8fab-0123456789ab";
+  const actual = "claude:11234567-89ab-4cde-8fab-0123456789ab";
+  const resumeKey = `continue/claude/${continued.slice(7)}/${"c".repeat(32)}`;
+  const f = fixture({ sessions: [{ key: resumeKey, pid: 123, exited: false }], sessionForProcess: async (pid) => { assert.equal(pid, 123); return actual; } });
+  const rows = (await f.controller.run(f.event, "list")).sessions;
+  assert.equal(rows[0].sessionId, actual);
+  assert.equal(rows[0].continuedFrom, continued);
+  f.controller.dispose();
 });
 
 test("only the attaching trusted main frame can write and receives replay carrying its attach ID", async () => {
