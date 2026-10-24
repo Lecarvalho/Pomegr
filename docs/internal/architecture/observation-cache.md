@@ -226,7 +226,11 @@ newest 256 recorded times, checkpointed with the evidence), and the live Git che
 `commitTimesInWindow` in the sidecar (the newest 50 committer times). The commit times
 reach the projection through the monitor-private `repositoryRecordForSession` side
 channel, which reads the recorded snapshot once per projection for both them and
-the Git-observed files, and never ride on `session.repository`. When the recorder holds no
+the Git-observed files, and never ride on `session.repository`.
+Commit times also reach the task outcome lookup at Done, read-only from committed memory through `sessionRepositoryRecord`.
+This path reads the recorder's retained snapshot without `ensure()`, sidecar loading, or a new Git check.
+It returns only counts and a pull request number and state; missing retained evidence stays unknown.
+When the recorder holds no
 answer for a session (it keeps 512 by recency), the domain store reuses the commit times
 of that session's last committed projection until the recorder reads the sidecar back, so
 commit events are not withdrawn meanwhile. A session evicted from both the recorder and

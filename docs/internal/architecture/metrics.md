@@ -1092,6 +1092,10 @@ Limits of each source:
   Complete-history reads use the same adapter reducer. Source replacement swaps the
   list only when the replacement is complete; restarts replay recorded evidence.
   Neither the shared event projection nor the Overview component branches by provider.
+  **Owner turns after Review** sums retained message times strictly after the task's first Review, across sessions linked or assigned to that task.
+  This is a heuristic proxy, bounded by the newest 256 message times per session, not a measurement of owner effort.
+  At Done, the lookup reads committed memory only. If no session retains the array, including after eviction, the count is null, never zero.
+  A retained array with no later times contributes zero; missing arrays contribute no count.
 - **Resource peaks** are the retained session high for each resource field (CPU cores,
   memory, read rate, write rate), taken from the retained peaks the resources domain serves.
   A session high always exists, so a field yields an event only when its high reaches a
@@ -1119,6 +1123,10 @@ Limits of each source:
   the session's next live check, and a session whose recorded snapshot is not served, for its repository identity or because it was checked more than 24 hours after
   the session's last recorded evidence, has none at all. Commits by anyone on that branch are included,
   none is attributed to an agent or request, and neither hash nor subject is exposed.
+  **Commits after Review** sums retained commit times strictly after the task's first Review, across sessions linked or assigned to that task.
+  This is a heuristic proxy, bounded by the newest 50 commit times per session; shared commits can count in multiple sessions.
+  At Done, the lookup reads committed repository records only. If no session retains commit times, including after eviction, the count is null, never zero.
+  A retained array with no later times contributes zero; missing records contribute no count.
 - **Pull request opened** is the recorded creation time of a creation made in the session,
   from a recognized tool result with a canonical GitHub URL. The number is attached only when
   the session's pull-request list contains that same URL, and is otherwise null. The URL,

@@ -346,7 +346,7 @@ function sessionOfRepository(resolveSession, sessionId, repositoryId) {
 }
 
 // `POST /internal/tasks/<action>`.
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null, resolveOutcomeFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
@@ -419,7 +419,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
       writeActionResult(response, 404, rejected("not_found"));
       return;
     }
-    const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts });
+    const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts, resolveOutcomeFacts });
     if (result?.ok === true) {
       const taskId = action === "create" && typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId) ? result.taskId : null;
       writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board), ...(taskId === null ? {} : { taskId }) });
