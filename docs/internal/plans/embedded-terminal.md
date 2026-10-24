@@ -114,7 +114,7 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 - The tab renders the stream with a terminal emulator in the renderer and sends keys, paste, and resize back through fixed IPC channels.
 - Where the CLI's input box sits is drawn by each CLI, so the spike checks whether Claude Code and Codex keep it at the bottom of the terminal's rows, and records any gap.
 - States: starting, before binding; live; reconnecting after an app restart; host unavailable (the session may still run, but reconnection is unavailable); incompatible host version (the session runs, temporarily inaccessible).
-- Entry points: an **Open terminal** action on the task card of a session that has one, the session page, and later the inbox. The inbox distinguishes **Open terminal** for an existing session from **Take over**, which starts a new session from a brief after the start confirmation (G14).
+- Entry points: the session page, reached from the task card's existing **Open session** action, which opens the session as today; the owner then picks the Terminal tab (owner, 2026-10-24). The task card gets no terminal action. Later the inbox opens it too. The inbox distinguishes **Open terminal** for an existing session from **Take over**, which starts a new session from a brief after the start confirmation (G14).
 - A design page in `docs/internal/design/` and `/design-system` samples cover each state of both tabs.
 
 ## Failure behavior
