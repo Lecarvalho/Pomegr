@@ -1,4 +1,3 @@
-
 import crypto from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -39,7 +38,6 @@ import {
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
-
 const DATABASE_FILENAME = "tasks.sqlite";
 const TABLES = ["meta", "repositories", "columns", "features", "tasks"];
 
