@@ -524,6 +524,16 @@ ul.taskDocBlock { list-style-type: disc; }
 .taskQueueSettings .taskGateThreshold { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); }
 .taskQueueSettings .taskGateThreshold .taskGateFieldLabel { color: var(--command-muted); font-weight: 400; }
 .taskQueueSettings .taskGateThreshold .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
+/* Scorecard: the panel reuses Queue settings' frame and rows. */
+.taskScorecardSample { color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-data); }
+.taskScorecardNoData { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskScorecardColumns, .taskScorecard .taskScorecardRow { display: grid; grid-template-columns: minmax(0, 1fr) 88px 72px; gap: var(--space-3); align-items: baseline; }
+.taskScorecardColumns { margin-bottom: calc(-1 * var(--space-3)); color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+.taskScorecardColumns > span { text-align: right; }
+.taskScorecardRow dt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.taskScorecardMeasure { color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskScorecardId { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskScorecardValues { margin: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
 @media (max-width: 760px), (pointer: coarse) {
   .taskQueueSettingsAction.commandQuietAction, .taskQueueSettings .taskGateThreshold .commandSelectTrigger { min-height: 44px; }
 }

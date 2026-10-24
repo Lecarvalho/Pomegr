@@ -227,9 +227,6 @@ newest 256 recorded times, checkpointed with the evidence), and the live Git che
 reach the projection through the monitor-private `repositoryRecordForSession` side
 channel, which reads the recorded snapshot once per projection for both them and
 the Git-observed files, and never ride on `session.repository`.
-Commit times also reach the task outcome lookup at Done, read-only from committed memory through `sessionRepositoryRecord`.
-This path reads the recorder's retained snapshot without `ensure()`, sidecar loading, or a new Git check.
-It returns only counts and a pull request number and state; missing retained evidence stays unknown.
 When the recorder holds no
 answer for a session (it keeps 512 by recency), the domain store reuses the commit times
 of that session's last committed projection until the recorder reads the sidecar back, so
@@ -258,6 +255,10 @@ re-projects the summary through the existing commit path. Event IDs are opaque d
 identical feed and, because the top-level observation time is excluded from semantic
 comparison, publish no new revision. Event sources and limits are in
 [Session events](metrics.md#session-events).
+
+Commit times also reach the task outcome lookup at Done, read-only from committed memory through `sessionRepositoryRecord`.
+This path reads the recorder's retained snapshot without `ensure()`, sidecar loading, or a new Git check.
+It returns only counts and a pull request number and state; missing retained evidence stays unknown.
 
 Each projection has its own monotonic revision clock and bounded readiness. D stages and
 serializes every candidate before atomically publishing any of them. A failure therefore

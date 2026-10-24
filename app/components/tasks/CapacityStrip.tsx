@@ -7,11 +7,13 @@ import { timeOfDay } from "./task-schedule";
 
 const PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 
-/** `onOpenSettings` adds the Board's end of the strip: the threshold, the stop time and the action that opens Queue settings. */
-export function CapacityStrip({ queue, settingsRef, onOpenSettings }: {
+/** `onOpenSettings` adds the Board's end of the strip: the threshold, the stop time and the action that opens Queue settings. `onOpenScorecard` adds Scorecard before it (desktop app only). */
+export function CapacityStrip({ queue, settingsRef, onOpenSettings, scorecardRef, onOpenScorecard }: {
   queue: TaskBoard["queue"];
   settingsRef?: RefObject<HTMLButtonElement | null>;
   onOpenSettings?(): void;
+  scorecardRef?: RefObject<HTMLButtonElement | null>;
+  onOpenScorecard?(): void;
 }) {
   const gates = queue.gates;
   if (!gates && !onOpenSettings) return null;
@@ -30,6 +32,7 @@ export function CapacityStrip({ queue, settingsRef, onOpenSettings }: {
         Do not start above <span className="taskCapacityValue">{gates.threshold}%</span>
         {stop !== "" && <> · stops starting after <span className="taskCapacityValue">{stop}</span></>}
       </span>}
+      {onOpenScorecard && <button ref={scorecardRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenScorecard}>Scorecard</button>}
       <button ref={settingsRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenSettings}>Queue settings</button>
     </span>}
   </section>;

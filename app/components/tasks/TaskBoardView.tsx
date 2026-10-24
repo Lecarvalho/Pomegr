@@ -4,6 +4,8 @@ import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState 
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { CapacityStrip } from "./CapacityStrip";
+import { ScorecardDialog } from "./ScorecardPanel";
+import type { ScorecardAnswer } from "./scorecard-model";
 import { QueueSettingsPanel } from "./QueueSettingsPanel";
 import type { FeatureEntry } from "./FeatureActions";
 import { FeatureFilter } from "./FeatureFilter";
@@ -41,9 +43,9 @@ export type TaskReveal = { id: string; turn: number };
 /** A feature the board was asked to show, such as by a session's feature link: the filter chooses it. */
 export type FeatureSelection = { id: string };
 
-type BoardProps = { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null; featureSelection?: FeatureSelection | null };
+type BoardProps = { board: TaskBoard; /** Desktop app only: reads the repository's scorecard when its panel opens. */ readScorecard?: () => Promise<ScorecardAnswer>; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null; featureSelection?: FeatureSelection | null };
 
-function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
+function ReadyBoard({ board, readScorecard, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
   const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
   const [revealed, setRevealed] = useState(reveal ?? null);
   const [selection, setSelection] = useState<FeatureSelection | null>(null);
@@ -65,6 +67,8 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
   const [announcement, setAnnouncement] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
+  const [scorecardOpen, setScorecardOpen] = useState(false);
+  const scorecardTrigger = useRef<HTMLButtonElement>(null);
   // A group change is its own action: the board reads the new groups from the monitor.
   const groupCards = (ids: readonly string[]) => {
     setAnnouncement(`${idList(ids)} run in parallel.`);
@@ -163,7 +167,9 @@ function ReadyBoard({ board, onOpenTask, edits, newTask, features, reveal, featu
   return <>
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
-    <CapacityStrip queue={board.queue} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)} />
+    <CapacityStrip queue={board.queue} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)}
+      {...(readScorecard ? { scorecardRef: scorecardTrigger, onOpenScorecard: () => setScorecardOpen(true) } : {})} />
+    {readScorecard && scorecardOpen && <ScorecardDialog readScorecard={readScorecard} returnFocus={scorecardTrigger} onClose={() => setScorecardOpen(false)} />}
     {settingsOpen && <QueueSettingsPanel queue={board.queue} edits={edits} returnFocus={settingsTrigger} onClose={() => setSettingsOpen(false)} />}
     {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} entry={features} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
@@ -238,7 +244,7 @@ export function TaskColumn({ column, lines, afterLines, nextId, onOpen, dropTarg
   </section>;
 }
 
-export function TaskBoardView({ board, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
+export function TaskBoardView({ board, readScorecard, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -247,6 +253,6 @@ export function TaskBoardView({ board, onOpenTask, edits, newTask, features, rev
   </section>;
   return <>
     <QueueBanner board={board} onOpenTask={onOpenTask} edits={edits} />
-    <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} features={features} reveal={reveal} featureSelection={featureSelection} />
+    <ReadyBoard board={board} readScorecard={readScorecard} onOpenTask={onOpenTask} edits={edits} newTask={newTask} features={features} reveal={reveal} featureSelection={featureSelection} />
   </>;
 }
