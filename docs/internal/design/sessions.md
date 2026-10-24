@@ -151,11 +151,20 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 
 ### Terminal tab
 
-- Terminal appears last only when the desktop history bridge exists, decided at first render with a pending server snapshot.
+- Terminal appears last in the desktop app when its terminal bridge exists, decided at first render with a pending server snapshot.
 - Browser tabs and paired devices have no Terminal tab.
 - On phone widths, the desktop app places Terminal in **More**.
 - A Terminal deep link falls back to Overview when the bridge is absent.
-- The panel renders saved history read-only in one data-font terminal surface.
+- A session Pomegr started in the terminal host shows its live output in one data-font terminal surface.
+- The CLI draws the only input surface and its caret, which shows focus. Pomegr adds no focus ring.
+- The owner types or pastes into the CLI input surface.
+- The Terminal tab sends input, paste, resize, and detach only through fixed trusted desktop IPC.
+- A task's Terminal start view says **Waiting for the session to report** before binding. Binding opens the session's Terminal tab.
+- A host reconnection keeps input disabled until the terminal attaches.
+- An unavailable host shows **Reconnection unavailable. The session may still be running.** and disables input.
+- An incompatible host shows **This session runs in an older host and is temporarily inaccessible.** and disables input.
+- A process exit adds one quiet line with its exit code. The surface then becomes read-only.
+- Any session that is not live in Pomegr's host keeps the saved-history view read-only.
 - Owner messages are a block of their own: a quiet "You" label, the raised panel background, and a 2px left rule in the strong line color (owner, 2026-10-24).
 - An owner message longer than 8 lines or 600 characters folds to about 8 lines, with **Show more** and **Show less**.
 - Agent replies stay unboxed text, and tool lines stay one muted line.
@@ -166,7 +175,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - The live bar includes a quiet **Refresh** action.
 - The docked bar reads **Read-only · Session ended** for an ended session.
 - The normalized session state selects the bar text; history never determines liveness.
-- The panel has no input or **Continue** action.
+- A read-only history panel has no input or **Continue** action. Continue remains deferred to phase 6.
 - **Load earlier** appears above messages when an older page exists and prepends that page without moving the reading position.
 - The first read shows **Reading history…**.
 - Empty history shows **No messages yet**.
@@ -179,7 +188,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - Events during a read coalesce into one further read; returning to the visible document reads once.
 - A reset answer replaces the displayed messages.
 - The panel adds no timer or polling.
-- `/design-system` renders synthetic history, live, ended, empty, unavailable, failed, and reading states.
+- `/design-system` renders synthetic history, live, starting, reconnecting, unavailable, incompatible, ended, empty, failed, and reading states.
 
 ### Request preview bars
 

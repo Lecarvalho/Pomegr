@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import { createTaskStart } from "../desktop/runtime/task-dispatch.mjs";
@@ -28,12 +27,7 @@ function harness({ startPlan = plan(), planAnswer, worktrees } = {}) {
       if (url.endsWith("start-abort")) return json({ ok: true });
       return planAnswer ? planAnswer() : json({ ok: true, plan: startPlan });
     },
-    spawn: (...args) => {
-      spawns.push(args);
-      const child = new EventEmitter();
-      queueMicrotask(() => child.emit("exit", 0));
-      return child;
-    },
+    terminal: { ensureHost: async () => {}, create: async (plan) => { spawns.push(plan); } },
     worktrees,
   });
   return { starter, calls, spawns };

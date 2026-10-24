@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import {
@@ -7,12 +6,10 @@ import {
   confirmTaskStart,
   installTaskStartIpc,
   TASK_START_CHANNEL,
-  TASK_START_LAUNCH_ARGUMENTS,
   TASK_START_STATUSES,
   TASK_WORKTREE_OPEN_CHANNEL,
   TASK_WORKTREE_OPEN_STATUSES,
   taskStartConfirmation,
-  windowsArgument,
 } from "../desktop/runtime/task-dispatch.mjs";
 
 const repositoryId = "repo-0123456789abcdef01234567";
@@ -24,23 +21,13 @@ const root = "C:\\Work\\repo";
 const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 const token = "A".repeat(43);
 // The session gets the user's environment as inherited; only this app's own runtime variables are left out.
-const sessionEnvironment = { USERPROFILE: "C:\\Users\\tester", PATH: "C:\\Windows;C:\\Program Files\\nodejs", SystemRoot: "C:\\Windows", APPDATA: "C:\\Users\\tester\\AppData\\Roaming", HTTPS_PROXY: "http://proxy.test:8080" };
-const environment = { ...sessionEnvironment, ELECTRON_RUN_AS_NODE: "1", POMEGR_MONITOR_TOKEN: "app-private", POMEGR_SMOKE_NO_SYSTEM_NODE: "1", POMEGR_TASK_TOKEN: "stale" };
+const sessionEnvironment = { USERPROFILE: "C:\\Users\\tester", PATH: "C:\\Windows;C:\\Program Files\\nodejs", SystemRoot: "C:\\Windows", APPDATA: "C:\\Users\\tester\\AppData\\Roaming", "ProgramFiles(x86)": "C:\\Program Files (x86)", HTTPS_PROXY: "http://proxy.test:8080", NODE_EXTRA_CA_CERTS: "C:\\certs\\owner.pem", GIT_SSH_COMMAND: "ssh", ANTHROPIC_API_KEY: "synthetic-key", NODE_ENV: "development" };
+const environment = { ...sessionEnvironment, ELECTRON_RUN_AS_NODE: "1", POMEGR_MONITOR_TOKEN: "app-private", POMEGR_MONITOR_ORIGIN: origin, POMEGR_SMOKE_NO_SYSTEM_NODE: "1", POMEGR_START_EXECUTABLE: "old-start", pomegr_start_args: "old-args", POMEGR_TASK_TOKEN: "stale" };
 
 const json = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 const basePlan = () => ({ taskId: "T-3", provider: "claude", model: null, effort: null, repositoryRoot: root, prompt: "Do the thing", token });
 
-/** The launcher process: exits with `outcome` as its code, emits an error, or never ends ("hang"). */
-function fakeChild(outcome = 0) {
-  const child = new EventEmitter();
-  child.killed = false;
-  child.kill = () => { child.killed = true; };
-  if (outcome === "error") queueMicrotask(() => child.emit("error", new Error("x")));
-  else if (outcome !== "hang") queueMicrotask(() => child.emit("exit", outcome));
-  return child;
-}
-
-function harness({ plan = basePlan(), answer, spawnImpl, confirmImpl, overrides = {} } = {}) {
+function harness({ plan = basePlan(), answer, createImpl, confirmImpl, overrides = {} } = {}) {
   const log = [];
   const calls = [];
   const spawns = [];
@@ -60,7 +47,7 @@ function harness({ plan = basePlan(), answer, spawnImpl, confirmImpl, overrides 
       if (typeof answer === "function") return answer(url, options);
       return answer || json({ ok: true, plan });
     },
-    spawn: spawnImpl || ((...args) => { spawns.push(args); return fakeChild(); }),
+    terminal: { ensureHost: async () => {}, create: createImpl || (async ({ executable, args, cwd, env }) => { spawns.push([executable, args, { cwd, env }]); }) },
     ...overrides,
   });
   return { start, log, calls, spawns };
@@ -84,21 +71,11 @@ test("starts with no model or effort, exact args and options", async () => {
   assert.deepEqual(out, { status: "started" });
   assert.equal(h.spawns.length, 1);
   const [command, args, options] = h.spawns[0];
-  assert.equal(command, powershell);
-  assert.deepEqual(args, [...TASK_START_LAUNCH_ARGUMENTS]);
+  assert.equal(command, exe);
+  assert.deepEqual(args, ["Do the thing"]);
   assert.equal(options.cwd, root);
-  assert.equal(options.shell, false);
-  assert.equal(options.detached, undefined);
-  assert.equal(options.stdio, "ignore");
-  assert.equal(options.windowsHide, true);
-  assert.deepEqual(options.env, {
-    ...sessionEnvironment,
-    POMEGR_TASK_TOKEN: token,
-    POMEGR_START_FILE: exe,
-    POMEGR_START_ARGUMENTS: '"Do the thing"',
-    POMEGR_START_DIRECTORY: root,
-  });
-  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "NODE_ENV"]) assert.equal(options.env[name], undefined, name);
+  assert.deepEqual(options.env, { ...sessionEnvironment, POMEGR_TASK_TOKEN: token });
+  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_MONITOR_ORIGIN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "POMEGR_START_EXECUTABLE", "pomegr_start_args"]) assert.equal(options.env[name], undefined, name);
   assert.equal(options.env.PATH.includes("nodejs"), true, "the user's Node stays on the session's PATH");
   const text = JSON.stringify(out);
   for (const secret of [token, root, "Do the thing"]) assert.ok(!text.includes(secret));
@@ -110,68 +87,28 @@ test("starts with no model or effort, exact args and options", async () => {
 test("model and effort flags precede the single prompt argument", async () => {
   const h = harness({ plan: { ...basePlan(), model: "claude-opus-4-1[1m]", effort: "xhigh" } });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '--model claude-opus-4-1[1m] --effort xhigh "Do the thing"');
+  assert.deepEqual(h.spawns[0][1], ["--model", "claude-opus-4-1[1m]", "--effort", "xhigh", "Do the thing"]);
 });
 
-test("the launch command is fixed and carries no task content", async () => {
-  const prompt = "a \" & | ; $( ) \nline two `x` %PATH%";
+test("the validated prompt is one argument and never interpreted by a shell", async () => {
+  const prompt = "a & b | c ; $( ) \nline two";
   const h = harness({ plan: { ...basePlan(), prompt, model: "sonnet" } });
   assert.deepEqual(await go(h), { status: "started" });
-  const [, args, options] = h.spawns[0];
-  assert.deepEqual(args, [...TASK_START_LAUNCH_ARGUMENTS]);
-  assert.ok(!args.join(" ").includes("line two"));
-  assert.ok(!args.join(" ").includes(root));
-  assert.equal(options.env.POMEGR_START_ARGUMENTS, `--model sonnet ${windowsArgument(prompt)}`);
+  assert.equal(h.spawns[0][0], exe);
+  assert.deepEqual(h.spawns[0][1], ["--model", "sonnet", prompt]);
 });
 
-/** The Windows C runtime rule for a command-line tail, as the started executable applies it. */
-function parseWindowsArguments(line) {
-  const out = [];
-  let index = 0;
-  while (index < line.length) {
-    while (line[index] === " " || line[index] === "\t") index += 1;
-    if (index >= line.length) break;
-    let current = "";
-    let quoted = false;
-    for (; index < line.length; index += 1) {
-      const character = line[index];
-      if (character === "\\") {
-        let slashes = 0;
-        while (line[index] === "\\") { slashes += 1; index += 1; }
-        if (line[index] === "\"") {
-          current += "\\".repeat(Math.floor(slashes / 2));
-          if (slashes % 2 === 1) current += "\""; else quoted = !quoted;
-        } else { current += "\\".repeat(slashes); index -= 1; }
-      } else if (character === "\"") quoted = !quoted;
-      else if (!quoted && (character === " " || character === "\t")) break;
-      else current += character;
-    }
-    out.push(current);
-  }
-  return out;
-}
-
-test("quoted arguments survive the Windows command-line rules unchanged", () => {
-  const samples = [
-    "plain", "", "two words", "a \"quoted\" word", "ends with a backslash\\", "path\\with\\slashes", "slashes before a quote \\\\\" end",
-    "a & b | c ; $(x) %PATH% ^ `n 'q' -- --model evil", "tab\there", "line one\nline two\r\nline three", "trailing quote\"", "\\\\",
-  ];
-  for (const sample of samples) assert.deepEqual(parseWindowsArguments(windowsArgument(sample)), [sample]);
-  assert.deepEqual(parseWindowsArguments(samples.map(windowsArgument).join(" ")), samples);
-});
-
-test("a launcher that never ends is stopped and the start fails", async () => {
-  let child;
-  const h = harness({ spawnImpl: () => (child = fakeChild("hang")), overrides: { launchTimeoutMs: 5 } });
+test("an ambiguous create failure aborts once and never retries", async () => {
+  let attempts = 0;
+  const h = harness({ createImpl: async () => { attempts++; throw new Error("TERMINAL_UNAVAILABLE"); } });
   assert.deepEqual(await go(h), { status: "failed" });
-  assert.equal(child.killed, true);
+  assert.equal(attempts, 1);
   assert.equal(aborted(h).length, 1);
 });
 
-test("a missing PowerShell answers unavailable before the confirmation", async () => {
+test("the embedded start needs no PowerShell executable", async () => {
   const h = harness({ overrides: { fileExists: (f) => f === exe } });
-  assert.deepEqual(await go(h), { status: "unavailable" });
-  assert.deepEqual(h.log, []);
+  assert.deepEqual(await go(h), { status: "started" });
 });
 
 test("confirmation precedes the plan request", async () => {
@@ -237,13 +174,13 @@ test("malformed plans fail, spawn nothing and abort with the token", async () =>
 });
 
 test("spawn failures abort and report failed", async () => {
-  let h = harness({ spawnImpl: () => { throw new Error("EPERM"); } });
+  let h = harness({ createImpl: () => { throw new Error("EPERM"); } });
   assert.deepEqual(await go(h), { status: "failed" });
   assert.equal(aborted(h).length, 1);
-  h = harness({ spawnImpl: () => fakeChild(1) });
+  h = harness({ createImpl: async () => { throw new Error("TERMINAL_SPAWN_FAILED"); } });
   assert.deepEqual(await go(h), { status: "failed" });
   assert.equal(aborted(h).length, 1);
-  h = harness({ spawnImpl: () => fakeChild("error") });
+  h = harness({ createImpl: async () => { throw new Error("TERMINAL_UNAVAILABLE"); } });
   assert.deepEqual(await go(h), { status: "failed" });
   assert.deepEqual(aborted(h)[0].body.payload, { id: "T-3", token });
 });
@@ -276,7 +213,7 @@ test("the installer replaces the handler, removes it and never throws", async ()
     removeHandler: (c) => { removed.push(c); handlers.delete(c); },
   };
   const remove = installTaskStartIpc({ ipcMain, isTrustedEvent: () => true, monitorOrigin: origin, authorizationToken: "s", platform: "win32", fileExists: () => false, environment });
-  assert.deepEqual(removed, [TASK_START_CHANNEL, TASK_WORKTREE_OPEN_CHANNEL]);
+  assert.deepEqual(removed, [TASK_START_CHANNEL, TASK_WORKTREE_OPEN_CHANNEL, "pomegr:terminal"]);
   assert.deepEqual(await handlers.get(TASK_START_CHANNEL)({}, repositoryId, "T-3"), { status: "cli_missing" });
   remove();
   assert.equal(handlers.has(TASK_START_CHANNEL), false);
@@ -291,17 +228,10 @@ test("a Codex plan starts the Codex CLI with its own environment and the task to
   const h = harness({ plan: { ...basePlan(), provider: "codex" }, overrides: { fileExists: (f) => f === exe || codexFiles(f) } });
   assert.deepEqual(await go(h), { status: "started" });
   const [command, args, options] = h.spawns[0];
-  assert.equal(command, powershell);
-  assert.deepEqual(args, [...TASK_START_LAUNCH_ARGUMENTS]);
-  assert.equal(options.shell, false);
-  assert.deepEqual(options.env, {
-    ...sessionEnvironment,
-    POMEGR_TASK_TOKEN: token,
-    POMEGR_START_FILE: codexExe,
-    POMEGR_START_ARGUMENTS: '"Do the thing"',
-    POMEGR_START_DIRECTORY: root,
-  });
-  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "NODE_ENV"]) assert.equal(options.env[name], undefined, name);
+  assert.equal(command, codexExe);
+  assert.deepEqual(args, ["Do the thing"]);
+  assert.deepEqual(options.env, { ...sessionEnvironment, POMEGR_TASK_TOKEN: token });
+  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_MONITOR_ORIGIN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "POMEGR_START_EXECUTABLE", "pomegr_start_args"]) assert.equal(options.env[name], undefined, name);
   assert.equal(options.env.PATH.includes("nodejs"), true, "the user's Node stays on the session's PATH");
 });
 
@@ -309,13 +239,13 @@ test("Codex model and effort flags are passed only when set, xhigh by name", asy
   const start = (plan) => harness({ plan: { ...basePlan(), provider: "codex", ...plan }, overrides: { fileExists: codexFiles } });
   let h = start({ model: "gpt-6-sol", effort: "xhigh" });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '--model gpt-6-sol -c model_reasoning_effort=xhigh "Do the thing"');
+  assert.deepEqual(h.spawns[0][1], ["--model", "gpt-6-sol", "-c", "model_reasoning_effort=xhigh", "Do the thing"]);
   h = start({ effort: "low" });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '-c model_reasoning_effort=low "Do the thing"');
+  assert.deepEqual(h.spawns[0][1], ["-c", "model_reasoning_effort=low", "Do the thing"]);
   h = start({ model: "gpt-6-sol" });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '--model gpt-6-sol "Do the thing"');
+  assert.deepEqual(h.spawns[0][1], ["--model", "gpt-6-sol", "Do the thing"]);
 });
 
 test("a plan whose provider CLI is missing aborts the dispatch and answers cli_missing", async () => {
@@ -358,8 +288,8 @@ test("a queued start keeps every refusal of a manual start", async () => {
   assert.deepEqual(await queued(h), { status: "unsupported_platform" });
   h = harness({ overrides: { fileExists: () => false } });
   assert.deepEqual(await queued(h), { status: "cli_missing" });
-  h = harness({ overrides: { fileExists: (f) => f === exe } });
-  assert.deepEqual(await queued(h), { status: "unavailable" });
+  h = harness({ overrides: { terminal: { ensureHost: async () => { throw new Error("TERMINAL_UNAVAILABLE"); } } } });
+  assert.deepEqual(await queued(h), { status: "failed" });
   h = harness({ overrides: { authorizationToken: "" } });
   assert.deepEqual(await queued(h), { status: "unavailable" });
   for (const error of ["not_startable", "plugin_missing", "not_found", "unsupported_provider"]) {
@@ -377,8 +307,8 @@ test("a queued start aborts on a malformed plan or a failed launch", async () =>
   assert.deepEqual(await queued(h), { status: "failed" });
   assert.equal(h.spawns.length, 0);
   assert.deepEqual(aborted(h)[0].body, { repositoryId, payload: { id: "T-3", token } });
-  for (const spawnImpl of [() => { throw new Error("EPERM"); }, () => fakeChild(1), () => fakeChild("error")]) {
-    h = harness({ spawnImpl });
+  for (const createImpl of [() => { throw new Error("EPERM"); }, async () => { throw new Error("TERMINAL_SPAWN_FAILED"); }, async () => { throw new Error("TERMINAL_UNAVAILABLE"); }]) {
+    h = harness({ createImpl });
     assert.deepEqual(await queued(h), { status: "failed" });
     assert.deepEqual(aborted(h).map((c) => c.body), [{ repositoryId, payload: { id: "T-3", token } }]);
   }
@@ -464,8 +394,6 @@ test("a plan that asks for a worktree starts the session in the task's worktree"
   assert.deepEqual(worktrees.calls, [["ensure", { repositoryRoot: root, repositoryId, taskId: "T-3" }]]);
   const [, , options] = h.spawns[0];
   assert.equal(options.cwd, worktreeDirectory);
-  assert.equal(options.env.POMEGR_START_DIRECTORY, worktreeDirectory);
-  assert.equal(options.shell, false);
   assert.equal(aborted(h).length, 0);
 });
 
@@ -499,15 +427,15 @@ test("a worktree that cannot be made fails the start, aborts the dispatch and sp
 
 test("a worktree made for a start that fails is removed again; a reused one is left alone", async () => {
   let worktrees = fakeWorktrees();
-  let h = harness({ plan: { ...basePlan(), worktree: true }, spawnImpl: () => fakeChild(1), overrides: { worktrees } });
+  let h = harness({ plan: { ...basePlan(), worktree: true }, createImpl: async () => { throw new Error("TERMINAL_SPAWN_FAILED"); }, overrides: { worktrees } });
   assert.deepEqual(await go(h), { status: "failed" });
   assert.deepEqual(worktrees.calls[1], ["remove", { repositoryRoot: root, repositoryId, taskId: "T-3", deleteBranch: true }]);
   worktrees = fakeWorktrees({ ok: true, directory: worktreeDirectory, created: true, branchCreated: false });
-  h = harness({ plan: { ...basePlan(), worktree: true }, spawnImpl: () => fakeChild(1), overrides: { worktrees } });
+  h = harness({ plan: { ...basePlan(), worktree: true }, createImpl: async () => { throw new Error("TERMINAL_SPAWN_FAILED"); }, overrides: { worktrees } });
   await go(h);
   assert.equal(worktrees.calls[1][1].deleteBranch, false);
   worktrees = fakeWorktrees({ ok: true, directory: worktreeDirectory, created: false, branchCreated: false });
-  h = harness({ plan: { ...basePlan(), worktree: true }, spawnImpl: () => fakeChild(1), overrides: { worktrees } });
+  h = harness({ plan: { ...basePlan(), worktree: true }, createImpl: async () => { throw new Error("TERMINAL_SPAWN_FAILED"); }, overrides: { worktrees } });
   assert.deepEqual(await go(h), { status: "failed" });
   assert.deepEqual(worktrees.calls.map(([name]) => name), ["ensure"]);
 });
@@ -715,22 +643,22 @@ const withImageFiles = (extra = () => false) => ({ fileExists: (f) => f === exe 
 test("Claude Code is given the image folder as a readable directory, after the prompt", async () => {
   const h = harness({ plan: imagePlan({ model: "claude-opus-4-1" }), overrides: withImageFiles() });
   assert.deepEqual(await go(h), { status: "started" });
-  const argumentsLine = h.spawns[0][2].env.POMEGR_START_ARGUMENTS;
-  assert.equal(argumentsLine, `--model claude-opus-4-1 ${windowsArgument(imagePlan().prompt)} --add-dir ${imageFolder}`);
+  const argumentsLine = h.spawns[0][1];
+  assert.deepEqual(argumentsLine, ["--model", "claude-opus-4-1", imagePlan().prompt, "--add-dir", imageFolder]);
   assert.equal(h.spawns[0][2].cwd, root);
 });
 
 test("Codex gets the images attached, after the prompt", async () => {
   const h = harness({ plan: imagePlan({ provider: "codex" }), overrides: withImageFiles(codexFiles) });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, `${windowsArgument(imagePlan().prompt)} --image ${imageFiles[0]} ${imageFiles[1]}`);
+  assert.deepEqual(h.spawns[0][1], [imagePlan().prompt, "--image", ...imageFiles]);
 });
 
 test("a plan with no images, or from an older monitor, adds no image flag", async () => {
   for (const plan of [{ ...basePlan(), images: [] }, basePlan()]) {
     const h = harness({ plan });
     assert.deepEqual(await go(h), { status: "started" });
-    assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '"Do the thing"');
+    assert.deepEqual(h.spawns[0][1], ["Do the thing"]);
   }
 });
 
@@ -754,17 +682,17 @@ test("image files that are not the store's own fail the start and abort", async 
 test("a Claude Code plan that asks for Remote Control adds the fixed flag after the prompt, before the image folder", async () => {
   const plain = harness({ plan: { ...basePlan(), model: "claude-opus-4-1", remoteControl: true } });
   assert.deepEqual(await go(plain), { status: "started" });
-  assert.equal(plain.spawns[0][2].env.POMEGR_START_ARGUMENTS, '--model claude-opus-4-1 "Do the thing" --remote-control');
+  assert.deepEqual(plain.spawns[0][1], ["--model", "claude-opus-4-1", "Do the thing", "--remote-control"]);
   const images = harness({ plan: imagePlan({ remoteControl: true }), overrides: withImageFiles() });
   assert.deepEqual(await go(images), { status: "started" });
-  assert.equal(images.spawns[0][2].env.POMEGR_START_ARGUMENTS, `${windowsArgument(imagePlan().prompt)} --remote-control --add-dir ${imageFolder}`);
+  assert.deepEqual(images.spawns[0][1], [imagePlan().prompt, "--remote-control", "--add-dir", imageFolder]);
 });
 
 test("a plan without Remote Control, or from an older monitor, adds no Remote Control flag", async () => {
   for (const plan of [{ ...basePlan(), remoteControl: false }, basePlan()]) {
     const h = harness({ plan });
     assert.deepEqual(await go(h), { status: "started" });
-    assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '"Do the thing"');
+    assert.deepEqual(h.spawns[0][1], ["Do the thing"]);
   }
 });
 

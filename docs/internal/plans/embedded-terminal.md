@@ -1,18 +1,18 @@
 # Sessions inside Pomegr: terminal, history, and continue
 
-> Status: active; the owner accepted the plan and its architecture on 2026-10-24. Phase 1 (read-only history) shipped and phase 0 (the spike) ran on 2026-10-24.
+> Status: active; the owner accepted the plan and its architecture on 2026-10-24. Phase 0 (the spike) ran, phase 1 (read-only history) shipped, and phases 2 through 5 are built.
 > Created: 2026-10-24.
 > Scope: keep the owner's coding-agent sessions inside the desktop app. Sessions that Pomegr starts run in a Terminal tab of the session, through a desktop-owned terminal host that survives app restarts and updates. The same Terminal tab shows any other session's saved history read-only, and an ended session can be continued in it through the provider's own resume. It covers the boundary changes, the host, the start and resume paths, the Terminal tab, and the feasibility spike that gates the terminal. The takeover brief (G14) and the owner inbox (G13) stay in the [purpose roadmap](purpose-roadmap.md); this plan gives them a place to open a session.
 > Continuation owner: the product owner decides; the agent that picks up a phase records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [session evidence privacy](../architecture/privacy/session-evidence.md), and [desktop privacy](../architecture/privacy/desktop-and-diagnostics.md) govern shipped behavior until each phase changes them.
-> Next task or decision: the owner reviews the spike findings and decides how the host executable ships; then phase 2.
+> Next task or decision: phase 6 Continue stays deferred; the owner decides when to resume it. Phase 7 acceptance remains open.
 > Completion criteria: the read-only history ships; the spike passes or the terminal part is cancelled; when it passes, a session started from Pomegr opens in its Terminal tab, survives app quit, crash, and update, an ended session continues in the terminal, and every rule below has a test.
 > Permanent destinations: `AGENTS.md` for the control boundary, [Tasks](../architecture/tasks.md) for the start and resume paths and the host boundary, [session evidence privacy](../architecture/privacy/session-evidence.md) for the history read, [desktop privacy](../architecture/privacy/desktop-and-diagnostics.md) for terminal output, the provider contract for the history read, a page in `docs/internal/design/` for the Terminal tab, and `/design-system` for its states.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
 
 ## Summary
 
-Today the desktop app starts each task session in a separate terminal window (`desktop/runtime/task-dispatch.mjs`, one fixed `Start-Process` command).
+Before the embedded terminal work, the desktop app started each task session in a separate terminal window (`desktop/runtime/task-dispatch.mjs`, one fixed `Start-Process` command).
 The owner then has to find that window among many: the first pilot's retrospective lists this as finding 10.
 Once a session ends, Pomegr shows what it did but not what was said, and going back to it means finding the right folder and running the provider's resume by hand.
 
@@ -49,9 +49,7 @@ These were settled in a design review on 2026-10-24, with the owner's later chan
 
 Each change lands in its own pull request, before any code that depends on it.
 
-1. **Control.** `AGENTS.md` says that dispatch never stops, attaches to, answers, or approves work in a running session. The new rule adds two exceptions, both in the desktop app only:
-   - the owner's own keyboard input reaches a session that Pomegr started in its terminal host;
-   - after the owner confirms, Pomegr resumes an **ended** session in its terminal host through the provider's own resume. It never resumes a session that is running or whose state is unknown.
+1. **Control.** `AGENTS.md` says that dispatch never stops or attaches to a session Pomegr did not start, answers work, or approves work in a running session. The desktop app lets the owner type and paste into a session Pomegr started in its terminal host. It does not let an agent, Aril, queue, MCP tool, or monitor send input or end a session. Continue remains deferred to phase 6.
 
    No agent, queue, tool, or monitor path may write to a terminal or start a resume, and Pomegr never ends a session. This is different from the deferred idea of managed messages to a running session, which stays deferred.
 2. **History privacy.** A session's history holds raw prompts and responses. A new section of [session evidence privacy](../architecture/privacy/session-evidence.md) lists the history read as an exception to the raw-content rule:
@@ -63,7 +61,7 @@ Each change lands in its own pull request, before any code that depends on it.
    - It flows only from the terminal host to desktop main to the trusted desktop renderer.
    - It is held only in memory: a bounded scrollback for each live session in the host, and the renderer's view.
    - It is never written to disk, logged, sent to the monitor, cached, served over HTTP, included in `/api/state`, read by Aril or an MCP tool, or sent to a paired device.
-4. **Start transport.** [Tasks: Starting a session](../architecture/tasks.md#starting-a-session) replaces the external window with the embedded transport, adds the resume path, and the Boundaries table gains rows for the host pipe, the terminal IPC channels, the history read, and the resume.
+4. **Start transport.** [Tasks: Starting a session](../architecture/tasks.md#starting-a-session) replaces the external window with the embedded transport. The Boundaries table lists the terminal IPC channels and the host's private pipe.
 
 ## Architecture
 
@@ -86,7 +84,7 @@ The history read and its live updates reuse the observation pipeline instead of 
 - The view goes back only as far as the provider keeps its files. When the history is missing or was compacted, the tab says so, and it never implies that Pomegr kept a copy. It promises no retention period.
 - Each provider adapter gains a history read in `server/providers/provider-contract.mjs`. The shape is the same for every provider.
 
-## Continue
+## Continue (phase 6, deferred)
 
 - An ended session shows **Continue** in its read-only terminal's bar. Continue asks for the native confirmation, then starts the provider's own resume in the host, in the session's working directory: `claude --resume <session id>` or `codex resume <session id>`.
 - It is its own validated operation in desktop main. It shares the launch helpers of the start path, but it mints no dispatch token, because the session keeps its identity and its task binding.
@@ -129,8 +127,8 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 - Desktop app only, decided at first render like the other desktop-only actions.
 - The tab renders the stream with a terminal emulator in the renderer and sends keys, paste, and resize back through fixed IPC channels.
 - Where the CLI's input box sits is drawn by each CLI, so the spike checks whether Claude Code and Codex keep it at the bottom of the terminal's rows, and records any gap.
-- States: starting, before binding; live; reconnecting after an app restart; host unavailable (the session may still run, but reconnection is unavailable); incompatible host version (the session runs, temporarily inaccessible).
-- Entry points: the session page, reached from the task card's existing **Open session** action, which opens the session as today; the owner then picks the Terminal tab (owner, 2026-10-24). The task card gets no terminal action. Later the inbox opens it too, with the same **Open session** action for an existing session, beside **Take over**, which starts a new session from a brief after the start confirmation (G14).
+- States: **Waiting for the session to report** before binding; live; reconnecting after an app restart; unavailable with **Reconnection unavailable. The session may still be running.**; and an incompatible host with **This session runs in an older host and is temporarily inaccessible.** Input stays disabled until the terminal attaches.
+- Entry points: a manual start opens the task's Terminal start view. Binding opens the session's Terminal tab. An unbound task card links to that start view as **Waiting in terminal**. A queued start never navigates. The inbox entry remains future G14 work.
 - A design page in `docs/internal/design/` and `/design-system` samples cover each state of both tabs.
 
 ## Failure behavior
@@ -139,7 +137,7 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 | --- | --- |
 | The app quits or crashes | Sessions keep running in the host. The next app start reconnects and shows the scrollback that the host still holds. |
 | An update installs | The new app uses a new host folder. Sessions of a compatible host reconnect; others stay running and show as temporarily inaccessible. |
-| The host cannot be reached | The Terminal tab shows "Reconnection unavailable". Observation and the read-only history continue. |
+| The host cannot be reached | The Terminal tab shows "Reconnection unavailable. The session may still be running." Input stays disabled. |
 | The renderer is slow or gone | Output keeps flowing to the host's bounded scrollback. The provider never waits for the view. |
 | The computer restarts | The host and its sessions end. Each session's Terminal tab turns read-only, with **Continue**. |
 | The provider deleted the history | The Terminal tab says the history is unavailable, and Continue is refused. |
@@ -155,10 +153,10 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
   - each provider's resume either refuses a session that is already running or can be made to.
 
   Any live provider run in the spike follows the probe rules in `AGENTS.md`. If the spike fails, the external window stays, the terminal and Continue are cancelled or reshaped, and the read-only history stands alone.
-- [ ] **Phase 2, contracts.** The control and terminal privacy changes, with the owner's decision recorded in the [purpose roadmap](purpose-roadmap.md).
+- [x] **Phase 2, contracts.** The control and terminal privacy contracts define owner-only terminal input and keep terminal output out of persistent and network surfaces.
 - [ ] **Phase 3, host.** The host, its runtime copy, pipe, token, commands, bounds, and idle exit. Tests use a fake PTY and synthetic output only.
-- [ ] **Phase 4, start path.** The embedded transport, binding to the confirmed session, and no retry after an ambiguous launch. Tests cover the launch and the rollback.
-- [ ] **Phase 5, Terminal tab.** The tab, its states, the task card action, the design page, and the samples. A packaged smoke check opens a synthetic session's terminal.
+- [x] **Phase 4, start path.** The embedded transport keeps the confirmed executable, argument array, and working directory. Binding waits for the session link, rollback and status remain fixed, and ambiguous launch results are never retried.
+- [x] **Phase 5, Terminal tab.** The live Terminal tab, task start view, binding and host states, task-card link, design contract, and synthetic samples are built.
 - [ ] **Phase 6, Continue.** The resume operation, its refusals, the identity check after launch, and the resume protection for each provider. Tests use a fake provider.
 - [ ] **Phase 7, acceptance.** The owner runs real tasks for a week, through at least one update, continues at least one ended session, and records any lost session.
 
@@ -171,7 +169,7 @@ Not part of this plan. Each needs the owner's decision and its own plan.
 
 ## Mockup
 
-The design review produced an interactive mockup with synthetic data that steps through every state of the Terminal tab and of Continue. It lives outside the repository until the owner accepts the design; phases 1 and 5 turn it into `/design-system` samples.
+The design review produced an interactive mockup with synthetic data that steps through every state of the Terminal tab and of Continue. Its states now have synthetic `/design-system` samples; Continue remains a phase 6 design state until that phase starts.
 
 ## Continuation checkpoint
 
@@ -188,7 +186,9 @@ Next action: the owner reviews the spike findings and decides how the host execu
 
 2026-10-24, phase 3: implemented the standalone host and desktop-main client without a caller in task dispatch, shell main, IPC, or the renderer. The package uses the spike's four ConPTY native files and verified upstream Node-API prebuilds, with a bundled, pinned Node executable and a manifest-verified immutable runtime copy. Tests cover hostile authentication, bounds, replay, input ownership, lifecycle, integrity repair, reuse, other-build discovery, and hard-kill restart with lost sessions; only synthetic PTYs and a fake CLI are used. The client's allowlisted create environment is deliberately narrower than today's external-window `userSessionEnvironment`; phase 4 must construct that environment explicitly. An exited record is acknowledged through `detach`, since the command list has no separate acknowledgement operation.
 
-Continuation: phase 2's control and privacy contracts remain a prerequisite to wiring phase 4, and phase 5 supplies the live Terminal tab. The owner still decides whether to add a protected pipe DACL; no helper ships here. Actual Electron updater survival, signed artifacts, attended real-provider rendering, and resume protection remain acceptance work. No owner page or privacy boundary changes in phase 3.
+2026-10-24, phases 2, 4, and 5: the control and output privacy contracts now cover owner-only input to Pomegr-started sessions. Task dispatch uses the detached terminal host with the same executable, argument array, and working directory, plus the explicit allowlisted environment and `POMEGR_TASK_TOKEN`. The task start view waits for session binding; the key stays in memory and rebuilds from the host list and confirmed task session links (`task.session.id`). The live Terminal tab and its host states have synthetic design-system samples. Verification passed: `npm test` (3,985 Node tests and 2,404 UI tests, four Node skips), lint (57 warnings, no errors), architecture, boundaries, docs, `verify:fast`, and build. Browser visual review was blocked by computer-use approval. Restart reconstruction remains conservative when multiple live keys share one task; incompatible hosts cannot disclose keys through this protocol, so their cold-start notice cannot identify individual sessions. Neither case adds persisted binding fields.
+
+Continuation: phases 2, 4, and 5 are built. Phase 6 Continue and phase 7 acceptance remain open. The owner still decides whether to add a protected pipe DACL; no helper ships here. Actual Electron updater survival, signed artifacts, attended real-provider rendering, and resume protection remain acceptance work. No owner page or privacy boundary changes in phase 3.
 
 PR #287 restart follow-up: removed the host's redundant ACL subprocess, added bounded busy-pipe retry and early-exit detection, and bound replacement state to the spawned PID. The hard-kill regression captures synthetic-host stderr only in the test and still checks a new PID and lost sessions. Local fault injection reproduced the missing early-exit handling and immediate busy-pipe failure; the original Windows CI startup failure cannot be distinguished from the supplied timeout log alone.
 

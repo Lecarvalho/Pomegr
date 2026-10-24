@@ -58,6 +58,20 @@ test("electron-builder includes every required desktop runtime module", async ()
   assert.deepEqual(missing, [], "Required runtime modules must be included in electron-builder's file list");
 });
 
+test("the embedded terminal bridge and pinned renderer dependencies ship with their notices", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const lock = JSON.parse(await readFile(new URL("../package-lock.json", import.meta.url), "utf8"));
+  const bridge = "desktop/runtime/terminal.mjs";
+  assert.ok(DESKTOP_RUNTIME_FILES.includes(bridge));
+  assert.ok(packageJson.build.files.includes(bridge));
+  const notices = await readFile(new URL("../THIRD_PARTY_NOTICES.md", import.meta.url), "utf8");
+  for (const [name, version] of [["@xterm/xterm", "6.0.0"], ["@xterm/addon-fit", "0.11.0"]]) {
+    assert.equal(packageJson.dependencies[name], version);
+    assert.equal(lock.packages[`node_modules/${name}`].version, version);
+    assert.ok(notices.includes(`| ${name} | ${version} | MIT |`));
+  }
+});
+
 test("the agent chat's six runtime files and its MCP worker are packaged, and its MCP sources are not shipped as modules", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const packaged = new Set(packageJson.build.files);

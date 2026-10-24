@@ -72,6 +72,17 @@ test('framing handles fragmentation and rejects oversized and malformed input', 
   assert.throws(() => encodeFrame({ data: 'x'.repeat(65536) }));
 });
 
+test('managed keys preserve repository, task and nonce while rejecting arbitrary slash paths', async (t) => {
+  const f = await fixture(t);
+  const client = await f.connect();
+  const key = `repo-${'a'.repeat(24)}/T-3/${'b'.repeat(32)}`;
+  assert.equal((await client.request('create', { plan: f.plan(key) })).ok, true);
+  assert.equal((await client.request('list')).sessions[0].key, key);
+  for (const key of ['repo/T-3/nonce', '../synthetic', `repo-${'a'.repeat(24)}/T-03/${'b'.repeat(32)}`]) {
+    assert.equal((await client.request('create', { plan: f.plan(key) })).error, 'TERMINAL_INVALID');
+  }
+});
+
 test('a prepared host starts without any ACL subprocess', async (t) => {
   const runtimeDirectory = await mkdtemp(path.join(os.tmpdir(), 'pomegr-terminal-test-'));
   await restrictDirectory(runtimeDirectory);
@@ -154,7 +165,7 @@ test('create, list, attach, input, resize, detach and exit preserve one writer',
 
 test('validates start plans, session cap, dimensions, commands and input byte bounds', async (t) => {
   const f = await fixture(t); const a = await f.connect();
-  for (const bad of [{ executable: 'relative.exe' }, { cwd: 'relative' }, { args: ['ok', 3] }, { env: { NODE_OPTIONS: '--require evil' } }, { cols: 0 }, { rows: 1001 }, { key: '../bad' }]) {
+  for (const bad of [{ executable: 'relative.exe' }, { cwd: 'relative' }, { args: ['ok', 3] }, { env: { 'BAD-NAME': 'value' } }, { cols: 0 }, { rows: 1001 }, { key: '../bad' }]) {
     assert.equal((await a.request('create', { plan: { ...f.plan(), ...bad } })).error, 'TERMINAL_INVALID');
   }
   assert.equal(f.calls.length, 0);
@@ -163,6 +174,41 @@ test('validates start plans, session cap, dimensions, commands and input byte bo
   await a.request('attach', { key: 's0' });
   assert.equal((await a.request('resize', { key: 's0', cols: 0, rows: 20 })).error, 'TERMINAL_INVALID');
   assert.equal((await a.request('kill', { key: 's0' })).error, 'UNKNOWN_COMMAND');
+  for (let i = 0; i < 3; i++) {
+    f.ptys[i].exit();
+    assert.equal((await a.request('detach', { key: `s${i}`, acknowledge: true })).ok, true);
+    assert.equal((await a.request('create', { plan: f.plan(`replacement${i}`) })).ok, true);
+  }
+  assert.equal((await a.request('list')).sessions.length, 16);
+});
+
+test('create preserves inherited environment names and fits a 48 KiB environment plus a task prompt in one frame', async (t) => {
+  const f = await fixture(t); const client = await f.connect();
+  const env = { 'ProgramFiles(x86)': 'C:\\Program Files (x86)', HTTPS_PROXY: 'http://proxy.test:8080',
+    NODE_EXTRA_CA_CERTS: 'C:\\certs\\owner.pem', GIT_SSH_COMMAND: 'ssh', ANTHROPIC_API_KEY: 'synthetic-key',
+    NODE_OPTIONS: '--max-old-space-size=4096', PATH: 'C:\\Windows;C:\\Program Files\\nodejs',
+    OWNER_SETTING: 'x'.repeat(32767), OWNER_SETTINGS_REST: '' };
+  env.OWNER_SETTINGS_REST = 'x'.repeat(48 * 1024 - Buffer.byteLength(JSON.stringify(env)));
+  assert.equal(Buffer.byteLength(JSON.stringify(env)), 48 * 1024);
+  const plan = { ...f.plan(), env, args: ['--model', 'synthetic', 'task '.repeat(1600)] };
+  assert.ok(encodeFrame({ id: 2, command: 'create', plan }).length <= 64 * 1024 + 4);
+  assert.equal((await client.request('create', { plan })).ok, true);
+  assert.deepEqual(f.calls[0][2].env, env);
+  const many = Object.fromEntries(Array.from({ length: 512 }, (_, i) => [`OWNER_${i}`, 'value']));
+  assert.equal((await client.request('create', { plan: { ...f.plan('many'), env: many } })).ok, true);
+  assert.deepEqual(f.calls[1][2].env, many);
+});
+
+test('create refuses malformed and oversized environments without spawning', async (t) => {
+  const f = await fixture(t); const client = await f.connect();
+  const oversized = { PATH: 'x'.repeat(24000), HOME: 'x'.repeat(25132) };
+  assert.ok(Buffer.byteLength(JSON.stringify(oversized)) > 48 * 1024);
+  for (const env of [null, [], 'value', { 'BAD-NAME': 'value' }, { '1NAME': 'value' },
+    { ['A'.repeat(129)]: 'value' }, Object.fromEntries(Array.from({ length: 513 }, (_, i) => [`OWNER_${i}`, 'value'])),
+    { PATH: 'x'.repeat(32768) }, { 'PA\0TH': 'value' }, { PATH: 'bad\0value' }, { PATH: 42 }, oversized]) {
+    assert.equal((await client.request('create', { plan: { ...f.plan(), env } })).error, 'TERMINAL_INVALID');
+  }
+  assert.equal(f.calls.length, 0);
 });
 
 test('replay is bounded and split into legal frames; exit discards replay', async (t) => {

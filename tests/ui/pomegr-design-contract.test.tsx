@@ -11,7 +11,6 @@ import { SessionTerminalSection } from "../../app/components/design-system/Desig
 import type { StorageSnapshot } from "../../shared/storage-contract";
 
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
-
 it("renders each read-only Terminal state from synthetic samples", () => {
   const { container } = render(<SessionTerminalSection />);
   expect(container.querySelector(".sessionTerminalMessage strong")).toHaveTextContent("previous revision");
@@ -21,6 +20,7 @@ it("renders each read-only Terminal state from synthetic samples", () => {
   }
   expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+  expect(container.querySelectorAll(".sessionManagedTerminal")).toHaveLength(6);
 });
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
   .map((match) => readFileSync(join(process.cwd(), "app", match[1]), "utf8")).join("\n");

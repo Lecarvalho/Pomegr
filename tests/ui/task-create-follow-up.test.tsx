@@ -68,7 +68,7 @@ describe("New task, the split action", () => {
     await user.click(caret());
     expect(caret()).toHaveAttribute("aria-expanded", "true");
     const items = within(screen.getByRole("menu", { name: "More ways to create" })).getAllByRole("menuitem");
-    expect(items.map((item) => item.textContent)).toEqual(["Create and queueGoes to the end of Ready.", "Create and start sessionOpens a new terminal window now."]);
+    expect(items.map((item) => item.textContent)).toEqual(["Create and queueGoes to the end of Ready.", "Create and start sessionOpens the session's terminal in Pomegr."]);
     expect(items[0]).toHaveFocus();
     await user.keyboard("{ArrowDown}");
     expect(items[1]).toHaveFocus();

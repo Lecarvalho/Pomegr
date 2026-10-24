@@ -17,6 +17,7 @@ import { queueStatusLine } from "./task-queue-banner";
 import { taskSearchItems } from "./task-search";
 import { useTaskBoardEdits } from "./use-task-board-edits";
 import { useTaskIssuesAvailability } from "./use-promote-issues";
+import { TaskTerminalBoundary } from "./TaskTerminalBoundary";
 
 type OpenModal = { kind: "new" } | { kind: "task"; id: string; focus?: "after" } | { kind: "newFeature" } | { kind: "feature"; id: string } | null;
 
@@ -95,7 +96,7 @@ export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadc
     if (!searchItems) return;
     return setPaletteScope({ label: "Search tasks", placeholder: "Search tasks and destinations", emptyLine: "No tasks or destinations match that search.", items: searchItems, onSelect: openFound });
   }, [openFound, searchItems]);
-  return <section ref={section} className="commandView tasksPage" aria-labelledby={headingId} aria-busy={board.readiness === "loading"}>
+  return <TaskTerminalBoundary repositoryId={repositoryId} revision={committed}><section ref={section} className="commandView tasksPage" aria-labelledby={headingId} aria-busy={board.readiness === "loading"}>
     <CommandPageHeader className="tasksPageHeader" headingId={headingId} breadcrumb={breadcrumb} title="Tasks"
       meta={<div className="tasksPageMeta">
         <p>Work for this repository. Ready is the queue: cards start from the top.</p>
@@ -121,5 +122,5 @@ export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadc
       {desktop && openFeature && <FeatureModal key={openFeature.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} board={board} feature={openFeature}
         onOpenTask={openFromFeature} onChanged={changed} onDeleted={featureDeleted} onClose={close} />}
     </div>
-  </section>;
+  </section></TaskTerminalBoundary>;
 }

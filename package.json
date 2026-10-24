@@ -72,6 +72,8 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.241",
     "@modelcontextprotocol/server": "^2.0.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "electron-updater": "6.8.9",
     "next": "16.2.6",
     "node-pty": "1.1.0",
@@ -172,6 +174,7 @@
       "desktop/runtime/task-image.mjs",
       "desktop/runtime/task-feature.mjs",
       "desktop/runtime/session-history.mjs",
+      "desktop/runtime/terminal.mjs",
       "desktop/runtime/terminal-host-client.mjs",
       "desktop/runtime/terminal-host-runtime.mjs",
       "desktop/terminal-host/main.mjs",

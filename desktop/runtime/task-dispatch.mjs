@@ -1,13 +1,14 @@
-import { spawn as spawnChild } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
-import { environmentValue, userSessionEnvironment } from "./environment-policy.mjs";
+import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
 import { createTaskQueueRunner } from "./task-queue-runner.mjs";
 import { createTaskWorktrees } from "./task-worktree.mjs";
+import { createTerminalController, installTerminalIpc } from "./terminal.mjs";
 
 export const TASK_WORKTREE_OPEN_CHANNEL = "pomegr:task-worktree-open";
 export const TASK_WORKTREE_OPEN_STATUSES = Object.freeze(["opened", "not_found", "invalid", "unavailable"]);
@@ -27,26 +28,16 @@ const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupp
 const PROMPT_MAX = 8000;
 const IMAGE_MAX = 4;
 const IMAGE_FILE = /^img-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/u;
-const LAUNCH_TIMEOUT_MS = 15_000;
-
-// A windowless app gives a detached child no console, so one fixed PowerShell command opens the session; its inputs travel as environment variables and are never parsed as script.
-export const TASK_START_LAUNCH_ARGUMENTS = Object.freeze([
-  "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-  "$ErrorActionPreference='Stop';"
-    + "$f=$env:POMEGR_START_FILE;$a=$env:POMEGR_START_ARGUMENTS;$d=$env:POMEGR_START_DIRECTORY;"
-    + "Remove-Item Env:POMEGR_START_FILE,Env:POMEGR_START_ARGUMENTS,Env:POMEGR_START_DIRECTORY;"
-    + "Start-Process -FilePath $f -ArgumentList $a -WorkingDirectory $d",
-]);
 
 export function taskStartConfirmation({ taskId, separateWorktree } = {}) {
   return separateWorktree === true
     ? {
       message: `Start task ${taskId} in a separate worktree?`,
-      detail: "A session will open in a new terminal window in a worktree of the task's own, on the task's branch at this repository's current commit, on the provider set in the task's Run on (Claude Code when none is set). The uncommitted changes in this repository are not part of it and are left untouched.",
+      detail: "A session will open in the Pomegr Terminal tab in a worktree of the task's own, on the task's branch at this repository's current commit, on the provider set in the task's Run on (Claude Code when none is set). The uncommitted changes in this repository are not part of it and are left untouched.",
     }
     : {
       message: `Start task ${taskId}?`,
-      detail: "A session will open in a new terminal window in this repository, or in the task's own worktree when it runs in a parallel group, on the provider set in the task's Run on (Claude Code when none is set).",
+      detail: "A session will open in the Pomegr Terminal tab in this repository, or in the task's own worktree when it runs in a parallel group, on the provider set in the task's Run on (Claude Code when none is set).",
     };
 }
 
@@ -63,26 +54,6 @@ export async function confirmTaskStart(dialog, getWindow, request) {
     noLink: true,
   });
   return answer.response === 0;
-}
-
-/** Quotes one argument the way the Windows C runtime parses a command line, so it arrives unchanged. */
-export function windowsArgument(value) {
-  if (value !== "" && !/[\s"]/u.test(value)) return value;
-  let quoted = "\"";
-  let slashes = 0;
-  for (const character of value) {
-    if (character === "\\") { slashes += 1; continue; }
-    quoted += character === "\"" ? `${"\\".repeat(slashes * 2 + 1)}"` : `${"\\".repeat(slashes)}${character}`;
-    slashes = 0;
-  }
-  return `${quoted}${"\\".repeat(slashes * 2)}"`;
-}
-
-function powershellExecutable(environment, fileExists) {
-  const systemRoot = environmentValue(environment, "SystemRoot");
-  if (typeof systemRoot !== "string" || /[\u0000\r\n"]/u.test(systemRoot) || !path.isAbsolute(systemRoot)) return null;
-  const candidate = path.join(path.resolve(systemRoot), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-  return fileExists(candidate) ? candidate : null;
 }
 
 const result = (status) => Object.freeze({ status });
@@ -154,25 +125,6 @@ function validatePlan(plan, taskId, directoryExists, fileExists) {
   return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true, remoteControl: plan.remoteControl === true, images };
 }
 
-function waitForLaunch(child, timeoutMs) {
-  return new Promise((resolve) => {
-    if (!child || typeof child.once !== "function") { resolve(false); return; }
-    let timer;
-    const finish = (started) => {
-      clearTimeout(timer);
-      child.removeListener?.("exit", onExit);
-      child.removeListener?.("error", onError);
-      resolve(started);
-    };
-    const onExit = (code) => finish(code === 0);
-    const onError = () => finish(false);
-    child.once("exit", onExit);
-    child.once("error", onError);
-    // Only the short-lived launcher is ever stopped here, never a started session.
-    timer = setTimeout(() => { try { child.kill?.(); } catch { /* already gone */ } finish(false); }, timeoutMs);
-  });
-}
-
 /** Native-only start of one session for one task. Manual and queued starts share one in-flight slot; only a fixed status reaches the renderer. */
 export function createTaskStart(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
@@ -180,12 +132,11 @@ export function createTaskStart(options = {}) {
   const monitorOrigin = trustedMonitorOrigin(options.monitorOrigin);
   const authorizationToken = options.authorizationToken;
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const launchTimeoutMs = options.launchTimeoutMs ?? LAUNCH_TIMEOUT_MS;
   const platform = options.platform || process.platform;
   const sourceEnvironment = options.environment || process.env;
   const fileExists = options.fileExists || existsSync;
   const directoryExists = options.directoryExists || defaultDirectoryExists;
-  const spawn = options.spawn || spawnChild;
+  const terminal = options.terminal || createTerminalController(options);
   const confirm = options.confirm || (async () => false);
   const worktrees = options.worktrees
     || (options.worktreeRoot ? createTaskWorktrees({ root: options.worktreeRoot, environment: sourceEnvironment, platform }) : null);
@@ -218,8 +169,6 @@ export function createTaskStart(options = {}) {
       try { executables[name] = provider.executable(sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
     }
     if (!Object.values(executables).some(Boolean)) return result("cli_missing");
-    const launcher = powershellExecutable(sourceEnvironment, fileExists);
-    if (!launcher) return result("unavailable");
     if (confirmRequired && await confirm({ taskId, separateWorktree }) !== true) return result("cancelled");
     if (disposed) return result("cancelled");
     const authorized = async () => {
@@ -281,20 +230,19 @@ export function createTaskStart(options = {}) {
       return result("cancelled");
     }
     try {
-      const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {
-        cwd: directory,
-        env: {
-          ...userSessionEnvironment(sourceEnvironment),
-          POMEGR_TASK_TOKEN: plan.token,
-          POMEGR_START_FILE: executable,
-          POMEGR_START_ARGUMENTS: args.map(windowsArgument).join(" "),
-          POMEGR_START_DIRECTORY: directory,
-        },
-        shell: false,
-        stdio: "ignore",
-        windowsHide: true,
+      await terminal.ensureHost();
+      if (!await authorized()) {
+        await abort(repositoryId, taskId, plan.token);
+        if (made?.created === true) {
+          try { await worktrees.remove({ repositoryRoot: plan.root, repositoryId, taskId, deleteBranch: made.branchCreated === true }); } catch { /* kept */ }
+        }
+        return result("cancelled");
+      }
+      await terminal.create({
+        key: `${repositoryId}/${taskId}/${randomBytes(16).toString("hex")}`,
+        executable, args, cwd: directory, env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
       });
-      started = await waitForLaunch(child, launchTimeoutMs);
+      started = true;
     } catch { started = false; }
     if (!started) {
       await abort(repositoryId, taskId, plan.token);
@@ -364,7 +312,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startApproved, startQueued, startPaired, openWorktree, cleanWorktree, dispose() { disposed = true; } });
+  return Object.freeze({ start, startApproved, startQueued, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; terminal.dispose?.(); } });
 }
 
 export function installTaskStartIpc(options = {}) {
@@ -382,6 +330,7 @@ export function installTaskStartIpc(options = {}) {
   ipcMain.handle(TASK_WORKTREE_OPEN_CHANNEL, async (event, repositoryId, taskId) => {
     try { return await starter.openWorktree(event, repositoryId, taskId); } catch { return result("unavailable"); }
   });
+  const removeTerminal = starter.terminal ? installTerminalIpc({ ipcMain, controller: starter.terminal }) : () => {};
   runner?.start();
-  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); runner?.dispose(); starter.dispose?.(); };
+  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); runner?.dispose(); removeTerminal(); starter.dispose?.(); };
 }

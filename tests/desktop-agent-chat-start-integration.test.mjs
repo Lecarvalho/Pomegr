@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
@@ -27,16 +26,6 @@ const validUsage = (percent = 10) => ({
     { window: "7 days", percent: 20, resetsAt: new Date(Date.now() + 60_000).toISOString() },
   ],
 });
-
-function nativeLauncher(spawns) {
-  return (...args) => {
-    spawns.push(args);
-    const child = new EventEmitter();
-    child.kill = () => {};
-    queueMicrotask(() => child.emit("exit", 0));
-    return child;
-  };
-}
 
 async function setup(context, { treeReader, pluginReady = true, confirmResult = true, after = false, usagePercent = 10, providerState = "operational" } = {}) {
   const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-repository-"));
@@ -99,7 +88,7 @@ async function setup(context, { treeReader, pluginReady = true, confirmResult = 
       if (url.endsWith("/start-plan")) plans.push(JSON.parse(options.body));
       return fetch(url, options);
     },
-    spawn: nativeLauncher(spawns),
+    terminal: { ensureHost: async () => {}, create: async ({ executable, args, cwd, env }) => { spawns.push([executable, args, { cwd, env }]); } },
   });
   const h = await chatHarness(context, {
     viaDataRoot: true,

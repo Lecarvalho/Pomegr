@@ -81,6 +81,10 @@ test("client reuses a running host, discovers another build, and streams replay 
   t.after(() => client.close());
   await client.ensureHost();
   assert.equal((await client.listHosts()).length, 2);
+  const older = createTerminalHostClient({ ...options, spawn() { throw new Error("existing builds never spawn"); } });
+  t.after(() => older.close());
+  await older.connectHost(other.buildId);
+  assert.deepEqual(await older.list(), []);
   await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "fixture" });
   handlers.data("before attach\r\n");
   const stream = await client.attach("fixture");
@@ -88,6 +92,11 @@ test("client reuses a running host, discovers another build, and streams replay 
   assert.equal((await stream.next()).value.data, "before attach\r\n");
   await client.input("fixture", "hello");
   assert.equal((await stream.next()).value.data, "echo:hello");
+  await client.input("fixture", "x".repeat(16 * 1024));
+  let accepted = "";
+  const echoed = `echo:${"x".repeat(2048)}`.repeat(8);
+  while (accepted.length < echoed.length) accepted += (await stream.next()).value.data;
+  assert.equal(accepted, echoed);
   await client.resize("fixture", 100, 40);
   assert.equal((await stream.next()).value.data, "size:100x40");
   handlers.exit({ exitCode: 7 });

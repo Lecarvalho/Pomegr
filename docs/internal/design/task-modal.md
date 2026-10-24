@@ -411,8 +411,8 @@ The New task and Task forms share these fields. The Promote form shares all but 
 - **Create task** is a [split action](../../../DESIGN.md#buttons). Its caret is named “More ways to create”.
 - The menu holds **Create and queue** and **Create and start session**, in that order.
 - **Create and queue** has the line “Goes to the end of Ready.”
-- **Create and start session** has the line “Opens a new terminal window now.”
-- On a paired phone, that line is “Opens a new terminal on the computer running Pomegr.”
+- **Create and start session** has the line “Opens the session's terminal in Pomegr.”
+- On a paired phone, that line is “Starts a session on the computer running Pomegr.”
 - The caret is disabled while **Create task** is disabled.
 - Each item creates the task as **Create task** does, and then acts on it.
 - **Create and queue** then adds the task to the queue, as **Add to queue** in mode edit does.

@@ -39,7 +39,7 @@ function outputStream(onReturn) {
   };
 }
 
-/** Desktop-main only. No consumer or IPC is installed until the start and UI phases. */
+/** Desktop-main only; tokens, process plans, and raw output never enter HTTP. */
 export function createTerminalHostClient({ source, userData, spawn = spawnChild }) {
   let socket;
   let ensuring;
@@ -161,6 +161,18 @@ export function createTerminalHostClient({ source, userData, spawn = spawnChild 
 
   return Object.freeze({
     ensureHost, listHosts,
+    async connectHost(buildId) {
+      if (!/^[a-f0-9]{64}$/.test(buildId)) throw unavailable();
+      if (socket && !socket.destroyed) return;
+      if (ensuring) return ensuring;
+      ensuring = (async () => {
+        const directory = path.join(userData, "terminal-host", buildId);
+        const state = await readHostState(directory);
+        if (!hostIsAlive(state)) throw unavailable();
+        await connect(directory, state);
+      })().finally(() => { ensuring = null; });
+      return ensuring;
+    },
     async create(plan) { return request("create", { plan }); },
     async list() { return (await request("list")).sessions; },
     async attach(key) {
@@ -170,7 +182,19 @@ export function createTerminalHostClient({ source, userData, spawn = spawnChild 
       try { stream.readOnly = (await request("attach", { key })).readOnly; return stream; }
       catch (error) { stream.end(); streams.delete(key); throw error; }
     },
-    input: (key, data) => request("input", { key, data }),
+    async input(key, data) {
+      if (typeof data !== "string" || Buffer.byteLength(data) > 16 * 1024) throw new Error("TERMINAL_INVALID");
+      // JSON escaping and the envelope count toward the host's smaller input-frame cap.
+      // Queue a paste's chunks together so another input call cannot interleave them.
+      const requests = [];
+      let chunk = "";
+      for (const character of data) {
+        chunk += character;
+        if (chunk.length >= 2048) { requests.push(request("input", { key, data: chunk })); chunk = ""; }
+      }
+      if (chunk || requests.length === 0) requests.push(request("input", { key, data: chunk }));
+      await Promise.all(requests);
+    },
     resize: (key, cols, rows) => request("resize", { key, cols, rows }),
     detach,
     close() { if (socket) { socket.destroy(); disconnected(socket); } },

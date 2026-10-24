@@ -9,6 +9,7 @@ import { TaskInlineText } from "./TaskInlineText";
 import { TaskTagChips } from "./TaskTagChips";
 import { BOARD_NEXT_LABEL, laneSaysChip, taskCardTitle, taskChip, taskSessionTitle, taskTextPreview, type TaskLane } from "./task-presentation";
 import { startsParts } from "./task-schedule";
+import { TaskTerminalHint } from "./TaskTerminalBoundary";
 
 export type TaskCardMove = {
   drag: Pick<HTMLAttributes<HTMLLIElement>, "onDragStart" | "onDragEnd">;
@@ -75,6 +76,7 @@ export function TaskCard({ task, lane, featureLine, nextQueued = false, onOpen, 
     {starts && <p className="taskCardDetail taskCardStarts">Starts {starts.day} <span className="taskCardStartsTime">{starts.time}</span></p>}
     {waiting && <p className="taskCardWaiting">{waiting}</p>}
     {!waiting && after && <p className="taskCardWaiting taskCardAfter">{after}</p>}
+    {task.session === null && <TaskTerminalHint taskId={task.id} />}
     {sessions.length > 0 && <p className="taskCardDetail taskCardSessions">
       <TaskSessionLink sessionId={sessions[0].id} className="taskCardLink" arrow />
       {sessions.length > 1 && <span>+{sessions.length - 1} more</span>}

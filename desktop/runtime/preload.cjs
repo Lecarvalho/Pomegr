@@ -16,6 +16,8 @@ const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", 
 const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
 const TASK_FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const TERMINAL_KEY = /^repo-[a-f0-9]{24}\/T-[1-9][0-9]{0,8}\/[a-f0-9]{32}$/u;
+const TERMINAL_ATTACH_ID = /^[A-Za-z0-9_-]{1,128}$/u;
 const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const TASK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const AGENT_CHAT_CONVERSATION_ID = /^chat-[0-9a-f]{12}$/u;
@@ -132,6 +134,31 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   sessionHistory(sessionId, request) {
     if (typeof sessionId !== "string" || !SESSION_ID.test(sessionId)) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:session-history", sessionId, request);
+  },
+  terminal(operation, payload) {
+    const plain = payload && typeof payload === "object" && !Array.isArray(payload)
+      && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);
+    let valid = operation === "list" && (payload === undefined || (plain && Object.keys(payload).length === 0));
+    if (["attach", "input", "resize", "detach"].includes(operation) && plain
+      && typeof payload.attachId === "string" && TERMINAL_ATTACH_ID.test(payload.attachId)) {
+      const fields = operation === "attach" ? ["key", "attachId"] : operation === "input" ? ["attachId", "data"] : operation === "resize" ? ["attachId", "cols", "rows"] : ["attachId"];
+      valid = Object.keys(payload).length === fields.length && fields.every((key) => Object.hasOwn(payload, key));
+      if (operation === "attach") valid = valid && typeof payload.key === "string" && TERMINAL_KEY.test(payload.key);
+      if (operation === "input") valid = valid && typeof payload.data === "string" && new TextEncoder().encode(payload.data).byteLength <= 16 * 1024;
+      if (operation === "resize") valid = valid && Number.isInteger(payload.cols) && payload.cols >= 1 && payload.cols <= 1000
+        && Number.isInteger(payload.rows) && payload.rows >= 1 && payload.rows <= 1000;
+    }
+    if (!valid) return Promise.resolve({ ok: false, status: "invalid" });
+    return ipcRenderer.invoke("pomegr:terminal", operation, payload);
+  },
+  onTerminalOutput(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, value) => {
+      if (value && typeof value.attachId === "string" && TERMINAL_ATTACH_ID.test(value.attachId)
+        && ["output", "exit", "detached"].includes(value.event)) callback(value);
+    };
+    ipcRenderer.on("pomegr:terminal-output", listener);
+    return () => ipcRenderer.removeListener("pomegr:terminal-output", listener);
   },
   taskIssues(repositoryId, operation, payload) {
     const plain = payload && typeof payload === "object" && !Array.isArray(payload)

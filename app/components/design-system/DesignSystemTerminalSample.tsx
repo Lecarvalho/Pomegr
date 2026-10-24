@@ -1,6 +1,7 @@
 "use client";
 
 import { SessionTerminalSurface, type HistoryPage } from "../dashboard/session-terminal/SessionTerminalPanel";
+import { ManagedTerminalSurface, type TerminalViewState } from "../dashboard/session-terminal/ManagedTerminalPanel";
 import { Sample, Section } from "./DesignSystemKit";
 
 const history: HistoryPage = {
@@ -24,9 +25,21 @@ const samples: { label: string; page: HistoryPage | null; live?: boolean; failed
   { label: "Failed", page: null, failed: true },
   { label: "Reading", page: null, busy: true },
 ];
+const managed: { label: string; state: TerminalViewState }[] = [
+  { label: "Managed live", state: "live" }, { label: "Starting before binding", state: "starting" },
+  { label: "Reconnecting", state: "reconnecting" }, { label: "Host unavailable", state: "host_unavailable" },
+  { label: "New launch failed", state: "failed" }, { label: "Incompatible host", state: "incompatible_host" },
+];
 
 export function SessionTerminalSection() {
-  return <Section id="session-terminal" title="Session Terminal" lede="Desktop-only saved history, read-only. These synthetic samples use the real terminal surface and read no session data.">
+  return <Section id="session-terminal" title="Session Terminal" lede="Desktop-only managed terminals and saved history. These synthetic samples read no session data and start no process.">
+    <div className="designSystemGrid">{managed.map(({ label, state }) => <Sample key={state} label={label} note="Synthetic CLI output; the provider draws its own input inside this surface.">
+      <ManagedTerminalSurface state={state} onRetry={state === "failed" ? ignore : undefined}>
+        {(state === "live" || state === "starting") && <pre className="sessionTerminalOutput">{state === "starting" ? "Starting in the task worktree…\nInitializing session…" : "Provider CLI / Pomegr · T-123\n\n> Keep the last good revision during refresh.\n\nI will check the refresh coordinator and add regression coverage.\n\nRunning focused tests…"}</pre>}
+      </ManagedTerminalSurface>
+    </Sample>)}
+      <Sample label="Queued start" note="A queue start opens no view and takes no focus."><p className="sessionTerminalMuted">T-125 · Waiting in terminal</p><p>Open the task to see its starting terminal. A bound task keeps its existing Open session action.</p></Sample>
+    </div>
     <div className="designSystemGrid">{samples.map(({ label, page, live = false, failed = false, busy = false }) => <Sample key={label} label={label} note="Synthetic messages; sample controls do not read history.">
       <SessionTerminalSurface page={page} live={live} failed={failed} busy={busy} onRefresh={ignore} onEarlier={ignore} />
     </Sample>)}</div>

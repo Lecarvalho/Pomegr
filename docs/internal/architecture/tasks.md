@@ -2146,10 +2146,11 @@ Starting is explicit and runs on the desktop computer.
    start with the same native confirmation after Apply (see [Agent chat: Session start](agent-chat.md#session-start)).
    The queue runner starts without a prompt
    only after the user turned the queue on.
-2. The runner opens a visible terminal window in the repository root, or in the task's
-   worktree, that runs the provider CLI. It uses `spawn` with an argument array and
-   `shell: false`. Task text is untrusted user content and is never interpolated into
-   a command line or a path.
+2. Desktop main creates the provider CLI in the desktop-owned terminal host, in the
+   repository root or task worktree. It passes the executable, argument array, and
+   working directory explicitly, with the owner's inherited session environment and
+   `POMEGR_TASK_TOKEN`. Task text is untrusted user content and never enters
+   a command line or path.
 3. The session prompt is a fixed template holding the task text, the files of the
    task's images when it has any, the Complete when list, and
    the instruction to call `complete_task` or `block_task`. For a task that belongs to
@@ -2166,7 +2167,8 @@ Starting is explicit and runs on the desktop computer.
    task has uncommitted changes (fixed result `worktree_dirty`), or the platform is not
    Windows (fixed result `unsupported_platform`).
 
-Built so far: the manual and the queued start of a Claude Code or Codex session behind the start gates, and the link of the started session to its task.
+Built so far: manual and queued starts for Claude Code or Codex behind the start gates,
+with the started session linked to its task and run in Pomegr's terminal host.
 
 - The renderer calls the fixed IPC channel `pomegr:task-start` with a repository ID and a
   task ID, and for a [separate-worktree start](#separate-worktree-for-a-dirty-repository)
@@ -2203,44 +2205,33 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   dispatch is live for ten minutes; after that the task can be started again. The
   session's first report of the token binds it (see [Session binding](#session-binding)),
   which discards the digest and ends the expiry.
-- Desktop main validates the plan, then opens the terminal through one fixed PowerShell
-  command (`Start-Process`), run with `spawn`, an argument array, and `shell: false`. A
-  detached child of a windowless app gets no console, so the executable cannot be
-  spawned directly. The command line is constant: the executable, its argument string,
-  and the directory travel only as environment variables, which PowerShell reads as
-  values and never parses as script, and which are removed before the session starts.
-  The argument string holds the model and effort flags only when set, followed by the
-  prompt as one argument, each quoted by the Windows command-line rules. A task with
-  images adds one flag after the prompt, because both flags take a list of values and
-  would swallow a prompt that followed them: Claude Code gets `--add-dir` with the
-  folder of the images, so its read tools may open the files the prompt lists, and
-  Codex gets `--image` with the files, which attaches them to the prompt. Desktop main
-  uses the plan's images only when each is an absolute, normalized path with a
-  store-made file name (`img-<12 hex>` and one of four extensions), all in one folder,
-  an existing file, and named in the prompt; otherwise the plan is malformed. A Claude
-  Code plan with `remoteControl` adds the one fixed flag `--remote-control` after the
-  prompt and before the image flag: the flag takes an optional session name, so before
-  the prompt it would take the prompt as that name. Pomegr passes no name. A
-  `remoteControl` that is not a boolean, or is true on a Codex plan, makes the plan
-  malformed. Remote Control is Claude Code's own feature: the session registers itself
-  with the owner's Claude account, and Pomegr never connects to it, reads its remote
-  identifier for this, or sends anything to it (the read-only status exception in
-  [Claude session status](claude-session-status.md) is unchanged). Claude Code
-  takes `--model` and `--effort`; Codex takes `--model` and
-  `-c model_reasoning_effort=<effort>`, and accepts each task effort by name, `xhigh`
-  included. The environment is the user's own, as the desktop app inherited it at launch
-  (product-owner decision, 2026-10-09): the session's hooks and MCP servers need the
-  user's Node, tools, and settings, so the app's stripped runtime environment is not
-  used. Left out are only the app's own variables (`ELECTRON_*`, `POMEGR_SMOKE_*`,
-  `POMEGR_START_*`, the monitor origin and token); added is `POMEGR_TASK_TOKEN`. A
-  provider folder variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) is set only when the user
-  chose that folder in Settings or inherited the variable: naming the default folder makes
-  Claude Code read another user configuration file. Pomegr keeps no handle to the session.
-- When the plan is malformed, its provider executable is missing, or the launcher fails or does not end within 15 seconds,
-  desktop main calls
-  `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
-- Starting never changes the task's state or column. The card moves
-  only when the started session links.
+- Desktop main validates the plan, then sends the same executable, argument array, and
+  working directory to the host's create operation. The task prompt remains one argument.
+  Model and effort flags appear only when set. Claude Code images use `--add-dir` with
+  their folder; Codex images use `--image` with their files. The plan is malformed unless
+  every image path is absolute, normalized, store-named, present, in one folder, and named
+  in the prompt. A Claude Code plan may add the fixed `--remote-control` flag after the
+  prompt and before its image flag. Pomegr supplies no session name. Remote Control stays
+  Claude Code's feature; Pomegr does not connect to it or send it anything.
+- Desktop main passes `userSessionEnvironment(sourceEnvironment)` plus the fresh
+  `POMEGR_TASK_TOKEN`: the owner's full inherited environment minus `ELECTRON_*`,
+  `POMEGR_SMOKE_*`, `POMEGR_START_*`, `POMEGR_MONITOR_TOKEN`, `POMEGR_MONITOR_ORIGIN`,
+  and the old `POMEGR_TASK_TOKEN`, matched without case sensitivity. Owner-set tools,
+  proxy variables, provider keys, and settings remain available to the child.
+- The host validates environment shape and bounds without a name allowlist: at most
+  512 string variables, names matching `^[A-Za-z_][A-Za-z0-9_()]{0,127}$`, each value at
+  most 32767 characters, no NUL in names or values, and at most 48 KiB of serialized
+  UTF-8 JSON. The whole create frame retains its 64 KiB limit.
+- `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is set only when inherited or selected in Settings.
+  The host launches the executable with an argument array, without a shell; it never
+  launches PowerShell.
+- When the terminal host cannot start, session creation fails, or its result is unknown,
+  desktop main returns the existing `failed` status and calls `POST /internal/tasks/start-abort`
+  with the token to clear the matching dispatch. The existing worktree rollback also runs.
+- No start failure or unknown result triggers an automatic retry.
+- Starting never changes the task's state or column. The card moves only when the started
+  session links. A manual start opens its task's Terminal start view while it waits for
+  the session to report. The view moves to the session's Terminal tab after binding.
 - The agent chat is a second caller of the same manual start (task T-72, 2026-10-12).
   When the owner applies a `start_session` proposal in the desktop window, desktop main
   calls `startApproved` with that window's event, the repository ID, and the task ID,
@@ -2261,9 +2252,26 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   which must exist and be listed by Git on the task branch) and opens it with
   `shell.openPath`; Windows only. No path, command, or error text crosses the channel.
 
-Claude Code and Codex are both startable. Pomegr never attaches to, writes input to,
-approves for, or stops the started process; afterwards it only observes the session
-like any other.
+Claude Code and Codex are both startable. The owner may type or paste into a session
+Pomegr started in the terminal host through the trusted Terminal view. No agent, Aril,
+queue, MCP tool, or monitor path may send input or end it. Observation does not interpret
+terminal text as session state.
+
+### Terminal binding
+
+- Desktop main keeps the in-memory binding key `(repositoryId, taskId, nonce)` for each
+  terminal it creates. It binds the key only after session binding links that session to
+  the task.
+- After a desktop app restart, desktop main rebuilds bindings from a compatible host's
+  session list and the task store's confirmed links (`task.session.id`). It persists no terminal binding.
+- Desktop main binds a task link only when exactly one candidate key matches that task.
+  If multiple live keys match, it refuses to bind any of them because the task store
+  keeps only one current session link.
+- A host with an incompatible protocol cannot provide its session list. After a cold
+  restart, Pomegr reports that host as inaccessible and cannot reconstruct its session
+  keys or task bindings.
+- A terminal that has not bound to a session remains in the task's start view. A host
+  terminal record alone never proves a task session exists.
 
 ## GitHub issues
 
@@ -2566,6 +2574,9 @@ serves no other client.
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status. The agent chat's applied start proposal reaches the same starter in desktop main, with the event of its own trusted `pomegr:agent-chat` call; its confirmation is **Start session** on the proposal card, not the native one |
 | `POST /api/tasks/start` | A paired device through the desktop LAN gateway, behind confirmation on that device and repeated authorization checks | `{ repositoryId, taskId, confirmed: true, worktree?: true }`, at most 512 bytes; answers only `{ status }` from the IPC start allowlist; never forwards or exposes a start plan |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
+| `pomegr:terminal` IPC | The renderer through the trusted main frame | Fixed `list`, `attach`, `input`, `resize`, and `detach` operations. Input is at most 16 KiB |
+| `pomegr:terminal-output` IPC | Desktop main to the one renderer attaching to that terminal | Terminal output keyed only by the attach ID, delivered only to that attaching renderer |
+| Terminal host pipe | Desktop main, authenticated with its private token | Fixed host commands and their bounded replies. The pipe, token, and terminal output stay out of HTTP and monitor routes |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `POST /internal/tasks/worktree-cleanups`, `worktree-root`, and `worktree-cleaned` | Desktop main and its queue runner, with the desktop token; not reachable through `pomegr:task-action` | `worktree-cleanups`: at most 64 `{ repositoryId, taskId, repositoryRoot }` done tasks whose worktree waits for removal. `worktree-root`: the root of one repository, or `not_found`. `worktree-cleaned`: a task ID in. The root reaches desktop main only, as in the start plan; no task content either way |
