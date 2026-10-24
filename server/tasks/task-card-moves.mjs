@@ -13,7 +13,7 @@ const columnExists = (database, repositoryId, id) =>
 // A move to Done also accepts the task. Other moves change only its column, position, and update time.
 // A grouped card that has not started moves with its group
 // ("block"), or leaves it ("leave", and any move that lands it away from every other card of its group in that column).
-export function moveTask({ database, repositoryId, now }, payload) {
+export function moveTask({ database, repositoryId, now, resolveOutcomeFacts = null }, payload) {
   const input = normalizeMovePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   const task = preparedStatement(database, "SELECT column_id, state, session_id, dispatch_token FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
@@ -56,7 +56,7 @@ export function moveTask({ database, repositoryId, now }, payload) {
   if (readColumnRoles(database, repositoryId).get(input.columnId) === "done") {
     const state = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?");
     for (const number of block) {
-      if (state.get(repositoryId, number).state !== "done") markTaskDone({ database, repositoryId, now }, number);
+      if (state.get(repositoryId, number).state !== "done") markTaskDone({ database, repositoryId, now, resolveOutcomeFacts }, number);
     }
   }
   return { ok: true };

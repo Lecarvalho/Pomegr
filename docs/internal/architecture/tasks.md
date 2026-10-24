@@ -59,7 +59,9 @@ pattern of `monitor-store.mjs`). The file is `tasks-v1/tasks.sqlite` under the m
 private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 - `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
-- Opening a store creates `task_events` when missing; the schema version stays 1 because this additive table changes no existing table or meta key.
+- `task_outcomes` stores one outcome per task at Done, from its events in the same transaction, without backfilling older tasks.
+- Opening a store creates missing `task_events` and `task_outcomes` tables; these additive tables keep schema version 1 and change no existing table or meta key.
+- Outcome facts stay null without a review or a resolver; a resolver failure leaves them null and never prevents Done.
 - Version 0.8.x verifies only its listed tables, so it can still open the store.
 - The store is versioned. A malformed or newer store is never overwritten by a routine
   write; the board then reports `unavailable`. Unlike the monitor store, a bad file is
@@ -2698,6 +2700,9 @@ serves no other client.
 
 - `task_events` stores only event kind, time, and nullable session ID under its repository and task identifiers, never text.
 - Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
+- `task_outcomes` stores only counts, times, a pull request number and its fixed state, under repository and task identifiers.
+- Outcomes are computed at Done and deleted with the task; no text, title, URL, or branch name is stored.
+- Outcomes stay private to the task store; no route, agent tool, or observation surface reads them.
 - A task session and its assigned sessions borrow only the primary agent's provider-reported `observedEffort` per read, bounded as above; it is never stored and adds no value to `/api/state`.
 
 - The block-hold marker stays only in the task store. It is served indirectly through existing queue status and `blockedBy`, never as task content.

@@ -9,7 +9,8 @@ import { writeTaskGroup } from "./task-groups.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
 import { archiveTaskReport } from "./task-report-history.mjs";
-import { recordTaskEvent } from "./task-events.mjs";
+import { readTaskEvents, recordTaskEvent } from "./task-events.mjs";
+import { taskOutcome, writeTaskOutcome } from "./task-outcomes.mjs";
 import { deleteTaskBlockHold, holdTaskBlock, readTaskBlockHolds } from "./task-block-holds.mjs";
 import { IN_FLIGHT_STATES, isTaskId, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
@@ -160,21 +161,31 @@ function unresolvedTask(database, repositoryId, payload) {
   return UNRESOLVED_STATES.includes(task.state) || awaitingReport(task) ? { number: input.number } : { error: "conflict" };
 }
 
-export function resolveDone({ database, repositoryId, now }, payload) {
+export function resolveDone({ database, repositoryId, now, resolveOutcomeFacts = null }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
-  markTaskDone({ database, repositoryId, now }, target.number);
+  markTaskDone({ database, repositoryId, now, resolveOutcomeFacts }, target.number);
   return { ok: true };
 }
 
 // The owner's acceptance, shared by Mark done and an explicit card move to Done.
 // Callers validate the task and perform this write inside their action's transaction.
-export function markTaskDone({ database, repositoryId, now }, number) {
+export function markTaskDone({ database, repositoryId, now, resolveOutcomeFacts = null }, number) {
   const row = taskRow(database, repositoryId, number);
   const at = Date.now();
   preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(at, repositoryId, number);
   recordTaskEvent(database, repositoryId, number, "done", at, row.session_id);
+  try {
+    const events = readTaskEvents(database, repositoryId, number);
+    const reviewAt = events.find((event) => event.kind === "review")?.at ?? null;
+    const sessionIds = [...new Set(events.filter((event) => ["started", "assigned"].includes(event.kind) && event.sessionId !== null).map((event) => event.sessionId))];
+    let facts = null;
+    try {
+      if (reviewAt !== null) facts = resolveOutcomeFacts?.(sessionIds, reviewAt, taskIdFromNumber(number)) ?? null;
+    } catch { /* Missing observation facts stay unknown. */ }
+    writeTaskOutcome(database, repositoryId, number, taskOutcome(events, facts, at));
+  } catch { /* An outcome must never prevent the owner's acceptance. */ }
   moveTaskToRole(database, repositoryId, number, "done");
   deleteTaskBlockHold(database, repositoryId, number);
   requestWorktreeCleanup(database, repositoryId, number);
