@@ -5,7 +5,7 @@ import type { AgentChatAgentMessage, AgentChatConversation, AgentChatImage, Agen
 import type { Task } from "../../../shared/task-contract";
 import { AgentChatImageStrip } from "./AgentChatImages";
 import type { AgentChatImageUrls } from "./agent-chat-images";
-import { AgentChatMarkdown } from "./AgentChatMarkdown";
+import { SafeMarkdown } from "../markdown/SafeMarkdown";
 import { AgentChatProposalCard } from "./AgentChatProposalCard";
 import { ACTIVITY_LABELS, STATUS_NOTES, SUGGESTIONS, UNREADABLE_PROPOSAL, agentCaption, pendingIsStored } from "./agent-chat-presentation";
 
@@ -40,7 +40,7 @@ function AgentMessage({ message, tasks, imageUrls, resolving, startHere, heldSta
 }) {
   return <article className="agentChatMessage isAgent" aria-label="Aril">
     <AgentHead caption={agentCaption(message)} />
-    {message.text !== "" && <AgentChatMarkdown text={message.text} />}
+    {message.text !== "" && <SafeMarkdown text={message.text} />}
     {message.status !== "complete" && <p className="agentChatMessageNote">{STATUS_NOTES[message.status]}</p>}
     {message.proposal && <AgentChatProposalCard proposal={message.proposal} tasks={tasks} imageUrls={imageUrls} busy={resolving === message.proposal.id} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />}
     {message.proposalUnreadable && <p className="taskNotice warning agentChatNotice">{UNREADABLE_PROPOSAL}</p>}
@@ -123,7 +123,7 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, p
         {showPending && <OwnerMessage text={pendingMessage} images={pendingImages} urls={imageUrls} />}
         {running && <article className="agentChatMessage isAgent isWriting" aria-label="Aril">
           <AgentHead caption={turn ? agentCaption(turn) : null} />
-          {turn && turn.text !== "" && <div aria-live="off"><AgentChatMarkdown text={turn.text} /></div>}
+          {turn && turn.text !== "" && <div aria-live="off"><SafeMarkdown text={turn.text} /></div>}
           <p className="agentChatActivity" role="status">{ACTIVITY_LABELS[turn?.activity ?? "starting"]}</p>
         </article>}
       </>}

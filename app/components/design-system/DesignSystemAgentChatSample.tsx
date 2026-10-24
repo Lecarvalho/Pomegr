@@ -5,7 +5,7 @@ import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatConversat
 import { AgentChatComposer } from "../agent-chat/AgentChatComposer";
 import { AgentChatHeader, AgentChatLauncher, AgentChatPanelFrame, AgentChatRepositoryRow } from "../agent-chat/AgentChatFrame";
 import { AgentChatHistory } from "../agent-chat/AgentChatHistory";
-import { AgentChatMarkdown } from "../agent-chat/AgentChatMarkdown";
+import { SafeMarkdown } from "../markdown/SafeMarkdown";
 import { AgentChatMessages, type AgentChatLogState } from "../agent-chat/AgentChatMessages";
 import { AgentChatProposalCard } from "../agent-chat/AgentChatProposalCard";
 import { DEFAULT_RUN, NO_MODELS, runSelectOptions, runSelectValue } from "../tasks/task-fields";
@@ -227,7 +227,7 @@ export function AgentChatSection() {
       </Sample>
     </div>
     <Wide label="Answer text" note="Paragraphs, lists, bold, inline code and fenced code. HTML, links and images stay literal text: nothing here can navigate.">
-      <AgentChatMarkdown text={[ANSWER, "", "<img src=x onerror=alert(1)> [a link](javascript:alert(1))"].join("\n")} />
+      <SafeMarkdown text={[ANSWER, "", "<img src=x onerror=alert(1)> [a link](javascript:alert(1))"].join("\n")} />
     </Wide>
   </Section>;
 }
