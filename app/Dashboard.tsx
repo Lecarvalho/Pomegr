@@ -16,6 +16,7 @@ import { ResourcesTab } from "./components/dashboard/ResourcesTab";
 import { SignalsTab } from "./components/dashboard/SignalsTab";
 import { SessionOverview } from "./components/dashboard/SessionOverview";
 import { SessionTabs } from "./components/dashboard/SessionTabs";
+import { SessionTerminalPanel } from "./components/dashboard/session-terminal/SessionTerminalPanel";
 import { SessionTaskMeta } from "./components/dashboard/SessionTaskMeta";
 import { SessionTaskTab } from "./components/dashboard/SessionTaskTab";
 import { parseSessionTab, sessionQueryString, type SessionRouteQuery, type SessionTab } from "./components/dashboard/session-route";
@@ -169,7 +170,8 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
       {activeTab === "repository" && <RepositoryTab sessionId={sessionId} historical={historical} paused={paused} selectedPath={initialQuery.path || null} onSelectPath={(path) => navigate({ path })} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, path: null })} />}
       {activeTab === "resources" && <ResourcesTab sessionId={sessionId} historical={historical} paused={paused} peakField={initialQuery.peak || null} onClearPeakField={() => navigate({ peak: null })} />}
       {activeTab === "task" && (sessionTask.task ? <SessionTaskTab task={sessionTask.task} sessionId={sessionId} /> : <div className="sessionTabState" role="status">Loading task…</div>)}
-      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && activeTab !== "repository" && activeTab !== "resources" && activeTab !== "task" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
+      {activeTab === "terminal" && <SessionTerminalPanel sessionId={sessionId} live={summary.lifecycle.isLive} />}
+      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && activeTab !== "repository" && activeTab !== "resources" && activeTab !== "task" && activeTab !== "terminal" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
     </div>
   </section>;
 }

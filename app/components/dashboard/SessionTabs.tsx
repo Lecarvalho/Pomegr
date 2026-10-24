@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { SessionSummaryDomain } from "../../../shared/session-domain-contract";
 import type { SessionTab } from "./session-route";
+import { useSessionHistoryAvailability } from "./session-terminal/SessionTerminalPanel";
 
 const PRIMARY_PHONE_TABS: SessionTab[] = ["overview", "agents", "activities", "repository"];
-const SECONDARY_TABS: SessionTab[] = ["signals", "resources", "details", "task"];
-const ALL_TABS: SessionTab[] = ["overview", "agents", "activities", "repository", "signals", "resources", "details", "task"];
+const SECONDARY_TABS: SessionTab[] = ["signals", "resources", "details", "task", "terminal"];
+const ALL_TABS: SessionTab[] = ["overview", "agents", "activities", "repository", "signals", "resources", "details", "task", "terminal"];
 const LABELS: Record<SessionTab, string> = {
   overview: "Overview",
   agents: "Agents",
@@ -16,6 +17,7 @@ const LABELS: Record<SessionTab, string> = {
   resources: "Resources",
   details: "Details",
   task: "Task",
+  terminal: "Terminal",
 };
 
 // The tabpanel in app/Dashboard.tsx must carry id="session-tab-panel" and aria-labelledby matching the tab ids below.
@@ -40,7 +42,8 @@ export function SessionTabs({ active, summary, task, onSelect }: {
   const showResources = resourcesHasData === true;
   const resourcesDefinitivelyHidden = !showResources && resourcesReadiness !== "loading";
   const showTask = task === "present";
-  const available = ALL_TABS.filter((tab) => (tab !== "resources" || showResources) && (tab !== "task" || showTask));
+  const historyAvailability = useSessionHistoryAvailability();
+  const available = ALL_TABS.filter((tab) => (tab !== "resources" || showResources) && (tab !== "task" || showTask) && (tab !== "terminal" || historyAvailability === "available"));
   const menuTabs = SECONDARY_TABS.filter((tab) => available.includes(tab));
 
   // A deep link to ?tab=task on a session with no task falls back to Overview, but only once the monitor has said so.
@@ -52,6 +55,10 @@ export function SessionTabs({ active, summary, task, onSelect }: {
   useEffect(() => {
     if (active === "task" && task === "absent") onSelect("overview");
   }, [active, task, onSelect]);
+
+  useEffect(() => {
+    if (active === "terminal" && historyAvailability === "absent") onSelect("overview");
+  }, [active, historyAvailability, onSelect]);
 
   const keyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
