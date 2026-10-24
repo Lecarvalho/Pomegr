@@ -18,6 +18,7 @@ export const EXTERNAL_LEGAL_FILES = Object.freeze([
 ]);
 
 export const EXTERNAL_RUNTIME_FILES = Object.freeze(["tray-icon.png"]);
+export const EXTERNAL_RUNTIME_DIRECTORIES = Object.freeze(["terminal-runtime"]);
 
 export const PUBLIC_LEGAL_FILES = Object.freeze([
   "dist/client/legal/LICENSE.txt",
@@ -61,6 +62,12 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/task-image.mjs",
   "desktop/runtime/task-feature.mjs",
   "desktop/runtime/session-history.mjs",
+  "desktop/runtime/terminal-host-client.mjs",
+  "desktop/runtime/terminal-host-runtime.mjs",
+  "desktop/terminal-host/main.mjs",
+  "desktop/terminal-host/host.mjs",
+  "desktop/terminal-host/protocol.mjs",
+  "desktop/terminal-host/scrollback.mjs",
   "desktop/runtime/task-issues.mjs",
   "desktop/runtime/task-queue-runner.mjs",
   "desktop/runtime/task-worktree.mjs",
@@ -119,6 +126,7 @@ const APPLICATION_DIRECTORIES = new Set([
   "desktop",
   "desktop/runtime",
   "desktop/workers",
+  "desktop/terminal-host",
   "dist",
   "node_modules",
   "server",

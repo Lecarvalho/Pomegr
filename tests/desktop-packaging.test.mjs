@@ -156,7 +156,7 @@ test("dependency notice generation excludes development tools and requires decla
   assert.match(notices, /runtime \| 1\.2\.3 \| MIT/);
   assert.doesNotMatch(notices, /dev-only/);
   assert.doesNotMatch(notices, /linux-only|win-arm/);
-  assert.deepEqual(dependencyNoticeKeys(notices), ["electron@43.3.0", "runtime@1.2.3"]);
+  assert.deepEqual(dependencyNoticeKeys(notices), ["Node.js@24.14.0", "electron@43.3.0", "runtime@1.2.3"]);
   assert.equal(isDependencyPackageManifest("node_modules/@scope/pkg/package.json"), true);
   assert.equal(isDependencyPackageManifest("node_modules/pkg/node_modules/child/package.json"), true);
   assert.equal(isDependencyPackageManifest("node_modules/pkg/dist/compiled/child/package.json"), false);

@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 
 import { buildDesktopServiceBundles } from "./service-bundles.mjs";
 import { assertBuiltLegalNotices } from "./legal-notices.mjs";
+import { prepareTerminalRuntime } from "./terminal-runtime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 await assertBuiltLegalNotices(root);
 await buildDesktopServiceBundles(root, root);
+await prepareTerminalRuntime(root);

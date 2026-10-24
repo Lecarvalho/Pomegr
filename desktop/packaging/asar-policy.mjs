@@ -1,4 +1,11 @@
 export const SHARP_UNPACK_DIRECTORY = "node_modules/@img/sharp-win32-x64/lib";
+export const NODE_PTY_UNPACK_DIRECTORY = "node_modules/node-pty/prebuilds/win32-x64";
+export const NODE_PTY_UNPACKED_FILES = Object.freeze([
+  `${NODE_PTY_UNPACK_DIRECTORY}/conpty.node`,
+  `${NODE_PTY_UNPACK_DIRECTORY}/conpty_console_list.node`,
+  `${NODE_PTY_UNPACK_DIRECTORY}/conpty/conpty.dll`,
+  `${NODE_PTY_UNPACK_DIRECTORY}/conpty/OpenConsole.exe`,
+]);
 export const WORKER_BUNDLE_DIRECTORY = "desktop/workers";
 export const WORKER_BUNDLE_FILES = Object.freeze([
   `${WORKER_BUNDLE_DIRECTORY}/monitor-host.cjs`,
@@ -13,8 +20,9 @@ export const SHARP_UNPACKED_FILES = Object.freeze([
 export const DESKTOP_UNPACKED_FILES = Object.freeze([
   ...WORKER_BUNDLE_FILES,
   ...SHARP_UNPACKED_FILES,
+  ...NODE_PTY_UNPACKED_FILES,
 ]);
-export const DESKTOP_UNPACK_DIRECTORIES = `{${WORKER_BUNDLE_DIRECTORY},${SHARP_UNPACK_DIRECTORY},dist}`;
+export const DESKTOP_UNPACK_DIRECTORIES = `{${WORKER_BUNDLE_DIRECTORY},${SHARP_UNPACK_DIRECTORY},${NODE_PTY_UNPACK_DIRECTORY},dist}`;
 
 export function unpackedFilesFromHeader(header) {
   const files = [];

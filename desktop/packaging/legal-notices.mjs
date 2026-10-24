@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { NODE_VERSION } from "./terminal-runtime.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const documents = [
@@ -111,8 +112,11 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | Package | Version | License |
 | --- | --- | --- |
 ${rows}
+| Node.js | ${NODE_VERSION} | MIT and bundled third-party licenses |
 
-This inventory is generated from \`package-lock.json\` by \`npm run desktop:legal\`. It is a notice inventory, not a replacement for the applicable license terms.
+The terminal host includes the official Windows x64 Node.js ${NODE_VERSION} executable from https://nodejs.org/dist/v${NODE_VERSION}/, verified against its pinned SHA-256. Its complete license and bundled third-party notices are in \`terminal-runtime/LICENSE\` beside that executable.
+
+This inventory is generated from \`package-lock.json\` and the pinned terminal runtime by \`npm run desktop:legal\`. It is a notice inventory, not a replacement for the applicable license terms.
 `;
 }
 

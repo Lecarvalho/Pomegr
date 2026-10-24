@@ -82,6 +82,8 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | ms | 2.1.3 | MIT |
 | nanoid | 3.3.18 | MIT |
 | next | 16.2.6 | MIT |
+| node-addon-api | 7.1.1 | MIT |
+| node-pty | 1.1.0 | MIT |
 | p-limit | 2.3.0 | MIT |
 | p-locate | 4.1.0 | MIT |
 | p-try | 2.2.0 | MIT |
@@ -133,5 +135,8 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | yargs-parser | 18.1.3 | ISC |
 | yoga-layout | 3.2.1 | MIT |
 | zod | 4.4.3 | MIT |
+| Node.js | 24.14.0 | MIT and bundled third-party licenses |
 
-This inventory is generated from `package-lock.json` by `npm run desktop:legal`. It is a notice inventory, not a replacement for the applicable license terms.
+The terminal host includes the official Windows x64 Node.js 24.14.0 executable from https://nodejs.org/dist/v24.14.0/, verified against its pinned SHA-256. Its complete license and bundled third-party notices are in `terminal-runtime/LICENSE` beside that executable.
+
+This inventory is generated from `package-lock.json` and the pinned terminal runtime by `npm run desktop:legal`. It is a notice inventory, not a replacement for the applicable license terms.
