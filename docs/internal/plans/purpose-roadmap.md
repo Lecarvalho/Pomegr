@@ -147,7 +147,7 @@ Adoption and polish alone do not fit. The owner accepted the placements below on
 | [Overview sparse state](overview-sparse-and-links.md) | Mostly built; tasks 4 and 6 open | Outside the roadmap. Ship or drop the two tasks and retire it. |
 | [Session Activity panel](session-activity-panel.md) | Built; waits for deletion approval since 2026-09-09 | The owner approves its deletion. |
 | [Design system gaps](design-system-gaps.md) | 10 samples open | Outside the roadmap. Its accessibility items 8a and 8b are bug fixes for any version. |
-| [Sessions inside Pomegr](embedded-terminal.md) | Proposed on 2026-10-24; no code | Proposed: inside G14 in 0.9.5. Its Conversation tab may ship earlier; its feasibility spike may run earlier and merges nothing. Waits for the owner. |
+| [Sessions inside Pomegr](embedded-terminal.md) | Proposed on 2026-10-24; no code | Proposed: inside G14 in 0.9.5. Its read-only history may ship earlier; its feasibility spike may run earlier and merges nothing. Waits for the owner. |
 
 Product expansion directions:
 
