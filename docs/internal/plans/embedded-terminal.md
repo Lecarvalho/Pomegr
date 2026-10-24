@@ -70,7 +70,8 @@ Each change lands in its own pull request, before any code that depends on it.
 - Desktop app only, decided at first render like the other desktop-only actions.
 - Present for any session whose provider file still exists, whether it ran in Pomegr, in an external window, or by hand.
 - It has no caret. The docked input area becomes one quiet bar that names the reason it is read-only: the session ended, with its exit code and **Continue**; it runs outside Pomegr, with **Refresh** and no **Continue**; or Continue is unavailable, with the reason.
-- It reads when the tab opens.
+- It reads when the tab opens. While the tab is visible, it updates automatically for a session that is still running elsewhere: when the session's observed revision changes, it fetches only the new messages (owner, 2026-10-24). It reuses the observation that already watches session files and adds no watcher of its own. Nothing is read while the tab is hidden or the window is minimized. **Refresh** stays as a fallback.
+- It updates message by message, as the provider saves each one, never keystroke by keystroke. The live screen of a session outside Pomegr (its spinner, partial output, and input box) stays with the terminal that runs it.
 - The view goes back only as far as the provider keeps its files. When the history is missing or was compacted, the tab says so, and it never implies that Pomegr kept a copy. It promises no retention period.
 - Each provider adapter gains a history read in `server/providers/provider-contract.mjs`. The shape is the same for every provider.
 
