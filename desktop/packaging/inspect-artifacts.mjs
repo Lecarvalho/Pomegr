@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   EXTERNAL_LEGAL_FILES,
   EXTERNAL_RUNTIME_FILES,
+  EXTERNAL_RUNTIME_DIRECTORIES,
   PUBLIC_LEGAL_FILES,
   assertNonemptyFile,
   assertPackagedApplicationFiles,
@@ -16,7 +17,8 @@ import {
   normalizeArtifactPath,
   recursiveFiles,
 } from "./artifact-policy.mjs";
-import { SHARP_UNPACKED_FILES, WORKER_BUNDLE_FILES } from "./asar-policy.mjs";
+import { NODE_PTY_UNPACKED_FILES, SHARP_UNPACKED_FILES, WORKER_BUNDLE_FILES } from "./asar-policy.mjs";
+import { NODE_VERSION, TERMINAL_HOST_FILES, TERMINAL_MODULE_FILES, assertTerminalRuntime } from "./terminal-runtime.mjs";
 import {
   assertBytesHaveNoPrivacySentinel,
   assertDirectoryHasNoPrivacySentinel,
@@ -95,6 +97,23 @@ try {
   if (JSON.stringify(workerUnpacked) !== JSON.stringify([...WORKER_BUNDLE_FILES].sort())) {
     throw new Error("DESKTOP_ARTIFACT_WORKER_BOUNDARY_INVALID");
   }
+  const ptyUnpacked = unpackedFiles.filter((filename) => filename.startsWith("node_modules/node-pty/prebuilds/"));
+  if (JSON.stringify(ptyUnpacked) !== JSON.stringify([...NODE_PTY_UNPACKED_FILES].sort())) {
+    throw new Error("DESKTOP_ARTIFACT_NODE_PTY_BOUNDARY_INVALID");
+  }
+  const terminalModules = applicationFiles.filter((filename) =>
+    /^(?:node_modules\/node-pty\/|node_modules\/node-addon-api\/)/.test(filename)
+    && !statFile(archivePath, filename.split("/").join(path.sep)).files).sort();
+  if (JSON.stringify(terminalModules) !== JSON.stringify(TERMINAL_MODULE_FILES)) {
+    throw new Error("DESKTOP_ARTIFACT_TERMINAL_MODULE_SET_INVALID");
+  }
+  const terminalRoot = path.join(resourcesRoot, "terminal-runtime");
+  await assertTerminalRuntime(terminalRoot);
+  for (const file of TERMINAL_HOST_FILES) {
+    if (!(await readFile(path.join(terminalRoot, file))).equals(readArchiveFile(file))) {
+      throw new Error("DESKTOP_ARTIFACT_TERMINAL_HOST_CONTENT_MISMATCH");
+    }
+  }
 
   const externalLegalFiles = (await recursiveFiles(resourcesRoot))
     .map(normalizeArtifactPath)
@@ -139,13 +158,14 @@ try {
     packagedDependencyKeys.push(`${manifest.name}@${manifest.version}`);
   }
   packagedDependencyKeys.push(`electron@${packageJson.devDependencies.electron}`);
+  packagedDependencyKeys.push(`Node.js@${NODE_VERSION}`);
   const noticeKeys = dependencyNoticeKeys(await readFile(path.join(repositoryRoot, "THIRD_PARTY_NOTICES.md"), "utf8"));
   if (JSON.stringify([...new Set(packagedDependencyKeys)].sort()) !== JSON.stringify(noticeKeys)) {
     throw new Error("DESKTOP_ARTIFACT_DEPENDENCY_NOTICE_MISMATCH");
   }
 
   const unexpectedResources = (await readdir(resourcesRoot))
-    .filter((name) => !["app.asar", "app.asar.unpacked", "app-update.yml", "legal", ...EXTERNAL_RUNTIME_FILES].includes(name));
+    .filter((name) => !["app.asar", "app.asar.unpacked", "app-update.yml", "legal", ...EXTERNAL_RUNTIME_FILES, ...EXTERNAL_RUNTIME_DIRECTORIES].includes(name));
   if (unexpectedResources.length) throw new Error("DESKTOP_ARTIFACT_RESOURCE_NOT_ALLOWLISTED");
 
   const expectedReleaseFiles = new Set(["win-unpacked", ...expectedArtifactNames(packageJson.version), ...expectedUpdateArtifactNames(packageJson.version)]);

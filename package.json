@@ -74,6 +74,7 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "electron-updater": "6.8.9",
     "next": "16.2.6",
+    "node-pty": "1.1.0",
     "qrcode": "1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -171,6 +172,12 @@
       "desktop/runtime/task-image.mjs",
       "desktop/runtime/task-feature.mjs",
       "desktop/runtime/session-history.mjs",
+      "desktop/runtime/terminal-host-client.mjs",
+      "desktop/runtime/terminal-host-runtime.mjs",
+      "desktop/terminal-host/main.mjs",
+      "desktop/terminal-host/host.mjs",
+      "desktop/terminal-host/protocol.mjs",
+      "desktop/terminal-host/scrollback.mjs",
       "desktop/runtime/task-issues.mjs",
       "desktop/runtime/task-queue-runner.mjs",
       "desktop/runtime/task-worktree.mjs",
@@ -211,12 +218,20 @@
       "!**/{test,tests,__tests__,fixtures,coverage}/**",
       "!**/{.claude,.codex,.git,.next,.vinext,.wrangler}/**",
       "!**/.env*",
-      "!**/*.{map,ts,tsx,cts,mts,tsbuildinfo}"
+      "!**/*.{map,ts,tsx,cts,mts,tsbuildinfo}",
+      "!node_modules/node-pty/{src,deps,scripts,third_party,typings,build}/**/*",
+      "!node_modules/node-pty/{binding.gyp,README.md}",
+      "!node_modules/node-pty/lib/**/*.test.js",
+      "!node_modules/node-pty/prebuilds/{darwin-*,linux-*,win32-arm64}/**/*",
+      "!node_modules/node-pty/prebuilds/**/*.pdb",
+      "!node_modules/node-pty/prebuilds/win32-x64/{pty.node,winpty.dll,winpty-agent.exe}",
+      "!node_modules/node-addon-api/!(package.json|LICENSE.md)"
     ],
     "asarUnpack": [
       "desktop/workers/**/*",
       "dist/**/*",
-      "node_modules/@img/sharp-win32-x64/lib/**/*"
+      "node_modules/@img/sharp-win32-x64/lib/**/*",
+      "node_modules/node-pty/prebuilds/win32-x64/**/*"
     ],
     "extraResources": [
       {
@@ -242,6 +257,18 @@
       {
         "from": "TRADEMARKS.md",
         "to": "legal/TRADEMARKS.md"
+      },
+      {
+        "from": "outputs/terminal-runtime",
+        "to": "terminal-runtime"
+      },
+      {
+        "from": "outputs/terminal-runtime/node_modules/node-pty",
+        "to": "terminal-runtime/node_modules/node-pty"
+      },
+      {
+        "from": "outputs/terminal-runtime/node_modules/node-addon-api",
+        "to": "terminal-runtime/node_modules/node-addon-api"
       }
     ],
     "win": {
@@ -285,6 +312,7 @@
     "portable": {
       "artifactName": "Pomegr-Portable-${version}-${arch}.${ext}",
       "requestExecutionLevel": "user"
-    }
+    },
+    "npmRebuild": false
   }
 }

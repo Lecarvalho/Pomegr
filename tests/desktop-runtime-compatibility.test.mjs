@@ -11,6 +11,7 @@ import {
   DESKTOP_UNPACKED_FILES,
   DESKTOP_UNPACK_DIRECTORIES,
   SHARP_UNPACKED_FILES,
+  NODE_PTY_UNPACKED_FILES,
   WORKER_BUNDLE_FILES,
   unpackedFilesFromHeader,
 } from "../desktop/packaging/asar-policy.mjs";
@@ -81,7 +82,7 @@ test("ASAR policy unpacks the monitor bundle, complete production build, and Sha
   const stagingRoot = path.join(fixtureRoot, "staging");
   const archivePath = path.join(fixtureRoot, "app.asar");
   try {
-    for (const relativePath of SHARP_UNPACKED_FILES) {
+    for (const relativePath of [...SHARP_UNPACKED_FILES, ...NODE_PTY_UNPACKED_FILES]) {
       const target = path.join(stagingRoot, ...relativePath.split("/"));
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, relativePath, "utf8");

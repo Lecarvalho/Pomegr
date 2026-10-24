@@ -12,6 +12,7 @@ import {
   unpackedFilesFromHeader,
 } from "./asar-policy.mjs";
 import { buildDesktopServiceBundles } from "./service-bundles.mjs";
+import { TERMINAL_HOST_FILES, stageTerminalModules } from "./terminal-runtime.mjs";
 import {
   executableOnPath,
   minimalRuntimeEnvironment,
@@ -37,6 +38,8 @@ const desktopFiles = [
   "runtime/runtime-proof.mjs",
   "runtime/security-policy.mjs",
   "runtime/settings.mjs",
+  "runtime/terminal-host-client.mjs",
+  "runtime/terminal-host-runtime.mjs",
   "runtime/provider-settings.mjs",
   "runtime/shell-orchestrator.mjs",
   "runtime/shell-main.mjs",
@@ -103,6 +106,11 @@ async function copyRuntime(stagingRoot) {
       path.join(stagingRoot, "node_modules", ...packageName.split("/")),
       { recursive: true },
     );
+  }
+  await stageTerminalModules(repositoryRoot, stagingRoot);
+  for (const filename of TERMINAL_HOST_FILES) {
+    await mkdir(path.dirname(path.join(stagingRoot, filename)), { recursive: true });
+    await cp(path.join(repositoryRoot, filename), path.join(stagingRoot, filename));
   }
   await writeFile(path.join(stagingRoot, "package.json"), JSON.stringify({
     name: "pomegr-desktop-smoke",
