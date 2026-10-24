@@ -64,6 +64,7 @@ export function createRequestHandler({
   // The start-gate facts of a repository, from committed memory only; read lazily like the session facts.
   const resolveGateFacts = typeof runtime.resolveTaskGateFacts === "function" ? (repositoryId) => runtime.resolveTaskGateFacts(repositoryId) : null;
   const resolveCheckFacts = (ref) => runtime.resolveTaskCheckFacts?.(ref);
+  const resolveOutcomeFacts = (...args) => runtime.resolveTaskOutcomeFacts?.(...args);
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
     const localPort = request.socket?.localPort;
@@ -265,7 +266,7 @@ export function createRequestHandler({
         return;
       }
       await serveTaskActionRoute({
-        request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts, resolveCheckFacts,
+        request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts, resolveCheckFacts, resolveOutcomeFacts,
         // Read lazily, and only for an assignment.
         resolveSession: (ref) => runtime.resolveTaskSession?.(ref),
         resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),

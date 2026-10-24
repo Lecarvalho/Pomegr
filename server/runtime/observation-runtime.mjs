@@ -142,6 +142,9 @@ export function createObservationRuntime(options = {}) {
         if (found && observationServingActive) sessionDomainServing.commit(sessionId);
       }).catch(() => {});
     }
+    return committedRepositorySnapshotForSession(sessionId);
+  }
+  function committedRepositorySnapshotForSession(sessionId) {
     return sessionRepositorySnapshot(
       observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null,
       { adoptsUnboundSidecar: adoptsUnboundSidecar(sessionId.split(":")[0]) },
@@ -755,7 +758,9 @@ export function createObservationRuntime(options = {}) {
       repositoryStartup.record(sessionId, live);
     },
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
-    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory, runModels: options.runModels, issueReader: options.issueReader, readRepositoryNow: options.readRepositoryNow, gateSources: { usageLimits: () => usageResponseCache.current()?.value || null, providerStatus: () => providerStatus.read()?.snapshot?.value || null, gitReader: options.taskTreeReader } }),
+    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory,
+      repositoryRecordForSession: (sessionId) => sessionRepositoryRecord(committedRepositorySnapshotForSession(sessionId)),
+      runModels: options.runModels, issueReader: options.issueReader, readRepositoryNow: options.readRepositoryNow, gateSources: { usageLimits: () => usageResponseCache.current()?.value || null, providerStatus: () => providerStatus.read()?.snapshot?.value || null, gitReader: options.taskTreeReader } }),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),

@@ -1,12 +1,13 @@
 import { createTaskGateFacts, createTaskTreeObservation } from "./task-gate-facts.mjs";
 import { readTaskCheckFacts, resolveTaskCheckFacts, resolveTaskSession, resolveTaskSessionFacts } from "./task-session-lookup.mjs";
 import { createTaskIssues } from "./task-issues.mjs";
+import { resolveTaskOutcomeFacts } from "./task-outcome-lookup.mjs";
 import { comparePluginVersions } from "../../shared/repository-plugin-state.mjs";
 
 export const MINIMUM_TASK_PLUGIN_VERSION = "0.9.0";
 
 // Committed-fact lookups for the task control plane.
-export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null, gateSources = null, issueReader = undefined, readRepositoryNow = null }) {
+export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, repositoryRecordForSession = null, runModels = null, gateSources = null, issueReader = undefined, readRepositoryNow = null }) {
   const tree = createTaskTreeObservation({
     repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null,
     ...(gateSources?.gitReader ? { gitReader: gateSources.gitReader } : {}),
@@ -21,6 +22,7 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
     resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, { observationStore, catalogSessions }),
     resolveTaskSessionFacts: (sessionRef) => resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }),
     resolveTaskCheckFacts: (sessionRef) => resolveTaskCheckFacts(sessionRef, { observationStore }),
+    resolveTaskOutcomeFacts: (sessionIds, sinceMs, taskId) => resolveTaskOutcomeFacts(sessionIds, sinceMs, taskId, { observationStore, repositoryRecordForSession }),
     readTaskCheckFacts: (sessionRef) => readTaskCheckFacts(sessionRef, { observationStore, readNow: readRepositoryNow }),
     resolveRunModels: () => runModels?.codex?.() ?? [],
     resolveTaskStart(repositoryId, provider = "claude") {
