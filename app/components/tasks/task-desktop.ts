@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThreshold, type TaskQueueSchedule, type TaskRun } from "../../../shared/task-contract";
 import { clientAccessMode, useClientAccess } from "../../hooks/ClientAccessContext";
 import type { FeatureInput } from "./task-features";
+import { parseScorecard, type ScorecardAnswer } from "./scorecard-model";
 import { postPairedTaskAction, postPairedTaskStart } from "./task-paired";
 
 // The two ways a client changes a task.
@@ -15,6 +16,7 @@ export type TaskDesktopBridge = {
   taskStart?: (repositoryId: string, taskId: string, separateWorktree?: true) => Promise<{ status: TaskStartStatus }>;
   taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
   taskFeature?: (repositoryId: string, featureId: string) => Promise<unknown>;
+  taskScorecard?: (repositoryId: string) => Promise<unknown>;
 };
 
 /** Fixed outcome of opening a task's worktree folder. */
@@ -41,6 +43,11 @@ const subscribeBridge = () => () => {};
 
 export function useTaskDesktopAvailability(): TaskDesktopAvailability {
   return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => taskDesktopBridge() ? "available" : "absent", () => "pending");
+}
+
+/** Only the desktop app reads the scorecard; decided at first render, like the other desktop-only actions. */
+export function useScorecardAvailability(): TaskDesktopAvailability {
+  return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => typeof taskDesktopBridge()?.taskScorecard === "function" ? "available" : "absent", () => "pending");
 }
 
 export type TaskEditAvailability = "pending" | "desktop" | "paired" | "absent";
@@ -160,6 +167,20 @@ export async function readDesktopFeature(repositoryId: string, id: string): Prom
     const { description, appVersion } = result as { description?: unknown; appVersion?: unknown };
     if ((typeof description !== "string" && description !== null) || (typeof appVersion !== "string" && appVersion !== null)) return { ok: false };
     return { ok: true, description, appVersion };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** The desktop-only read of a repository's scorecard. Any malformed answer is a failure. */
+export async function readDesktopScorecard(repositoryId: string): Promise<ScorecardAnswer> {
+  const bridge = taskDesktopBridge();
+  if (typeof bridge?.taskScorecard !== "function") return { ok: false };
+  try {
+    const result = await bridge.taskScorecard(repositoryId);
+    if (typeof result !== "object" || result === null || (result as { ok?: unknown }).ok !== true) return { ok: false };
+    const scorecard = parseScorecard((result as { scorecard?: unknown }).scorecard);
+    return scorecard ? { ok: true, scorecard } : { ok: false };
   } catch {
     return { ok: false };
   }

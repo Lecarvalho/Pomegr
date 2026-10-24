@@ -263,6 +263,7 @@ The head actions appear in this order:
 - It then shows “A task starts only when its provider has capacity.”
 - On the Board, the strip's end (`.taskCapacityEnd`, `margin-left: auto`) reads “Do not start above 80% · stops starting after 23:00”.
 - The threshold and the time of that line use the data font and ink. The stop clause shows only when a stop time is set.
+- In the desktop app only, **Scorecard** comes just before **Queue settings**, in the same Quiet role. It opens the [Scorecard panel](#scorecard-panel).
 - **Queue settings** (`.taskQueueSettingsAction`) is last in the strip, in any client. It is the [Quiet](../../../DESIGN.md#buttons) role, 32px high, 12px/500 ink, underlined.
 - It is 44px high on phone and coarse pointers.
 - It has `aria-haspopup="dialog"` and opens the [Queue settings panel](#queue-settings-panel).
@@ -571,6 +572,22 @@ Each row below the tags shows only when it is set, in this order:
 - **When the queue blocks** holds a two-item list and one closing line. The state words Stalled and Blocked by agent carry the error color. The closing line says that Needs review, in amber, does not block the queue.
 - The panel reads only what the board already serves. Without the desktop app or a paired device, it is read-only.
 
+### Scorecard panel
+
+- Only the desktop app draws **Scorecard**. Like the other desktop-only actions, it is decided at first render.
+- The panel is the Queue settings side panel: the same frame, width, head, close button, and focus rules. Focus returns to **Scorecard**.
+- It reads the scorecard once, when it opens, through the desktop bridge. Reopening it reads again.
+- While it reads, it says “Reading the scorecard…”. A failed or malformed read says “The scorecard could not be read.” as an alert.
+- A muted caption says the values are heuristic proxies from this board's Done tasks and that a dash means not measured yet.
+- A caption-style column head reads **Now · version** and **Baseline · version**, or **Baseline · none yet**.
+- Each row holds the measure's ID and name, its one-line definition, the value now with its sample (“n 8”), and the baseline value.
+- S1 has two rows: owner turns after Review and Review to Done. S2 is first-pass acceptance.
+- Values use the data font. A sample uses the caption size in the muted color.
+- A measured row with no merged task says “No data”, never 0. A row with no source yet shows a dash in both columns and says which gap will measure it.
+- No value carries a good or bad color: every measure is a heuristic proxy.
+- The closing caption names when and in which version the baseline was saved, or says that this version's values become the baseline. It ends with “Scorecard values stay on this computer.”
+- [Metrics](../architecture/metrics.md) defines the measures, and [Tasks](../architecture/tasks.md) owns the snapshots and their privacy rules.
+
 ## Start gates section
 
 - The **Start gates** section of the Queue settings panel holds the heading, one caption, and a definition list of five rows.
@@ -718,6 +735,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - Whole boards in their browser and desktop forms.
 - Under **Queue controls**: the queue switch (off, on, busy), the banner (blocked, paused, browser), and the Queue settings panel (desktop app, browser).
 - Under **Start gates and schedule**: the Start gates and Schedule sections in each state.
+- Under **Scorecard**: the capacity strip with **Scorecard**, a desktop board with it, and the panel for a later version, the first version, no Done task yet, reading, and a failed read.
 - The Sessions list Task cell.
 - Under **Assigned sessions**: the card's sessions line, the Task modal's Sessions block, and the Task cell of an assigned session.
 
