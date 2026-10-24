@@ -11,7 +11,7 @@ const history: HistoryPage = {
     { kind: "tool", at: null, name: "Read", outcome: "completed" },
     { kind: "tool", at: null, name: "Edit", outcome: "failed" },
     { kind: "tool", at: null, name: "Test", outcome: "pending" },
-    { kind: "agent", at: null, text: "The previous revision stays visible until its replacement commits." },
+    { kind: "agent", at: null, text: "## Saved revision\n\nThe **previous revision** stays visible until its `replacement` commits.\n\n```ts\nconst revision = previous;\ncommit(replacement);\n```\n\n- Keep the last good state\n- Replace after validation" },
   ],
 };
 const ignore = () => {};

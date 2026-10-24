@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { AgentChatMarkdown, parseBlocks } from "../../app/components/agent-chat/AgentChatMarkdown";
+import { SafeMarkdown as AgentChatMarkdown, parseBlocks } from "../../app/components/markdown/SafeMarkdown";
 
 const html = (text: string) => render(<AgentChatMarkdown text={text} />).container.firstElementChild as HTMLElement;
 
@@ -77,7 +77,7 @@ describe("AgentChatMarkdown", () => {
   });
 
   it("never sets markup from a string", () => {
-    const source = readFileSync(join(process.cwd(), "app", "components", "agent-chat", "AgentChatMarkdown.tsx"), "utf8");
+    const source = readFileSync(join(process.cwd(), "app", "components", "markdown", "SafeMarkdown.tsx"), "utf8");
     expect(source).not.toMatch(/dangerouslySetInnerHTML|innerHTML|insertAdjacentHTML|createContextualFragment|DOMParser/);
   });
 

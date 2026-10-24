@@ -156,9 +156,10 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - On phone widths, the desktop app places Terminal in **More**.
 - A Terminal deep link falls back to Overview when the bridge is absent.
 - The panel renders saved history read-only in one data-font terminal surface.
-- Owner messages have a `> ` prefix; agent replies render as plain text.
+- Owner messages have a quiet `> ` prefix before the first block, outside Markdown.
 - Each tool appears as one muted line: `Tool · <name> · <outcome>`.
-- Text never renders as HTML or Markdown.
+- Owner and agent text renders through the shared safe Markdown renderer; no HTML is set; links and images stay literal; tool lines stay plain.
+- Markdown keeps the data font and compact type scale; fenced code preserves line breaks and scrolls horizontally inside the message.
 - The docked bar reads **Read-only · Running outside Pomegr · Updates automatically** for a live session.
 - The live bar includes a quiet **Refresh** action.
 - The docked bar reads **Read-only · Session ended** for an ended session.

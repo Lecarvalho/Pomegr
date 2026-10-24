@@ -13,7 +13,9 @@ import type { StorageSnapshot } from "../../shared/storage-contract";
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 
 it("renders each read-only Terminal state from synthetic samples", () => {
-  render(<SessionTerminalSection />);
+  const { container } = render(<SessionTerminalSection />);
+  expect(container.querySelector(".sessionTerminalMessage strong")).toHaveTextContent("previous revision");
+  expect(container.querySelector(".sessionTerminalMessage pre code")?.textContent).toBe("const revision = previous;\ncommit(replacement);");
   for (const label of ["History", "Live with Refresh", "Ended", "Empty", "Unavailable", "Failed", "Reading"]) {
     expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
   }
@@ -751,7 +753,7 @@ describe("Pomegr visual contract", () => {
     expect(chatStyles).toMatch(/\.agentChatMdHeading \{ font: 650 var\(--text-sm\)\/1\.4 var\(--font-ui\); \}/);
 
     // Every button is one of the six roles, but for the launcher (shell chrome) and the conversation row, as documented. No native select, and no markup from a string.
-    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatHistory.tsx", "AgentChatImages.tsx", "AgentChatMarkdown.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx"].map(read).join("\n");
+    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatHistory.tsx", "AgentChatImages.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx"].map(read).join("\n") + readFileSync(join(process.cwd(), "app", "components", "markdown", "SafeMarkdown.tsx"), "utf8");
     expect(sources).not.toMatch(/<select|dangerouslySetInnerHTML|innerHTML/);
     const tags = [...sources.matchAll(/<button\b[^>]*>/g)].map(([tag]) => tag);
     expect(tags.length).toBeGreaterThanOrEqual(12);
@@ -785,7 +787,7 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/At 760px and narrower, the panel is a full-screen sheet \(`inset: 0`, no radius, border, or shadow/);
     expect(designContract).toMatch(/The only thing the chat writes to browser storage is the last repository ID \(`pomegr\.agentChat\.repository`\), never a message/);
     expect(designContract).toMatch(/Escape first belongs to a layer inside the panel/);
-    expect(designContract).toMatch(/`AgentChatMarkdown` builds React elements from the answer and sets no HTML/);
+    expect(designContract).toMatch(/`SafeMarkdown` builds React elements from the answer and sets no HTML/);
     expect(designContract).toMatch(/Only a pending proposal has a footer: the Primary \*\*Apply changes\*\* and the Quiet \*\*Dismiss\*\*/);
     expect(designContract).toMatch(/The Primary of a session start reads \*\*Start session\*\*\./);
     expect(designContract).toMatch(/On a paired device a session start has no Primary, only \*\*Dismiss\*\*\./);

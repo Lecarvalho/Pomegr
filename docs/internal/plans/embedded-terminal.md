@@ -32,6 +32,7 @@ These were settled in a design review on 2026-10-24, with the owner's later chan
 | Subject | Decision |
 | --- | --- |
 | Where sessions live | One **Terminal** tab on every session's page: interactive for a session running in Pomegr's host, read-only for any other session (owner, 2026-10-24). No separate Conversation tab, no terminal dock on the Tasks page, no Terminals page, and no terminal list, because a wall of live terminals invites watching (owner, 2026-10-24). |
+| Host runtime | A Node runtime bundled with Pomegr runs the terminal host, copied per build with the native PTY module; not the user's Node, which Claude Code's native installer and Codex's standalone binary do not need, and not Electron's executable, whose per-build copy is about 200 MB (owner, 2026-10-24). |
 | External windows | None. New and continued sessions open only in Pomegr's terminal, because the owner does not want standalone terminal windows (owner, 2026-10-24). A failed launch offers a retry in the terminal, and only when it is certain that no session started. |
 | Unit | One terminal per session. A send-back (G9) or takeover starts a new session with its own terminal, linked to the same task and worktree. |
 | Who writes to a terminal | Only the owner's own keyboard and paste, through trusted desktop IPC. Aril, the queue, the MCP tools, and the monitor have no way to write to a terminal. |
@@ -123,6 +124,7 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 
 ## Terminal tab
 
+- The read-only history renders owner and agent text through the shared safe Markdown renderer (owner, 2026-10-24).
 - Desktop app only, decided at first render like the other desktop-only actions.
 - The tab renders the stream with a terminal emulator in the renderer and sends keys, paste, and resize back through fixed IPC channels.
 - Where the CLI's input box sits is drawn by each CLI, so the spike checks whether Claude Code and Codex keep it at the bottom of the terminal's rows, and records any gap.
@@ -171,6 +173,8 @@ Not part of this plan. Each needs the owner's decision and its own plan.
 The design review produced an interactive mockup with synthetic data that steps through every state of the Terminal tab and of Continue. It lives outside the repository until the owner accepts the design; phases 1 and 5 turn it into `/design-system` samples.
 
 ## Continuation checkpoint
+
+2026-10-24: the owner tried the read-only tab on a live session; text now renders formatted; the host runtime is a bundled Node.
 
 2026-10-24: design converged in review. The owner then dropped the session switcher, the terminal list, and external windows, docked the CLI input, removed the focus ring, and asked to read and continue any session; reading and Continue joined the plan. The owner then folded the reading into the Terminal tab as a read-only mode, and the mockup covers it. Later the same day the owner approved the architecture and the plan, and asked to start phase 1 and phase 0 now, alongside 0.9.0. Next action: phase 1 server half.
 

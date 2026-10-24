@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { SafeMarkdown } from "../../markdown/SafeMarkdown";
 import { subscribeLiveEvents } from "../../../live-events";
 
 type Position = { fingerprint: string; offset: number };
@@ -31,9 +32,12 @@ export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, on
       {!page && !failed && <p role="status">Reading history…</p>}
       {page?.status === "missing" && <><p>The provider no longer has this session&apos;s history.</p><p className="sessionTerminalMuted">Pomegr keeps no separate copy.</p></>}
       {page?.status === "unsupported" && <p>This provider does not support reading session history.</p>}
-      {page?.status === "ok" && (page.messages.length ? page.messages.map((message, index) => <p key={index} className={message.kind === "tool" ? "sessionTerminalTool" : undefined}>
-        {message.kind === "tool" ? `Tool · ${message.name} · ${message.outcome}` : `${message.kind === "owner" ? "> " : ""}${message.text}`}
-      </p>) : <p>No messages yet</p>)}
+      {page?.status === "ok" && (page.messages.length ? page.messages.map((message, index) => message.kind === "tool"
+        ? <p key={index} className="sessionTerminalTool">{`Tool · ${message.name} · ${message.outcome}`}</p>
+        : <div key={index} className="sessionTerminalMessage">
+          {message.kind === "owner" && <span className="sessionTerminalMuted">{"> "}</span>}
+          <SafeMarkdown text={message.text} />
+        </div>) : <p>No messages yet</p>)}
       {failed && <p role="alert">Session history could not be read.</p>}
     </div>
     <div className="sessionTerminalBar">
