@@ -33,7 +33,7 @@ These were settled in a design review on 2026-10-24. The owner accepts or change
 | Session state | "Needs input", "Working", and completion come from observation and task reports, never from parsing terminal text. A process exit is shown as an exit, never as done. |
 | Lifetime | A detached desktop-owned terminal host keeps sessions running through app quit, app crash, and update. Desktop main reconnects to its own host. Reconnection is never an attach to a process that Pomegr did not start. |
 | Default | A desktop setting **Open task sessions in Pomegr**, on by default once the spike passes. It applies to future starts only. Off keeps today's external window. |
-| Sessions not started in the host | No Terminal tab. The page says "Running in an external terminal" only when provenance shows it; otherwise "No Pomegr-managed terminal available". |
+| Sessions not started in the host | No Terminal tab. A quiet chip in the session's chip row says "External terminal" only when provenance shows it; otherwise "No managed terminal". |
 | Paired phone | No terminal. A managed session shows "Terminal available in the desktop app". |
 | Placement | Inside G14 in 0.9.5, after 0.9.0 ships. Phase 0 may run earlier as a spike that merges nothing. |
 
@@ -65,6 +65,7 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 - `task-dispatch.mjs` keeps everything up to the launch: the native confirmation, the start plan, its validation, the worktree, `POMEGR_TASK_TOKEN`, and the rollback on failure. Only the launch transport changes.
 - The embedded launch passes the same executable, argument array, and directory to the host's create command. Task text still never enters a command line or a path.
 - The terminal binds to the session only after the session's first report binds its dispatch token (see [Session binding](../architecture/tasks.md#session-binding)). A PTY that exists does not prove a session.
+- Before that binding, a manual start shows the terminal in a start view of the task, with "Waiting for the session to report". Once the session binds, the view moves to the session's Terminal tab.
 - When an embedded launch fails and it is certain that no session started, the app offers the external window. When the result is ambiguous, it never retries externally, because that could start the work twice.
 - A queued start never takes focus or opens the Terminal tab. The session simply has a Terminal tab when the owner opens it.
 
@@ -72,7 +73,8 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 
 - Desktop app only, decided at first render like the other desktop-only actions.
 - The tab renders the stream with a terminal emulator in the renderer and sends keys, paste, and resize back through fixed IPC channels.
-- States: live; reconnecting after an app restart; host unavailable (the session may still run, but reconnection is unavailable, and an external window cannot recover it); incompatible host version (the session runs, temporarily inaccessible); process exited, with its exit code.
+- The tab is one terminal surface. The CLI draws its own input box, and keys go straight to the process. Pomegr adds no chat field.
+- States: starting, before binding; live; reconnecting after an app restart; host unavailable (the session may still run, but reconnection is unavailable, and an external window cannot recover it); incompatible host version (the session runs, temporarily inaccessible); process exited, with its exit code.
 - Entry points: an **Open terminal** action on the task card of a session that has one, the session list, and later the inbox. The inbox distinguishes **Open terminal** for an existing session from **Take over**, which starts a new session from a brief after the start confirmation (G14).
 - A design page in `docs/internal/design/` and `/design-system` samples cover each state.
 
