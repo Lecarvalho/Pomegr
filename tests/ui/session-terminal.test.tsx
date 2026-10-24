@@ -68,7 +68,7 @@ describe("Terminal tab availability", () => {
 });
 
 describe("SessionTerminalPanel", () => {
-  it("formats saved messages safely and keeps the owner prefix and tool line literal", async () => {
+  it("formats saved messages safely, labels the owner block, and keeps the tool line literal", async () => {
     read.mockResolvedValue(page([
       owner("**Review** this"),
       agent("**bold** and `code`\n\n```ts\nfirst line\nsecond line\n```\n\n- one\n- two"),
@@ -81,8 +81,9 @@ describe("SessionTerminalPanel", () => {
     expect(container.querySelector("pre code")?.textContent).toBe("first line\nsecond line");
     expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["one", "two"]);
     const ownerMessage = screen.getByText("Review", { selector: "strong" }).closest(".sessionTerminalMessage");
-    expect(ownerMessage?.textContent).toBe("> Review this");
-    expect(ownerMessage?.firstElementChild?.textContent).toBe("> ");
+    expect(ownerMessage?.textContent).toBe("YouReview this");
+    expect(ownerMessage).toHaveClass("sessionTerminalOwner");
+    expect(ownerMessage?.firstElementChild?.textContent).toBe("You");
     expect(container.querySelector("img, script, a")).toBeNull();
     for (const literal of ['<img src=x onerror=alert(1)>', '<script>alert(1)</script>', '[link](https://example.test)', '![image](https://example.test/image.png)']) {
       expect(container.textContent).toContain(literal);
@@ -91,6 +92,18 @@ describe("SessionTerminalPanel", () => {
     expect(tool).toHaveClass("sessionTerminalTool");
     expect(tool.children).toHaveLength(0);
   });
+  it("folds a long owner prompt and opens it on Show more", async () => {
+    read.mockResolvedValue(page([owner(Array.from({ length: 12 }, (_, line) => `Line ${line + 1}`).join("\n")), owner("Short")]));
+    mount();
+    const toggle = await screen.findByRole("button", { name: "Show more" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle.closest(".sessionTerminalOwner")?.querySelector(".sessionTerminalOwnerBody")).toHaveAttribute("data-folded", "true");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+    expect(toggle.closest(".sessionTerminalOwner")?.querySelector(".sessionTerminalOwnerBody")).not.toHaveAttribute("data-folded");
+    expect(screen.getAllByRole("button", { name: /Show (more|less)/u })).toHaveLength(1);
+  });
+
   it("uses normalized liveness even when the summary serving view is live", async () => {
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: {
       sessionHistory: read, getDesktopState: async () => null, onDesktopStateChanged: () => () => {},
@@ -123,7 +136,7 @@ describe("SessionTerminalPanel", () => {
     read.mockResolvedValue(page([owner("<img src=x onerror=alert(1)>"), agent("<b>Reply</b>"), { kind: "tool", at: null, name: "<i>Read</i>", outcome: "completed" }]));
     const { container } = mount();
     expect(screen.getByText("Reading history…")).toBeInTheDocument();
-    expect((await screen.findByText("<img src=x onerror=alert(1)>")).closest(".sessionTerminalMessage")).toHaveTextContent("> <img src=x onerror=alert(1)>");
+    expect((await screen.findByText("<img src=x onerror=alert(1)>")).closest(".sessionTerminalMessage")).toHaveTextContent("You<img src=x onerror=alert(1)>");
     expect(screen.getByText("<b>Reply</b>")).toBeInTheDocument();
     expect(screen.getByText("Tool · <i>Read</i> · completed")).toBeInTheDocument();
     expect(container.querySelector("img, b, i, input, textarea")).toBeNull();
@@ -133,7 +146,7 @@ describe("SessionTerminalPanel", () => {
     read.mockResolvedValueOnce(page(undefined, { older })).mockResolvedValueOnce(page([owner("Earlier")], { cursor: older }));
     mount(); await loaded();
     fireEvent.click(screen.getByRole("button", { name: "Load earlier" }));
-    expect((await screen.findByText("Earlier")).closest(".sessionTerminalMessage")).toHaveTextContent("> Earlier");
+    expect((await screen.findByText("Earlier")).closest(".sessionTerminalMessage")).toHaveTextContent("YouEarlier");
     expect(read).toHaveBeenNthCalledWith(2, "codex:one", { before: older });
     expect(screen.getByLabelText("Saved session history").textContent).toMatch(/Earlier[\s\S]*Read the change[\s\S]*I will check it/);
     emit();

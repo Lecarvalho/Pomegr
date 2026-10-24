@@ -20,6 +20,19 @@ export function useSessionHistoryAvailability() {
   return useSyncExternalStore(subscribeBridge, () => bridge() ? "available" : "absent", () => "pending");
 }
 
+// Owner prompts read as a distinct block; a long one, such as a task prompt, folds after about eight lines.
+const OWNER_FOLD_LINES = 8;
+const OWNER_FOLD_CHARACTERS = 600;
+function OwnerMessage({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.split("\n").length > OWNER_FOLD_LINES || text.length > OWNER_FOLD_CHARACTERS;
+  return <div className="sessionTerminalMessage sessionTerminalOwner">
+    <span className="sessionTerminalOwnerLabel">You</span>
+    <div className="sessionTerminalOwnerBody" data-folded={long && !open ? "true" : undefined}><SafeMarkdown text={text} /></div>
+    {long && <button type="button" className="commandQuietAction sessionTerminalOwnerToggle" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Show less" : "Show more"}</button>}
+  </div>;
+}
+
 // Fetch-free rendering also supplies the synthetic design-system states.
 export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, onEarlier, outputRef, onScroll }: {
   page: HistoryPage | null; busy: boolean; failed: boolean; live: boolean;
@@ -34,10 +47,9 @@ export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, on
       {page?.status === "unsupported" && <p>This provider does not support reading session history.</p>}
       {page?.status === "ok" && (page.messages.length ? page.messages.map((message, index) => message.kind === "tool"
         ? <p key={index} className="sessionTerminalTool">{`Tool · ${message.name} · ${message.outcome}`}</p>
-        : <div key={index} className="sessionTerminalMessage">
-          {message.kind === "owner" && <span className="sessionTerminalMuted">{"> "}</span>}
-          <SafeMarkdown text={message.text} />
-        </div>) : <p>No messages yet</p>)}
+        : message.kind === "owner"
+          ? <OwnerMessage key={index} text={message.text} />
+          : <div key={index} className="sessionTerminalMessage"><SafeMarkdown text={message.text} /></div>) : <p>No messages yet</p>)}
       {failed && <p role="alert">Session history could not be read.</p>}
     </div>
     <div className="sessionTerminalBar">
