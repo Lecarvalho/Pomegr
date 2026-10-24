@@ -13,6 +13,7 @@ import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSetti
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { deleteTaskReportHistory } from "./task-report-history.mjs";
 import { deleteTaskEvents, ensureTaskEvents } from "./task-events.mjs";
+import { deleteTaskOutcome, ensureTaskOutcomes } from "./task-outcomes.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -123,6 +124,7 @@ function createFreshStore(database) {
   runTransaction(database, () => {
     createSchema(database);
     ensureTaskEvents(database);
+    ensureTaskOutcomes(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
@@ -157,6 +159,7 @@ function openDatabase(directory) {
     else {
       verifyExistingStore(database);
       ensureTaskEvents(database);
+      ensureTaskOutcomes(database);
     }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
@@ -295,6 +298,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskAttention(database, repositoryId, input.number);
   deleteTaskReportHistory(database, repositoryId, input.number);
   deleteTaskEvents(database, repositoryId, input.number);
+  deleteTaskOutcome(database, repositoryId, input.number);
   deleteTaskBlockHold(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
@@ -688,7 +692,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
           reconcileColumns(repositoryId);
           migrateStepGroups(database, repositoryId, newGroupId);
         }
-        const result = handler({ database, repositoryId, ensureRepository, now, recentAdds, newGroupId }, payload);
+        const result = handler({ database, repositoryId, ensureRepository, now, recentAdds, newGroupId, resolveOutcomeFacts: resolvers.resolveOutcomeFacts ?? null }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
         added = typeof result.addKey === "string" ? { key: result.addKey, number: result.number } : null;
         featureId = typeof result.featureId === "string" ? result.featureId : null;
