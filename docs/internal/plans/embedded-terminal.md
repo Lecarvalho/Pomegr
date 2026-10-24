@@ -75,6 +75,7 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 - The tab renders the stream with a terminal emulator in the renderer and sends keys, paste, and resize back through fixed IPC channels.
 - The tab is one terminal surface. The CLI draws its own input box, and keys go straight to the process. Pomegr adds no chat field. The caret shows focus: solid when the terminal has focus, hollow when it does not. The terminal draws no focus ring, by the owner's choice on 2026-10-24. The mockup docks the CLI's input box at the bottom of the panel, as the owner asked. Where the box sits is drawn by each CLI, so the spike checks whether Claude Code and Codex keep it at the bottom of the terminal's rows, and records any gap.
 - States: starting, before binding; live; reconnecting after an app restart; host unavailable (the session may still run, but reconnection is unavailable, and an external window cannot recover it); incompatible host version (the session runs, temporarily inaccessible); process exited, with its exit code.
+- The session page has no session switcher; the owner moves between sessions through the session list, by the owner's choice on 2026-10-24.
 - Entry points: an **Open terminal** action on the task card of a session that has one, the session list, and later the inbox. The inbox distinguishes **Open terminal** for an existing session from **Take over**, which starts a new session from a brief after the start confirmation (G14).
 - A design page in `docs/internal/design/` and `/design-system` samples cover each state.
 
