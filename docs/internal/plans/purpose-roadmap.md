@@ -147,6 +147,7 @@ Adoption and polish alone do not fit. The owner accepted the placements below on
 | [Overview sparse state](overview-sparse-and-links.md) | Mostly built; tasks 4 and 6 open | Outside the roadmap. Ship or drop the two tasks and retire it. |
 | [Session Activity panel](session-activity-panel.md) | Built; waits for deletion approval since 2026-09-09 | The owner approves its deletion. |
 | [Design system gaps](design-system-gaps.md) | 10 samples open | Outside the roadmap. Its accessibility items 8a and 8b are bug fixes for any version. |
+| [Embedded terminal](embedded-terminal.md) | Proposed on 2026-10-24; no code | Proposed: inside G14 in 0.9.5. Its feasibility spike may run earlier and merges nothing. Waits for the owner. |
 
 Product expansion directions:
 
@@ -303,9 +304,10 @@ The 2026-10-17 proposal held these ideas. They are outside the versions in this 
 
 ## Open decisions
 
-The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#owner-decisions)). This one remains:
+The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#owner-decisions)). These remain:
 
 1. **Closeout debrief (G17).** A dedicated session with the owner that records the current manual closeout steps and their order before design. It also answers whether worktrees were removed before or after **Mark done**.
+2. **Embedded terminal.** Accept or reject the [embedded terminal](embedded-terminal.md) plan: its exception to the rule that dispatch never answers a running session, its placement in G14, and its feasibility spike.
 
 ## Work and verification
 
