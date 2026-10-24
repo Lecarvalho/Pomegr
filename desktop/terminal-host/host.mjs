@@ -8,8 +8,8 @@ import { VERSION, encodeFrame, decodeFrames } from './protocol.mjs';
 import { Scrollback } from './scrollback.mjs';
 
 const run = promisify(execFile);
-const ENVIRONMENT_NAMES = new Set(('LANG LANGUAGE LC_ALL LC_CTYPE NUMBER_OF_PROCESSORS OS PATHEXT PROCESSOR_ARCHITECTURE PROCESSOR_IDENTIFIER PROCESSOR_LEVEL PROCESSOR_REVISION SYSTEMDRIVE SYSTEMROOT TEMP TMP TZ WINDIR APPDATA CLAUDE_CONFIG_DIR CODEX_HOME HOME HOMEDRIVE HOMEPATH LOCALAPPDATA USERPROFILE PATH POMEGR_CODEX_EXECUTABLE POMEGR_TASK_TOKEN').split(' '));
-const keyValid = (key) => typeof key === 'string' && /^[a-zA-Z0-9_-]{1,128}$/u.test(key);
+const keyValid = (key) => typeof key === 'string' && (/^[a-zA-Z0-9_-]{1,128}$/u.test(key)
+  || /^repo-[a-f0-9]{24}\/T-[1-9][0-9]{0,8}\/[a-f0-9]{32}$/u.test(key));
 const sizeValid = (cols, rows) => Number.isInteger(cols) && cols >= 1 && cols <= 1000 && Number.isInteger(rows) && rows >= 1 && rows <= 1000;
 const stringValid = (value, max) => typeof value === 'string' && !value.includes('\0') && Buffer.byteLength(value) <= max;
 function planValid(plan) {
@@ -17,8 +17,10 @@ function planValid(plan) {
     && stringValid(plan.cwd, 32768) && path.isAbsolute(plan.cwd) && Array.isArray(plan.args) && plan.args.length <= 128
     && plan.args.every((arg) => stringValid(arg, 16384)) && Buffer.byteLength(JSON.stringify(plan.args)) <= 32768
     && sizeValid(plan.cols, plan.rows) && plan.env && typeof plan.env === 'object' && !Array.isArray(plan.env)
-    && Object.entries(plan.env).every(([key, value]) => ENVIRONMENT_NAMES.has(key.toUpperCase()) && stringValid(value, 32768))
-    && Buffer.byteLength(JSON.stringify(plan.env)) <= 32768;
+    && Object.keys(plan.env).length <= 512
+    && Object.entries(plan.env).every(([key, value]) => /^[A-Za-z_][A-Za-z0-9_()]{0,127}$/u.test(key)
+      && typeof value === 'string' && value.length <= 32767 && !value.includes('\0'))
+    && Buffer.byteLength(JSON.stringify(plan.env)) <= 48 * 1024;
 }
 
 export async function restrictDirectory(directory) {

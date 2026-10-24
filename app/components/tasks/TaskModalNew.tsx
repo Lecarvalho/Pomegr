@@ -52,7 +52,7 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
   const paired = useTaskEditAvailability() === "paired";
   const followUps: CommandSplitItem<"queue" | "start">[] = [
     { value: "queue", label: "Create and queue", detail: "Goes to the end of Ready." },
-    { value: "start", label: "Create and start session", detail: paired ? "Opens a new terminal on the computer running Pomegr." : "Opens a new terminal window now." },
+    { value: "start", label: "Create and start session", detail: paired ? "Starts a session on the computer running Pomegr." : "Opens the session's terminal in Pomegr." },
   ];
   const trimmed = text.trim();
   const featureName = feature.name.trim();

@@ -112,6 +112,9 @@ export async function startDesktopTask(repositoryId: string, id: string, separat
       : await postPairedTaskStart(repositoryId, id, separateWorktree);
     const status = typeof result === "object" && result !== null ? (result as { status?: unknown }).status : undefined;
     if (typeof status !== "string") return "unavailable";
+    if (native && typeof (bridge as unknown as { terminal?: unknown }).terminal === "function" && (status === "started" || status === "failed")) {
+      window.dispatchEvent(new CustomEvent("pomegr-task-terminal-open", { detail: { repositoryId, taskId: id, status } }));
+    }
     return START_STATUSES.has(status) ? status as TaskStartStatus : "failed";
   } catch {
     return "unavailable";

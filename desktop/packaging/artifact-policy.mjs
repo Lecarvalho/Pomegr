@@ -62,6 +62,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/task-image.mjs",
   "desktop/runtime/task-feature.mjs",
   "desktop/runtime/session-history.mjs",
+  "desktop/runtime/terminal.mjs",
   "desktop/runtime/terminal-host-client.mjs",
   "desktop/runtime/terminal-host-runtime.mjs",
   "desktop/terminal-host/main.mjs",

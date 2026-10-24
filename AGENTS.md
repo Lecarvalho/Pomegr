@@ -87,14 +87,18 @@ These rules always apply:
 
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or
   credential-file contents to the browser. The exceptions are the agent chat's own
-  conversation and the desktop-only session history read, as their owner pages list.
+  conversation, the desktop-only session history read, and terminal output delivered
+  only to the trusted desktop renderer, as their owner pages list.
   Session history never exposes a session's raw tool content.
 - A value may cross a boundary only when the owner page lists it. A value that no page
   lists is private.
 - Keep the monitor bound to loopback.
-- Keep observation read-only. Task dispatch is the only control surface. It starts new
-  sessions and never stops, attaches to, answers, or approves work in a running session.
-  Each other control action needs an explicit confirmation boundary.
+- Keep observation read-only. Task dispatch starts new sessions. Pomegr never ends a
+  task session, attaches to a session it did not start, or approves work in a running session.
+  In the desktop app, the owner may type or paste into a session Pomegr started in its
+  terminal host. No agent, Aril, queue, MCP tool, or monitor path may send terminal input
+  or end a session. Managed messages and Continue remain deferred. Each other control
+  action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
   starts one for each message of the owner, and one for the follow-up after the owner
   applies or dismisses a proposal. After any applied or partial outcome, a

@@ -2,7 +2,6 @@
 // sent to the manual start of the Tasks page. Every dependency is a fake: no provider process, monitor, or dialog.
 
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import { AGENT_CHAT_CHANNEL, AGENT_CHAT_ERRORS, installAgentChatIpc } from "../desktop/runtime/agent-chat.mjs";
@@ -221,13 +220,6 @@ const planRoot = "C:\\Work\\repo";
 const planToken = "A".repeat(43);
 const json = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 
-function launcher() {
-  const child = new EventEmitter();
-  child.kill = () => {};
-  queueMicrotask(() => child.emit("exit", 0));
-  return child;
-}
-
 async function dispatchHarness(context, { plan = () => ({ ok: true, plan: { taskId: "T-3", provider: "claude", model: null, effort: null, repositoryRoot: planRoot, prompt: "Do the thing", token: planToken } }), confirm = async () => true } = {}) {
   const monitor = [];
   const spawns = [];
@@ -238,7 +230,7 @@ async function dispatchHarness(context, { plan = () => ({ ok: true, plan: { task
     fileExists: (file) => file === exe || file === powershell, directoryExists: (directory) => directory === planRoot,
     confirm: async (request) => { confirmations.push(request); return confirm(request); },
     fetch: async (url, options) => { monitor.push({ route: url.split("/").pop(), body: JSON.parse(options.body) }); return json(url.endsWith("start-plan") ? plan(monitor) : { ok: true }); },
-    spawn: (...args) => { spawns.push(args); return launcher(); },
+    terminal: { ensureHost: async () => {}, create: async ({ executable, args, cwd, env }) => { spawns.push([executable, args, { cwd, env }]); } },
   });
   const h = await chatHarness(context, { startTask: (event, repository, taskId) => starter.startApproved(event, repository, taskId) });
   const conversation = await seed(h, { messages: withProposal(startProposal()) });
@@ -252,7 +244,8 @@ test("an applied start takes the manual path with native confirmation: one start
   assert.deepEqual(d.confirmations, [{ taskId: "T-3", separateWorktree: false }]);
   assert.deepEqual(d.monitor, [{ route: "start-plan", body: { repositoryId, payload: { id: "T-3" } } }], "the plan is asked for the task alone: no worktree override, no queue or board action");
   assert.equal(d.spawns.length, 1);
-  assert.equal(d.spawns[0][2].shell, false);
+  assert.equal(d.spawns[0][0], exe);
+  assert.deepEqual(d.spawns[0][1], ["Do the thing"]);
   assert.deepEqual(await d.proposal(), { ...startProposal(), state: "applied", results: [{ ok: true, start: "started" }] });
   assert.deepEqual(await d.apply(), { ok: false, error: "conflict" });
   assert.equal(d.spawns.length, 1, "exactly one session");

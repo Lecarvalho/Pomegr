@@ -33,7 +33,7 @@ const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] }
 const noop = () => undefined;
 const CREATE_FOLLOW_UPS = [
   { value: "queue", label: "Create and queue", detail: "Goes to the end of Ready." },
-  { value: "start", label: "Create and start session", detail: "Opens a new terminal window now." },
+  { value: "start", label: "Create and start session", detail: "Opens the session's terminal in Pomegr." },
 ];
 const SAMPLE_IMAGE_IDS = ["img-000000000001", "img-000000000002", "img-000000000003", "img-000000000004"];
 const SAMPLE_IMAGE_URLS = new Map<string, string | null>(SAMPLE_IMAGE_IDS.map((id) => [id, null]));

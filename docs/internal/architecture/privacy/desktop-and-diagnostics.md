@@ -88,6 +88,17 @@ that session. No browser, LAN, or IPC route can request it.
 window except to restore and bring forward the one qualifying window. It does not run off
 Windows.
 
+## Terminal output
+
+- Terminal output flows only from the desktop-owned terminal host, through desktop main,
+  to the trusted desktop renderer that attached to that session.
+- The host keeps only bounded live scrollback in memory for each session.
+- Terminal output is never written to disk, logged, sent to the monitor, cached, served
+  over HTTP, or included in `/api/state`.
+- Terminal output never reaches Aril, an MCP tool, a paired device, or another renderer.
+- The terminal host accepts input only from the owner's trusted desktop renderer. It has
+  no agent, queue, MCP, monitor, or session-ending command.
+
 ## Provider-folder read
 
 **Access** (as explicitly approved by the user):

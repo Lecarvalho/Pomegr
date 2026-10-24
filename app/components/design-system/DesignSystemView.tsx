@@ -211,7 +211,7 @@ const BUTTON_ROLES: ButtonRole[] = [
 
 const SAMPLE_SPLIT_ITEMS = [
   { value: "queue", label: "Create and queue", detail: "Goes to the end of Ready." },
-  { value: "start", label: "Create and start session", detail: "Opens a new terminal window now." },
+  { value: "start", label: "Create and start session", detail: "Opens the session's terminal in Pomegr." },
 ];
 
 function ButtonsSection() {

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { SafeMarkdown } from "../../markdown/SafeMarkdown";
 import { subscribeLiveEvents } from "../../../live-events";
+import { ManagedTerminalPanel, ManagedTerminalSurface, terminalBridge, useManagedTerminals } from "./ManagedTerminalPanel";
 
 type Position = { fingerprint: string; offset: number };
 type Message = { kind: "owner" | "agent"; at: number | null; text: string }
@@ -131,5 +132,21 @@ function HistoryPanel({ sessionId, live }: { sessionId: string; live: boolean })
 
 export function SessionTerminalPanel(props: { sessionId: string; live: boolean }) {
   const availability = useSessionHistoryAvailability();
-  return availability === "available" ? <HistoryPanel key={props.sessionId} {...props} /> : null;
+  return availability === "available" ? terminalBridge() ? <ManagedSessionPanel key={props.sessionId} {...props} /> : <HistoryPanel key={props.sessionId} {...props} /> : null;
+}
+
+function ManagedSessionPanel({ sessionId, live }: { sessionId: string; live: boolean }) {
+  const { listing } = useManagedTerminals();
+  const [exitCode, setExitCode] = useState<number | null>(null);
+  const terminal = listing?.sessions?.find((item) => item.sessionId === sessionId);
+  if (exitCode !== null || terminal?.state === "exited") return <>
+    <p className="sessionTerminalMuted">Process exited with code {exitCode ?? terminal?.exitCode ?? 0}.</p>
+    <HistoryPanel sessionId={sessionId} live={false} />
+  </>;
+  if (terminal) return <ManagedTerminalPanel terminal={terminal} onExit={setExitCode} />;
+  if (!listing) return <ManagedTerminalSurface state="reconnecting" />;
+  return <>
+    {listing.hosts?.some((host) => host.state === "incompatible_host") && <p className="sessionTerminalMuted">An older terminal host is temporarily inaccessible.</p>}
+    <HistoryPanel sessionId={sessionId} live={live} />
+  </>;
 }

@@ -367,6 +367,8 @@ Each row below the tags shows only when it is set, in this order:
 - A card that is not waiting in the queue and runs after an unfinished task adds one muted 12px line (`.taskCardWaiting.taskCardAfter`), “Runs after T-13 and T-14”, before the sessions line.
 - The line names only the tasks that are not Done. A card whose tasks are all Done draws no line.
 - The sessions line: **Open session**, a Text link that is not stretched, for the first session.
+- A started task without a bound session shows **Waiting in terminal** as a Text link to its Terminal start view.
+- A queue start never navigates to the Terminal tab or changes the selected page.
 - **Open session** is muted 12px text with a 12px arrow-up-right glyph.
 - The glyph is hidden from assistive technology.
 - **Open session** turns ink on hover, with no underline.
@@ -738,6 +740,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - Under **Scorecard**: the capacity strip with **Scorecard**, a desktop board with it, and the panel for a later version, the first version, no Done task yet, reading, and a failed read.
 - The Sessions list Task cell.
 - Under **Assigned sessions**: the card's sessions line, the Task modal's Sessions block, and the Task cell of an assigned session.
+- Under **Terminal start**: the manual start view before binding and an unbound task card with its **Waiting in terminal** link.
 
 The session header meta and the Task tab read the board through the task store. This page specifies them, and `/design-system` does not render them.
 
