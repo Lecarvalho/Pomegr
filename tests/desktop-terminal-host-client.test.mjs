@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { spawn as spawnChild } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -120,28 +120,42 @@ test("ensureHost starts only the copied node with a detached argument-array laun
 });
 
 test("a hard-killed host restarts on ensureHost and its old sessions are gone", { skip: process.platform !== "win32" }, async (t) => {
+  const children = [];
+  let client;
+  // Stop and reap our children before fixture cleanup removes their copied executable.
+  t.after(async () => {
+    client?.close();
+    for (const child of children) {
+      if (child.exitCode !== null || child.signalCode !== null) continue;
+      child.ref();
+      const closed = once(child, "close");
+      child.kill();
+      await closed;
+    }
+  });
   const options = await fixture(t);
   const node = await readFile(process.execPath);
+  // This fixture lives until the test kills it; idle exit is covered by the host tests.
   const script = `import { startTerminalHost } from ${JSON.stringify(pathToFileURL(path.resolve("desktop/terminal-host/host.mjs")).href)};
-await startTerminalHost({runtimeDirectory:process.cwd(), idleMilliseconds:2000, onIdle:()=>process.exit(0),
+await startTerminalHost({runtimeDirectory:process.cwd(),
 spawnPty:()=>({pid:process.pid,onData(){},onExit(){},write(){},resize(){}})});`;
   await mkdir(path.join(options.source, "desktop/terminal-host"), { recursive: true });
   await writeFile(path.join(options.source, "desktop/terminal-host/main.mjs"), script);
   await writeFile(path.join(options.source, "node.exe"), node);
   const files = { "desktop/terminal-host/main.mjs": digest(script), "node.exe": digest(node) };
   await writeFile(path.join(options.source, "manifest.json"), JSON.stringify({ buildId: digest(JSON.stringify(files)), files }));
-  const children = [];
-  const client = createTerminalHostClient({ ...options, spawn(...args) { const child = spawnChild(...args); children.push(child); return child; } });
-  t.after(() => { client.close(); for (const child of children) if (child.exitCode === null) child.kill(); });
+  client = createTerminalHostClient({ ...options, spawn(...args) { const child = spawnChild(...args); children.push(child); return child; } });
   await client.ensureHost();
   await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "gone" });
   assert.equal((await client.list()).length, 1);
-  const exited = new Promise((resolve) => children[0].once("exit", resolve));
-  children[0].kill(); await exited;
+  children[0].ref();
+  const closed = once(children[0], "close");
+  assert.equal(children[0].kill(), true);
+  await closed;
   await assert.rejects(client.list(), /TERMINAL_UNAVAILABLE/);
   await client.ensureHost();
   assert.equal(children.length, 2);
+  assert.notEqual(children[1].pid, children[0].pid);
+  assert.equal((await client.listHosts())[0].pid, children[1].pid);
   assert.deepEqual(await client.list(), []);
-  const idle = new Promise((resolve) => children[1].once("exit", resolve));
-  client.close(); await idle;
 });
