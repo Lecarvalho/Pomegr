@@ -62,7 +62,7 @@ export function classifyCodexRecord(record) {
 
 export function createCodexSessionMessageClassifier() {
   let previousReply = null;
-  return function* messages(record) {
+  function* messages(record) {
     if (synthetic(record) || synthetic(record?.payload) || record?.isMeta || record?.isCompactSummary || record?.isSidechain) { previousReply = null; return; }
     const { reply, replySource, ownerSource } = classifyCodexRecord(record);
     const payload = record?.payload;
@@ -99,6 +99,8 @@ export function createCodexSessionMessageClassifier() {
         if (kind) yield { kind: "tool-result", id: payload.item.id, outcome: rolloutExecutionStatus(kind, payload.item) === "failed" ? "failed" : "completed" };
       }
     }
-  };
+  }
+  messages.reset = () => { previousReply = null; };
+  return messages;
 }
 

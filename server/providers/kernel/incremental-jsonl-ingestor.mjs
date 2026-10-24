@@ -5,6 +5,7 @@ export function createIncrementalJsonlIngestor(options) {
     initialState,
     reduce,
     reduceGap,
+    shouldStop,
     chunkBytes = 64 * 1024,
     maximumFragmentBytes = 256 * 1024,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
@@ -66,19 +67,22 @@ export function createIncrementalJsonlIngestor(options) {
       if (buffer[index] !== 0x0a) continue;
       let line = buffer.subarray(lineStart, index);
       if (line.length && line[line.length - 1] === 0x0d) line = line.subarray(0, -1);
+      const startOffset = state.completeOffset;
       state.completeOffset += index - lineStart + 1;
       lineStart = index + 1;
       if (!line.length) continue;
       try {
-        const record = parseRecord(line);
+        const bounds = { startOffset, endOffset: state.completeOffset };
+        const record = parseRecord(line, bounds);
         counters.records += 1;
-        state.candidate = reduce(state.candidate, record);
+        state.candidate = reduce(state.candidate, record, bounds);
       } catch {
         // A malformed complete record never blocks later complete records or
         // contaminates an otherwise valid committed candidate.
         state.malformedRecords += 1;
         markGap(state);
       }
+      if (shouldStop?.()) { state.fragment = Buffer.alloc(0); return true; }
     }
     state.fragment = buffer.subarray(lineStart);
     if (state.fragment.length > maximumFragmentBytes) {
@@ -103,8 +107,9 @@ export function createIncrementalJsonlIngestor(options) {
         if (!bytes.length) break;
         if (bytes.length > requested) throw new TypeError("Incremental JSONL source returned more bytes than requested");
         counters.bytes += bytes.length;
-        appendCompleteLines(state, bytes, counters);
+        const stopped = appendCompleteLines(state, bytes, counters);
         await yieldControl();
+        if (stopped) break;
       }
     } finally {
       if (counters.bytes) recordCounter("bytes", counters.bytes);

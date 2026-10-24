@@ -14,7 +14,7 @@
 
 - The optional provider operation `readSessionMessages(localId, request)` reads only the primary conversation from the provider's own transcript.
 - `POST /internal/sessions/history-read` carries history from the monitor to desktop main only, through the private-action gate: desktop token, POST, loopback Host, and no Origin.
-- The answer may contain owner text, visible agent reply text, tool names and completed/failed/pending outcomes, nullable times in milliseconds, opaque cursor fingerprints and offsets, pagination/reset flags, and ok/missing/unsupported status.
+- The answer may contain owner text, visible agent reply text, tool names and completed/failed/pending outcomes, nullable times in milliseconds, a cursor byte offset and a hash binding source identity to up to 256 transcript bytes ending there (never the bytes), pagination/reset flags, and ok/missing/unsupported status.
 - A page holds at most 200 messages; text is at most 32000 characters including the fixed `\n[truncated]` marker, and a tool name is at most 64 characters.
 - Tool arguments, tool results, command output, file contents, reasoning, summaries, system text, hook text, and subagent or sidechain conversations never cross this boundary.
 - Nothing read here is cached, stored, logged, or retained after the answer; nothing is sent to `/api/state`, SSE, the LAN gateway, Aril, or MCP.

@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { appendFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import fs from "node:fs";
+import crypto from "node:crypto";
+import { readSessionMessages } from "../../../server/providers/kernel/session-messages.mjs";
+import { claudeSessionMessages } from "../../../server/providers/claude/activity-events.mjs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -45,6 +49,115 @@ const formats = {
   },
 };
 
+function countReads(t) {
+  const calls = [];
+  const read = fs.readSync;
+  t.mock.method(fs, "readSync", (...args) => {
+    const bytes = read(...args);
+    calls.push({ offset: args[4], bytes });
+    return bytes;
+  });
+  return calls;
+}
+
+test("byte cursor reads only the append plus fixed-size fingerprint samples", async (t) => {
+  const f = await fixture(t, "claude", Array.from({ length: 2000 }, () => formats.claude.owner("x".repeat(1000))));
+  const page = await readSessionMessages(f.file, { limit: 2 }, claudeSessionMessages);
+  const end = fs.statSync(f.file).size;
+  assert.equal(page.cursor.offset, end);
+  const appended = line(formats.claude.owner("appended"));
+  await appendFile(f.file, appended);
+  const calls = countReads(t);
+  const next = await readSessionMessages(f.file, { cursor: page.cursor, limit: 2 }, claudeSessionMessages);
+  assert.deepEqual(next.messages.map((message) => message.text), ["appended"]);
+  assert.ok(calls.every((call) => call.offset >= end || call.bytes <= 256));
+  assert.ok(calls.reduce((total, call) => total + call.bytes, 0) <= Buffer.byteLength(appended) + 6 * 256);
+});
+
+test("newest and older pages scan bounded windows rather than a large transcript", async (t) => {
+  const f = await fixture(t, "claude", Array.from({ length: 3000 }, (_, i) => formats.claude.owner(`${i}:` + "x".repeat(1000))));
+  const calls = countReads(t);
+  const newest = await readSessionMessages(f.file, { limit: 2 }, claudeSessionMessages);
+  assert.deepEqual(newest.messages.map((message) => message.text.split(":")[0]), ["2998", "2999"]);
+  assert.ok(calls.reduce((total, call) => total + call.bytes, 0) < fs.statSync(f.file).size);
+  assert.ok(calls.every((call) => call.bytes <= 256 * 1024));
+  calls.length = 0;
+  const older = await readSessionMessages(f.file, { before: newest.older, limit: 2 }, claudeSessionMessages);
+  assert.deepEqual(older.messages.map((message) => message.text.split(":")[0]), ["2996", "2997"]);
+  assert.ok(calls.reduce((total, call) => total + call.bytes, 0) < 512 * 1024);
+});
+
+test("a signed mid-record cursor resets instead of splitting a record", async (t) => {
+  const f = await fixture(t, "claude", [formats.claude.owner("one"), { type: "assistant", message: { content: [
+    { type: "text", text: "two" }, { type: "text", text: "three" },
+  ] } }]);
+  const stat = fs.statSync(f.file);
+  const offset = stat.size - 10;
+  const bytes = fs.readFileSync(f.file).subarray(Math.max(0, offset - 256), offset);
+  const identity = `${stat.dev}:${stat.ino}`;
+  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  const fingerprint = crypto.createHash("sha256").update(`${identity}\0${offset}\0${digest}`).digest("hex");
+  const page = await readSessionMessages(f.file, { cursor: { fingerprint, offset }, limit: 1 }, claudeSessionMessages);
+  assert.equal(page.reset, true);
+  assert.deepEqual(page.messages.map((message) => message.text), ["two", "three"]);
+  assert.equal(page.cursor.offset, stat.size);
+});
+
+test("same-file reads serialize and append pages stop at complete record boundaries", async (t) => {
+  const f = await fixture(t, "claude", [formats.claude.owner("one")]);
+  const page = await readSessionMessages(f.file, { limit: 1 }, claudeSessionMessages);
+  const appended = Array.from({ length: 2000 }, (_, i) => line(formats.claude.owner(`${i}` + "x".repeat(1000)))).join("");
+  await appendFile(f.file, appended);
+  const calls = countReads(t);
+  let active = 0, maximum = 0;
+  const open = fs.openSync, close = fs.closeSync;
+  t.mock.method(fs, "openSync", (...args) => { const fd = open(...args); maximum = Math.max(maximum, ++active); return fd; });
+  t.mock.method(fs, "closeSync", (...args) => { active -= 1; return close(...args); });
+  const pages = await Promise.all(Array.from({ length: 3 }, () => readSessionMessages(f.file, { cursor: page.cursor, limit: 1 }, claudeSessionMessages)));
+  assert.equal(maximum, 1);
+  assert.ok(calls.reduce((total, call) => total + call.bytes, 0) < 3 * (64 * 1024 + 6 * 256));
+  assert.equal(pages[0].cursor.offset, page.cursor.offset + Buffer.byteLength(line(formats.claude.owner("0" + "x".repeat(1000)))));
+  assert.deepEqual(pages[0], pages[1]);
+});
+
+test("backward windows stitch a split record and retain its later tool outcome", async (t) => {
+  const f = await fixture(t, "claude", [formats.claude.owner("old"), formats.claude.call,
+    ...Array.from({ length: 500 }, () => ({ type: "system", content: "PRIVATE".repeat(100) })), formats.claude.result]);
+  const page = await readSessionMessages(f.file, { limit: 1 }, claudeSessionMessages);
+  assert.deepEqual(page.messages, [{ kind: "tool", at, name: "Read", outcome: "failed" }]);
+  const older = await readSessionMessages(f.file, { before: page.older, limit: 1 }, claudeSessionMessages);
+  assert.deepEqual(older.messages, [{ kind: "owner", at, text: "old" }]);
+  assert.equal(older.older, null);
+});
+
+test("append stops on a multi-block record and resumes an incomplete tail", async (t) => {
+  const f = await fixture(t, "claude", [formats.claude.owner("one")]);
+  const page = await readSessionMessages(f.file, { limit: 1 }, claudeSessionMessages);
+  const record = line({ type: "assistant", message: { content: [{ type: "text", text: "two" }, { type: "text", text: "three" }] } });
+  const incomplete = line(formats.claude.owner("four"));
+  await appendFile(f.file, record + incomplete.slice(0, -4));
+  const next = await readSessionMessages(f.file, { cursor: page.cursor, limit: 1 }, claudeSessionMessages);
+  assert.deepEqual(next.messages.map((message) => message.text), ["two", "three"]);
+  assert.equal(next.cursor.offset, page.cursor.offset + Buffer.byteLength(record));
+  const empty = await readSessionMessages(f.file, { cursor: next.cursor, limit: 1 }, claudeSessionMessages);
+  assert.equal(empty.cursor.offset, next.cursor.offset);
+  await appendFile(f.file, incomplete.slice(-4));
+  assert.deepEqual((await readSessionMessages(f.file, { cursor: empty.cursor, limit: 1 }, claudeSessionMessages)).messages.map((message) => message.text), ["four"]);
+});
+
+test("the cursor suffix hash detects same-size rewrites and smaller files", async (t) => {
+  const f = await fixture(t, "claude", [formats.claude.owner("first")]);
+  const page = await readSessionMessages(f.file, { limit: 1 }, claudeSessionMessages);
+  await f.write([formats.claude.owner("other")]);
+  const changed = await readSessionMessages(f.file, { cursor: page.cursor, limit: 1 }, claudeSessionMessages);
+  assert.equal(changed.reset, true);
+  assert.equal(changed.messages[0].text, "other");
+  await f.write([formats.claude.owner("x")]);
+  const shortened = await readSessionMessages(f.file, { before: changed.cursor, limit: 1 }, claudeSessionMessages);
+  assert.equal(shortened.reset, true);
+  assert.equal(shortened.messages[0].text, "x");
+});
+
 async function fixture(t, id, records) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-messages-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -65,10 +178,11 @@ test("Claude paginates multiple blocks in one record without losing tool outcome
     { type: "text", text: "first" }, { type: "tool_use", id: "call", name: "Read", input: { value: "PRIVATE" } }, { type: "text", text: "last" },
   ] } }, formats.claude.result]);
   const last = await f.read({ limit: 1 });
-  assert.equal(last.messages[0].text, "last");
-  const tool = await f.read({ before: last.older, limit: 1 });
-  assert.deepEqual(tool.messages, [{ kind: "tool", at, name: "Read", outcome: "failed" }]);
-  assert.equal((await f.read({ before: tool.older, limit: 1 })).messages[0].text, "first");
+  assert.deepEqual(last.messages.map((message) => message.kind), ["agent", "tool", "agent"]);
+  assert.equal(last.messages[1].outcome, "failed");
+  assert.equal(last.older, null);
+  assert.equal(last.cursor.offset, fs.statSync(f.file).size);
+  assert.deepEqual((await f.read({ cursor: last.cursor, limit: 1 })).messages, []);
 });
 
 test("Codex reply mirrors do not duplicate messages or alter append offsets", async (t) => {
