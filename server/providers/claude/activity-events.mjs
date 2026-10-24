@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { messageText, messageTime } from "../kernel/session-messages.mjs";
 import fs from "node:fs";
 import { claudeLaunchedTaskId, claudeTerminalTaskNotification } from "./background-lifecycle.mjs";
 import { createIncrementalJsonlIngestor } from "../kernel/incremental-jsonl-ingestor.mjs";
@@ -26,7 +27,7 @@ function inputKind(part) {
   return null;
 }
 
-export function userInputContentType(record, requestedInputIds = new Set()) {
+function inputContentType(record, requestedInputIds) {
   if (record?.type !== "user" || record.isMeta || record.isCompactSummary || isClaudeSystemTaskNotification(record)) return null;
   const content = record.message?.content;
   const kinds = new Set();
@@ -136,6 +137,45 @@ function hasReplyText(content) {
   return Array.isArray(content) && content.some((part) => part?.type === "text" && typeof part.text === "string" && part.text.trim());
 }
 
+export function classifyClaudeRecord(record, requestedInputIds = new Set()) {
+  const inputType = inputContentType(record, requestedInputIds);
+  const excluded = !record || record.isMeta || record.isCompactSummary || record.isApiErrorMessage;
+  return {
+    inputType,
+    owner: Boolean(inputType) && !commandName(record) && !hasLocalCommandWrapper(record?.message?.content),
+    summary: !excluded && record.type === "system" && record.subtype === "away_summary"
+      && typeof record.content === "string" && Boolean(record.content.trim()),
+    reply: !excluded && record.type === "assistant" && record.message?.model !== "<synthetic>"
+      && record.message?.usage?.synthetic !== true && hasReplyText(record.message?.content),
+  };
+}
+
+export function userInputContentType(record, requestedInputIds = new Set()) {
+  return classifyClaudeRecord(record, requestedInputIds).inputType;
+}
+
+export function* claudeSessionMessages(record) {
+  if (!record || record.isSidechain || record.isMeta || record.isCompactSummary || record.isApiErrorMessage
+    || record.promptSource === "system" || record.origin?.kind === "hook") return;
+  const kind = classifyClaudeRecord(record);
+  const at = messageTime(record.timestamp ?? record.message?.timestamp);
+  const content = record.message?.content;
+  const parts = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
+  const synthetic = record.message?.model === "<synthetic>" || record.message?.usage?.synthetic === true;
+  const owner = kind.owner && !parts.some((part) => part?.type === "tool_result");
+  for (const part of parts) {
+    if (part?.type === "text" && typeof part.text === "string" && part.text.trim() && (owner || kind.reply)) {
+      if (/<(?:system-reminder|hook[^>]*|local-command-(?:stdout|stderr|caveat))>/i.test(part.text)
+        || /^\[Request interrupted by user[^\]]*\]$/.test(part.text.trim())) continue;
+      yield { kind: owner ? "owner" : "agent", at, text: messageText(part.text) };
+    } else if (record.type === "assistant" && !synthetic && part?.type === "tool_use" && typeof part.name === "string") {
+      yield { kind: "tool", at, name: part.name.slice(0, 64), outcome: "pending", id: part.id };
+    } else if (record.type === "user" && part?.type === "tool_result") {
+      yield { kind: "tool-result", id: part.tool_use_id, outcome: part.is_error === true ? "failed" : "completed" };
+    }
+  }
+}
+
 export function claudeReplyActivityId(actorId, identity) {
   return `claude-reply-${crypto.createHash("sha256").update(`${actorId}:${identity}`).digest("hex").slice(0, 20)}`;
 }
@@ -143,11 +183,7 @@ export function claudeReplyActivityId(actorId, identity) {
 // Presence metadata only: never retain message or summary content.
 export function claudeConversationActivity(records, actor = { id: "primary", label: "Primary agent" }, events = new Map(), maximum = MAX_ENTRIES) {
   for (const record of records) {
-    if (!record || record.isMeta || record.isCompactSummary || record.isApiErrorMessage) continue;
-    const summary = record.type === "system" && record.subtype === "away_summary"
-      && typeof record.content === "string" && Boolean(record.content.trim());
-    const reply = record.type === "assistant" && record.message?.model !== "<synthetic>"
-      && record.message?.usage?.synthetic !== true && hasReplyText(record.message?.content);
+    const { summary, reply } = classifyClaudeRecord(record);
     if (!summary && !reply) continue;
     const rawTime = record.timestamp ?? record.message?.timestamp;
     const time = typeof rawTime === "string" ? Date.parse(rawTime) : NaN;

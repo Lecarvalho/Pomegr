@@ -24,6 +24,7 @@ import { EMPTY_PROVIDER_FOLDERS } from "./normalize/provider-folders.mjs";
 import { createTaskStallWatcher } from "./tasks/task-stall.mjs";
 import { openTaskStore } from "./tasks/task-store.mjs";
 import { reconcileSessionActivityFallback, reconcileSessionCurrentActivity } from "./sessions/domain/session-current-activity.mjs";
+import { parseProviderSessionId } from "./providers/provider-contract.mjs";
 import {
   closeServer,
   createLocalServiceHandle,
@@ -628,6 +629,13 @@ export function createMonitorRuntime(options = {}) {
     refreshUsageAfterCodexSignIn: observation.refreshUsageAfterCodexSignIn,
     sessionWindowOwner: observation.sessionWindowOwner,
     serveSessionHistory: observation.serveSessionHistory,
+    async readSessionMessages(sessionId, request) {
+      if (!observation.store.getByQualifiedId(sessionId) && !observation.coordinator.catalogIdentity(sessionId)) return null;
+      const parsed = parseProviderSessionId(sessionId);
+      const provider = registry.providerForSessionId(sessionId);
+      if (!parsed || typeof provider?.readSessionMessages !== "function") return undefined;
+      return provider.readSessionMessages(parsed.localSessionId, request);
+    },
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
     serveNotifications: notifications.read,

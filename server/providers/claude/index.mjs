@@ -1,3 +1,4 @@
+import { readSessionMessages } from "../kernel/session-messages.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -11,7 +12,7 @@ import {
   pendingUserInputAt,
   resolveAgentMetadata,
 } from "../../normalize/agent-metadata.mjs";
-import { claudeConversationActivity, claudeSessionWorkStartedAt, claudeTaskNotificationActivity, createClaudeActivityReader } from "./activity-events.mjs";
+import { claudeSessionMessages, claudeConversationActivity, claudeSessionWorkStartedAt, claudeTaskNotificationActivity, createClaudeActivityReader } from "./activity-events.mjs";
 import { recentActivityEvents } from "../../normalize/activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../../normalize/context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../../normalize/context-compactions.mjs";
@@ -729,6 +730,7 @@ export function createClaudeProvider(options = {}) {
     enumerateSessionHeaders,
     readSession,
     readSessionHistory,
+    readSessionMessages: (localId, request) => readSessionMessages(resolveSession(localId)?.mainFile, request, claudeSessionMessages),
     captureRepositoryContextInventory,
     readRepositoryPluginSetup,
     setRepositoryResolver(resolver) {

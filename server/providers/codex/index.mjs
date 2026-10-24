@@ -1,3 +1,5 @@
+import { readSessionMessages } from "../kernel/session-messages.mjs";
+import { createCodexSessionMessageClassifier } from "./message-classifier.mjs";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -730,6 +732,10 @@ export function createCodexProvider(options = {}) {
     enumerateSessionHeaders,
     readSession,
     readSessionHistory,
+    async readSessionMessages(localId, request) {
+      const metadata = rolloutDiscovery.peek(localId) || (await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, localId))?.find((item) => item.localId === localId);
+      return readSessionMessages(metadata && isTopLevelCodexSession(metadata) ? metadata.rolloutFile : null, request, createCodexSessionMessageClassifier());
+    },
     readRepositoryPluginSetup: createCodexPluginSetupReader({ env: options.env ?? process.env, codexHome }),
     setRepositoryResolver(resolver) {
       repositoryResolver = typeof resolver === "function" ? resolver : null;
