@@ -1,11 +1,11 @@
 # Sessions inside Pomegr: terminal, history, and continue
 
-> Status: proposed; the owner reviews this plan and the mockup before any code.
+> Status: active; the owner accepted the plan and its architecture on 2026-10-24. Phase 1 (read-only history) and phase 0 (the spike) start alongside 0.9.0.
 > Created: 2026-10-24.
 > Scope: keep the owner's coding-agent sessions inside the desktop app. Sessions that Pomegr starts run in a Terminal tab of the session, through a desktop-owned terminal host that survives app restarts and updates. The same Terminal tab shows any other session's saved history read-only, and an ended session can be continued in it through the provider's own resume. It covers the boundary changes, the host, the start and resume paths, the Terminal tab, and the feasibility spike that gates the terminal. The takeover brief (G14) and the owner inbox (G13) stay in the [purpose roadmap](purpose-roadmap.md); this plan gives them a place to open a session.
 > Continuation owner: the product owner decides; the agent that picks up a phase records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [session evidence privacy](../architecture/privacy/session-evidence.md), and [desktop privacy](../architecture/privacy/desktop-and-diagnostics.md) govern shipped behavior until each phase changes them.
-> Next task or decision: the owner accepts or rejects the boundary changes, the placement, and the phase 0 spike.
+> Next task or decision: phase 1 server half (the history read), then its desktop half; phase 0 in parallel on a throwaway branch.
 > Completion criteria: the read-only history ships; the spike passes or the terminal part is cancelled; when it passes, a session started from Pomegr opens in its Terminal tab, survives app quit, crash, and update, an ended session continues in the terminal, and every rule below has a test.
 > Permanent destinations: `AGENTS.md` for the control boundary, [Tasks](../architecture/tasks.md) for the start and resume paths and the host boundary, [session evidence privacy](../architecture/privacy/session-evidence.md) for the history read, [desktop privacy](../architecture/privacy/desktop-and-diagnostics.md) for terminal output, the provider contract for the history read, a page in `docs/internal/design/` for the Terminal tab, and `/design-system` for its states.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -172,4 +172,4 @@ The design review produced an interactive mockup with synthetic data that steps 
 
 ## Continuation checkpoint
 
-2026-10-24: design converged in review. The owner then dropped the session switcher, the terminal list, and external windows, docked the CLI input, removed the focus ring, and asked to read and continue any session; reading and Continue joined the plan. The owner then folded the reading into the Terminal tab as a read-only mode, and the mockup covers it. Next action: the owner decides on the boundary changes, the placement, and the spike.
+2026-10-24: design converged in review. The owner then dropped the session switcher, the terminal list, and external windows, docked the CLI input, removed the focus ring, and asked to read and continue any session; reading and Continue joined the plan. The owner then folded the reading into the Terminal tab as a read-only mode, and the mockup covers it. Later the same day the owner approved the architecture and the plan, and asked to start phase 1 and phase 0 now, alongside 0.9.0. Next action: phase 1 server half.

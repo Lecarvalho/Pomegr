@@ -56,6 +56,7 @@ The roadmap has three steps:
 | 2026-10-21 | The task outcome record (G1) is stored locally, in SQLite. |
 | 2026-10-21 | 0.8.1 includes #269. #270 goes to 0.9.0. |
 | 2026-10-21 | The dependency proposal (G10) is accepted as a starting point. It will change, and it must adapt to each user's repositories and way of working, not only to the owner's. |
+| 2026-10-24 | The [sessions inside Pomegr](embedded-terminal.md) plan is accepted with its architecture: a Terminal tab for every session, read-only history with live updates, and Continue. Its read-only history and its spike start alongside 0.9.0; the terminal stays inside G14. |
 
 ## Purpose scorecard
 
@@ -147,7 +148,7 @@ Adoption and polish alone do not fit. The owner accepted the placements below on
 | [Overview sparse state](overview-sparse-and-links.md) | Mostly built; tasks 4 and 6 open | Outside the roadmap. Ship or drop the two tasks and retire it. |
 | [Session Activity panel](session-activity-panel.md) | Built; waits for deletion approval since 2026-09-09 | The owner approves its deletion. |
 | [Design system gaps](design-system-gaps.md) | 10 samples open | Outside the roadmap. Its accessibility items 8a and 8b are bug fixes for any version. |
-| [Sessions inside Pomegr](embedded-terminal.md) | Proposed on 2026-10-24; no code | Proposed: inside G14 in 0.9.5. Its read-only history may ship earlier; its feasibility spike may run earlier and merges nothing. Waits for the owner. |
+| [Sessions inside Pomegr](embedded-terminal.md) | Accepted on 2026-10-24 | Inside G14 in 0.9.5 for the terminal; its read-only history and its spike start alongside 0.9.0. |
 
 Product expansion directions:
 
@@ -304,10 +305,9 @@ The 2026-10-17 proposal held these ideas. They are outside the versions in this 
 
 ## Open decisions
 
-The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#owner-decisions)). These remain:
+The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#owner-decisions)). This one remains:
 
 1. **Closeout debrief (G17).** A dedicated session with the owner that records the current manual closeout steps and their order before design. It also answers whether worktrees were removed before or after **Mark done**.
-2. **Sessions inside Pomegr.** Accept or reject the [sessions inside Pomegr](embedded-terminal.md) plan: its exceptions to the rules that dispatch never answers a running session and that raw session content never reaches the screen, its placement in G14, and its feasibility spike.
 
 ## Work and verification
 
