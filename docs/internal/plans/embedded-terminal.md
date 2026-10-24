@@ -64,6 +64,16 @@ Each change lands in its own pull request, before any code that depends on it.
    - It is never written to disk, logged, sent to the monitor, cached, served over HTTP, included in `/api/state`, read by Aril or an MCP tool, or sent to a paired device.
 4. **Start transport.** [Tasks: Starting a session](../architecture/tasks.md#starting-a-session) replaces the external window with the embedded transport, adds the resume path, and the Boundaries table gains rows for the host pipe, the terminal IPC channels, the history read, and the resume.
 
+## Architecture
+
+The history read and its live updates reuse the observation pipeline instead of adding a second one.
+
+- **Trigger.** A new owner message or reply already moves the session's activity revision, and the shared SSE stream (`/api/events`) already carries that revision. A visible read-only Terminal tab reads again when its session's revision moves. There is no new watcher, poll, timer, or push channel, and the SSE payload stays domain, session ID, and revision.
+- **Read.** The provider contract gains one optional operation, `readSessionMessages(localId, cursor, limit)`, beside `readSessionHistory`. It reuses discovery, the incremental JSONL ingestor and its source fingerprint, and the same record classifier that today checks that a reply exists and drops it. A cursor that no longer matches the fingerprint reads again from the start. Older pages reuse the history replay reader.
+- **Path.** Renderer, then the IPC channel `pomegr:session-history` behind the trusted main-frame check, then desktop main, then `POST /internal/sessions/history-read` behind the existing private-action gate, then the adapter. It copies the task-feature pattern. The text passes through desktop main because the dashboard's Next server listens on every interface and must never serve conversation text.
+- **Nothing stored.** The evidence schema, checkpoints, SQLite history, domain store, GET routes, SSE payload, and the LAN gateway stay text-free.
+- **Check before code.** Confirm, for each provider, that a new owner message and a new reply each move a domain revision. If one does not, extend that domain rather than add an event.
+
 ## Read-only history
 
 - The Terminal tab of any session that is not live in Pomegr's host shows its saved history, read-only, in the same terminal surface and monospace look. It is Pomegr's rendering of the saved messages, not a replay of the CLI's screen.
