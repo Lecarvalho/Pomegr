@@ -86,8 +86,9 @@ the maintenance workflow, and do not make an archive copy.
 These rules always apply:
 
 - Never return raw prompts, responses, tool-result content, OAuth tokens, or
-  credential-file contents to the browser. The one exception is the agent chat's own
-  conversation, which its owner page lists. It is never a session's.
+  credential-file contents to the browser. The exceptions are the agent chat's own
+  conversation and the desktop-only session history read, as their owner pages list.
+  Session history never exposes a session's raw tool content.
 - A value may cross a boundary only when the owner page lists it. A value that no page
   lists is private.
 - Keep the monitor bound to loopback.

@@ -1,3 +1,4 @@
+import { classifyCodexRecord } from "./message-classifier.mjs";
 import crypto from "node:crypto";
 import { stableCodexActivityId } from "./activity-events.mjs";
 import { codexTimestamp } from "./session-metadata.mjs";
@@ -5,22 +6,14 @@ import { codexTimestamp } from "./session-metadata.mjs";
 const MAX_INPUTS = 256;
 const normalizedType = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-function synthetic(value) {
-  return value?.synthetic === true || value?.is_synthetic === true || value?.isSynthetic === true
-    || value?.metadata?.synthetic === true || value?.metadata?.isSynthetic === true;
-}
-
 export function parseCodexUserInputRecords(records, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
   if (actor.id !== "primary" || options.userInputEnabled === false) return [];
   const events = new Map();
   for (const [index, record] of (Array.isArray(records) ? records : []).entries()) {
     const payload = record?.payload;
-    if (record?.type !== "event_msg" || synthetic(record) || synthetic(payload)) continue;
-    const completed = normalizedType(payload?.type) === "itemcompleted"
-      && normalizedType(payload?.item?.type) === "usermessage";
-    const source = completed ? payload.item : payload?.type === "user_message" ? payload : null;
-    if (!source || synthetic(source)) continue;
+    const { ownerSource: source } = classifyCodexRecord(record);
+    if (!source) continue;
     const timestamp = codexTimestamp(record.timestamp ?? payload.timestamp ?? source.timestamp);
     if (!timestamp) continue;
     const content = Array.isArray(source.content) ? source.content : [];

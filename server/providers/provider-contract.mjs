@@ -15,6 +15,20 @@ import { copyInputNotificationTime } from "../normalize/input-notification-facts
 /** @typedef {{publishCatalog: (entries: unknown[]) => void, publishSession: (localSessionId: string, evidence: unknown) => void, publishHistoryContribution: (localSessionId: string, contribution: HistoryActivityContribution) => boolean, publishHistoryRequestContribution: (localSessionId: string, contribution: HistoryRequestContribution) => boolean, invalidateSession: (localSessionId: string, reason: string) => void, checkpointFor?: (localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} ScopedNormalizedObservationPublisher */
 /** @typedef {{trace?: unknown, traceScopeForLocalId?: (localSessionId: string) => object | null}} ProviderObserverOptions */
 /** @typedef {{start: (publisher: ScopedNormalizedObservationPublisher, signal: AbortSignal, options?: ProviderObserverOptions) => Promise<void> | void, hydrate: (localSessionId: string) => Promise<boolean> | boolean, listSessions: () => Promise<unknown[]> | unknown[], stop?: () => Promise<void> | void}} ProviderObserver */
+const position = z.object({ fingerprint: z.string().min(1).max(256), offset: z.number().int().nonnegative().safe() }).strict();
+export const sessionMessageRequestSchema = z.object({
+  cursor: position.optional(), before: position.optional(), limit: z.number().int().min(1).max(200),
+}).strict().refine((value) => !value.cursor || !value.before);
+const at = z.number().finite().nullable();
+export const sessionMessagePageSchema = z.object({
+  messages: z.array(z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("owner"), at, text: z.string().max(32000) }).strict(),
+    z.object({ kind: z.literal("agent"), at, text: z.string().max(32000) }).strict(),
+    z.object({ kind: z.literal("tool"), at, name: z.string().max(64), outcome: z.enum(["completed", "failed", "pending"]) }).strict(),
+  ])).max(200),
+  cursor: position.nullable(), older: position.nullable(), reset: z.boolean(), status: z.enum(["ok", "missing", "unsupported"]),
+}).strict();
+
 export const PROVIDER_IDS = Object.freeze(["claude", "codex"]);
 
 export const PROVIDER_SOURCES = Object.freeze({
@@ -25,6 +39,9 @@ export const PROVIDER_SOURCES = Object.freeze({
 // resolveReadiness receives a monitor-private { afterSignIn?: boolean } option.
 // Only confirmed native sign-in completion sets it; ordinary readiness reads do not.
 // It requests revalidation of failed runtime discovery, never optimistic readiness.
+
+// Optional private reads do not contribute to normalized evidence availability.
+export const PROVIDER_PRIVATE_READ_OPERATIONS = Object.freeze(["readSessionHistory", "readSessionMessages"]);
 
 // Monitor-private provider capability catalog.
 export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
@@ -69,6 +86,7 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "enumerateSessionHeaders",
   "readSession",
   "readSessionHistory",
+  "readSessionMessages",
   "readTranscriptPath",
   "readUsageLimits",
   "captureRepositoryContextInventory",
@@ -696,7 +714,9 @@ export function defineProvider(adapter) {
     throw new TypeError("Provider catalogSourceScope must be an opaque SHA-256 hash");
   }
   if (typeof adapter.readSession !== "function") throw new TypeError("Provider adapter must implement readSession");
-  if (adapter.readSessionHistory !== undefined && typeof adapter.readSessionHistory !== "function") throw new TypeError("Provider readSessionHistory must be a function");
+  for (const operation of PROVIDER_PRIVATE_READ_OPERATIONS) {
+    if (adapter[operation] !== undefined && typeof adapter[operation] !== "function") throw new TypeError(`Provider ${operation} must be a function`);
+  }
   if (adapter.readTranscriptPath !== undefined && typeof adapter.readTranscriptPath !== "function") {
     throw new TypeError("Provider readTranscriptPath must be a function");
   }
@@ -749,6 +769,9 @@ export function defineProvider(adapter) {
   const providerFolders = createProviderFolders(adapter.id, adapter.providerFolders);
   return Object.freeze({
     ...adapter,
+    ...(adapter.readSessionMessages ? { async readSessionMessages(/** @type {string} */ localId, /** @type {unknown} */ request) {
+      return sessionMessagePageSchema.parse(await adapter.readSessionMessages(localId, sessionMessageRequestSchema.parse(request)));
+    } } : {}),
     capabilityManifest,
     readinessCapabilities,
     homePolicy,

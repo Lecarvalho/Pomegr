@@ -1,3 +1,4 @@
+import { assistantReplyPayload, classifyCodexRecord } from "./message-classifier.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -52,33 +53,6 @@ export function stableCodexCallId(actorId, providerCallId, fallbackIdentity = ""
 
 export function stableCodexActivityId(actorId, identity) {
   return `codex-activity-${digest(`${actorId}|${collapsedText(identity, 1024)}`)}`;
-}
-
-function replyText(value) {
-  if (typeof value === "string") return value.trim();
-  if (!Array.isArray(value)) return "";
-  return value
-    .filter((item) => item && typeof item === "object"
-      && ["output_text", "text"].includes(String(item.type || "").toLowerCase()))
-    .map((item) => typeof item.text === "string" ? item.text : "")
-    .join("")
-    .trim();
-}
-
-function assistantReplyPayload(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const channel = String(value.channel ?? value.message_channel ?? value.messageChannel ?? "").toLowerCase();
-  const synthetic = value.synthetic === true || value.is_synthetic === true || value.isSynthetic === true
-    || value.metadata?.synthetic === true || value.metadata?.isSynthetic === true;
-  if (synthetic || ["analysis", "reasoning", "thinking"].includes(channel)) return null;
-  const type = String(value.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (type === "agentmessage") {
-    const text = replyText(value.text ?? value.message ?? value.content);
-    return text ? { text, id: value.id ?? value.item_id ?? value.itemId, phase: value.phase } : null;
-  }
-  if (type !== "message" || value.role !== "assistant") return null;
-  const text = replyText(value.content ?? value.text);
-  return text ? { text, id: value.id ?? value.item_id ?? value.itemId, phase: value.phase } : null;
 }
 
 function replyNativeId(value) {
@@ -584,16 +558,7 @@ export function parseCodexAssistantReplyRecords(records, options = {}) {
   let precedingEvent = null;
   for (const [recordIndex, record] of (Array.isArray(records) ? records : []).entries()) {
     const payload = record?.payload;
-    let candidate = null;
-    let candidateSource = payload;
-    if (record?.synthetic !== true && payload && typeof payload === "object" && !Array.isArray(payload)) {
-      if (record.type === "event_msg" && payload.type === "agent_message") candidate = assistantReplyPayload(payload);
-      else if (record.type === "event_msg" && ["item_completed", "item_done"].includes(payload.type)) {
-        candidateSource = payload.item;
-        candidate = assistantReplyPayload(candidateSource);
-      }
-      else if (record.type === "response_item") candidate = assistantReplyPayload(payload);
-    }
+    const { reply: candidate, replySource: candidateSource } = classifyCodexRecord(record);
     const timestamp = codexTimestamp(record?.timestamp ?? payload?.timestamp ?? candidateSource?.timestamp);
     if (!candidate || !timestamp) { precedingEvent = null; continue; }
     const nativeId = replyNativeId(candidateSource);

@@ -495,6 +495,24 @@ only normalized request snapshots, sanitized activity metadata, stable request
 numbers, and indexes. It excludes raw content, native identities, transcript
 paths, and private correlation keys. Generation files and a committed manifest
 allow bounded page reads without reparsing complete histories in GETs.
+
+The separate optional `readSessionMessages(localId, { cursor?, before?, limit })`
+operation serves the desktop-only on-demand `POST /internal/sessions/history-read`
+outside these caches. The provider contract defines and enforces strict request
+and answer schemas. No cursor selects the newest page; `cursor` selects following
+messages and `before` selects preceding messages. Offsets are complete-record byte
+boundaries. A record's blocks stay together, even if they exceed the requested
+limit; pages still contain at most 200 messages. A record exceeding that cap is
+unavailable rather than split. Fingerprints bind source identity, offset, and the
+SHA-256 of up to 256 bytes ending there; a mismatch or shorter file resets to the
+newest page. Append reads restore the incremental JSONL ingestor at the cursor and
+stop after a complete record reaches the limit. Newest and older pages locate
+records backward in 256 KiB windows, then replay only their selected range.
+Same-session reads serialize through completion gates that retain no answers.
+Each request discards its reader and page after answering. It adds no watcher,
+timer, checkpoint, or stored text. GETs remain cache-only. The exposure boundary is
+[Session history read](privacy/session-evidence.md#session-history-read).
+
 Complete replay uses two bounded ownership lanes: one foreground slot for selected
 history demand and one background slot within the separate history scheduler.
 Only an Activity or Requests `/api/session-history` request may enqueue or promote

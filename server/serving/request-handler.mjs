@@ -21,6 +21,7 @@ import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs
 import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
 import { TASK_FEATURE_ACTIONS, serveTaskFeatureRoute } from "./task-feature-routes.mjs";
 import { CHAT_RUN_PATHS, serveChatRunRoute } from "./chat-run-routes.mjs";
+import { SESSION_HISTORY_READ_PATH, serveSessionHistoryReadRoute } from "./session-history-read-routes.mjs";
 import { AGENT_TASK_READ_PATHS, CHAT_TASK_READ_PATH, serveAgentTaskReadRoute, serveChatTaskReadRoute } from "./task-agent-read-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
@@ -228,7 +229,8 @@ export function createRequestHandler({
     const repositoryPluginRequest = ["/internal/repository-plugin/recheck", "/internal/repository-plugin/prepare"].includes(requestUrl.pathname);
     const taskActionRequest = requestUrl.pathname.startsWith(TASK_ACTION_PATH_PREFIX);
     const chatRunRequest = CHAT_RUN_PATHS.has(requestUrl.pathname);
-    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest || chatRunRequest;
+    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest || chatRunRequest
+      || requestUrl.pathname === SESSION_HISTORY_READ_PATH;
     const desktopReadAllowed = !privateActionRequest && (!authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
@@ -252,6 +254,7 @@ export function createRequestHandler({
       response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     }
     response.setHeader("Cache-Control", "no-store");
+    if (requestUrl.pathname === SESSION_HISTORY_READ_PATH) { await serveSessionHistoryReadRoute({ request, response, requestUrl, runtime }); return; }
     if (taskActionRequest) {
       if (TASK_ISSUE_ACTIONS.includes(requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length))) {
         await serveTaskIssueRoute({ request, response, requestUrl, taskStore, taskIssues: runtime.taskIssues });
