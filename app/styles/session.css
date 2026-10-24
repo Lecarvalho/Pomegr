@@ -3,6 +3,14 @@
 .sessionTerminalOutput { height: clamp(300px, 55vh, 720px); overflow: auto; overflow-anchor: none; padding: var(--space-6); color: var(--command-ink); font: var(--text-xs)/1.8 var(--font-data); white-space: pre-wrap; overflow-wrap: anywhere; }
 .sessionTerminalOutput p { margin: 0 0 var(--space-4); }
 .sessionTerminalOutput p:last-child { margin-bottom: 0; }
+.sessionTerminalMessage { display: flex; align-items: baseline; min-width: 0; margin-bottom: var(--space-4); white-space: normal; }
+.sessionTerminalMessage:last-child { margin-bottom: 0; }
+.sessionTerminalMessage > .sessionTerminalMuted { flex: 0 0 auto; white-space: pre; }
+.sessionTerminalMessage > .agentChatMarkdown { flex: 1; min-width: 0; font: inherit; }
+.sessionTerminalMessage .agentChatMarkdown > * { margin: 0; }
+.sessionTerminalMessage .agentChatMarkdown > * + * { margin-top: var(--space-2); }
+.sessionTerminalMessage .agentChatMdHeading { font: 650 var(--text-xs)/1.4 var(--font-data); }
+.sessionTerminalMessage .agentChatCode { max-width: 100%; overflow-x: auto; white-space: pre; overflow-wrap: normal; }
 .sessionTerminalTool, .sessionTerminalMuted { color: var(--command-muted); }
 .sessionTerminalOutput .sessionTerminalTool { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: var(--space-1); }
 .sessionTerminalOutput [role="alert"] { color: var(--command-error); }

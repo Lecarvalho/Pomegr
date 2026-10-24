@@ -179,7 +179,7 @@ The task board is in [Task board design](task-board.md).
 
 ### Answer text
 
-- `AgentChatMarkdown` builds React elements from the answer and sets no HTML.
+- `SafeMarkdown` builds React elements from the answer and sets no HTML.
 - So HTML, a link, and an image stay the literal characters they were written with, and nothing navigates.
 - It reads paragraphs, `-`, `*`, and `1.` lists, `**bold**`, `` `inline code` ``, fenced code blocks, and `#` headings.
 - A blank line separates paragraphs, and a single line break is kept.

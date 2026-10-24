@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { inlineMarkdown } from "../inline-markdown";
+import { inlineMarkdown } from "./inline-markdown";
 
-// A small, safe renderer for Aril's answers. It builds React elements from text and nothing else: no HTML string is
+// A small, safe renderer for saved messages. It builds React elements from text and nothing else: no HTML string is
 // ever set, a link or an image is shown as the literal characters it was written with, and nothing navigates.
 
 type Block =
@@ -66,7 +66,7 @@ export function parseBlocks(source: string): Block[] {
 
 const inline = (text: string) => inlineMarkdown(text, "agentChatInlineCode");
 
-export function AgentChatMarkdown({ text }: { text: string }) {
+export function SafeMarkdown({ text }: { text: string }) {
   const blocks = useMemo(() => parseBlocks(text), [text]);
   return <div className="agentChatMarkdown">
     {blocks.map((block, index) => {

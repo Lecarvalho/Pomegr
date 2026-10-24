@@ -1,6 +1,6 @@
 import type { Task } from "../../../shared/task-contract";
 import { sessionListTime } from "../../dashboard-utils";
-import { inlineMarkdown } from "../inline-markdown";
+import { inlineMarkdown } from "../markdown/inline-markdown";
 
 /** The agent's report under Complete when: one muted line, then the agent's own words in a notice when it gave any. */
 export function TaskReportNote({ report }: { report: Pick<NonNullable<Task["report"]>, "at" | "blockReason" | "attention"> }) {
