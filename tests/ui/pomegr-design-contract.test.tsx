@@ -7,9 +7,19 @@ import { FileHistoryPanel } from "../../app/components/repositories/FileHistoryP
 import { FileTree } from "../../app/components/repositories/FileTree";
 import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 import { StorageUsageBar } from "../../app/settings/StorageSettings";
+import { SessionTerminalSection } from "../../app/components/design-system/DesignSystemTerminalSample";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+
+it("renders each read-only Terminal state from synthetic samples", () => {
+  render(<SessionTerminalSection />);
+  for (const label of ["History", "Live with Refresh", "Ended", "Empty", "Unavailable", "Failed", "Reading"]) {
+    expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
+  }
+  expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+});
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
   .map((match) => readFileSync(join(process.cwd(), "app", match[1]), "utf8")).join("\n");
 const layoutSource = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");

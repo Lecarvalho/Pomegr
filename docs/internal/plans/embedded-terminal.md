@@ -1,11 +1,11 @@
 # Sessions inside Pomegr: terminal, history, and continue
 
-> Status: active; the owner accepted the plan and its architecture on 2026-10-24. Phase 1 (read-only history) and phase 0 (the spike) start alongside 0.9.0.
+> Status: active; the owner accepted the plan and its architecture on 2026-10-24. Phase 1 (read-only history) shipped and phase 0 (the spike) ran on 2026-10-24.
 > Created: 2026-10-24.
 > Scope: keep the owner's coding-agent sessions inside the desktop app. Sessions that Pomegr starts run in a Terminal tab of the session, through a desktop-owned terminal host that survives app restarts and updates. The same Terminal tab shows any other session's saved history read-only, and an ended session can be continued in it through the provider's own resume. It covers the boundary changes, the host, the start and resume paths, the Terminal tab, and the feasibility spike that gates the terminal. The takeover brief (G14) and the owner inbox (G13) stay in the [purpose roadmap](purpose-roadmap.md); this plan gives them a place to open a session.
 > Continuation owner: the product owner decides; the agent that picks up a phase records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [session evidence privacy](../architecture/privacy/session-evidence.md), and [desktop privacy](../architecture/privacy/desktop-and-diagnostics.md) govern shipped behavior until each phase changes them.
-> Next task or decision: phase 1 server half (the history read), then its desktop half; phase 0 in parallel on a throwaway branch.
+> Next task or decision: the owner reviews the spike findings and decides how the host executable ships; then phase 2.
 > Completion criteria: the read-only history ships; the spike passes or the terminal part is cancelled; when it passes, a session started from Pomegr opens in its Terminal tab, survives app quit, crash, and update, an ended session continues in the terminal, and every rule below has a test.
 > Permanent destinations: `AGENTS.md` for the control boundary, [Tasks](../architecture/tasks.md) for the start and resume paths and the host boundary, [session evidence privacy](../architecture/privacy/session-evidence.md) for the history read, [desktop privacy](../architecture/privacy/desktop-and-diagnostics.md) for terminal output, the provider contract for the history read, a page in `docs/internal/design/` for the Terminal tab, and `/design-system` for its states.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -143,8 +143,8 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 
 ## Work and verification
 
-- [ ] **Phase 1, read-only history.** The history privacy change, the adapter read for Claude Code and Codex, the internal POST route, desktop main's IPC, and the Terminal tab in its read-only mode. It needs no native module. Tests use synthetic transcripts only, and check that no tool argument, tool result, or reasoning crosses.
-- [ ] **Phase 0, spike (gate for phases 2 to 6).** A throwaway branch that merges nothing. Proves, in a packaged build on Windows:
+- [x] **Phase 1, read-only history.** Shipped in #284 (monitor read) and the Terminal tab change (desktop bridge and tab).
+- [x] **Phase 0, spike (gate for phases 2 to 6).** Ran on 2026-10-24 on a throwaway branch with a fake CLI; findings are in the checkpoint.
   - a detached host with ConPTY runs Claude Code and Codex with correct rendering, resize, paste, Ctrl+C, and Unicode, and where each CLI draws its input box;
   - sessions survive app quit, app crash, a packaged update, and a protocol mismatch;
   - the native module unpacks, is signed, and passes artifact inspection and legal notices (`desktop/packaging/asar-policy.mjs`, `artifact-policy.mjs`, `legal-notices.mjs`);
@@ -173,3 +173,11 @@ The design review produced an interactive mockup with synthetic data that steps 
 ## Continuation checkpoint
 
 2026-10-24: design converged in review. The owner then dropped the session switcher, the terminal list, and external windows, docked the CLI input, removed the focus ring, and asked to read and continue any session; reading and Continue joined the plan. The owner then folded the reading into the Terminal tab as a read-only mode, and the mockup covers it. Later the same day the owner approved the architecture and the plan, and asked to start phase 1 and phase 0 now, alongside 0.9.0. Next action: phase 1 server half.
+
+2026-10-24, later: phase 1 shipped. The monitor reads a session's history from byte cursors through the existing incremental reader, and the desktop app shows it in a read-only Terminal tab that reads again on the existing `session-summary` revision while visible. Phase 0 ran with a fake CLI:
+- Passed: a detached host kept sessions running through a normal parent exit and a hard kill, with reconnection and input; a run from a per-build copy survived an overwrite of the installed folder, while a run from the installed folder hit a sharing error; a protocol mismatch refused to attach and left the session running; resize, a 10 KB paste, and Ctrl+C reached the child; the host exited 60 s after going idle and never while a session lived.
+- Partial: `node-pty` 1.1.0 prebuilds ran under Node and Electron and inside the packaged asar, but a source build was not proved (no Python on the build machine).
+- For the product phases: choose how the host's executable ships (the app ships no plain `node.exe`), decide between a reproducible native build and verified prebuilds, harden the user-only pipe transport, run the real Electron updater path, and run an attended check of the real Claude Code and Codex CLIs in the host, including how each draws its input box and whether each resume refuses a running session.
+
+Next action: the owner reviews the spike findings and decides how the host executable ships; then phase 2.
+

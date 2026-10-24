@@ -141,13 +141,42 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 
 | Breakpoint | Tabs |
 | --- | --- |
-| Desktop | Overview, Agents, Activities, Repository, Signals, Resources, Details, then Task for a session started for a task. |
+| Desktop | Overview, Agents, Activities, Repository, Signals, Resources, Details, then Task for a session started for a task, then Terminal in the desktop app. |
 | Phone | Overview, Agents (with its count badge), Activities, Repo, and More (with a chevron). |
 
 - On phone the tabs are content-width and spread across the row.
 - On phone the tabs never scroll horizontally.
 - **More** opens the remaining real tab destinations.
 - A tab switch preserves the `agent`, `request`, and `path` query selections.
+
+### Terminal tab
+
+- Terminal appears last only when the desktop history bridge exists, decided at first render with a pending server snapshot.
+- Browser tabs and paired devices have no Terminal tab.
+- On phone widths, the desktop app places Terminal in **More**.
+- A Terminal deep link falls back to Overview when the bridge is absent.
+- The panel renders saved history read-only in one data-font terminal surface.
+- Owner messages have a `> ` prefix; agent replies render as plain text.
+- Each tool appears as one muted line: `Tool · <name> · <outcome>`.
+- Text never renders as HTML or Markdown.
+- The docked bar reads **Read-only · Running outside Pomegr · Updates automatically** for a live session.
+- The live bar includes a quiet **Refresh** action.
+- The docked bar reads **Read-only · Session ended** for an ended session.
+- The normalized session state selects the bar text; history never determines liveness.
+- The panel has no input or **Continue** action.
+- **Load earlier** appears above messages when an older page exists and prepends that page without moving the reading position.
+- The first read shows **Reading history…**.
+- Empty history shows **No messages yet**.
+- Missing history shows **The provider no longer has this session's history.** and **Pomegr keeps no separate copy.**
+- Unsupported history shows **This provider does not support reading session history.**
+- A failed read shows one alert: **Session history could not be read.**
+- Reopening the tab or **Refresh** retries a failed read.
+- Updates follow the bottom while the owner is there and preserve position when the owner scrolls up.
+- Existing session-summary events trigger cursor reads only while the selected panel and document are visible.
+- Events during a read coalesce into one further read; returning to the visible document reads once.
+- A reset answer replaces the displayed messages.
+- The panel adds no timer or polling.
+- `/design-system` renders synthetic history, live, ended, empty, unavailable, failed, and reading states.
 
 ### Request preview bars
 

@@ -1,4 +1,20 @@
 /* Command Center session detail: reuse the monitoring components in the shell grammar. */
+.sessionTerminal { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-ground); }
+.sessionTerminalOutput { height: clamp(300px, 55vh, 720px); overflow: auto; overflow-anchor: none; padding: var(--space-6); color: var(--command-ink); font: var(--text-xs)/1.8 var(--font-data); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sessionTerminalOutput p { margin: 0 0 var(--space-4); }
+.sessionTerminalOutput p:last-child { margin-bottom: 0; }
+.sessionTerminalTool, .sessionTerminalMuted { color: var(--command-muted); }
+.sessionTerminalOutput .sessionTerminalTool { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: var(--space-1); }
+.sessionTerminalOutput [role="alert"] { color: var(--command-error); }
+.sessionTerminalOutput > button { margin-bottom: var(--space-4); }
+.sessionTerminalOutput:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.sessionTerminalBar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); background: var(--command-panel); }
+.sessionTerminalBar .commandQuietAction { flex: 0 0 auto; width: auto; }
+@media (max-width: 760px) {
+  .sessionTerminalOutput { padding: var(--space-4); }
+  .sessionTerminalBar { flex-wrap: wrap; }
+}
+
 .commandSessionView {
   color: var(--command-ink);
 }

@@ -45,6 +45,7 @@ import { useClientAccess } from "../../hooks/ClientAccessContext";
 import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSamples";
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
 import { EventsRailSection } from "./DesignSystemEventsSample";
+import { SessionTerminalSection } from "./DesignSystemTerminalSample";
 import { HomeUpdateSection } from "./DesignSystemHomeUpdateSample";
 import { TaskFieldsSection } from "./DesignSystemTaskFieldsSample";
 import { TaskBoardSection } from "./DesignSystemTaskBoardSample";
@@ -91,6 +92,7 @@ export function DesignSystemView() {
     </Section>
     <PanelsSection />
     <EventsRailSection />
+    <SessionTerminalSection />
     <HomeUpdateSection />
     <TaskFieldsSection />
     <TaskBoardSection />
