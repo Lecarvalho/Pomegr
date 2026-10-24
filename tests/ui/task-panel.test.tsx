@@ -332,7 +332,7 @@ describe("Task modal, mode edit", () => {
   });
 
   it("sends nothing on change or blur, keeps Save disabled until the draft differs, and disables it again when undone", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openDraftPanel(user);
@@ -340,8 +340,10 @@ describe("Task modal, mode edit", () => {
     expect(save(dialog)).toBeDisabled();
     await user.click(dialog.getByRole("button", { name: "Low" }));
     await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
-    await user.type(dialog.getByRole("textbox", { name: "Own condition" }), " More.");
-    await user.type(dialog.getByRole("textbox", { name: "Task" }), " Also this.");
+    await user.click(dialog.getByRole("textbox", { name: "Own condition" }));
+    await user.paste(" More.");
+    await user.click(dialog.getByRole("textbox", { name: "Task" }));
+    await user.paste(" Also this.");
     await user.tab();
     expect(save(dialog)).toBeEnabled();
     expect(taskAction).not.toHaveBeenCalled();
@@ -350,9 +352,11 @@ describe("Task modal, mode edit", () => {
     await user.click(dialog.getByRole("button", { name: "High" }));
     await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
     await user.clear(dialog.getByRole("textbox", { name: "Own condition" }));
-    await user.type(dialog.getByRole("textbox", { name: "Own condition" }), "Tests pass.");
+    await user.click(dialog.getByRole("textbox", { name: "Own condition" }));
+    await user.paste("Tests pass.");
     await user.clear(dialog.getByRole("textbox", { name: "Task" }));
-    await user.type(dialog.getByRole("textbox", { name: "Task" }), "Add a private task store.");
+    await user.click(dialog.getByRole("textbox", { name: "Task" }));
+    await user.paste("Add a private task store.");
     expect(save(dialog)).toBeDisabled();
     expect(taskAction).not.toHaveBeenCalled();
   });
@@ -411,7 +415,7 @@ describe("Task modal, mode edit", () => {
   });
 
   it("saves the own condition and the task text on Save, in one patch holding only what changed", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
     let dialog = await openDraftPanel(user);
@@ -420,7 +424,7 @@ describe("Task modal, mode edit", () => {
     await user.tab();
     expect(save(dialog)).toBeDisabled();
     await user.click(ownInput);
-    await user.type(ownInput, " And lint is clean.");
+    await user.paste(" And lint is clean.");
     await user.tab();
     // Blur sends nothing: only Save does.
     expect(taskAction).not.toHaveBeenCalled();
@@ -435,7 +439,7 @@ describe("Task modal, mode edit", () => {
     await user.tab();
     expect(save(dialog)).toBeDisabled();
     await user.click(text);
-    await user.type(text, " Also document it.");
+    await user.paste(" Also document it.");
     await user.click(dialog.getByRole("button", { name: "Low" }));
     await user.click(save(dialog));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));

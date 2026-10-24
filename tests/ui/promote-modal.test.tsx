@@ -193,7 +193,7 @@ describe("mode issue", () => {
   });
 
   it("sends only the keys that were chosen", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const { unmount } = render(<Harness />);
     chooseCommandOption(screen.getByRole("combobox", { name: "Feature" }), "feature:feat-1");
     await user.click(screen.getByRole("button", { name: "High" }));
@@ -209,7 +209,8 @@ describe("mode issue", () => {
     render(<Harness />);
     await user.click(screen.getByRole("checkbox", { name: "PR open" }));
     await user.click(screen.getByRole("checkbox", { name: "Tree clean" }));
-    await user.type(screen.getByRole("textbox", { name: "Own condition" }), "The store rejects a malformed record.");
+    await user.click(screen.getByRole("textbox", { name: "Own condition" }));
+    await user.paste("The store rejects a malformed record.");
     await user.click(promoteButton());
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(updateCalls()).toEqual([[repositoryId, "update", { id: "T-40", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: [], own: "The store rejects a malformed record." } }]]);
