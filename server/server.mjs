@@ -1,5 +1,6 @@
 import http from "node:http";
 import path from "node:path";
+import { readSessionContinuePlan } from "./runtime/session-continue-plan.mjs";
 import { repositoryRoleMappings } from "./normalize/agent-roles.mjs";
 import { homeSessionSummary, median, unavailableHomeSessionSummary } from "./sessions/catalog/home-session-summary.mjs";
 import { readGitStateAsync } from "./repository/git-state.mjs";
@@ -628,6 +629,8 @@ export function createMonitorRuntime(options = {}) {
     refreshUsageAfterClaudeSignIn: observation.refreshUsageAfterClaudeSignIn,
     refreshUsageAfterCodexSignIn: observation.refreshUsageAfterCodexSignIn,
     sessionWindowOwner: observation.sessionWindowOwner,
+    sessionForTerminalProcess: observation.sessionForTerminalProcess,
+    readSessionContinuePlan: (sessionId) => readSessionContinuePlan(sessionId, observation, registry),
     serveSessionHistory: observation.serveSessionHistory,
     async readSessionMessages(sessionId, request) {
       if (!observation.store.getByQualifiedId(sessionId) && !observation.coordinator.catalogIdentity(sessionId)) return null;
@@ -776,7 +779,8 @@ export async function startMonitorServer(options = {}) {
     return Object.freeze({ ...handle, operationsEndpoint: operationsTransport?.endpoint || null,
       refreshUsageAfterClaudeSignIn: runtime.refreshUsageAfterClaudeSignIn,
       refreshUsageAfterCodexSignIn: runtime.refreshUsageAfterCodexSignIn,
-      sessionWindowOwner: runtime.sessionWindowOwner, close });
+      sessionWindowOwner: runtime.sessionWindowOwner,
+      sessionForTerminalProcess: runtime.sessionForTerminalProcess, close });
   } catch (error) {
     try { await stopObservationOnce(); } catch { /* preserve bounded startup failure */ }
     try { await operationsTransport?.close(); } catch { /* preserve bounded startup failure */ }

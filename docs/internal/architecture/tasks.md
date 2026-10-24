@@ -2273,6 +2273,29 @@ terminal text as session state.
 - A terminal that has not bound to a session remains in the task's start view. A host
   terminal record alone never proves a task session exists.
 
+### Continuing an ended session
+
+- Continue is a separate owner-confirmed desktop operation, with no queue, agent, Aril, or tool entry point.
+- Desktop main requests `POST /internal/sessions/continue-plan` after the click, before showing the native confirmation.
+- The [private plan](privacy/session-evidence.md#continue-plan) supplies the provider, qualified session ID, local ID, working folder, and bounded title.
+- Main validates the IDs and absolute normalized folder, then shows **Continue this session in Pomegr?** with Cancel as default.
+- The dialog shows the title, provider, and working folder. Cancel launches nothing.
+- After confirmation, main reads the plan again and refuses changed liveness or a changed or missing working folder.
+- Fixed refusals are `live`, `unknown`, `folder_missing`, `history_missing`, `cli_missing`, and `busy` for an already starting or running resume.
+- Codex `unknown` with `writer_released` remains unknown and cannot resume.
+- Invalid input, absent observation, transport failure, and launch failure answer only fixed statuses.
+- Main shares dispatch's executable resolution and passes `userSessionEnvironment` without minting a dispatch token.
+- Claude Code receives only `["--resume", localId]`; Codex receives only `["resume", localId]`.
+- Local IDs must have the provider UUID format before entering arguments. No model, effort, or permission flags are replayed.
+- Continue never falls back to the repository root, requests a fork, or starts a replacement session.
+- Main serializes attempts per session. An ambiguous create result prevents another attempt in that app process.
+- Host keys use `continue/<provider>/<local ID>/<nonce>`. Main rebuilds direct bindings from the host list after restart, without persisted mappings.
+- A successful launch refreshes the same Terminal tab. The CLI draws its own history.
+- For a live host PID, main asks the monitor worker for its unique committed session identity. Ambiguous or absent evidence changes no binding.
+- A different observed identity replaces the binding and retains the original ID as `continuedFrom`; the original tab shows the new-session line and link.
+- The task link stays with its original session identity. Pomegr never transfers that link to a replacement.
+- The [Sessions design](../design/sessions.md#terminal-tab) records the external-resume race and its visible handling.
+
 ## GitHub issues
 
 Decided by the product owner on 2026-10-09. Pomegr's own task store stays the source of
@@ -2576,6 +2599,8 @@ serves no other client.
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `pomegr:terminal` IPC | The renderer through the trusted main frame | Fixed `list`, `attach`, `input`, `resize`, and `detach` operations. Input is at most 16 KiB |
 | `pomegr:terminal-output` IPC | Desktop main to the one renderer attaching to that terminal | Terminal output keyed only by the attach ID, delivered only to that attaching renderer |
+| `pomegr:session-continue` IPC | The owner through the trusted desktop main frame and native confirmation | A qualified session ID in; only a fixed status out. No plan, title, working folder, executable, or arguments reach the renderer |
+| `POST /internal/sessions/continue-plan` | Desktop main through the private-action gate | The fields in [Continue plan](privacy/session-evidence.md#continue-plan); no browser, paired-device, agent, or tool access |
 | Terminal host pipe | Desktop main, authenticated with its private token | Fixed host commands and their bounded replies. The pipe, token, and terminal output stay out of HTTP and monitor routes |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |

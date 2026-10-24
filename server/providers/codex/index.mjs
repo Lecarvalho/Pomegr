@@ -732,6 +732,7 @@ export function createCodexProvider(options = {}) {
     enumerateSessionHeaders,
     readSession,
     readSessionHistory,
+    peekSessionSource: (localId) => sourceLedger.locate(localId)?.file || null,
     async readSessionMessages(localId, request) {
       const metadata = rolloutDiscovery.peek(localId) || (await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, localId))?.find((item) => item.localId === localId);
       return readSessionMessages(metadata && isTopLevelCodexSession(metadata) ? metadata.rolloutFile : null, request, createCodexSessionMessageClassifier());

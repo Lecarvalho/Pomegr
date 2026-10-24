@@ -15,11 +15,10 @@ it("renders each read-only Terminal state from synthetic samples", () => {
   const { container } = render(<SessionTerminalSection />);
   expect(container.querySelector(".sessionTerminalMessage strong")).toHaveTextContent("previous revision");
   expect(container.querySelector(".sessionTerminalMessage pre code")?.textContent).toBe("const revision = previous;\ncommit(replacement);");
-  for (const label of ["History", "Live with Refresh", "Ended", "Empty", "Unavailable", "Failed", "Reading"]) {
-    expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
-  }
+  for (const label of ["History", "Live with Refresh", "Ended", "Continue refused", "Empty", "Unavailable", "Failed", "Reading"]) expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+  expect(screen.getByText(/Continue unavailable/u).closest(".sessionTerminal")?.querySelectorAll(".sessionTerminalBar")).toHaveLength(1);
   expect(container.querySelectorAll(".sessionManagedTerminal")).toHaveLength(6);
 });
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]

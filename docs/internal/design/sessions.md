@@ -175,7 +175,13 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - The live bar includes a quiet **Refresh** action.
 - The docked bar reads **Read-only · Session ended** for an ended session.
 - The normalized session state selects the bar text; history never determines liveness.
-- A read-only history panel has no input or **Continue** action. Continue remains deferred to phase 6.
+- A read-only history panel has no input.
+- The ended bar offers **Continue** only in the desktop app for readable Claude Code or Codex history whose normalized state is not live.
+- Continue opens native confirmation: **Continue this session in Pomegr?**, with the session title, provider, working folder, and Cancel as default.
+- A refusal changes the bar to **Read-only · Continue unavailable: <reason>**.
+- A successful resume turns the same tab live and lets the CLI draw its own history.
+- If observation identifies a different session, the original tab says **This session continued as a new session.** and links to that session.
+- Claude Code can resume a background session, and concurrent foreground resumes can interleave; Pomegr cannot eliminate a simultaneous external-start race.
 - **Load earlier** appears above messages when an older page exists and prepends that page without moving the reading position.
 - The first read shows **Reading history…**.
 - Empty history shows **No messages yet**.

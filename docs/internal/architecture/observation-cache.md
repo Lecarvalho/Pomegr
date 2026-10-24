@@ -513,6 +513,20 @@ Each request discards its reader and page after answering. It adds no watcher,
 timer, checkpoint, or stored text. GETs remain cache-only. The exposure boundary is
 [Session history read](privacy/session-evidence.md#session-history-read).
 
+The desktop-only `POST /internal/sessions/continue-plan` reads committed session
+evidence and catalog liveness without hydration, discovery, parsing, or provider
+acquisition. An adapter source peek consults only its held source ledger. The
+monitor checks the recorded launch directory and primary transcript with filesystem
+metadata reads. Live sessions and unknown or stale liveness refuse continuation,
+including unknown `writer_released` evidence. Historical Claude ended states need
+no optional live-bridge metadata. The plan adds no cache, watcher, or checkpoint.
+Its exact exposure boundary is [Continue plan](privacy/session-evidence.md#continue-plan).
+
+The private terminal process lookup reads only committed session window owners.
+It returns one qualified session identity for a unique process identifier, or
+unavailable for missing or ambiguous ownership. It acquires no provider evidence
+and adds no browser field or GET route.
+
 Complete replay uses two bounded ownership lanes: one foreground slot for selected
 history demand and one background slot within the separate history scheduler.
 Only an Activity or Requests `/api/session-history` request may enqueue or promote

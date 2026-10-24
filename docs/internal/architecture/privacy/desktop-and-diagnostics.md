@@ -90,6 +90,13 @@ Windows.
 
 ## Terminal output
 
+- Owner-confirmed Continue uses the [Continue plan](session-evidence.md#continue-plan) in desktop main only; its folder appears only in native confirmation.
+- Continue IPC returns only a fixed status, never a plan, working folder, title, executable, arguments, or environment.
+- Main sends a live host PID through private worker messages to resolve its unique committed session identity.
+- The monitor returns only that qualified session ID or null; the PID never reaches the renderer or HTTP.
+- Terminal listings may include `continuedFrom`, the qualified original session ID, beside the currently observed `sessionId` to identify a provider replacement.
+- Continue mappings stay in memory and rebuild from host keys; no mapping or plan is persisted.
+
 - Terminal output flows only from the desktop-owned terminal host, through desktop main,
   to the trusted desktop renderer that attached to that session.
 - The host keeps only bounded live scrollback in memory for each session.

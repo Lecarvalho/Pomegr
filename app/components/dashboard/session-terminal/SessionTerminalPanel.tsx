@@ -3,14 +3,15 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { SafeMarkdown } from "../../markdown/SafeMarkdown";
 import { subscribeLiveEvents } from "../../../live-events";
-import { ManagedTerminalPanel, ManagedTerminalSurface, terminalBridge, useManagedTerminals } from "./ManagedTerminalPanel";
+import { ContinuedSessionNotice, ManagedTerminalPanel, ManagedTerminalSurface, terminalBridge, useManagedTerminals } from "./ManagedTerminalPanel";
 
 type Position = { fingerprint: string; offset: number };
 type Message = { kind: "owner" | "agent"; at: number | null; text: string }
   | { kind: "tool"; at: number | null; name: string; outcome: "completed" | "failed" | "pending" };
 export type HistoryPage = { messages: Message[]; cursor: Position | null; older: Position | null; reset: boolean; status: "ok" | "missing" | "unsupported" };
 type Request = { cursor?: Position; before?: Position; limit?: number };
-type Bridge = { sessionHistory: (sessionId: string, request: Request) => Promise<{ ok: true; page: HistoryPage } | { ok: false }> };
+type ContinueStatus = "started" | "cancelled" | "live" | "unknown" | "folder_missing" | "history_missing" | "cli_missing" | "busy" | "invalid" | "not_found" | "unavailable" | "failed";
+type Bridge = { sessionHistory: (sessionId: string, request: Request) => Promise<{ ok: true; page: HistoryPage } | { ok: false }>; sessionContinue?: (sessionId: string) => Promise<{ status: ContinueStatus }> };
 function bridge() {
   if (typeof window === "undefined") return undefined;
   const value = (window as Window & { pomegrDesktop?: Bridge }).pomegrDesktop;
@@ -35,10 +36,11 @@ function OwnerMessage({ text }: { text: string }) {
 }
 
 // Fetch-free rendering also supplies the synthetic design-system states.
-export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, onEarlier, outputRef, onScroll }: {
+export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, onEarlier, outputRef, onScroll, onContinue, continuing, continueMessage }: {
   page: HistoryPage | null; busy: boolean; failed: boolean; live: boolean;
   onRefresh: () => void; onEarlier: () => void;
   outputRef?: RefObject<HTMLDivElement | null>; onScroll?: () => void;
+  onContinue?: () => void; continuing?: boolean; continueMessage?: string | null;
 }) {
   return <section className="sessionTerminal" aria-label="Read-only session terminal">
     <div className="sessionTerminalOutput" aria-label="Saved session history" tabIndex={0} ref={outputRef} onScroll={onScroll} aria-busy={busy}>
@@ -54,16 +56,24 @@ export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, on
       {failed && <p role="alert">Session history could not be read.</p>}
     </div>
     <div className="sessionTerminalBar">
-      <span>{live ? "Read-only · Running outside Pomegr · Updates automatically" : "Read-only · Session ended"}</span>
+      <span role={continueMessage ? "status" : undefined}>{continueMessage ?? (live ? "Read-only · Running outside Pomegr · Updates automatically" : "Read-only · Session ended")}</span>
       {live && <button type="button" className="commandQuietAction" disabled={busy} onClick={onRefresh}>Refresh</button>}
+      {onContinue && <button type="button" className="commandQuietAction" disabled={continuing} onClick={onContinue}>{continuing ? "Continuing…" : "Continue"}</button>}
     </div>
   </section>;
 }
 
-function HistoryPanel({ sessionId, live }: { sessionId: string; live: boolean }) {
+const CONTINUE_REASONS: Record<Exclude<ContinueStatus, "started" | "cancelled">, string> = {
+  live: "session is already running", unknown: "session ownership could not be confirmed", folder_missing: "working directory is missing",
+  history_missing: "provider history is unavailable", cli_missing: "provider command is unavailable", busy: "another terminal action is in progress",
+  invalid: "session cannot be continued", not_found: "session was not found", unavailable: "terminal host is unavailable", failed: "session could not be continued",
+};
+function HistoryPanel({ sessionId, live, onContinued, allowContinue = true }: { sessionId: string; live: boolean; onContinued?: () => void; allowContinue?: boolean }) {
   const [page, setPage] = useState<HistoryPage | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const [continueMessage, setContinueMessage] = useState<string | null>(null);
   const output = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const prepend = useRef<{ height: number; top: number } | null>(null);
@@ -123,11 +133,27 @@ function HistoryPanel({ sessionId, live }: { sessionId: string; live: boolean })
     return () => { disposed = true; current = null; read.current = () => {}; unsubscribe(); document.removeEventListener("visibilitychange", onVisible); };
   }, [sessionId]);
 
-  return <SessionTerminalSurface page={page} busy={busy} failed={failed} live={live} outputRef={output}
+  const canContinue = allowContinue && !live && !busy && !failed && page?.status === "ok" && /^(claude|codex):/u.test(sessionId)
+    && typeof bridge()?.sessionContinue === "function" && Boolean(terminalBridge());
+  const continueSession = async () => {
+    const invoke = bridge()?.sessionContinue;
+    if (!invoke || continuing) return;
+    setContinuing(true); setContinueMessage(null);
+    try {
+      const result = await invoke(sessionId);
+      if (result.status === "started") { onContinued?.(); return; }
+      if (result.status !== "cancelled") setContinueMessage(`Read-only · Continue unavailable: ${CONTINUE_REASONS[result.status]}`);
+    } catch { setContinueMessage("Read-only · Continue unavailable: terminal host is unavailable"); }
+    finally { setContinuing(false); }
+  };
+
+  return <>
+  <SessionTerminalSurface page={page} busy={busy} failed={failed} live={live} outputRef={output}
     onRefresh={() => read.current()} onEarlier={() => read.current(true)} onScroll={() => {
       const node = output.current;
       if (node) pinned.current = node.scrollHeight - node.clientHeight - node.scrollTop <= 24;
-    }} />;
+    }} onContinue={canContinue && !continueMessage ? () => void continueSession() : undefined} continuing={continuing} continueMessage={canContinue ? continueMessage : null} />
+  </>;
 }
 
 export function SessionTerminalPanel(props: { sessionId: string; live: boolean }) {
@@ -136,17 +162,35 @@ export function SessionTerminalPanel(props: { sessionId: string; live: boolean }
 }
 
 function ManagedSessionPanel({ sessionId, live }: { sessionId: string; live: boolean }) {
-  const { listing } = useManagedTerminals();
-  const [exitCode, setExitCode] = useState<number | null>(null);
+  const { listing, refresh } = useManagedTerminals();
+  const [exited, setExited] = useState<{ key: string; code: number } | null>(null);
+  const [continuing, setContinuing] = useState(false);
+  const onContinued = async () => { setExited(null); setContinuing(true); try { await refresh(); } finally { setContinuing(false); } };
+  const continuations = listing?.sessions?.filter((item) => item.continuedFrom === sessionId) ?? [];
+  const newestContinuations = [...continuations].reverse();
+  const continued = newestContinuations.find((item) => item.state === "live" && exited?.key !== item.key)
+    ?? newestContinuations.find((item) => item.key === exited?.key)
+    ?? newestContinuations[0];
+  if (continued) {
+    const exitCode = exited?.key === continued.key ? exited.code : continued.exitCode;
+    if (continued.state === "exited" || exited?.key === continued.key) return <>
+      <p className="sessionTerminalMuted">Process exited with code {exitCode ?? 0}.</p>
+      <ContinuedSessionNotice terminal={continued} />
+      <HistoryPanel sessionId={sessionId} live={false} onContinued={onContinued} allowContinue={!live && continued.sessionId === sessionId} />
+    </>;
+    return <ManagedTerminalPanel terminal={continued} onExit={(code) => setExited({ key: continued.key, code })} />;
+  }
+  if (continuing) return <ManagedTerminalSurface state="starting" />;
   const terminal = listing?.sessions?.find((item) => item.sessionId === sessionId);
-  if (exitCode !== null || terminal?.state === "exited") return <>
-    <p className="sessionTerminalMuted">Process exited with code {exitCode ?? terminal?.exitCode ?? 0}.</p>
-    <HistoryPanel sessionId={sessionId} live={false} />
+  if (terminal && (exited?.key === terminal.key || terminal.state === "exited")) return <>
+    <p className="sessionTerminalMuted">Process exited with code {(exited?.key === terminal.key ? exited.code : terminal.exitCode) ?? 0}.</p>
+    <HistoryPanel sessionId={sessionId} live={false} onContinued={onContinued} allowContinue={!live} />
   </>;
-  if (terminal) return <ManagedTerminalPanel terminal={terminal} onExit={setExitCode} />;
+  if (terminal) return <ManagedTerminalPanel terminal={terminal} onExit={(code) => setExited({ key: terminal.key, code })} />;
   if (!listing) return <ManagedTerminalSurface state="reconnecting" />;
+  if (!listing.ok) return <ManagedTerminalSurface state="host_unavailable" />;
   return <>
     {listing.hosts?.some((host) => host.state === "incompatible_host") && <p className="sessionTerminalMuted">An older terminal host is temporarily inaccessible.</p>}
-    <HistoryPanel sessionId={sessionId} live={live} />
+    <HistoryPanel sessionId={sessionId} live={live} onContinued={onContinued} />
   </>;
 }

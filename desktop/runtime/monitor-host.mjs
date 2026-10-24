@@ -51,6 +51,11 @@ const shutdown = installShutdown(async () => {
         token: agentAuthorizationToken,
       });
     }
+    if (message?.type === "terminal-session" && typeof message.requestId === "number") {
+      let sessionId = null;
+      try { sessionId = handle?.sessionForTerminalProcess?.(message.pid) || null; } catch { /* Unknown remains unbound. */ }
+      send({ type: "terminal-session-result", requestId: message.requestId, sessionId });
+    }
   }
 });
 recordUtilityStage("MONITOR_MODULE_LOADED");

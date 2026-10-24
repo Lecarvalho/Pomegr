@@ -21,6 +21,20 @@
 - Page text stays only in renderer memory while the Terminal panel is open; desktop main retains no copy after the answer.
 - No history enters a store, cache, log, browser tab, paired device, `/api/state`, SSE, the LAN gateway, Aril, or MCP.
 
+## Continue plan
+
+- `POST /internal/sessions/continue-plan` accepts only `{ sessionId }` with a validated provider-qualified identity.
+- Its desktop private-action gate requires the desktop token, POST, the exact loopback Host, and no Origin.
+- Success returns only `{ ok: true, plan: { provider, sessionId, localId, cwd, title } }` to desktop main.
+- `cwd` is the normalized absolute launch directory from committed provider evidence; it must still exist as a directory.
+- `title` is the recorded display title, trimmed to 160 characters with control characters replaced by spaces.
+- The optional private `peekSessionSource(localId)` operation returns only an already held primary transcript path, without discovery or file reads.
+- The monitor checks that this transcript still exists as a file; its path never enters the plan.
+- Refusals contain only `live`, `unknown`, `folder_missing`, or `history_missing`; request failures contain only `invalid`, `not_found`, or `unavailable`.
+- The plan is never stored, cached, logged, or included in renderer IPC, browser GETs, session domains, catalogs, checkpoints, Aril, or MCP.
+- Private terminal process lookup returns a qualified session identity only when committed ownership identifies exactly one session.
+- The process identifier and process-start identity remain private to the monitor and desktop main.
+
 ## Agent roles and custom types
 
 - Provider-native agent kinds and repository role-map contents are monitor-private.

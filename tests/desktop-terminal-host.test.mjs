@@ -83,6 +83,19 @@ test('managed keys preserve repository, task and nonce while rejecting arbitrary
   }
 });
 
+test('continue host keys accept only supported providers and UUID session identity', async (t) => {
+  const f = await fixture(t);
+  const client = await f.connect();
+  const id = '01234567-89ab-4cde-8fab-0123456789ab';
+  for (const provider of ['claude', 'codex']) {
+    const key = `continue/${provider}/${id}/${'b'.repeat(32)}`;
+    assert.equal((await client.request('create', { plan: f.plan(key) })).ok, true);
+  }
+  for (const key of [`continue/other/${id}/${'b'.repeat(32)}`, `continue/codex/../${'b'.repeat(32)}`, `continue/claude/not-a-uuid/${'b'.repeat(32)}`]) {
+    assert.equal((await client.request('create', { plan: f.plan(key) })).error, 'TERMINAL_INVALID');
+  }
+});
+
 test('a prepared host starts without any ACL subprocess', async (t) => {
   const runtimeDirectory = await mkdtemp(path.join(os.tmpdir(), 'pomegr-terminal-test-'));
   await restrictDirectory(runtimeDirectory);

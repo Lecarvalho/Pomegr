@@ -16,7 +16,7 @@ const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", 
 const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
 const TASK_FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const TERMINAL_KEY = /^repo-[a-f0-9]{24}\/T-[1-9][0-9]{0,8}\/[a-f0-9]{32}$/u;
+const TERMINAL_KEY = /^(?:repo-[a-f0-9]{24}\/T-[1-9][0-9]{0,8}|continue\/(?:claude|codex)\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/[a-f0-9]{32}$/iu;
 const TERMINAL_ATTACH_ID = /^[A-Za-z0-9_-]{1,128}$/u;
 const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const TASK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
@@ -130,6 +130,10 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   taskFeature(repositoryId, featureId) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || typeof featureId !== "string" || !TASK_FEATURE_ID.test(featureId)) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-feature", repositoryId, featureId);
+  },
+  sessionContinue(sessionId) {
+    if (typeof sessionId !== "string" || !/^(?:claude|codex):[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(sessionId)) return Promise.resolve({ status: "invalid" });
+    return ipcRenderer.invoke("pomegr:session-continue", sessionId);
   },
   sessionHistory(sessionId, request) {
     if (typeof sessionId !== "string" || !SESSION_ID.test(sessionId)) return Promise.resolve({ ok: false, error: "invalid" });

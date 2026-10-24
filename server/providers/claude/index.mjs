@@ -730,6 +730,7 @@ export function createClaudeProvider(options = {}) {
     enumerateSessionHeaders,
     readSession,
     readSessionHistory,
+    peekSessionSource: (localId) => sourceLedger.locate(localId)?.file || null,
     readSessionMessages: (localId, request) => readSessionMessages(resolveSession(localId)?.mainFile, request, claudeSessionMessages),
     captureRepositoryContextInventory,
     readRepositoryPluginSetup,

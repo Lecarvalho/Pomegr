@@ -95,6 +95,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   }
   const claudeState = JSON.parse(serialized[1]);
   const codexState = JSON.parse(serialized[2]);
+  assert.equal(claudeState.session.cwd, "");
+  assert.equal(codexState.session.cwd, "");
+  assert.equal(serialized.join("\n").includes(JSON.stringify(SAFE_CWD).slice(1, -1)), false);
   assert.deepEqual(codexState.agents.map(({ cacheLifetime }) => cacheLifetime), ["30m+", "30m+"]);
   assert.deepEqual(codexState.metrics.tokens.requestSnapshots.items.map(({ cacheLifetime }) => cacheLifetime), ["30m+", "30m+"]);
   const home = JSON.parse(serialized[3]);

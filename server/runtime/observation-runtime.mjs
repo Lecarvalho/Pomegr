@@ -720,6 +720,16 @@ export function createObservationRuntime(options = {}) {
     sessionWindowOwner(sessionId) {
       return typeof sessionId === "string" ? sessionWindowOwners.get(sessionId) || null : null;
     },
+    sessionForTerminalProcess(pid) {
+      if (!Number.isInteger(pid) || pid <= 0) return null;
+      let found = null;
+      for (const [sessionId, owner] of sessionWindowOwners) {
+        if (owner.pid !== pid) continue;
+        if (found !== null) return null;
+        found = sessionId;
+      }
+      return found;
+    },
     async refreshUsageAfterCodexSignIn() {
       // Native completion queues acquisition independently of cache-only GETs.
       if (usageRefreshInFlight) await usageRefreshInFlight;

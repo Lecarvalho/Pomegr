@@ -41,7 +41,7 @@ export const PROVIDER_SOURCES = Object.freeze({
 // It requests revalidation of failed runtime discovery, never optimistic readiness.
 
 // Optional private reads do not contribute to normalized evidence availability.
-export const PROVIDER_PRIVATE_READ_OPERATIONS = Object.freeze(["readSessionHistory", "readSessionMessages"]);
+export const PROVIDER_PRIVATE_READ_OPERATIONS = Object.freeze(["readSessionHistory", "readSessionMessages", "peekSessionSource"]);
 
 // Monitor-private provider capability catalog.
 export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
@@ -88,6 +88,7 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "readSessionHistory",
   "readSessionMessages",
   "readTranscriptPath",
+  "peekSessionSource",
   "readUsageLimits",
   "captureRepositoryContextInventory",
   "readRepositoryPluginSetup",
