@@ -156,7 +156,9 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - On phone widths, the desktop app places Terminal in **More**.
 - A Terminal deep link falls back to Overview when the bridge is absent.
 - The panel renders saved history read-only in one data-font terminal surface.
-- Owner messages have a quiet `> ` prefix before the first block, outside Markdown.
+- Owner messages are a block of their own: a quiet "You" label, the raised panel background, and a 2px left rule in the strong line color (owner, 2026-10-24).
+- An owner message longer than 8 lines or 600 characters folds to about 8 lines, with **Show more** and **Show less**.
+- Agent replies stay unboxed text, and tool lines stay one muted line.
 - Each tool appears as one muted line: `Tool · <name> · <outcome>`.
 - Owner and agent text renders through the shared safe Markdown renderer; no HTML is set; links and images stay literal; tool lines stay plain.
 - Markdown keeps the data font and compact type scale; fenced code preserves line breaks and scrolls horizontally inside the message.

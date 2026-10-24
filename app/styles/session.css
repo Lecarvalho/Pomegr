@@ -5,8 +5,12 @@
 .sessionTerminalOutput p:last-child { margin-bottom: 0; }
 .sessionTerminalMessage { display: flex; align-items: baseline; min-width: 0; margin-bottom: var(--space-4); white-space: normal; }
 .sessionTerminalMessage:last-child { margin-bottom: 0; }
-.sessionTerminalMessage > .sessionTerminalMuted { flex: 0 0 auto; white-space: pre; }
-.sessionTerminalMessage > .agentChatMarkdown { flex: 1; min-width: 0; font: inherit; }
+.sessionTerminalOwner { flex-direction: column; align-items: stretch; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-left: 2px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel-2); }
+.sessionTerminalOwnerLabel { color: var(--command-muted); font-size: var(--text-caption); letter-spacing: .04em; text-transform: uppercase; }
+.sessionTerminalOwnerBody { min-width: 0; }
+.sessionTerminalOwnerBody[data-folded="true"] { max-height: calc(8 * 1.8em); overflow: hidden; }
+.sessionTerminalOwnerToggle { align-self: flex-start; width: auto; }
+.sessionTerminalMessage > .agentChatMarkdown, .sessionTerminalOwnerBody > .agentChatMarkdown { flex: 1; min-width: 0; font: inherit; }
 .sessionTerminalMessage .agentChatMarkdown > * { margin: 0; }
 .sessionTerminalMessage .agentChatMarkdown > * + * { margin-top: var(--space-2); }
 .sessionTerminalMessage .agentChatMdHeading { font: 650 var(--text-xs)/1.4 var(--font-data); }
