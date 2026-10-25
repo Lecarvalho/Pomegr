@@ -5,7 +5,7 @@
 > Scope: let Aril run the delivery loop for a repository while the owner is away: pick the next unblocked work, start a builder session, start a separate reviewer session on the result, send failed work back, merge on green CI and a passing review, start the next task, write tasks for the next step of an accepted plan, and report to the owner. It covers the standing grant that authorizes this, the event wake-up, the reviewer session, send-back, merge, the action log, and the boundary changes. It reuses the gaps of the [purpose roadmap](purpose-roadmap.md) (G6 to G10, G13) instead of redefining them.
 > Continuation owner: the product owner decides; the agent that builds a phase records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Agent chat](../architecture/agent-chat.md), and [Tasks](../architecture/tasks.md) govern shipped behavior until each phase changes them.
-> Next task or decision: the owner reviews the revised plan; phases 1 and 2 can start after that review.
+> Next task or decision: phase 8, the acceptance run, which needs the owner.
 > Completion criteria: a grant runs a repository's Ready tasks to merged pull requests with no owner action between tasks, every action is in the log, the owner can stop it at once, and every rule below has a test.
 > Permanent destinations: `AGENTS.md` for the control boundary, [Agent chat](../architecture/agent-chat.md) for the grant, wake-up, and Aril's actions, [Tasks](../architecture/tasks.md) for send-back, review verdicts, and merge, the agent chat privacy section for the log, and a page in `docs/internal/design/` for the grant and the log.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -156,13 +156,13 @@ Each phase ships on its own and is useful without the next.
 - [x] **6. Merge on green.** The merge action with every check above.
 - [x] **7. Tasks from plans.** Aril writes tasks for the next step of a plan its work rules select.
 - [ ] **8. Acceptance.** Experiment 2 runs under a grant; record whether its targets passed.
-- [ ] **9. Owner refinements.** The owner's decisions of 2026-10-25 after phase 7, each its own slice:
+- [x] **9. Owner refinements.** The owner's decisions of 2026-10-25 after phase 7, each its own slice:
   - [x] 9a. Limits by tasks and usage: the tasks limit and tasks at a time replace starts and concurrent sessions; the usage limit holds every grant start while the provider that would run is at or above it, or its usage is unknown.
   - [x] 9b. Merge settings: merge or auto-merge, and branch deletion, each settled or the repository's own; Aril sees the repository's GitHub merge settings.
   - [x] 9c. Worktree cleanup: Aril sees the task worktrees that remain and proposes removing them; the owner applies each removal.
   - [x] 9d. Settled rules: Aril does not ask again what memory or settings settled, and sees when the repository's workflow sources changed since a rule was settled.
   - [x] 9e. Review terminals: the terminal view lists a review session, so the owner can watch it.
-  - [ ] 9f. Docs and pages: the Home dashboard, the landing page, and the public guides describe what Aril does under a grant.
+  - [x] 9f. Docs and pages: the Home dashboard, the landing page, and the public guides describe what Aril does under a grant.
 - Later: a machine-usage metric that a tasks-at-a-time limit can weigh.
 
 Phases 1 to 3 add no authority.
@@ -187,3 +187,4 @@ Phases 1 to 3 add no authority.
 2026-10-25: phase 7 shipped in #333 and #334. The owner refined limits, merge, worktree cleanup, settled rules, and the docs (phase 9). Next action: phase 9 slices; phase 8 still needs the owner.
 2026-10-25: phase 9d built: Aril treats its settings and memory as settled, and the desktop lists the workflow sources that changed after the oldest settled time. Next action: the other phase 9 slices.
 2026-10-25: phase 9c built: Aril sees the task worktrees that remain and proposes removing them, and the owner applies each removal in the desktop app. Next action: the other phase 9 slices; phase 8 still needs the owner.
+2026-10-25: phase 9 shipped (#336–#340 and this change). Next action: phase 8, the acceptance run, which needs the owner.

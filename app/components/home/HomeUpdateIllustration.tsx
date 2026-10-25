@@ -1,45 +1,32 @@
 import styles from "./HomeUpdateIllustration.module.css";
 
-// Artwork for the current What's new announcement: a repository's task board, cropped to In progress and Ready.
-type Card = { id: string; title: string; chip: string; tone?: "live" | "queued"; run: string };
+// Artwork for the current What's new announcement: the Tasks strip of an active Aril grant above the task log, cropped at the bottom edge.
+type Row = { time: string; task: string | null; label: string; pullRequest?: number };
 
-const IN_PROGRESS: Card[] = [
-  { id: "T-4", title: "Add a dark theme", chip: "In progress", tone: "live", run: "Claude Code · medium" },
-  { id: "T-3", title: "Write the import guide", chip: "In progress", tone: "live", run: "Codex · low" },
+// Invented sample rows, newest first, with the labels the task log shows.
+const ROWS: Row[] = [
+  { time: "15:30", task: "T-5", label: "Merged by Aril under a grant", pullRequest: 12 },
+  { time: "15:00", task: "T-5", label: "Review passed" },
+  { time: "14:30", task: null, label: "Resumed after provider usage (codex)" },
+  { time: "14:00", task: null, label: "Paused for provider usage (codex)" },
+  { time: "13:30", task: "T-5", label: "Sent back by Aril under a grant" },
+  { time: "13:00", task: "T-5", label: "Review failed" },
 ];
-const NEXT: Card = { id: "T-5", title: "Cache the search results", chip: "Queued · next", tone: "queued", run: "Codex · high" };
-const GROUP: Card[] = [
-  { id: "T-6", title: "Add an export button", chip: "Queued", tone: "queued", run: "Claude Code · medium" },
-  { id: "T-7", title: "Translate the empty states", chip: "Queued", tone: "queued", run: "Claude Code · low" },
-];
-
-function MiniCard({ card }: { card: Card }) {
-  return <div className={`${styles.card}${card.tone === "live" ? ` ${styles.live}` : ""}`}>
-    <div className={styles.top}>
-      <span className={styles.id}>{card.id}</span>
-      <span className={`${styles.chip}${card.tone ? ` ${styles[card.tone]}` : ""}`}>{card.chip}</span>
-    </div>
-    <span className={styles.title}>{card.title}</span>
-    <span className={styles.run}>{card.run}</span>
-  </div>;
-}
 
 export function HomeUpdateIllustration() {
   return <div className={styles.frame}>
-    <div className={styles.lane}>
-      <div className={styles.header}><strong>In progress</strong><span>2</span></div>
-      {IN_PROGRESS.map((card) => <MiniCard key={card.id} card={card} />)}
+    <div className={styles.strip}>
+      <span>Aril grant until <span className={styles.value}>18:00</span></span>
+      <span className={styles.actions}><span>Aril settings</span><span>Log</span></span>
     </div>
-    <div className={styles.lane}>
-      <div className={styles.header}><strong>Ready</strong><span>3</span></div>
-      <MiniCard card={NEXT} />
-      <div className={styles.group}>
-        <div className={styles.caption}>
-          <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M4 2v8M8 2v8" /></svg>
-          <span>Parallel · <span className={styles.count}>2</span></span>
-        </div>
-        {GROUP.map((card) => <MiniCard key={card.id} card={card} />)}
-      </div>
+    <div className={styles.log}>
+      <div className={styles.head}>Task log</div>
+      {ROWS.map((row) => <div key={row.time} className={styles.row}>
+        <span className={styles.time}>{row.time}</span>
+        <span className={styles.task}>{row.task}</span>
+        <span className={styles.label}>{row.label}</span>
+        {row.pullRequest !== undefined && <span className={styles.pr}>PR #{row.pullRequest}</span>}
+      </div>)}
     </div>
   </div>;
 }

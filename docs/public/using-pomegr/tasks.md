@@ -6,10 +6,10 @@ description: "Plan work on a repository's task board, queue it, and have the Pom
 # Tasks
 
 A task board holds the work you want coding agents to do in one repository. You start
-a session for a task yourself, or turn on the queue and let the desktop app start tasks
-one after another. After a start, Pomegr only observes the session: it never stops,
-attaches to, answers, or approves anything in a running session. Observing sessions
-works the same whether or not you use tasks.
+a session for a task yourself, turn on the queue and let the desktop app start tasks
+one after another, or start an [Aril grant](#aril-grants). After a start, Pomegr only
+observes the session: it never stops, attaches to, answers, or approves anything in a
+running session. Observing sessions works the same whether or not you use tasks.
 
 Click through the demo below to see a board at work. It is a demo with sample tasks,
 not the Pomegr app, and it starts nothing.
@@ -57,44 +57,73 @@ Only the desktop app can change that permission.
 
 ### Aril grants
 
-Settings alone grant no actions. To start a grant, allow **Start tasks**, **Start reviews**,
-**Merge on green**, or any combination, set **Hours**, **Tasks**, **Tasks at a time**, and **Usage limit %**,
-and add a work rule. If **Send work back** is enabled, also set **Send-backs per task**.
-Save your changes, then select **Start grant** in the panel's **Grant** section and confirm.
+A grant lets the desktop app run a repository's selected Ready tasks while you are away. Only you
+start a grant, in the desktop app or on a paired phone you allow. Aril settings alone grant no
+action. A grant ends at its end time or when you quit Pomegr, and it never renews itself.
 
-The limits count tasks and provider usage, not sessions. **Tasks** is how many different tasks the grant takes on;
-a task counts once, when the grant first starts it, and its reviews and send-backs are part of that task.
-**Tasks at a time** is how many of those tasks are open at once. A task is open until it is merged, marked done,
-or needs you: blocked, out of send-backs, or a refused merge for its current pull-request head.
-When the grant has taken **Tasks** tasks, it starts no new task but keeps reviewing, sending back, and merging
-the open ones, and it ends when none remains open. **Usage limit %** is the provider usage at or above which the grant
-starts nothing.
+To start a grant:
 
-The desktop app starts the selected Ready tasks and reviews without asking for each start.
-With **Merge on green**, it merges a task's open pull request
-only when the task needs review, its latest review passed, and CI passed for the known pull-request head.
-The **Merge method** setting uses the repository default unless you choose **Squash**,
-**Merge commit**, or **Rebase**. If the repository allows several methods, choose one before the grant runs.
-Choose a **Merge mode** before a grant may merge: **Merge when green** merges once CI passes, and
-**Auto-merge when green** asks GitHub to merge through the repository's own auto-merge or merge queue, so GitHub merges
-when its rules, such as required reviews, allow. Auto-merge needs the repository to allow it, and Aril logs
-“Auto-merge enabled by Aril” when GitHub accepts it. **Delete branch after merge** is **Repository default** unless you choose
-**Delete**, which deletes the task's branch from the repository after its pull request is merged (never the default branch,
-and never a fork's branch), or **Keep**; Pomegr deletes nothing otherwise. A grant that has used all its tasks
-waits up to ten minutes after the last merge for that deletion. Ask Aril to propose these: it reads the repository's own
-rules and GitHub settings first.
-Aril attempts each head commit at most once. A merge leaves the task in Review for your **Mark done**.
-When **Send work back** is enabled and **Send-backs per task**
-is set, it sends matching tasks with failed reviews to a new builder session in the same worktree.
-The strip above the board shows the active grant's end time; the panel also shows the tasks used.
-Select **Stop grant** to stop further grant actions at once. Running sessions continue.
-The panel shows when the last grant ended and why; a grant never renews itself.
+1. In **Aril settings**, under **Actions under a grant**, allow at least one of **Start tasks**,
+   **Start reviews**, or **Merge on green**. You can also allow **Send work back** and **Write tasks from plans**.
+2. Under **Limits**, set **Hours**, **Tasks**, **Tasks at a time**, and **Usage limit %**.
+   If **Send work back** is on, also set **Send-backs per task**.
+3. Under **Work rules**, add a rule that selects tasks. A grant starts nothing without one.
+   To write tasks, also allow **Start tasks** and add a **Plan** rule that names a Markdown file.
+4. Select **Save**. Then select **Start grant** in the **Grant** section, and confirm.
 
-The grant starts no task, review, or send-back, and writes no tasks, for a provider whose usage is
-unknown, stale, unavailable, or at the usage limit. It resumes when that usage is current and below
-the limit. The task log shows each pause and resume with the provider name. Merges are never held for usage.
+| Limit | What it counts |
+| --- | --- |
+| **Hours** | How long the grant lasts. |
+| **Tasks** | The different tasks the grant takes on. A task counts once, when the grant first starts it. Its reviews and send-backs are part of that task. |
+| **Tasks at a time** | The taken tasks that are open. A task is open until it is merged, marked done, or needs you. |
+| **Send-backs per task** | How often Aril sends one task back after a failed review. |
+| **Usage limit %** | The provider usage at or above which the grant starts nothing. |
 
-A paired device can always stop an active grant; starting one requires that permission.
+A task needs you when it is blocked, out of send-backs, or has a refused merge for its current
+pull-request head. When the grant has taken **Tasks** tasks, it starts no new task. It keeps reviewing,
+sending back, and merging the open ones, and it ends when none remains open.
+
+While a grant is active, the desktop app does these things, as far as you allowed them, without asking for each one:
+
+- **Start.** It starts the Ready tasks that your work rules select, in Ready order, behind every
+  [start gate](tasks-start-gates.md).
+- **Review.** It starts a separate reviewer session for a task in **Review**. The reviewer runs the
+  repository's checks, changes no code, and reports pass or fail.
+- **Send back.** After a failed review, it starts a new builder session in the same worktree. When the
+  send-backs are used, the task stays in **Review** for you.
+- **Merge.** With **Merge on green**, it merges a task's open pull request only after the latest review
+  passed and CI passed for the known pull-request head. It attempts each head commit once. The task
+  stays in **Review** for your **Mark done**.
+- **Write tasks.** With **Write tasks from plans**, Aril creates tasks in **Ready** from the next unbuilt
+  step of the plans you named. It writes at most **Tasks** tasks, and they join the grant's work set.
+
+Choose how a grant merges before it may merge. Ask Aril to propose these settings: it reads the
+repository's own rules and GitHub settings first.
+
+- **Merge method.** The repository default, unless you choose **Squash**, **Merge commit**, or **Rebase**.
+  If the repository allows several methods, choose one.
+- **Merge mode.** **Merge when green** merges once CI passes. **Auto-merge when green** asks GitHub to merge
+  through the repository's auto-merge or merge queue, when its rules allow. The repository must allow
+  auto-merge. The log then reads “Auto-merge enabled by Aril”.
+- **Delete branch after merge.** **Repository default** leaves it to GitHub's own setting, and Pomegr deletes
+  nothing. **Delete** deletes the task's branch from the repository after its pull request is merged, never the
+  default branch or a fork's branch. **Keep** deletes nothing. A grant that used all its tasks waits up to ten
+  minutes after the last merge for that deletion.
+
+The grant starts no task, review, or send-back for a provider whose usage is unknown, stale,
+unavailable, or at the usage limit. Writing tasks waits the same way for the provider that would run it.
+It resumes when that usage is current and below the limit. Merges are never held for usage.
+
+To see what a grant did, select **Log**; see [Read the task log](#read-the-task-log). The log lists each start,
+review, send-back, merge, branch deletion, and written task. It also lists each usage pause and resume
+with the provider name, and each refused merge or branch deletion.
+To watch a review, open the task's **Terminal** tab in the desktop app. It lists the task's build and review
+sessions, and a review carries a **Review** label.
+
+The strip above the board shows **Aril grant until** the end time, and the panel shows the tasks used.
+Select **Stop grant** to stop every further grant action at once. Running sessions continue, because
+Pomegr never ends a session. A paired phone can always stop a grant. It can start one only when you allow
+paired devices in **Aril settings**. The panel shows when the last grant ended and why.
 
 ## Before you start
 
