@@ -72,7 +72,7 @@ const loadRow = (database, repositoryId, number) =>
 // A member of a parallel group starts in its own worktree; every other task starts in the repository root.
 const worktreeRequired = (database, row) => taskRunsInGroup(database, row.repository_id, Number(row.number));
 
-const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_id ?? null) === null
+export const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_id ?? null) === null
   && !isLive(parseStoredDispatch(row.dispatch_token), now);
 
 // `start-plan`.

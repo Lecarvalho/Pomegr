@@ -16,7 +16,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -432,8 +432,8 @@ test("the paired-device route's mirrored list takes the group actions, refuses q
   assert.ok(listed.includes("queue_group") && listed.includes("queue_ungroup"));
   assert.equal(listed.includes("queue_reorder"), false);
   assert.deepEqual(listed.filter((name) => !TASK_ACTIONS.includes(name)), []);
-  // The paired device does not edit or delete features; every other fixed action is there.
-  assert.deepEqual(TASK_ACTIONS.filter((name) => !listed.includes(name)), ["feature_update", "feature_delete"]);
+  // Feature edits stay desktop-only; grant client wiring is deferred to the runner slice.
+  assert.deepEqual(TASK_ACTIONS.filter((name) => !listed.includes(name)), ["feature_update", "feature_delete", "grant_start", "grant_stop"]);
 });
 
 test("Aril actions use the real store; paired writes are denied by default and gated settings remain desktop-only", async (context) => {

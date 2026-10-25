@@ -97,6 +97,10 @@ export type ArilSettings = {
   pairedDevices: boolean;
 };
 export type ArilMemoryEntry = { id: number; text: string; createdAt: number; updatedAt: number };
+export type ArilGrant = {
+  startedAt: number; endsAt: number; startsUsed: number;
+  actions: ArilSettings["actions"]; limits: ArilSettings["limits"];
+} & ({ active: true } | { active: false; endedAt: number; endReason: "stopped" | "expired" | "starts_used" | "start_failed" | "app_restart" });
 
 export type TaskBoard = {
   version: 1;
@@ -109,7 +113,7 @@ export type TaskBoard = {
   // Last committed Codex client-catalog models for the Run on list; never entitlement.
   runModels?: TaskRunModels;
   // Present on a ready repository board; settings grant no actions.
-  aril?: { settings: ArilSettings; memory: ArilMemoryEntry[] };
+  aril?: { settings: ArilSettings; memory: ArilMemoryEntry[]; grant?: ArilGrant | null };
 };
 
 export type TaskRunModels = { codex: { id: string; label: string | null }[] };

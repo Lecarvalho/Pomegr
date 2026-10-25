@@ -1,11 +1,10 @@
 import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
-import { serveArilActionRoute } from "./task-aril-routes.mjs";
-
+import { serveArilActionRoute, serveGrantRunner } from "./task-aril-routes.mjs";
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
-  "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove",
+  "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 // The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
@@ -21,6 +20,7 @@ const START_STATUS = Object.freeze({
 const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
 const QUEUE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const QUEUE_START_LIMIT = 16;
+const GRANT_ACTIONS = Object.freeze(["grant-next", "grant-record", "grant-check", "grant-end"]);
 // The removal of a done task's worktree: the desktop asks which wait, where a repository is, and reports one gone.
 const WORKTREE_ACTIONS = Object.freeze(["worktree-cleanups", "worktree-root", "worktree-cleaned"]);
 const WORKTREE_CLEANUP_LIMIT = 64;
@@ -351,7 +351,7 @@ function sessionOfRepository(resolveSession, sessionId, repositoryId) {
 // `POST /internal/tasks/<action>`.
 export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null, resolveOutcomeFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action)) {
+  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -382,6 +382,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     writeActionResult(response, 400, rejected("invalid"));
     return;
   }
+  if (GRANT_ACTIONS.includes(action)) return serveGrantRunner({ request, response, taskStore, resolveGateFacts, action, body });
   if (action === "queue-next") {
     serveQueueNext({ response, taskStore, resolveGateFacts, body });
     return;
@@ -412,7 +413,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId: body.repositoryId, payload: body.payload });
     return;
   }
-  if (action.startsWith("aril_")) return serveArilActionRoute({ request, response, taskStore, repositoryId: body.repositoryId, action, payload: body.payload });
+  if (action.startsWith("aril_") || action === "grant_start" || action === "grant_stop") return serveArilActionRoute({ request, response, taskStore, repositoryId: body.repositoryId, action, payload: body.payload });
   try {
     if (typeof taskStore?.apply !== "function") {
       writeActionResult(response, 503, rejected("conflict"));

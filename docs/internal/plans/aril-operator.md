@@ -145,7 +145,7 @@ Each phase ships on its own and is useful without the next.
 
 - [x] **1. Log and events.** The action log store and view, and committed events with durable cursors, with no new authority. Aril can be asked "what happened since I left" from the log.
 - [x] **2. Reviewer session.** The reviewer role, its brief, and its verdict report; started by the owner from a task in Review. Verdicts recorded with G1.
-- [ ] **3. Settings and memory.** Aril settings and the repository memory, both changed by the owner or by an applied proposal; the desktop-only paired-device setting. No new authority.
+- [x] **3. Settings and memory.** Aril settings and the repository memory, both changed by the owner or by an applied proposal; the desktop-only paired-device setting. No new authority.
 - [ ] **4. Grant with start and review.** The grant record, its limits and stop; Aril starts the tasks its work rules select, and their reviews, on events. Owner merges.
 - [ ] **5. Send-back.** Failing verdicts go back to a builder session within the limit (G9).
 - [ ] **6. Merge on green.** The merge action with every check above.
@@ -168,3 +168,4 @@ Phases 1 to 3 add no authority.
 2026-10-25: the owner decided that Aril proposes every settings change for the owner to accept, except the paired-device setting, which only the owner sets, in the desktop app.
 2026-10-25: phase 1 shipped in #313 (task log and cursor), #315 (pull-request events), #316 (Aril reads the log since its last answer), #317 (desktop Log panel), and #318 (Log on a paired device). Phase 2 started: the reviewer session's monitor side (plan, bind, verdict, outcome fields). Next action: the desktop review start, the report_review MCP tool, and the verdict on the board.
 2026-10-25: phase 2 shipped in #319 (monitor side: plan, bind, verdict, outcome fields), #320 (report_review tool, plugins 0.9.15), #321 (desktop Start review), and the verdict on the task and in Aril's snapshot. Known follow-up: review terminals are not listed in the terminal view. Next action: phase 3, Aril settings and the repository memory.
+2026-10-25: phase 3 shipped in #323 (settings and memory store), #324 (Aril settings panel), and #325 (Aril reads and proposes settings and memory). Phase 4 started: the grant record and the monitor's grant read. Next action: the desktop grant runner with the boundary change, then the grant controls.
