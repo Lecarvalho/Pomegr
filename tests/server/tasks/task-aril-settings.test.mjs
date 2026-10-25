@@ -21,6 +21,15 @@ function setup(t) {
 }
 const invalid = (answer) => assert.deepEqual(answer, { ok: false, error: "invalid" });
 
+test("board carries the settings settlement time without adding it to writable settings", (t) => {
+  const { store, set } = setup(t);
+  assert.equal(store.readBoard(REPO).aril.settings.settledAt, null);
+  assert.equal(set({ mergeMethod: "merge" }).ok, true);
+  assert.equal(store.readBoard(REPO).aril.settings.settledAt, "2023-11-14T22:13:20.000Z");
+  invalid(set({ settledAt: "2023-11-14T22:13:20.000Z" }));
+  assert.equal(store.readBoard(OTHER).aril.settings.settledAt, null);
+});
+
 test("plan rules accept only bounded repository-relative Markdown paths", (t) => {
   const { set } = setup(t);
   for (const value of ["next.md", "docs/plans/next-step_2.md", ".plans/v1.2.md", `${"a".repeat(197)}.md`]) {
@@ -33,11 +42,11 @@ test("plan rules accept only bounded repository-relative Markdown paths", (t) =>
 
 test("defaults, subset replacement, repository isolation and persistence", (t) => {
   const { store, directory, set } = setup(t);
-  assert.deepEqual(store.readBoard(REPO).aril, { settings: defaults(), memory: [], grant: null });
+  assert.deepEqual(store.readBoard(REPO).aril, { settings: { ...defaults(), settledAt: null }, memory: [], grant: null });
   assert.deepEqual(set({}), { ok: true, settings: defaults() });
   assert.equal(set({ actions: { ...defaults().actions, start: true }, pairedDevices: true }).ok, true);
   assert.deepEqual(set({ actions: defaults().actions }), { ok: true, settings: { ...defaults(), pairedDevices: true } });
-  assert.deepEqual(store.readBoard(OTHER).aril, { settings: defaults(), memory: [], grant: null });
+  assert.deepEqual(store.readBoard(OTHER).aril, { settings: { ...defaults(), settledAt: null }, memory: [], grant: null });
   const again = openTaskStore({ directory });
   try { assert.equal(again.readBoard(REPO).aril.settings.pairedDevices, true); } finally { again.close(); }
   const leaked = store.readBoard(REPO).aril;
@@ -53,7 +62,7 @@ test("settings reject unknown keys and invalid whole fields without partial writ
   for (const key of Object.keys(defaults().actions)) for (const value of [null, 0, "true"]) invalid(set({ actions: { ...defaults().actions, [key]: value } }));
   for (const payload of [{}, { settings: {}, extra: 1 }, { settings: [], text: "no" }]) invalid(store.apply(REPO, "aril_settings_set", payload));
   invalid(set({ pairedDevices: true, workRules: [{ kind: "unknown", value: "bad" }] }));
-  assert.deepEqual(store.readBoard(REPO).aril.settings, defaults());
+  assert.deepEqual(store.readBoard(REPO).aril.settings, { ...defaults(), settledAt: null });
 });
 
 test("merge method accepts only the supported values and old stored settings read as repository default", (t) => {
@@ -175,7 +184,7 @@ test("opening an existing version-one store adds both tables without losing task
   const reopened = openTaskStore({ directory });
   try {
     assert.equal(reopened.readBoard(REPO).tasks[0].text, "Existing");
-    assert.deepEqual(reopened.readBoard(REPO).aril, { settings: defaults(), memory: [], grant: null });
+    assert.deepEqual(reopened.readBoard(REPO).aril, { settings: { ...defaults(), settledAt: null }, memory: [], grant: null });
     assert.equal(reopened.apply(REPO, "aril_memory_add", { text: "New" }).ok, true);
     const inspect = new DatabaseSync(path.join(directory, "tasks.sqlite"));
     try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, "1"); } finally { inspect.close(); }

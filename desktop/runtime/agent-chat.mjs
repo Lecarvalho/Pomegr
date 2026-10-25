@@ -2,7 +2,7 @@
 // Desktop main owns the whole of it. It starts one read-only provider run per message, keeps the conversations,
 // and changes the board through approved proposals or the fixed grant task-writing action.
 
-import { spawn as spawnChild } from "node:child_process";
+import { execFile as execFileChild, spawn as spawnChild } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
@@ -15,9 +15,11 @@ import { composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
 import { runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
+import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
+export { isWorkflowSourcePath, readWorkflowChanges, workflowSources } from "./agent-chat-workflow.mjs";
 
 export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat";
 // The images the owner sends to Aril travel on a channel of their own, because they are bytes and not a JSON payload.
@@ -87,6 +89,7 @@ export function createAgentChat(options = {}) {
   const platform = options.platform || process.platform;
   const fileExists = options.fileExists || existsSync;
   const spawn = options.spawn || spawnChild;
+  const execFile = options.execFile || execFileChild;
   const now = options.now || (() => new Date());
   const runTurn = options.runTurn || runChatTurn;
   // The desktop's manual start for a start the owner approved in the chat: `(event, repositoryId, taskId)` answers `{ status }`.
@@ -317,7 +320,8 @@ export function createAgentChat(options = {}) {
       const held = conversationImages(conversation.messages);
       const shown = images && held.length > 0 ? await images.files(turn.repositoryId, conversation.id, held) : [];
       turn.followUpOutcome = proposalOutcome(proposal)?.outcome;
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
+      const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, workflowChanges, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
@@ -441,7 +445,8 @@ export function createAgentChat(options = {}) {
       const attached = imageIds.length > 0 ? await images.claim(repositoryId, conversation.id, imageIds) : [];
       if (!attached) return abandoned(INVALID);
       const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
+      const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
@@ -495,7 +500,8 @@ export function createAgentChat(options = {}) {
       const provider = board.aril?.settings?.reviewer?.provider ?? (executable("claude") ? "claude" : "codex");
       const command = PROVIDERS.has(provider) ? executable(provider) : null;
       if (!command) return refused("cli_missing");
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, grantPlans: plans, now: now() });
+      const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, grantPlans: plans, now: now() });
       if (!prompt) return INVALID;
       const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
       if (!conversation) return refused("limit");

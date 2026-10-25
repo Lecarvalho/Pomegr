@@ -159,9 +159,10 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 - Settings and memory are stored and served in phase 3; they grant no action and have no automatic behavior.
 - Each ready repository board includes `aril: { settings, memory, grant }`; memory is oldest first, ordered by creation time then ID, and unavailable or denied boards omit owner content.
+- The served `aril.settings` also carries `settledAt`: the ISO time the settings row was last written (an applied settings change, or a task removed from a tasks rule), or null while no row exists. It is read-only, no action accepts it, and a settings answer omits it. Each memory entry already carries `createdAt` and `updatedAt`.
 - `actions` has boolean `start`, `review`, `sendBack`, `merge`, and `writeTasks`, all false by default.
 - `mergeMethod` is null by default (the repository default), or `squash`, `merge`, or `rebase`; old stored settings without this field read as null.
-- `limits` has nullable integers: `hours` 1–72, `tasks` 1–100, `tasksAtATime` 1–min(10, `TASK_GROUP_LIMIT`), `sendBacks` 0–10, and `usagePercent` 1–100; all default to null, meaning not settled yet, so Aril must ask.
+- `limits` has nullable integers: `hours` 1–72, `tasks` 1–100, `tasksAtATime` 1–min(10, `TASK_GROUP_LIMIT`), `sendBacks` 0–10, and `usagePercent` 1–100; all default to null, meaning not settled yet, so Aril asks once and proposes the answer.
 - Settings migrate legacy `starts` to `tasks`, `concurrent` to `tasksAtATime`, and `allowancePercent` to `usagePercent`; canonical fields take precedence when both names exist.
 - `workRules` defaults to an empty list and holds at most 20 `{ kind, value }` records: `tag`, `text`, `feature`, `tasks`, or `plan`.
 - A tag is 1–40 characters without whitespace, using the board tag parser's word syntax and reserved-image exclusion; the board display retains its existing 24-character bound.
@@ -176,6 +177,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - Aril reads settings and memory in its chat prompt. It may propose settings changes except `pairedDevices`, and add, update, or remove memory entries; the owner applies these through `aril_settings_set` or the matching `aril_memory_*` action.
 - A paired device may apply these proposals only when stored `pairedDevices` is true; otherwise Apply answers `desktop_only`. Only the desktop action may change `pairedDevices`.
 - Memory operations may combine only with other memory operations. A settings operation is standalone. Follow-up proposals cannot contain these operations.
+- A rule that a setting or a memory entry answers is settled: Aril does not ask the owner about it again. It asks again only when the owner says the rule changed, or when the desktop's [workflow changes](agent-chat.md#workflow-changes) list a repository workflow source (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, a pull request template, `.pomegr/signals.md`, or a file under `.github/workflows/`) with a commit after `settledAt` or the entry's `updatedAt`, or with uncommitted changes. The monitor adds no behavior: it serves the two times, and the desktop reads Git.
 
 ## Aril grants
 

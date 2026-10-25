@@ -60,6 +60,7 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the conversation history of one turn | Read anything itself |
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
+| `desktop/runtime/agent-chat-workflow.mjs` | The [workflow changes](#workflow-changes) read: which workflow source files changed after the owner settled Aril's settings and memory | Run anything but read-only `git log` and `git status` with an argument array, in the repository root, within 5 seconds; read file content; list a name outside the fixed list and the workflows folder |
 | `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and one read-only task tool | Register a signal, write, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device | Forward a chat request to the web host |
@@ -68,7 +69,8 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 ## One turn
 
-[Aril settings and repository memory](tasks.md#aril-settings-and-memory) are included in each provider prompt: settings, including read-only `pairedDevices`, and oldest-first memory entries (at most 100, each at most 300 characters).
+[Aril settings and repository memory](tasks.md#aril-settings-and-memory) are included in each provider prompt: settings, including read-only `pairedDevices` and `settledAt` (when the settings were last saved, or null), and oldest-first memory entries (at most 100, each at most 300 characters, with the ISO `updatedAt`).
+What the settings and memory answer is settled: Aril acts on it and does not ask the owner again. It asks again only when the owner says a rule changed, or when the [workflow changes](#workflow-changes) list a source that the rule depends on.
 
 Each message of the owner starts one provider run. When an active grant allows writing
 tasks, the desktop starts a write turn only when the chat is free. It uses the reviewer
@@ -115,7 +117,7 @@ the prompt, so the owner may change the provider or the model between two messag
 
 The monitor's `write_tasks` step starts one read-only Aril run through the desktop-only `grantWrite({ repositoryId, plans })`; it is not a chat IPC or paired-device operation. It reserves the same slot as `send`, or answers `busy`; the monitor's ten-minute offer spacing paces retries. The queue tick does not await the run and holds one pending write until its outcome is stored.
 
-The prompt contains the normal instructions, board snapshot, settings, memory, and task-log section, with the named plan paths and a fixed grant request instead of an owner message. Aril reads the plans, code, board, and available Git evidence to find the next unbuilt step without a task, then returns one to five tasks in order with the brief, verification, delivery path, and completion conditions. If it cannot find a next step, it answers without a block.
+The prompt contains the normal instructions, board snapshot, settings, memory, workflow changes, and task-log section, with the named plan paths and a fixed grant request instead of an owner message. Aril reads the plans, code, board, and available Git evidence to find the next unbuilt step without a task, then returns one to five tasks in order with the brief, verification, delivery path, and completion conditions. If it cannot find a next step, it answers without a block.
 
 Only this run accepts a `create_task`-only proposal with `text`, optional `complete_when`, `own_condition`, and `runs_after`. Dependencies name existing board tasks or earlier tasks in the answer as `#1` through `#5`; no feature, column, queue, image, or provider run fields are accepted, even when empty. A malformed block, another operation, or an invalid dependency writes nothing and stores `proposalUnreadable`.
 
@@ -251,9 +253,11 @@ characters, in this order:
    time, the column names, the features (title and whether done), the grant summary,
    the queue (status, order, blocker, start threshold, and the usage percentages of the start gates), the
    model lists (`models`), and every task with its column and its position in that column.
-3. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
+3. **Workflow changes.** Left out until the settings or a memory entry is settled. Otherwise the
+   repository's workflow sources that changed since (see [Workflow changes](#workflow-changes)).
+4. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
    The section reports an empty log, unavailable log, or omitted older entries with fixed lines.
-4. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
+5. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
@@ -263,9 +267,9 @@ characters, in this order:
    An answer that is a follow-up is marked as one. A proposal of board changes that
    stopped also says how many operations succeeded, which one failed with which fixed
    error, and how many were not applied.
-5. **Images.** One line for each image of the conversation whose file is still there:
+6. **Images.** One line for each image of the conversation whose file is still there:
    its ID, its type, and the absolute file. The section is left out when there is none.
-6. **The owner's message**, and one line with the IDs of its images, in order. A
+7. **The owner's message**, and one line with the IDs of its images, in order. A
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
@@ -319,6 +323,32 @@ kind.
 
 Aril's advice on models is a reading of this recorded evidence. It is never presented as
 a measurement or a benchmark.
+
+### Workflow changes
+
+A settled rule is not asked again unless the repository's workflow changed. Every Aril turn
+(an owner message, a follow-up, and a grant write turn) therefore reads the workflow sources
+in the repository root before the prompt is built (`readWorkflowChanges` in
+`agent-chat-workflow.mjs`):
+
+- **Sources.** The files that exist among `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`,
+  `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE.md`, and
+  `.pomegr/signals.md`, then the files under `.github/workflows/` in name order, at most 40.
+  A name is kept only when it is repository-relative, has no `..` or control character,
+  and has at most 200 characters.
+- **Settled time.** The oldest of the settings' `settledAt` and the `updatedAt` of every
+  memory entry. With none, nothing is settled: the section is left out and Git does not run.
+- **Read.** `git log -1 --format=%ct` for each source and one `git status --porcelain` for the set,
+  started with `execFile` and an argument array, no shell, in the repository root, read-only
+  (`--no-optional-locks`, literal pathspecs, no file-system monitor), within 5 seconds in total.
+- **Section.** One line for each source whose last commit is after the settled time, or that has
+  uncommitted changes: its path, the date (the last commit, or the last edit of an uncommitted
+  file), and `committed` or `uncommitted`. When none qualifies, the line "No workflow source changed
+  since your settings and memory were settled." When Git fails or the time runs out, the line
+  "Workflow changes are unknown." and nothing else.
+
+The section holds names and dates only. Aril reads a listed file itself, then proposes an update
+to the setting or memory entry, or asks only about what the change left unclear.
 
 ## Proposals
 
@@ -751,6 +781,7 @@ Desktop main keeps one JSON file per conversation:
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, `queue_ungroup`, and `after_set`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
 | The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
+| Read-only `git log -1` and `git status --porcelain` in the repository root | Desktop main | One call per workflow source and one for the set, started with an argument array and no shell, within 5 seconds in total ([Workflow changes](#workflow-changes)); only repository-relative names and dates are kept |
 
 The operations and their payloads, each with `repositoryId`:
 
@@ -813,6 +844,7 @@ never a session's.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
   From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first, up to 100 entries of 300 characters each.
   From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, tasks used, and snapshotted limits and actions; an ended grant adds its fixed end reason. Aril uses these existing settings and grant facts to determine whether an active grant permits a send-back or merge. The owner-set merge method is part of the settings sent with the board; merge outcomes are reported from fixed `grant_merge` and `grant_merge_refused` log entries.
+  From 2026-10-25 (Aril operator phase 9d), the prompt also sends the time the settings were last saved, each memory entry's last update time, and, once something is settled, the [workflow changes](#workflow-changes): the repository-relative names of changed workflow sources (the fixed list and the files under `.github/workflows/`) with a commit or last-edit date and whether they are uncommitted. It sends no file content, no absolute path, and no Git output beyond those names and dates; a Git failure sends only "Workflow changes are unknown." The provider run can read those files itself, as it can read any file of the repository.
   Feature rows also include their IDs so Aril can select existing features in work rules. Applied settings and memory operations reach the follow-up as operation names, memory IDs where applicable, and fixed outcomes.
   A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This
@@ -839,7 +871,7 @@ never a session's.
   the user's folder name, reaches the provider. A task's session has had the path of its
   task's image folder in the same way.
   A grant write turn sends the normal board snapshot, repository settings and memory,
-  task log, and the grant's named plan paths. Its fixed request asks Aril to read the
+  workflow changes, task log, and the grant's named plan paths. Its fixed request asks Aril to read the
   next unbuilt step of an accepted plan and create 1–5 tasks with only `text`,
   `complete_when`, `own_condition`, and `runs_after`. It uses no follow-up proposal.
 - **Native file access.** The owner-approved native read surface can include files outside the selected repository, subject to provider permissions.

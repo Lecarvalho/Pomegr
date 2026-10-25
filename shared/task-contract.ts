@@ -114,7 +114,7 @@ export type TaskBoard = {
   // Last committed Codex client-catalog models for the Run on list; never entitlement.
   runModels?: TaskRunModels;
   // Present on a ready repository board; settings grant no actions.
-  aril?: { settings: ArilSettings; memory: ArilMemoryEntry[]; grant?: ArilGrant | null };
+  aril?: { settings: ArilSettings & { settledAt?: string | null }; memory: ArilMemoryEntry[]; grant?: ArilGrant | null };
 };
 
 export type TaskRunModels = { codex: { id: string; label: string | null }[] };
