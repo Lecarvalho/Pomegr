@@ -1,6 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+test("task log renders oldest first, after the board, with UTC times and PR numbers", () => {
+  const entries = [
+    { id: 3, task: "T-2", kind: "merged", at: 2000, pullRequest: 42 },
+    { id: 2, task: "T-1", kind: "started", at: 1000, pullRequest: null },
+  ];
+  const prompt = composePrompt({ board: fullBoard(), message: "Hello", now, taskLog: { entries, omitted: false } });
+  assert.ok(prompt.includes('</board_snapshot>\n\n<task_log_since_last_turn>\n1970-01-01T00:00:01.000Z T-1 started\n1970-01-01T00:00:02.000Z T-2 merged PR #42\n</task_log_since_last_turn>'));
+  assert.equal(entries[0].id, 3, "formatting does not mutate the page");
+});
+
+test("task log distinguishes empty, omitted, unavailable, and an absent section", () => {
+  const prompt = (taskLog) => composePrompt({ board: fullBoard(), message: "Hello", now, taskLog });
+  assert.match(prompt({ entries: [], omitted: false }), /<task_log_since_last_turn>\n\(Nothing new since your last answer\.\)\n<\/task_log_since_last_turn>/u);
+  assert.match(prompt({ entries: [], omitted: true }), /<task_log_since_last_turn>\n\(Older entries are left out\.\)\n\(Nothing new since your last answer\.\)/u);
+  assert.match(prompt(null), /<task_log_since_last_turn>\n\(The task log is unavailable\.\)\n<\/task_log_since_last_turn>/u);
+  assert.doesNotMatch(prompt(undefined), /<task_log_since_last_turn>/u);
+});
+
+test("task log still respects the whole prompt limit", () => {
+  const taskLog = { entries: [{ id: 1, task: "T-1", kind: "started", at: 0, pullRequest: null }], omitted: false };
+  const base = composePrompt({ board: fullBoard(), message: "", now, taskLog }).length;
+  assert.ok(composePrompt({ board: fullBoard(), message: "x".repeat(PROMPT_LIMIT - base), now, taskLog }));
+  assert.equal(composePrompt({ board: fullBoard(), message: "x".repeat(PROMPT_LIMIT - base + 1), now, taskLog }), null);
+});
+
 import {
   AGENT_CHAT_INSTRUCTIONS,
   AGENT_NAME,
