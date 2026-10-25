@@ -44,6 +44,18 @@ board. It lists task starts, reports, stalls, CI results, and merges, newest
 first. The task log stays on the computer that runs Pomegr. Aril reads entries after its last answer;
 the divider shows how far it has read. Opening the log does not move that marker.
 
+### Aril settings
+
+Select **Aril settings** above the board to edit action preferences, limits, work rules, and reviewer preferences.
+An unset limit means “Not settled: Aril will ask”. Select **Save** to save your changes.
+These settings grant no actions. Grants are not available yet.
+
+The **Memory** section lists repository preferences, oldest first. You can add, edit, or delete entries independently of settings.
+Each entry holds at most 300 characters; a repository holds at most 100 entries. Confirm deletion inside the panel.
+
+Paired devices can read these settings and entries. To allow changes, enable **Allow paired devices to change Aril settings and memory** in the desktop app.
+Only the desktop app can change that permission.
+
 ## Before you start
 
 - **Use the desktop app or a paired phone.** You change tasks in the Pomegr desktop app

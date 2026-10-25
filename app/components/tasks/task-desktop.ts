@@ -71,7 +71,7 @@ export function useTaskEditAvailability(): TaskEditAvailability {
 type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign" | "after_set";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
-async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
+export async function sendTaskAction(repositoryId: string, action: TaskActionName | "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove", payload: unknown): Promise<TaskActionResult> {
   const bridge = taskDesktopBridge();
   // A paired device may create a feature from a name but never edits or deletes one: neither has a paired route.
   if (!bridge && (action === "feature_update" || action === "feature_delete" || clientAccessMode() !== "lan")) return { ok: false, error: "unavailable" };
