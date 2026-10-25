@@ -215,6 +215,7 @@ export function createAgentQueryReader(options = {}) {
 export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
 export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
+export const AGENT_TASK_REVIEW_PATH = "/api/agent/v1/tasks/review";
 export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
 export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
 export const AGENT_TASK_ASSIGN_PATH = "/api/agent/v1/tasks/assign";
@@ -229,7 +230,7 @@ export const AGENT_FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
 // The only monitor paths the task transport may POST to. The legacy write name also covers
 // read-only POSTs (task get/list and feature-get); the route owns whether an operation writes.
 export const AGENT_TASK_WRITE_PATHS = Object.freeze([
-  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_REMOVE_PATH, AGENT_TASK_UPDATE_PATH,
+  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REVIEW_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_REMOVE_PATH, AGENT_TASK_UPDATE_PATH,
   AGENT_TASK_ASSIGN_PATH, AGENT_TASK_UNASSIGN_PATH,
   AGENT_FEATURE_GET_PATH, AGENT_FEATURE_CREATE_PATH, AGENT_FEATURE_UPDATE_PATH, AGENT_FEATURE_DELETE_PATH,
   AGENT_TASK_GET_PATH, AGENT_TASK_LIST_PATH,

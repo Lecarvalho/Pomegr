@@ -31,6 +31,13 @@ test("Claude hook tells each deny cause apart with a fixed sentence that echoes 
     assert.equal(await reason({ ...call, tool_input: { attention: "value-sentinel" } }, { readToken, now: () => NOW }), unsigned);
   }
   const block = { ...call, tool_name: "mcp__pomegr__block_task", tool_input: { reason: "value-sentinel", summary: "value-sentinel" } };
+  const review = { ...call, tool_name: "mcp__pomegr__report_review", tool_input: { verdict: "pass" } };
+  assert.equal(await reason({ ...review, tool_input: { verdict: "pass", summary: "value-sentinel" } }),
+    "report_review takes only these fields: verdict, reasons, task_id. This call held another field, so no verdict was recorded. Retry once with only those fields.");
+  assert.equal(await reason({ ...review, transcript_path: "private-path-sentinel" }),
+    "Pomegr found no Claude Code session for this call, so no verdict was recorded. Do not retry; tell the user.");
+  assert.equal(await reason(review, { readToken: async () => null }),
+    "Pomegr could not sign this call for the current session, so no verdict was recorded. Pomegr may not be running; do not retry, tell the user.");
   assert.equal(await reason(block),
     "block_task takes only these fields: reason, task_id. This call held another field, so nothing was reported. Retry once with only those fields.");
   assert.match(await reason({ ...call, tool_name: "mcp__pomegr__add_task", tool_input: { title: "value-sentinel" } }),

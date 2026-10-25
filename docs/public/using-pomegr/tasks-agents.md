@@ -5,7 +5,7 @@ description: "The task tools the Pomegr plugin gives agents, how Pomegr checks a
 
 # What agents report
 
-The Pomegr plugin gives agents thirteen task tools. Each call is tied to the calling
+The Pomegr plugin gives agents fourteen task tools. Each call is tied to the calling
 session by the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md)
 lists these tools with the plugin's reporting and query tools. For the main path, see
 [Tasks](tasks.md).
@@ -22,6 +22,7 @@ lists these tools with the plugin's reporting and query tools. For the main path
 | `assign_task` | Assigns the session to a task of the board that is not done. It needs plugin 0.9.8 or later. See [Assign a session to a task](tasks-sessions.md#assign-a-session-to-a-task). |
 | `unassign_task` | Removes the session's own assignment from a task. It needs plugin 0.9.8 or later. |
 | `complete_task` | Reports the work done on the task the session was started for, or on a task it is assigned to. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
+| `report_review` | Records a verdict only from a review session Pomegr started for the task. It needs plugin 0.9.15 or later. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
 | `get_feature` | Reads one feature of the board: its ID, title, description, and app version. The agent names the feature by its ID or its exact title. With no input, it reads the feature of the session's task. It changes nothing. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. A title that another feature has is refused. |

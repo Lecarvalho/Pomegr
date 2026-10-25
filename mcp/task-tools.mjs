@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AGENT_TASK_NO_ANSWER } from "../shared/agent-query-transport.mjs";
+import { AGENT_TASK_NO_ANSWER, AGENT_TASK_REVIEW_PATH } from "../shared/agent-query-transport.mjs";
 
 export const TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 export const TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
@@ -15,7 +15,7 @@ export const FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
 export const FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
 export const FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
 export const FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
-export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole, so read the task with get_task first and set the whole text it should have. Use get_task to read one task of that board by its ID, and list_tasks to find tasks of the board by a part of their text, their state, their feature, or whether update_task can change them; both only read. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task when the task is complete, which puts the task in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; the latest report wins until the owner marks the task done, and only a session Pomegr started for the task or assigned to it may report. A completion after a block moves the task to Review but keeps the owner-controlled queue hold. Use assign_task when the user asks this session to work on an existing board task it was not started for, such as to resume a task whose first session stopped, then report with complete_task or block_task, naming task_id if the session has more than one task; use unassign_task when the session stops working on that task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
+export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use update_task to change a task of that board that has not started, such as to add a finding to its text, when the user asks for it or the work calls for it; the text you set replaces the stored text whole, so read the task with get_task first and set the whole text it should have. Use get_task to read one task of that board by its ID, and list_tasks to find tasks of the board by a part of their text, their state, their feature, or whether update_task can change them; both only read. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task when the task is complete, which puts the task in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; the latest report wins until the owner marks the task done, and only a session Pomegr started for the task or assigned to it may report. A review session reports its verdict with report_review, never complete_task or block_task. A completion after a block moves the task to Review but keeps the owner-controlled queue hold. Use assign_task when the user asks this session to work on an existing board task it was not started for, such as to resume a task whose first session stopped, then report with complete_task or block_task, naming task_id if the session has more than one task; use unassign_task when the session stops working on that task. A feature groups tasks of the board and holds their shared context: a title, a description, and an app version. Use get_feature when a task of a feature needs that context; with no input it reads the feature of the task this session was started for. Use create_feature, update_feature, and delete_feature only when the user asks to change the board's features; delete_feature removes only a feature that has no task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
 export const TASK_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.";
@@ -122,6 +122,14 @@ const REPORT_REASON_TEXT = {
   unavailable: "Pomegr is unavailable, so nothing was reported.",
 };
 export const TASK_REPORT_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so nothing was reported.";
+export const TASK_REVIEW_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no verdict was recorded.";
+export const TASK_REVIEW_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the verdict was recorded. It may have been: do not assume it failed. Retry the same verdict only if it still describes the review; an identical retry changes nothing.";
+const REVIEW_REASON_TEXT = {
+  invalid: REPORT_REASON_TEXT.invalid,
+  not_found: "This session is not the reviewer of a task, or that task ID is not one it reviews.",
+  not_reviewable: "The task is no longer in Review, so no verdict was recorded.",
+  unavailable: REPORT_REASON_TEXT.unavailable,
+};
 
 export const TASK_REMOVE_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was removed.";
 const REMOVE_REASON_TEXT = {
@@ -484,6 +492,34 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
       ? " CI needs a finished check result for this checkout's current commit; pending, missing, or mismatched evidence cannot verify it." : "";
     return `Task reported complete, but ${parts.join("; and ")}.${ciText} ${held ? holdText : "The task now needs the user's review."}`;
   }));
+
+  server.registerTool("report_review", {
+    title: "Report the Pomegr task review",
+    description: "For a review session Pomegr started for a task in Review, report the verdict once after running the repository's checks: pass, or fail with one-line reasons stating met, unmet, or unknown for each repository rule that failed. The verdict changes no task state; only the user decides what happens next. It never edits the board. A denied call changed nothing.",
+    inputSchema: z.object({
+      verdict: z.enum(["pass", "fail"]),
+      reasons: z.array(z.string().trim().min(1).max(200).regex(ONE_LINE, "Use one line of plain text.")).min(1).max(10).optional(),
+      task_id: optionalTaskId,
+      ...hookFields(hookBound),
+    }).strict().refine((value) => value.verdict === "fail" ? value.reasons !== undefined : value.reasons === undefined,
+      "Reasons are required for fail and must be omitted for pass."),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (input, extra) => {
+    const ref = await resolveSession(input, extra, "report_review");
+    if (typeof ref !== "string" || !ref) return result(TASK_REVIEW_UNBOUND_TEXT, true);
+    let answer;
+    try {
+      answer = await post(AGENT_TASK_REVIEW_PATH, { sessionRef: ref, verdict: input.verdict,
+        ...(input.reasons === undefined ? {} : { reasons: input.reasons }), ...(input.task_id === undefined ? {} : { taskId: input.task_id }) });
+    } catch (error) {
+      return result(noAnswer(error) ? TASK_REVIEW_NO_ANSWER_TEXT : REVIEW_REASON_TEXT.unavailable, true);
+    }
+    if (answer && answer.ok === true) return result(input.verdict === "pass"
+      ? "Review reported: passed." : `Review reported: failed, with ${input.reasons.length} ${input.reasons.length === 1 ? "reason" : "reasons"}.`, false);
+    const text = answer && answer.ok === false && typeof answer.reason === "string" && Object.hasOwn(REVIEW_REASON_TEXT, answer.reason)
+      ? REVIEW_REASON_TEXT[answer.reason] : REVIEW_REASON_TEXT.unavailable;
+    return result(text, true);
+  });
 
   const feature = async (tool, path, input, extra, body, done) => {
     const ref = await resolveSession(input, extra, tool);
