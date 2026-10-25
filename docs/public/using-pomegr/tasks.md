@@ -86,6 +86,19 @@ A later completion keeps an existing block until you resolve it; see [What agent
 incident. In the desktop app you can also ask Aril to start a task; see
 [Start a session from the chat](agent-chat.md#start-a-session-from-the-chat).
 
+### Review a task's work
+
+In the desktop app, open a task in **Review** with a linked session and select
+**Start review**, before **Requeue task** in the footer. Confirm **Start review**
+in the native dialog to start a separate reviewer session in the task's worktree,
+or the repository folder when no task worktree is available. No worktree is created.
+
+The reviewer checks the work and runs the repository's checks. It changes no code,
+does not move the task, and is instructed to report **pass** or **fail**. The verdict
+is recorded in the task log for now; display on the task comes later. Reporting
+through the plugin requires the separate review-reporting slice, which is not yet
+included. Starting a review is available only in the Windows desktop app.
+
 ## Run the queue
 
 1. Open a task and select **Add to queue**. Its card moves to **Ready**, last.

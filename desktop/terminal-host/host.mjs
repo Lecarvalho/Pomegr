@@ -26,7 +26,7 @@ function disposeScreen(session) {
   session.screen?.dispose(); session.screen = null; session.serializer = null;
 }
 const keyValid = (key) => typeof key === 'string' && (/^[a-zA-Z0-9_-]{1,128}$/u.test(key)
-  || /^repo-[a-f0-9]{24}\/T-[1-9][0-9]{0,8}\/[a-f0-9]{32}$/u.test(key)
+  || /^repo-[a-f0-9]{24}\/T-[1-9][0-9]{0,8}\/(?:review-)?[a-f0-9]{32}$/u.test(key)
   || /^continue\/(?:claude|codex)\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/[a-f0-9]{32}$/iu.test(key));
 const sizeValid = (cols, rows) => Number.isInteger(cols) && cols >= 1 && cols <= 1000 && Number.isInteger(rows) && rows >= 1 && rows <= 1000;
 const stringValid = (value, max) => typeof value === 'string' && !value.includes('\0') && Buffer.byteLength(value) <= max;

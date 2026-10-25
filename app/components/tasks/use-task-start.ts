@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import type { Task } from "../../../shared/task-contract";
-import { openDesktopTaskWorktree, startDesktopTask, taskDesktopBridge, useTaskEditAvailability, type TaskStartStatus, type TaskWorktreeOpenStatus } from "./task-desktop";
+import { openDesktopTaskWorktree, startDesktopReview, startDesktopTask, taskDesktopBridge, useTaskEditAvailability, type TaskStartStatus, type TaskWorktreeOpenStatus } from "./task-desktop";
 import { heldStartLine } from "./task-gates-model";
 import type { TaskModalBoard } from "./task-modal-types";
 import { useMinuteClock } from "./task-panel-hooks";
@@ -10,6 +10,8 @@ import { worktreeOpenLine } from "./task-queue-banner";
 import { scheduleLabel, waitsForOwnTime } from "./task-schedule";
 
 // Start session for one task.
+
+const subscribeTaskReviewBridge = () => () => {};
 
 const LINES: Record<TaskStartStatus, string | null> = {
   // A start that worked closes its opener, so it has no line.
@@ -99,4 +101,30 @@ export function useTaskStart(repositoryId: string, task: Task, board: TaskModalB
     separate: { offered: separateOffered, run: () => run(true) },
     folder: { offered: folderOffered, opening: folder === "opening", line: folderLine, open: openFolder },
   };
+}
+
+/** Starts a separate review session for a linked task that needs review. */
+export function useTaskReviewStart(repositoryId: string, task: Task, refresh: () => Promise<void>) {
+  const available = useSyncExternalStore(subscribeTaskReviewBridge, () => typeof taskDesktopBridge()?.taskReviewStart === "function", () => false);
+  const [pending, setPending] = useState(false);
+  const [answer, setAnswer] = useState<{ status: TaskStartStatus; mark: string } | null>(null);
+  const inFlight = useRef(false);
+  const mark = taskMark(task);
+  const stale = answer !== null && answer.mark !== mark;
+  if (stale) setAnswer(null);
+  const result = stale ? null : answer?.status ?? null;
+  const locked = result !== null && FINAL.has(result);
+  const run = async () => {
+    if (!available || pending || inFlight.current || locked || task.state !== "needs_review" || task.session === null) return;
+    inFlight.current = true;
+    setPending(true);
+    setAnswer(null);
+    const status = await startDesktopReview(repositoryId, task.id);
+    inFlight.current = false;
+    setPending(false);
+    if (status === "started") void refresh().catch(() => {});
+    setAnswer({ status, mark });
+  };
+  const line = pending ? null : result === "not_startable" ? "A review cannot start for this task right now." : result === null ? null : LINES[result];
+  return { available, pending, disabled: pending || locked, line, run };
 }

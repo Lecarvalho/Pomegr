@@ -64,7 +64,7 @@ import { createTaskLog } from "./task-log.mjs";
 import { createTaskImage } from "./task-image.mjs";
 import { createAgentChat, installAgentChatIpc } from "./agent-chat.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
-import { confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
+import { confirmTaskReviewStart, confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
 import { confirmSessionContinue, installSessionContinueIpc } from "./session-continue.mjs";
 import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 import {
@@ -678,10 +678,10 @@ async function startDesktop() {
         taskStarter = createTaskStart({
           sessionForProcess: (pid) => requestTerminalSession(monitorChild, pid),
           isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken,
-          environment: taskSessionEnvironment,
-          worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
+          environment: taskSessionEnvironment, worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
           openPath: (directory) => shell.openPath(directory),
           confirm: (request) => confirmTaskStart(dialog, () => mainWindow, request),
+          confirmReview: (request) => confirmTaskReviewStart(dialog, () => mainWindow, request),
         });
         const taskImage = createTaskImage({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
         const taskLog = createTaskLog({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });

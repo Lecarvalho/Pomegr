@@ -59,6 +59,17 @@ test("restart binding uses the authenticated task board, and never returns task 
   assert.equal(JSON.stringify(answer).includes("private"), false);
 });
 
+test("review keys never take or confuse the builder terminal binding", async () => {
+  const reviewKey = `${repositoryId}/T-3/review-${"b".repeat(32)}`;
+  for (const builder of [[], [{ key, exited: false }], [{ key, exited: true }]]) {
+    const f = fixture({ sessions: [...builder, { key: reviewKey, exited: false }] });
+    const rows = (await f.controller.run(f.event, "list")).sessions;
+    assert.equal(rows.length, builder.length);
+    if (builder.length) { assert.equal(rows[0].key, key); assert.equal(rows[0].sessionId, sessionId); }
+    f.controller.dispose();
+  }
+});
+
 test("continue keys rebuild their direct binding after restart without a task or persisted mapping", async () => {
   const continued = "codex:01234567-89ab-4cde-8fab-0123456789ab";
   const resumeKey = `continue/codex/${continued.slice(6)}/${"c".repeat(32)}`;

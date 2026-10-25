@@ -14,6 +14,7 @@ export type TaskActionResult = { ok: true; /** Only a create answers it: the new
 export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
   taskStart?: (repositoryId: string, taskId: string, separateWorktree?: true) => Promise<{ status: TaskStartStatus }>;
+  taskReviewStart?: (repositoryId: string, taskId: string) => Promise<{ status: TaskStartStatus }>;
   taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
   taskFeature?: (repositoryId: string, featureId: string) => Promise<unknown>;
   taskScorecard?: (repositoryId: string) => Promise<unknown>;
@@ -122,6 +123,20 @@ export async function startDesktopTask(repositoryId: string, id: string, separat
     if (native && typeof (bridge as unknown as { terminal?: unknown }).terminal === "function" && (status === "started" || status === "failed")) {
       window.dispatchEvent(new CustomEvent("pomegr-task-terminal-open", { detail: { repositoryId, taskId: id, status } }));
     }
+    return START_STATUSES.has(status) ? status as TaskStartStatus : "failed";
+  } catch {
+    return "unavailable";
+  }
+}
+
+/** Starts an owner-confirmed review session for one task on the desktop. */
+export async function startDesktopReview(repositoryId: string, id: string): Promise<TaskStartStatus> {
+  const bridge = taskDesktopBridge();
+  if (typeof bridge?.taskReviewStart !== "function") return "unavailable";
+  try {
+    const result: unknown = await bridge.taskReviewStart(repositoryId, id);
+    const status = typeof result === "object" && result !== null ? (result as { status?: unknown }).status : undefined;
+    if (typeof status !== "string") return "unavailable";
     return START_STATUSES.has(status) ? status as TaskStartStatus : "failed";
   } catch {
     return "unavailable";

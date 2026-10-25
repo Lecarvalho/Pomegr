@@ -614,9 +614,13 @@ A task has started when it has a session or an outcome: Needs review, Stalled, B
 - Without a note, a spacer pushes the actions to the end.
 - The notes are the start-status line, “Save your changes first.”, the folder line, and, for a linked task that has not reported, the line that neither exit stops the session.
 - A modal whose task started while it held an unsaved draft adds the line “This task started before your changes were saved.”
-- Then the actions, in this order: **Open folder**, **Start in separate worktree**, **Add to queue** or **Remove from queue**, **Start session**, **Requeue task**, **Mark done**, and **Save**.
+- Then the actions, in this order: **Open folder**, **Start in separate worktree**, **Add to queue** or **Remove from queue**, **Start session**, **Start review**, **Requeue task**, **Mark done**, and **Save**.
 - A state shows only the actions it has.
 - A task needs the user in the states Needs review, Blocked by agent, and Stalled.
+- A desktop task in Needs review with a linked builder session offers Secondary **Start review** before **Requeue task**; a browser or paired device does not.
+- **Start review** asks the desktop for a native confirmation titled “Start a review session?” with the task ID in “Pomegr starts a separate session that reviews T-n’s work in its folder and reports a verdict. It changes no code and does not move the task.” and buttons **Start review** and **Cancel**, with Cancel as default.
+- While a review starts, its button reads **Starting…** and is disabled; a completed attempt keeps the modal open and shows the fixed start-status line when one applies.
+- The review-start status line uses the start-session messages, except `not_startable` reads “A review cannot start for this task right now.”
 - The **Mark done** of a task that needs the user is the one primary.
 - A task that needs review reads **Mark done**, or **Mark done and resume queue** when the queue still names its earlier block.
 - A task that is Blocked by agent or Stalled reads **Mark done and resume queue**.
@@ -643,7 +647,7 @@ A task has started when it has a session or an outcome: Needs review, Stalled, B
 | State of the task | Footer, left to right |
 | --- | --- |
 | Not started | **Delete task**, the notes, **Add to queue** or **Remove from queue**, **Start session**, primary **Save** |
-| Needs review | **Delete task**, **Requeue task**, primary **Mark done** |
+| Needs review | **Delete task**, **Start review** (desktop, linked session only), **Requeue task**, primary **Mark done** |
 | Stalled, Blocked by agent | **Delete task**, **Requeue task**, primary **Mark done and resume queue** |
 | Linked, has not reported | **Delete task**, the notes, **Add to queue** (a Not queued task only), **Requeue task**, **Mark done** |
 | Done | **Delete task** and its note |
