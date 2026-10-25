@@ -163,6 +163,18 @@ describe("phone access", () => {
     await waitFor(() => expect(bridge.setPhoneSharing).toHaveBeenLastCalledWith(false, undefined));
   });
 
+  it.each(["recovering", "unavailable"] as const)("explains a network probe timeout while %s", async (status) => {
+    installDesktopBridge({ getPhoneAccessState: vi.fn(async () => ({
+      ...offState, status, reason: "network_probe_timed_out", candidates: [],
+    })) });
+    renderSettings();
+    await openPhoneAccess();
+    expect(await screen.findByText(status === "recovering"
+      ? "Network verification timed out; retrying. Paired phones will reconnect automatically."
+      : "Network verification timed out. Retry phone access.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create pairing code" })).not.toBeInTheDocument();
+  });
+
   it("does not restore a pairing code when sharing stops while its QR image is rendering", async () => {
     let phoneAccessChanged: ((next: PhoneAccessState | null) => void) | undefined;
     let resolveQr: ((image: string) => void) | undefined;

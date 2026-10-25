@@ -32,6 +32,13 @@ Behavior: [Observation cache](../observation-cache.md)
 
 Behavior: [Observation cache](../observation-cache.md)
 
+## Phone access
+
+- Native phone-access state may expose the fixed `network_probe_timed_out` reason for a Windows network probe timeout.
+- Process errors and network probe output remain private and never reach renderer state or logs.
+
+Behavior: [Local monitor](../overview.md#local-monitor)
+
 ## Home announcement markers
 
 - Desktop Home announcement markers may persist only `homeUpdate.seenId` and

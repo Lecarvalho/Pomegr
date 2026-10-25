@@ -5,11 +5,11 @@ import path from "node:path";
 import { minimalRuntimeEnvironment } from "./environment-policy.mjs";
 
 const CACHE_TTL_MS = 2_000;
-const COMMAND_TIMEOUT_MS = 3_000;
+const COMMAND_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_ROWS = 64;
 const MAX_CANDIDATES = 8;
-const REASONS = new Set(["unsupported_platform", "no_eligible_network", "public_network", "probe_failed", "invalid_result"]);
+const REASONS = new Set(["unsupported_platform", "no_eligible_network", "public_network", "probe_failed", "probe_timed_out", "invalid_result"]);
 
 // This command is deliberately closed over: no renderer, profile, adapter, or address
 // input is interpolated into it. Get-NetConnectionProfile describes physical connection
@@ -198,7 +198,7 @@ function runProbe(execFileFn, executable, environment) {
         env: minimalRuntimeEnvironment(environment),
       }, (error, stdout, stderr) => {
         if (error || stderr || typeof stdout !== "string" || Buffer.byteLength(stdout, "utf8") > MAX_OUTPUT_BYTES) {
-          finish(null);
+          finish(error?.killed === true && error.signal === "SIGTERM" && error.code === null ? "probe_timed_out" : null);
           return;
         }
         try { finish(JSON.parse(stdout)); } catch { finish(null); }
@@ -222,6 +222,7 @@ export function createLanNetworkReader(options = {}) {
     const executable = resolveWindowsPowerShellExecutable(environment);
     if (!executable || typeof execFileFn !== "function") return unavailable("probe_failed");
     const raw = await runProbe(execFileFn, executable, environment);
+    if (raw === "probe_timed_out") return unavailable(raw);
     if (raw === null) return unavailable("probe_failed");
     const normalized = normalizeProbe(raw);
     if (normalized === null) return unavailable("invalid_result");

@@ -74,15 +74,16 @@ export function createLanSharingController(options = {}) {
   function applyNetwork(handle, network, current) {
     const allowed = current.candidates.some((entry) => sameNetworkIdentity(entry, network));
     const recovering = current.status === "unavailable"
-      && ["probe_failed", "no_eligible_network"].includes(current.reason);
+      && ["probe_failed", "probe_timed_out", "no_eligible_network"].includes(current.reason);
     if (!allowed && !recovering) {
       void invalidate(handle, current.reason === "public_network" ? "public_network" : "network_changed");
       return false;
     }
     const nextStatus = allowed ? "sharing" : "recovering";
-    const changed = status !== nextStatus;
+    const nextReason = allowed ? null : current.reason === "probe_timed_out" ? "network_probe_timed_out" : "network_unavailable";
+    const changed = status !== nextStatus || reason !== nextReason;
     status = nextStatus;
-    reason = allowed ? null : "network_unavailable";
+    reason = nextReason;
     handle.updateNetworkState(allowed ? true : null);
     if (changed) broadcast();
     return allowed ? true : null;
@@ -136,6 +137,7 @@ export function createLanSharingController(options = {}) {
       if (!chosen) {
         status = "unavailable";
         reason = candidates.length > 1 ? "choose_network"
+          : network.reason === "probe_timed_out" ? "network_probe_timed_out"
           : network.reason === "public_network" ? "public_network" : "network_unavailable";
         broadcast();
         return snapshot();

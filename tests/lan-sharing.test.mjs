@@ -101,7 +101,7 @@ test("sharing closes on an adapter, profile, or address change even within the s
 });
 
 test("temporary network failures retain the URL and pairing across watcher, request, and native reads", async () => {
-  for (const reason of ["probe_failed", "no_eligible_network"]) {
+  for (const reason of ["probe_failed", "probe_timed_out", "no_eligible_network"]) {
     for (const via of ["watcher", "request", "native"]) {
       const h = harness();
       const original = await h.controller.setSharing(true);
@@ -112,6 +112,7 @@ test("temporary network failures retain the URL and pairing across watcher, requ
         else if (via === "native") await h.controller.getState();
         else { const tick = [...h.timers][0]; h.timers.delete(tick); await tick(); }
         assert.equal(h.controller.snapshot().status, "recovering");
+        assert.equal(h.controller.snapshot().reason, reason === "probe_timed_out" ? "network_probe_timed_out" : "network_unavailable");
         assert.equal(h.controller.snapshot().address, original.address);
         assert.equal(h.controller.snapshot().pairedClients, 1);
         assert.equal(handle.networkState, null);
@@ -129,6 +130,25 @@ test("temporary network failures retain the URL and pairing across watcher, requ
       await h.controller.dispose();
     }
   }
+});
+
+test("a startup timeout is retryable and recovery broadcasts a changed timeout reason", async () => {
+  const h = harness();
+  try {
+    h.network({ status: "unavailable", candidates: [], reason: "probe_timed_out" });
+    assert.equal((await h.controller.setSharing(true)).reason, "network_probe_timed_out");
+    assert.equal(h.handles.length, 0);
+    h.network({ status: "available", candidates: [home] });
+    assert.equal((await h.controller.setSharing(true)).status, "sharing");
+    h.network({ status: "unavailable", candidates: [], reason: "probe_failed" });
+    await h.controller.getState();
+    h.network({ status: "unavailable", candidates: [], reason: "probe_timed_out" });
+    await h.controller.getState();
+    assert.equal(h.changes.at(-1).status, "recovering");
+    assert.equal(h.changes.at(-1).reason, "network_probe_timed_out");
+    assert.equal(h.handles[0].networkState, null);
+    assert.equal(h.handles[0].revoked, 0);
+  } finally { await h.controller.dispose(); }
 });
 
 test("confirmed unsafe observations still revoke a recovering gateway", async () => {

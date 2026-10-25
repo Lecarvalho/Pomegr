@@ -73,6 +73,11 @@ per-launch authorization. A fixed read-only Windows probe selects physical inter
 and private profiles. Unknown or changed eligibility fails closed. Sharing is independent
 of desktop startup success and is revoked before upstream services stop.
 
+The Windows network probe has a ten-second timeout. Gateway requests allow eleven seconds for verification.
+Temporary probe failures suspend access and discard pending pairing codes, but retain existing browser pairings.
+The watcher retries verification after five seconds. Confirmed network changes revoke sharing.
+The [phone-access privacy rules](privacy/desktop-and-diagnostics.md#phone-access) define the timeout information exposed to the renderer.
+
 The gateway has a fixed upstream, validates LAN host/origin and subnet membership, and
 constructs the internal authorization headers. It admits only approved dashboard pages,
 assets, and read-only normalized APIs. Pairing is the sole gateway-local POST and does
