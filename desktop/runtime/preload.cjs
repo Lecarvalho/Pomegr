@@ -139,6 +139,7 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     if (typeof sessionId !== "string" || !SESSION_ID.test(sessionId)) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:session-history", sessionId, request);
   },
+  openSessionLink(url) { return ipcRenderer.invoke("pomegr:open-session-link", url); },
   terminal(operation, payload) {
     const plain = payload && typeof payload === "object" && !Array.isArray(payload)
       && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);

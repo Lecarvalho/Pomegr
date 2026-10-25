@@ -87,6 +87,24 @@ describe("Terminal tab availability", () => {
 });
 
 describe("SessionTerminalPanel", () => {
+  it.each([false, true])("opens owner and agent history links only with the bridge capability (%s)", async (available) => {
+    const url = "https://github.com/o/r/pull/927";
+    const text = `[PR #927](${url})`;
+    const openSessionLink = vi.fn().mockResolvedValue({ ok: true });
+    Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: {
+      sessionHistory: read, ...(available ? { openSessionLink } : {}),
+    } });
+    read.mockResolvedValue(page([owner(text), agent(text)]));
+    const { container } = mount();
+    await waitFor(() => expect(container.querySelectorAll(".sessionTerminalMessage")).toHaveLength(2));
+    const links = container.querySelectorAll("a");
+    expect(links).toHaveLength(available ? 2 : 0);
+    if (available) {
+      fireEvent.click(links[0]);
+      expect(openSessionLink).toHaveBeenCalledExactlyOnceWith(url);
+    } else expect(container.textContent).toContain(text);
+  });
+
   it.each([false, true])("a host exit does not authorize Continue while observation is live (continued=%s)", async (continued) => {
     bridge(true, true);
     terminal.mockResolvedValue({ ok: true, sessions: [{ key: "exited", sessionId: "codex:one", state: "exited", exitCode: 0,

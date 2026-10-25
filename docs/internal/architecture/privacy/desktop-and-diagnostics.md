@@ -90,6 +90,12 @@ Windows.
 
 ## Terminal output
 
+- Only a saved-history Markdown link the owner clicks reaches `pomegr:open-session-link` through the desktop `openSessionLink` bridge.
+- The channel accepts exactly one string from the trusted main frame: a canonical HTTPS URL with no username or password and at most 2048 characters (`new URL(value).href === value`).
+- Desktop main revalidates the URL and calls `shell.openExternal`; it returns only `{ ok: true }` or `{ ok: false, error: "invalid" }`.
+- The URL is not stored or logged, and the channel never navigates the window or reaches a browser, paired device, monitor, Aril, or MCP route.
+- Ordinary navigation and window-open handling retain the fixed external-URL allowlist, including middle-click.
+
 - Owner-confirmed Continue uses the [Continue plan](session-evidence.md#continue-plan) in desktop main only; its folder appears only in native confirmation.
 - Continue IPC returns only a fixed status, never a plan, working folder, title, executable, arguments, or environment.
 - Main sends a live host PID through private worker messages to resolve its unique committed session identity.

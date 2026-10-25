@@ -6,6 +6,7 @@ export { installTaskImageIpc } from "./task-image.mjs";
 export { installTaskFeatureIpc } from "./task-feature.mjs";
 // A session's saved history is read on a channel of its own (session-history.mjs).
 export { installSessionHistoryIpc } from "./session-history.mjs";
+export { installSessionLinkIpc } from "./session-link.mjs";
 
 export const TASK_ACTION_CHANNEL = "pomegr:task-action";
 export const TASK_ACTION_NAMES = Object.freeze([

@@ -20,6 +20,7 @@ it("renders each read-only Terminal state from synthetic samples", () => {
   expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
   expect(screen.getByText(/Continue unavailable/u).closest(".sessionTerminal")?.querySelectorAll(".sessionTerminalBar")).toHaveLength(1);
   expect(container.querySelectorAll(".sessionManagedTerminal")).toHaveLength(6);
+  expect(container.querySelector("a.safeMarkdownLink")).toHaveAttribute("title", "https://github.com/o/r/pull/927");
 });
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
   .map((match) => readFileSync(join(process.cwd(), "app", match[1]), "utf8")).join("\n");
