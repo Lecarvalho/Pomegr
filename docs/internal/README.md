@@ -130,3 +130,4 @@ is no archive directory.
 | [Design system gaps](plans/design-system-gaps.md) | Accepted patterns that have no `/design-system` sample |
 | [Purpose roadmap](plans/purpose-roadmap.md) | Small versions toward less supervision and more personal time, with a scorecard, the first pilot retrospective, and the 0.8.1 cut |
 | [Sessions inside Pomegr](plans/embedded-terminal.md) | One Terminal tab for every session in the desktop app: live for sessions Pomegr runs, read-only history for the rest, and Continue for an ended session; proposed |
+| [Aril operator](plans/aril-operator.md) | A standing grant that lets Aril start, review, send back, and merge a repository's tasks while the owner is away; proposed |
