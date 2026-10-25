@@ -1,11 +1,11 @@
 # Design system gaps
 
-> Status: active; DSG-8a is complete. DSG-1 through DSG-7, DSG-8b, and DSG-9 remain open.
+> Status: active; DSG-2, DSG-4, and DSG-8a are complete. DSG-1, DSG-3, DSG-5 through DSG-7, DSG-8b, and DSG-9 remain open.
 > Created: 2026-09-30.
 > Scope: accepted reusable UI patterns whose shipped components have no static sample on `/design-system`, plus two critique findings that were still open. It adds no feature and no new component.
 > Continuation owner: Pomegr maintainers.
 > Authority: working checklist. [DESIGN.md](../../../DESIGN.md) and the `/design-system` page (`app/design-system/page.tsx`, `app/components/design-system/`) stay the visual authority; the [style guide](../../STYLE_GUIDE.md) governs this plan's lifecycle.
-> Next task: pick one of the medium-rated items (DSG-1 inspector sheet frame, DSG-2 agent grid tile states, or DSG-4 repository setup row states; DSG-3 is also medium but needs its keep-or-remove decision first), promote it as a static sample, and tick it below. If a pattern is not worth a sample, mark it rejected with the reason.
+> Next task: promote DSG-1, or decide whether to keep DSG-3 before sampling it. Mark a rejected pattern with its reason.
 > Completion criteria: every listed pattern is promoted to `/design-system` or explicitly rejected, and every carried-over critique finding is fixed or explicitly rejected.
 > Permanent destinations: `DESIGN.md` for the written contract, `/design-system` for the working sample, and `tests/ui/design-system.test.tsx` with `tests/ui/pomegr-design-contract.test.tsx` for their guards.
 > Lifetime: temporary; delete this file in the change that completes the last item, after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact). Do not keep an archive copy.
@@ -24,9 +24,9 @@ The design promotion gate of the documentation migration (closed 2026-09-30) rep
 ## Patterns still missing
 
 - [ ] **DSG-1 Inspector sheet frame.** `InspectorSheet` (`app/components/dashboard/agent-roster/InspectorSheet.tsx`, styles in `agent-inspector.css`) is the phone form of the inspector and is shared with the focused tree. It is a portaled, fixed, modal dialog opened by tapping a roster row at 760px and narrower, so it cannot sit inline in the page. A sample needs a static frame (a bounded container that applies the sheet's header, back action, and 44px body without the portal, focus trap, or body lock) or an explicit rejection that keeps the roster note as the only description. Rating: medium.
-- [ ] **DSG-2 Agent grid tile states.** `AgentGridView.tsx` and `agent-grid.css`. The roster sample reaches the grid only through its List / Grid switch and shows one arrangement. Missing: a matrix of finished, idle, active, and stopped tiles, the amber warning and coral selected borders, the metric bar, the lane header, and the metric chips. Rating: medium.
+- [x] **DSG-2 Agent grid tile states.** Promoted 2026-10-25 in `DesignSystemAgentGridSample.tsx`. The shipped grid shows finished, idle, active, stopped, warning, and selected tiles across all three metrics. Lane headers, metric labels, and relative bars use shared classes with fixed data and time.
 - [ ] **DSG-3 Agent tree cards, and a keep or remove decision.** `agent-tree/{AgentTreeView,ClusterCard,RoleGlyph,FocusPath}.tsx`, `agent-tree-focus.css`, and the `.agentTree*` rules in `evidence.css`. Missing: focus and attention cards, the dashed cluster card, the group card, the hot connector, and the rail form below 640px. `RoleGlyph` is already shared with the roster. Decision needed first: production mounts only the focused tree (`AgentRoster.tsx` always passes `focusId`), so the unfocused form (role key, persisted folds and camera) renders only in `tests/ui/workflow-activity.test.tsx`. Keep it and sample it, or remove the branch and its two `localStorage` keys (`pomegr-agent-tree-folds-*`, `pomegr-agent-tree-camera-*`) with its tests. The retired unfocused-tree specification is recoverable from Git history (`docs/plans/agent-tree-view.md` before commit `c8ab944`) if the form is kept; it recorded fixed approximately 156x140 column tiles at 640px and above and 48px rail rows below, initial folding (live trees of ten or fewer agents expand fully, larger live trees reveal roots and paths with active, waiting, warm, or needs-input agents, historical trees reveal roots and direct children), a width-only initial fit clamped to 40-100% with manual zoom of 25-300%, and role shape for role with status carried by text and color (active green, needs input amber, waiting or warm blue, stopped red, idle or finished muted). Those values were not re-verified against the code. Rating: medium.
-- [ ] **DSG-4 Repository setup row states.** `RepositoryRow.tsx`, `PluginSetupRow.tsx`, and `InventoryCapture.tsx`. The page shows one row. Missing: update available with its primary action, the `.repositorySetupFeedback` tones, the inline `.repositoryCaptureConfirm` strip, the capture statuses (current, unavailable, not captured, capturing, failed), and the provider section head. Rating: medium.
+- [x] **DSG-4 Repository setup row states.** Promoted 2026-10-25 in `DesignSystemRepositorySamples.tsx`. Shipped rows and capture controls show updates, all feedback tones, five capture states, and inline confirmation. The provider section head uses shared classes and a fixed capture string.
 - [ ] **DSG-5 Revision evidence.** `RevisionEvidence.tsx` and `RepositoryOverviewTab.tsx`. Missing: the hairline fact grid (`.repositoryOverviewFacts`), the summary cards (`.repositoryOverviewCards`, `.repositoryInventorySummary`), the category grid (`.repositoryCategoryGrid`), and `ContextAllocationBreakdown` (loaded initially, deferred, reserved). The allocation breakdown has one caller, so reject it if the fact grid and cards are promoted without it. Rating: low to medium.
 - [ ] **DSG-6 Linked repository index row.** `.commandRepositoryRow` and `.commandRepositoryHead` in `RepositoryInventoryView.tsx`, with the setup-chip tones and the chevron. One caller. Rating: low; reject unless a second list adopts it.
 - [ ] **DSG-7 Command table static sort states.** The `/design-system` command table sorts when clicked, but the page cannot show the unsorted, descending, and ascending headers side by side, or a focused header, without interaction. A static view needs an `initialSort` prop on `CommandTable`, a small API addition, so weigh it against a note that already describes the three states. No production caller enables sorting or built-in pagination today; these states exist in `tests/ui/command-table.test.tsx`. Rating: low.
@@ -46,6 +46,33 @@ Two Impeccable critiques (2026-08-15 and 2026-09-01) of the old session page wer
 Full UI verification remains incomplete: Task fields, Events rail, and Feature modal samples time out in `tests/ui/design-system.test.tsx`.
 The two-worker full run reports 2,449 passes and four failures, including an intermediate shell-test assertion corrected before the focused rerun.
 DSG-1 through DSG-7, DSG-8b, and DSG-9 remain open. Continue with the next task listed above.
+## Continuation checkpoint — 2026-10-25
+
+### DSG-2
+
+- Added the standalone **Agent grid tile states** section before promoting DSG-4.
+- Used `Section`, `Sample`, and `sampleAgent` with the shipped grid, toolbar, footer, and grouping helper.
+- Kept tile selection and metric choices fixed without adding persistence.
+- Tests first: the section and contract guards failed before implementation.
+
+### DSG-4
+
+- Replaced the single row sample with **Repository setup row states**.
+- Used shipped setup rows and capture controls with inert callbacks.
+- Kept provider headings and capture times static without reading inventory stores.
+- Tests first: the repository section contract guard failed before implementation.
+
+- Verification: the style hook, focused state and contract tests, `npm run verify:fast`, and `npm run build` passed.
+- `npm run test:node` passed 4,019 tests, with four skipped and two failures; both failing files passed individually on rerun.
+- `npm run test:ui` passed 2,456 tests with two design-system interaction timeouts; the final isolated rerun passed all 20 tests in that file.
+- Browser inspection is unavailable because no browser is connected.
+- Added `tests/ui/design-system-grid-repository.test.tsx` to keep both existing test files within the 800-line architecture limit.
+
+DSG-1, DSG-3, DSG-5, DSG-6, DSG-7, DSG-8a, DSG-8b, and DSG-9 remain open.
+
+### Open questions
+
+- The plan called the grid metrics chips, but `app/components/dashboard/agent-roster/AgentGridView.tsx:68` renders plain `.agentGridTileMetrics` labels. The sample preserves that shipped markup.
 
 ## Owned elsewhere
 

@@ -26,10 +26,10 @@ import { CommandTableSection, SettingsRailSection } from "../../app/components/d
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Assigned sessions", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent grid tile states", "Agent inspector", "Repository setup row states", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Assigned sessions", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
 const SAMPLE_SOURCES = [
-  "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample", "DesignSystemFeatureModalSample",
-  "DesignSystemTaskBoardSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAssignedSessionsSample", "DesignSystemAgentChatSample",
+  "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemAgentGridSample", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample", "DesignSystemFeatureModalSample",
+  "DesignSystemTaskBoardSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAssignedSessionsSample", "DesignSystemAgentChatSample", "DesignSystemRepositorySamples",
 ].map((name) => `app/components/design-system/${name}.tsx`).concat("app/components/design-system/DesignSystemTaskSampleData.ts");
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 

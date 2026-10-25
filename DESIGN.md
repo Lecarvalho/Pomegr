@@ -163,6 +163,8 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 - The `/design-system` page is the code-led visual authority. This file and the surface pages are its written contract.
 - `app/design-system/page.tsx` serves the page and `app/components/design-system/` renders it.
 - The page uses the real shared classes with static sample data only.
+- **Agent grid tile states** renders the shipped grid with fixed finished, idle, active, stopped, warning, and selected examples for all three metrics.
+- **Repository setup row states** renders plugin updates, all feedback tones, five capture states, the inline confirmation, and the provider section head.
 - The page renders the six roles and their states, selects, chips and pills, page headers, tab bars, sidebar limits, panels, the agent roster and inspector, the command table, the settings tab rail, and the token scale.
 - The page renders on the web development server only.
 - The page is absent from every navigation menu and from the LAN allowlist.
