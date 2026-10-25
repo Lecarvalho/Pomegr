@@ -177,6 +177,7 @@
       "desktop/runtime/task-dispatch.mjs",
       "desktop/runtime/task-image.mjs",
       "desktop/runtime/task-feature.mjs",
+      "desktop/runtime/task-scorecard.mjs",
       "desktop/runtime/session-history.mjs",
       "desktop/runtime/session-link.mjs",
       "desktop/runtime/session-continue.mjs",
