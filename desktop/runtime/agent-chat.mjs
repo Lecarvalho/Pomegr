@@ -35,6 +35,7 @@ const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
 const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set"]);
+const TASK_LOG_KINDS = new Set(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -137,6 +138,22 @@ export function createAgentChat(options = {}) {
     try {
       const board = await monitor(`/api/tasks?${new URLSearchParams({ repositoryId })}`, { method: "GET" });
       return isPlainObject(board) && board.readiness === "ready" && board.repositoryId === repositoryId ? board : null;
+    } catch { return null; }
+  }
+
+  async function readTaskLog(repositoryId) {
+    try {
+      const answer = await postAction("log-read", repositoryId, { limit: 100 });
+      const log = answer?.log;
+      if (answer?.ok !== true || !isPlainObject(log) || !Array.isArray(log.entries)
+        || !isPlainObject(log.cursors) || !Number.isSafeInteger(log.cursors.aril) || log.cursors.aril < 0
+        || typeof log.more !== "boolean" || !Number.isSafeInteger(log.latestId) || log.latestId < 0) return null;
+      const entries = log.entries.filter((entry) => isPlainObject(entry) && Number.isSafeInteger(entry.id)
+        && typeof entry.task === "string" && /^T-\d+$/u.test(entry.task) && TASK_LOG_KINDS.has(entry.kind)
+        && Number.isSafeInteger(entry.at) && Number.isFinite(new Date(entry.at).getTime())
+        && (entry.pullRequest === null || Number.isSafeInteger(entry.pullRequest)));
+      const omitted = log.more && entries.length > 0 && Math.min(...entries.map((entry) => entry.id)) > log.cursors.aril + 1;
+      return { entries: entries.filter((entry) => entry.id > log.cursors.aril), omitted };
     } catch { return null; }
   }
 
@@ -332,6 +349,9 @@ export function createAgentChat(options = {}) {
 
   async function finishTurn(turn, outcome) {
     const status = ["complete", "stopped", "timed_out"].includes(outcome?.status) ? outcome.status : "failed";
+    if (status === "complete" && turn.logThrough > 0) {
+      void postAction("log-ack", turn.repositoryId, { consumer: "aril", through: turn.logThrough }).catch(() => {});
+    }
     const answer = typeof outcome?.text === "string" ? outcome.text : "";
     let read = status === "complete" ? extractProposal(answer) : { text: visibleAnswer(answer), proposal: null, unreadable: false };
     try {
@@ -382,7 +402,7 @@ export function createAgentChat(options = {}) {
       const held = conversationImages(existing?.messages);
       if (imageIds.length > 0 && !images) return UNAVAILABLE;
       if (held.length + imageIds.length > CHAT_IMAGES_PER_CONVERSATION) return refused("limit");
-      const [board, root, runs] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId), readRuns()]);
+      const [board, root, runs, taskLog] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId), readRuns(), readTaskLog(repositoryId)]);
       if (!board || !root || disposed) return UNAVAILABLE;
       const conversation = existing ?? await store.create(repositoryId, { provider, model, title: conversationTitle(text) });
       if (!conversation) return refused("limit");
@@ -395,7 +415,7 @@ export function createAgentChat(options = {}) {
       const attached = imageIds.length > 0 ? await images.claim(repositoryId, conversation.id, imageIds) : [];
       if (!attached) return abandoned(INVALID);
       const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
@@ -407,6 +427,7 @@ export function createAgentChat(options = {}) {
       sessionId = await declareRun(provider);
       if (disposed) { withdrawRun(sessionId); return UNAVAILABLE; }
       turn = { repositoryId, conversationId: conversation.id, provider, model, startedAt: at, activity: "starting", text: "", stopped: false,
+        logThrough: Math.max(0, ...(taskLog?.entries ?? []).map((entry) => entry.id)),
         stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
       started = true;

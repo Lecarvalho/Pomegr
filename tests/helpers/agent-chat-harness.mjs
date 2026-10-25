@@ -145,7 +145,7 @@ export async function chatHarness(context, overrides = {}) {
     reload: () => createAgentChatStore({ directory }),
     requests: (predicate = () => true) => calls.filter(predicate),
     imageCalls: () => calls.filter((call) => call.pathname === "/internal/tasks/image-add"),
-    actionCalls: () => calls.filter((call) => call.pathname.startsWith("/internal/tasks/") && call.pathname !== "/internal/tasks/worktree-root" && call.pathname !== "/internal/tasks/image-add"),
+    actionCalls: () => calls.filter((call) => call.pathname.startsWith("/internal/tasks/") && !["worktree-root", "image-add", "log-read", "log-ack"].some((route) => call.pathname === `/internal/tasks/${route}`)),
   };
 }
 

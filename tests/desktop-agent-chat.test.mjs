@@ -22,6 +22,102 @@ const conversationId = "chat-0123456789ab";
 const proposalId = "p-0123456789ab";
 const CHAT_ID = /^chat-[0-9a-f]{12}$/u;
 
+const logEntry = (id, extra = {}) => ({ id, task: `T-${id}`, kind: "started", at: id * 1000, pullRequest: null, ...extra });
+const logAnswer = (entries, cursor = 0, more = false) => ({ ok: true, log: { entries, cursors: { aril: cursor }, more, latestId: 100 } });
+const logCalls = (h, action) => h.calls.filter((call) => call.pathname === `/internal/tasks/log-${action}`);
+
+test("owner turns show only valid unseen log entries and acknowledge the highest shown ID", async (context) => {
+  const h = await chatHarness(context);
+  const malformed = [null, {}, logEntry(6, { id: 6.5 }), logEntry(6, { task: "T-6\ninjected" }), logEntry(6, { kind: "injected" }),
+    logEntry(6, { at: "1000" }), logEntry(6, { at: Number.MAX_SAFE_INTEGER }), logEntry(6, { pullRequest: "42" }), logEntry(6, { pullRequest: undefined })];
+  h.state.actions = (action) => action === "log-read" ? logAnswer([logEntry(1), logEntry(2), logEntry(5, { kind: "merged", pullRequest: 42 }), ...malformed, logEntry(3)], 2) : { ok: true };
+  const sent = await send(h);
+  assert.equal(sent.ok, true);
+  const prompt = h.runs[0].options.prompt;
+  assert.match(prompt, /<task_log_since_last_turn>\n1970-01-01T00:00:03.000Z T-3 started\n1970-01-01T00:00:05.000Z T-5 merged PR #42\n<\/task_log_since_last_turn>/u);
+  assert.doesNotMatch(prompt, /injected/u);
+  assert.equal(logCalls(h, "ack").length, 0);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Done." }, sent.conversationId);
+  assert.deepEqual(logCalls(h, "ack").map((call) => call.body), [{ repositoryId, payload: { consumer: "aril", through: 5 } }]);
+});
+
+test("log omission requires both older entries and a gap beyond the cursor", async (context) => {
+  for (const [cursor, more, omitted] of [[0, true, true], [3, true, false], [0, false, false], [5, true, false]]) {
+    const h = await chatHarness(context);
+    h.state.actions = () => logAnswer([logEntry(4), logEntry(5)], cursor, more);
+    assert.equal((await send(h)).ok, true);
+    assert.equal(h.runs[0].options.prompt.includes("(Older entries are left out.)"), omitted);
+  }
+});
+
+test("failed, refused, and malformed log reads leave the turn available", async (context) => {
+  const answers = [null, { ok: false }, { ok: true }, { ...logAnswer([]), ok: "true" },
+    { ok: true, log: { entries: null, cursors: { aril: 0 }, more: false } },
+    ...[-1, 0.5, "0"].map((cursor) => logAnswer([], cursor)),
+    { ok: true, log: { entries: [], cursors: {}, more: false } }, logAnswer([], 0, "false"), new Error("read failed")];
+  for (const answer of answers) {
+    const h = await chatHarness(context);
+    h.state.actions = () => { if (answer instanceof Error) throw answer; return answer; };
+    const sent = await send(h);
+    assert.equal(sent.ok, true);
+    assert.match(h.runs[0].options.prompt, /\(The task log is unavailable\.\)/u);
+    await finishTurn(h, h.runs[0], { status: "complete", text: "Answer." }, sent.conversationId);
+    assert.equal(logCalls(h, "ack").length, 0);
+  }
+});
+
+test("failed, stopped, and timed-out turns never acknowledge the log", async (context) => {
+  for (const status of ["failed", "stopped", "timed_out"]) {
+    const h = await chatHarness(context);
+    h.state.actions = () => logAnswer([logEntry(1)]);
+    const sent = await send(h);
+    await finishTurn(h, h.runs[0], { status, text: "Partial." }, sent.conversationId);
+    assert.equal(logCalls(h, "ack").length, 0, status);
+  }
+});
+
+test("log reads start beside the existing reads and use their timeout", async (context) => {
+  const h = await chatHarness(context, { timeoutMs: 25 });
+  // AbortSignal.timeout does not hold the event loop; this timer keeps it running until the abort fires.
+  const keepAlive = setInterval(() => {}, 1_000);
+  context.after(() => clearInterval(keepAlive));
+  let releaseBoard;
+  h.state.gate = new Promise((resolve) => { releaseBoard = resolve; });
+  h.state.actions = async (_action, _payload, _body, call) => new Promise((_resolve, reject) => {
+    call.init.signal.addEventListener("abort", () => reject(call.init.signal.reason), { once: true });
+  });
+  const sending = send(h);
+  await until(() => logCalls(h, "read").length === 1);
+  assert.equal(h.calls.length, 4, "all reads start while the board is pending");
+  releaseBoard();
+  assert.equal((await sending).ok, true);
+  assert.match(h.runs[0].options.prompt, /\(The task log is unavailable\.\)/u);
+});
+
+test("an acknowledgement failure or pending request cannot delay saving the answer", async (context) => {
+  for (const ack of [() => { throw new Error("ack failed"); }, () => ({ ok: false }), () => new Promise(() => {})]) {
+    const h = await chatHarness(context);
+    h.state.actions = (action) => action === "log-read" ? logAnswer([logEntry(1)]) : ack();
+    const sent = await send(h);
+    const saved = await finishTurn(h, h.runs[0], { status: "complete", text: "Answer." }, sent.conversationId);
+    assert.equal(saved.messages.at(-1).status, "complete");
+    assert.equal(logCalls(h, "ack").length, 1);
+  }
+});
+
+test("a follow-up neither reads nor acknowledges the log", async (context) => {
+  const h = await chatHarness(context);
+  const conversation = await seed(h, { messages: [userMessage(1), agentMessage(2, { proposal: {
+    id: proposalId, summary: "Change", state: "pending", operations: [{ op: "update_task", id: "T-1", text: "Updated" }],
+  } })] });
+  assert.deepEqual(await h.handle("dismiss", { repositoryId, conversationId: conversation.id, proposalId }), { ok: true });
+  const run = await h.followUp();
+  assert.doesNotMatch(run.options.prompt, /<task_log_since_last_turn>/u);
+  await h.finishFollowUp(conversation.id);
+  assert.equal(logCalls(h, "read").length, 0);
+  assert.equal(logCalls(h, "ack").length, 0);
+});
+
 test("the channel, operations, errors, and request bound are fixed", () => {
   assert.equal(AGENT_CHAT_CHANNEL, "pomegr:agent-chat");
   assert.deepEqual([...AGENT_CHAT_OPERATIONS], ["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
@@ -119,7 +215,7 @@ test("send reads the board, the root, and the observed runs with the desktop hea
   assert.deepEqual(Object.keys(answer), ["ok", "conversationId"]);
   assert.match(answer.conversationId, CHAT_ID);
 
-  assert.equal(h.calls.length, 3);
+  assert.equal(h.calls.length, 4);
   const [board, rootCall, agents] = h.calls;
   assert.equal(agents.url, `${origin}/api/agents?project=all&days=90&scope=all`);
   assert.equal(agents.init.method, "GET");
@@ -129,6 +225,8 @@ test("send reads the board, the root, and the observed runs with the desktop hea
   assert.equal(rootCall.init.method, "POST");
   assert.deepEqual(rootCall.body, { repositoryId, payload: {} });
   assert.equal(rootCall.init.headers["content-type"], "application/json");
+  assert.deepEqual(h.calls[3].body, { repositoryId, payload: { limit: 100 } });
+  assert.equal(h.calls[3].pathname, "/internal/tasks/log-read");
   for (const call of h.calls) {
     assert.equal(call.init.redirect, "error");
     assert.equal(call.init.cache, "no-store");

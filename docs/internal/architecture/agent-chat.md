@@ -83,7 +83,8 @@ single follow-up run; no proposal starts a run or applies itself. Follow-ups nev
    that the task form's model list reads (`GET /api/agents` for all projects, 90 days,
    all scopes). A board that is not ready, or a repository the monitor has not located in
    this run, answers `unavailable`. An agents read that fails leaves the Claude list to
-   the board's own models.
+   the board's own models. In parallel, `POST /internal/tasks/log-read` reads the newest 100 entries with the same monitor timeout.
+   A failed or malformed log read adds an unavailable line; it never refuses the turn.
 5. It moves the message's images into the conversation, builds the prompt (see
    [Prompt](#prompt)), stores the owner's message, declares a Claude Code run to the
    monitor (see [The declared run](#the-declared-run)), and starts the run in the
@@ -231,7 +232,9 @@ characters, in this order:
    time, the column names, the features (title and whether done), the queue (status,
    order, blocker, start threshold, and the usage percentages of the start gates), the
    model lists (`models`), and every task with its column and its position in that column.
-3. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
+3. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
+   The section reports an empty log, unavailable log, or omitted older entries with fixed lines.
+4. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
@@ -241,9 +244,9 @@ characters, in this order:
    An answer that is a follow-up is marked as one. A proposal of board changes that
    stopped also says how many operations succeeded, which one failed with which fixed
    error, and how many were not applied.
-4. **Images.** One line for each image of the conversation whose file is still there:
+5. **Images.** One line for each image of the conversation whose file is still there:
    its ID, its type, and the absolute file. The section is left out when there is none.
-5. **The owner's message**, and one line with the IDs of its images, in order. A
+6. **The owner's message**, and one line with the IDs of its images, in order. A
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
@@ -711,6 +714,7 @@ Desktop main keeps one JSON file per conversation:
 | `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
+| `POST /internal/tasks/log-read` and `log-ack` on the monitor | Desktop main, with the desktop token | The newest 100 log entries for owner-message prompts; acknowledgement through the highest shown ID after a complete turn |
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, `queue_ungroup`, and `after_set`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
 | The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
@@ -770,10 +774,13 @@ never a session's.
   The renderer keeps it in memory only; browser storage holds only the ID of the
   repository chosen last.
 - **What reaches the provider.** Each turn sends the prompt to the provider the owner
-  chose, through the owner's CLI. A follow-up is a turn: an Apply or a Dismiss sends one
+  chose, through the owner's CLI. From 2026-10-25 (Aril operator phase 1), an owner-message prompt also holds unseen task-log entries.
+  These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text.
+  The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
+  A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This
   is the widening of 2026-10-13 (task T-95): until then only a message started a run.
-  The prompt of a follow-up holds what any prompt holds, and the outcome record: the
+  The prompt of a follow-up holds the conversation, board snapshot, images, and the outcome record: the
   proposal's summary, the operation names, the task IDs, a feature title and a column
   name the proposal wrote, and fixed result words. It holds no task text beyond the
   snapshot's, no path, and no error text. If the owner answers an eligible follow-up

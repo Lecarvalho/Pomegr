@@ -2754,7 +2754,7 @@ serves no other client.
 - Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
 - `task_log` stores only repository ID, task number, kind, time, and a nullable pull-request number under its entry ID. `task_log_cursors` stores only a consumer name and entry ID under its repository ID. Neither stores text, title, session ID, URL, or branch.
 - `task_pull_request_seen:<repositoryId>:<T-n>` stores only a PR number, head commit OID, fixed check status, and merged flag; task deletion removes it.
-- Only `POST /internal/tasks/log-read` and `log-ack` expose log entries or cursors, exclusively to desktop main. Nothing else reads them yet: no browser, paired device, agent tool, Aril prompt, or `/api/state`.
+- Only `POST /internal/tasks/log-read` and `log-ack` expose log entries or cursors, exclusively to desktop main. Desktop main reads them for [Aril's owner-message prompts](agent-chat.md#privacy); no browser, paired device, agent tool, or `/api/state` reads them.
 - `task_outcomes` stores only counts, times, a pull request number and its fixed state, under repository and task identifiers.
 - Outcomes are computed at Done and deleted with the task; no text, title, URL, or branch name is stored.
 - Outcomes stay private to the task store; no route, agent tool, or observation surface reads them.

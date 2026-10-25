@@ -42,6 +42,9 @@ Aril sees how many texts were shortened and can retrieve needed full tasks with 
 
 ## Ask Aril
 
+Aril sees board changes since its last completed answer: task starts, reports, stalls, CI results, and merges.
+You can ask what happened while you were away. For these changes, Aril receives only task IDs, event kinds, times, and pull-request numbers.
+
 1. Select **Aril** at the bottom right. The panel opens on your newest conversation.
 2. Choose the repository in the **Repository** menu when Pomegr lists more than one.
 3. Choose the provider and model in **Run on**. **Default model** uses the tool's own
