@@ -1,4 +1,4 @@
-import { createTaskGateFacts, createTaskTreeObservation } from "./task-gate-facts.mjs";
+import { createTaskGateFacts, createTaskTreeObservation, taskUsagePercentFact } from "./task-gate-facts.mjs";
 import { readTaskCheckFacts, resolveTaskCheckFacts, resolveTaskSession, resolveTaskSessionFacts } from "./task-session-lookup.mjs";
 import { createTaskIssues } from "./task-issues.mjs";
 import { resolveTaskOutcomeFacts, resolveTaskPullRequestFacts } from "./task-outcome-lookup.mjs";
@@ -19,6 +19,14 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
     resolveTaskGateFacts: createTaskGateFacts({
       usageLimits: gateSources?.usageLimits, providerStatus: gateSources?.providerStatus, tree, ...(gateSources?.now ? { now: gateSources.now } : {}),
     }),
+    resolveTaskUsage(providerId) {
+      if (providerId !== "claude" && providerId !== "codex") return null;
+      try {
+        const rows = gateSources?.usageLimits?.()?.providers;
+        const limits = Array.isArray(rows) ? rows.find((row) => row?.provider === providerId)?.usageLimits : null;
+        return taskUsagePercentFact(limits, gateSources?.now?.() ?? Date.now());
+      } catch { return null; }
+    },
     resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, { observationStore, catalogSessions }),
     resolveTaskSessionFacts: (sessionRef) => resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }),
     resolveTaskCheckFacts: (sessionRef) => resolveTaskCheckFacts(sessionRef, { observationStore }),

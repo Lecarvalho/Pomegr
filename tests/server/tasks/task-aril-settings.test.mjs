@@ -10,7 +10,7 @@ const OTHER = `repo-${"b".repeat(24)}`;
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null,
-  limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+  limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
 function setup(t) {
@@ -48,7 +48,8 @@ test("defaults, subset replacement, repository isolation and persistence", (t) =
 test("settings reject unknown keys and invalid whole fields without partial writes", (t) => {
   const { store, set } = setup(t);
   for (const settings of [null, [], 1, { unknown: true }, { actions: {} }, { actions: { ...defaults().actions, extra: false } },
-    { limits: {} }, { reviewer: {} }, { pairedDevices: 1 }, { pairedDevices: null }, { workRules: {} }]) invalid(set(settings));
+    { limits: {} }, { limits: { hours: 1, starts: 1, concurrent: 1, sendBacks: 0, allowancePercent: 1 } },
+    { reviewer: {} }, { pairedDevices: 1 }, { pairedDevices: null }, { workRules: {} }]) invalid(set(settings));
   for (const key of Object.keys(defaults().actions)) for (const value of [null, 0, "true"]) invalid(set({ actions: { ...defaults().actions, [key]: value } }));
   for (const payload of [{}, { settings: {}, extra: 1 }, { settings: [], text: "no" }]) invalid(store.apply(REPO, "aril_settings_set", payload));
   invalid(set({ pairedDevices: true, workRules: [{ kind: "unknown", value: "bad" }] }));
@@ -71,11 +72,30 @@ test("merge method accepts only the supported values and old stored settings rea
 
 test("every limit accepts null and inclusive integer bounds only", (t) => {
   const { set } = setup(t);
-  for (const [key, min, max] of [["hours", 1, 72], ["starts", 1, 100], ["concurrent", 1, 10], ["sendBacks", 0, 10], ["allowancePercent", 1, 100]]) {
+  for (const [key, min, max] of [["hours", 1, 72], ["tasks", 1, 100], ["tasksAtATime", 1, 10], ["sendBacks", 0, 10], ["usagePercent", 1, 100]]) {
     for (const value of [null, min, max]) assert.equal(set({ limits: { ...defaults().limits, [key]: value } }).ok, true);
     for (const value of [min - 1, max + 1, 1.5, "1", true]) invalid(set({ limits: { ...defaults().limits, [key]: value } }));
   }
   invalid(set({ limits: { ...defaults().limits, extra: null } }));
+});
+
+test("legacy grant limits migrate on read and write using the new names", (t) => {
+  const { store, directory, set } = setup(t);
+  set({});
+  const database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  try {
+    const legacy = { ...defaults(), limits: { hours: 4, starts: 8, concurrent: 2, sendBacks: 3, allowancePercent: 60 } };
+    database.prepare("UPDATE aril_settings SET value = ? WHERE repository_id = ?").run(JSON.stringify(legacy), REPO);
+  } finally { database.close(); }
+  assert.deepEqual(store.readBoard(REPO).aril.settings.limits,
+    { hours: 4, tasks: 8, tasksAtATime: 2, sendBacks: 3, usagePercent: 60 });
+  assert.deepEqual(set({ pairedDevices: true }).settings.limits,
+    { hours: 4, tasks: 8, tasksAtATime: 2, sendBacks: 3, usagePercent: 60 });
+  const reopened = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  try {
+    assert.deepEqual(JSON.parse(reopened.prepare("SELECT value FROM aril_settings WHERE repository_id = ?").get(REPO).value).limits,
+      { hours: 4, tasks: 8, tasksAtATime: 2, sendBacks: 3, usagePercent: 60 });
+  } finally { reopened.close(); }
 });
 
 test("reviewer uses task model validation and nullable provider, with an explicit boolean", (t) => {

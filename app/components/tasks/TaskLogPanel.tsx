@@ -32,7 +32,7 @@ export function TaskLogPanel({ read, onClose, titleId, closeRef, paired = false 
         <li className="taskGateRow taskLogRow">
           <time className="taskScorecardId">{logTime(entry.at)}</time>
           <span className="taskScorecardId">{entry.task}</span>
-          <span>{TASK_LOG_LABELS[entry.kind]}</span>
+          <span>{TASK_LOG_LABELS[entry.kind]}{entry.reason ? ` (${entry.reason})` : ""}</span>
           {entry.pullRequest !== null && <span className="taskScorecardId">PR #{entry.pullRequest}</span>}
         </li>
         {entry.id === divider && <li className="taskGateRow taskGatesCaption">Aril has read up to here</li>}

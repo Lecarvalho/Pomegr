@@ -71,7 +71,7 @@ test("the board snapshot carries a fixed grant summary with ISO times", () => {
   const grant = {
     startedAt: 1790856000000, endsAt: 1790863200000, startsUsed: 2,
     actions: { start: true, review: true },
-    limits: { hours: 2, starts: 5, concurrent: 1, sendBacks: 0, allowancePercent: 10 },
+    limits: { hours: 2, tasks: 5, tasksAtATime: 1, sendBacks: 0, usagePercent: 10 },
     active: true,
   };
   assert.deepEqual(boardSnapshot(fullBoard({ aril: { grant } }), { now }).grant, {
@@ -93,7 +93,8 @@ test("Aril instructions describe the active grant and where it comes from", () =
   assert.match(AGENT_CHAT_INSTRUCTIONS, /sent_back/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /cannot start or extend a grant/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Aril settings.*owner presses Start grant/u);
-  assert.match(AGENT_CHAT_INSTRUCTIONS, /When the owner asks for a grant, explain.*hours, starts, concurrent sessions.*work rule/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /When the owner asks for a grant, explain.*hours, tasks, tasks at a time.*work rule/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /usage limit percentage.*limits count tasks and provider usage, not sessions/u);
 });
 const PRIVATE_ROOT = "C:\\Users\\tester\\private-repo";
 

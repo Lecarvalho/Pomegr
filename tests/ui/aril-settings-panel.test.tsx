@@ -12,14 +12,14 @@ vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => a
 const defaults = (): ArilSettings => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null,
-  limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+  limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
 
 const ready = () => {
   const settings = board.aril!.settings;
   settings.actions.start = settings.actions.review = true;
-  settings.limits = { ...settings.limits, hours: 2, starts: 5, concurrent: 2 };
+  settings.limits = { ...settings.limits, hours: 2, tasks: 5, tasksAtATime: 2, usagePercent: 80 };
   settings.workRules = [{ kind: "tag", value: "backend" }];
 };
 const active = (): ArilGrant => ({ active: true, startedAt: Date.now(), endsAt: Date.now() + 7200000,
@@ -28,9 +28,9 @@ const clockTime = (at: number) => timeOfDay(new Date(at).toISOString());
 const start = () => screen.getByRole("button", { name: "Start grant" });
 
 describe("Aril grant controls", () => {
-  it.each(["hours", "starts", "concurrent"] as const)("requires saved %s", async (key) => {
+  it.each(["hours", "tasks", "tasksAtATime", "usagePercent"] as const)("requires saved %s", async (key) => {
     ready(); board.aril!.settings.limits[key] = null; await open();
-    expect(screen.getByText("Set Hours, Starts, and Concurrent sessions first.")).toHaveClass("taskGatesCaption");
+    expect(screen.getByText("Set Hours, Tasks, Tasks at a time, and Usage limit % first.")).toHaveClass("taskGatesCaption");
     expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
   });
   it.each([false, true])("explains missing actions or rules (actions allowed: %s)", async (allowed) => {
@@ -57,7 +57,7 @@ describe("Aril grant controls", () => {
   });
   it.each([[true, true, "tasks and reviews"], [true, false, "tasks"], [false, true, "reviews"]] as const)("summarizes saved allowed actions: %s %s", async (tasks, reviews, words) => {
     ready(); board.aril!.settings.actions.start = tasks; board.aril!.settings.actions.review = reviews; await open();
-    expect(screen.getByText(`Starts ${words} that your work rules select, for 2 hours, at most 5 starts, 2 at a time.`)).toBeInTheDocument();
+    expect(screen.getByText(`Starts ${words} that your work rules select, for 2 hours, at most 5 tasks, 2 at a time.`)).toBeInTheDocument();
     expect(start()).toHaveClass("commandPrimaryAction");
   });
   it("confirms inside the panel, cancels locally, and starts with an empty payload", async () => {
@@ -79,10 +79,10 @@ describe("Aril grant controls", () => {
     expect(screen.getByText(/Starts tasks and reviews that/)).toBeInTheDocument();
   });
   it("displays snapshotted counts, stops without confirmation, and updates the strip from the board", async () => {
-    ready(); const grant = active(); board.aril!.grant = grant; board.aril!.settings.limits.starts = 10;
+    ready(); const grant = active(); board.aril!.grant = grant; board.aril!.settings.limits.tasks = 10;
     const view = await open();
     const summary = screen.getByText(/Active until/);
-    expect(summary).toHaveTextContent(`Active until ${clockTime(grant.endsAt)} · 2 of 5 starts used`);
+    expect(summary).toHaveTextContent(`Active until ${clockTime(grant.endsAt)} · 2 of 5 tasks used`);
     expect(summary.querySelectorAll(".taskCapacityValue")).toHaveLength(3);
     expect(action().previousElementSibling).toHaveTextContent(`Aril grant until ${clockTime(grant.endsAt)}`);
     expect(action().previousElementSibling?.tagName).toBe("SPAN");
@@ -93,7 +93,7 @@ describe("Aril grant controls", () => {
     view.rerender(<TaskBoardView board={board} />);
     expect(screen.queryByText(/Aril grant until/)).toBeNull(); expect(screen.queryByRole("button", { name: "Stop grant" })).toBeNull();
   });
-  it.each([["stopped", "you stopped it"], ["expired", "its time ran out"], ["starts_used", "it used all its starts"], ["start_failed", "a start failed"], ["app_restart", "the app restarted"]] as const)("shows the last end reason %s", async (endReason, words) => {
+  it.each([["stopped", "you stopped it"], ["expired", "its time ran out"], ["tasks_used", "it used all its tasks"], ["start_failed", "a start failed"], ["app_restart", "the app restarted"]] as const)("shows the last end reason %s", async (endReason, words) => {
     ready(); const endedAt = Date.now(); board.aril!.grant = { ...active(), active: false, endedAt, endReason }; await open();
     expect(screen.getByText(`Last grant ended ${clockTime(endedAt)}: ${words}`)).toHaveClass("taskGatesCaption");
     expect(screen.queryByText(/Aril grant until/)).toBeNull();
@@ -167,7 +167,7 @@ describe("Aril settings panel", () => {
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
     expect(within(dialog).getAllByRole("switch")).toHaveLength(7);
     for (const control of within(dialog).getAllByRole("switch")) expect(control).not.toBeChecked();
-    for (const label of ["Hours", "Starts", "Concurrent sessions", "Send-backs per task", "Provider allowance %"]) {
+    for (const label of ["Hours", "Tasks", "Tasks at a time", "Send-backs per task", "Usage limit %"]) {
       expect(screen.getByRole("combobox", { name: label })).toHaveTextContent("Not settled: Aril will ask");
     }
     expect(screen.getByText("0 of 100")).toBeInTheDocument();
@@ -274,7 +274,7 @@ describe("Aril settings panel", () => {
 
   it("offers exactly the phase 3a limit bounds", async () => {
     await open();
-    for (const [label, min, max] of [["Hours", 1, 72], ["Starts", 1, 100], ["Concurrent sessions", 1, 10], ["Send-backs per task", 0, 10], ["Provider allowance %", 1, 100]] as const) {
+    for (const [label, min, max] of [["Hours", 1, 72], ["Tasks", 1, 100], ["Tasks at a time", 1, 10], ["Send-backs per task", 0, 10], ["Usage limit %", 1, 100]] as const) {
       await userEvent.click(screen.getByRole("combobox", { name: label }));
       const options = screen.getAllByRole("option").map((option) => option.textContent);
       expect(options).toEqual(["Not settled: Aril will ask", ...Array.from({ length: max - min + 1 }, (_, index) => String(index + min))]);

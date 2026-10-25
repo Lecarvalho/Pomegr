@@ -109,7 +109,7 @@ describe("POST /api/tasks/action", () => {
   });
 
   it("forwards Aril action results without the board and preserves paired identity for the monitor gate", async () => {
-    const limits = { hours: null, starts: 3, concurrent: null, sendBacks: null, allowancePercent: null };
+    const limits = { hours: null, tasks: 3, tasksAtATime: null, sendBacks: null, usagePercent: null };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(monitorAnswer({ ok: true, settings: { limits } }));
     const settings = { repositoryId, action: "aril_settings_set", payload: { settings: { limits } } };
     expect(await (await post(settings)).json()).toEqual({ ok: true, settings: { limits } });

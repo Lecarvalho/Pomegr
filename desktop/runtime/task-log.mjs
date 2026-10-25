@@ -22,7 +22,7 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written"]);
+export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
 
 function boundedLog(value) {
   if (!isPlainObject(value) || !Array.isArray(value.entries) || value.entries.length > 200
@@ -31,10 +31,13 @@ function boundedLog(value) {
   const entries = [];
   for (const entry of value.entries) {
     if (!isPlainObject(entry) || !Number.isSafeInteger(entry.id) || entry.id <= 0
-      || typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task) || !TASK_LOG_KINDS.includes(entry.kind)
+      || !TASK_LOG_KINDS.includes(entry.kind)
       || !Number.isSafeInteger(entry.at) || (entry.pullRequest !== null && (!Number.isSafeInteger(entry.pullRequest) || entry.pullRequest <= 0))) return null;
+    const usageTransition = entry.kind === "grant_usage_hold" || entry.kind === "grant_usage_resume";
+    if (usageTransition ? entry.task !== null || !["claude", "codex"].includes(entry.reason) || entry.pullRequest !== null
+      : typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task) || Object.hasOwn(entry, "reason")) return null;
     const { id, task, kind, at, pullRequest } = entry;
-    entries.push({ id, task, kind, at, pullRequest });
+    entries.push(usageTransition ? { id, task, kind, at, pullRequest, reason: entry.reason } : { id, task, kind, at, pullRequest });
   }
   return { entries, more: value.more, arilCursor: value.cursors.aril };
 }

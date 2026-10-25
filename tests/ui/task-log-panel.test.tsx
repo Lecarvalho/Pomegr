@@ -4,7 +4,8 @@ import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
 import type { TaskBoard } from "../../shared/task-contract";
-import { readDesktopTaskLog, type TaskLog } from "../../app/components/tasks/task-desktop";
+import { readDesktopTaskLog, TASK_LOG_LABELS, type TaskLog } from "../../app/components/tasks/task-desktop";
+import { TASK_LOG_KINDS } from "../../server/tasks/task-log.mjs";
 import { ScorecardSection } from "../../app/components/design-system/DesignSystemScorecardSample";
 import { TaskLogPanel } from "../../app/components/tasks/TaskLogPanel";
 import { scheduleLabel, timeOfDay } from "../../app/components/tasks/task-schedule";
@@ -20,9 +21,13 @@ import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 const repositoryId = "repo-0123456789abcdef01234567";
 const taskAction = vi.fn(async () => ({ ok: true }));
 const taskLog = vi.fn<(repositoryId: string) => Promise<unknown>>();
-const labels = ["Started", "Assigned to a session", "Reported complete", "Blocked", "Requeued", "Marked done", "Session ended without a report", "Session working again", "CI passed", "CI failed", "Merged", "Review started", "Review passed", "Review failed", "Started by Aril under a grant", "Review started by Aril under a grant", "Sent back by Aril under a grant", "Merged by Aril under a grant", "Merge refused", "Written by Aril from a plan"];
-const kinds: TaskLog["entries"][number]["kind"][] = ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written"];
-const log = (): TaskLog => ({ entries: kinds.map((kind, i) => ({ id: i + 1, task: `T-${i + 1}`, kind, at: new Date(2026, 9, 23, 8, i).getTime(), pullRequest: i === 10 ? 42 : null })), more: false, arilCursor: 6 });
+const labels = ["Started", "Assigned to a session", "Reported complete", "Blocked", "Requeued", "Marked done", "Session ended without a report", "Session working again", "CI passed", "CI failed", "Merged", "Review started", "Review passed", "Review failed", "Started by Aril under a grant", "Review started by Aril under a grant", "Sent back by Aril under a grant", "Merged by Aril under a grant", "Merge refused", "Written by Aril from a plan", "Paused for provider usage", "Resumed after provider usage"];
+const kinds: TaskLog["entries"][number]["kind"][] = ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"];
+const log = (): TaskLog => ({ entries: kinds.map((kind, i) => ({ id: i + 1, task: i >= kinds.length - 2 ? null : `T-${i + 1}`, kind, at: new Date(2026, 9, 23, 8, i).getTime(), pullRequest: i === 10 ? 42 : null, ...(i >= kinds.length - 2 ? { reason: i === kinds.length - 2 ? "claude" : "codex" } : {}) })), more: false, arilCursor: 6 });
+it("labels every kind the monitor can log, and no other", () => {
+  expect(Object.keys(TASK_LOG_LABELS)).toEqual([...TASK_LOG_KINDS]);
+  expect(kinds).toEqual([...TASK_LOG_KINDS]);
+});
 const setBridge = (bridge: unknown) => { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge; };
 beforeEach(() => {
   access.mode = "local";
@@ -37,7 +42,7 @@ it("shows newest entries first with every fixed label, PR suffix, local times an
   show(value);
   const list = screen.getByRole("list", { name: "Task log entries" });
   expect(within(list).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
-    ...value.entries.toReversed().slice(0, kinds.length - 5).map((entry) => `${entry.id === 11 ? timeOfDay(new Date(entry.at).toISOString()) : scheduleLabel(new Date(entry.at).toISOString())}${entry.task}${labels[entry.id - 1]}${entry.pullRequest ? `PR #${entry.pullRequest}` : ""}`),
+    ...value.entries.toReversed().slice(0, kinds.length - 5).map((entry) => `${entry.id === 11 ? timeOfDay(new Date(entry.at).toISOString()) : scheduleLabel(new Date(entry.at).toISOString())}${entry.task ?? ""}${labels[entry.id - 1]}${entry.reason ? ` (${entry.reason})` : ""}${entry.pullRequest ? `PR #${entry.pullRequest}` : ""}`),
     "Aril has read up to here",
     ...value.entries.toReversed().slice(kinds.length - 5).map((entry) => `${scheduleLabel(new Date(entry.at).toISOString())}${entry.task}${labels[entry.id - 1]}`),
   ]);

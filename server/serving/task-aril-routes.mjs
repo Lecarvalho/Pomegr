@@ -56,7 +56,14 @@ const rejected = (error) => ({ ok: false, error });
 const headKnown = (head) => typeof head === "string" && /^[a-f0-9]{40}$/u.test(head);
 const pullKnown = (number) => Number.isSafeInteger(number) && number > 0;
 const methodKnown = (method) => [null, "squash", "merge", "rebase"].includes(method);
-export function serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolvePullRequestFacts, action, body }) {
+const modelKnown = (model) => typeof model === "string" && /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u.test(model);
+const effortKnown = (effort) => ["low", "medium", "high", "xhigh"].includes(effort);
+const runKnown = (run) => isPlainObject(run) && Object.keys(run).length === 3
+  && ["provider", "model", "effort"].every((key) => Object.hasOwn(run, key))
+  && ["claude", "codex"].includes(run.provider)
+  && (run.model === null || modelKnown(run.model))
+  && (run.effort === null || effortKnown(run.effort));
+export function serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, action, body }) {
   if (request.headers["x-pomegr-lan-gateway"] === "1") { json(response, 403, rejected("unavailable")); return; }
   const fields = action === "grant-next" ? [] : action === "grant-record" ? ["repositoryId", "taskId", "kind"]
     : action === "grant-write-tasks" ? ["repositoryId", "plan", "tasks"]
@@ -76,7 +83,7 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
   }
   try {
     const result = action === "grant-end-all" ? taskStore?.endAllGrants?.({ reason: body.reason })
-      : action === "grant-next" ? taskStore?.nextGrantSteps?.({ resolveGateFacts, resolvePullRequestFacts })
+      : action === "grant-next" ? taskStore?.nextGrantSteps?.({ resolveGateFacts, resolveUsage, resolvePullRequestFacts })
       : action === "grant-write-tasks" ? taskStore?.writeGrantTasks?.(body.repositoryId, { plan: body.plan, tasks: body.tasks })
       : action === "grant-merge-attempt" ? taskStore?.attemptGrantMerge?.(body.repositoryId, { taskId: body.taskId, headOid: body.headOid }, resolvePullRequestFacts)
       : action === "grant-merge-result" ? taskStore?.recordGrantMerge?.(body.repositoryId, { taskId: body.taskId, headOid: body.headOid, outcome: body.outcome })
@@ -91,11 +98,12 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
     if (action === "grant-next") {
       if (!Array.isArray(result.steps)) throw new TypeError("Grant steps unavailable");
       const steps = result.steps.filter((entry) => isPlainObject(entry) && typeof entry.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(entry.repositoryId)
+        && (!Object.hasOwn(entry, "run") || (entry.kind === "review" && runKnown(entry.run)))
         && (entry.kind === "write_tasks" ? Array.isArray(entry.plans) && entry.plans.length > 0 && entry.plans.every((plan) => typeof plan === "string")
           : typeof entry.taskId === "string" && TASK_ID_PATTERN.test(entry.taskId) && ["start", "review", "send_back", "merge"].includes(entry.kind))
         && (entry.kind !== "merge" || pullKnown(entry.pullRequest) && headKnown(entry.headOid) && methodKnown(entry.mergeMethod)))
-        .slice(0, 16).map(({ repositoryId, taskId, kind, plans, pullRequest, headOid, mergeMethod }) => kind === "write_tasks" ? { repositoryId, kind, plans }
-          : { repositoryId, taskId, kind, ...(kind === "merge" ? { pullRequest, headOid, mergeMethod } : {}) });
+        .slice(0, 16).map(({ repositoryId, taskId, kind, plans, pullRequest, headOid, mergeMethod, run }) => kind === "write_tasks" ? { repositoryId, kind, plans }
+          : { repositoryId, taskId, kind, ...(kind === "merge" ? { pullRequest, headOid, mergeMethod } : {}), ...(kind === "review" && run ? { run } : {}) });
       json(response, 200, { ok: true, steps });
     } else if (action === "grant-write-tasks") {
       if (!Array.isArray(result.taskIds) || !result.taskIds.every((id) => typeof id === "string" && TASK_ID_PATTERN.test(id))) throw new TypeError("Written tasks unavailable");

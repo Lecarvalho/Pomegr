@@ -8,7 +8,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { REPOSITORY as REPO, passingGates, GATE_FACTS, FACTS, createTask, queueTask, updateTask, setMeta, withDatabase, dispatchMintedAt, repositoryNumber } from "./queue-test-support.mjs";
 
 const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false };
-const limits = { hours: 1, starts: 4, concurrent: 3, sendBacks: null, allowancePercent: null };
+const limits = { hours: 1, tasks: 4, tasksAtATime: 3, sendBacks: null, usagePercent: 80 };
 function setup(t) {
   const directory = mkdtempSync(path.join(process.cwd(), ".grant-test-"));
   const clock = { now: 1700000000000 };
@@ -22,13 +22,103 @@ function setup(t) {
     queueTask(store, id, repo);
     return id;
   };
-  const next = (resolveGateFacts = passingGates) => store.nextGrantSteps({ resolveGateFacts });
+  const next = (resolveGateFacts = passingGates) => store.nextGrantSteps({ resolveGateFacts, resolveUsage: () => 10 });
   const configure = (settings = {}, repo = REPO) => assert.equal(set({ actions, limits, workRules: [{ kind: "text", value: "task" }], ...settings }, repo).ok, true);
   return { store, directory, clock, set, start, ready, next, configure };
 }
 const step = (taskId, kind = "start", repositoryId = REPO) => ({ repositoryId, taskId, kind,
   ...(kind === "review" ? { run: { provider: "claude", model: null, effort: null } } : {}) });
 const error = (answer, code) => assert.deepEqual(answer, { ok: false, error: code });
+
+test("old grant limits and end reason migrate on read and the next write", (t) => {
+  const f = setup(t); f.configure(); f.start();
+  withDatabase(f.directory, (db) => db.prepare("UPDATE aril_grants SET limits = ?").run(JSON.stringify({ hours: 1, starts: 4, concurrent: 3, sendBacks: null, allowancePercent: 80 })));
+  assert.deepEqual(f.store.readBoard(REPO).aril.grant.limits, limits);
+  f.store.apply(REPO, "grant_stop", {});
+  withDatabase(f.directory, (db) => {
+    assert.deepEqual(JSON.parse(db.prepare("SELECT limits FROM aril_grants").get().limits), limits);
+    db.exec("UPDATE aril_grants SET end_reason = 'starts_used'");
+  });
+  assert.equal(f.store.readBoard(REPO).aril.grant.endReason, "tasks_used");
+});
+
+for (const closed of ["merged", "grant_merge", "done", "blocked", "sendbacks", "refused"]) test(`open task slot is freed by ${closed}`, (t) => {
+  const f = setup(t); f.ready(); f.ready();
+  f.configure({ actions: { ...actions, sendBack: true, merge: true }, limits: { ...limits, tasksAtATime: 1, sendBacks: 1 } }); f.start();
+  assert.equal(f.store.recordGrant(REPO, { taskId: "T-1", kind: "start" }).ok, true);
+  failedReview(f, 1, "pass");
+  assert.deepEqual(f.next().steps, []);
+  if (["done", "blocked"].includes(closed)) updateTask(f.directory, 1, { state: closed });
+  else if (closed === "sendbacks") {
+    failedReview(f);
+    const grantId = withDatabase(f.directory, (db) => db.prepare("SELECT id FROM aril_grants").get().id);
+    setMeta(f.directory, sendBackKey(), JSON.stringify({ grantId, count: 1, reasons: [] }));
+  } else if (closed === "refused") {
+    assert.equal(f.store.attemptGrantMerge(REPO, { taskId: "T-1", headOid: HEAD }, () => green).ok, true);
+    assert.equal(f.store.recordGrantMerge(REPO, { taskId: "T-1", headOid: HEAD, outcome: "refused" }).ok, true);
+  } else withDatabase(f.directory, (db) => db.prepare("INSERT INTO task_log(repository_id, number, kind, at) VALUES (?, 1, ?, ?)").run(REPO, closed, f.clock.now));
+  assert.deepEqual(f.next().steps, [step("T-2")]);
+});
+
+test("task cap retains review, send-back, restart and merge until its last task closes", (t) => {
+  const f = setup(t); f.ready(); f.ready();
+  f.configure({ actions: { ...actions, sendBack: true, merge: true }, limits: { ...limits, tasks: 1, tasksAtATime: 1, sendBacks: 2 } }); f.start();
+  f.store.recordGrant(REPO, { taskId: "T-1", kind: "start" });
+  updateTask(f.directory, 1, { state: "needs_review", session_id: "codex:builder" });
+  assert.deepEqual(f.next().steps, [step("T-1", "review")]);
+  f.store.recordGrant(REPO, { taskId: "T-1", kind: "review" });
+  failedReview(f); assert.deepEqual(f.next().steps, [step("T-1", "send_back")]);
+  assert.equal(f.store.sendBackGrant(REPO, { taskId: "T-1" }).ok, true);
+  assert.deepEqual(f.next().steps, [step("T-1")]);
+  f.store.recordGrant(REPO, { taskId: "T-1", kind: "start" });
+  assert.equal(f.store.readBoard(REPO).aril.grant.startsUsed, 1);
+  failedReview(f, 1, "pass");
+  const offered = f.store.nextGrantSteps({ resolvePullRequestFacts: () => green, resolveUsage: () => null }).steps;
+  assert.equal(offered[0].kind, "merge");
+  f.store.attemptGrantMerge(REPO, { taskId: "T-1", headOid: HEAD }, () => green);
+  f.store.recordGrantMerge(REPO, { taskId: "T-1", headOid: HEAD, outcome: "merged" });
+  assert.equal(f.store.readBoard(REPO).aril.grant.endReason, "tasks_used");
+});
+
+for (const kind of ["start", "review", "send_back", "write_tasks"]) test(`usage holds ${kind} for unknown or reached usage and logs transitions once`, (t) => {
+  const f = setup(t);
+  f.configure({ actions: { ...actions, sendBack: true, writeTasks: kind === "write_tasks" }, limits: { ...limits, sendBacks: 2 },
+    reviewer: { provider: "codex", model: null, differentFromBuilder: false },
+    workRules: kind === "write_tasks" ? [{ kind: "plan", value: "docs/next.md" }] : [{ kind: "text", value: "task" }] });
+  if (kind !== "write_tasks") {
+    f.ready(); f.store.apply(REPO, "update", { id: "T-1", run: { provider: "codex", model: null, effort: null } });
+    if (kind === "review") updateTask(f.directory, 1, { state: "needs_review", session_id: "codex:builder" });
+    if (kind === "send_back") failedReview(f);
+  }
+  f.start();
+  const next = (usage) => f.store.nextGrantSteps({ resolveGateFacts: passingGates, resolveUsage: (provider) => provider === "codex" ? usage : 0 });
+  for (const usage of [null, null, 80, 100]) assert.deepEqual(next(usage).steps, []);
+  assert.equal(next(79).steps[0].kind, kind);
+  next(79);
+  const entries = f.store.readLog(REPO, { limit: 200 }).entries.filter((entry) => entry.kind.startsWith("grant_usage"));
+  assert.deepEqual(entries.map(({ kind, task, reason }) => ({ kind, task, reason })), [
+    { kind: "grant_usage_hold", task: null, reason: "codex" }, { kind: "grant_usage_resume", task: null, reason: "codex" },
+  ]);
+});
+
+test("a task write without a reviewer provider is held only when every provider with usage is at the limit", (t) => {
+  const f = setup(t);
+  f.configure({ actions: { ...actions, writeTasks: true }, workRules: [{ kind: "plan", value: "docs/next.md" }] });
+  f.start();
+  const next = (claude, codex) => f.store.nextGrantSteps({ resolveGateFacts: passingGates, resolveUsage: (provider) => (provider === "claude" ? claude : codex) });
+  for (const [claude, codex] of [[null, null], [80, 90], [80, null]]) assert.deepEqual(next(claude, codex).steps, []);
+  assert.deepEqual(next(80, 10).steps.map((offered) => offered.kind), ["write_tasks"]);
+});
+
+test("send-backs are not limited by tasks at a time, and a new task still is", (t) => {
+  const f = setup(t); f.ready(); f.ready();
+  f.configure({ actions: { ...actions, sendBack: true }, limits: { ...limits, tasksAtATime: 1, sendBacks: 2 } }); f.start();
+  f.store.recordGrant(REPO, { taskId: "T-1", kind: "start" });
+  failedReview(f);
+  assert.deepEqual(f.next().steps, [step("T-1", "send_back")]);
+  assert.equal(f.store.sendBackGrant(REPO, { taskId: "T-1" }).ok, true);
+  assert.deepEqual(f.next().steps, [step("T-1")]);
+});
 
 const sendBackKey = (id = "T-1") => `task_send_back:${REPO}:${id}`;
 const readMeta = (directory, key) => withDatabase(directory, (db) => {
@@ -59,20 +149,20 @@ test("send-back selects only current failed reviews within work rules and limits
   for (const text of ["task failed", "task passed", "task stale", "excluded", "task review", "task start"]) f.ready(text);
   failedReview(f, 1); failedReview(f, 2); failedReview(f, 2, "pass"); failedReview(f, 3, "fail", f.clock.now - 1); failedReview(f, 4);
   updateTask(f.directory, 5, { state: "needs_review", session_id: "codex:builder-5" });
-  f.configure({ ...sendBackSettings, limits: { ...limits, sendBacks: 2, concurrent: 1 } }); f.start();
-  assert.deepEqual(f.next().steps, [step("T-1", "send_back"), step("T-5", "review")]);
+  f.configure({ ...sendBackSettings, limits: { ...limits, sendBacks: 2, tasksAtATime: 1 } }); f.start();
+  assert.deepEqual(f.next().steps, [step("T-1", "send_back"), step("T-5", "review"), step("T-3", "review"), step("T-6")]);
   setMeta(f.directory, `task_reviewer:${REPO}:T-5`, "codex:running");
-  assert.deepEqual(f.next().steps, [step("T-1", "send_back")], "send-backs consume no session capacity");
+  assert.deepEqual(f.next().steps, [step("T-1", "send_back"), step("T-3", "review"), step("T-6")], "send-backs consume no session capacity");
   withDatabase(f.directory, (db) => {
     const grantId = db.prepare("SELECT id FROM aril_grants").get().id;
     setMeta(f.directory, sendBackKey(), JSON.stringify({ grantId, count: 2, reasons: ["old"] }));
   });
-  assert.deepEqual(f.next().steps, []);
-  for (const patch of [{ limits: { ...limits, concurrent: 1, sendBacks: null } }, { limits: { ...limits, concurrent: 1, sendBacks: 2 }, actions }]) {
+  assert.deepEqual(f.next().steps, [step("T-3", "review"), step("T-6")]);
+  for (const patch of [{ limits: { ...limits, tasksAtATime: 1, sendBacks: null } }, { limits: { ...limits, tasksAtATime: 1, sendBacks: 2 }, actions }]) {
     withDatabase(f.directory, (db) => {
       for (const [key, value] of Object.entries(patch)) db.prepare(`UPDATE aril_grants SET ${key} = ?`).run(JSON.stringify(value));
     });
-    assert.deepEqual(f.next().steps, []);
+    assert.deepEqual(f.next().steps, [step("T-3", "review"), step("T-6")]);
   }
 });
 
@@ -262,7 +352,7 @@ test("grant preconditions, exact actions, conflict, stop, and board history", (t
   const { store, configure, start, clock } = setup(t);
   assert.equal(store.readBoard(REPO).aril.grant, null);
   error(start(), "not_ready");
-  for (const key of ["hours", "starts", "concurrent"]) {
+  for (const key of ["hours", "tasks", "tasksAtATime", "usagePercent"]) {
     configure({ limits: { ...limits, [key]: null } });
     error(start(), "not_ready");
   }
@@ -332,7 +422,7 @@ test("merge selection requires current pass, open PR, passed checks, head, work 
 test("merge consumes no concurrency and attempts recheck eligibility transactionally, once per head across grants", (t) => {
   const { store, nextMerge, attempt, ready, directory, set, start, resolvePullRequestFacts } = mergeSetup(t);
   ready(); updateTask(directory, 2, { session_id: "codex:live" });
-  store.apply(REPO, "grant_stop", {}); set({ limits: { ...limits, concurrent: 1 } }); start();
+  store.apply(REPO, "grant_stop", {}); set({ limits: { ...limits, tasksAtATime: 1 } }); start();
   assert.equal(nextMerge().length, 1);
   for (const facts of [null, { ...green, checks: "pending" }, { ...green, headOid: "b".repeat(40) }]) error(attempt(HEAD, () => facts), "not_eligible");
   set({ workRules: [] }); error(attempt(), "not_eligible");
@@ -385,7 +475,7 @@ test("snapshots persist across settings edits and reopening; additive schema rem
   const { store, directory, configure, start, clock } = setup(t);
   configure();
   const original = start().grant;
-  configure({ actions: { ...actions, start: false }, limits: { ...limits, starts: 1 } });
+  configure({ actions: { ...actions, start: false }, limits: { ...limits, tasks: 1 } });
   assert.deepEqual(store.readBoard(REPO).aril.grant, original);
   const reopened = openTaskStore({ directory, now: () => clock.now });
   try { assert.deepEqual(reopened.readBoard(REPO).aril.grant, original); } finally { reopened.close(); }
@@ -407,14 +497,14 @@ test("reads expire grants at the boundary and terminate exhausted grants transac
   start();
   withDatabase(directory, (db) => db.prepare("UPDATE aril_grants SET starts_used = 4 WHERE ended_at IS NULL").run());
   assert.deepEqual(store.checkGrant(REPO), { ok: true, active: false });
-  assert.equal(store.readBoard(REPO).aril.grant.endReason, "starts_used");
+  assert.equal(store.readBoard(REPO).aril.grant.endReason, "tasks_used");
   start(); clock.now += 3600000;
   assert.equal(store.readBoard(REPO).aril.grant.endReason, "expired", "board reads also commit expiry");
 });
 
 test("record counts only builder starts, appends both kinds, refuses inactive and invalid requests", (t) => {
   const { store, configure, start, ready } = setup(t);
-  ready(); configure({ limits: { ...limits, starts: 1 } });
+  ready(); configure({ limits: { ...limits, tasks: 1 } });
   error(store.recordGrant(REPO, { taskId: "T-1", kind: "start" }), "not_active");
   start();
   error(store.recordGrant(REPO, { taskId: "T-2", kind: "start" }), "not_found");
@@ -422,10 +512,11 @@ test("record counts only builder starts, appends both kinds, refuses inactive an
   assert.deepEqual(store.recordGrant(REPO, { taskId: "T-1", kind: "review" }), { ok: true });
   assert.equal(store.readBoard(REPO).aril.grant.startsUsed, 0);
   assert.deepEqual(store.recordGrant(REPO, { taskId: "T-1", kind: "start" }), { ok: true });
-  assert.equal(store.readBoard(REPO).aril.grant.endReason, "starts_used");
-  error(store.recordGrant(REPO, { taskId: "T-1", kind: "start" }), "not_active");
+  assert.equal(store.readBoard(REPO).aril.grant.active, true);
+  assert.equal(store.recordGrant(REPO, { taskId: "T-1", kind: "start" }).ok, true);
+  assert.equal(store.readBoard(REPO).aril.grant.startsUsed, 1);
   assert.deepEqual(store.readLog(REPO, { limit: 10 }).entries.map(({ kind, task }) => ({ kind, task })), [
-    { kind: "grant_review", task: "T-1" }, { kind: "grant_start", task: "T-1" },
+    { kind: "grant_review", task: "T-1" }, { kind: "grant_start", task: "T-1" }, { kind: "grant_start", task: "T-1" },
   ]);
 });
 
@@ -474,7 +565,7 @@ test("work rules select reviews by leading tag, insensitive text, feature, or ta
   const featureId = store.apply(REPO, "feature_create", { name: "Feature" }).board.features[0].id;
   assert.equal(store.apply(REPO, "update", { id: "T-3", featureId }).ok, true);
   for (let n = 1; n <= 6; n++) updateTask(directory, n, { state: "needs_review", session_id: `codex:builder-${n}` });
-  configure({ workRules: [], limits: { ...limits, concurrent: 4 } }); start();
+  configure({ workRules: [], limits: { ...limits, tasksAtATime: 4 } }); start();
   assert.deepEqual(next().steps, []);
   assert.equal(set({ workRules: [{ kind: "tag", value: "Fix" }, { kind: "text", value: "needle" }, { kind: "feature", value: featureId }, { kind: "tasks", value: ["T-4"] }] }).ok, true);
   assert.deepEqual(next().steps, [1, 2, 3, 4].map((n) => step(`T-${n}`, "review")));
@@ -601,7 +692,7 @@ test("starts use Ready order, startability and after rules without changing the 
   assert.equal(store.readBoard(REPO).tasks.every((task) => task.session === null || task.id === "T-5"), true);
 });
 
-test("concurrency subtracts linked unreported builders and running reviews, remaining starts also caps selection", (t) => {
+test("task capacity counts only tasks taken by this grant; repeated starts consume one task", (t) => {
   const { store, configure, start, ready, directory, next } = setup(t);
   for (let n = 1; n <= 5; n++) ready();
   assert.equal(store.apply(REPO, "queue_group", { ids: ["T-1", "T-2", "T-3", "T-4"] }).ok, true);
@@ -609,33 +700,33 @@ test("concurrency subtracts linked unreported builders and running reviews, rema
   updateTask(directory, 5, { state: "needs_review", session_id: "codex:finished", report_at: 1, report_results: "[]" });
   setMeta(directory, `task_reviewer:${REPO}:T-5`, "codex:reviewer");
   configure(); start();
-  assert.deepEqual(next().steps, [step("T-2")]);
+  assert.deepEqual(next().steps, [step("T-2"), step("T-3"), step("T-4")]);
   assert.deepEqual(store.recordGrant(REPO, { taskId: "T-1", kind: "start" }), { ok: true });
   assert.deepEqual(store.recordGrant(REPO, { taskId: "T-1", kind: "start" }), { ok: true });
   assert.deepEqual(store.recordGrant(REPO, { taskId: "T-1", kind: "start" }), { ok: true });
   updateTask(directory, 1, { state: "needs_review", report_at: 1, report_results: "[]" });
-  assert.deepEqual(next().steps.filter((s) => s.kind === "start"), [step("T-2")]);
+  assert.deepEqual(next().steps.filter((s) => s.kind === "start"), [step("T-2"), step("T-3")]);
 });
 
-test("reviews take session capacity before starts, including when only one slot remains", (t) => {
+test("reviews take no task capacity, including when only one slot remains", (t) => {
   const { store, ready, configure, start, directory, next } = setup(t);
   ready(); ready(); ready();
   updateTask(directory, 2, { state: "needs_review", session_id: "codex:finished-two" });
-  configure({ limits: { ...limits, concurrent: 1 } }); start();
-  assert.deepEqual(next().steps, [step("T-2", "review")]);
+  configure({ limits: { ...limits, tasksAtATime: 1 } }); start();
+  assert.deepEqual(next().steps, [step("T-2", "review"), step("T-1")]);
   updateTask(directory, 3, { state: "needs_review", session_id: "codex:finished-three" });
-  assert.deepEqual(next().steps, [step("T-2", "review")], "review candidates share the same single slot");
+  assert.deepEqual(next().steps, [step("T-2", "review"), step("T-3", "review"), step("T-1")], "reviews consume no task slots");
   setMeta(directory, `task_reviewer:${REPO}:T-2`, "codex:reviewer");
-  assert.deepEqual(next().steps, [], "a running review exhausts the session capacity");
+  assert.deepEqual(next().steps, [step("T-3", "review"), step("T-1")], "running reviews consume no task slots");
   assert.equal(store.readBoard(REPO).aril.grant.startsUsed, 0);
 });
 
-test("reviews consume concurrency but leave the remaining builder-start allowance intact", (t) => {
+test("reviews leave the remaining task allowance intact", (t) => {
   const { ready, configure, start, directory, next } = setup(t);
   for (let n = 1; n <= 4; n++) ready();
   updateTask(directory, 1, { state: "needs_review", session_id: "codex:finished-one" });
   updateTask(directory, 2, { state: "needs_review", session_id: "codex:finished-two" });
-  configure({ limits: { ...limits, starts: 1, concurrent: 3 } }); start();
+  configure({ limits: { ...limits, tasks: 1, tasksAtATime: 3 } }); start();
   assert.deepEqual(next().steps, [step("T-1", "review"), step("T-2", "review"), step("T-3")]);
 });
 

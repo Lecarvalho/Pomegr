@@ -29,7 +29,7 @@ const NO_GATES: TaskQueue = { status: "idle", blockedBy: null, pauseReason: null
 const ARIL_SETTINGS: Settings = {
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null,
-  limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+  limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 };
 
@@ -38,7 +38,7 @@ export function ArilSettingsSamples() {
     const memory = Array.from({ length: state === "empty memory" ? 0 : state === "full memory" ? 100 : 1 }, (_, id) => ({ id: id + 1, text: `Repository habit ${id + 1}: keep changes focused.`, createdAt: id, updatedAt: id }));
     const ready = ["paired allowed", "ready", "confirm", "active", "last ended", "paired stop-only"].includes(state);
     const settings: Settings = { ...ARIL_SETTINGS, pairedDevices: state === "paired allowed", ...(ready ? {
-      actions: { ...ARIL_SETTINGS.actions, start: true, review: true }, limits: { ...ARIL_SETTINGS.limits, hours: 2, starts: 5, concurrent: 2 }, workRules: [{ kind: "tag", value: "backend" }],
+      actions: { ...ARIL_SETTINGS.actions, start: true, review: true }, limits: { ...ARIL_SETTINGS.limits, hours: 2, tasks: 5, tasksAtATime: 2, usagePercent: 80 }, workRules: [{ kind: "tag", value: "backend" }],
     } : {}) };
     const active: ArilGrant = { active: true, startedAt: Date.parse(SAMPLE_FUTURE), endsAt: Date.parse(SAMPLE_FUTURE_STOP), startsUsed: 2, actions: settings.actions, limits: settings.limits };
     const grant: ArilGrant | null = state === "last ended" ? { ...active, active: false, endedAt: active.endsAt, endReason: "expired" } : ["active", "paired stop-only"].includes(state) ? active : null;

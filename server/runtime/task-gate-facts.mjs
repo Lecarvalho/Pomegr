@@ -45,6 +45,20 @@ export function gateUsageFact(usageLimits, now, provider = null) {
   };
 }
 
+export function taskUsagePercentFact(usageLimits, now) {
+  if (!usageLimits || usageLimits.available !== true || !Array.isArray(usageLimits.limits)) return null;
+  const fetchedAt = Date.parse(usageLimits.fetchedAt || "");
+  if (!Number.isFinite(fetchedAt) || fetchedAt > now || now - fetchedAt > TASK_GATE_USAGE_MAX_AGE_MS) return null;
+  if (usageLimits.failureKind !== null && usageLimits.failureKind !== undefined) return null;
+  if (usageLimits.limits.length === 0) return null;
+  const current = usageLimits.limits.map((limit) => {
+    const value = percent(limit?.percent);
+    const resetsAt = typeof limit?.resetsAt === "string" ? Date.parse(limit.resetsAt) : Number.NaN;
+    return value === null || (Number.isFinite(resetsAt) && resetsAt <= now) ? null : value;
+  });
+  return current.includes(null) ? null : Math.max(...current);
+}
+
 export function gateProviderStatusFact(row) {
   if (!row || row.readiness !== "ready" || row.freshness !== "fresh" || row.status === "unknown") return null;
   return row.status === "operational" ? "operational" : ["degraded", "outage", "maintenance"].includes(row.status) ? "incident" : null;

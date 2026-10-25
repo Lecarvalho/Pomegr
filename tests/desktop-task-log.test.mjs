@@ -44,11 +44,13 @@ test("untrusted events and bad repositories send nothing", async () => {
 
 test("reads exactly 200 without ack and re-bounds all fields", async () => {
   const value = log();
-  value.entries = TASK_LOG_KINDS.map((kind, i) => ({ ...entry(), id: i + 1, kind, pullRequest: i + 1, private: "hidden" }));
+  value.entries = TASK_LOG_KINDS.map((kind, i) => kind === "grant_usage_hold" || kind === "grant_usage_resume"
+    ? { id: i + 1, task: null, kind, at: 123, pullRequest: null, reason: "claude", private: "hidden" }
+    : { ...entry(), id: i + 1, kind, pullRequest: i + 1, private: "hidden" });
   value.cursors.private = "hidden";
   const { action, calls } = harness(response({ ok: true, log: value, private: "hidden" }));
   assert.deepEqual(await action.run(trusted, repositoryId, { after: 1 }), { ok: true, log: {
-    entries: value.entries.map(({ id, task, kind, at, pullRequest }) => ({ id, task, kind, at, pullRequest })), more: false, arilCursor: 0,
+    entries: value.entries.map(({ id, task, kind, at, pullRequest, reason }) => reason ? ({ id, task, kind, at, pullRequest, reason }) : ({ id, task, kind, at, pullRequest })), more: false, arilCursor: 0,
   } });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, `${origin}/internal/tasks/log-read`);
@@ -59,6 +61,21 @@ test("reads exactly 200 without ack and re-bounds all fields", async () => {
   assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload: { limit: 200 } });
   const full = { entries: Array.from({ length: 200 }, (_, i) => ({ ...entry(), id: i + 1 })), more: true, cursors: { aril: 100 } };
   assert.deepEqual(await harness(response({ ok: true, log: full })).action.run(trusted, repositoryId), { ok: true, log: { entries: full.entries, more: true, arilCursor: 100 } });
+});
+
+test("usage entries pass only fixed provider reasons and have no task ID", async () => {
+  const value = log();
+  value.entries = [
+    { id: 1, task: null, kind: "grant_usage_hold", at: 123, pullRequest: null, reason: "claude" },
+    { id: 2, task: null, kind: "grant_usage_resume", at: 124, pullRequest: null, reason: "codex" },
+  ];
+  assert.deepEqual((await harness(response({ ok: true, log: value })).action.run(trusted, repositoryId)), {
+    ok: true, log: { entries: value.entries, more: false, arilCursor: 0 },
+  });
+  for (const reason of ["private error", "openai", null]) {
+    const bad = log(); bad.entries = [{ ...value.entries[0], reason }];
+    assert.deepEqual(await harness(response({ ok: true, log: bad })).action.run(trusted, repositoryId), unavailable);
+  }
 });
 
 test("the shared reader re-bounds without a window event while IPC still requires trust", async () => {

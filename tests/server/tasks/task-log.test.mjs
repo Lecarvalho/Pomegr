@@ -75,7 +75,7 @@ test("pruning keeps 1000 per repository and IDs never repeat after deletion", as
   const { store, directory } = await openTemporaryStore(t);
   const { appendTaskLog, TASK_LOG_KEEP, TASK_LOG_KINDS, TASK_LOG_CONSUMERS } = await import("../../../server/tasks/task-log.mjs");
   assert.equal(TASK_LOG_KEEP, 1000);
-  assert.deepEqual(TASK_LOG_KINDS, ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written"]);
+  assert.deepEqual(TASK_LOG_KINDS, ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
   assert.deepEqual(TASK_LOG_CONSUMERS, ["aril"]);
   assert.ok(Object.isFrozen(TASK_LOG_KINDS) && Object.isFrozen(TASK_LOG_CONSUMERS));
   withDatabase(directory, (db) => {
@@ -94,6 +94,23 @@ test("pruning keeps 1000 per repository and IDs never repeat after deletion", as
     appendTaskLog(db, REPOSITORY, 1, "started", 9999);
   });
   assert.equal(read(store).latestId, latest + 1);
+});
+
+test("grant usage entries expose no task and only a fixed provider reason", async (t) => {
+  const { store, directory } = await openTemporaryStore(t);
+  const { appendTaskLog } = await import("../../../server/tasks/task-log.mjs");
+  withDatabase(directory, (db) => {
+    db.exec("BEGIN");
+    appendTaskLog(db, REPOSITORY, 0, "grant_usage_hold", 10, null, "claude");
+    appendTaskLog(db, REPOSITORY, 0, "grant_usage_resume", 20, null, "codex");
+    db.exec("COMMIT");
+    assert.throws(() => appendTaskLog(db, REPOSITORY, 0, "grant_usage_hold", 30, null, "private provider error"));
+    assert.throws(() => appendTaskLog(db, REPOSITORY, 1, "grant_usage_hold", 30));
+  });
+  assert.deepEqual(read(store).entries, [
+    { id: 1, task: null, kind: "grant_usage_hold", at: 10, pullRequest: null, reason: "claude" },
+    { id: 2, task: null, kind: "grant_usage_resume", at: 20, pullRequest: null, reason: "codex" },
+  ]);
 });
 
 test("task deletion keeps the log and durable forward-only repository cursors", async (t) => {

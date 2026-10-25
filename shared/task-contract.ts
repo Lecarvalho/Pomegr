@@ -92,7 +92,7 @@ export type Task = {
 export type ArilSettings = {
   actions: { start: boolean; review: boolean; sendBack: boolean; merge: boolean; writeTasks: boolean };
   mergeMethod: "squash" | "merge" | "rebase" | null;
-  limits: { hours: number | null; starts: number | null; concurrent: number | null; sendBacks: number | null; allowancePercent: number | null };
+  limits: { hours: number | null; tasks: number | null; tasksAtATime: number | null; sendBacks: number | null; usagePercent: number | null };
   workRules: ({ kind: "tag" | "text" | "feature" | "plan"; value: string } | { kind: "tasks"; value: string[] })[];
   reviewer: { provider: TaskProvider | null; model: string | null; differentFromBuilder: boolean };
   pairedDevices: boolean;
@@ -101,7 +101,7 @@ export type ArilMemoryEntry = { id: number; text: string; createdAt: number; upd
 export type ArilGrant = {
   startedAt: number; endsAt: number; startsUsed: number;
   actions: ArilSettings["actions"]; limits: ArilSettings["limits"];
-} & ({ active: true } | { active: false; endedAt: number; endReason: "stopped" | "expired" | "starts_used" | "start_failed" | "app_restart" });
+} & ({ active: true } | { active: false; endedAt: number; endReason: "stopped" | "expired" | "tasks_used" | "start_failed" | "app_restart" });
 
 export type TaskBoard = {
   version: 1;

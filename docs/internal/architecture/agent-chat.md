@@ -808,11 +808,11 @@ never a session's.
   repository chosen last.
 - **What reaches the provider.** Each turn sends the prompt to the provider the owner
   chose, through the owner's CLI. From 2026-10-25 (Aril operator phase 1), an owner-message prompt also holds unseen task-log entries.
-  These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text.
+  These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text. A grant usage pause or resume has no task ID and carries only the fixed provider ID.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
   From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first, up to 100 entries of 300 characters each.
-  From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, starts used, and snapshotted limits and actions; an ended grant adds its fixed end reason. Aril uses these existing settings and grant facts to determine whether an active grant permits a send-back or merge. The owner-set merge method is part of the settings sent with the board; merge outcomes are reported from fixed `grant_merge` and `grant_merge_refused` log entries.
+  From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, tasks used, and snapshotted limits and actions; an ended grant adds its fixed end reason. Aril uses these existing settings and grant facts to determine whether an active grant permits a send-back or merge. The owner-set merge method is part of the settings sent with the board; merge outcomes are reported from fixed `grant_merge` and `grant_merge_refused` log entries.
   Feature rows also include their IDs so Aril can select existing features in work rules. Applied settings and memory operations reach the follow-up as operation names, memory IDs where applicable, and fixed outcomes.
   A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This

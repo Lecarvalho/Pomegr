@@ -584,14 +584,15 @@ Each row below the tags shows only when it is set, in this order:
 - The sections are **Grant**, **Actions under a grant**, **Limits**, **Work rules**, **Reviewer**, **Paired devices**, and **Memory**.
 - Five action switches carry the caption “Aril uses these only while a grant you start is active.”
 - The **Merge method** field is a `CommandSelect` with **Repository default**, **Squash**, **Merge commit**, and **Rebase**; paired read-only clients see its saved value as text.
-- The Grant section summarizes the saved start, review, and merge actions, hours, starts, and concurrency.
+- The Grant section summarizes the saved start, review, and merge actions, hours, tasks, tasks at a time, and usage limit.
 - Missing limits, all allowed actions, or work rules show one muted readiness reason and no Start grant button.
+- A missing limit reads “Set Hours, Tasks, Tasks at a time, and Usage limit % first.”
 - Unsaved settings show “Save your changes first.” and disable starting a grant.
 - **Start grant** uses `commandPrimaryAction` and first shows an in-panel confirmation with the end time, **Start grant**, and **Cancel**; Cancel dismisses only the confirmation.
-- An active grant shows “Active until HH:MM · n of S starts used”, with times and counts in the data font.
+- An active grant shows “Active until HH:MM · n of S tasks used”, with times and counts in the data font.
 - **Stop grant** uses `commandSecondaryAction`, needs no confirmation, and carries “Stopping takes effect at once. Running sessions continue.”
 - A paired device can always stop an active grant; starting requires the saved paired-device permission.
-- The latest ended grant has one muted line with its end time and the fixed reason: you stopped it, its time ran out, it used all its starts, a start failed, or the app restarted.
+- The latest ended grant has one muted line with its end time and the fixed reason: you stopped it, its time ran out, it used all its tasks, a start failed, or the app restarted.
 - Grant failures show fixed not-ready, conflict, or generic error text in the Grant section.
 - While active, the capacity strip shows “Aril grant until HH:MM” as muted caption-size text immediately before **Aril settings**, with no button behavior.
 - Each limit uses the threshold select pattern with the bounds in [Aril settings and memory](../architecture/tasks.md#aril-settings-and-memory).
@@ -640,9 +641,10 @@ Each row below the tags shows only when it is set, in this order:
 - A failed or malformed read says “The task log could not be read.” as an alert.
 - The muted caption reads “Task starts, reports, stalls, CI results, and merges on this board, newest first. Aril reads the entries after its last answer.”
 - Entries appear newest first, one row each, with local time, task ID, event label, and muted “PR #n” when set.
+- A usage pause or resume has no task ID and adds the provider ID to its label, as “Paused for provider usage (codex)”.
 - Time and task and PR identifiers use the data font.
 - Today's times use HH:MM; older entries use the existing short date and time format.
-- Labels are Started, Assigned to a session, Reported complete, Blocked, Requeued, Marked done, Session ended without a report, Session working again, CI passed, CI failed, Merged, Review started, Review passed, Review failed, Started by Aril under a grant, Review started by Aril under a grant, Sent back by Aril under a grant, Merged by Aril under a grant, and Merge refused.
+- Labels are Started, Assigned to a session, Reported complete, Blocked, Requeued, Marked done, Session ended without a report, Session working again, CI passed, CI failed, Merged, Review started, Review passed, Review failed, Started by Aril under a grant, Review started by Aril under a grant, Sent back by Aril under a grant, Merged by Aril under a grant, Merge refused, Written by Aril from a plan, Paused for provider usage, and Resumed after provider usage.
 - A thin divider row says “Aril has read up to here” after the newest entry at or below the cursor, only when entries appear both above and at or below the cursor.
 - No row carries a good or bad color, including CI failed.
 - An empty log says “Nothing logged yet.”.

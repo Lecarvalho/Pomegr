@@ -62,7 +62,7 @@ const taskId = (value) => (typeof value === "string" && TASK_ID.test(value) ? va
 // Mirror phase 3a's field replacement and bounds; the monitor checks feature and task membership when applied.
 const exact = (value, keys) => isPlainObject(value) && only(value, keys) && Object.keys(value).length === keys.length;
 const arilLine = (value, max) => typeof value === "string" && value.trim().length > 0 && value.length <= max && ONE_LINE.test(value);
-const ARIL_LIMITS = { hours: [1, 72], starts: [1, 100], concurrent: [1, 10], sendBacks: [0, 10], allowancePercent: [1, 100] };
+const ARIL_LIMITS = { hours: [1, 72], tasks: [1, 100], tasksAtATime: [1, 10], sendBacks: [0, 10], usagePercent: [1, 100] };
 const ARIL_MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/u;
 
 function arilRule(rule) {

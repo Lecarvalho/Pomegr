@@ -6,7 +6,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { REPOSITORY as REPO, passingGates, FACTS, createTask, queueTask, updateTask, withDatabase } from "./queue-test-support.mjs";
 
 const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false };
-const limits = { hours: 1, starts: 4, concurrent: 3, sendBacks: null, allowancePercent: null };
+const limits = { hours: 1, tasks: 4, tasksAtATime: 3, sendBacks: null, usagePercent: 80 };
 function setup(t) {
   const directory = mkdtempSync(path.join(process.cwd(), ".grant-test-"));
   const clock = { now: 1700000000000 };
@@ -20,7 +20,7 @@ function setup(t) {
     queueTask(store, id, repo);
     return id;
   };
-  const next = (resolveGateFacts = passingGates) => store.nextGrantSteps({ resolveGateFacts });
+  const next = (resolveGateFacts = passingGates) => store.nextGrantSteps({ resolveGateFacts, resolveUsage: () => 10 });
   const configure = (settings = {}, repo = REPO) => assert.equal(set({ actions, limits, workRules: [{ kind: "text", value: "task" }], ...settings }, repo).ok, true);
   return { store, directory, clock, set, start, ready, next, configure };
 }
@@ -152,7 +152,7 @@ test("written tasks keep grant selection for reviews, send-back and merge", (t) 
 });
 
 test("five-task batches resolve earlier references and a log failure rolls the entire batch back", (t) => {
-  const f = setup(t); f.configure({ ...writing, limits: { ...limits, starts: 5 } }); f.start();
+  const f = setup(t); f.configure({ ...writing, limits: { ...limits, tasks: 5 } }); f.start();
   const tasks = Array.from({ length: 5 }, (_, index) => ({ text: `work ${index}`, after: index ? [`#${index}`] : [] }));
   withDatabase(f.directory, (db) => db.exec("CREATE TRIGGER refuse_write BEFORE INSERT ON task_log WHEN NEW.number = 2 BEGIN SELECT RAISE(ABORT, 'synthetic'); END"));
   error(write(f, tasks), "invalid");
