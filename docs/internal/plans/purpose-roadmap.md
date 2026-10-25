@@ -1,6 +1,6 @@
 # Purpose roadmap: less supervision, more personal time
 
-> Status: active; the owner reviews this roadmap before work starts. The retrospective of the first autonomous pilot is complete.
+> Status: active; G5's synthetic T-3 regression is verified (2026-10-25). S4 wiring remains open.
 > Created: 2026-10-17 as a Portuguese Aril proposal; replaced on 2026-10-19 by this English roadmap.
 > Scope: the small versions that move Pomegr toward its purpose, the scorecard that measures each step, the 0.8.1 release without the pilot, how the other plans fit, and the readiness for a second autonomous experiment.
 > Continuation owner: the product owner decides; the agent that picks up a version records its evidence here, without scorecard values.
@@ -181,7 +181,7 @@ Pomegr Core collects facts deterministically. Aril makes inferences and labels t
 | G2 Model evidence for each agent | Requested and observed model and effort for the main agent and for each subagent, bound to the task and its type of work | #267 model retention; the agents contract | `list_session_agents` works, and every task session shows both values |
 | G3 Repository process compliance | Deterministic checks that the repository declares; Core never parses repository prose. Aril reads the repository's own rules and labels its reading as an inference. | Compliance checks in the [guidance impact plan](guidance-impact.md) (task 2) | Aril reports met, unmet, or unknown for each repository rule before Review |
 | G4 Proof presence | Whether the pull request has the images and sections that the repository's own template requires, and CI on its head. Presence only, never quality. | Repository snapshot and pull-request facts | A pull request without the required proof cannot look ready |
-| G5 Session and task health | A dead session with uncommitted work becomes stalled with a reason. Block reasons are retained. | Stalled-task recovery (T-112) | The Pokrr T-3 case is detected in a synthetic test |
+| G5 Session and task health | A dead session with uncommitted work becomes stalled with a reason. Block reasons are retained. | Stalled-task recovery (T-112); synthetic T-3 coverage verified on 2026-10-25 | [Regression test](../../../tests/ui/task-stalled-recovery.test.tsx): confirmed end, dirty tree, no report, persisted Stalled state, Tasks home attention, and visible reason. S4 wiring remains open. |
 
 Proof and privacy: Pomegr is a public repository. A pull request there must not show private session data. Clapline and Pokrr are private, so real-data proof is allowed by their own rules.
 
@@ -318,13 +318,17 @@ The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#own
 - [ ] Verify the cause of finding 9 (worktree cleanup).
 - [x] Verify whether #263 stops quota waits from consuming decision rounds: moot, #263 was reverted with the pilot (d66d9806); G11 keeps the requirement.
 - [x] Fix `list_session_agents` "malformed observation" (0495d04f).
-- [ ] Ship 0.9.0 with the outcome record and the scorecard, with the first measured values in the desktop. Built on main: `task_events` and `task_outcomes`, the Scorecard panel, the pilot's removal, and the server snapshot (T-173); the desktop bridge (T-174) and the release remain.
+- [x] Verify G5's Pokrr T-3 shape with synthetic task-store and session fixtures (2026-10-25).
+- [ ] Wire the scorecard's S4 silent-failure measure; outside this G5 regression change.
+- [ ] Ship 0.9.0 with the outcome record and the scorecard, with the first measured values in the desktop. Built on main: `task_events` and `task_outcomes`, the Scorecard panel, the pilot's removal, the server snapshot (T-173), and the desktop bridge (T-174); the release remains.
 - [ ] Apply each accepted plan placement in that plan's own change.
 - [ ] Create a board task for each gap when its version starts.
 - [ ] Pass the readiness criteria.
 - [ ] Run experiment 2 and record here whether each target passed.
 
 ## Continuation checkpoint
+
+2026-10-25: G5's synthetic T-3 regression passes against the existing stalled-task recovery; no server fix is needed. The test starts a task, confirms its session ended with dirty work and no report, and reopens the store. The owner sees the persisted task in Tasks home attention and the Review panel's fixed reason. S4 wiring remains open. Next action: implement S4 separately and hold the G17 closeout debrief.
 
 2026-10-19: the retrospective is complete, from read-only evidence. The 0.8.1 cut was tested in a disposable worktree with no conflicts. Each other plan was checked for purpose fit. The Portuguese proposal and its attachments were replaced by this roadmap. Next action: the owner reviews this roadmap and answers the open decisions.
 
