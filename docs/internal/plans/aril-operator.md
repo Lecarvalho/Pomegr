@@ -1,11 +1,11 @@
 # Aril operator: build, review, and merge while the owner is away
 
-> Status: proposed; the owner answered the scope questions on 2026-10-24 and reviews this plan before any build.
+> Status: proposed; the owner answered the scope questions on 2026-10-24 and the open decisions on 2026-10-25, and reviews this plan before any build.
 > Created: 2026-10-24.
 > Scope: let Aril run the delivery loop for a repository while the owner is away: pick the next unblocked work, start a builder session, start a separate reviewer session on the result, send failed work back, merge on green CI and a passing review, start the next task, write tasks for the next step of an accepted plan, and report to the owner. It covers the standing grant that authorizes this, the event wake-up, the reviewer session, send-back, merge, the action log, and the boundary changes. It reuses the gaps of the [purpose roadmap](purpose-roadmap.md) (G6 to G10, G13) instead of redefining them.
 > Continuation owner: the product owner decides; the agent that builds a phase records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Agent chat](../architecture/agent-chat.md), and [Tasks](../architecture/tasks.md) govern shipped behavior until each phase changes them.
-> Next task or decision: the owner reviews this plan and answers the open decisions.
+> Next task or decision: the owner reviews the revised plan; phases 1 and 2 can start after that review.
 > Completion criteria: a grant runs a repository's Ready tasks to merged pull requests with no owner action between tasks, every action is in the log, the owner can stop it at once, and every rule below has a test.
 > Permanent destinations: `AGENTS.md` for the control boundary, [Agent chat](../architecture/agent-chat.md) for the grant, wake-up, and Aril's actions, [Tasks](../architecture/tasks.md) for send-back, review verdicts, and merge, the agent chat privacy section for the log, and a page in `docs/internal/design/` for the grant and the log.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -34,6 +34,11 @@ This plan adds that authority as a **standing grant** that the owner approves be
 | 2026-10-24 | Under a grant, Aril may start Ready tasks, review and send back, merge on green, and write new tasks from accepted plans. |
 | 2026-10-24 | The reviewer is a separate session that Aril starts in the task's worktree. Aril reads its verdict and stays read-only. |
 | 2026-10-24 | Plan first: the owner reviews this plan before any build. |
+| 2026-10-25 | Limits are not fixed defaults. The owner and Aril settle them for what is on the plate, and they live in **Aril settings** in the app. Aril may ask what it can and cannot do. |
+| 2026-10-25 | The merge method is the repository's own. |
+| 2026-10-25 | Aril learns each repository and how the owner likes it to work, through a repository memory. It asks more and decides less at first, and settles rules with the owner over time. A work rule may select by tag, content, project, feature, or a list of tasks. |
+| 2026-10-25 | The reviewer choice has no built-in bias: it follows the repository's rule, or what the owner settled, informed by Pomegr's metrics, or a combination. |
+| 2026-10-25 | A paired device can talk with Aril and settle all of this. A setting, off by default, lets the owner allow paired devices to manage Aril settings and grants. |
 
 ## Lessons from the first pilot
 
@@ -42,7 +47,7 @@ This plan answers each finding before it widens authority:
 
 | Finding | Answer here |
 | --- | --- |
-| 1. A person chose the model | The grant names no models; G6 chooses each session's model and records why. The reviewer runs on a different model from the builder when one is available. |
+| 1. A person chose the model | The grant names no models; G6 chooses each session's model and records why. The reviewer's model follows the reviewer rule, with Pomegr's metrics as evidence. |
 | 2. The repository's process was skipped | The builder brief and the reviewer brief both start from the repository's own rules (G3). The reviewer checks them and reports met, unmet, or unknown for each. |
 | 3. Proof was missing | Merge requires G4 proof presence and CI green on the pull request's head. |
 | 4. Dependencies waited for the owner | An order dependency is satisfied by a passing review, not by **Mark done** (G10). |
@@ -55,11 +60,31 @@ This plan answers each finding before it widens authority:
 A grant is one record per repository, set in the desktop app only, and shown on the Tasks page while active.
 
 - **Scope:** which actions it allows (start, review and send back, merge, write tasks), each a separate switch.
-- **Limits:** an end time, a maximum number of starts, a maximum of concurrent sessions (at most the repository's queue limit), a send-back limit per task (default 2), and the provider allowance Aril's own runs may use.
-- **Work set:** the board's Ready column in order, plus tasks written from plans the owner marked accepted. Nothing else.
+- **Limits:** an end time, a maximum number of starts, a maximum of concurrent sessions (at most the repository's queue limit), a send-back limit per task, and the provider allowance Aril's own runs may use. None has a fixed default: the owner and Aril settle them for the work at hand.
+- **Work set:** the board's Ready column in order, plus the tasks and plans that the repository's work rules select. Nothing else.
 - **Stop:** one action ends the grant at once. Running sessions continue (Pomegr never ends a session); Aril starts, sends back, and merges nothing more.
 - **Expiry:** the grant ends at its end time, when its limits are reached, or when the app quits; it never renews itself.
-- Paired devices can see and stop a grant; only the desktop can create one.
+- Paired devices can see and stop a grant. They can create or change one only when the owner turned on the paired-device setting in Aril settings, which is off by default.
+
+## Aril settings
+
+Aril settings are one record per repository in the app, next to the grant:
+
+- the grant's limits and switches, as settled for the next run;
+- the work rules: which tasks and plans Aril may take, selected by tag, content, project, feature, or a list of tasks;
+- the reviewer rule, when the repository or the owner set one;
+- whether a paired device may manage settings and grants (off by default).
+
+The owner edits them directly. Aril changes them only through a proposal that the owner applies, the same way it changes the board today, so it never widens its own authority.
+The owner and Aril settle them in the chat: Aril proposes values for what is on the plate, and asks what it may do when a rule is missing.
+
+## Repository memory
+
+Aril keeps a memory per repository of how the owner likes the work done: delivery habits, merge method, review expectations, what needs the owner, and the rules settled in past conversations.
+
+- It starts empty. With little memory Aril asks more and decides less; each settled answer becomes a memory entry or an Aril setting.
+- Each entry is written through a proposal the owner applies, and the owner can see, edit, and delete every entry.
+- An entry guides Aril's judgment; it never grants an action. Authority comes only from the grant and Aril settings.
 
 ## How Aril wakes
 
@@ -80,18 +105,19 @@ Aril stays a read-only provider run. Each action below is a fixed operation that
 
 | Action | Rule | Reuses |
 | --- | --- | --- |
-| Start a task | Ready, unblocked, delivery path known, within limits; model chosen by G6 | Task dispatch and the terminal host |
+| Start a task | Ready, unblocked, selected by a work rule, delivery path known, within limits; model chosen by G6 | Task dispatch and the terminal host |
 | Start a review | After a task reports complete; same worktree; brief lists the task, the brief, the repository rules, and the proof recipe | Task dispatch, with a reviewer role |
 | Send back | After a failing verdict, within the send-back limit; a new builder session in the same worktree with the verdict as its brief (G9) | Task dispatch; Continue's resume path where the provider supports it |
-| Merge | Pull request open, CI green on its head, review passed, proof present (G4), no unresolved review comments, branch protections satisfied; squash or the repository's configured method | A new desktop action through `gh`, owner-only today |
+| Merge | Pull request open, CI green on its head, review passed, proof present (G4), no unresolved review comments, branch protections satisfied; the repository's own merge method | A new desktop action through `gh`, owner-only today |
 | Report complete | After merge; the task goes to Review for the owner's **Mark done** | `complete_task` semantics |
-| Write tasks | From an accepted plan's next unbuilt step, with full text, **Complete when**, and dependencies | The existing task add path |
+| Write tasks | From the next unbuilt step of a plan a work rule selects, with full text, **Complete when**, and dependencies | The existing task add path |
 
 Every action writes one log entry. A refused action records its fixed reason.
 
 ## The reviewer session
 
 - Started by Aril, in the task's worktree, after the builder reports complete.
+- Its provider and model follow the repository's reviewer rule or what the owner settled, informed by Pomegr's metrics (first-pass rate, review outcomes); Pomegr adds no default preference.
 - Its brief: the task text, the builder brief, the repository's rules and proof recipe, and the diff range.
 - It runs the repository's focused and full checks, inspects visible changes when the repository can render them, and writes a verdict through a new MCP report: `pass`, or `fail` with reasons, each reason one line.
 - It changes no code. A reviewer that edits files fails its own verdict.
@@ -117,13 +143,14 @@ Each phase ships on its own and is useful without the next.
 
 - [ ] **1. Log and events.** The action log store and view, and committed events with durable cursors, with no new authority. Aril can be asked "what happened since I left" from the log.
 - [ ] **2. Reviewer session.** The reviewer role, its brief, and its verdict report; started by the owner from a task in Review. Verdicts recorded with G1.
-- [ ] **3. Grant with start and review.** The grant record, its limits and stop; Aril starts Ready tasks and their reviews on events. Owner merges.
-- [ ] **4. Send-back.** Failing verdicts go back to a builder session within the limit (G9).
-- [ ] **5. Merge on green.** The merge action with every check above.
-- [ ] **6. Tasks from plans.** Aril writes tasks for the next step of an accepted plan.
-- [ ] **7. Acceptance.** Experiment 2 runs under a grant; record whether its targets passed.
+- [ ] **3. Settings and memory.** Aril settings and the repository memory, both changed by the owner or by an applied proposal; the paired-device setting. No new authority.
+- [ ] **4. Grant with start and review.** The grant record, its limits and stop; Aril starts the tasks its work rules select, and their reviews, on events. Owner merges.
+- [ ] **5. Send-back.** Failing verdicts go back to a builder session within the limit (G9).
+- [ ] **6. Merge on green.** The merge action with every check above.
+- [ ] **7. Tasks from plans.** Aril writes tasks for the next step of a plan its work rules select.
+- [ ] **8. Acceptance.** Experiment 2 runs under a grant; record whether its targets passed.
 
-Phases 1 and 2 add no authority and can start before the open decisions are answered.
+Phases 1 to 3 add no authority.
 
 ## Failure behavior
 
@@ -132,14 +159,7 @@ Phases 1 and 2 add no authority and can start before the open decisions are answ
 - Two events for the same task are handled in order; a merge is attempted at most once per head commit.
 - When the provider allowance for Aril's runs is spent, the grant pauses and the inbox says so.
 
-## Open decisions
-
-1. **Default limits.** Proposed: end time 8 hours, at most 10 starts, concurrency at the queue limit, 2 send-backs per task.
-2. **Merge method.** Squash for every repository, or each repository's own setting.
-3. **Accepted plans.** How the owner marks a plan accepted for task writing: a field in the plan header, or a list in the grant.
-4. **Reviewer model.** Whether G6 must choose a different provider from the builder's, or only a different model.
-5. **Phone.** Whether a paired device may also create a grant, or only see and stop it.
-
 ## Checkpoint
 
 2026-10-24: plan written after the owner asked what Aril lacks to run the delivery loop an agent ran by hand that day. The owner answered the scope questions (start, review and send back, merge on green, write tasks; a separate reviewer session; plan first). Next action: the owner reviews the plan and answers the open decisions.
+2026-10-25: the owner answered the five open decisions (recorded under Owner decisions). Added Aril settings, the repository memory, and phase 3; removed fixed default limits and the squash default. Next action: the owner reviews the revised plan.
