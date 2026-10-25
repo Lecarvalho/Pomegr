@@ -148,8 +148,8 @@ Each phase ships on its own and is useful without the next.
 - [x] **3. Settings and memory.** Aril settings and the repository memory, both changed by the owner or by an applied proposal; the desktop-only paired-device setting. No new authority.
 - [x] **4. Grant with start and review.** The grant record, its limits and stop; Aril starts the tasks its work rules select, and their reviews, on events. Owner merges.
 - [x] **5. Send-back.** Failing verdicts go back to a builder session within the limit (G9).
-- [ ] **6. Merge on green.** The merge action with every check above.
-- [ ] **7. Tasks from plans.** Aril writes tasks for the next step of a plan its work rules select.
+- [x] **6. Merge on green.** The merge action with every check above.
+- [x] **7. Tasks from plans.** Aril writes tasks for the next step of a plan its work rules select.
 - [ ] **8. Acceptance.** Experiment 2 runs under a grant; record whether its targets passed.
 
 Phases 1 to 3 add no authority.
@@ -170,3 +170,4 @@ Phases 1 to 3 add no authority.
 2026-10-25: phase 2 shipped in #319 (monitor side: plan, bind, verdict, outcome fields), #320 (report_review tool, plugins 0.9.15), #321 (desktop Start review), and the verdict on the task and in Aril's snapshot. Known follow-up: review terminals are not listed in the terminal view. Next action: phase 3, Aril settings and the repository memory.
 2026-10-25: phase 3 shipped in #323 (settings and memory store), #324 (Aril settings panel), and #325 (Aril reads and proposes settings and memory). Phase 4 started: the grant record and the monitor's grant read. Next action: the desktop grant runner with the boundary change, then the grant controls.
 2026-10-25: phase 4 shipped in #326 (grant record and grant read), #327 (desktop grant runner and the AGENTS.md boundary change), #328 (grant reviews follow the reviewer rule), and #329 (grant controls). Phase 5 (send-back) ships with this checkpoint. Next action: phase 6, merge on green.
+2026-10-25: phase 6 shipped in #331 (merge on green) and #332 (a passing review meets an order dependency under a grant); phase 7 in #333 (plan rules and grant-written tasks) and this change (the grant run that writes tasks). Next action: phase 8, the acceptance run of experiment 2 under a grant, which needs the owner; and the owner's wording for the Home and landing claims that Aril never acts.

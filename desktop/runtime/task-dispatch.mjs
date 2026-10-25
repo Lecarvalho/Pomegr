@@ -427,7 +427,7 @@ export function installTaskStartIpc(options = {}) {
   ipcMain.removeHandler(TASK_START_CHANNEL);
   const starter = options.starter || createTaskStart(options);
   const runner = options.queueRunner === false ? null : options.queueRunner || createTaskQueueRunner({
-    starter, fetch: options.fetch, monitorOrigin: options.monitorOrigin, authorizationToken: options.authorizationToken,
+    starter, fetch: options.fetch, monitorOrigin: options.monitorOrigin, authorizationToken: options.authorizationToken, grantWrite: options.grantWrite,
   });
   ipcMain.handle(TASK_START_CHANNEL, async (event, repositoryId, taskId, separateWorktree) => {
     try { return await starter.start(event, repositoryId, taskId, separateWorktree); } catch { return result("failed"); }

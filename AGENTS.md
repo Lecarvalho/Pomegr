@@ -20,8 +20,8 @@ copying it here.
   turning the repository's queue on or off. Aril changes and starts nothing, except
   through the fixed grant actions while a grant the owner started is active: it may then
   start the Ready tasks its work rules select, their reviews, send failed work back
-  within the send-back limit, and merge a task's pull request on green CI after a passing review,
-  with the repository's merge method, at most once per head commit. The owner applies every other change.
+  within the send-back limit, merge a task's pull request on green CI after a passing review,
+  with the repository's merge method, at most once per head commit, and write tasks from the plans the grant names. The owner applies every other change.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -109,7 +109,7 @@ These rules always apply:
   app (or on a paired device the owner allowed), it is scoped by Aril settings and
   time-bound, and while it is active the desktop starts selected tasks and reviews behind
   every start gate, sends failed work back within its limit, and merges a task's pull request
-  on green CI after a passing review, with the repository's merge method, at most once per head commit,
+  on green CI after a passing review, with the repository's merge method, at most once per head commit, and writes tasks from the plans the grant names,
   without a per-action confirmation. Merge is a control action Pomegr may perform only under a grant, with the checks above.
   Stopping it takes effect at once; it never ends a running session. No agent, Aril run,
   queue, or MCP tool may start a grant.
@@ -119,10 +119,13 @@ These rules always apply:
   applies or dismisses a proposal. After any applied or partial outcome, a
   follow-up may offer one proposal of board changes that continues the owner's earlier request.
   The owner must Apply or Dismiss that proposal; no proposal applies itself or starts an
-  automatic chain. A follow-up after a dismissed, refused, or failed proposal carries no
+  automatic chain. The one exception is a grant that allows writing tasks: the tasks Aril
+  writes from the grant's named plans are created in Ready without Apply, within the
+  grant's cap, and nothing else in that answer applies.
+  A follow-up after a dismissed, refused, or failed proposal carries no
   proposal. Follow-ups never propose a session start or queue change. They apply and
   retry nothing. Board changes still use the fixed task actions after the owner applies
-  each proposal. An image reaches a task only through the task image route, with an image
+  each proposal, except for the grant task writes above. An image reaches a task only through the task image route, with an image
   the owner sent in that conversation, after the owner applies a proposal. A task's
   session starts only through the manual start, after the owner confirms a start proposal
   in the desktop app, or under an active grant. The queue changes only through the Tasks page's queue action, with

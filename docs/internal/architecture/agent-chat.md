@@ -28,9 +28,9 @@ shipped. The parts that are not proven on a device are listed under
 Aril is an agent that organizes one repository's task board. The owner asks in a chat
 panel; Aril reads the board, the repository's files, and Pomegr's observations, and
 answers. Aril never changes anything itself. It proposes board changes, and Pomegr applies a
-proposal only after the owner presses **Apply changes**. While an owner-started grant is
+proposal after the owner presses **Apply changes**, except for the grant task writes below. While an owner-started grant is
 active, the desktop runner may start selected Ready tasks and their reviews, send
-failed work back within the grant's limit, and merge on green CI after a passing review, through the
+failed work back within the grant's limit, merge on green CI after a passing review, and write tasks from the plans the grant names, through the
 fixed grant actions ([Aril grants](tasks.md#aril-grants)). When the owner asks for it, Aril
 also proposes to start a session for one named task; Pomegr starts it through the manual
 start of the Tasks page, only after the owner selects **Start session** on that proposal
@@ -70,7 +70,11 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 [Aril settings and repository memory](tasks.md#aril-settings-and-memory) are included in each provider prompt: settings, including read-only `pairedDevices`, and oldest-first memory entries (at most 100, each at most 300 characters).
 
-Each message of the owner starts one provider run. The run answers and exits. Every
+Each message of the owner starts one provider run. When an active grant allows writing
+tasks, the desktop starts a write turn only when the chat is free. It uses the reviewer
+provider when configured, otherwise Claude when available, otherwise Codex; its model is
+null.
+The run answers and exits. Every
 stored Apply or Dismiss starts exactly one provider run for a follow-up (see
 [Follow-up](#follow-up)). A follow-up may contain one board-change proposal only after
 any applied or partial outcome. The owner must Apply or Dismiss it, which starts its own
@@ -106,6 +110,16 @@ single follow-up run; no proposal starts a run or applies itself. Follow-ups nev
 
 The run is a new provider conversation every time. Pomegr sends the earlier messages in
 the prompt, so the owner may change the provider or the model between two messages.
+
+### Tasks from a grant's plans
+
+The monitor's `write_tasks` step starts one read-only Aril run through the desktop-only `grantWrite({ repositoryId, plans })`; it is not a chat IPC or paired-device operation. It reserves the same slot as `send`, or answers `busy`; the monitor's ten-minute offer spacing paces retries. The queue tick does not await the run and holds one pending write until its outcome is stored.
+
+The prompt contains the normal instructions, board snapshot, settings, memory, and task-log section, with the named plan paths and a fixed grant request instead of an owner message. Aril reads the plans, code, board, and available Git evidence to find the next unbuilt step without a task, then returns one to five tasks in order with the brief, verification, delivery path, and completion conditions. If it cannot find a next step, it answers without a block.
+
+Only this run accepts a `create_task`-only proposal with `text`, optional `complete_when`, `own_condition`, and `runs_after`. Dependencies name existing board tasks or earlier tasks in the answer as `#1` through `#5`; no feature, column, queue, image, or provider run fields are accepted, even when empty. A malformed block, another operation, or an invalid dependency writes nothing and stores `proposalUnreadable`.
+
+Desktop sends `{ repositoryId, plan: plans[0], tasks }` to `grant-write-tasks`, mapping each operation to `{ text, completeWhen?, after? }`. The monitor rechecks grant authority and the cap and creates the batch in Ready. The conversation is titled `Grant: tasks from <first plan file name>`; its proposal is stored as `applied` with `appliedBy: "grant"`, summary `Applied by grant.`, and per-operation task IDs or a fixed refusal. This state records a settled grant attempt, even when refused; it offers no Apply and starts no follow-up. Owner chat turns keep their existing rules.
 
 ### The provider run
 
@@ -312,6 +326,8 @@ Aril changes the board only by ending its answer with one fenced block tagged
 `pomegr-board`: `{ "summary", "operations" }`. `extractProposal` in
 `agent-chat-proposal.mjs` takes the block out of the shown text and validates it.
 
+The only proposal applied without owner Apply is a [grant task-writing answer](#tasks-from-a-grants-plans): one to five `create_task` operations from the named plans, within the grant's cap. No other operation in that answer applies, and owner-message proposals retain their approval boundary.
+
 Aril ends its answer with a proposal when the owner asked for a change, agreed to one, or
 when its own reading recommends one concrete board change, with the reason in the answer;
 it never ends by asking whether it should propose. A start, a queue change, and a delete
@@ -376,7 +392,7 @@ Aril proposes settings only when the owner requests a change or agrees to a sugg
   `place_after` task it does not hold, answers `not_found` without a request; a refused
   `move` answers its error. Either result carries the new task's ID and
   `part: "placement"`, and the proposal stops there.
-- A group operation names only tasks that exist on the board when the proposal runs. A task
+- On owner turns, a group operation names only tasks that exist on the board when the proposal runs. A task
   that the same proposal creates has no ID yet, so no placeholder is supported. A
   placement is the one way to order a new card in the same proposal. A task of
   the list that the board does not hold answers `not_found` without a request.
@@ -822,13 +838,17 @@ never a session's.
   image, so the path of the chat's image folder under the desktop data root, which holds
   the user's folder name, reaches the provider. A task's session has had the path of its
   task's image folder in the same way.
+  A grant write turn sends the normal board snapshot, repository settings and memory,
+  task log, and the grant's named plan paths. Its fixed request asks Aril to read the
+  next unbuilt step of an accepted plan and create 1–5 tasks with only `text`,
+  `complete_when`, `own_condition`, and `runs_after`. It uses no follow-up proposal.
 - **Native file access.** The owner-approved native read surface can include files outside the selected repository, subject to provider permissions.
   Pomegr does not filter source filenames or inspect source contents before the provider reads them.
   Instructions prohibit reading credentials and private session transcripts; this instruction is not a filesystem enforcement boundary.
   Native tool results can reach the chosen provider. Pomegr drops tool results and keeps only the conversation answer under the existing rules.
 - **What the task read exposes.** `get_task` can send the full text omitted by the snapshot's shared budget to the same chat provider, with the T-118 task fields and only the snapshot's attention and block lines added. It exposes no path, credential, capability, repository ID, column ID, feature ID, session, image, dispatch fact, feature description, or app version. Both monitor and MCP worker apply the shared allowlist. It writes nothing. The snapshot retains its 48,000-unit text bound under the allocation rule above.
 - **What never enters a prompt.** Credentials, tokens, the desktop token, a path other
-  than the working directory the process starts in and the files of the conversation's
+  than the grant's named plan paths, the working directory the process starts in, and the files of the conversation's
   images, the images of a task, an image of another conversation, and the description or
   app version of a feature. A repository ID and a conversation ID enter it only as parts
   of an image's file.
@@ -854,6 +874,7 @@ never a session's.
   fixed result, in the conversation file: `on`, `blocked`, `off`, or a fixed error. No
   task ID, blocker, pause reason, gate reading, or board content is kept with it, and
   the action sends the monitor only `{ on }`.
+- **What Pomegr keeps of a grant write.** The conversation title is `Grant: tasks from <first filename>`. Its proposal has `appliedBy: "grant"`, summary `Applied by grant.`, and state `applied`; existing operation results hold created task IDs or one fixed refusal. Desktop maps `not_active` and `not_allowed` to the existing `conflict` refusal. The grant endpoint receives only the first named plan path and validated task text, completion conditions, and dependencies; it receives no conversation, raw answer, or tool content. Created task text is kept and served under the task-board privacy rules; plan content enters no log or observation state.
 - **Paired devices.** The gateway serves plain HTTP on the local network, so the
   conversation and the session cookie cross it unencrypted, as task content does.
   Whoever holds a paired device's cookie can read the conversations, send a message
@@ -884,9 +905,13 @@ never a session's.
   registry entry is dropped before any pipeline stage reads it (see
   [The declared run](#the-declared-run)), and no pipeline stage reads a conversation.
 - Aril never changes the board itself. Only `apply` does, on the owner's answer, through
-  the fixed task actions; an active grant permits only the fixed starts, reviews,
-  send-backs, and eligible pull-request merges in
+  the fixed task actions; an active grant permits fixed starts, reviews, send-backs,
+  eligible pull-request merges, and task writes from its named plans in
   [Aril grants](tasks.md#aril-grants).
+- A grant write turn uses the plan paths snapshotted at grant start and the fixed
+  `create_task` request. It writes only through `POST /internal/tasks/grant-write-tasks`.
+  It creates Ready tasks within the grant cap, with no owner Apply. It runs
+  only when the chat is free and starts no follow-up.
 - Aril puts no image on a task. Only `apply` does, with an image the owner sent in the
   same conversation, through the monitor's own image route and under its bounds.
 - A proposal that names an image the conversation does not hold is never offered.

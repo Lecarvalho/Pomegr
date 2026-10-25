@@ -178,7 +178,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 ## Aril grants
 
-An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews, send failed work back within its send-back limit, and merge eligible pull requests. The monitor also accepts tasks written from named plans through the fixed grant endpoint; the provider run that writes them is deferred to the next slice.
+An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews, send failed work back within its send-back limit, merge eligible pull requests, and write tasks from the plans the grant names. Aril's read-only provider run may write those tasks through the fixed grant endpoint when the chat is free.
 
 - The Aril settings panel's first section, Grant, summarizes saved settings and requires hours, starts, concurrent sessions, at least one of **Start tasks**, **Start reviews**, or **Merge on green**, and at least one work rule before offering **Start grant**; if **Send work back** is enabled, it also requires **Send-backs per task**. Unsaved changes block starting.
 - **Start grant** first shows an in-panel confirmation with the end time; confirming sends `grant_start` with `{}`. **Stop grant** sends `grant_stop` with `{}` immediately, including on a paired device without edit permission.
@@ -196,6 +196,9 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - A write step consumes no concurrency and is offered only when the previous offer for this grant was more than ten minutes ago; an offered step stores `grant_write_offered:<repositoryId>` as `{ grantId, at }`, and a new grant has no prior offer.
 - A task marked as written by the active grant is selected for its starts, reviews, send-back, and merge even without a matching live work rule; a later grant does not inherit that marker's authority.
 - Plan paths are repository paths typed by the owner, stored with settings and the grant snapshot and sent only through the existing task settings boundary or the desktop grant step; written task text is stored and served like any other task text, and neither text nor plan content enters the task log or observation state.
+- Desktop handles a `write_tasks` step with one read-only [grant chat run](agent-chat.md#tasks-from-a-grants-plans), sharing the owner chat slot; a busy chat skips the step, the queue tick never waits for the provider, and only one grant write runs at a time.
+- That run sends the normal snapshot, memory, task log, and named plan paths to the configured reviewer provider or, when unset, Claude if installed and Codex otherwise, with the CLI default model; only create-task operations for the next unbuilt plan step may reach `grant-write-tasks`.
+- Its saved `Grant: tasks from <first filename>` conversation records the answer and an `applied` proposal with `appliedBy: "grant"`, summary `Applied by grant.`, and created task IDs or a fixed refusal in operation results; no owner Apply or follow-up runs, and rejected blocks are marked unreadable without writing.
 - The desktop and app log readers label `grant_task_written` “Written by Aril from a plan”; Aril can read this fixed kind without receiving plan content in the log.
 - A grant is active exactly while `ended_at IS NULL`, the current time is before `ends_at`, and `starts_used` is below its snapshotted `limits.starts`.
 - Reading a grant, including a board read, ends a timed-out or exhausted grant in the same transaction, with `expired` taking precedence over `starts_used` when both limits are reached.

@@ -187,9 +187,10 @@ function placement(source) {
 }
 
 /** One operation as the agent wrote it, normalized to the stored shape; null when it is outside the contract. */
-export function normalizeOperation(source) {
+export function normalizeOperation(source, { grantWrite = false } = {}) {
   if (!isPlainObject(source) || typeof source.op !== "string" || !BOARD_OPERATIONS.includes(source.op)) return null;
   const { op } = source;
+  if (grantWrite && (op !== "create_task" || !only(source, ["op", "text", "complete_when", "own_condition", "runs_after"]))) return null;
   if (op === "set_aril_settings") {
     const settings = arilSettings(source.settings);
     return only(source, ["op", "settings"]) && settings ? { op, settings } : null;
@@ -206,12 +207,18 @@ export function normalizeOperation(source) {
     return only(source, ["op", "name"]) && name ? { op, name } : null;
   }
   if (op === "create_task") {
-    if (!only(source, ["op", "text", "feature", "queue", "images", "column", "position", "place_after", ...TASK_FIELDS])) return null;
+    if (!only(source, ["op", "text", "feature", "queue", "images", "column", "position", "place_after", ...TASK_FIELDS, ...(grantWrite ? ["runs_after"] : [])])) return null;
     const text = taskText(source.text);
     const parts = taskParts(source);
     const place = placement(source);
     if (!text || !parts || !place) return null;
     const operation = { op, text, ...parts, ...place };
+    if (Object.hasOwn(source, "runs_after")) {
+      const after = source.runs_after;
+      if (!Array.isArray(after) || after.length > AFTER_LIMIT || new Set(after).size !== after.length
+        || !after.every((id) => taskId(id) || (typeof id === "string" && /^#[1-5]$/u.test(id)))) return null;
+      operation.after = [...after];
+    }
     if (source.feature !== undefined && source.feature !== null) {
       const feature = boundedLine(source.feature, FEATURE_LIMIT);
       if (!feature) return null;
@@ -271,14 +278,15 @@ export function normalizeOperation(source) {
 }
 
 /** A proposal body `{ summary, operations }`, normalized; null when any part is outside the contract. */
-export function normalizeProposal(source) {
+export function normalizeProposal(source, options = {}) {
   if (!isPlainObject(source) || !only(source, ["summary", "operations"]) || !Array.isArray(source.operations)) return null;
   if (source.operations.length === 0 || source.operations.length > PROPOSAL_OPERATION_LIMIT) return null;
+  if (options.grantWrite && source.operations.length > 5) return null;
   const summary = boundedLine(source.summary, PROPOSAL_SUMMARY_LIMIT);
   if (!summary) return null;
   const operations = [];
   for (const entry of source.operations) {
-    const operation = normalizeOperation(entry);
+    const operation = normalizeOperation(entry, options);
     if (!operation) return null;
     operations.push(operation);
   }
@@ -314,7 +322,7 @@ export function startProposalTask(proposal) {
  * Splits an agent answer into the text to show and the proposal it carries.
  * `unreadable` is true when the answer holds a proposal block that is malformed, repeated, or outside the contract.
  */
-export function extractProposal(answer) {
+export function extractProposal(answer, options = {}) {
   if (typeof answer !== "string") return { text: "", proposal: null, unreadable: false };
   const bodies = [];
   let text = answer.replace(FENCE, (_match, lead, body) => { bodies.push(body); return lead; });
@@ -326,7 +334,7 @@ export function extractProposal(answer) {
   if (bodies.length > 1 || open || Buffer.byteLength(bodies[0], "utf8") > BLOCK_LIMIT_BYTES) return { text, proposal: null, unreadable: true };
   let parsed;
   try { parsed = JSON.parse(bodies[0]); } catch { return { text, proposal: null, unreadable: true }; }
-  const proposal = normalizeProposal(parsed);
+  const proposal = normalizeProposal(parsed, options);
   return proposal ? { text, proposal, unreadable: false } : { text, proposal: null, unreadable: true };
 }
 

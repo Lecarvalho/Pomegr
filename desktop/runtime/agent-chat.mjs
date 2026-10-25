@@ -1,6 +1,6 @@
 // The Pomegr agent chat: the owner talks to Aril, an agent that reads the task board and proposes changes to it.
 // Desktop main owns the whole of it. It starts one read-only provider run per message, keeps the conversations,
-// and changes the board only when the owner approves a proposal, through the fixed task actions.
+// and changes the board through approved proposals or the fixed grant task-writing action.
 
 import { spawn as spawnChild } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -353,13 +353,17 @@ export function createAgentChat(options = {}) {
       void postAction("log-ack", turn.repositoryId, { consumer: "aril", through: turn.logThrough }).catch(() => {});
     }
     const answer = typeof outcome?.text === "string" ? outcome.text : "";
-    let read = status === "complete" ? extractProposal(answer) : { text: visibleAnswer(answer), proposal: null, unreadable: false };
+    let read = status === "complete" ? extractProposal(answer, { grantWrite: Boolean(turn.grantPlans) }) : { text: visibleAnswer(answer), proposal: null, unreadable: false };
     try {
       const conversation = await store.read(turn.repositoryId, turn.conversationId);
       if (!conversation) return;
       // A proposal may name only images the owner sent in this conversation. One that names another is not offered.
       const sent = new Set(conversationImages(conversation.messages).map((image) => image.id));
       if (read.proposal && !proposalImages(read.proposal).every((id) => sent.has(id))) read = { text: read.text, proposal: null, unreadable: true };
+      if (turn.grantPlans && read.proposal && !read.proposal.operations.every((operation, index) => (operation.after ?? [])
+        .every((id) => id.startsWith("#") ? Number(id.slice(1)) <= index : turn.taskIds.has(id)))) {
+        read = { text: read.text, proposal: null, unreadable: true };
+      }
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at, provider: turn.provider, model: turn.model, status };
       // Only a successful or partial outcome may offer another board proposal. It still waits for the owner.
@@ -371,8 +375,24 @@ export function createAgentChat(options = {}) {
         }
       }
       if (read.proposal) message.proposal = { id: newProposalId(), summary: read.proposal.summary, operations: read.proposal.operations, state: "pending" };
+      if (turn.grantPlans && message.proposal) {
+        let result = UNAVAILABLE;
+        try {
+          if (!disposed && !turn.stopped) result = await monitor("/internal/tasks/grant-write-tasks", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ repositoryId: turn.repositoryId, plan: turn.grantPlans[0],
+              tasks: read.proposal.operations.map(({ text, completeWhen, after }) => ({ text, ...(completeWhen ? { completeWhen } : {}), ...(after ? { after } : {}) })) }),
+          });
+        } catch { /* Record a fixed refusal; no retry or follow-up. */ }
+        const taskIds = result?.ok === true && Array.isArray(result.taskIds) && result.taskIds.length === read.proposal.operations.length
+          && result.taskIds.every((id) => typeof id === "string" && TASK_ID.test(id)) ? result.taskIds : null;
+        const error = ["not_active", "not_allowed"].includes(result?.error) ? "conflict"
+          : ["limit", "invalid"].includes(result?.error) ? result.error : "unavailable";
+        message.proposal = { ...message.proposal, state: "applied", appliedBy: "grant", summary: "Applied by grant.",
+          results: read.proposal.operations.map((_, index) => taskIds ? { ok: true, taskId: taskIds[index] } : { ok: false, error }) };
+      }
       if (read.unreadable) message.proposalUnreadable = true;
-      await store.save(turn.repositoryId, { ...conversation, updatedAt: at, messages: [...conversation.messages, message] });
+      return await store.save(turn.repositoryId, { ...conversation, updatedAt: at, messages: [...conversation.messages, message] });
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
     finally { release(turn); }
   }
@@ -449,6 +469,50 @@ export function createAgentChat(options = {}) {
       return UNAVAILABLE;
     } finally {
       if (!started) release(reservation);
+    }
+  }
+
+  // Internal grant action only. Its promise holds the runner's slot until the answer and outcome are stored.
+  async function grantWrite({ repositoryId, plans }) {
+    if (active) return refused("busy");
+    if (disposed || !store || !monitorOrigin || !authorizationToken) return UNAVAILABLE;
+    if (!REPOSITORY_ID.test(String(repositoryId)) || !Array.isArray(plans) || plans.length === 0 || plans.length > 20
+      || !plans.every((plan) => typeof plan === "string" && plan.length <= 200 && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.md$/u.test(plan)
+        && !plan.split("/").some((part) => part === "." || part === ".."))) return INVALID;
+    const reservation = { reserved: true, repositoryId };
+    active = reservation;
+    let turn = null;
+    let sessionId = null;
+    try {
+      const [board, root, runs, taskLog] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId), readRuns(), readTaskLog(repositoryId)]);
+      if (!board || !root || disposed) return UNAVAILABLE;
+      const provider = board.aril?.settings?.reviewer?.provider ?? (executable("claude") ? "claude" : "codex");
+      const command = PROVIDERS.has(provider) ? executable(provider) : null;
+      if (!command) return refused("cli_missing");
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, grantPlans: plans, now: now() });
+      if (!prompt) return INVALID;
+      const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
+      if (!conversation) return refused("limit");
+      if (!await store.save(repositoryId, conversation)) { await store.remove(repositoryId, conversation.id); return UNAVAILABLE; }
+      turn = { repositoryId, conversationId: conversation.id, provider, model: null, startedAt: now().toISOString(), activity: "starting", text: "", stopped: false,
+        grantPlans: [...plans], taskIds: new Set(board.tasks.map(({ id }) => id)),
+        logThrough: Math.max(0, ...(taskLog?.entries ?? []).map((entry) => entry.id)),
+        stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
+      active = turn;
+      sessionId = await declareRun(provider);
+      const taskServer = await taskReadServer(turn);
+      if (disposed || turn.stopped) { await finishTurn(turn, { status: "stopped", text: "" }); return UNAVAILABLE; }
+      const run = runTurn({ spawn, executable: command, provider, model: null, mcpServer: taskServer, images: null, sessionId,
+        cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        onText: (value) => { turn.text = value; }, onActivity: (value) => { turn.activity = value; } });
+      turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
+      return await finishTurn(turn, await run.done) ? { ok: true, conversationId: conversation.id } : UNAVAILABLE;
+    } catch {
+      if (turn) await finishTurn(turn, null);
+      return UNAVAILABLE;
+    } finally {
+      withdrawRun(sessionId);
+      release(turn ?? reservation);
     }
   }
 
@@ -610,6 +674,7 @@ export function createAgentChat(options = {}) {
   return Object.freeze({
     handle,
     image,
+    grantWrite,
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
     dispose() { disposed = true; followUps.clear(); try { active?.stop?.(); } catch { /* already gone */ } },
   });

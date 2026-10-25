@@ -60,15 +60,21 @@ function cleanupsFrom(answer) {
 
 function stepsFrom(answer) {
   if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.steps)) return [];
-  return answer.steps.filter((step) => isPlainObject(step) && typeof step.repositoryId === "string" && REPOSITORY_ID.test(step.repositoryId)
-    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review", "send_back", "merge"].includes(step.kind)
-    && (step.kind === "merge" ? Number.isSafeInteger(step.pullRequest) && step.pullRequest > 0 && /^[a-f0-9]{40}$/u.test(step.headOid)
-      && (step.mergeMethod === null || ["squash", "merge", "rebase"].includes(step.mergeMethod)) && !Object.hasOwn(step, "run")
-      : step.kind === "send_back" ? !Object.hasOwn(step, "run")
-      : !Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
-        && ["claude", "codex"].includes(step.run.provider)
-        && (step.run.model === null || (typeof step.run.model === "string" && MODEL.test(step.run.model)))
-        && (step.run.effort === null || EFFORTS.has(step.run.effort))))).slice(0, MAX_STARTS);
+  return answer.steps.filter((step) => {
+    if (!isPlainObject(step) || typeof step.repositoryId !== "string" || !REPOSITORY_ID.test(step.repositoryId)) return false;
+    if (step.kind === "write_tasks") return Array.isArray(step.plans) && step.plans.length > 0 && step.plans.length <= 20
+      && step.plans.every((plan) => typeof plan === "string" && plan.length <= 200
+        && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.md$/u.test(plan)
+        && !plan.split("/").some((part) => part === "." || part === ".."));
+    if (typeof step.taskId !== "string" || !TASK_ID.test(step.taskId) || !["start", "review", "send_back", "merge"].includes(step.kind)) return false;
+    if (step.kind === "merge") return Number.isSafeInteger(step.pullRequest) && step.pullRequest > 0 && /^[a-f0-9]{40}$/u.test(step.headOid)
+      && (step.mergeMethod === null || ["squash", "merge", "rebase"].includes(step.mergeMethod)) && !Object.hasOwn(step, "run");
+    if (step.kind === "send_back") return !Object.hasOwn(step, "run");
+    return !Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
+      && ["claude", "codex"].includes(step.run.provider)
+      && (step.run.model === null || (typeof step.run.model === "string" && MODEL.test(step.run.model)))
+      && (step.run.effort === null || EFFORTS.has(step.run.effort)));
+  }).slice(0, MAX_STARTS);
 }
 
 function pauseReason(status) {
@@ -92,6 +98,7 @@ export function createTaskQueueRunner(options = {}) {
   let disposed = false;
   let ticks = 0;
   let grantsReady = false;
+  let grantWritePending = false;
 
   async function resetGrants() {
     if (disposed || typeof starter.startGranted !== "function" || typeof starter.startGrantedReview !== "function") return;
@@ -151,9 +158,20 @@ export function createTaskQueueRunner(options = {}) {
     }
     for (const step of stepsFrom(answer)) {
       const { repositoryId, taskId, kind, run } = step;
-      if (kind === "send_back") continue;
       if (disposed) return;
       if (ended.has(repositoryId)) continue;
+      if (kind === "write_tasks") {
+        if (!grantWritePending && typeof options.grantWrite === "function") {
+          grantWritePending = true;
+          try {
+            Promise.resolve(options.grantWrite({ repositoryId, plans: step.plans }))
+              .catch(() => {})
+              .finally(() => { grantWritePending = false; });
+          } catch { grantWritePending = false; }
+        }
+        continue;
+      }
+      if (kind === "send_back") continue;
       const isAuthorized = async () => {
         if (disposed) return false;
         try {

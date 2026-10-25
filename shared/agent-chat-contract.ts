@@ -49,7 +49,7 @@ export const AGENT_CHAT_COLUMNS: readonly AgentChatColumn[] = ["Backlog", "Ready
 // `placeAfter` names, in that task's column. Without either it lands at the end of Backlog. A placement never queues.
 export type AgentChatBoardOperation =
   | { op: "create_feature"; name: string }
-  | { op: "create_task"; text: string; feature?: string; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean; images?: string[]; column?: AgentChatColumn; position?: number; placeAfter?: string }
+  | { op: "create_task"; text: string; feature?: string; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean; images?: string[]; column?: AgentChatColumn; position?: number; placeAfter?: string; after?: string[] }
   | { op: "update_task"; id: string; text?: string; feature?: string | null; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen> }
   | { op: "delete_task"; id: string }
   | { op: "move_task"; id: string; column: AgentChatColumn; position?: number }
@@ -106,6 +106,7 @@ export type AgentChatProposal = {
   summary: string;
   operations: AgentChatBoardOperation[];
   state: AgentChatProposalState;
+  appliedBy?: "grant";
   results?: AgentChatOperationResult[]; // one per operation, once the proposal ran or its start was tried
 };
 
