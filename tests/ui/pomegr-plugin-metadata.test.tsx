@@ -17,9 +17,9 @@ describe("Pomegr plugin metadata", () => {
     const session = repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } });
     const { container } = render(<SessionDetailsPanel state={detailsState(session)} historical={false} />);
 
-    expect(container.querySelector(".sessionPomegrIntegration")).not.toBeInTheDocument();
-    expect(container.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Approval mode, usage limits, machinery");
-    expect(container.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent(/plugin|policy/i);
+    expect(container.querySelector(".sessionPluginFact")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session" })).toBeVisible();
+    expect(container).not.toHaveTextContent(/plugin|policy/i);
   });
 
   it("preserves recorded invalid policy state in historical sessions", () => {
@@ -29,7 +29,7 @@ describe("Pomegr plugin metadata", () => {
     };
     render(<SessionDetailsPanel state={detailsState(session)} historical />);
 
-    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent(/policy v7/i);
+    expect(document.querySelector(".sessionPluginFact")).toHaveTextContent(/Policy: Invalid/);
     expect(screen.getByText("Invalid — needs attention · v7")).toBeInTheDocument();
     expect(screen.getByText("Recorded for this session")).toBeInTheDocument();
   });

@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: active; Sessions 1–5 and T11 are complete. Session 6 remains open for T10 and T12.
+> Status: active; Sessions 1–5, T10, and T11 are complete; the owner still compares the Details tab with its artboard. Session 6 remains open for T12.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/internal/architecture/observation-cache.md`, and `docs/internal/architecture/metrics.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/internal/architecture/observation-cache.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Continue Session 6 with T10, then T12, in a fresh user-requested session.
+> Next task or decision: the owner compares the Details tab with its DetailsTab artboard; then T12 in a fresh user-requested session.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/metrics.md`, `docs/internal/architecture/overview.md`, `docs/internal/development/configuration.md`, and `AGENTS.md`.
 
@@ -502,6 +502,9 @@ Depends on T07 (resource tables).
 
 Owner: UI (`SessionDetailsPanel.tsx`, `MachineryPanel.tsx` successors). Artboard: `DetailsTab.html`.
 
+- [x] T10 implementation and focused regression coverage — 2026-10-25.
+- [ ] T10 rendered artboard comparison — browser access blocked; see checkpoint.
+
 - Session facts, one-shot Copy transcript path (unchanged endpoint), Cost estimate with the estimate label, Context inventory inline with the category table, groups link, and repository inventory revision link. Flow score and its inputs belong only to Signals.
 - No usage limits on this tab. No audience chip.
 - Compare against the artboard.
@@ -550,6 +553,73 @@ No unresolved product decision blocks implementation. The latest approved rules 
 
 ## Continuation checkpoint
 
+### T10 checkpoint
+
+2026-10-25 · **T10 implemented; rendered visual comparison pending.** Work is confined
+to `plans/ia-t10`; no commit or push. Session 6 remains unchecked, and T11 and T12
+have not started. The Session 5 handoff and `DetailsTab-html/DetailsTab.dc.html` were
+read before implementation.
+
+**Behavior and files.** `SessionDetailsPanel.tsx` now renders Session facts and Cost
+estimate beside the inline inventory in `MachineryPanel.tsx`, using `session.css`.
+Facts include the provider, full session ID, project, start time, approval mode and
+observed plugin/policy. The existing gated one-shot copy action targets the primary
+agent without rendering or retaining its returned path. Cost keeps its capability
+and preference gates, precision and caveat. Inventory shows allocation totals,
+category rows, inline groups and the immutable revision link, including when
+in-session inventory exists. Usage limits and the outer disclosure are removed;
+flow score stays on Signals. The maintained contract is in
+[Sessions design](../design/sessions.md#details-tab).
+
+**Tests first.** The new `tests/ui/session-details.test.tsx` initially failed six
+tests on the old UI, with one existing access-gate case passing. All seven pass
+after implementation. The focused six-suite run passes 69 tests. Existing
+`estimated-cost`, `pomegr-plugin-metadata`, `dashboard-t04` and
+`transitional-session-tab` tests were updated only for the visible Session region
+and the intentional removal of the disclosure and usage limits. Their cost,
+metadata, polling, historical isolation and privacy assertions remain.
+
+**Verification.** The focused serialization suite passes all 15 tests. Full Node
+testing ran 4,025 tests: 4,020 passed, four skipped and one discovery wait timed out;
+the isolated `session-discovery.test.mjs` rerun passes all 17 tests. Full UI testing
+ran 2,460 tests (including a temporary layout assertion removed before handoff):
+2,456 passed and four timed out in the two design-system suites. The isolated
+design-contract rerun passes; the Task-fields sample still timed out on the first
+isolated design-system rerun. After the other verification processes finished,
+one final `design-system.test.tsx --maxWorkers=1` run passed 18 tests but timed out
+in Task fields (40,000 ms, line 118) and Events rail (20,000 ms, line 147).
+No assertions or timeouts were changed. The full UI suite is not green; these
+existing sample tests remain outside T10's implementation scope.
+
+`npm run verify:fast` passes, including lint (zero errors, 55 existing warnings),
+type checks, provider documentation, docs, architecture, boundaries, contracts and
+operations tests. `npm run build` passes. Generated legal and favicon files were
+restored only after confirming that their rewrites changed line endings alone.
+`git diff --check` passes. The final focused rerun again passes all 69 tests.
+After removing obsolete clicks on the former outer disclosure, the final isolated
+transitional suite passes all 21 tests. `npm run check:docs` passes after the
+checkpoint update.
+
+**Artboard review and limitation.** Source comparison confirms the 1:1.2 desktop
+columns, Session/Cost order, inline allocation/category evidence and group/revision
+controls. Existing design tokens, bundled fonts, date formatting, capability gates
+and provider-reported percentages take precedence over placeholder styling and
+data. Longer inventory explanations use the existing info popover. No audience
+chip ships. A synthetic preview was prepared, but headless Edge exited with
+2147483651 before producing an image; automatic approval review then refused
+Microsoft Edge UI access. No rendered desktop/390px/light-theme comparison is
+claimed. Temporary preview cleanup was also blocked by policy; artifacts remain
+under ignored `outputs/ia-t10/`.
+
+**Scope and handoff.** The normalized API and transcript endpoint are unchanged.
+The transitional `/api/state` consumer remains for T12. The stylesheet, surface
+contract, plan and regression tests are the only files outside the two named UI
+owners; they provide the required layout, documentation and proof. No numeric
+budget was specified; ten files changed, including five test files. No product or
+layout decision remains open. Visual proof and the two full-UI timeouts above
+still need resolution. The implementation goal is met; acceptance is incomplete.
+Non-goals remain untouched.
+
 ### Session 6 T11 checkpoint
 
 2026-10-25 · **T11 complete.** Only the development request-log task is implemented.
@@ -584,7 +654,7 @@ Session 6 stays unchecked because T10 and T12 remain open. No visual surface cha
 - Branch: `plans/ia-t11`; base `e582a9a419d749c9fca8961d4303ff128bfbb80f`. Changes remain uncommitted.
   Next: T10, then T12 and the plan's closure steps, in a fresh user-requested session.
 
-### Earlier continuation note
+### T03 sidebar limits checkpoint
 
 2026-09-20 · **T03 sidebar limits correction complete.** The rail now follows the
 approved one-row-per-recent-provider rule and selects each provider's

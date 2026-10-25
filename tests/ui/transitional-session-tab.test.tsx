@@ -1,5 +1,4 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mirrors the real module's contract: `subscribeLiveEvents` synchronously delivers one
@@ -103,7 +102,7 @@ describe("LegacySessionTab polling lifecycle", () => {
   it("fetches without a revision on first mount and renders the panel once data arrives", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(detailedState("claude:s1")));
     renderTab({ tab: "details", sessionId: "claude:s1" });
-    await screen.findByText("Session details");
+    await screen.findByRole("region", { name: "Session details" });
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/state?sessionId=claude%3As1");
   });
 
@@ -129,7 +128,7 @@ describe("LegacySessionTab polling lifecycle", () => {
     expect(screen.queryByText("This session panel is temporarily unavailable.")).not.toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(1_000); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Session details")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session details" })).toBeInTheDocument();
   });
 
   it("rejects a loading placeholder whose catalogIdentity names a different session", async () => {
@@ -149,11 +148,11 @@ describe("LegacySessionTab polling lifecycle", () => {
       .mockRejectedValueOnce(new Error("network"));
     renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
-    expect(screen.getByText("Session details")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session details" })).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(30_000); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByText("Update failed. Showing the last recorded panel state.")).toBeInTheDocument();
-    expect(screen.getByText("Session details")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session details" })).toBeInTheDocument();
   });
 
   it("polls every second while retained readiness is loading, then settles to a thirty-second cadence once ready", async () => {
@@ -316,7 +315,7 @@ describe("LegacySessionTab historical retry cadence", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(1); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Session details")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session details" })).toBeInTheDocument();
   });
 
   it("retries a failed historical poll five seconds later", async () => {
@@ -334,7 +333,7 @@ describe("LegacySessionTab historical retry cadence", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(1); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Session details")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session details" })).toBeInTheDocument();
   });
 
   it("schedules no further timer once a historical poll fully resolves", async () => {
@@ -356,20 +355,18 @@ describe("LegacySessionTab privacy and historical isolation (ported from deleted
     const data = detailedState("claude:s1", { historical: true });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
     renderTab({ tab: "details", sessionId: "claude:s1", historical: true });
-    await screen.findByText("Session details");
-    await userEvent.click(screen.getByText("Session details"));
+    await screen.findByRole("region", { name: "Session details" });
     expect(screen.queryByRole("heading", { name: "Usage limits" })).not.toBeInTheDocument();
   });
 
-  it("shows a sanitized Codex usage failure message instead of the raw upstream error text", async () => {
+  it("omits live usage limits and their failure messages from Details", async () => {
     const data = detailedState("claude:s1", { codex: true, usageAvailable: false });
     data.usageLimits.error = "raw upstream failure detail that must never reach the browser";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
     renderTab({ tab: "details", sessionId: "claude:s1" });
-    await screen.findByText("Session details");
-    await userEvent.click(screen.getByText("Session details"));
-    expect(screen.getByRole("heading", { name: "Usage limits" })).toBeInTheDocument();
-    expect(screen.getByText("The last usage check failed. Pomegr will retry automatically.")).toBeInTheDocument();
+    await screen.findByRole("region", { name: "Session details" });
+    expect(screen.queryByRole("heading", { name: "Usage limits" })).not.toBeInTheDocument();
+    expect(screen.queryByText("The last usage check failed. Pomegr will retry automatically.")).not.toBeInTheDocument();
     expect(screen.queryByText(/raw upstream failure detail/)).not.toBeInTheDocument();
   });
 
@@ -378,17 +375,16 @@ describe("LegacySessionTab privacy and historical isolation (ported from deleted
     data.capabilities.usageLimits = false;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
     renderTab({ tab: "details", sessionId: "claude:s1" });
-    await screen.findByText("Session details");
-    await userEvent.click(screen.getByText("Session details"));
+    await screen.findByRole("region", { name: "Session details" });
     expect(screen.queryByRole("heading", { name: "Usage limits" })).not.toBeInTheDocument();
   });
 
-  it("omits current Usage and missing Loaded values from a historical collapsed summary", async () => {
+  it("omits current Usage and missing Loaded values from historical Details", async () => {
     const data = detailedState("claude:s1", { historical: true });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
     const { container } = renderTab({ tab: "details", sessionId: "claude:s1", historical: true });
     const compact = await waitFor(() => {
-      const element = container.querySelector(".sessionDetails .sessionEvidenceSummary");
+      const element = container.querySelector(".sessionDetails");
       expect(element).toBeInTheDocument();
       return element!;
     });
@@ -401,22 +397,23 @@ describe("LegacySessionTab privacy and historical isolation (ported from deleted
     data.capabilities.contextMachinery = false;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
     const { container } = renderTab({ tab: "details", sessionId: "claude:s1" });
-    await screen.findByText("Session details");
-    await userEvent.click(screen.getByText("Session details"));
-    expect(container.querySelector(".sessionDetails .cachePanel")).not.toBeInTheDocument();
+    await screen.findByRole("region", { name: "Session details" });
+    expect(container.querySelector(".sessionDetails .sessionContextInventory")).not.toBeInTheDocument();
     expect(container.querySelector(".sessionDetails")).not.toHaveTextContent("Loaded context inventory");
     expect(container.querySelector(".sessionDetails")).not.toHaveTextContent("/context");
   });
 
-  it("falls back to the generic evidence summary when no optional details evidence is available", async () => {
+  it("keeps session facts visible when no optional details evidence is available", async () => {
     const data = baseState("claude:s1");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
     const { container } = renderTab({ tab: "details", sessionId: "claude:s1" });
     const summary = await waitFor(() => {
-      const element = container.querySelector(".sessionDetails .sessionEvidenceSummary");
+      const element = container.querySelector(".sessionDetails");
       expect(element).toBeInTheDocument();
       return element!;
     });
-    expect(summary).toHaveTextContent("Approval mode, usage limits, machinery");
+    expect(summary).toHaveTextContent("Session ID");
+    expect(summary).toHaveTextContent("claude:s1");
+    expect(summary).not.toHaveTextContent("usage limits");
   });
 });
