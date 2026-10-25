@@ -3,7 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import {
   TASK_COLUMN_ROLES, TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, TASK_QUEUE_WAIT_REASONS, TASK_QUEUE_WAIT_TASK_LIMIT, createEmptyTaskBoard,
-  type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskQueueWait, type TaskQueueWaitReason, type TaskState,
+  type ArilGrant, type ArilMemoryEntry, type ArilSettings, type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskQueueWait, type TaskQueueWaitReason, type TaskState,
 } from "../shared/task-contract";
 
 // Client for the committed task board (GET /api/tasks).
@@ -200,11 +200,53 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   const gates = parseGates(queue.gates);
   const schedule = parseSchedule(queue.schedule);
   const waits = parseWaits(queue.waits);
+  const aril = parseAril(body.aril);
   return {
     version: 1, readiness, repositoryId, columns, features, tasks,
     queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, pauseReason, order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}), ...(waits ? { waits } : {}) },
     runModels: parseRunModels(body.runModels),
+    ...(aril ? { aril } : {}),
   };
+}
+
+const ARIL_ACTIONS = ["start", "review", "sendBack", "merge", "writeTasks"] as const;
+const ARIL_LIMITS = ["hours", "tasks", "tasksAtATime", "sendBacks", "usagePercent"] as const;
+const ARIL_RULE_KINDS = new Set(["tag", "text", "feature", "plan", "tasks"]);
+const ARIL_END_REASONS = new Set(["stopped", "expired", "tasks_used", "start_failed", "app_restart"]);
+const flags = (value: unknown, keys: readonly string[]) => { const body = record(value); return body !== null && keys.every((key) => typeof body[key] === "boolean"); };
+const limits = (value: unknown) => { const body = record(value); return body !== null && ARIL_LIMITS.every((key) => body[key] === null || count(body[key], 0)); };
+
+function validArilSettings(value: unknown): value is ArilSettings & { settledAt?: string | null } {
+  const body = record(value);
+  const reviewer = record(body?.reviewer);
+  return body !== null && flags(body.actions, ARIL_ACTIONS) && limits(body.limits)
+    && [null, "squash", "merge", "rebase"].includes(body.mergeMethod as string | null)
+    && [null, "direct", "auto"].includes(body.mergeMode as string | null) && [null, true, false].includes(body.deleteBranch as boolean | null)
+    && Array.isArray(body.workRules) && body.workRules.length <= 20 && body.workRules.every((rule) => {
+      const entry = record(rule);
+      return entry !== null && ARIL_RULE_KINDS.has(entry.kind as string) && (entry.kind === "tasks"
+        ? Array.isArray(entry.value) && entry.value.every((id) => typeof id === "string" && TASK_ID_PATTERN.test(id)) : text(entry.value, 200));
+    })
+    && reviewer !== null && (reviewer.provider === null || PROVIDERS.has(reviewer.provider as string)) && nullableText(reviewer.model, LIMITS.model)
+    && typeof reviewer.differentFromBuilder === "boolean" && typeof body.pairedDevices === "boolean"
+    && (body.settledAt === undefined || body.settledAt === null || timestamp(body.settledAt));
+}
+function validArilMemory(value: unknown): value is ArilMemoryEntry {
+  const body = record(value);
+  return body !== null && count(body.id, 1) && text(body.text, 300) && count(body.createdAt, 0) && count(body.updatedAt, 0);
+}
+function validArilGrant(value: unknown): value is ArilGrant {
+  const body = record(value);
+  return body !== null && count(body.startedAt, 0) && count(body.endsAt, 0) && count(body.startsUsed, 0)
+    && flags(body.actions, ARIL_ACTIONS) && limits(body.limits) && (body.active === true
+      || (body.active === false && count(body.endedAt, 0) && ARIL_END_REASONS.has(body.endReason as string)));
+}
+// Aril settings, memory, and the latest grant of a ready board. Absent when any part is malformed, so the panel says unavailable.
+function parseAril(value: unknown): TaskBoard["aril"] {
+  const body = record(value);
+  const memory = body && listOf(body.memory, 100, validArilMemory);
+  if (!body || !validArilSettings(body.settings) || !memory || !(body.grant === undefined || body.grant === null || validArilGrant(body.grant))) return undefined;
+  return { settings: body.settings, memory, grant: body.grant ?? null };
 }
 
 function parseRunModels(value: unknown): NonNullable<TaskBoard["runModels"]> {
