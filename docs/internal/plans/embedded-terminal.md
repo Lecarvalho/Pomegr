@@ -156,7 +156,7 @@ The host is a small Node process that owns the ConPTY sessions. Desktop main sta
 
   Any live provider run in the spike follows the probe rules in `AGENTS.md`. If the spike fails, the external window stays, the terminal and Continue are cancelled or reshaped, and the read-only history stands alone.
 - [x] **Phase 2, contracts.** The control and terminal privacy contracts define owner-only terminal input and keep terminal output out of persistent and network surfaces.
-- [ ] **Phase 3, host.** The host, its runtime copy, pipe, token, commands, bounds, and idle exit. Tests use a fake PTY and synthetic output only.
+- [x] **Phase 3, host.** The host, its runtime copy, pipe, token, commands, bounds, and idle exit. Tests use a fake PTY and synthetic output only.
 - [x] **Phase 4, start path.** The embedded transport keeps the confirmed executable, argument array, and working directory. Binding waits for the session link, rollback and status remain fixed, and ambiguous launch results are never retried.
 - [x] **Phase 5, Terminal tab.** The live Terminal tab, task start view, binding and host states, task-card link, design contract, and synthetic samples are built.
 - [x] **Phase 6, Continue.** The private monitor plan, native confirmation, serialized resume, refusals, restart binding, and observed identity replacement are built. Tests use synthetic providers.
@@ -174,6 +174,10 @@ Not part of this plan. Each needs the owner's decision and its own plan.
 The design review produced an interactive mockup with synthetic data that steps through every state of the Terminal tab and of Continue. Its states have synthetic `/design-system` samples; phase 6 implements the Continue states.
 
 ## Continuation checkpoint
+
+2026-10-24, live terminal typography: xterm uses line height 1.4 and the computed data font, with the same responsive inset as saved history. Font loading waits at most 500 ms before opening; a later load refits the terminal and resizes the host. Theme colors remain on the existing command tokens.
+
+2026-10-24, live terminal replay fix: attach batches retained scrollback into bounded frames without splitting surrogate pairs. The client budgets replay without rejecting it before the attach answer. Desktop main preserves the fixed replay marker. The panel suppresses replay-generated query answers and waits for replay parsing before enabling input. A detached view stays unavailable after a late attach answer. Phase 3 shipped in #287; its checkbox is now checked. Phase 7 acceptance remains open.
 
 2026-10-24, phase 6: Continue now uses a desktop-only monitor plan and the provider's native resume in the terminal host. Main validates the plan, confirms with Cancel as default, and rechecks before launch. No dispatch token, model, effort, or permission flag is replayed. Host keys reconstruct mappings after restart; committed process ownership identifies a replacement session. The added monitor route keeps cwd out of public projections and renderer IPC. Synthetic tests cover refusals, cancellation, serialization, mapping, and replacement identity. Known residual risk: Claude Code can resume a background session, and simultaneous foreground resumes can interleave; an external start can race Pomegr's checks. Phase 7 remains open.
 

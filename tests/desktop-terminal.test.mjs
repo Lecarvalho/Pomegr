@@ -103,6 +103,21 @@ test("only the attaching trusted main frame can write and receives replay carryi
   finish();
 });
 
+test("renderer output carries only the fixed true replay marker", async () => {
+  const markers = [true, false, "true", 1, { private: "value" }, undefined];
+  const f = fixture({ clientOverrides: { attach: async () => ({ readOnly: false,
+    async *[Symbol.asyncIterator]() {
+      for (const replay of markers) yield { event: "output", data: "synthetic", replay };
+    }, return: async () => {},
+  }) } });
+  assert.equal((await f.controller.run(f.event, "attach", { key, attachId: "replay" })).ok, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.output.map(([, value]) => value), markers.map((replay) => ({
+    attachId: "replay", event: "output", data: "synthetic", ...(replay === true ? { replay: true } : {}),
+  })));
+  f.controller.dispose();
+});
+
 test("IPC installer has exactly the five fixed operations and cleanup only detaches", async () => {
   const handlers = new Map(); const ipcMain = { handle: (channel, fn) => handlers.set(channel, fn), removeHandler: (channel) => handlers.delete(channel) };
   const f = fixture(); const remove = installTerminalIpc({ ipcMain, controller: f.controller });

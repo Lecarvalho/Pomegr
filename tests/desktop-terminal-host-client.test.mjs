@@ -3,12 +3,14 @@ import { createHash } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import childProcess, { spawn as spawnChild } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import net from "node:net";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { prepareTerminalHostCopy } from "../desktop/runtime/terminal-host-runtime.mjs";
 import { createTerminalHostClient } from "../desktop/runtime/terminal-host-client.mjs";
 import { startTerminalHost } from "../desktop/terminal-host/host.mjs";
+import { encodeFrame, decodeFrames } from "../desktop/terminal-host/protocol.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 async function fixture(t, label = "node") {
@@ -110,6 +112,85 @@ test("client reuses a running host, discovers another build, and streams replay 
   await client.detach("fixture", true);
   assert.deepEqual(await client.list(), []);
   assert.equal((await client.listHosts()).find((row) => row.buildId === other.buildId).protocol, 1);
+});
+
+test("client delivers the whole retained replay for many tiny ANSI parts", async (t) => {
+  const options = await fixture(t);
+  const copy = await prepareTerminalHostCopy(options);
+  const handlers = {};
+  const host = await startTerminalHost({ runtimeDirectory: copy.directory, spawnPty: (_file, _args, ptyOptions) => ({
+    onData(callback) { handlers.data = callback; }, onExit(callback) { handlers.exit = callback; },
+    write() {}, resize() {}, pid: 123, initialSize: ptyOptions.cols,
+  }) });
+  t.after(() => host.close());
+  const client = createTerminalHostClient({ ...options, spawn() { throw new Error("must reuse"); } });
+  t.after(() => client.close());
+  await client.ensureHost();
+  await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "ansi" });
+  const emitted = "\x1b[0m+x".repeat(20000);
+  const { Scrollback } = await import("../desktop/terminal-host/scrollback.mjs");
+  const retained = new Scrollback(); retained.append(emitted);
+  const expected = retained.read().join("");
+  handlers.data(emitted);
+  const stream = await client.attach("ansi");
+  assert.equal(stream.readOnly, false);
+  let replay = "";
+  while (replay.length < expected.length) {
+    const { value, done } = await stream.next();
+    if (done || value.event !== "output" || !value.replay) break;
+    replay += value.data;
+  }
+  assert.equal(replay, expected);
+
+  await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "full-capacity" });
+  const fullReplay = "\x01".repeat(256 * 1024);
+  handlers.data(fullReplay);
+  const fullStream = await client.attach("full-capacity");
+  let fullText = "";
+  while (fullText.length < fullReplay.length) {
+    const { value, done } = await fullStream.next();
+    if (done || value.event !== "output" || !value.replay) break;
+    fullText += value.data;
+  }
+  assert.equal(fullText, fullReplay);
+});
+
+test("client buffers 256 KiB across 4096 replay frames before attach reply and bounds live output", { timeout: 30000 }, async (t) => {
+  const options = await fixture(t);
+  const copy = await prepareTerminalHostCopy(options);
+  const pipe = `\\\\.\\pipe\\pomegr-terminal-${digest(String(Math.random()))}`;
+  const token = "a".repeat(64);
+  await writeFile(path.join(copy.directory, "host.token"), token);
+  await writeFile(path.join(copy.directory, "host.json"), JSON.stringify({ pid: process.pid, protocol: 1, pipe }));
+  const server = net.createServer((socket) => decodeFrames(socket, (frame) => {
+    if (frame.command === "attach") {
+      if (frame.key === "budget") {
+        // 256 KiB payload plus 4096 frame charges fits the client's 512 KiB stream queue.
+        for (let index = 0; index < 4096; index++) socket.write(encodeFrame({ event: "output", key: "budget", data: "x".repeat(64), replay: true }));
+      }
+      socket.write(encodeFrame({ id: frame.id, ok: true, readOnly: false }));
+    } else if (frame.command === "list") {
+      for (let index = 0; index < 8192; index++) socket.write(encodeFrame({ event: "output", key: "live", data: "x".repeat(64) }));
+      socket.write(encodeFrame({ id: frame.id, ok: true, sessions: [] }));
+    } else socket.write(encodeFrame({ id: frame.id, ok: true, protocol: 1 }));
+  }));
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(pipe, resolve); });
+  let client;
+  t.after(async () => { client?.close(); await new Promise((resolve) => server.close(resolve)); });
+  client = createTerminalHostClient(options);
+  await client.connectHost(copy.buildId);
+  const stream = await client.attach("budget");
+  assert.equal(stream.readOnly, false);
+  let replay = "";
+  while (replay.length < 256 * 1024) {
+    const { value, done } = await stream.next();
+    if (done || value.event !== "output" || !value.replay) break;
+    replay += value.data;
+  }
+  assert.equal(replay, "x".repeat(256 * 1024));
+  const live = await client.attach("live");
+  await client.list();
+  assert.deepEqual((await live.next()).value, { event: "detached", reason: "slow_client" });
 });
 
 test("ensureHost starts only the copied node with a detached argument-array launch", async (t) => {

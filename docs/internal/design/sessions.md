@@ -156,11 +156,16 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - On phone widths, the desktop app places Terminal in **More**.
 - A Terminal deep link falls back to Overview when the bridge is absent.
 - A session Pomegr started in the terminal host shows its live output in one data-font terminal surface.
+- The live terminal uses line height 1.4 to preserve joined box-drawing characters.
+- The live terminal inset matches history: `--space-6` above 760px and `--space-4` at 760px or below.
+- The live terminal waits up to 500 ms for its computed data font before measuring; a later font load refits the terminal.
 - The CLI draws the only input surface and its caret, which shows focus. Pomegr adds no focus ring.
 - The owner types or pastes into the CLI input surface.
 - The Terminal tab sends input, paste, resize, and detach only through fixed trusted desktop IPC.
 - A task's Terminal start view says **Waiting for the session to report** before binding. Binding opens the session's Terminal tab.
-- A host reconnection keeps input disabled until the terminal attaches.
+- A host reconnection keeps input disabled until the terminal attaches and received replay finishes parsing.
+- Replayed terminal queries send no input back to the session; live queries keep their normal replies.
+- A detached view stays unavailable even when its attach answer arrives later.
 - An unavailable host shows **Reconnection unavailable. The session may still be running.** and disables input.
 - An incompatible host shows **This session runs in an older host and is temporarily inaccessible.** and disables input.
 - A process exit adds one quiet line with its exit code. The surface then becomes read-only.

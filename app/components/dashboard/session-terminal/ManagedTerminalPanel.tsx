@@ -6,7 +6,7 @@ import { encodeSessionRoute } from "../../../../shared/session-route.mjs";
 import "@xterm/xterm/css/xterm.css";
 
 export type ManagedTerminal = { key: string; repositoryId: string | null; taskId: string | null; sessionId: string | null; continuedFrom?: string; state: "starting" | "live" | "exited" | "host_unavailable"; exitCode?: number };
-type TerminalEvent = { attachId: string; event: "output" | "exit" | "detached"; data?: string; exitCode?: number; reason?: string };
+type TerminalEvent = { attachId: string; event: "output" | "exit" | "detached"; data?: string; replay?: boolean; exitCode?: number; reason?: string };
 type Answer = { ok: boolean; status: string; readOnly?: boolean; sessions?: ManagedTerminal[]; hosts?: { state: string }[] };
 type TerminalBridge = { terminal(operation: string, payload?: Record<string, unknown>): Promise<Answer>; onTerminalOutput(callback: (event: TerminalEvent) => void): () => void };
 export function terminalBridge(): TerminalBridge | undefined {
@@ -81,13 +81,21 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
     const bridge = terminalBridge();
     const node = container.current;
     if (!bridge || !node) return;
-    let disposed = false, attached = false, writable = false, disconnected = false;
+    let disposed = false, attached = false, writable = false, disconnected = false, readOnly = true;
+    let replayWrites = 0;
     let cleanup = () => {};
     const attachId = `view-${crypto.randomUUID()}`;
     void (async () => {
       const [{ Terminal }, { FitAddon }] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
       if (disposed) return;
       const style = getComputedStyle(node);
+      const fontsReady = Promise.resolve().then(() => document.fonts?.load(`${style.fontSize} ${style.fontFamily}`))
+        .then(() => document.fonts?.ready).catch(() => {});
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 500);
+        void fontsReady.then(() => { clearTimeout(timeout); resolve(); });
+      });
+      if (disposed) return;
       const token = (name: string) => style.getPropertyValue(name).trim();
       const theme = () => ({ background: token("--command-ground"), foreground: token("--command-ink"), cursor: token("--command-ink"),
         selectionBackground: token("--command-panel-2"), black: token("--command-ground"), red: token("--command-error"), green: token("--command-green"),
@@ -95,7 +103,7 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
         brightBlack: token("--command-muted"), brightRed: token("--command-error"), brightGreen: token("--command-green"), brightYellow: token("--command-amber"),
         brightBlue: token("--command-blue"), brightMagenta: token("--command-brand-text"), brightCyan: token("--command-blue"), brightWhite: token("--command-ink") });
       const emulator = new Terminal({ allowProposedApi: false, disableStdin: true, cursorBlink: true, scrollback: 4000,
-        fontFamily: style.fontFamily, fontSize: parseFloat(style.fontSize), theme: theme() });
+        fontFamily: style.fontFamily, fontSize: parseFloat(style.fontSize), lineHeight: 1.4, theme: theme() });
       const fit = new FitAddon(); emulator.loadAddon(fit); emulator.open(node);
       focus.current = () => emulator.focus();
       const send = (operation: string, payload: Record<string, unknown>): Promise<Answer> => bridge.terminal(operation, payload).catch(() => ({ ok: false, status: "host_unavailable" }));
@@ -104,14 +112,20 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
         if (!disposed) setState("host_unavailable");
         void send("detach", { attachId });
       };
+      const ready = () => {
+        if (!attached || replayWrites > 0 || disposed || disconnected) return;
+        writable = !readOnly; emulator.options.disableStdin = !writable;
+        setState("live");
+      };
       const resize = () => {
         if (!node.clientWidth || !node.clientHeight) return;
         fit.fit();
         if (attached) void send("resize", { attachId, cols: emulator.cols, rows: emulator.rows });
       };
+      void fontsReady.then(() => { if (!disposed && !disconnected) resize(); });
       let input = Promise.resolve();
       const data = emulator.onData((value) => {
-        if (!writable) return;
+        if (!writable || replayWrites > 0) return;
         // JSON escaping and UTF-8 expansion still fit the host's 16 KiB input frame.
         let chunk = "";
         const append = (part: string) => {
@@ -134,10 +148,15 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
           const size = new TextEncoder().encode(event.data).length;
           if (pendingOutput + size > 256 * 1024) { disconnect(); return; }
           pendingOutput += size;
-          emulator.write(event.data, () => { pendingOutput -= size; });
+          const replay = event.replay === true;
+          if (replay) replayWrites++;
+          emulator.write(event.data, () => {
+            pendingOutput -= size;
+            if (replay) { replayWrites--; ready(); }
+          });
         }
-        else if (event.event === "exit") { writable = false; emulator.options.disableStdin = true; exited.current?.(event.exitCode ?? 0); }
-        else if (event.event === "detached") { writable = false; emulator.options.disableStdin = true; setState("host_unavailable"); }
+        else if (event.event === "exit") { disconnected = true; writable = false; emulator.options.disableStdin = true; exited.current?.(event.exitCode ?? 0); }
+        else if (event.event === "detached") disconnect();
       });
       const observer = new ResizeObserver(resize); observer.observe(node);
       const colors = new MutationObserver(() => { emulator.options.theme = theme(); });
@@ -148,8 +167,8 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
       if (disposed) { void send("detach", { attachId }); return; }
       if (disconnected) return;
       if (!answer.ok) { setState(answer.status === "incompatible_host" ? "incompatible_host" : "host_unavailable"); return; }
-      attached = true; writable = !answer.readOnly; emulator.options.disableStdin = !writable;
-      setState("live");
+      attached = true; readOnly = answer.readOnly === true;
+      ready();
       resize();
     })().catch(() => { if (!disposed) setState("host_unavailable"); });
     return () => { disposed = true; cleanup(); };

@@ -139,7 +139,10 @@ export function createTerminalController(options = {}) {
       for await (const frame of attachment.stream) {
         if (attachments.get(attachment.id) !== attachment || !trusted(attachment.event)) break;
         const value = { attachId: attachment.id, event: frame.event };
-        if (frame.event === "output" && typeof frame.data === "string") value.data = frame.data;
+        if (frame.event === "output" && typeof frame.data === "string") {
+          value.data = frame.data;
+          if (frame.replay === true) value.replay = true;
+        }
         else if (frame.event === "exit" && Number.isInteger(frame.exitCode)) {
           value.exitCode = frame.exitCode;
           attachment.exited = true;
