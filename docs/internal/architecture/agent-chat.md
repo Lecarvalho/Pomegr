@@ -29,8 +29,8 @@ Aril is an agent that organizes one repository's task board. The owner asks in a
 panel; Aril reads the board, the repository's files, and Pomegr's observations, and
 answers. Aril never changes anything itself. It proposes board changes, and Pomegr applies a
 proposal only after the owner presses **Apply changes**. While an owner-started grant is
-active, the desktop runner may start selected Ready tasks and their reviews, and send
-failed work back within the grant's limit, through the
+active, the desktop runner may start selected Ready tasks and their reviews, send
+failed work back within the grant's limit, and merge on green CI after a passing review, through the
 fixed grant actions ([Aril grants](tasks.md#aril-grants)). When the owner asks for it, Aril
 also proposes to start a session for one named task; Pomegr starts it through the manual
 start of the Tasks page, only after the owner selects **Start session** on that proposal
@@ -796,7 +796,7 @@ never a session's.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
   From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first, up to 100 entries of 300 characters each.
-  From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, starts used, and snapshotted limits and actions; an ended grant adds its fixed end reason. Aril uses these existing settings and grant facts to determine whether an active grant permits a send-back.
+  From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, starts used, and snapshotted limits and actions; an ended grant adds its fixed end reason. Aril uses these existing settings and grant facts to determine whether an active grant permits a send-back or merge. The owner-set merge method is part of the settings sent with the board; merge outcomes are reported from fixed `grant_merge` and `grant_merge_refused` log entries.
   Feature rows also include their IDs so Aril can select existing features in work rules. Applied settings and memory operations reach the follow-up as operation names, memory IDs where applicable, and fixed outcomes.
   A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This
@@ -884,8 +884,8 @@ never a session's.
   registry entry is dropped before any pipeline stage reads it (see
   [The declared run](#the-declared-run)), and no pipeline stage reads a conversation.
 - Aril never changes the board itself. Only `apply` does, on the owner's answer, through
-  the fixed task actions; an active grant permits only the fixed starts, reviews, and
-  send-backs in
+  the fixed task actions; an active grant permits only the fixed starts, reviews,
+  send-backs, and eligible pull-request merges in
   [Aril grants](tasks.md#aril-grants).
 - Aril puts no image on a task. Only `apply` does, with an image the owner sent in the
   same conversation, through the monitor's own image route and under its bounds.
@@ -893,7 +893,8 @@ never a session's.
 - An image is served only when a message of its conversation names it.
 - Aril starts no session itself. Only `apply` of a start proposal does, from the desktop
   window, through the manual start and behind every start gate, or the desktop grant
-  runner starts an offered task or review, or sends failed work back, under an active
+  runner starts an offered task or review, sends failed work back, or merges an offered
+  pull request under an active
   grant. The owner's **Start
   session** on the card approves the proposal; the shared native dialog confirms the start. One Apply is at most one launch.
 - Aril never turns the queue on or off. Only `apply` of a queue proposal does, on the

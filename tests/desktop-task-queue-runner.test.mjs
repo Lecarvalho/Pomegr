@@ -33,12 +33,13 @@ function scheduler() {
 }
 
 /** Fake monitor: `next` answers queue-next (a value, or a function), pauses are recorded. */
-function harness({ next = { ok: true, starts: [] }, startQueued, pauseAnswer, cleanups, cleanWorktree, overrides = {} } = {}) {
+function harness({ next = { ok: true, starts: [] }, grantNext, grantCheck = { ok: true, active: true }, execFile, grantStarter, startQueued, pauseAnswer, cleanups, cleanWorktree, overrides = {} } = {}) {
   const timers = scheduler();
   const calls = [];
   const started = [];
   const starter = {
     startQueued: startQueued || (async (repositoryId, taskId) => { started.push({ repositoryId, taskId }); return { status: "started" }; }),
+    ...(grantStarter ? { startGranted() {}, startGrantedReview() {} } : {}),
     // Only a starter that can remove worktrees is asked to.
     ...(cleanWorktree ? { cleanWorktree } : {}),
   };
@@ -51,11 +52,18 @@ function harness({ next = { ok: true, starts: [] }, startQueued, pauseAnswer, cl
     fetch: async (url, options) => {
       const route = url.split("/").pop();
       calls.push({ url, route, options, body: JSON.parse(options.body) });
+      if (route === "grant-check") return typeof grantCheck === "function" ? grantCheck() : json(grantCheck);
+      if (route === "grant-end-all") return json({ ok: true, ended: 0 });
+      if (route === "grant-next" && grantNext !== undefined) return typeof grantNext === "function" ? grantNext() : json(grantNext);
+      if (route === "grant-merge-attempt") return json({ ok: true, pullRequest: 22 });
+      if (route === "worktree-root") return json({ ok: true, root: "C:\\repo" });
+      if (route === "grant-merge-result") return json({ ok: true });
       if (route === "queue-pause") return pauseAnswer ? pauseAnswer() : json({ ok: true });
       if (route === "worktree-cleanups") return typeof cleanups === "function" ? cleanups() : json(cleanups ?? { ok: true, cleanups: [] });
       if (route === "worktree-cleaned") return json({ ok: true });
       return typeof next === "function" ? next() : json(next);
     },
+    execFile,
     ...overrides,
   });
   return { runner, timers, calls, started, pauses: () => calls.filter((call) => call.route === "queue-pause") };
@@ -72,6 +80,23 @@ test("nothing runs before the first interval and the timer is unref'd", () => {
   assert.equal(h.timers.timers[0].delay, 15_000);
   assert.equal(h.timers.timers[0].unreffed, true);
   assert.ok(Object.isFrozen(h.runner));
+});
+
+test("merge steps use the grant authorization check and do not end a refused grant", async () => {
+  const steps = { ok: true, steps: [{ repositoryId: repoA, taskId: "T-8", kind: "merge", pullRequest: 22, headOid: "b".repeat(40), mergeMethod: "squash" }] };
+  const h = harness({
+    grantStarter: true,
+    grantNext: steps,
+    execFile: (_executable, _args, _options, callback) => callback(Object.assign(new Error("refused"), { code: 1 }), "private gh output"),
+  });
+  h.runner.start();
+  await h.timers.fire();
+  const attempted = h.calls.filter(({ route }) => route === "grant-merge-attempt");
+  assert.deepEqual(attempted.map(({ body }) => body), [{ repositoryId: repoA, taskId: "T-8", headOid: "b".repeat(40) }]);
+  assert.deepEqual(h.calls.filter(({ route }) => route === "grant-check").map(({ body }) => body), [{ repositoryId: repoA }]);
+  assert.deepEqual(h.calls.find(({ route }) => route === "grant-merge-result").body,
+    { repositoryId: repoA, taskId: "T-8", headOid: "b".repeat(40), outcome: "refused" });
+  assert.equal(h.calls.some(({ route }) => route === "grant-end"), false);
 });
 
 test("the interval defaults to 15 seconds and never drops below 5", () => {

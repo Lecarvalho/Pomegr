@@ -17,6 +17,7 @@ export function ensureArilSettings(database) {
 
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  mergeMethod: null,
   limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -29,7 +30,7 @@ const bounds = { hours: [1, 72], starts: [1, 100], concurrent: [1, Math.min(10, 
 
 function readSettings(database, repositoryId) {
   const row = preparedStatement(database, "SELECT value FROM aril_settings WHERE repository_id = ?").get(repositoryId);
-  return row ? JSON.parse(row.value) : defaults();
+  return row ? { ...defaults(), ...JSON.parse(row.value) } : defaults();
 }
 function writeSettings(database, repositoryId, settings, at) {
   preparedStatement(database, `INSERT INTO aril_settings (repository_id, value, updated_at) VALUES (?, ?, ?)
@@ -60,6 +61,7 @@ export function arilSettingsSet({ database, repositoryId, ensureRepository, now 
   const input = payload.settings;
   for (const [field, value] of Object.entries(input)) {
     if (field === "actions" && (!exact(value, Object.keys(base.actions)) || !Object.values(value).every((v) => typeof v === "boolean"))) return invalid();
+    if (field === "mergeMethod" && value !== null && !["squash", "merge", "rebase"].includes(value)) return invalid();
     if (field === "limits" && (!exact(value, Object.keys(bounds)) || !Object.entries(value).every(([key, v]) => v === null
       || (Number.isInteger(v) && v >= bounds[key][0] && v <= bounds[key][1])))) return invalid();
     if (field === "workRules" && (!Array.isArray(value) || value.length > 20 || !value.every((rule) => validRule(database, repositoryId, rule)))) return invalid();

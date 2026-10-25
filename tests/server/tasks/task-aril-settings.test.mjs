@@ -9,6 +9,7 @@ const REPO = `repo-${"a".repeat(24)}`;
 const OTHER = `repo-${"b".repeat(24)}`;
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  mergeMethod: null,
   limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -42,6 +43,20 @@ test("settings reject unknown keys and invalid whole fields without partial writ
   for (const payload of [{}, { settings: {}, extra: 1 }, { settings: [], text: "no" }]) invalid(store.apply(REPO, "aril_settings_set", payload));
   invalid(set({ pairedDevices: true, workRules: [{ kind: "unknown", value: "bad" }] }));
   assert.deepEqual(store.readBoard(REPO).aril.settings, defaults());
+});
+
+test("merge method accepts only the supported values and old stored settings read as repository default", (t) => {
+  const { store, directory, set } = setup(t);
+  for (const method of [null, "squash", "merge", "rebase"]) {
+    assert.deepEqual(set({ mergeMethod: method }).settings.mergeMethod, method);
+  }
+  for (const method of [undefined, "", "fast-forward", 1, false, {}]) invalid(set({ mergeMethod: method }));
+  const database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  try {
+    database.prepare("UPDATE aril_settings SET value = ? WHERE repository_id = ?")
+      .run(JSON.stringify(Object.fromEntries(Object.entries(defaults()).filter(([key]) => key !== "mergeMethod"))), REPO);
+  } finally { database.close(); }
+  assert.equal(store.readBoard(REPO).aril.settings.mergeMethod, null);
 });
 
 test("every limit accepts null and inclusive integer bounds only", (t) => {

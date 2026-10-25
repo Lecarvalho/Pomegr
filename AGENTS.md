@@ -19,8 +19,9 @@ copying it here.
   proposes board changes and, when the owner asks, the start of one task's session or
   turning the repository's queue on or off. Aril changes and starts nothing, except
   through the fixed grant actions while a grant the owner started is active: it may then
-  start the Ready tasks its work rules select, their reviews, and send failed work back
-  within the send-back limit. The owner applies every other change.
+  start the Ready tasks its work rules select, their reviews, send failed work back
+  within the send-back limit, and merge a task's pull request on green CI after a passing review,
+  with the repository's merge method, at most once per head commit. The owner applies every other change.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -107,7 +108,9 @@ These rules always apply:
   A grant is the third owner-confirmed control action: the owner starts it in the desktop
   app (or on a paired device the owner allowed), it is scoped by Aril settings and
   time-bound, and while it is active the desktop starts selected tasks and reviews behind
-  every start gate, and sends failed work back within its limit, without a per-action confirmation.
+  every start gate, sends failed work back within its limit, and merges a task's pull request
+  on green CI after a passing review, with the repository's merge method, at most once per head commit,
+  without a per-action confirmation. Merge is a control action Pomegr may perform only under a grant, with the checks above.
   Stopping it takes effect at once; it never ends a running session. No agent, Aril run,
   queue, or MCP tool may start a grant.
   Each other control action needs an explicit confirmation boundary.

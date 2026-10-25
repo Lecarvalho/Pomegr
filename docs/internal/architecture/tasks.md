@@ -159,6 +159,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - Settings and memory are stored and served in phase 3; they grant no action and have no automatic behavior.
 - Each ready repository board includes `aril: { settings, memory, grant }`; memory is oldest first, ordered by creation time then ID, and unavailable or denied boards omit owner content.
 - `actions` has boolean `start`, `review`, `sendBack`, `merge`, and `writeTasks`, all false by default.
+- `mergeMethod` is null by default (the repository default), or `squash`, `merge`, or `rebase`; old stored settings without this field read as null.
 - `limits` has nullable integers: `hours` 1–72, `starts` 1–100, `concurrent` 1–10, `sendBacks` 0–10, and `allowancePercent` 1–100; all default to null, meaning not settled yet, so Aril must ask.
 - `concurrent` also obeys the queue's parallel group bound, currently 16; there is no separate per-repository queue limit setting.
 - `workRules` defaults to an empty list and holds at most 20 `{ kind, value }` records: `tag`, `text`, `feature`, or `tasks`.
@@ -166,7 +167,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - A text rule is one nonblank line of 1–80 characters without control characters; a feature rule names an existing feature of that board; a tasks rule names 1–50 existing task IDs of that board.
 - `reviewer` defaults to `{ provider: null, model: null, differentFromBuilder: false }`; provider is null, `claude`, or `codex`, model is null or at most 120 characters normalized like a task run model, and `differentFromBuilder` is boolean.
 - `pairedDevices` is boolean and defaults to false; only a desktop-token action may set it.
-- `aril_settings_set` accepts exactly `{ settings }`, with any subset of the five top-level settings fields; each supplied field replaces that whole field, with every nested field required and unknown keys rejected, and answers `{ ok: true, settings }`.
+- `aril_settings_set` accepts exactly `{ settings }`, with any subset of the six top-level settings fields; each supplied field replaces that whole field, with every nested field required and unknown keys rejected, and answers `{ ok: true, settings }`.
 - `aril_memory_add` accepts `{ text }`, `aril_memory_update` accepts `{ id, text }`, and both answer `{ ok: true, entry: { id, text, createdAt, updatedAt } }`; `aril_memory_remove` accepts `{ id }` and answers `{ ok: true }`.
 - Memory text is a nonblank line of 1–300 characters with no control characters; the 101st entry is refused with `limit`, and update or removal of an unknown ID in that repository answers `not_found`.
 - The paired action route refuses all four actions unless that repository's stored `pairedDevices` is true; a paired settings action containing `settings.pairedDevices` is always `invalid`.
@@ -176,28 +177,42 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 ## Aril grants
 
-An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews, and send failed work back within its send-back limit. It permits no other task writes or merges.
+An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews, send failed work back within its send-back limit, and merge eligible pull requests. It permits no other task writes.
 
-- The Aril settings panel's first section, Grant, summarizes saved settings and requires hours, starts, concurrent sessions, at least one of **Start tasks** or **Start reviews**, and at least one work rule before offering **Start grant**; if **Send work back** is enabled, it also requires **Send-backs per task**. Unsaved changes block starting.
+- The Aril settings panel's first section, Grant, summarizes saved settings and requires hours, starts, concurrent sessions, at least one of **Start tasks**, **Start reviews**, or **Merge on green**, and at least one work rule before offering **Start grant**; if **Send work back** is enabled, it also requires **Send-backs per task**. Unsaved changes block starting.
 - **Start grant** first shows an in-panel confirmation with the end time; confirming sends `grant_start` with `{}`. **Stop grant** sends `grant_stop` with `{}` immediately, including on a paired device without edit permission.
 - The panel shows the active grant's end time and snapshotted starts allowance, or the latest ended grant's time and fixed reason; the capacity strip shows “Aril grant until HH:MM” before **Aril settings** only while active.
-- `grant_start` accepts exactly `{}` through the task action envelope and answers `{ ok: true, grant }`; `not_ready` refuses unset `hours`, `starts`, or `concurrent`, both `actions.start` and `actions.review` false, or `actions.sendBack` true with a null `limits.sendBacks`; `conflict` refuses an already active grant.
+- `grant_start` accepts exactly `{}` through the task action envelope and answers `{ ok: true, grant }`; `not_ready` refuses unset `hours`, `starts`, or `concurrent`, all of `actions.start`, `actions.review`, and `actions.merge` false, or `actions.sendBack` true with a null `limits.sendBacks`; `conflict` refuses an already active grant.
 - Starting snapshots `settings.actions` and `settings.limits`, records the start time, and sets the end time to that time plus `limits.hours`; later settings edits do not change either snapshot.
 - A grant is active exactly while `ended_at IS NULL`, the current time is before `ends_at`, and `starts_used` is below its snapshotted `limits.starts`.
 - Reading a grant, including a board read, ends a timed-out or exhausted grant in the same transaction, with `expired` taking precedence over `starts_used` when both limits are reached.
 - `grant_stop` accepts exactly `{}`, ends an active grant with `stopped`, and answers `{ ok: true }` even without an active grant; it never ends a session.
 - The desktop may start and stop grants; the monitor accepts a paired start only when stored `pairedDevices` is true, while a paired stop is always allowed.
 - The board's `aril.grant` is null before any grant, otherwise the latest grant's `{ startedAt, endsAt, startsUsed, actions, limits, active }`; ended grants also carry `endedAt` and `endReason`, with times in epoch milliseconds.
-- `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 `{ repositoryId, taskId, kind: "send_back" | "review" | "start" }` entries across repositories, with send-backs first; it starts nothing and does not change queue behavior.
+- `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 `{ repositoryId, taskId, kind: "send_back" | "review" | "start" | "merge" }` entries across repositories, with send-backs first; it starts nothing and does not change queue behavior.
 - Review steps add exactly `run: { provider, model, effort }` only when the [reviewer rule](#review-sessions) changes the task's stored run.
 - Send-back selection runs before reviews and starts and requires `actions.sendBack`, a matching work rule, a task in `needs_review`, a latest verdict of `fail` since its latest entry into Review, and a send-back count below `limits.sendBacks`. It does not consume concurrent-session capacity.
 - A null `limits.sendBacks` offers no send-back; reaching the per-task limit leaves the task in Review for the owner.
 - `POST /internal/tasks/grant-send-back` accepts `{ repositoryId, taskId }` with the desktop token, rechecks eligibility in one transaction, calls the shared `resolveRequeue`, moves the card to Ready, and appends `sent_back`; it answers `{ ok: true }`, `not_active`, or `not_eligible` (malformed requests remain `invalid`).
 - The same transaction stores `meta` key `task_send_back:<repositoryId>:<taskId>` with `{ grantId, count, reasons }`; Done and task deletion remove it, and a different grant ID resets the count on the next send-back.
-- The normal start path starts a new builder session, reusing the task's existing worktree or the repository root when none exists; send-back itself starts nothing, and Continue's provider resume remains a later option.
+- The normal start path starts a new builder session, reusing the task's existing worktree or the repository root when none exists; send-back and merge selection themselves start no session, and Continue's provider resume remains a later option.
 - A private builder plan adds `sendBack: true` only while send-back metadata exists, so either a queue or grant start reuses the existing task worktree; ordinary Requeue keeps its existing behavior.
 - The builder prompt adds "A reviewer session found problems in the previous attempt. Fix them, then report again:" after the task text, followed by one `- ` line per stored reason, within the 8000-character prompt bound.
 - Review selection reads `settings.reviewer` live, like work rules; manual reviews keep the task's run.
+- Merge selection requires `actions.merge`, a matching work rule, a task in `needs_review`, a latest passing review verdict for that stay in Review, and a known open pull request whose passing CI is recorded for the same head. It skips a head already attempted.
+- Merge selection uses the stall sweep's committed `resolveTaskPullRequestFacts` resolver; unknown or pending facts offer nothing, and merges consume no concurrency.
+- Merge steps add `{ pullRequest, headOid, mergeMethod }`, with the method read from current settings; `actions.merge` requires no extra grant limit.
+- `POST /internal/tasks/grant-merge-attempt` accepts `{ repositoryId, taskId, headOid }` with the desktop token and rechecks eligibility in one transaction.
+- That transaction records `meta` key `task_merge_attempt:<repositoryId>:<taskId>` as the head OID before desktop merges, and answers `{ ok: true, pullRequest }`, `not_eligible`, or `not_active`.
+- Desktop main resolves the repository root through `worktree-root`; it uses the step's explicit method or reads `gh repo view --json squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed` there.
+- With no explicit method, exactly one allowed method is required; ambiguous or unavailable choices are refused for the owner to resolve.
+- The method source is either `settings.mergeMethod` or that desktop repository read; `grant_start` needs no additional method limit.
+- The merge command is `gh pr merge <number> --<method> --match-head-commit <head>`. It never requests bypass, auto-merge, or branch deletion beyond the repository's own setting. The pull-request number and head cross to desktop main; CLI output is never stored or shown.
+- Both commands use `execFile` with argument arrays, no shell, and a 30-second timeout; `grant-check` runs immediately before each command.
+- `POST /internal/tasks/grant-merge-result` accepts `{ repositoryId, taskId, headOid, outcome: "merged" | "refused" | "failed" }` with the desktop token for a recorded attempt, even after grant expiry.
+- Exit zero reports `merged`; a nonzero exit reports `refused`; a timeout or spawn error reports `failed`. Only fixed outcomes cross back to the monitor.
+- A successful merge appends `grant_merge`; a refused or failed attempt appends `grant_merge_refused`, leaves the grant active, and is not retried for that head.
+- A merge leaves the task in Review; the owner uses **Mark done**.
 - Selection uses current settings work rules, with any matching rule sufficient: an exact tag from the leading tag run (the board parser with the settings' 40-character bound), a case-insensitive text substring, a matching feature ID, or a listed task ID; no rules select nothing.
 - Reviews require the grant's `review` switch, `needs_review`, a linked builder, no review dispatch (including an expired dispatch), no bound reviewer, and no verdict since the latest entry into Review; earlier verdicts do not exclude the task.
 - Starts require the grant's `start` switch, a Ready card in startable state with no linked session or live dispatch, and no unfinished task in its `after` list; selection follows Ready position then task number. Ready is the store's Ready column, as the queue reads it; a board without the fixed columns has none, so a grant starts nothing there.
@@ -2878,7 +2893,8 @@ serves no other client.
 - A grant holds times, counts, a fixed end reason, and fixed action and limit settings snapshots under repository and grant IDs; the board exposes only the latest grant's documented fields, never its internal ID.
 - Send-back metadata holds the grant-scoped count and verdict reasons until Done or deletion; the reasons reach the next builder prompt, and a `sendBack: true` hint reaches desktop main in the private start plan, never the renderer or board.
 - Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, active state, the count ended, and optional review provider, model, and effort overrides, never task text, prompts, paths, session IDs, or dispatch tokens.
-- The log gains the fixed kinds `grant_start`, `grant_review`, and `sent_back`, readable through its existing desktop, paired-device, and Aril prompt paths; grant records never enter `/api/state`, observation, or agent tools.
+- The log gains the fixed kinds `grant_start`, `grant_review`, `sent_back`, `grant_merge`, and `grant_merge_refused`, readable through its existing desktop, paired-device, and Aril prompt paths; grant records never enter `/api/state`, observation, or agent tools.
+- A merge step sends only repository ID, task ID, pull-request number, known head OID, and fixed method to desktop main. Attempted heads stay in the task store; `gh` output is discarded. Log rows add only their fixed kind and pull-request number.
 - Grants survive task deletion and must be deleted with the board if board deletion is introduced; the desktop runner may start only offered tasks and reviews and send offered tasks back while a grant is active.
 
 - Aril settings hold fixed values, task and feature IDs, a model name, and short owner-written rule text; memory holds owner-approved one-line text, entry IDs, and timestamps.
@@ -2891,7 +2907,7 @@ serves no other client.
 
 - `task_events` stores only event kind, time, and nullable session ID under its repository and task identifiers, never text.
 - Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
-- `task_log` stores only repository ID, task number, kind, time, and a nullable pull-request number under its entry ID. `task_log_cursors` stores only a consumer name and entry ID under its repository ID. Neither stores text, title, session ID, URL, or branch.
+- `task_log` stores only repository ID, task number, fixed kind, time, and a nullable pull-request number under its entry ID. `task_log_cursors` stores only a consumer name and entry ID under its repository ID. Neither stores text, title, session ID, URL, head commit, CLI output, or branch.
 - `task_pull_request_seen:<repositoryId>:<T-n>` stores only a PR number, head commit OID, fixed check status, and merged flag; task deletion removes it.
 - Only `POST /internal/tasks/log-read` and `log-ack` expose log entries or cursors to desktop main. Desktop main reads them for [Aril's owner-message prompts](agent-chat.md#privacy) and sends the bounded log to the trusted desktop renderer through `pomegr:task-log` or a paired device through the LAN gateway's `POST /api/tasks/log-read`; no unpaired browser, agent tool, or `/api/state` reads them.
 - The paired log read uses the same bounded reader as the IPC, never forwards upstream, and never acknowledges entries or moves Aril's cursor.

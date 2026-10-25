@@ -54,6 +54,7 @@ const fixedError = (response, status, error) => {
 
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  mergeMethod: null,
   limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -102,6 +103,8 @@ test("grant runner routes require desktop authorization and reject paired reques
     ["grant-check", { repositoryId: REPOSITORY_ID }],
     ["grant-record", { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "start" }],
     ["grant-send-back", { repositoryId: REPOSITORY_ID, taskId: "T-1" }],
+    ["grant-merge-attempt", { repositoryId: REPOSITORY_ID, taskId: "T-1", headOid: "a".repeat(40) }],
+    ["grant-merge-result", { repositoryId: REPOSITORY_ID, taskId: "T-1", headOid: "a".repeat(40), outcome: "merged" }],
     ["grant-end", { repositoryId: REPOSITORY_ID, reason: "app_restart" }],
     ["grant-end-all", { reason: "app_restart" }],
   ];
@@ -123,6 +126,35 @@ test("grant runner routes require desktop authorization and reject paired reques
   fixedError(await post(port, "grant-next", { extra: true }), 400, "invalid");
   fixedError(await post(port, "grant-check", {}, DESKTOP), 400, "invalid");
   fixedError(await send(port, { path: "/internal/tasks/grant-next?x=1", headers: DESKTOP, body: "{}" }), 400, "invalid");
+});
+
+test("merge routes pass the committed PR resolver and project only the desktop merge fields", async (t) => {
+  const headOid = "a".repeat(40);
+  const step = { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "merge", pullRequest: 42, headOid, mergeMethod: null };
+  const facts = { number: 42, headOid, state: "open", checks: "passed" };
+  const checkResolver = (resolve) => assert.deepEqual(resolve("codex:builder", "T-1"), facts);
+  let outcome = { ok: true, pullRequest: 42, output: "private" };
+  const { port } = await setup(t, { runtime: { resolveTaskPullRequestFacts: (id, taskId) => {
+    assert.equal(id, "codex:builder"); assert.equal(taskId, "T-1"); return facts;
+  } }, taskStore: {
+    nextGrantSteps({ resolvePullRequestFacts }) { checkResolver(resolvePullRequestFacts); return { ok: true, steps: [{ ...step, output: "private" }] }; },
+    attemptGrantMerge(repo, payload, resolve) {
+      assert.equal(repo, REPOSITORY_ID); assert.deepEqual(payload, { taskId: "T-1", headOid }); checkResolver(resolve); return outcome;
+    },
+    recordGrantMerge(repo, payload) {
+      assert.equal(repo, REPOSITORY_ID); assert.deepEqual(payload, { taskId: "T-1", headOid, outcome: "merged" }); return outcome;
+    },
+  } });
+  assert.deepEqual((await post(port, "grant-next", {})).json, { ok: true, steps: [step] });
+  const body = { repositoryId: REPOSITORY_ID, taskId: "T-1", headOid };
+  assert.deepEqual((await post(port, "grant-merge-attempt", body)).json, { ok: true, pullRequest: 42 });
+  assert.deepEqual((await post(port, "grant-merge-result", { ...body, outcome: "merged" })).json, { ok: true });
+  for (const error of ["not_active", "not_eligible"]) {
+    outcome = { ok: false, error, output: "private" };
+    fixedError(await post(port, "grant-merge-attempt", body), 409, error);
+  }
+  for (const invalid of [{ ...body, headOid: "bad" }, { ...body, extra: true }, { ...body, taskId: "bad" }]) fixedError(await post(port, "grant-merge-attempt", invalid), 400, "invalid");
+  fixedError(await post(port, "grant-merge-result", { ...body, outcome: "unknown" }), 400, "invalid");
 });
 
 test("grant-end-all accepts only the restart reason and returns the number ended without eligible work", async (t) => {

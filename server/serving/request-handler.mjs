@@ -269,7 +269,7 @@ export function createRequestHandler({
         return;
       }
       await serveTaskActionRoute({
-        request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts, resolveCheckFacts, resolveOutcomeFacts,
+        request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts, resolveCheckFacts, resolveOutcomeFacts, resolvePullRequestFacts: (...args) => runtime.resolveTaskPullRequestFacts?.(...args),
         // Read lazily, and only for an assignment.
         resolveSession: (ref) => runtime.resolveTaskSession?.(ref),
         resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),

@@ -28,6 +28,7 @@ const STOP_ONLY: TaskQueue = { ...QUEUE_RUNNING, schedule: { startAt: null, stop
 const NO_GATES: TaskQueue = { status: "idle", blockedBy: null, pauseReason: null, order: [] };
 const ARIL_SETTINGS: Settings = {
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  mergeMethod: null,
   limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 };

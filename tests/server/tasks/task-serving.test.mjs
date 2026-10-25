@@ -13,6 +13,7 @@ const EMPTY_QUEUE = { status: "idle", blockedBy: null, pauseReason: null, order:
 const DEFAULT_ARIL = {
   settings: {
     actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+    mergeMethod: null,
     limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
     workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
   },
