@@ -10,7 +10,8 @@ board. You ask in a chat panel at the bottom right of the window. Aril reads the
 the repository's files, and what Pomegr observed, then answers. Aril proposes board
 changes, and you apply them. In **Tasks → Aril settings**, save the actions, limits, and work
 rules, then select **Start grant** and confirm in the panel. The desktop starts allowed
-Ready tasks and their reviews while the grant is active. Select **Stop grant** in the same
+Ready tasks and their reviews, sends failed work back within its limit, and merges eligible
+pull requests on green CI after a passing review using the selected merge method. Select **Stop grant** in the same
 panel to end it; running sessions continue. Paired devices can always stop a grant and
 can start one when you allow them. Aril cannot start or extend a grant.
 See [Tasks](tasks.md#aril-grants) for its actions and limits.
@@ -228,6 +229,7 @@ provider.
   you sent in the conversation go to the provider too, and the prompt names the folder
   where Pomegr keeps them. The board snapshot also sends a grant's active state, end
   time, starts used, and fixed limits and actions; an ended grant includes its end reason.
+  Repository settings include the selected merge method. Merge results appear as fixed task-log labels.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without

@@ -8,7 +8,7 @@ import { chatHarness, seed, pendingProposal, withProposal, repositoryId } from "
 const actions = { start: false, review: true, sendBack: false, merge: false, writeTasks: false };
 const limits = { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null };
 const reviewer = { provider: null, model: null, differentFromBuilder: false };
-const settings = { actions, limits, workRules: [], reviewer };
+const settings = { actions, mergeMethod: null, limits, workRules: [], reviewer };
 const operations = [
   { op: "set_aril_settings", settings }, { op: "add_memory", text: "Use focused tests." },
   { op: "update_memory", id: 1, text: "Use the full suite." }, { op: "remove_memory", id: 2 },
@@ -21,6 +21,8 @@ test("Aril settings mirror phase 3a fields, nested shapes, numeric and text boun
   for (const operation of operations) assert.deepEqual(normalizeOperation(operation), operation);
   for (const [key, value] of Object.entries(settings)) assert.deepEqual(validSettings({ [key]: value }), { op: "set_aril_settings", settings: { [key]: value } });
   assert.ok(validSettings({}));
+  for (const method of [null, "squash", "merge", "rebase"]) assert.deepEqual(validSettings({ mergeMethod: method }).settings, { mergeMethod: method });
+  for (const method of ["fast-forward", "", 1, false]) assert.equal(validSettings({ mergeMethod: method }), null);
   for (const bad of [null, [], { pairedDevices: false }, { pairedDevices: true }, { other: 1 },
     { actions: { start: true } }, { actions: { ...actions, merge: 1 } }, { actions: { ...actions, pairedDevices: false } },
     { limits: { hours: 1 } }, { reviewer: { provider: null } }, { reviewer: { ...reviewer, provider: "other" } },

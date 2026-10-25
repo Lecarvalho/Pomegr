@@ -583,8 +583,9 @@ Each row below the tags shows only when it is set, in this order:
 - **Cancel**, **Close**, Escape, and a click outside close the panel.
 - The sections are **Grant**, **Actions under a grant**, **Limits**, **Work rules**, **Reviewer**, **Paired devices**, and **Memory**.
 - Five action switches carry the caption “Aril uses these only while a grant you start is active.”
-- The Grant section summarizes only the saved start and review actions, hours, starts, and concurrency.
-- Missing limits, allowed actions, or work rules show one muted readiness reason and no Start grant button.
+- The **Merge method** field is a `CommandSelect` with **Repository default**, **Squash**, **Merge commit**, and **Rebase**; paired read-only clients see its saved value as text.
+- The Grant section summarizes the saved start, review, and merge actions, hours, starts, and concurrency.
+- Missing limits, all allowed actions, or work rules show one muted readiness reason and no Start grant button.
 - Unsaved settings show “Save your changes first.” and disable starting a grant.
 - **Start grant** uses `commandPrimaryAction` and first shows an in-panel confirmation with the end time, **Start grant**, and **Cancel**; Cancel dismisses only the confirmation.
 - An active grant shows “Active until HH:MM · n of S starts used”, with times and counts in the data font.
@@ -641,7 +642,7 @@ Each row below the tags shows only when it is set, in this order:
 - Entries appear newest first, one row each, with local time, task ID, event label, and muted “PR #n” when set.
 - Time and task and PR identifiers use the data font.
 - Today's times use HH:MM; older entries use the existing short date and time format.
-- Labels are Started, Assigned to a session, Reported complete, Blocked, Requeued, Marked done, Session ended without a report, Session working again, CI passed, CI failed, Merged, Review started, Review passed, and Review failed.
+- Labels are Started, Assigned to a session, Reported complete, Blocked, Requeued, Marked done, Session ended without a report, Session working again, CI passed, CI failed, Merged, Review started, Review passed, Review failed, Started by Aril under a grant, Review started by Aril under a grant, Sent back by Aril under a grant, Merged by Aril under a grant, and Merge refused.
 - A thin divider row says “Aril has read up to here” after the newest entry at or below the cursor, only when entries appear both above and at or below the cursor.
 - No row carries a good or bad color, including CI failed.
 - An empty log says “Nothing logged yet.”.

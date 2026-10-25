@@ -267,7 +267,8 @@ test("grant preconditions, exact actions, conflict, stop, and board history", (t
     error(start(), "not_ready");
   }
   configure({ actions: { ...actions, start: false, review: false, merge: true } });
-  error(start(), "not_ready");
+  assert.equal(start().ok, true, "merge uses the desktop's repository method source without an extra limit");
+  store.apply(REPO, "grant_stop", {});
   configure();
   for (const name of ["grant_start", "grant_stop"]) for (const payload of [null, [], { extra: true }]) error(store.apply(REPO, name, payload), "invalid");
   const grant = { startedAt: clock.now, endsAt: clock.now + 3600000, startsUsed: 0, actions, limits, active: true };
@@ -279,6 +280,105 @@ test("grant preconditions, exact actions, conflict, stop, and board history", (t
   assert.deepEqual(store.apply(REPO, "grant_stop", {}), { ok: true });
   assert.deepEqual(store.readBoard(REPO).aril.grant, { ...grant, active: false, endReason: "stopped", endedAt: clock.now - 1 });
   assert.equal(start().ok, true);
+});
+
+const HEAD = "a".repeat(40);
+const green = { number: 42, state: "open", checks: "passed", headOid: HEAD };
+function mergeSetup(t) {
+  const context = setup(t);
+  const { ready, directory, clock, configure, start, store } = context;
+  ready();
+  updateTask(directory, 1, { state: "needs_review", session_id: "codex:builder" });
+  withDatabase(directory, (db) => {
+    db.prepare("INSERT INTO task_events(repository_id, number, kind, at) VALUES (?, 1, 'review', ?)").run(REPO, clock.now);
+    db.prepare("INSERT INTO task_reviews(repository_id, number, session_id, at, verdict) VALUES (?, 1, 'codex:reviewer', ?, 'pass')").run(REPO, clock.now);
+  });
+  configure({ actions: { ...actions, start: false, review: false, merge: true } });
+  assert.equal(start().ok, true);
+  const resolvePullRequestFacts = (sessionId, taskId) => {
+    assert.equal(sessionId, "codex:builder"); assert.equal(taskId, "T-1"); return green;
+  };
+  return { ...context, resolvePullRequestFacts,
+    nextMerge: (resolver = resolvePullRequestFacts) => store.nextGrantSteps({ resolvePullRequestFacts: resolver }).steps,
+    attempt: (headOid = HEAD, resolver = resolvePullRequestFacts) => store.attemptGrantMerge(REPO, { taskId: "T-1", headOid }, resolver) };
+}
+
+test("merge selection requires current pass, open PR, passed checks, head, work rule and merge authority", (t) => {
+  const { nextMerge, directory, clock, set, store, start } = mergeSetup(t);
+  const expected = { repositoryId: REPO, taskId: "T-1", kind: "merge", pullRequest: 42, headOid: HEAD, mergeMethod: null };
+  assert.deepEqual(nextMerge(), [expected]);
+  set({ mergeMethod: "rebase" });
+  assert.deepEqual(nextMerge(), [{ ...expected, mergeMethod: "rebase" }]);
+  for (const facts of [null, {}, ...["closed", "merged", null].map((state) => ({ ...green, state })),
+    ...[null, "pending", "failed", "none"].map((checks) => ({ ...green, checks })), { ...green, headOid: null }, { ...green, number: null }]) {
+    assert.deepEqual(nextMerge(() => facts), [], JSON.stringify(facts));
+  }
+  assert.deepEqual(nextMerge(null), []);
+  assert.deepEqual(nextMerge(() => { throw new Error("private"); }), []);
+  set({ workRules: [] }); assert.deepEqual(nextMerge(), []);
+  set({ workRules: [{ kind: "tasks", value: ["T-1"] }] }); assert.equal(nextMerge().length, 1);
+  withDatabase(directory, (db) => db.prepare("INSERT INTO task_reviews(repository_id, number, session_id, at, verdict, reasons) VALUES (?, 1, 'codex:reviewer', ?, 'fail', '[]')").run(REPO, clock.now));
+  assert.deepEqual(nextMerge(), []);
+  withDatabase(directory, (db) => db.prepare("UPDATE task_reviews SET verdict = 'pass'").run());
+  withDatabase(directory, (db) => db.prepare("UPDATE task_events SET at = ? WHERE kind = 'review'").run(clock.now + 1));
+  assert.deepEqual(nextMerge(), [], "a pass before entering Review does not qualify");
+  withDatabase(directory, (db) => db.prepare("UPDATE task_events SET at = ? WHERE kind = 'review'").run(clock.now));
+  updateTask(directory, 1, { state: "done" }); assert.deepEqual(nextMerge(), []);
+  updateTask(directory, 1, { state: "needs_review" });
+  store.apply(REPO, "grant_stop", {}); set({ actions }); start();
+  assert.deepEqual(nextMerge(), []);
+});
+
+test("merge consumes no concurrency and attempts recheck eligibility transactionally, once per head across grants", (t) => {
+  const { store, nextMerge, attempt, ready, directory, set, start, resolvePullRequestFacts } = mergeSetup(t);
+  ready(); updateTask(directory, 2, { session_id: "codex:live" });
+  store.apply(REPO, "grant_stop", {}); set({ limits: { ...limits, concurrent: 1 } }); start();
+  assert.equal(nextMerge().length, 1);
+  for (const facts of [null, { ...green, checks: "pending" }, { ...green, headOid: "b".repeat(40) }]) error(attempt(HEAD, () => facts), "not_eligible");
+  set({ workRules: [] }); error(attempt(), "not_eligible");
+  set({ workRules: [{ kind: "tasks", value: ["T-1"] }] });
+  withDatabase(directory, (db) => db.exec("CREATE TRIGGER refuse_merge_attempt BEFORE INSERT ON meta WHEN NEW.key LIKE 'task_merge_attempt:%' BEGIN SELECT RAISE(ABORT, 'test'); END"));
+  error(attempt(), "unavailable"); assert.equal(nextMerge().length, 1);
+  withDatabase(directory, (db) => db.exec("DROP TRIGGER refuse_merge_attempt"));
+  assert.deepEqual(attempt(), { ok: true, pullRequest: 42 });
+  error(attempt(), "not_eligible"); assert.deepEqual(nextMerge(), []);
+  assert.equal(withDatabase(directory, (db) => db.prepare("SELECT value FROM meta WHERE key = ?").get(`task_merge_attempt:${REPO}:T-1`).value), HEAD);
+  store.apply(REPO, "grant_stop", {}); error(attempt(), "not_active"); start(); error(attempt(), "not_eligible");
+  const nextHead = "b".repeat(40);
+  assert.equal(attempt(nextHead, () => ({ ...green, headOid: nextHead })).ok, true);
+  for (const payload of [{}, { taskId: "T-1", headOid: "bad" }, { taskId: "T-1", headOid: HEAD, extra: true }]) {
+    error(store.attemptGrantMerge(REPO, payload, resolvePullRequestFacts), "invalid");
+  }
+});
+
+test("merge results record only attempted heads, leave Review and keep the grant after refusal", (t) => {
+  const { store, attempt, clock } = mergeSetup(t);
+  const payload = { taskId: "T-1", headOid: HEAD, outcome: "merged" };
+  error(store.recordGrantMerge(REPO, payload), "not_eligible");
+  assert.equal(attempt().ok, true);
+  for (const outcome of ["refused", "failed", "merged"]) assert.deepEqual(store.recordGrantMerge(REPO, { ...payload, outcome }), { ok: true });
+  assert.equal(store.checkGrant(REPO).active, true);
+  assert.equal(store.readBoard(REPO).tasks[0].state, "needs_review");
+  assert.deepEqual(store.readLog(REPO, { limit: 10 }).entries.map((entry) => entry.kind), ["grant_merge_refused", "grant_merge_refused", "grant_merge"]);
+  clock.now += 3600000;
+  assert.equal(store.recordGrantMerge(REPO, payload).ok, true, "an authorized merge may finish after expiry");
+  for (const invalid of [{ ...payload, outcome: "unknown" }, { ...payload, output: "private" }, { ...payload, headOid: "bad" }]) error(store.recordGrantMerge(REPO, invalid), "invalid");
+  error(store.recordGrantMerge(REPO, { ...payload, headOid: "b".repeat(40) }), "not_eligible");
+});
+
+test("merge attempt rejects conditions changed since selection", async (t) => {
+  for (const change of ["verdict", "review_entry", "state", "actions", "expired", "missing"]) await t.test(change, (t) => {
+    const { store, directory, clock, nextMerge, attempt, set, start } = mergeSetup(t);
+    assert.equal(nextMerge().length, 1);
+    if (change === "verdict") withDatabase(directory, (db) => db.exec("UPDATE task_reviews SET verdict = 'fail', reasons = '[]'"));
+    if (change === "review_entry") withDatabase(directory, (db) => db.prepare("UPDATE task_events SET at = ? WHERE kind = 'review'").run(clock.now + 1));
+    if (change === "state") updateTask(directory, 1, { state: "done" });
+    if (change === "actions") { store.apply(REPO, "grant_stop", {}); set({ actions }); start(); }
+    if (change === "expired") clock.now += 3600000;
+    if (change === "missing") assert.equal(store.apply(REPO, "delete", { id: "T-1" }).ok, true);
+    error(attempt(), change === "expired" ? "not_active" : "not_eligible");
+    assert.equal(withDatabase(directory, (db) => db.prepare("SELECT value FROM meta WHERE key = ?").get(`task_merge_attempt:${REPO}:T-1`)), undefined);
+  });
 });
 
 test("snapshots persist across settings edits and reopening; additive schema remains version one", (t) => {

@@ -58,13 +58,18 @@ Only the desktop app can change that permission.
 ### Aril grants
 
 Settings alone grant no actions. To start a grant, allow **Start tasks**, **Start reviews**,
-or both, set **Hours**, **Starts**, and **Concurrent sessions**, and add a work rule.
+**Merge on green**, or any combination, set **Hours**, **Starts**, and **Concurrent sessions**, and add a work rule.
 Save your changes, then select **Start grant** in the panel's **Grant** section and confirm.
 The desktop app starts the selected Ready tasks and reviews within the grant's limits,
-without asking for each start. When **Send work back** is enabled and **Send-backs per task**
+without asking for each start. With **Merge on green**, it merges a task's open pull request
+only when the task needs review, its latest review passed, and CI passed for the known pull-request head.
+The **Merge method** setting uses the repository default unless you choose **Squash**,
+**Merge commit**, or **Rebase**. If the repository allows several methods, choose one before the grant runs.
+Aril attempts each head commit at most once. A merge leaves the task in Review for your **Mark done**.
+When **Send work back** is enabled and **Send-backs per task**
 is set, it sends matching tasks with failed reviews to a new builder session in the same worktree.
 The strip above the board shows the active grant's end time; the panel also shows starts used.
-Select **Stop grant** to stop further starts at once. Running sessions continue.
+Select **Stop grant** to stop further grant actions at once. Running sessions continue.
 The panel shows when the last grant ended and why; a grant never renews itself.
 
 A paired device can always stop an active grant; starting one requires that permission.
@@ -142,8 +147,9 @@ wait for another, see [Parallel tasks and Runs after](tasks-order.md).
 
 ## What Pomegr does not do
 
-- It never stops, attaches to, answers, or approves work in a running session, and it
-  never merges a pull request.
+- It never stops, attaches to, answers, or approves work in a running session. A pull
+  request can be merged only by the desktop runner under an active grant, after passing
+  CI and review; the owner still marks the task Done.
 - It makes no AI judgment about whether work is complete. It compares the agent's
   report with observed facts. The own condition is the agent's judgment. An unknown
   fact never passes.

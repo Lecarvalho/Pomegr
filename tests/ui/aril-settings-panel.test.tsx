@@ -11,6 +11,7 @@ vi.mock("../../app/tasks-store", () => ({ useTasks: () => ({ refresh }) }));
 vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => access, clientAccessMode: () => access.mode }));
 const defaults = (): ArilSettings => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  mergeMethod: null,
   limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -35,7 +36,7 @@ describe("Aril grant controls", () => {
   it.each([false, true])("explains missing actions or rules (actions allowed: %s)", async (allowed) => {
     ready(); board.aril!.settings.actions.start = board.aril!.settings.actions.review = allowed;
     board.aril!.settings.workRules = []; await open();
-    expect(screen.getByText(allowed ? "Add a work rule first: a grant starts nothing without one." : "Allow starting tasks or reviews first.")).toHaveClass("taskGatesCaption");
+    expect(screen.getByText(allowed ? "Add a work rule first: a grant starts nothing without one." : "Allow starting tasks, reviews, or merges first.")).toHaveClass("taskGatesCaption");
     expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
   });
   it.each([[true, true, "tasks and reviews"], [true, false, "tasks"], [false, true, "reviews"]] as const)("summarizes saved allowed actions: %s %s", async (tasks, reviews, words) => {
@@ -123,6 +124,23 @@ async function choose(label: string, option: string) {
 }
 
 describe("Aril settings panel", () => {
+  it("offers a repository default and saves each supported merge method", async () => {
+    const view = await open();
+    expect(screen.getByRole("combobox", { name: "Merge method" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "Merge method" }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Repository default", "Squash", "Merge commit", "Rebase"]);
+    await userEvent.click(screen.getByRole("option", { name: "Squash" }));
+    await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { mergeMethod: "squash" } });
+    for (const [label, method] of [["Merge commit", "merge"], ["Rebase", "rebase"]] as const) {
+      board = { ...board, aril: { ...board.aril!, settings: { ...board.aril!.settings, mergeMethod: method === "merge" ? "squash" : "merge" } } };
+      view.rerender(<TaskBoardView board={board} />);
+      await userEvent.click(action());
+      await choose("Merge method", label);
+      await userEvent.click(save());
+      expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { mergeMethod: method } });
+    }
+  });
   it("opens the Queue settings frame before Log, renders defaults and returns focus on Cancel and Escape", async () => {
     await open();
     expect(action()).toHaveClass("commandQuietAction", "taskQueueSettingsAction");

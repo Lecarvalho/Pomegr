@@ -20,7 +20,7 @@ const START_STATUS = Object.freeze({
 const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
 const QUEUE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const QUEUE_START_LIMIT = 16;
-const GRANT_ACTIONS = Object.freeze(["grant-next", "grant-record", "grant-check", "grant-end", "grant-end-all", "grant-send-back"]);
+const GRANT_ACTIONS = Object.freeze(["grant-next", "grant-record", "grant-check", "grant-end", "grant-end-all", "grant-send-back", "grant-merge-attempt", "grant-merge-result"]);
 // The removal of a done task's worktree: the desktop asks which wait, where a repository is, and reports one gone.
 const WORKTREE_ACTIONS = Object.freeze(["worktree-cleanups", "worktree-root", "worktree-cleaned"]);
 const WORKTREE_CLEANUP_LIMIT = 64;
@@ -349,7 +349,7 @@ function sessionOfRepository(resolveSession, sessionId, repositoryId) {
 }
 
 // `POST /internal/tasks/<action>`.
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null, resolveOutcomeFacts = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null, resolveOutcomeFacts = null, resolvePullRequestFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
@@ -382,7 +382,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     writeActionResult(response, 400, rejected("invalid"));
     return;
   }
-  if (GRANT_ACTIONS.includes(action)) return serveGrantRunner({ request, response, taskStore, resolveGateFacts, action, body });
+  if (GRANT_ACTIONS.includes(action)) return serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolvePullRequestFacts, action, body });
   if (action === "queue-next") {
     serveQueueNext({ response, taskStore, resolveGateFacts, body });
     return;

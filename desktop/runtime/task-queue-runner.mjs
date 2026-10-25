@@ -1,4 +1,5 @@
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
+import { createTaskMerge } from "./task-merge.mjs";
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
@@ -60,8 +61,10 @@ function cleanupsFrom(answer) {
 function stepsFrom(answer) {
   if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.steps)) return [];
   return answer.steps.filter((step) => isPlainObject(step) && typeof step.repositoryId === "string" && REPOSITORY_ID.test(step.repositoryId)
-    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review", "send_back"].includes(step.kind)
-    && (step.kind === "send_back" ? !Object.hasOwn(step, "run")
+    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review", "send_back", "merge"].includes(step.kind)
+    && (step.kind === "merge" ? Number.isSafeInteger(step.pullRequest) && step.pullRequest > 0 && /^[a-f0-9]{40}$/u.test(step.headOid)
+      && (step.mergeMethod === null || ["squash", "merge", "rebase"].includes(step.mergeMethod)) && !Object.hasOwn(step, "run")
+      : step.kind === "send_back" ? !Object.hasOwn(step, "run")
       : !Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
         && ["claude", "codex"].includes(step.run.provider)
         && (step.run.model === null || (typeof step.run.model === "string" && MODEL.test(step.run.model)))
@@ -110,6 +113,8 @@ export function createTaskQueueRunner(options = {}) {
     return response.json();
   }
 
+  const taskMerge = createTaskMerge({ post, execFile: options.execFile, timeoutMs: options.mergeTimeoutMs });
+
   async function pause(repositoryId, taskId, reason) {
     try { await post("queue-pause", { repositoryId, payload: { id: taskId, reason } }); } catch { /* best effort */ }
   }
@@ -144,14 +149,22 @@ export function createTaskQueueRunner(options = {}) {
       if (disposed) return;
       try { await post("grant-send-back", { repositoryId, taskId }); } catch { /* a send-back request is settled and never retried here */ }
     }
-    for (const { repositoryId, taskId, kind, run } of stepsFrom(answer)) {
+    for (const step of stepsFrom(answer)) {
+      const { repositoryId, taskId, kind, run } = step;
       if (kind === "send_back") continue;
       if (disposed) return;
       if (ended.has(repositoryId)) continue;
       const isAuthorized = async () => {
         if (disposed) return false;
-        try { return (await post("grant-check", { repositoryId }))?.active === true && !disposed; } catch { return false; }
+        try {
+          const answer = await post("grant-check", { repositoryId });
+          return answer?.ok === true && answer.active === true && !disposed;
+        } catch { return false; }
       };
+      if (kind === "merge") {
+        try { await taskMerge.merge(step, isAuthorized); } catch { /* merge failures never end a grant */ }
+        continue;
+      }
       let status;
       try {
         status = (await (kind === "start" ? starter.startGranted(repositoryId, taskId, isAuthorized)

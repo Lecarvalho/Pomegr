@@ -51,7 +51,7 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const unsaved = allowed && Object.keys(changed).length > 0;
   const notReady = saved.actions.sendBack && saved.limits.sendBacks === null ? "Set Send-backs per task first."
     : saved.limits.hours === null || saved.limits.starts === null || saved.limits.concurrent === null ? "Set Hours, Starts, and Concurrent sessions first."
-    : !saved.actions.start && !saved.actions.review ? "Allow starting tasks or reviews first."
+    : !saved.actions.start && !saved.actions.review && !saved.actions.merge ? "Allow starting tasks, reviews, or merges first."
       : saved.workRules.length === 0 ? "Add a work rule first: a grant starts nothing without one." : null;
   const confirming = confirm && !unsaved && !notReady && confirm.settings === JSON.stringify(saved);
   const model = draft.reviewer.model?.trim() ?? "";
@@ -103,6 +103,12 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       <h3 className="taskGatesHeading">Actions under a grant</h3>
       <p className="taskGatesCaption">Aril uses these only while a grant you start is active.</p>
       {(Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]).map((key) => <div key={key}>{toggle(ACTIONS[key], draft.actions[key], (next) => change("actions", { ...draft.actions, [key]: next }))}</div>)}
+      <div className="taskGateField taskGateThreshold"><span className="taskGateFieldLabel">Merge method</span>
+        {allowed ? <CommandSelect aria-label="Merge method" disabled={busy} value={draft.mergeMethod ?? ""}
+          options={[{ value: "", label: "Repository default" }, { value: "squash", label: "Squash" }, { value: "merge", label: "Merge commit" }, { value: "rebase", label: "Rebase" }]}
+          onChange={(next) => change("mergeMethod", next as Settings["mergeMethod"] || null)} />
+          : <span className="taskGateReadOnly">{draft.mergeMethod === null ? "Repository default" : { squash: "Squash", merge: "Merge commit", rebase: "Rebase" }[draft.mergeMethod]}</span>}
+      </div>
     </section>
     <section className="taskGatesPanel taskSchedulePanel">
       <h3 className="taskGatesHeading">Limits</h3>
