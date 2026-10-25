@@ -88,10 +88,17 @@ test("client reuses a running host, discovers another build, and streams replay 
   await older.connectHost(other.buildId);
   assert.deepEqual(await older.list(), []);
   await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "fixture" });
-  handlers.data("before attach\r\n");
+  const initialOutput = "before attach\r\n";
+  handlers.data(initialOutput);
   const stream = await client.attach("fixture");
   assert.equal(stream.readOnly, false);
-  assert.equal((await stream.next()).value.data, "before attach\r\n");
+  const { default: headless } = await import("@xterm/headless");
+  const { default: serialize } = await import("@xterm/addon-serialize");
+  const screen = new headless.Terminal({ cols: 80, rows: 24, scrollback: 5000, allowProposedApi: true });
+  const serializer = new serialize.SerializeAddon(); screen.loadAddon(serializer);
+  await new Promise((resolve) => screen.write(initialOutput, resolve));
+  assert.equal((await stream.next()).value.data, serializer.serialize({ scrollback: 5000 }));
+  screen.dispose();
   await client.input("fixture", "hello");
   assert.equal((await stream.next()).value.data, "echo:hello");
   await client.input("fixture", "x".repeat(16 * 1024));
@@ -114,48 +121,7 @@ test("client reuses a running host, discovers another build, and streams replay 
   assert.equal((await client.listHosts()).find((row) => row.buildId === other.buildId).protocol, 1);
 });
 
-test("client delivers the whole retained replay for many tiny ANSI parts", async (t) => {
-  const options = await fixture(t);
-  const copy = await prepareTerminalHostCopy(options);
-  const handlers = {};
-  const host = await startTerminalHost({ runtimeDirectory: copy.directory, spawnPty: (_file, _args, ptyOptions) => ({
-    onData(callback) { handlers.data = callback; }, onExit(callback) { handlers.exit = callback; },
-    write() {}, resize() {}, pid: 123, initialSize: ptyOptions.cols,
-  }) });
-  t.after(() => host.close());
-  const client = createTerminalHostClient({ ...options, spawn() { throw new Error("must reuse"); } });
-  t.after(() => client.close());
-  await client.ensureHost();
-  await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "ansi" });
-  const emitted = "\x1b[0m+x".repeat(20000);
-  const { Scrollback } = await import("../desktop/terminal-host/scrollback.mjs");
-  const retained = new Scrollback(); retained.append(emitted);
-  const expected = retained.read().join("");
-  handlers.data(emitted);
-  const stream = await client.attach("ansi");
-  assert.equal(stream.readOnly, false);
-  let replay = "";
-  while (replay.length < expected.length) {
-    const { value, done } = await stream.next();
-    if (done || value.event !== "output" || !value.replay) break;
-    replay += value.data;
-  }
-  assert.equal(replay, expected);
-
-  await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "full-capacity" });
-  const fullReplay = "\x01".repeat(256 * 1024);
-  handlers.data(fullReplay);
-  const fullStream = await client.attach("full-capacity");
-  let fullText = "";
-  while (fullText.length < fullReplay.length) {
-    const { value, done } = await fullStream.next();
-    if (done || value.event !== "output" || !value.replay) break;
-    fullText += value.data;
-  }
-  assert.equal(fullText, fullReplay);
-});
-
-test("client buffers 256 KiB across 4096 replay frames before attach reply and bounds live output", { timeout: 30000 }, async (t) => {
+test("client buffers 4 MiB replay before attach reply while bounding unread live output", { timeout: 30000 }, async (t) => {
   const options = await fixture(t);
   const copy = await prepareTerminalHostCopy(options);
   const pipe = `\\\\.\\pipe\\pomegr-terminal-${digest(String(Math.random()))}`;
@@ -165,8 +131,8 @@ test("client buffers 256 KiB across 4096 replay frames before attach reply and b
   const server = net.createServer((socket) => decodeFrames(socket, (frame) => {
     if (frame.command === "attach") {
       if (frame.key === "budget") {
-        // 256 KiB payload plus 4096 frame charges fits the client's 512 KiB stream queue.
-        for (let index = 0; index < 4096; index++) socket.write(encodeFrame({ event: "output", key: "budget", data: "x".repeat(64), replay: true }));
+        // 4 MiB serialized screen plus one frame charge per 4096-character chunk.
+        for (let index = 0; index < 1024; index++) socket.write(encodeFrame({ event: "output", key: "budget", data: "x".repeat(4096), replay: true }));
       }
       socket.write(encodeFrame({ id: frame.id, ok: true, readOnly: false }));
     } else if (frame.command === "list") {
@@ -182,12 +148,12 @@ test("client buffers 256 KiB across 4096 replay frames before attach reply and b
   const stream = await client.attach("budget");
   assert.equal(stream.readOnly, false);
   let replay = "";
-  while (replay.length < 256 * 1024) {
+  while (replay.length < 4 * 1024 * 1024) {
     const { value, done } = await stream.next();
     if (done || value.event !== "output" || !value.replay) break;
     replay += value.data;
   }
-  assert.equal(replay, "x".repeat(256 * 1024));
+  assert.equal(replay, "x".repeat(4 * 1024 * 1024));
   const live = await client.attach("live");
   await client.list();
   assert.deepEqual((await live.next()).value, { event: "detached", reason: "slow_client" });

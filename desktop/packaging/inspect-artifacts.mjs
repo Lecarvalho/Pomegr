@@ -104,7 +104,9 @@ try {
   const terminalModules = applicationFiles.filter((filename) =>
     /^(?:node_modules\/node-pty\/|node_modules\/node-addon-api\/)/.test(filename)
     && !statFile(archivePath, filename.split("/").join(path.sep)).files).sort();
-  if (JSON.stringify(terminalModules) !== JSON.stringify(TERMINAL_MODULE_FILES)) {
+  const expectedTerminalModules = TERMINAL_MODULE_FILES.filter((filename) =>
+    /^(?:node_modules\/node-pty\/|node_modules\/node-addon-api\/)/.test(filename));
+  if (JSON.stringify(terminalModules) !== JSON.stringify(expectedTerminalModules)) {
     throw new Error("DESKTOP_ARTIFACT_TERMINAL_MODULE_SET_INVALID");
   }
   const terminalRoot = path.join(resourcesRoot, "terminal-runtime");

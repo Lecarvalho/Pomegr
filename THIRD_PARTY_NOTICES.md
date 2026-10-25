@@ -34,6 +34,8 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | @unpic/react | 1.0.2 | MIT |
 | @vercel/og | 0.8.6 | MPL-2.0 |
 | @xterm/addon-fit | 0.11.0 | MIT |
+| @xterm/addon-serialize | 0.14.0 | MIT |
+| @xterm/headless | 6.0.0 | MIT |
 | @xterm/xterm | 6.0.0 | MIT |
 | acorn | 8.18.0 | MIT |
 | ansi-regex | 5.0.1 | MIT |

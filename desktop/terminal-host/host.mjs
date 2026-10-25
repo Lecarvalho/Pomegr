@@ -4,10 +4,27 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, chmod, writeFile, rename, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import headless from '@xterm/headless';
+import serialize from '@xterm/addon-serialize';
 import { VERSION, encodeFrame, decodeFrames } from './protocol.mjs';
-import { Scrollback } from './scrollback.mjs';
 
 const run = promisify(execFile);
+const { Terminal } = headless;
+const { SerializeAddon } = serialize;
+const MAX_REPLAY_BYTES = 4 * 1024 * 1024;
+function snapshot(session) {
+  let scrollback = 5000;
+  for (;;) {
+    const data = session.serializer.serialize({ scrollback });
+    if (Buffer.byteLength(data) <= MAX_REPLAY_BYTES) return data;
+    // Drop whole oldest lines, never slice serialized cursor or mode sequences.
+    if (scrollback === 0) return null;
+    scrollback = Math.floor(scrollback / 2);
+  }
+}
+function disposeScreen(session) {
+  session.screen?.dispose(); session.screen = null; session.serializer = null;
+}
 const keyValid = (key) => typeof key === 'string' && (/^[a-zA-Z0-9_-]{1,128}$/u.test(key)
   || /^repo-[a-f0-9]{24}\/T-[1-9][0-9]{0,8}\/[a-f0-9]{32}$/u.test(key)
   || /^continue\/(?:claude|codex)\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/[a-f0-9]{32}$/iu.test(key));
@@ -56,7 +73,9 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
   function send(client, frame, output = false) {
     if (client.socket.destroyed) return false;
     const bytes = encodeFrame(frame);
-    const queueLimit = client.replaying ? 2 * 1024 * 1024 : 512 * 1024;
+    // JSON can expand one replay byte to six; pending replay never spends the live budget.
+    const replay = frame.replay === true;
+    const queueLimit = replay ? MAX_REPLAY_BYTES * 6 + 512 * 1024 : 512 * 1024 + client.replayBytes;
     if (client.socket.writableLength + bytes.length > queueLimit) {
       if (output) {
         detach(client, frame.key);
@@ -66,7 +85,8 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
       } else client.socket.destroy();
       return false;
     }
-    client.socket.write(bytes); return true;
+    if (replay) client.replayBytes += bytes.length;
+    client.socket.write(bytes, () => { if (replay) client.replayBytes -= bytes.length; }); return true;
   }
   function output(client, key, data, replay = false) {
     let chunk = '';
@@ -105,16 +125,23 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
       let pty;
       try { pty = spawnPty(plan.executable, plan.args, { cwd: plan.cwd, env: plan.env, cols: plan.cols, rows: plan.rows, name: 'xterm-256color', useConptyDll: true }); }
       catch { fail('TERMINAL_SPAWN_FAILED'); return; }
-      const session = { key: plan.key, pty, clients: new Set(), writer: null, replay: new Scrollback(), exited: false };
+      const screen = new Terminal({ cols: plan.cols, rows: plan.rows, scrollback: 5000, allowProposedApi: true });
+      const serializer = new SerializeAddon(); screen.loadAddon(serializer);
+      const session = { key: plan.key, pty, clients: new Set(), writer: null, screen, serializer, exited: false };
       sessions.set(plan.key, session);
       pty.onData((data) => {
-        if (session.exited) return;
-        session.replay.append(data);
-        for (const attached of [...session.clients]) output(attached, plan.key, data);
+        if (session.exited || closing) return;
+        screen.write(data, () => {
+          for (const attached of [...session.clients]) output(attached, plan.key, data);
+        });
       });
       pty.onExit(({ exitCode }) => {
-        session.exited = true; session.exitCode = Number.isInteger(exitCode) ? exitCode : -1; session.replay.clear();
-        for (const attached of session.clients) send(attached, { event: 'exit', key: plan.key, exitCode: session.exitCode });
+        if (session.exited || closing) return;
+        session.exited = true; session.exitCode = Number.isInteger(exitCode) ? exitCode : -1;
+        screen.write('', () => {
+          disposeScreen(session);
+          for (const attached of session.clients) send(attached, { event: 'exit', key: plan.key, exitCode: session.exitCode });
+        });
         checkIdle();
       });
       checkIdle(); reply({ key: plan.key, pid: pty.pid }); return;
@@ -123,18 +150,29 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
     const session = sessions.get(frame.key);
     if (!session) { fail('TERMINAL_NOT_FOUND'); return; }
     if (frame.command === 'attach') {
-      session.clients.add(client); client.attached.add(frame.key);
-      if (!session.exited && !session.writer) session.writer = client;
-      client.replaying = true;
-      if (!output(client, frame.key, session.replay.read().join(''), true)) { client.replaying = false; return; }
-      reply({ readOnly: session.exited || session.writer !== client });
-      if (session.exited) send(client, { event: 'exit', key: frame.key, exitCode: session.exitCode });
-      client.replaying = false; return;
+      session.clients.delete(client);
+      const attachment = {};
+      client.attached.set(frame.key, attachment);
+      const attach = () => {
+        if (closing || client.socket.destroyed || client.attached.get(frame.key) !== attachment || sessions.get(frame.key) !== session) return;
+        const replay = session.screen ? snapshot(session) : '';
+        if (replay === null) { detach(client, frame.key); fail('TERMINAL_CAPACITY'); return; }
+        if (!output(client, frame.key, replay, true)) return;
+        // This callback is the stream boundary: prior writes are in replay; later
+        // write callbacks see this client only after its complete replay is sent.
+        session.clients.add(client);
+        if (!session.exited && !session.writer) session.writer = client;
+        reply({ readOnly: session.exited || session.writer !== client });
+        if (!session.screen) send(client, { event: 'exit', key: frame.key, exitCode: session.exitCode });
+      };
+      if (session.screen) session.screen.write('', attach); else attach();
+      return;
     }
     if (frame.command === 'detach') {
       detach(client, frame.key);
       if (frame.acknowledge === true && session.exited) {
         for (const attached of [...session.clients]) detach(attached, frame.key);
+        disposeScreen(session);
         sessions.delete(frame.key);
       }
       reply({}); return;
@@ -147,18 +185,19 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
       } else {
         if (!sizeValid(frame.cols, frame.rows)) { fail('TERMINAL_INVALID'); return; }
         session.pty.resize(frame.cols, frame.rows);
+        session.screen.resize(frame.cols, frame.rows);
       }
       reply({});
     } catch { fail('TERMINAL_INVALID'); }
   }
   const server = net.createServer((socket) => {
     if (clients.size >= 8 || [...clients].filter((client) => !client.authenticated).length >= 4) { socket.destroy(); return; }
-    const client = { socket, authenticated: false, first: false, attached: new Set() };
+    const client = { socket, authenticated: false, first: false, attached: new Map(), replayBytes: 0 };
     clients.add(client);
     client.authTimer = setTimer(() => socket.destroy(), 2000);
     socket.on('error', () => {});
     socket.on('close', () => {
-      clearTimer(client.authTimer); for (const key of [...client.attached]) detach(client, key); clients.delete(client); checkIdle();
+      clearTimer(client.authTimer); for (const key of client.attached.keys()) detach(client, key); clients.delete(client); checkIdle();
     });
     decodeFrames(socket, (frame) => command(client, frame));
   });
@@ -182,6 +221,7 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
     if (closing) return; closing = true;
     if (idleTimer !== undefined) clearTimer(idleTimer);
     for (const client of clients) client.socket.destroy();
+    for (const session of sessions.values()) disposeScreen(session);
     await new Promise((resolve) => server.close(resolve));
   }
   try {

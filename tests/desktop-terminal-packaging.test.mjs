@@ -5,12 +5,14 @@ import path from "node:path";
 import os from "node:os";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { copyFiles, getFileMatchers, getNodeModuleFileMatcher } from "app-builder-lib/out/fileMatcher.js";
 import {
   NODE_EXE_SHA256, NODE_LICENSE_SHA256, NODE_VERSION, TERMINAL_HOST_FILES, TERMINAL_MODULE_FILES,
-  assertTerminalRuntime, ensureTerminalNode, writeTerminalManifest,
+  assertTerminalRuntime, ensureTerminalNode, stageTerminalModules, writeTerminalManifest,
 } from "../desktop/packaging/terminal-runtime.mjs";
 import { NODE_PTY_UNPACKED_FILES } from "../desktop/packaging/asar-policy.mjs";
+import { DESKTOP_RUNTIME_FILES } from "../desktop/packaging/artifact-policy.mjs";
 
 test("terminal packaging pins the tested official Node distribution and fails closed on download or cache corruption", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-node-pin-"));
@@ -58,6 +60,10 @@ test("production packaging includes the host and permits exactly the measured Co
   assert.equal(pkg.build.npmRebuild, false, "packaging retains the accepted upstream Node-API prebuilds");
   assert.equal(lock.packages["node_modules/node-pty"].version, "1.1.0");
   assert.equal(lock.packages["node_modules/node-addon-api"].version, "7.1.1");
+  assert.equal(pkg.dependencies["@xterm/headless"], "6.0.0");
+  assert.equal(pkg.dependencies["@xterm/addon-serialize"], "0.14.0");
+  assert.equal(lock.packages["node_modules/@xterm/headless"].version, "6.0.0");
+  assert.equal(lock.packages["node_modules/@xterm/addon-serialize"].version, "0.14.0");
   const license = (await readFile(new URL("../desktop/packaging/node-LICENSE.txt", import.meta.url), "utf8")).replaceAll("\r\n", "\n");
   assert.equal(createHash("sha256").update(license).digest("hex"), NODE_LICENSE_SHA256);
   assert.deepEqual(NODE_PTY_UNPACKED_FILES, [
@@ -69,6 +75,8 @@ test("production packaging includes the host and permits exactly the measured Co
   for (const file of [...TERMINAL_HOST_FILES, "desktop/runtime/terminal-host-client.mjs", "desktop/runtime/terminal-host-runtime.mjs"]) {
     assert.ok(pkg.build.files.includes(file), file);
   }
+  assert.ok(!pkg.build.files.includes("desktop/terminal-host/scrollback.mjs"));
+  assert.ok(!DESKTOP_RUNTIME_FILES.includes("desktop/terminal-host/scrollback.mjs"));
   assert.ok(pkg.build.asarUnpack.includes("node_modules/node-pty/prebuilds/win32-x64/**/*"));
   assert.deepEqual(pkg.build.extraResources.find(({ to }) => to === "terminal-runtime"), {
     from: "outputs/terminal-runtime", to: "terminal-runtime",
@@ -79,6 +87,38 @@ test("production packaging includes the host and permits exactly the measured Co
   assert.deepEqual(modules.filter((file) => file.startsWith("node_modules/node-addon-api/")), [
     "node_modules/node-addon-api/LICENSE.md", "node_modules/node-addon-api/package.json",
   ]);
+  assert.deepEqual(modules.filter((file) => file.startsWith("node_modules/@xterm/")), [
+    "node_modules/@xterm/addon-serialize/LICENSE",
+    "node_modules/@xterm/addon-serialize/lib/addon-serialize.js",
+    "node_modules/@xterm/addon-serialize/package.json",
+    "node_modules/@xterm/headless/LICENSE",
+    "node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    "node_modules/@xterm/headless/package.json",
+  ]);
+  const notices = await readFile(new URL("../THIRD_PARTY_NOTICES.md", import.meta.url), "utf8");
+  assert.match(notices, /\| @xterm\/headless \| 6\.0\.0 \| MIT \|/);
+  assert.match(notices, /\| @xterm\/addon-serialize \| 0\.14\.0 \| MIT \|/);
+});
+
+test("staged terminal packages load their CommonJS entry points and include the Xterm MIT license", async (t) => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const destination = await mkdtemp(path.join(os.tmpdir(), "pomegr-terminal-stage-"));
+  t.after(() => rm(destination, { recursive: true, force: true }));
+  await stageTerminalModules(root, destination);
+
+  const require = createRequire(path.join(destination, "runtime-loader.cjs"));
+  const { Terminal } = require("@xterm/headless");
+  const { SerializeAddon } = require("@xterm/addon-serialize");
+  const terminal = new Terminal({ allowProposedApi: true });
+  const serialize = new SerializeAddon();
+  terminal.loadAddon(serialize);
+  assert.equal(typeof serialize.serialize(), "string");
+
+  const sourceLicense = await readFile(path.join(root, "node_modules/@xterm/xterm/LICENSE"));
+  for (const packageName of ["headless", "addon-serialize"]) {
+    const stagedLicense = await readFile(path.join(destination, `node_modules/@xterm/${packageName}/LICENSE`));
+    assert.deepEqual(stagedLicense, sourceLicense, `${packageName} carries the Xterm MIT license`);
+  }
 });
 
 test("electron-builder's actual dependency filter selects exactly the slim terminal module files", async () => {
@@ -100,7 +140,12 @@ test("electron-builder's actual dependency filter selects exactly the slim termi
   }
   await walk("node_modules/node-pty");
   await walk("node_modules/node-addon-api");
-  assert.deepEqual(selected.sort(), TERMINAL_MODULE_FILES);
+  assert.deepEqual(selected.sort(), TERMINAL_MODULE_FILES
+    .filter((file) => file.startsWith("node_modules/node-pty/") || file.startsWith("node_modules/node-addon-api/")));
+  for (const file of TERMINAL_MODULE_FILES.filter((name) => name.startsWith("node_modules/@xterm/") && !name.endsWith("/LICENSE"))) {
+    const absolute = path.join(root, file);
+    assert.ok(matcher(absolute, await lstat(absolute)), file);
+  }
 });
 
 test("electron-builder's resource copier retains every manifested runtime module", async (t) => {

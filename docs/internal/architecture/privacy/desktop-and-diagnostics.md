@@ -105,7 +105,10 @@ Windows.
 
 - Terminal output flows only from the desktop-owned terminal host, through desktop main,
   to the trusted desktop renderer that attached to that session.
-- The host keeps only bounded live scrollback in memory for each session.
+- The host keeps the normal and alternate terminal screens and up to 5000 scrollback lines per running session in memory only.
+- Attach sends at most 4 MiB of serialized screen state, omitting oldest scrollback lines when needed.
+- If the screens alone exceed the replay cap, attach returns `TERMINAL_CAPACITY` without exposing a partial snapshot.
+- Exit clears and disposes the retained screen; its exit code remains listed until acknowledgement or host shutdown.
 - Terminal output is never written to disk, logged, sent to the monitor, cached, served
   over HTTP, or included in `/api/state`.
 - Terminal output never reaches Aril, an MCP tool, a paired device, or another renderer.

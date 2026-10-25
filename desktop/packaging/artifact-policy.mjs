@@ -70,7 +70,6 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/terminal-host/main.mjs",
   "desktop/terminal-host/host.mjs",
   "desktop/terminal-host/protocol.mjs",
-  "desktop/terminal-host/scrollback.mjs",
   "desktop/runtime/task-issues.mjs",
   "desktop/runtime/task-queue-runner.mjs",
   "desktop/runtime/task-worktree.mjs",
