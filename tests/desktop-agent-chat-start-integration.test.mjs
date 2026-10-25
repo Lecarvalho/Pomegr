@@ -19,11 +19,13 @@ const desktop = { event: trusted };
 const executable = "C:\\Users\\tester\\.local\\bin\\claude.exe";
 const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 const startAnswer = "A session should start.\n\n```pomegr-board\n{\"summary\":\"Start T-3\",\"operations\":[{\"op\":\"start_session\",\"id\":\"T-3\"}]}\n```";
+// Gate facts capture now before reading usage, so test evidence must share that fixed clock.
+const gateNow = Date.parse("2026-10-01T12:00:00.000Z");
 const validUsage = (percent = 10) => ({
-  available: true, fetchedAt: new Date().toISOString(), attemptedAt: new Date().toISOString(), failureKind: null,
+  available: true, fetchedAt: new Date(gateNow).toISOString(), attemptedAt: new Date(gateNow).toISOString(), failureKind: null,
   limits: [
-    { window: "5 hours", percent, resetsAt: new Date(Date.now() + 60_000).toISOString() },
-    { window: "7 days", percent: 20, resetsAt: new Date(Date.now() + 60_000).toISOString() },
+    { window: "5 hours", percent, resetsAt: new Date(gateNow + 60_000).toISOString() },
+    { window: "7 days", percent: 20, resetsAt: new Date(gateNow + 60_000).toISOString() },
   ],
 });
 
@@ -55,6 +57,7 @@ async function setup(context, { treeReader, pluginReady = true, confirmResult = 
       { provider: "codex", readiness: "ready", freshness: "fresh", status: "operational" },
     ] }),
     gitReader: treeReader || (() => true),
+    now: () => gateNow,
   };
   const lookups = createTaskLookups({
     observationStore: null,

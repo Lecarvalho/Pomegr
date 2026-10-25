@@ -14,6 +14,15 @@ vi.mock("../../app/hooks/ClientAccessContext", async (importOriginal) => {
 });
 
 import { DesignSystemView } from "../../app/components/design-system/DesignSystemView";
+import { TaskFieldsSection } from "../../app/components/design-system/DesignSystemTaskFieldsSample";
+import { FeatureModalSamples } from "../../app/components/design-system/DesignSystemFeatureModalSample";
+import { EventsRailSection } from "../../app/components/design-system/DesignSystemEventsSample";
+import { TaskBoardSection } from "../../app/components/design-system/DesignSystemTaskBoardSample";
+import { QueueControlsSection, TaskGatesSection } from "../../app/components/design-system/DesignSystemTaskGatesSample";
+import { SessionTaskSection } from "../../app/components/design-system/DesignSystemSessionTaskSample";
+import { AgentChatSection } from "../../app/components/design-system/DesignSystemAgentChatSample";
+import { AgentRosterSection, AgentInspectorSection } from "../../app/components/design-system/DesignSystemAgentSamples";
+import { CommandTableSection, SettingsRailSection } from "../../app/components/design-system/DesignSystemLayoutSamples";
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
@@ -32,17 +41,15 @@ function sectionOf(name: string) {
   return screen.getByRole("heading", { level: 2, name }).closest("section") as HTMLElement;
 }
 
-/** The labelled sample inside a design-system section. */
 function sample(root: HTMLElement, label: string) {
   return within(root).getByText(label, { selector: ".designSystemSample > span" }).closest(".designSystemSample") as HTMLElement;
 }
 
-/** The reading of a Start gates or Schedule row, from its label. */
 function reading(root: HTMLElement, label: string) {
   return within(root).getByText(label, { selector: "dt" }).nextElementSibling as HTMLElement;
 }
 
-// Every test here renders the whole page, which runs past the default 5 s on CI.
+// Keep page composition/hydration coverage; isolate samples so queries do not traverse unrelated sections.
 describe("Design-system reference page", { timeout: 20_000 }, () => {
   let fetchSpy: MockInstance;
 
@@ -91,8 +98,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(screen.getByText("--space-4")).toBeInTheDocument();
     expect(screen.queryByText(/Design system unavailable here/)).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
-    // The first render of the whole page is cold and its role queries walk every sample; a hosted
-    // Windows runner takes just over the default five seconds for it, and the page keeps growing.
+    // The full-page composition check retains its cold-render allowance.
   }, 40_000);
 
   it("renders static lane and single-chart samples with a neutral, described minimap", () => {
@@ -117,19 +123,19 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
 
   it("renders the Task fields samples from static data: grouped Run on, required Effort and Complete when", async () => {
     const user = userEvent.setup();
-    render(<DesignSystemView />);
+    render(<TaskFieldsSection />);
     const section = screen.getByRole("heading", { level: 2, name: "Task fields" }).closest("section") as HTMLElement;
-    const selects = within(section).getAllByRole("combobox", { name: "Run on" });
-    expect(selects[0]).toHaveTextContent("Claude Code · model-large");
+    const chosen = within(sample(section, "Run on and Effort, chosen"));
+    expect(chosen.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Claude Code · model-large");
     // Only the sample of a task stored with nothing chosen shows Not set.
-    expect(selects[1]).toHaveTextContent("Not set");
-    expect(selects[2]).toHaveTextContent("Claude Code · Default model");
-    const efforts = within(section).getAllByRole("button", { name: "High" });
-    expect(efforts[0]).toHaveAttribute("aria-pressed", "true");
-    await user.click(efforts[0]);
-    expect(efforts[0]).toHaveAttribute("aria-pressed", "true");
-    expect(efforts[0].parentElement).toHaveClass("commandSegmented");
-    expect(within(section).getAllByRole("checkbox", { name: "PR open" })[0]).toBeChecked();
+    expect(within(sample(section, "Stored task with nothing chosen, no model list")).getByRole("combobox", { name: "Run on" })).toHaveTextContent("Not set");
+    expect(within(sample(section, "Remote Control, on")).getByRole("combobox", { name: "Run on" })).toHaveTextContent("Claude Code · Default model");
+    const effort = chosen.getByRole("button", { name: "High" });
+    expect(effort).toHaveAttribute("aria-pressed", "true");
+    await user.click(effort);
+    expect(effort).toHaveAttribute("aria-pressed", "true");
+    expect(effort.parentElement).toHaveClass("commandSegmented");
+    expect(within(sample(section, "Complete when, new task")).getByRole("checkbox", { name: "PR open" })).toBeChecked();
     // Complete when, reported, the edit modal that needs review, and the done task's panel (3 Passed) show the report's outcomes.
     expect(within(section).getAllByText("Not passed")).toHaveLength(2);
     expect(within(section).getAllByText("Passed")).toHaveLength(5);
@@ -142,11 +148,11 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(tagged.parentElement).toHaveClass("taskRichText");
     expect(tagged.nextElementSibling).toHaveClass("taskRichTitle");
     expect(fetchSpy).not.toHaveBeenCalled();
-  }, 40_000);
+  });
 
   it("renders the Events rail from static data: every kind, the expander, and the empty and unavailable states", async () => {
     const user = userEvent.setup();
-    render(<DesignSystemView />);
+    render(<EventsRailSection />);
     const section = screen.getByRole("heading", { level: 2, name: "Events rail" }).closest("section") as HTMLElement;
     const panels = within(section).getAllByRole("region", { name: "Events · newest first" });
     expect(panels).toHaveLength(4);
@@ -218,7 +224,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
 
   it("renders the shipped agent roster, inspector, command table, and settings rail from static data", async () => {
     const user = userEvent.setup();
-    render(<DesignSystemView />);
+    render(<><AgentRosterSection /><AgentInspectorSection /><CommandTableSection /><SettingsRailSection /></>);
     const section = (name: string) => screen.getByRole("heading", { level: 2, name }).closest("section") as HTMLElement;
 
     const rosterSection = section("Agent roster");
@@ -270,7 +276,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
   });
 
   it("renders every task card state from synthetic tasks, with the chip the lane leaves and the border each state takes", () => {
-    render(<DesignSystemView />);
+    render(<TaskBoardSection />);
     const board = sectionOf("Task cards and board");
     const card = (label: string) => sample(board, label).querySelector(".taskCard") as HTMLElement;
     const chip = (label: string) => card(label).querySelector(".taskCardChip") as HTMLElement | null;
@@ -313,7 +319,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
 
   it("renders the desktop-only card, column and filter controls, inert", async () => {
     const user = userEvent.setup();
-    render(<DesignSystemView />);
+    render(<TaskBoardSection />);
     const board = sectionOf("Task cards and board");
 
     const desktop = sample(board, "Card, desktop app").querySelector(".taskCard") as HTMLElement;
@@ -373,7 +379,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
   });
 
   it("renders lanes: the first with + New task forced visible, an empty one, and one under a dragged card", () => {
-    render(<DesignSystemView />);
+    render(<TaskBoardSection />);
     const board = sectionOf("Task cards and board");
 
     const revealed = sample(board, "Lane, + New task revealed");
@@ -395,7 +401,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
   });
 
   it("renders the whole task board read-only and with desktop controls, and each non-ready board state", () => {
-    render(<DesignSystemView />);
+    render(<TaskBoardSection />);
     const board = sectionOf("Task cards and board");
 
     const browser = sample(board, "Board, browser (blocked queue)");
@@ -440,7 +446,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
   });
 
   it("renders the queue switch, banners, header actions and Queue settings from static data", () => {
-    render(<DesignSystemView />);
+    render(<QueueControlsSection />);
     const queue = sectionOf("Queue controls");
 
     expect(within(within(sample(queue, "Queue switch, off")).getByRole("group", { name: "Queue" })).getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
@@ -495,7 +501,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
   });
 
   it("renders the Start gates and Schedule panels in every reading from static data", () => {
-    render(<DesignSystemView />);
+    render(<TaskGatesSection />);
     const gates = sectionOf("Start gates and schedule");
 
     // Every sample is a frameless section of the Queue settings panel, under an h3.
@@ -546,8 +552,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
 
   it("renders the Feature modal as static chrome: both modes, the live primary, the unread fields and the three failure lines", async () => {
     const user = userEvent.setup();
-    render(<DesignSystemView />);
-    const fields = sectionOf("Task fields");
+    const { container: fields } = render(<FeatureModalSamples />);
 
     const created = sample(fields, "Feature modal, new feature");
     expect(within(created).getByRole("heading", { level: 2, name: "New feature" })).toBeInTheDocument();
@@ -624,7 +629,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
 
   it("renders the Sessions list Task cell for every outcome and the feature fields, from static references", async () => {
     const user = userEvent.setup();
-    render(<DesignSystemView />);
+    render(<><SessionTaskSection /><TaskFieldsSection /></>);
     const cells = sectionOf("Sessions list Task cell");
 
     const working = sample(cells, "Working on the task");
@@ -658,7 +663,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
   });
 
   it("renders the Aril chat from invented conversations: the launcher states, the panel, every proposal state and the composer", () => {
-    render(<DesignSystemView />);
+    render(<AgentChatSection />);
     const chat = sectionOf("Agent chat");
     const launcherOf = (label: string, name: string) => within(sample(chat, label)).getByRole("button", { name });
     expect(launcherOf("Launcher", "Open Aril, the Pomegr agent")).toHaveClass("agentChatLauncher", "isStatic");
