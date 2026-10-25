@@ -56,6 +56,31 @@ function harness({ plan = basePlan(), answer, createImpl, confirmImpl, overrides
 const go = (h, id = "T-3", repo = repositoryId, event = trusted) => h.start.start(event, repo, id);
 const aborted = (h) => h.calls.filter((c) => c.url.endsWith("start-abort"));
 
+test("granted builder starts never confirm and recheck authority at all four boundaries", async () => {
+  for (let revokedAt = 1; revokedAt <= 5; revokedAt++) {
+    const order = [];
+    const h = harness({ confirmImpl: () => assert.fail("a grant already confirms"), overrides: {
+      confirmReview: () => assert.fail("no review confirmation"),
+      fetch: async (url) => { order.push(url.split("/").pop()); return json({ ok: true, plan: basePlan() }); },
+      terminal: { ensureHost: async () => order.push("host"), create: async () => order.push("create") },
+    } });
+    let checks = 0;
+    const answer = await h.start.startGranted(repositoryId, "T-3", async () => { order.push("check"); return ++checks !== revokedAt; });
+    assert.deepEqual(answer, { status: revokedAt === 5 ? "started" : "cancelled" });
+    const success = ["check", "start-plan", "check", "check", "host", "check", "create"];
+    const index = success.map((value, i) => value === "check" ? i : -1).filter((i) => i >= 0)[revokedAt - 1];
+    assert.deepEqual(order, revokedAt === 5 ? success : [...success.slice(0, index + 1), ...(revokedAt > 1 ? ["start-abort"] : [])]);
+  }
+});
+
+test("granted starts require an authorization callback and fail closed if it throws", async () => {
+  const h = harness();
+  assert.deepEqual(await h.start.startGranted(repositoryId, "T-3"), { status: "invalid" });
+  assert.deepEqual(await h.start.startGranted(repositoryId, "T-3", async () => { throw Error("offline"); }), { status: "cancelled" });
+  assert.deepEqual(h.calls, []);
+  assert.deepEqual(h.spawns, []);
+});
+
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");
   assert.ok(Object.isFrozen(TASK_START_STATUSES));

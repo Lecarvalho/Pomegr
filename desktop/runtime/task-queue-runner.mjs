@@ -55,6 +55,12 @@ function cleanupsFrom(answer) {
   return cleanups;
 }
 
+function stepsFrom(answer) {
+  if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.steps)) return [];
+  return answer.steps.filter((step) => isPlainObject(step) && typeof step.repositoryId === "string" && REPOSITORY_ID.test(step.repositoryId)
+    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review"].includes(step.kind)).slice(0, MAX_STARTS);
+}
+
 function pauseReason(status) {
   if (typeof status === "string" && SETTLED.has(status)) return null;
   return typeof status === "string" && PAUSE_REASONS.has(status) ? status : "start_failed";
@@ -75,6 +81,15 @@ export function createTaskQueueRunner(options = {}) {
   let started = false;
   let disposed = false;
   let ticks = 0;
+  let grantsReady = false;
+
+  async function resetGrants() {
+    if (disposed || typeof starter.startGranted !== "function" || typeof starter.startGrantedReview !== "function") return;
+    try {
+      const answer = await post("grant-end-all", { reason: "app_restart" });
+      grantsReady = answer?.ok === true && Number.isSafeInteger(answer.ended) && answer.ended >= 0;
+    } catch { /* no grant executes if startup cleanup could not be confirmed */ }
+  }
 
   async function post(route, body) {
     const response = await fetchImpl(`${monitorOrigin}/internal/tasks/${route}`, {
@@ -113,6 +128,33 @@ export function createTaskQueueRunner(options = {}) {
     }
   }
 
+  async function grantTick() {
+    if (disposed || !grantsReady) return;
+    let answer;
+    try { answer = await post("grant-next", {}); } catch { return; }
+    const ended = new Set();
+    for (const { repositoryId, taskId, kind } of stepsFrom(answer)) {
+      if (disposed) return;
+      if (ended.has(repositoryId)) continue;
+      const isAuthorized = async () => {
+        if (disposed) return false;
+        try { return (await post("grant-check", { repositoryId }))?.active === true && !disposed; } catch { return false; }
+      };
+      let status;
+      try {
+        status = (await (kind === "start" ? starter.startGranted(repositoryId, taskId, isAuthorized)
+          : starter.startGrantedReview(repositoryId, taskId, isAuthorized)))?.status;
+      } catch { status = undefined; }
+      if (disposed) return;
+      if (status === "started") {
+        try { await post("grant-record", { repositoryId, taskId, kind }); } catch { /* best effort; a launch is never retried here */ }
+      } else if (!SETTLED.has(status)) {
+        ended.add(repositoryId);
+        try { await post("grant-end", { repositoryId, reason: "start_failed" }); } catch { /* best effort */ }
+      }
+    }
+  }
+
   // The worktrees of tasks marked done since the last pass. One the desktop could not remove stays listed.
   async function cleanup() {
     if (disposed || typeof starter.cleanWorktree !== "function") return;
@@ -131,7 +173,9 @@ export function createTaskQueueRunner(options = {}) {
     if (disposed) return;
     timer = setTimer(async () => {
       timer = null;
+      if (ticks === 0) await resetGrants();
       try { await tick(); } catch { /* a failed tick never ends the chain */ }
+      try { await grantTick(); } catch { /* a failed tick never ends the chain */ }
       ticks += 1;
       if (ticks % CLEANUP_EVERY_TICKS === 1) { try { await cleanup(); } catch { /* a failed pass never ends the chain */ } }
       arm();

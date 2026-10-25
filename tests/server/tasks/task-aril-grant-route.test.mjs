@@ -95,13 +95,14 @@ test("paired-device marker can stop a grant, never start one, and needs the pair
   assert.deepEqual(started.json.grant, store.readBoard(REPOSITORY_ID).aril.grant);
 });
 
-test("four grant runner routes require desktop authorization and reject paired requests", async (t) => {
+test("grant runner routes require desktop authorization and reject paired requests", async (t) => {
   const { port } = await setup(t);
   const requests = [
     ["grant-next", {}],
     ["grant-check", { repositoryId: REPOSITORY_ID }],
     ["grant-record", { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "start" }],
     ["grant-end", { repositoryId: REPOSITORY_ID, reason: "app_restart" }],
+    ["grant-end-all", { reason: "app_restart" }],
   ];
   for (const [route, body] of requests) {
     const unauthorized = await post(port, route, body, { "content-type": "application/json" });
@@ -121,6 +122,25 @@ test("four grant runner routes require desktop authorization and reject paired r
   fixedError(await post(port, "grant-next", { extra: true }), 400, "invalid");
   fixedError(await post(port, "grant-check", {}, DESKTOP), 400, "invalid");
   fixedError(await send(port, { path: "/internal/tasks/grant-next?x=1", headers: DESKTOP, body: "{}" }), 400, "invalid");
+});
+
+test("grant-end-all accepts only the restart reason and returns the number ended without eligible work", async (t) => {
+  const { port, store } = await setup(t);
+  const settings = defaults();
+  settings.actions.start = true;
+  settings.limits = { ...settings.limits, hours: 1, starts: 1, concurrent: 1 };
+  store.apply(REPOSITORY_ID, "aril_settings_set", { settings });
+  store.apply(REPOSITORY_ID, "grant_start", {});
+  assert.deepEqual(store.nextGrantSteps().steps, []);
+  for (const body of [null, [], {}, { reason: "start_failed" }, { reason: "app_restart", repositoryId: REPOSITORY_ID }]) {
+    fixedError(await post(port, "grant-end-all", body), 400, "invalid");
+  }
+  const ended = await post(port, "grant-end-all", { reason: "app_restart" });
+  assert.equal(ended.status, 200);
+  assert.equal(ended.headers["cache-control"], "no-store");
+  assert.deepEqual(ended.json, { ok: true, ended: 1 });
+  assert.equal(store.readBoard(REPOSITORY_ID).aril.grant.endReason, "app_restart");
+  assert.deepEqual((await post(port, "grant-end-all", { reason: "app_restart" })).json, { ok: true, ended: 0 });
 });
 
 test("grant-next projects at most sixteen fixed start and review steps", async (t) => {

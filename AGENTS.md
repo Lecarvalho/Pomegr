@@ -17,8 +17,10 @@ copying it here.
 - In the desktop app and on a paired device, Pomegr also has an agent chat. The owner
   talks to Aril, an agent that reads the task board and Pomegr's observations and
   proposes board changes and, when the owner asks, the start of one task's session or
-  turning the repository's queue on or off. Aril changes and starts nothing: the owner
-  applies a proposal.
+  turning the repository's queue on or off. Aril changes and starts nothing, except
+  through the fixed grant actions while a grant the owner started is active: it may then
+  start the Ready tasks its work rules select and their reviews, within the grant's
+  limits. The owner applies every other change.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -102,6 +104,12 @@ These rules always apply:
   It never resumes a live or unknown session, or resumes through an agent, Aril, queue,
   or tool. The [Continue plan](docs/internal/architecture/privacy/session-evidence.md#continue-plan)
   carries the working folder to desktop main only. Managed messages remain deferred.
+  A grant is the third owner-confirmed control action: the owner starts it in the desktop
+  app (or on a paired device the owner allowed), it is scoped by Aril settings and
+  time-bound, and while it is active the desktop starts the tasks and reviews the
+  monitor's grant read offers, behind every start gate, without a per-start confirmation.
+  Stopping it takes effect at once; it never ends a running session. No agent, Aril run,
+  queue, or MCP tool may start a grant.
   Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
   starts one for each message of the owner, and one for the follow-up after the owner
@@ -114,7 +122,7 @@ These rules always apply:
   each proposal. An image reaches a task only through the task image route, with an image
   the owner sent in that conversation, after the owner applies a proposal. A task's
   session starts only through the manual start, after the owner confirms a start proposal
-  in the desktop app. The queue changes only through the Tasks page's queue action, with
+  in the desktop app, or under an active grant. The queue changes only through the Tasks page's queue action, with
   the state the proposal names, after the owner applies a queue proposal in the desktop
   app or on a paired device.
 - Start processes with `execFile` or `spawn` and an argument array. Never put

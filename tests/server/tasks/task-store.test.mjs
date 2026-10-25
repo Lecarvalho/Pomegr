@@ -390,7 +390,8 @@ test("closing is idempotent and an unusable store serves nothing", async (t) => 
   assert.equal(store.readBoard(REPOSITORY).readiness, "unavailable");
   assert.equal(store.apply(REPOSITORY, "create", { text: "x" }).ok, false);
   assert.equal(store.readAgentTasks(REPOSITORY), null);
-  assert.deepEqual(Object.keys(store).toSorted(), ["abortReview", "abortStart", "ackLog", "addImage", "apply", "bindSession", "blockTask", "checkGrant", "close", "completeTask", "endGrant", "featureSessionGroups", "featureSessions", "issueDraft", "logPullRequests", "nextGrantSteps", "nextQueueStarts", "pauseQueue", "planReview", "planStart", "promotedIssues", "readAgentTasks", "readBoard", "readFeature", "readHome", "readImage", "readLog", "readScorecard", "recordGrant", "removeImage", "reportChecks", "reportReview", "sessionAssignedTasks", "sessionTasks", "stallEndedTasks", "worktreeCleaned", "worktreeCleanups"]);
+  assert.deepEqual(store.endAllGrants({ reason: "app_restart" }), { ok: false, error: "unavailable" });
+  assert.deepEqual(Object.keys(store).toSorted(), ["abortReview", "abortStart", "ackLog", "addImage", "apply", "bindSession", "blockTask", "checkGrant", "close", "completeTask", "endAllGrants", "endGrant", "featureSessionGroups", "featureSessions", "issueDraft", "logPullRequests", "nextGrantSteps", "nextQueueStarts", "pauseQueue", "planReview", "planStart", "promotedIssues", "readAgentTasks", "readBoard", "readFeature", "readHome", "readImage", "readLog", "readScorecard", "recordGrant", "removeImage", "reportChecks", "reportReview", "sessionAssignedTasks", "sessionTasks", "stallEndedTasks", "worktreeCleaned", "worktreeCleanups"]);
 });
 
 test("the task layer imports neither the runtime nor the serving layer", async () => {

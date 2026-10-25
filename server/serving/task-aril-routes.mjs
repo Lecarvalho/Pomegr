@@ -56,15 +56,17 @@ const rejected = (error) => ({ ok: false, error });
 export function serveGrantRunner({ request, response, taskStore, resolveGateFacts, action, body }) {
   if (request.headers["x-pomegr-lan-gateway"] === "1") { json(response, 403, rejected("unavailable")); return; }
   const fields = action === "grant-next" ? [] : action === "grant-record" ? ["repositoryId", "taskId", "kind"]
-    : action === "grant-end" ? ["repositoryId", "reason"] : ["repositoryId"];
+    : action === "grant-end" ? ["repositoryId", "reason"] : action === "grant-end-all" ? ["reason"] : ["repositoryId"];
   if (!isPlainObject(body) || Object.keys(body).length !== fields.length || !fields.every((key) => Object.hasOwn(body, key))
-    || (action !== "grant-next" && (typeof body.repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(body.repositoryId)))
+    || (fields.includes("repositoryId") && (typeof body.repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(body.repositoryId)))
     || (action === "grant-record" && (typeof body.taskId !== "string" || !TASK_ID_PATTERN.test(body.taskId) || !["start", "review"].includes(body.kind)))
-    || (action === "grant-end" && !["start_failed", "app_restart"].includes(body.reason))) {
+    || (action === "grant-end" && !["start_failed", "app_restart"].includes(body.reason))
+    || (action === "grant-end-all" && body.reason !== "app_restart")) {
     json(response, 400, rejected("invalid")); return;
   }
   try {
-    const result = action === "grant-next" ? taskStore?.nextGrantSteps?.({ resolveGateFacts })
+    const result = action === "grant-end-all" ? taskStore?.endAllGrants?.({ reason: body.reason })
+      : action === "grant-next" ? taskStore?.nextGrantSteps?.({ resolveGateFacts })
       : action === "grant-record" ? taskStore?.recordGrant?.(body.repositoryId, { taskId: body.taskId, kind: body.kind })
         : action === "grant-check" ? taskStore?.checkGrant?.(body.repositoryId) : taskStore?.endGrant?.(body.repositoryId, { reason: body.reason });
     if (result?.ok !== true) {
@@ -80,6 +82,9 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
     } else if (action === "grant-check") {
       if (typeof result.active !== "boolean") throw new TypeError("Grant state unavailable");
       json(response, 200, { ok: true, active: result.active });
+    } else if (action === "grant-end-all") {
+      if (!Number.isSafeInteger(result.ended) || result.ended < 0) throw new TypeError("Grant count unavailable");
+      json(response, 200, { ok: true, ended: result.ended });
     } else json(response, 200, { ok: true });
   } catch { json(response, 503, rejected("unavailable")); }
 }

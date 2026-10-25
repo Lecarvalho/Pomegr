@@ -176,7 +176,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 ## Aril grants
 
-Phase 4a stores grants and selects permitted next steps. Nothing acts on a grant in this slice: no session starts, review starts, task writes, send-backs, or merges happen through it.
+An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews. It permits no task writes, send-backs, or merges.
 
 - `grant_start` accepts exactly `{}` through the task action envelope and answers `{ ok: true, grant }`; `not_ready` refuses unset `hours`, `starts`, or `concurrent` limits, or both `actions.start` and `actions.review` false, and `conflict` refuses an already active grant.
 - Starting snapshots `settings.actions` and `settings.limits`, records the start time, and sets the end time to that time plus `limits.hours`; later settings edits do not change either snapshot.
@@ -194,8 +194,13 @@ Phase 4a stores grants and selects permitted next steps. Nothing acts on a grant
 - `grant-record` accepts `{ repositoryId, taskId, kind }` after a successful launch; `start` increments `starts_used`, `review` does not, and both append `grant_start` or `grant_review` to the task log in the same transaction, ending an exhausted grant with `starts_used`.
 - A record after the grant ends returns `not_active` and changes neither count nor log; an unknown task returns `not_found`, and recording does not launch or retry work.
 - `grant-check` accepts `{ repositoryId }` and answers `{ ok: true, active }` for an in-flight authorization check.
-- `grant-end` accepts `{ repositoryId, reason }`, with only `start_failed` or `app_restart`, and answers `{ ok: true }`; ending an inactive grant is idempotent.
-- The next slice's desktop runner may launch selected starts and reviews only while authorization remains active, record successful launches, end the grant after a failed start to prevent a retry loop, and end leftover grants with `app_restart` at desktop startup because grants end when the app quits; this slice has no runner or automatic restart cleanup.
+- `grant-end` accepts `{ repositoryId, reason: "start_failed" | "app_restart" }` and answers `{ ok: true }`; ending an inactive grant is idempotent. The runner uses it only for `start_failed`.
+- A grant ends when the app quits. One desktop runner timer polls every 15 seconds with the queue runner. Its first tick posts `POST /internal/tasks/grant-end-all` once with exactly `{ reason: "app_restart" }`.
+  One transaction ends active grants across repositories and answers `{ ok: true, ended: count }`. The route accepts the desktop token only, refuses a paired marker, and has no Next route.
+- If that once-only startup request fails or its answer is invalid, grant execution stays disabled for that runner and app run. Queue ticks continue, and the startup request is not retried.
+- Each tick handles queue starts first, then posts `grant-next` with `{}` and starts offered steps serially through `startGranted` or `startGrantedReview`. It checks `grant-check` before planning, after planning, before terminal-host launch, and after `ensureHost`.
+- After a successful launch, `grant-record` receives `{ repositoryId, taskId, kind }`. `not_active` is benign and causes no further logging. `busy`, `not_startable`, `gate_held`, `tree_dirty`, `cancelled`, and `not_found` skip that step without ending the grant. Any other status ends that repository's grant with `start_failed` and skips its remaining steps for that tick.
+- Grant-runner failures are swallowed so the timer remains alive; disposing the runner stops the timer. The per-repository `grant-end` remains available for `start_failed`.
 
 ## Record
 
@@ -955,7 +960,7 @@ Code asks or decides as for any MCP write.
 ## Queue
 
 The queue is the ordered set of queued and scheduled tasks, ordered by the pure `orderQueue` rule. It
-is advanced only by the desktop queue runner, only after the user turned the queue on.
+is advanced only by the desktop queue runner, only after the user turned the queue on. Only the desktop queue runner launches queue sessions; the grant runner separately launches grant steps.
 Ready order decides: the queue starts the top waiting card of Ready, with the rest of
 its parallel group. Every start first passes the [start gates](#start-gates).
 
@@ -1014,8 +1019,8 @@ its parallel group. Every start first passes the [start gates](#start-gates).
   not answered as a next start and changes nothing: the queue stays `running`, the task
   stays `queued`, and the next poll judges the gates again while the rest of its group
   starts. A held gate is a wait, not one of the outcomes that block or pause the queue.
-- **Runner.** The desktop main process polls `POST /internal/tasks/queue-next` (desktop
-  token, body `{}`) every 15 seconds on one unreferenced timer. The answer holds at most
+- **Runner.** One unreferenced 15-second timer drives the desktop queue and grant runners.
+  It polls `POST /internal/tasks/queue-next` (desktop token, body `{}`). The answer holds at most
   16 `{ repositoryId, taskId }` pairs, the tasks of each repository whose queue has a
   next start (the first waiting task and the rest of its group), and no task content. The runner starts them
   one after another in the same tick through the same dispatcher a manual start uses,
@@ -2199,9 +2204,9 @@ How it is built:
 
 ## Review sessions
 
-The desktop app supports owner-started reviews of tasks in `needs_review` with a linked builder session.
+The desktop app supports owner-started reviews of tasks in `needs_review` with a linked builder session. The grant runner may also start an offered review under an active grant.
 The reviewer uses `report_review` in Claude Code or Codex, never `complete_task` or `block_task`. The task modal shows the review state and latest verdict; Aril's board snapshot includes that verdict.
-Aril gains no authority, and no review starts automatically.
+Aril's provider run gains no authority and never starts a review; an active grant authorizes the desktop runner to start offered reviews.
 
 - `review-plan` accepts `{ id }` or `{ id, provider, model, effort }` inside the existing repository envelope.
 - An override uses a supported start provider and the task run's model and effort validation; otherwise the task's own run applies.
@@ -2213,7 +2218,7 @@ Aril gains no authority, and no review starts automatically.
 - Desktop main uses the task's worktree when Git lists it on `tasks/T-n`, looking under `.pomegr/worktrees` and the legacy task-worktree directory; otherwise it uses the repository root, and never creates a worktree.
 - Review starts share the busy slot with builder starts and return only the same fixed start statuses; a failure after planning aborts the matching review dispatch.
 - Review terminal keys end in `review-` plus 16 random bytes in hex and never participate in the task's builder terminal binding.
-- Review starts are Windows-only and have no paired-device, Aril, or queue start path.
+- Review starts are Windows-only and have no paired-device, Aril-run, or queue start path; the desktop grant runner is the only additional start path.
 - `review-abort` clears only the dispatch whose token matches.
 - Binding compares every review candidate after no builder dispatch matches; it refuses any builder session or another task's reviewer.
 - A successful bind stores the reviewer session ID separately, clears the review dispatch, and appends `review_started`.
@@ -2234,13 +2239,13 @@ Aril gains no authority, and no review starts automatically.
 
 ## Starting a session
 
-Starting is explicit and runs on the desktop computer.
+A manual start is explicit and runs on the desktop computer.
 
 1. A manual start shows a native confirmation in the desktop app or a browser confirmation on the paired device.
    A start the owner applied from an agent-chat proposal in the desktop app is a manual
    start with the same native confirmation after Apply (see [Agent chat: Session start](agent-chat.md#session-start)).
-   The queue runner starts without a prompt
-   only after the user turned the queue on.
+   The queue runner starts without a prompt only after the user turned the queue on.
+   While an owner-started grant remains active, the desktop grant runner starts its offered tasks and reviews without per-start confirmation.
 2. Desktop main creates the provider CLI in the desktop-owned terminal host, in the
    repository root or task worktree. It passes the executable, argument array, and
    working directory explicitly, with the owner's inherited session environment and
@@ -2685,15 +2690,16 @@ serves no other client.
 | --- | --- | --- |
 | `POST /internal/tasks/aril_settings_set`, `aril_memory_add`, `aril_memory_update`, `aril_memory_remove` | Desktop token; paired proxy additionally gated by stored `pairedDevices` | Fixed payloads and settings or memory entry answers in [Aril settings and memory](#aril-settings-and-memory); no board in these action answers |
 | `POST /api/tasks/action` with an Aril action | Authenticated paired gateway; opt-in checked by the monitor using the proxy's fixed paired marker | Same fixed payloads and answers; `settings.pairedDevices` is refused even after opt-in |
-| `GET /api/tasks?repositoryId=repo-<24 hex>` field `aril` | Existing board read gate, including paired devices regardless of the edit switch | Normalized settings, ordered memory entries, and the nullable latest grant; nothing acts on the grant in this slice |
-| `POST /internal/tasks/grant_start` | Desktop token | `{ repositoryId, payload: {} }`; `{ ok: true, grant }` or fixed refusal; no desktop runner yet |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` field `aril` | Existing board read gate, including paired devices regardless of the edit switch | Normalized settings, ordered memory entries, and the nullable latest grant |
+| `POST /internal/tasks/grant_start` | Desktop token | `{ repositoryId, payload: {} }`; `{ ok: true, grant }` or fixed refusal |
 | `POST /internal/tasks/grant_stop` | Desktop token | `{ repositoryId, payload: {} }`; idempotent `{ ok: true }` |
-| `POST /internal/tasks/grant_start` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, only when stored `pairedDevices` is true | Same start envelope and answer; client wiring is deferred |
-| `POST /internal/tasks/grant_stop` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, regardless of `pairedDevices` | Same stop envelope and answer; client wiring is deferred |
-| `POST /internal/tasks/grant-next` | Desktop token only; paired marker refused; no Next route | `{}`; `{ ok: true, steps }` containing at most 16 repository IDs, task IDs, and start/review kinds |
-| `POST /internal/tasks/grant-record` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, taskId, kind }`; `{ ok: true }` or fixed refusal |
-| `POST /internal/tasks/grant-check` | Desktop token only; paired marker refused; no Next route | `{ repositoryId }`; `{ ok: true, active }` |
-| `POST /internal/tasks/grant-end` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, reason: "start_failed" | "app_restart" }`; `{ ok: true }` |
+| `POST /internal/tasks/grant_start` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, only when stored `pairedDevices` is true | Same start envelope and answer |
+| `POST /internal/tasks/grant_stop` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, regardless of `pairedDevices` | Same stop envelope and answer |
+| `POST /internal/tasks/grant-next` | Desktop token only; paired marker refused; no Next route | `{}`; `{ ok: true, steps }` containing at most 16 repository IDs, task IDs, and start/review kinds; the desktop grant runner starts them |
+| `POST /internal/tasks/grant-record` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, taskId, kind }` after the runner launches; `{ ok: true }` or fixed refusal |
+| `POST /internal/tasks/grant-check` | Desktop token only; paired marker refused; no Next route | `{ repositoryId }` at each runner authorization checkpoint; `{ ok: true, active }` |
+| `POST /internal/tasks/grant-end` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, reason: "start_failed" \| "app_restart" }`; `{ ok: true }`; the runner sends `start_failed` after a launch failure |
+| `POST /internal/tasks/grant-end-all` | Desktop token only; paired marker refused; no Next route | Exactly `{ reason: "app_restart" }`; `{ ok: true, ended: count }` after one transaction ends active grants across repositories |
 | `POST /internal/tasks/review-plan` | Desktop main, desktop token; no browser or paired route | Existing `{ repositoryId, payload }` envelope; payload `{ id }` or `{ id, provider, model, effort }`; answers the private review plan |
 | `pomegr:task-review-start` IPC | Trusted desktop main frame only, behind native confirmation | Repository ID and task ID only; answers one fixed start status, never the private review plan |
 | `POST /internal/tasks/review-abort` | Desktop main, desktop token | Existing repository envelope with `{ id, token }`; clears only the matching review dispatch |
@@ -2851,9 +2857,9 @@ serves no other client.
 ## Privacy
 
 - A grant holds times, counts, a fixed end reason, and fixed action and limit settings snapshots under repository and grant IDs; the board exposes only the latest grant's documented fields, never its internal ID.
-- Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, and active state, never task text, prompts, paths, session IDs, or dispatch tokens.
+- Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, active state, and the count ended, never task text, prompts, paths, session IDs, or dispatch tokens.
 - The log gains the fixed kinds `grant_start` and `grant_review`, readable through its existing desktop, paired-device, and Aril prompt paths; grant records never enter `/api/state`, observation, or agent tools.
-- Grants survive task deletion and must be deleted with the board if board deletion is introduced; this slice adds no automatic action authority.
+- Grants survive task deletion and must be deleted with the board if board deletion is introduced; the desktop runner may start only offered tasks and reviews while a grant is active.
 
 - Aril settings hold fixed values, task and feature IDs, a model name, and short owner-written rule text; memory holds owner-approved one-line text, entry IDs, and timestamps.
 - Settings and memory reach the trusted desktop renderer and a paired device through the board, and their fixed action answers reach the authorized caller; neither reaches `/api/state`, observation, an agent tool, or Aril's prompt in this slice.
@@ -2882,7 +2888,7 @@ serves no other client.
 - Completion answers carry `state: "needs_review"`, fixed per-condition results, and optional `ownerHold: true` for an earlier block.
 - That answer carries no prior report, block reason, attention line, session identity, or repository fact.
 
-- A paired device may send queue on and off through the existing authenticated task action route. Only the desktop queue runner launches sessions.
+- A paired device may send queue on and off through the existing authenticated task action route. The desktop queue runner launches queue sessions; the desktop grant runner launches offered grant steps.
 - A paired device may also apply a queue proposal of the agent chat. Desktop main then sends the same `queue_settings` action with `{ on }` and nothing else, and the chat keeps only the state asked for and one fixed result.
 - A paired manual start sends only the repository ID, task ID, confirmation flag, and optional separate-worktree flag to the desktop gateway. Its answer exposes only a fixed start status. The private plan, prompt, filesystem paths, image files, credentials, and dispatch token stay on the desktop's existing private launch path.
 

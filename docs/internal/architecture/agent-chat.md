@@ -27,8 +27,10 @@ shipped. The parts that are not proven on a device are listed under
 
 Aril is an agent that organizes one repository's task board. The owner asks in a chat
 panel; Aril reads the board, the repository's files, and Pomegr's observations, and
-answers. Aril never changes anything. It proposes board changes, and Pomegr applies a
-proposal only after the owner presses **Apply changes**. When the owner asks for it, Aril
+answers. Aril never changes anything itself. It proposes board changes, and Pomegr applies a
+proposal only after the owner presses **Apply changes**. While an owner-started grant is
+active, the desktop runner may start selected Ready tasks and their reviews through the
+fixed grant actions ([Aril grants](tasks.md#aril-grants)). When the owner asks for it, Aril
 also proposes to start a session for one named task; Pomegr starts it through the manual
 start of the Tasks page, only after the owner selects **Start session** on that proposal
 in the desktop app
@@ -875,14 +877,16 @@ never a session's.
 - Observation is unchanged for every session. No chat run is observed: a declared run's
   registry entry is dropped before any pipeline stage reads it (see
   [The declared run](#the-declared-run)), and no pipeline stage reads a conversation.
-- Aril never changes the board. Only `apply` does, on the owner's answer, through the
-  fixed task actions.
+- Aril never changes the board itself. Only `apply` does, on the owner's answer, through
+  the fixed task actions; an active grant permits only the fixed starts and reviews in
+  [Aril grants](tasks.md#aril-grants).
 - Aril puts no image on a task. Only `apply` does, with an image the owner sent in the
   same conversation, through the monitor's own image route and under its bounds.
 - A proposal that names an image the conversation does not hold is never offered.
 - An image is served only when a message of its conversation names it.
-- Aril never starts a session. Only `apply` of a start proposal does, from the desktop
-  window, through the manual start and behind every start gate. The owner's **Start
+- Aril starts no session itself. Only `apply` of a start proposal does, from the desktop
+  window, through the manual start and behind every start gate, or the desktop grant
+  runner starts an offered task or review under an active grant. The owner's **Start
   session** on the card approves the proposal; the shared native dialog confirms the start. One Apply is at most one launch.
 - Aril never turns the queue on or off. Only `apply` of a queue proposal does, on the
   owner's answer, through `queue_settings` with the one setting `on`. The state is the
