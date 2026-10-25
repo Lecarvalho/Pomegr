@@ -38,7 +38,10 @@ in the desktop app
 (see [Session start](#session-start)). When the owner asks for it, Aril also proposes to
 turn the repository's queue on or off; Pomegr sends the Tasks page's own queue action,
 only after the owner selects **Turn queue on** or **Turn queue off** on that proposal, in
-the desktop app or on a paired device (see [Queue change](#queue-change)). The owner may
+the desktop app or on a paired device (see [Queue change](#queue-change)). When the owner
+asks about disk space or cleanup, Aril also proposes to remove task worktrees; Pomegr removes
+each only after the owner selects **Remove worktrees** on that proposal in the desktop app
+(see [Worktree removal](#worktree-removal)). The owner may
 send images with a message, and a proposal may put those images on a task (see
 [Images](#images)). After the owner applies or dismisses a proposal, Aril writes one
 follow-up about the outcome without another message of the owner (see
@@ -54,7 +57,7 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 | Owner | Responsibility | May not |
 | --- | --- | --- |
-| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, and the one request of an approved queue change | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; send `queue_settings` with any setting but `on` |
+| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, the one request of an approved queue change, and the removal of the worktrees the owner approved | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; remove a worktree for a call that is not the desktop window's, or by any path but the unforced removal of `task-worktree.mjs`; send `queue_settings` with any setting but `on` |
 | `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds |
 | `desktop/runtime/agent-chat-images.mjs` | The image files the owner sends: the staged ones and the ones of each conversation | Write outside the chat's directory; build a path from anything but a validated repository ID, conversation ID, and image ID; serve a file by itself |
 | `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the conversation history of one turn | Read anything itself |
@@ -80,7 +83,7 @@ The run answers and exits. Every
 stored Apply or Dismiss starts exactly one provider run for a follow-up (see
 [Follow-up](#follow-up)). A follow-up may contain one board-change proposal only after
 any applied or partial outcome. The owner must Apply or Dismiss it, which starts its own
-single follow-up run; no proposal starts a run or applies itself. Follow-ups never propose a session start or queue change.
+single follow-up run; no proposal starts a run or applies itself. Follow-ups never propose a session start, a queue change, or a worktree removal.
 
 1. The client sends `send` with the repository, the conversation or none, the message,
    the provider, the model or none, and the IDs of the images it added, when it added
@@ -96,6 +99,8 @@ single follow-up run; no proposal starts a run or applies itself. Follow-ups nev
    this run, answers `unavailable`. An agents read that fails leaves the Claude list to
    the board's own models. In parallel, `POST /internal/tasks/log-read` reads the newest 100 entries with the same monitor timeout.
    A failed or malformed log read adds an unavailable line; it never refuses the turn.
+   Then it lists the Pomegr task worktrees of the repository (see [Prompt](#prompt)); a
+   listing that fails leaves the section out and never refuses the turn.
 5. It moves the message's images into the conversation, builds the prompt (see
    [Prompt](#prompt)), stores the owner's message, declares a Claude Code run to the
    monitor (see [The declared run](#the-declared-run)), and starts the run in the
@@ -255,9 +260,12 @@ characters, in this order:
    model lists (`models`), and every task with its column and its position in that column.
 3. **Workflow changes.** Left out until the settings or a memory entry is settled. Otherwise the
    repository's workflow sources that changed since (see [Workflow changes](#workflow-changes)).
-4. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
+4. **Task worktrees.** Owner-message and grant-write turns list the Pomegr task worktrees
+   that remain on disk, as facts only, and the fixed instruction for `remove_worktree` (see
+   [Worktree removal](#worktree-removal)). The section is left out when there are none.
+5. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
    The section reports an empty log, unavailable log, or omitted older entries with fixed lines.
-5. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
+6. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
@@ -267,9 +275,9 @@ characters, in this order:
    An answer that is a follow-up is marked as one. A proposal of board changes that
    stopped also says how many operations succeeded, which one failed with which fixed
    error, and how many were not applied.
-6. **Images.** One line for each image of the conversation whose file is still there:
+7. **Images.** One line for each image of the conversation whose file is still there:
    its ID, its type, and the absolute file. The section is left out when there is none.
-7. **The owner's message**, and one line with the IDs of its images, in order. A
+8. **The owner's message**, and one line with the IDs of its images, in order. A
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
@@ -371,8 +379,8 @@ message would lead to materially different proposals.
   panel says so. Nothing is offered and nothing is guessed.
 - Only a `complete` answer can carry a proposal. A follow-up may carry one only
   after any applied or partial outcome, and only as a board-change proposal continuing
-  the owner's earlier request. Follow-ups never propose `start_session` or
-  `set_queue`. An ineligible or invalid block is removed and marked
+  the owner's earlier request. Follow-ups never propose `start_session`,
+  `set_queue`, or `remove_worktree`. An ineligible or invalid block is removed and marked
   `proposalUnreadable`; the block is not stored.
 - While the answer is written, a block that has begun is not shown.
 
@@ -390,6 +398,7 @@ message would lead to materially different proposals.
 | `set_after` | `id`, and `after`, 0 to 8 distinct task IDs other than `id` | `after_set` with `{ id, after }` |
 | `attach_images` | `id`, `images` | None. The image request for each image the task does not hold: see [An image on a task](#an-image-on-a-task) |
 | `start_session` | `id` | None. It is not a board change: see [Session start](#session-start) |
+| `remove_worktree` | `id`, `branch` (a boolean) | None. It is not a board change, and a proposal holds only these, 1 to 30: see [Worktree removal](#worktree-removal) |
 | `set_queue` | `on`, a boolean | `queue_settings` with `{ on }`, sent on its own path: see [Queue change](#queue-change) |
 | `set_aril_settings` | `settings`: a subset of `actions`, `limits`, `workRules`, and `reviewer`; each supplied field replaces the whole field | `aril_settings_set` with `{ settings }`; it must be the only operation |
 | `add_memory` | `text` | `aril_memory_add` with `{ text }` |
@@ -433,8 +442,8 @@ Aril proposes settings only when the owner requests a change or agrees to a sugg
 
 No operation marks a task done, requeues a task, changes a feature's title or
 description, deletes a feature, removes an image from a task, sets the queue's threshold
-or schedule, or touches GitHub. Only `start_session` starts a session, and only `set_queue`
-turns the queue on or off, each by the rules below.
+or schedule, or touches GitHub. Only `start_session` starts a session, only `set_queue`
+turns the queue on or off, and only `remove_worktree` removes a worktree, each by the rules below.
 
 ### Session start
 
@@ -562,6 +571,62 @@ off, as the **Off | On** control of the Tasks page does.
 - **The next turn.** The conversation line of the proposal tells Aril what the queue
   became, so a later answer never reports a change that was not made.
 
+### Worktree removal
+
+Aril operator phase 9c, owner decision of 2026-10-25. Task worktrees take disk space (see
+[Tasks: Worktrees](tasks.md#worktrees)). A `remove_worktree` proposal asks the owner to
+remove task worktrees that Pomegr made. Nothing is removed until the owner applies it in
+the desktop app, and every removal keeps the safety checks of the removal that Mark done
+runs.
+
+- **What Aril sees.** The `<task_worktrees>` section of an owner-message or grant-write
+  prompt. Desktop main lists the worktrees that Git knows for the repository root and that
+  are at `<root>/.pomegr/worktrees/<task ID>` or at the legacy
+  `<desktop data root>/task-worktrees/<repository ID>/<task ID>`. The task ID is taken from
+  the validated folder name only. A row is a JSON line with the task ID, the task's `state`
+  and `column` from the board or "not on board", `clean`, `uniqueCommits` (HEAD holds a
+  commit that exists on no remote and no other branch), and `size` in MB, "at least N MB"
+  when the walk stopped at 20,000 entries, 2 seconds, or the 6 seconds that all the walks of one turn share. A fact that cannot be read counts
+  against removal: not clean, and a unique commit. There are at most 30 rows, oldest task
+  first. A path is never in a row, the prompt, the store, the renderer, or a log. A
+  follow-up reads no listing.
+- **When Aril proposes it.** The fixed text under the rows tells Aril to propose removal
+  when the owner asks about disk space or cleanup, or when a done or deleted task still has
+  a worktree; to tell the owner, not propose, when a worktree has uncommitted changes or a
+  commit that exists nowhere else; and never to propose it for a task in progress, or in
+  Review with a session running. The listing is data, not a decision: the checks below run
+  again at Apply.
+- **The operation.** `{ "op": "remove_worktree", "id": "T-12", "branch": true }` with a
+  task ID and a boolean `branch` that says whether to also delete `tasks/<id>` under the
+  [branch rule](tasks.md#worktrees). Another key, a missing `branch`, or any other
+  operation beside it makes the whole proposal unreadable, like a start. A grant answer and
+  a follow-up never carry it.
+- **Only in the desktop window.** `apply` hands desktop main the trusted window event, as a
+  start does. A call without one, which is every paired-device call, answers `desktop_only`
+  before any board read or Git call, and the proposal stays pending. A paired device may
+  dismiss it, and its card has no Primary.
+- **Apply.** For each operation in order, desktop main reads the board again; answers
+  `in_use` when the task is in flight (a session is linked and it has no outcome, or its
+  dispatch is live) or its review session is running; finds the worktree with the lookup
+  that Open folder uses; and runs the unforced removal of `task-worktree.mjs`, with the
+  branch rule when `branch` is true. A task that is no longer on the board is removed the
+  same way. It adds no monitor route: the board and the existing private task read answer.
+  A `run.keepWorktree` flag that is on does not stop it, because the owner's Apply is the
+  choice; the flag is not changed.
+- **Results.** One fixed word for each operation: `removed`, `not_found` (no such
+  worktree), `dirty` (uncommitted changes), `unique_commits` (a commit that exists nowhere
+  else), `in_use`, or `failed` (Git or the file system refused, or an answer was missing).
+  A kept worktree does not stop the next one. The proposal is `applied` when every
+  worktree was removed, else `partial`, and the stored result is `{ ok, worktree }` with
+  `error` set to the word when `ok` is false. The apply answers `{ ok: true }` either way.
+- **What is stored.** The task IDs, the `branch` booleans, and one fixed word each. No
+  path, Git output, size, or error text.
+- **The next turn.** The outcome record is `worktree_removal`, with one row for each
+  operation and its result word, and its fixed request tells Aril to report each task ID
+  with its result and that a worktree which was not removed is still on disk. A dismissal
+  reads like any other.
+- **What the panel says.** [Agent chat design](../design/agent-chat.md) owns the words.
+
 ### Approval
 
 A stored proposal is `pending`. The owner answers it once.
@@ -577,6 +642,9 @@ A stored proposal is `pending`. The owner answers it once.
   task action (see [Session start](#session-start)).
 - **Turn queue on** and **Turn queue off** are the `apply` of a queue proposal. It reads
   no board and sends the one queue action (see [Queue change](#queue-change)).
+- **Remove worktree** and **Remove worktrees** are the `apply` of a removal proposal. It
+  reads the board before each operation and sends no task action (see
+  [Worktree removal](#worktree-removal)).
 - **Dismiss** (`dismiss`) stores `dismissed` and sends nothing.
 - A proposal that is not `pending` answers `conflict`. Two answers at once: the second
   answers `busy`.
@@ -608,7 +676,7 @@ another message.
   the conversation used last. It has no tool that writes. `read` answers its `turn`,
   **Stop** ends it, and a message of the owner sent meanwhile answers `busy`.
 - **The outcome record.** `proposalOutcome` in `agent-chat-prompt.mjs` builds it from the
-  stored proposal: the kind (`board_changes`, `session_start`, or `queue_change`), the
+  stored proposal: the kind (`board_changes`, `session_start`, `queue_change`, or `worktree_removal`), the
   proposal's summary, one of the five outcomes below, and for board changes one row for
   each operation with its number, its name, the task IDs it names, the feature title or
   the column it wrote, and `succeeded`, `failed` with the fixed error, or `not_applied`.
@@ -624,7 +692,7 @@ another message.
   proposal block, with 1 to 40 operations. A complete follow-up after a dismissed,
   refused, or failed outcome cannot offer a proposal; any block is rejected and the
   message is marked `proposalUnreadable`. A follow-up never proposes
-  `start_session` or `set_queue`. Applying or dismissing an eligible follow-up
+  `start_session`, `set_queue`, or `remove_worktree`. Applying or dismissing an eligible follow-up
   proposal starts one provider run for its follow-up; it does not start an automatic
   chain.
 
@@ -651,8 +719,8 @@ another message.
   complete follow-up after any applied or partial outcome may carry one board-change
   proposal. It continues the owner's earlier request and uses the ordinary
   parser and validator. The owner must Apply or Dismiss it. Each answer starts one
-  follow-up run, with no automatic chain. A follow-up never proposes `start_session` or
-  `set_queue`. A block that is invalid or ineligible is removed from the answer and
+  follow-up run, with no automatic chain. A follow-up never proposes `start_session`,
+  `set_queue`, or `remove_worktree`. A block that is invalid or ineligible is removed from the answer and
   the message is stored with `proposalUnreadable`; its block is not kept.
 The instruction to continue only the owner's earlier request is prompt guidance.
 Runtime checks enforce the outcome and operation types; the owner reviews the proposed
@@ -771,11 +839,12 @@ Desktop main keeps one JSON file per conversation:
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
-| `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session |
+| `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session or remove a worktree |
 | `pomegr:agent-chat-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add` and `read`. `add`: a repository ID and the image bytes (a `Uint8Array` of at most 5 MiB); answers the image's ID, type, and size. `read`: a repository ID, a conversation ID, and an image ID; answers the type and the bytes. No answer carries a path |
 | `POST /api/agent-chat/image-add` and `GET /api/agent-chat/image-read` on the LAN gateway | A paired device only | The same two operations, answered in desktop main and never forwarded. `image-add` takes the bytes as an `application/octet-stream` body of at most 5 MiB with the repository ID as its only query key. `image-read` takes the repository ID, the conversation ID, and the image ID as its only query keys, and answers the bytes with one of the four media types, `no-store` |
-| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start answers `desktop_only`. Its `apply` of a queue change is accepted |
+| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start or a worktree removal answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
+| Git in desktop main (`createTaskWorktrees`) | Desktop main | `worktree list`, `status`, `rev-list`, `worktree remove`, and, under the branch rule, `branch -D`, as argument arrays with no shell, for the worktree listing of a turn and for an approved removal. The prompt gets facts and result words only; no output, path, or error text |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
 | `POST /internal/tasks/log-read` and `log-ack` on the monitor | Desktop main, with the desktop token | The newest 100 log entries for owner-message prompts; acknowledgement through the highest shown ID after a complete turn |
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, `queue_ungroup`, and `after_set`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
@@ -791,13 +860,13 @@ The operations and their payloads, each with `repositoryId`:
 | `read` | `conversationId` | The conversation and the running `turn` or null |
 | `send` | `conversationId` or null, `text`, `provider`, `model` or null; optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
 | `stop` | `conversationId` | Nothing more |
-| `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again, and that read may answer the `turn` of the follow-up. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer |
+| `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again, and that read may answer the `turn` of the follow-up. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer. An `apply` of a worktree removal answers success once each removal was tried, whatever its result |
 | `delete` | `conversationId` | Nothing more |
 
 A refusal is `{ ok: false, error }` with one of `invalid`, `not_found`, `busy`, `limit`,
 `cli_missing`, `conflict`, `unavailable`, and `desktop_only`. A payload with another key
-is `invalid`. `desktop_only` answers only the `apply` of a session start that did not
-come from the desktop window.
+is `invalid`. `desktop_only` answers only the `apply` of a session start or a worktree
+removal that did not come from the desktop window.
 
 - An image operation refuses with `{ ok: false, error }` and one of `invalid`,
   `not_found`, and `unavailable`. The two paired-device image routes take a request
@@ -870,6 +939,7 @@ never a session's.
   image, so the path of the chat's image folder under the desktop data root, which holds
   the user's folder name, reaches the provider. A task's session has had the path of its
   task's image folder in the same way.
+  From 2026-10-25 (Aril operator phase 9c), an owner-message or grant-write prompt also sends the facts of the Pomegr task worktrees that remain: the task ID, the task's state and column or "not on board", whether the tree is clean, whether HEAD holds a commit that exists nowhere else, and an approximate size in MB. Never a path, a file name, or Git output.
   A grant write turn sends the normal board snapshot, repository settings and memory,
   workflow changes, task log, and the grant's named plan paths. Its fixed request asks Aril to read the
   next unbuilt step of an accepted plan and create 1–5 tasks with only `text`,
@@ -902,6 +972,9 @@ never a session's.
   block is removed and leaves only `proposalUnreadable`; the block text is not stored.
   The outcome record is built for the prompt from the stored proposal and is not kept by
   itself.
+- **What Pomegr keeps of a worktree removal.** The task IDs, the `branch` booleans, and one
+  fixed result word for each, in the conversation file. No path, size, Git output, or error
+  text; the listing of a turn is built for the prompt and is not kept.
 - **What Pomegr keeps of a queue change.** The state the proposal asked for and one
   fixed result, in the conversation file: `on`, `blocked`, `off`, or a fixed error. No
   task ID, blocker, pause reason, gate reading, or board content is kept with it, and
@@ -914,7 +987,7 @@ never a session's.
   the images of a conversation, and apply a proposal of board changes or a queue change.
   An Apply or a Dismiss from the device starts the follow-up run as one from the desktop
   does, so it spends that allowance too, as a message already can.
-  Image bytes cross the local network unencrypted too. It cannot apply a session start from
+  Image bytes cross the local network unencrypted too. It cannot apply a session start or a worktree removal from
   the chat. Applying a queue change that turns the queue on lets the desktop start the
   queued tasks, which the same holder can already do through `POST /api/tasks/action`
   ([Tasks: Paired devices](tasks.md#paired-devices)). The card's Primary is an

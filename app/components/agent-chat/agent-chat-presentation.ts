@@ -207,6 +207,8 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: [`Attach ${imageCount(operation.images.length)} to `, { id: operation.id }], text: current(operation.id), details: [], images: operation.images };
     case "start_session":
       return { title: ["Start a session for ", { id: operation.id }], text: current(operation.id), details: [] };
+    case "remove_worktree":
+      return { title: ["Remove worktree for ", { id: operation.id }], details: [operation.branch ? "Also delete its task branch when safe." : "Keep its task branch."] };
     case "set_queue":
       return { title: [operation.on ? "Turn the queue on" : "Turn the queue off"], details: [] };
     case "set_aril_settings":
@@ -231,6 +233,10 @@ const FAILURE_WORDS: Record<Extract<AgentChatOperationResult, { ok: false }>["er
   unavailable: "Pomegr did not answer",
   skipped: "Not run",
   not_started: "Not started",
+  dirty: "Worktree kept: uncommitted changes",
+  unique_commits: "Worktree kept: commits exist nowhere else",
+  in_use: "Worktree kept: task or review is running",
+  failed: "Worktree removal failed",
 };
 
 // An image that was not put on a task that is already on the board. The task keeps what it had.
@@ -268,6 +274,11 @@ export function startProposalTask(proposal: Pick<AgentChatProposal, "operations"
   return proposal.operations.length === 1 && first.op === "start_session" ? first.id : null;
 }
 
+/** Whether a proposal only asks to remove task worktrees: it is applied in the desktop window alone. */
+export function worktreeProposal(proposal: Pick<AgentChatProposal, "operations">): boolean {
+  return proposal.operations.length > 0 && proposal.operations.every((operation) => operation.op === "remove_worktree");
+}
+
 /** The queue state a proposal asks for (`true` is on), or null when it is not a queue proposal. */
 export function queueProposalState(proposal: Pick<AgentChatProposal, "operations">): boolean | null {
   const [first] = proposal.operations;
@@ -284,6 +295,7 @@ export const QUEUE_REFUSED = "Queue not changed. Pomegr refused this change.";
 export const QUEUE_UNANSWERED = "Queue not changed. Pomegr did not answer. Try again.";
 
 export function operationOutcome(operation: AgentChatBoardOperation, result: AgentChatOperationResult): OperationOutcome {
+  if ("worktree" in result) return { text: result.ok ? "Worktree removed" : FAILURE_WORDS[result.error], tone: result.ok ? "ok" : "error" };
   if ("queue" in result) return QUEUE_RESULT_LINES[result.queue] ?? QUEUE_RESULT_LINES.on;
   if (operation.op === "set_queue" && !result.ok) return { text: result.error === "unavailable" ? QUEUE_UNANSWERED : QUEUE_REFUSED, tone: "error" };
   if ("start" in result) return result.ok ? { text: START_LAUNCHED, tone: "ok" } : { text: START_FAILURE_LINES[result.start] ?? START_FAILURE_LINES.failed, tone: "error" };
@@ -311,25 +323,31 @@ export const PROPOSAL_DELETE_NOTE = "Nothing changes until you apply. Deleting c
 export const START_PENDING_NOTE = "Nothing starts until you select Start session and confirm in the desktop dialog. Pomegr then checks the start gates and opens a terminal on this computer.";
 export const START_ELSEWHERE_NOTE = "Aril's start can be applied only in the Pomegr desktop app. To start from this device, open the task and select Start session.";
 
+export const WORKTREE_PENDING_NOTE = "Nothing is removed until you apply. Pomegr keeps any worktree with uncommitted changes or commits that exist nowhere else.";
+export const WORKTREE_ELSEWHERE_NOTE = "Aril's worktree removal can be applied only in the Pomegr desktop app.";
+
 export const QUEUE_ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, in Ready order, as each passes the start gates.";
 export const QUEUE_OFF_NOTE = "Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.";
 
 /** The words of the card's region, by what the proposal asks for. */
 export function proposalLabel(proposal: AgentChatProposal): string {
   if (startProposalTask(proposal) !== null) return "Proposed session start";
+  if (worktreeProposal(proposal)) return "Proposed worktree removal";
   return queueProposalState(proposal) !== null ? "Proposed queue change" : "Proposed board changes";
 }
 
-/** The card's one Primary, or null where the proposal cannot be applied: a session start outside the desktop window. */
+/** The card's one Primary, or null where the proposal cannot be applied: a session start or a worktree removal outside the desktop window. */
 export function proposalPrimary(proposal: AgentChatProposal, startHere = false): string | null {
   if (startProposalTask(proposal) !== null) return startHere ? "Start session" : null;
+  if (worktreeProposal(proposal)) return startHere ? (proposal.operations.length === 1 ? "Remove worktree" : "Remove worktrees") : null;
   const queueOn = queueProposalState(proposal);
   return queueOn === null ? "Apply changes" : queueOn ? "Turn queue on" : "Turn queue off";
 }
 
-/** `startHere` is true in the desktop window, the one place where a start proposal can be applied. */
+/** `startHere` is true in the desktop window, the one place where a start or a worktree removal can be applied. */
 export function proposalNote(proposal: AgentChatProposal, startHere = false): string {
   if (startProposalTask(proposal) !== null) return startHere ? START_PENDING_NOTE : START_ELSEWHERE_NOTE;
+  if (worktreeProposal(proposal)) return startHere ? WORKTREE_PENDING_NOTE : WORKTREE_ELSEWHERE_NOTE;
   const queueOn = queueProposalState(proposal);
   if (queueOn !== null) return queueOn ? QUEUE_ON_NOTE : QUEUE_OFF_NOTE;
   return proposal.operations.some((operation) => operation.op === "delete_task") ? PROPOSAL_DELETE_NOTE : PROPOSAL_PENDING_NOTE;

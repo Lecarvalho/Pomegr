@@ -86,6 +86,7 @@ Operations, at most 40, applied in order. Pomegr stops at the first one that fai
 - {"op":"ungroup_tasks","ids":["T-4"]} Takes 1 to 16 distinct tasks out of their parallel groups.
 - {"op":"attach_images","id":"T-12","images":["img-0123456789ab"]} Puts images the owner sent in this conversation on a task that has not started.
 - {"op":"start_session","id":"T-12"} Asks Pomegr to start one session for that task now, on the owner's computer, as Start session in the task window does. It is the only operation of its proposal.
+- {"op":"remove_worktree","id":"T-12","branch":true} Asks the owner to remove that Pomegr task worktree, and its task branch when branch is true and the branch rule permits it. A proposal holds 1–30 such operations and nothing else. Use only IDs from task_worktrees, including deleted tasks. Never include this operation in a follow-up or grant answer. Only desktop Apply removes anything.
 - {"op":"set_queue","on":true} Asks Pomegr to turn this repository's queue on ("on": true) or off ("on": false). It is the only operation of its proposal.
 - {"op":"set_aril_settings","settings":{"mergeMethod":"squash"}} Stands alone. Supply any subset of actions, mergeMethod, limits, workRules, reviewer; each supplied field replaces that whole field, so include all its nested keys from aril_settings. mergeMethod is null (repository default), squash, merge, or rebase. Never include pairedDevices.
 - {"op":"add_memory","text":"Run focused tests before the full suite."} Adds one nonblank line of at most 300 characters, to at most 100 entries.
@@ -380,6 +381,7 @@ function outcomeRow(operation, result, index) {
   if (operation.op === "create_feature") row.feature = operation.name;
   if (operation.op === "move_task" || (operation.op === "create_task" && typeof operation.column === "string")) row.column = operation.column;
   if (operation.op === "create_task" && typeof operation.placeAfter === "string") row.place_after = operation.placeAfter;
+  if (result?.worktree) row.worktree = result.worktree;
   if (!result || result.error === "skipped") return { ...row, result: "not_applied" };
   if (result.ok === true) return { ...row, result: "succeeded", ...(typeof result.taskId === "string" ? { created: result.taskId } : {}) };
   row.result = "failed";
@@ -401,7 +403,7 @@ export function proposalOutcome(proposal) {
   const results = Array.isArray(proposal.results) ? proposal.results : [];
   const startTask = startProposalTask(proposal);
   const queueOn = queueProposalState(proposal);
-  const kind = startTask ? "session_start" : queueOn !== null ? "queue_change" : "board_changes";
+  const kind = startTask ? "session_start" : queueOn !== null ? "queue_change" : proposal.operations[0]?.op === "remove_worktree" ? "worktree_removal" : "board_changes";
   const head = { kind, summary: text(proposal.summary), ...(startTask ? { task: startTask } : {}), ...(queueOn !== null ? { asked_for: queueOn ? "on" : "off" } : {}) };
   if (proposal.state === "dismissed") return { ...head, outcome: "dismissed", operations_applied: 0 };
   if (startTask) {
@@ -430,12 +432,13 @@ export function proposalOutcome(proposal) {
 }
 
 const FOLLOW_UP_COMMON = "The owner sent no new message. Write one short follow-up to the owner about this outcome, in the owner's language. The board snapshot above was read after it.";
-const FOLLOW_UP_PROPOSAL = "You may end with one board-change proposal for the next step the owner already requested earlier in this conversation; name that request. It waits for Apply or Dismiss. Never include start_session or set_queue; those need a new owner message. Never include set_aril_settings, add_memory, update_memory, or remove_memory. Do not invent work, repeat completed changes, or retry failed or not applied operations.";
+const FOLLOW_UP_PROPOSAL = "You may end with one board-change proposal for the next step the owner already requested earlier in this conversation; name that request. It waits for Apply or Dismiss. Never include start_session, set_queue, or remove_worktree; those need a new owner message. Never include set_aril_settings, add_memory, update_memory, or remove_memory. Do not invent work, repeat completed changes, or retry failed or not applied operations.";
 
 // The one request under the outcome: fixed words for each kind and outcome, so the agent is told what it may say.
 function followUpRequest(outcome) {
   const { kind } = outcome;
   if (outcome.outcome === "dismissed") return "The owner declined this proposal, and Pomegr applied none of its operations. That is the owner's decision and not a failure. Acknowledge it in one sentence. Do not propose it or a variant of it again, and retry nothing.";
+  if (kind === "worktree_removal") return "Pomegr tried each removal in order, one after the other, and a kept worktree did not stop the next. Report each task ID with its result: removed, not_found, dirty, unique_commits, in_use, or failed. A worktree that is not removed is still on disk, and nothing retries. Do not propose it again.";
   if (kind === "session_start") {
     if (outcome.outcome === "applied") return `Pomegr launched a session for ${outcome.task} in a new terminal window on the owner's computer. That launch is the only confirmed fact: the snapshot may not show the session yet, and you know nothing of what it does. Say so in one or two sentences.`;
     return outcome.outcome === "refused"
@@ -492,7 +495,11 @@ function historyLine(message) {
   const queueOn = message.proposal ? queueProposalState(message.proposal) : null;
   if (startTask) parts.push(`[Proposal to start a session for ${startTask}: ${startOutcome(message.proposal)}.]`);
   else if (queueOn !== null) parts.push(`[Proposal to turn the queue ${queueOn ? "on" : "off"}: ${queueOutcome(message.proposal)}.]`);
-  else if (message.proposal) {
+  else if (message.proposal?.operations.every(({ op }) => op === "remove_worktree")) {
+    const { operations, results = [], state } = message.proposal;
+    const said = state === "pending" || state === "dismissed" ? OUTCOME[state] : `the owner applied it and Pomegr tried each in order: ${operations.map(({ id }, index) => `${id} ${results[index]?.worktree ?? "not_applied"}`).join(", ")}`;
+    parts.push(`[Proposal to remove task worktrees "${message.proposal.summary}": ${said}.]`);
+  } else if (message.proposal) {
     const created = (message.proposal.results ?? []).map((result) => result?.taskId).filter(Boolean);
     // A task that did not take its images is said, so a later answer never reports an image that is not on the task.
     const unattached = (message.proposal.results ?? []).map((result, index) => (result?.part === "images" ? result.taskId ?? message.proposal.operations[index]?.id : null)).filter(Boolean);
@@ -529,7 +536,7 @@ export function conversationHistory(messages, budget = HISTORY_BUDGET) {
  * `workflowChanges` is the desktop's read of the repository's workflow sources: undefined when nothing is settled (no
  * section), null when Git could not tell, else the changed sources `{ path, changedAt, uncommitted }`.
  */
-export function composePrompt({ board, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
+export function composePrompt({ board, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
   const history = conversationHistory(messages);
   const outcome = followUp ? proposalOutcome(followUp) : null;
   if (followUp && !outcome) return null;
@@ -544,6 +551,8 @@ export function composePrompt({ board, repositoryName, runs = [], taskLog = unde
         ? ["No workflow source changed since your settings and memory were settled."]
         : workflowChanges.map((entry) => `${entry.path} ${entry.changedAt ?? "date unknown"} ${entry.uncommitted ? "uncommitted" : "committed"}`)),
       "</workflow_changes>"]),
+    ...(worktrees.length ? ["", "<task_worktrees>", ...worktrees.map(({ taskId, state, column, clean, uniqueCommits, sizeMB, atLeast }) => JSON.stringify({ taskId, state, column, clean, uniqueCommits, size: `${atLeast ? "at least " : ""}${sizeMB} MB` })),
+      "These are Pomegr task worktrees still on disk. When the owner asks about disk space or cleanup, or a done or deleted task still has one, you may propose remove_worktree for them. A worktree with uncommitted changes or a commit that exists nowhere else cannot be removed: tell the owner instead. Never propose removing the worktree of a task that is in progress or in Review with a session running.", "</task_worktrees>"] : []),
     ...(taskLog === undefined ? [] : ["", "<task_log_since_last_turn>",
       ...(taskLog === null ? ["(The task log is unavailable.)"] : [
         ...(taskLog.omitted ? ["(Older entries are left out.)"] : []),

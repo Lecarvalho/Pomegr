@@ -599,3 +599,57 @@ describe("a proposed queue change", () => {
     expect(card().querySelector(".agentChatOpResult")).toBeNull();
   });
 });
+
+describe("a proposed worktree removal", () => {
+  const REMOVE = [{ op: "remove_worktree", id: "T-4", branch: true }, { op: "remove_worktree", id: "T-5", branch: false }];
+  const withRemoval = (state = "pending", extra: Record<string, unknown> = {}) => chat.seed(REPO_A, conversationOf(1, [
+    userMessage("free some disk space"),
+    agentMessage("These two are done.", { proposal: { ...proposalOf(REMOVE, state, extra), summary: "Remove the worktrees of T-4 and T-5." } }),
+  ]));
+  const card = () => within(log()).getByRole("region", { name: "Proposed worktree removal" });
+
+  it("is drawn as a removal that has not happened: each task, its branch, one Primary, and a line that nothing is removed yet", async () => {
+    withRemoval();
+    render(<AgentChatDock />);
+    await openPanel();
+    const rows = within(card()).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Remove worktree for T-4");
+    expect(rows[0]).toHaveTextContent("Also delete its task branch when safe.");
+    expect(rows[1]).toHaveTextContent("Keep its task branch.");
+    expect(within(card()).getByRole("button", { name: "Remove worktrees" })).toHaveClass("commandPrimaryAction");
+    expect(within(card()).queryByRole("button", { name: "Apply changes" })).toBeNull();
+    expect(within(card()).getByText(/^Nothing is removed until you apply\./u)).toBeInTheDocument();
+    expect(chat.calls("apply")).toEqual([]);
+  });
+
+  it("names what became of each worktree and keeps the partial chip", async () => {
+    withRemoval("partial", { results: [{ ok: true, worktree: "removed" }, { ok: false, worktree: "dirty", error: "dirty" }] });
+    render(<AgentChatDock />);
+    await openPanel();
+    const results = [...card().querySelectorAll(".agentChatOpResult")];
+    expect(results.map((result) => result.textContent)).toEqual(["Worktree removed", "Worktree kept: uncommitted changes"]);
+    expect(results[0]).toHaveClass("is-ok");
+    expect(results[1]).toHaveClass("is-error");
+    expect(card().querySelector(".commandChip")).toHaveTextContent("Partly applied");
+    expect(within(card()).queryByRole("button", { name: "Remove worktrees" })).toBeNull();
+  });
+
+  it("offers no removal on a paired device, only Dismiss and where it can be applied", async () => {
+    setBridge(undefined);
+    harness.mode = "lan";
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { operation: string; payload: Record<string, unknown> };
+      return new Response(JSON.stringify(await chat.agentChat(body.operation, body.payload)), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    withRemoval();
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(await within(log()).findByRole("region", { name: "Proposed worktree removal" })).toBeInTheDocument();
+    expect(within(card()).queryByRole("button", { name: "Remove worktrees" })).toBeNull();
+    expect(within(card()).queryByRole("button", { name: "Apply changes" })).toBeNull();
+    expect(within(card()).getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    expect(within(card()).getByText("Aril's worktree removal can be applied only in the Pomegr desktop app.")).toBeInTheDocument();
+    expect(chat.calls("apply")).toEqual([]);
+  });
+});
