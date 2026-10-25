@@ -127,6 +127,10 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
       || !payload || typeof payload !== "object" || Array.isArray(payload)) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-action", repositoryId, action, payload);
   },
+  taskScorecard(repositoryId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return Promise.resolve({ ok: false, error: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-scorecard", repositoryId);
+  },
   taskFeature(repositoryId, featureId) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || typeof featureId !== "string" || !TASK_FEATURE_ID.test(featureId)) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-feature", repositoryId, featureId);
