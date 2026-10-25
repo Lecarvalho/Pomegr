@@ -149,6 +149,7 @@ Adoption and polish alone do not fit. The owner accepted the placements below on
 | [Session Activity panel](session-activity-panel.md) | Built; waits for deletion approval since 2026-09-09 | The owner approves its deletion. |
 | [Design system gaps](design-system-gaps.md) | 10 samples open | Outside the roadmap. Its accessibility items 8a and 8b are bug fixes for any version. |
 | [Sessions inside Pomegr](embedded-terminal.md) | Accepted on 2026-10-24 | Inside G14 in 0.9.5 for the terminal; its read-only history and its spike start alongside 0.9.0. |
+| [Aril operator](aril-operator.md) | Proposed on 2026-10-24 | The coordinator of experiment 2: it builds on G6 to G10 and G13 and adds the standing grant, event wake-up, the reviewer session, and merge. Placement waits for the owner's review. |
 
 Product expansion directions:
 
