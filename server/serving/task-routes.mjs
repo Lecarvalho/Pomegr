@@ -1,10 +1,11 @@
 import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
+import { serveArilActionRoute } from "./task-aril-routes.mjs";
 
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 export const TASK_ACTIONS = Object.freeze([
-  "create", "update", "delete", "move",
-  "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
-  "session_assign", "session_unassign", "after_set",
+  "create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete",
+  "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
+  "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 // The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
@@ -128,24 +129,22 @@ function projectSource(source) {
 }
 
 const projectTask = (task) => (task !== null && typeof task === "object" ? { ...task, source: projectSource(task.source) } : task);
-
 function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
-    || !board.queue || typeof board.queue !== "object" || !Array.isArray(board.queue.order)) {
+    || !board.queue || typeof board.queue !== "object" || !Array.isArray(board.queue.order)
+    || (board.readiness === "ready" && (!isPlainObject(board.aril) || !isPlainObject(board.aril.settings) || !Array.isArray(board.aril.memory)))) {
     throw new TypeError("Task board unavailable");
   }
-  const gates = projectGates(board.queue.gates);
-  const schedule = projectSchedule(board.queue.schedule);
-  const waits = projectWaits(board.queue.waits);
+  const gates = projectGates(board.queue.gates); const schedule = projectSchedule(board.queue.schedule); const waits = projectWaits(board.queue.waits);
   return {
     version: 1, readiness: board.readiness, repositoryId,
     columns: board.columns, features: board.features, tasks: board.tasks.map(projectTask),
     queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}), ...(waits ? { waits } : {}) },
+    ...(board.readiness === "ready" ? { aril: board.aril } : {}),
     runModels: projectRunModels(runModels),
   };
 }
-
 export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "GET") {
@@ -413,6 +412,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId: body.repositoryId, payload: body.payload });
     return;
   }
+  if (action.startsWith("aril_")) return serveArilActionRoute({ request, response, taskStore, repositoryId: body.repositoryId, action, payload: body.payload });
   try {
     if (typeof taskStore?.apply !== "function") {
       writeActionResult(response, 503, rejected("conflict"));

@@ -8,8 +8,16 @@ import { createMonitorServer } from "../../../server/server.mjs";
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
-const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"];
+const BOARD_KEYS = ["aril", "columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"];
 const EMPTY_QUEUE = { status: "idle", blockedBy: null, pauseReason: null, order: [] };
+const DEFAULT_ARIL = {
+  settings: {
+    actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+    limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+    workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+  },
+  memory: [],
+};
 
 function secretBoard(repositoryId = REPOSITORY_ID) {
   return {
@@ -22,7 +30,7 @@ function secretBoard(repositoryId = REPOSITORY_ID) {
       state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
       createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z",
     }],
-    queue: { ...EMPTY_QUEUE },
+    queue: { ...EMPTY_QUEUE }, aril: DEFAULT_ARIL,
   };
 }
 

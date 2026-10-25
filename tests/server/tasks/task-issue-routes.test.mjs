@@ -356,7 +356,7 @@ test("no GET reaches the reader or serves a listed issue body, and a task carrie
   const board = await getBoard(port);
   assert.equal(board.status, 200);
   assert.deepEqual(board.json.tasks.map((task) => task.source), [{ kind: "github_issue", number: 1 }]);
-  assert.deepEqual(Object.keys(board.json).sort(), ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
+  assert.deepEqual(Object.keys(board.json).sort(), ["aril", "columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
   const gets = [
     board.text,
     (await send(port, { method: "GET", path: `/api/tasks?repositoryId=${OTHER_REPOSITORY}`, headers: withToken })).text,

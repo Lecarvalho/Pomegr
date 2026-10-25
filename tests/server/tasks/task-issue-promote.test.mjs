@@ -177,7 +177,7 @@ test("the store schema version is unchanged and promote_issue is not a routable 
   const database = new DatabaseSync(path.join(env.directory, "tasks.sqlite"), { readOnly: true });
   try {
     assert.equal(database.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, "1");
-    assert.deepEqual(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((row) => row.name), ["columns", "features", "meta", "repositories", "sqlite_sequence", "task_events", "task_log", "task_log_cursors", "task_outcomes", "task_reviews", "task_scorecard_snapshots", "tasks"]);
+    assert.deepEqual(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((row) => row.name), ["aril_memory", "aril_settings", "columns", "features", "meta", "repositories", "sqlite_sequence", "task_events", "task_log", "task_log_cursors", "task_outcomes", "task_reviews", "task_scorecard_snapshots", "tasks"]);
   } finally { database.close(); }
 });
 
@@ -288,6 +288,9 @@ test("the served source is validated again at the route", async (context) => {
   const store = {
     readBoard: () => ({
       version: 1, readiness: "ready", repositoryId: REPOSITORY, columns: [], features: [],
+      aril: { settings: { actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+        limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+        workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false }, memory: [] },
       queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] },
       tasks: [
         { id: "T-1", source: { kind: "github_issue", number: 4, login: "SECRET-LOGIN" } },

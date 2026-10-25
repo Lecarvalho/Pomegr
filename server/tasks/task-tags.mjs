@@ -4,14 +4,14 @@
 
 export const TASK_TAG_LIMIT = 8;
 
-const TAG_TOKEN = /^\[[ \t]*([\p{L}\p{N}][\p{L}\p{N}\p{M}._-]{0,23})[ \t]*\]/u;
+const TAG_TOKEN = /^\[[ \t]*([\p{L}\p{N}][\p{L}\p{N}\p{M}._-]*)[ \t]*\]/u;
 // The word that stands for an image in a plain task text. It is never a tag.
 const IMAGE_WORD = "image";
 
 // Returns `{ tags, text, runLength }`: the tags as typed without repeats, the text after the run (which has taken the
 // whitespace after its last token, line breaks and blank lines included), and the characters the run took. A token that
-// touches other text ends the run.
-export function splitTaskTags(text) {
+// touches other text ends the run. Aril rule validation supplies its own length bound; display callers keep 24.
+export function splitTaskTags(text, maxTagLength = 24) {
   const tags = [];
   const seen = new Set();
   let index = text.length - text.trimStart().length;
@@ -19,7 +19,7 @@ export function splitTaskTags(text) {
   let runLength = 0;
   while (tags.length < TASK_TAG_LIMIT) {
     const match = TAG_TOKEN.exec(text.slice(index));
-    if (!match) break;
+    if (!match || [...match[1]].length > maxTagLength) break;
     const after = index + match[0].length;
     const next = text[after];
     if (next !== undefined && next !== " " && next !== "\t" && next !== "\n" && next !== "\r") break;

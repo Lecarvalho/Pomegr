@@ -65,6 +65,8 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 ## One turn
 
+[Aril settings and repository memory](tasks.md#aril-settings-and-memory) are stored and served to the owner; they reach Aril in a later slice.
+
 Each message of the owner starts one provider run. The run answers and exits. Every
 stored Apply or Dismiss starts exactly one provider run for a follow-up (see
 [Follow-up](#follow-up)). A follow-up may contain one board-change proposal only after

@@ -16,7 +16,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -103,7 +103,7 @@ test("an authorized create answers the new board, no-store JSON, without reachin
   assert.equal(response.json.ok, true);
   assert.deepEqual(Object.keys(response.json).sort(), ["board", "ok", "taskId"]);
   assert.equal(response.json.taskId, "T-1");
-  assert.deepEqual(Object.keys(response.json.board).sort(), ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
+  assert.deepEqual(Object.keys(response.json.board).sort(), ["aril", "columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
   assert.equal(response.json.board.repositoryId, REPOSITORY_ID);
   assert.deepEqual(response.json.board.tasks.map((task) => [task.id, task.text, task.state]), [["T-1", SECRET_TEXT, "not_queued"]]);
   assert.deepEqual({ ...store.readBoard(REPOSITORY_ID), runModels: { codex: [] } }, response.json.board);
@@ -252,7 +252,7 @@ test("a refused request never writes: missing or wrong token, foreign host, Orig
   const body = JSON.stringify({ repositoryId: REPOSITORY_ID, payload: { text: SECRET_TEXT } });
   const refused = [
     ["no token", { method: "POST", headers: { ...JSON_BODY } }],
-    ["wrong token", { method: "POST", headers: { ...JSON_BODY, "x-pomegr-desktop-authorization": "x".repeat(40) } }],
+    ["caller-supplied gateway marker without authorization", { method: "POST", headers: { ...JSON_BODY, "x-pomegr-lan-gateway": "1", "x-pomegr-desktop-authorization": "x".repeat(40) } }],
     ["short token", { method: "POST", headers: { ...JSON_BODY, "x-pomegr-desktop-authorization": "t" } }],
     ["foreign host", { method: "POST", headers: { ...withToken, ...JSON_BODY, host: "192.168.1.20:3003" } }],
     ["LAN-style host with port", { method: "POST", headers: { ...withToken, ...JSON_BODY, host: "localhost:3003" } }],
@@ -419,6 +419,7 @@ test("GET /api/tasks behaves exactly as before: desktop_only for denied clients,
   assert.equal(allowed.status, 200);
   assert.equal(allowed.json.readiness, "ready");
   assert.deepEqual(allowed.json.tasks.map((task) => task.text), [SECRET_TEXT]);
+  assert.deepEqual(allowed.json.aril, store.readBoard(REPOSITORY_ID).aril);
   // The mutation path is not a GET route: a POST to the board URL is still refused.
   const post = await send(port, { method: "POST", path: query, headers: { ...withToken, ...JSON_BODY }, body: "{}" });
   assert.equal(post.status, 405);
@@ -433,4 +434,46 @@ test("the paired-device route's mirrored list takes the group actions, refuses q
   assert.deepEqual(listed.filter((name) => !TASK_ACTIONS.includes(name)), []);
   // The paired device does not edit or delete features; every other fixed action is there.
   assert.deepEqual(TASK_ACTIONS.filter((name) => !listed.includes(name)), ["feature_update", "feature_delete"]);
+});
+
+test("Aril actions use the real store; paired writes are denied by default and gated settings remain desktop-only", async (context) => {
+  const store = await realStore(context);
+  const { port } = await startRoute(context, { taskStore: store });
+  const paired = { headers: { "x-pomegr-lan-gateway": "1" } };
+  const limits = { hours: 24, starts: 3, concurrent: 2, sendBacks: 1, allowancePercent: 75 };
+  const setSettings = (settings, extra = {}) => action("aril_settings_set", REPOSITORY_ID, { settings }, { port, ...extra });
+
+  const settings = await setSettings({ limits });
+  assert.equal(settings.status, 200);
+  assert.deepEqual(settings.json, { ok: true, settings: { ...store.readBoard(REPOSITORY_ID).aril.settings, limits } });
+  const added = await action("aril_memory_add", REPOSITORY_ID, { text: "Use pull requests" }, { port });
+  assert.equal(added.status, 200);
+  assert.deepEqual(added.json, { ok: true, entry: { id: 1, text: "Use pull requests", createdAt: added.json.entry.createdAt, updatedAt: added.json.entry.updatedAt } });
+  const entryId = added.json.entry.id;
+  const updated = await action("aril_memory_update", REPOSITORY_ID, { id: entryId, text: "Keep reviews focused" }, { port });
+  assert.deepEqual(updated.json, { ok: true, entry: { id: entryId, text: "Keep reviews focused", createdAt: added.json.entry.createdAt, updatedAt: updated.json.entry.updatedAt } });
+  assert.deepEqual((await action("aril_memory_remove", REPOSITORY_ID, { id: entryId }, { port })).json, { ok: true });
+
+  const pairedActions = [
+    ["aril_settings_set", { settings: { limits } }],
+    ["aril_memory_add", { text: "Use pull requests" }],
+    ["aril_memory_update", { id: 1, text: "Keep reviews focused" }],
+    ["aril_memory_remove", { id: 1 }],
+  ];
+  for (const [name, payload] of pairedActions) assert.equal((await action(name, REPOSITORY_ID, payload, { port, ...paired })).status, 403, name);
+  assert.deepEqual(store.readBoard(REPOSITORY_ID).aril.memory, []);
+
+  assert.deepEqual((await setSettings({ pairedDevices: true })).json.settings.pairedDevices, true);
+  const pairedSettings = await action("aril_settings_set", REPOSITORY_ID, { settings: { limits } }, { port, ...paired });
+  assert.equal(pairedSettings.status, 200);
+  const pairedAdded = await action("aril_memory_add", REPOSITORY_ID, { text: "Use pull requests" }, { port, ...paired });
+  assert.equal(pairedAdded.status, 200);
+  const pairedId = pairedAdded.json.entry.id;
+  assert.equal((await action("aril_memory_update", REPOSITORY_ID, { id: pairedId, text: "Keep reviews focused" }, { port, ...paired })).status, 200);
+  assert.deepEqual((await action("aril_memory_remove", REPOSITORY_ID, { id: pairedId }, { port, ...paired })).json, { ok: true });
+  for (const value of [true, false]) {
+    const response = await action("aril_settings_set", REPOSITORY_ID, { settings: { pairedDevices: value } }, { port, ...paired });
+    assertFixedError(response, 400, "invalid");
+  }
+  assert.equal(store.readBoard(REPOSITORY_ID).aril.settings.pairedDevices, true);
 });
