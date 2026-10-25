@@ -11,31 +11,41 @@ const unavailable = () => new Error("TERMINAL_UNAVAILABLE");
 
 function outputStream(onReturn) {
   const queue = [];
-  let bytes = 0;
+  let replayBytes = 0;
+  let liveBytes = 0;
   let waiter;
   let ended = false;
   return {
     readOnly: true,
     push(frame) {
       if (ended) return true;
-      // A 256 KiB replay plus up to 4096 retained parts fits before attach resolves.
       const size = Buffer.byteLength(frame.data || "") + 32;
-      if (bytes + size > 512 * 1024) return false;
+      const replay = frame.event === "output" && frame.replay === true;
+      if (replay ? replayBytes + size > 4 * 1024 * 1024 + 32 * 1024 : liveBytes + size > 512 * 1024) return false;
       if (waiter) { const resolve = waiter; waiter = null; resolve({ value: frame, done: false }); }
-      else { queue.push({ frame, size }); bytes += size; }
+      else {
+        queue.push({ frame, size, replay });
+        if (replay) replayBytes += size;
+        else liveBytes += size;
+      }
       return true;
     },
     end(reason) {
-      if (reason && !ended) { queue.length = 0; bytes = 0; this.push({ event: "detached", reason }); }
+      if (reason && !ended) { queue.length = 0; replayBytes = 0; liveBytes = 0; this.push({ event: "detached", reason }); }
       ended = true; waiter?.({ done: true }); waiter = null;
     },
     next() {
-      if (queue.length) { const item = queue.shift(); bytes -= item.size; return Promise.resolve({ value: item.frame, done: false }); }
+      if (queue.length) {
+        const item = queue.shift();
+        if (item.replay) replayBytes -= item.size;
+        else liveBytes -= item.size;
+        return Promise.resolve({ value: item.frame, done: false });
+      }
       if (ended) return Promise.resolve({ done: true });
       if (waiter) return Promise.reject(new Error("TERMINAL_INVALID"));
       return new Promise((resolve) => { waiter = resolve; });
     },
-    async return() { queue.length = 0; bytes = 0; this.end(); await onReturn(); return { done: true }; },
+    async return() { queue.length = 0; replayBytes = 0; liveBytes = 0; this.end(); await onReturn(); return { done: true }; },
     [Symbol.asyncIterator]() { return this; },
   };
 }

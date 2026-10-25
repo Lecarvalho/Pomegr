@@ -13,7 +13,6 @@ export const TERMINAL_HOST_FILES = Object.freeze([
   "desktop/terminal-host/main.mjs",
   "desktop/terminal-host/host.mjs",
   "desktop/terminal-host/protocol.mjs",
-  "desktop/terminal-host/scrollback.mjs",
 ]);
 export const TERMINAL_MODULE_FILES = Object.freeze([
   ...NODE_PTY_UNPACKED_FILES,
@@ -26,6 +25,12 @@ export const TERMINAL_MODULE_FILES = Object.freeze([
   ].map((file) => `node_modules/node-pty/lib/${file}.js`),
   "node_modules/node-addon-api/LICENSE.md",
   "node_modules/node-addon-api/package.json",
+  "node_modules/@xterm/addon-serialize/LICENSE",
+  "node_modules/@xterm/addon-serialize/lib/addon-serialize.js",
+  "node_modules/@xterm/addon-serialize/package.json",
+  "node_modules/@xterm/headless/LICENSE",
+  "node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+  "node_modules/@xterm/headless/package.json",
 ].sort());
 const runtimeFiles = ["LICENSE", "node.exe", ...TERMINAL_HOST_FILES, ...TERMINAL_MODULE_FILES].sort();
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -97,7 +102,11 @@ export async function stageTerminalModules(root, destination) {
   for (const file of TERMINAL_MODULE_FILES) {
     const target = path.join(destination, file);
     await mkdir(path.dirname(target), { recursive: true });
-    await cp(path.join(root, file), target);
+    // These npm subpackages omit LICENSE; use the xterm.js 6.0.0 monorepo license.
+    const source = file.endsWith("/LICENSE") && file.startsWith("node_modules/@xterm/")
+      ? path.join(root, "node_modules/@xterm/xterm/LICENSE")
+      : path.join(root, file);
+    await cp(source, target);
   }
 }
 

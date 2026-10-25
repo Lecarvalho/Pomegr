@@ -106,7 +106,7 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
         yellow: token("--command-amber"), blue: token("--command-blue"), magenta: token("--command-brand-text"), cyan: token("--command-blue"), white: token("--command-ink"),
         brightBlack: token("--command-muted"), brightRed: token("--command-error"), brightGreen: token("--command-green"), brightYellow: token("--command-amber"),
         brightBlue: token("--command-blue"), brightMagenta: token("--command-brand-text"), brightCyan: token("--command-blue"), brightWhite: token("--command-ink") });
-      const emulator = new Terminal({ allowProposedApi: false, disableStdin: true, cursorBlink: true, scrollback: 4000,
+      const emulator = new Terminal({ allowProposedApi: false, disableStdin: true, cursorBlink: true, scrollback: 5000,
         fontFamily, fontSize: parseFloat(style.fontSize), lineHeight: 1.4, theme: theme() });
       const fit = new FitAddon(); emulator.loadAddon(fit); emulator.open(node);
       focus.current = () => emulator.focus();
@@ -153,17 +153,19 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
         }
         if (chunk) append(chunk);
       });
-      let pendingOutput = 0;
+      let pendingReplayOutput = 0, pendingLiveOutput = 0;
       const unsubscribe = bridge.onTerminalOutput((event) => {
         if (event.attachId !== attachId || disposed || disconnected) return;
         if (event.event === "output" && typeof event.data === "string") {
           const size = new TextEncoder().encode(event.data).length;
-          if (pendingOutput + size > 256 * 1024) { disconnect(); return; }
-          pendingOutput += size;
           const replay = event.replay === true;
+          if (replay ? pendingReplayOutput + size > 4 * 1024 * 1024 : pendingLiveOutput + size > 256 * 1024) { disconnect(); return; }
+          if (replay) pendingReplayOutput += size;
+          else pendingLiveOutput += size;
           if (replay) replayWrites++;
           emulator.write(event.data, () => {
-            pendingOutput -= size;
+            if (replay) pendingReplayOutput -= size;
+            else pendingLiveOutput -= size;
             if (replay) { replayWrites--; ready(); }
           });
         }

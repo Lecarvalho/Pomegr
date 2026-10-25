@@ -9,9 +9,19 @@ import childProcess, { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { restrictDirectory, startTerminalHost } from '../desktop/terminal-host/host.mjs';
 import { VERSION, encodeFrame, decodeFrames } from '../desktop/terminal-host/protocol.mjs';
-import { Scrollback } from '../desktop/terminal-host/scrollback.mjs';
+import headless from '@xterm/headless';
+import serialize from '@xterm/addon-serialize';
+const { Terminal } = headless;
+const { SerializeAddon } = serialize;
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
+const write = (terminal, data) => new Promise((resolve) => terminal.write(data, resolve));
+async function replayScreen(t, client, cols = 80, rows = 24) {
+  const screen = new Terminal({ cols, rows, scrollback: 5000, allowProposedApi: true });
+  t.after(() => screen.dispose());
+  for (const frame of client.frames.filter((frame) => frame.replay)) await write(screen, frame.data);
+  return screen;
+}
 class FakePty extends EventEmitter {
   pid = 123;
   writes = [];
@@ -125,18 +135,7 @@ test('a temporarily occupied pipe is retried without replacing the incumbent tok
   assert.notEqual(await readFile(path.join(f.runtimeDirectory, 'host.token'), 'utf8'), f.token);
 });
 
-test('scrollback cap preserves Unicode and complete ANSI across chunks', () => {
-  const replay = new Scrollback(48);
-  replay.append('old'.repeat(40)); replay.append('\x1b[38;2;'); replay.append('1;2;3m'); replay.append('\u{1f600}'.repeat(12));
-  const text = replay.read().join('');
-  assert.ok(Buffer.byteLength(text) <= 48);
-  assert.equal(text.includes('\ufffd'), false);
-  assert.equal(text.startsWith('[38'), false);
-  assert.equal(text, '\u{1f600}'.repeat(12));
-  const split = new Scrollback(128); split.append('a\x1b]title');
-  assert.equal(split.read().join(''), 'a'); split.append('\x1b\\b\ud83d'); split.append('\ude00');
-  assert.equal(split.read().join(''), 'a\x1b]title\x1b\\b\u{1f600}');
-});
+
 
 test('auth gates all commands; token and state remain private and singleton bind preserves token', async (t) => {
   const f = await fixture(t);
@@ -230,12 +229,152 @@ test('replay is bounded and split into legal frames; exit discards replay', asyn
   f.ptys[0].output('\x1b[32m' + '\u{1f600}'.repeat(90000));
   assert.equal((await a.request('attach', { key: 'synthetic' })).ok, true);
   const replay = a.frames.filter((frame) => frame.replay);
-  assert.equal(Buffer.byteLength(replay.map((frame) => frame.data).join('')), 256 * 1024);
+  assert.ok(Buffer.byteLength(replay.map((frame) => frame.data).join('')) <= 4 * 1024 * 1024);
+  assert.ok(replay.length > 0);
   for (const frame of replay) assert.ok(encodeFrame(frame).length <= 65540);
   f.ptys[0].exit(); await a.request('detach', { key: 'synthetic' });
   a.frames.length = 0; await a.request('attach', { key: 'synthetic' });
   assert.equal(a.frames.some((frame) => frame.replay), false);
   assert.equal((await a.next((frame) => frame.event === 'exit')).exitCode, 0);
+});
+
+test('attach rebuilds 5000 numbered scrollback lines, inline screen and cursor after 10000 lines', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: { ...f.plan(), rows: 1 } });
+  const line = (i) => `LINE ${String(i).padStart(5, '0')} ${'x'.repeat(50)}`;
+  const child = spawn(process.execPath, [fileURLToPath(new URL('./fixtures/terminal-fake-cli.mjs', import.meta.url))], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  t.after(() => { if (child.exitCode === null) child.kill(); });
+  child.stdout.setEncoding('utf8');
+  let output = '';
+  child.stdout.on('data', (data) => { output += data; f.ptys[0].output(data); });
+  child.stdin.write('/screen\n');
+  const deadline = Date.now() + 10000;
+  while (!output.includes('ready') && Date.now() < deadline) await pause();
+  assert.ok(output.includes('ready'), 'fake CLI finished drawing and is idle');
+  assert.equal((await a.request('attach', { key: 'synthetic' })).ok, true);
+  const screen = await replayScreen(t, a, 80, 1);
+  const buffer = screen.buffer.active;
+  assert.equal(buffer.baseY, 5000);
+  for (let i = 0; i < 5000; i++) assert.equal(buffer.getLine(i).translateToString(true), line(i + 5001));
+  assert.equal(buffer.getLine(buffer.baseY).translateToString(true), 'status: ready');
+  assert.deepEqual([buffer.cursorX, buffer.cursorY], [13, 0]);
+  child.stdin.write('/exit\n');
+  assert.equal((await once(child, 'close'))[0], 0);
+});
+
+test('attach preserves normal and alternate screens and terminal input modes', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  f.ptys[0].output('normal buffer\r\n\x1b[?1049h\x1b[3;7Hfull screen\x1b[?1h\x1b[?2004h\x1b[?1003h');
+  await a.request('attach', { key: 'synthetic' });
+  const alternate = await replayScreen(t, a);
+  assert.equal(alternate.buffer.active.type, 'alternate');
+  assert.equal(alternate.buffer.active.getLine(2).translateToString(true), '      full screen');
+  assert.deepEqual([alternate.buffer.active.cursorX, alternate.buffer.active.cursorY], [17, 2]);
+  assert.equal(alternate.buffer.normal.getLine(0).translateToString(true), 'normal buffer');
+  assert.equal(alternate.modes.applicationCursorKeysMode, true);
+  assert.equal(alternate.modes.bracketedPasteMode, true);
+  assert.equal(alternate.modes.mouseTrackingMode, 'any');
+  await a.request('detach', { key: 'synthetic' }); a.frames.length = 0;
+  f.ptys[0].output('\x1b[?1049lnormal again');
+  await a.request('attach', { key: 'synthetic' });
+  const normal = await replayScreen(t, a);
+  assert.equal(normal.buffer.active.type, 'normal');
+  assert.equal(normal.buffer.normal.getLine(0).translateToString(true), 'normal buffer');
+  assert.equal(normal.buffer.normal.getLine(1).translateToString(true), 'normal again');
+});
+
+test('resize changes the retained screen before a fresh attach', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  await a.request('attach', { key: 'synthetic' });
+  await a.request('resize', { key: 'synthetic', cols: 120, rows: 40 });
+  f.ptys[0].output('\x1b[40;115Hedge');
+  await a.request('detach', { key: 'synthetic' }); a.frames.length = 0;
+  await a.request('attach', { key: 'synthetic' });
+  const screen = await replayScreen(t, a, 120, 40);
+  assert.equal(screen.buffer.active.getLine(39).translateToString(true), ' '.repeat(114) + 'edge');
+  assert.deepEqual([screen.buffer.active.cursorX, screen.buffer.active.cursorY], [118, 39]);
+});
+
+test('output queued during attach is delivered exactly once after replay', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  f.ptys[0].output('before');
+  const original = Terminal.prototype.write;
+  let injected = false;
+  t.mock.method(Terminal.prototype, 'write', function (data, callback) {
+    const result = original.call(this, data, callback);
+    if (data === '' && !injected) { injected = true; f.ptys[0].output('-during'); }
+    return result;
+  });
+  await a.request('attach', { key: 'synthetic' });
+  assert.equal(injected, true);
+  const live = await a.next((frame) => frame.event === 'output' && !frame.replay);
+  assert.equal(live.data, '-during');
+  assert.equal(a.frames.filter((frame) => frame.replay).map((frame) => frame.data).join(''), 'before');
+  await a.request('list');
+  assert.equal(a.frames.some((frame) => frame.event === 'output' && !frame.replay), false);
+});
+
+test('exit during attach follows replay and the final live chunk exactly once', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  f.ptys[0].output('before');
+  const original = Terminal.prototype.write;
+  let injected = false;
+  t.mock.method(Terminal.prototype, 'write', function (data, callback) {
+    const result = original.call(this, data, callback);
+    if (data === '' && !injected) { injected = true; f.ptys[0].output('-last'); f.ptys[0].exit(7); }
+    return result;
+  });
+  await a.request('attach', { key: 'synthetic' });
+  await pause();
+  assert.deepEqual(a.frames.map(({ event, data, replay, exitCode }) => ({ event, data, replay, exitCode })), [
+    { event: 'output', data: 'before', replay: true, exitCode: undefined },
+    { event: 'output', data: '-last', replay: undefined, exitCode: undefined },
+    { event: 'exit', data: undefined, replay: undefined, exitCode: 7 },
+  ]);
+});
+
+test('snapshot cap trims oldest lines without splitting Unicode or losing the screen', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: { ...f.plan(), cols: 1000, rows: 1 } });
+  f.ptys[0].output(('界'.repeat(500) + '\r\n').repeat(5000) + 'latest');
+  assert.equal((await a.request('attach', { key: 'synthetic' })).ok, true);
+  const frames = a.frames.filter((frame) => frame.replay);
+  const replay = frames.map((frame) => frame.data).join('');
+  assert.ok(Buffer.byteLength(replay) <= 4 * 1024 * 1024);
+  assert.ok(Buffer.byteLength(replay) > 3 * 1024 * 1024);
+  assert.ok(frames.every((frame) => frame.data.length <= 4096 && !frame.data.includes('\ufffd')));
+  assert.equal(a.frames.some((frame) => frame.event === 'detached'), false);
+  const screen = await replayScreen(t, a, 1000, 1);
+  assert.ok(screen.buffer.active.baseY < 5000);
+  assert.equal(screen.buffer.active.getLine(0).translateToString(true), '界'.repeat(500));
+  assert.equal(screen.buffer.active.getLine(screen.buffer.active.baseY).translateToString(true), 'latest');
+  assert.equal(screen.buffer.active.cursorX, 6);
+});
+
+test('exit releases the screen and acknowledgement removes the exited record', async (t) => {
+  const dispose = t.mock.method(Terminal.prototype, 'dispose');
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  f.ptys[0].output('private output'); f.ptys[0].exit(3);
+  await a.request('attach', { key: 'synthetic' });
+  assert.equal((await a.next((frame) => frame.event === 'exit')).exitCode, 3);
+  await a.request('detach', { key: 'synthetic', acknowledge: true });
+  assert.equal(dispose.mock.callCount(), 1);
+  assert.deepEqual((await a.request('list')).sessions, []);
+});
+
+test('a screen exceeding the cap without scrollback refuses attach without a partial replay', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  const serializer = t.mock.method(SerializeAddon.prototype, 'serialize', () => 'x'.repeat(4 * 1024 * 1024 + 1));
+  assert.equal((await a.request('attach', { key: 'synthetic' })).error, 'TERMINAL_CAPACITY');
+  assert.equal(serializer.mock.calls.at(-1).arguments[0].scrollback, 0);
+  assert.equal(a.frames.some((frame) => frame.replay), false);
+  assert.equal((await a.request('input', { key: 'synthetic', data: 'no' })).error, 'TERMINAL_READ_ONLY');
 });
 
 test('idle waits for both live PTYs and authenticated clients and authentication has a deadline', async (t) => {
@@ -285,37 +424,11 @@ test('a slow socket detaches without blocking PTY writes or another attachment',
   await b.request('input', { key: 'synthetic', data: '/exit\r' }); assert.deepEqual(f.ptys[0].writes, ['/exit\r']);
 });
 
-test('worst-case JSON escaping still delivers bounded replay and attach response', async (t) => {
-  const f = await fixture(t); const a = await f.connect();
-  await a.request('create', { plan: f.plan() }); f.ptys[0].output('\x01'.repeat(256 * 1024));
-  assert.equal((await a.request('attach', { key: 'synthetic' })).ok, true);
-  assert.equal(a.frames.filter((frame) => frame.replay).reduce((size, frame) => size + Buffer.byteLength(frame.data), 0), 256 * 1024);
-});
 
-test('attach coalesces retained ANSI replay into bounded output frames', async (t) => {
-  const f = await fixture(t); const a = await f.connect();
-  await a.request('create', { plan: f.plan() });
-  const data = '\x1b[0m+x'.repeat(20000) + 'a'.repeat(4095) + '\u{1f600}z';
-  f.ptys[0].output(data);
-  const attached = await a.request('attach', { key: 'synthetic' });
-  assert.equal(attached.readOnly, false);
-  const replay = a.frames.filter((frame) => frame.event === 'output' && frame.replay);
-  const retained = new Scrollback(); retained.append(data);
-  const text = replay.map((frame) => frame.data).join('');
-  assert.equal(text, retained.read().join(''));
-  assert.ok(replay.length <= Math.ceil(text.length / 4096));
-  assert.equal(a.frames.some((frame) => frame.event === 'detached'), false);
-  assert.ok(replay.every((frame) => frame.data.length <= 4096 && !frame.data.includes('\ufffd')
-    && !/[\ud800-\udbff]$/u.test(frame.data) && !/^[\udc00-\udfff]/u.test(frame.data)));
-});
 
-test('scrollback prefers complete lines and drops oversized unfinished ANSI sequences', () => {
-  const lines = new Scrollback(12); lines.append('old\npartial\nlast\n'); assert.equal(lines.read().join(''), 'last\n');
-  const escaped = new Scrollback(32); escaped.append('\x1b]' + 'x'.repeat(10000)); escaped.append('\x07safe');
-  assert.equal(escaped.read().join(''), 'safe');
-  const controls = new Scrollback(32); controls.append('\x9b31'); assert.deepEqual(controls.read(), []);
-  controls.append('mred'); assert.equal(controls.read().join(''), '\x9b31mred');
-});
+
+
+
 
 test('real ConPTY fake CLI supports Unicode, resize, paste, interrupt and natural idle exit', { skip: process.platform !== 'win32', timeout: 60000 }, async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'pomegr-native-terminal-'));
@@ -329,13 +442,14 @@ test('real ConPTY fake CLI supports Unicode, resize, paste, interrupt and natura
     import { createHash } from 'node:crypto';
     const { startTerminalHost } = await import(process.argv[2] + 'desktop/terminal-host/host.mjs');
     const { encodeFrame, decodeFrames } = await import(process.argv[2] + 'desktop/terminal-host/protocol.mjs');
-    const { Scrollback } = await import(process.argv[2] + 'desktop/terminal-host/scrollback.mjs');
+    const { default: headless } = await import('@xterm/headless');
+    const { default: serialize } = await import('@xterm/addon-serialize');
     const host = await startTerminalHost({ runtimeDirectory: process.argv[1], spawnPty: pty.spawn, idleMilliseconds: 1500, onIdle: () => process.exit(0) });
     const socket = net.connect(host.pipe); await once(socket, 'connect');
     const responses = new Map(); let output = ''; let replayOutput = ''; let replayFrames = 0; let exited = false; let id = 0;
     decodeFrames(socket, (frame) => { if (frame.id) { responses.get(frame.id)?.(frame); responses.delete(frame.id); } else if (frame.event === 'output') { output += frame.data; if (frame.replay) { replayOutput += frame.data; replayFrames++; } } else if (frame.event === 'exit') exited = true; });
     function request(command, fields = {}) { return new Promise((resolve) => { const current = ++id; responses.set(current, resolve); socket.write(encodeFrame({ id: current, command, ...fields })); }); }
-    async function until(predicate) { const deadline = Date.now() + 20000; while (Date.now() < deadline) { if (predicate()) return; await new Promise((r) => setTimeout(r, 10)); } throw new Error('synthetic timeout: ' + output); }
+    async function until(predicate) { const deadline = Date.now() + 20000; while (Date.now() < deadline) { if (predicate()) return; await new Promise((r) => setTimeout(r, 10)); } throw new Error('synthetic timeout: ' + output.slice(-1024)); }
     const auth = await request('hello', { token: await readFile(process.argv[1] + '/host.token', 'utf8'), protocol: 1 });
     if (!auth.ok) throw new Error('auth');
     const started = await request('create', { plan: { key: 'native', executable: process.execPath, args: [process.argv[3]], cwd: process.argv[1], env: { PATH: process.env.PATH || '', SystemRoot: process.env.SystemRoot || '' }, cols: 80, rows: 24 } });
@@ -347,11 +461,14 @@ test('real ConPTY fake CLI supports Unicode, resize, paste, interrupt and natura
     await request('input', { key: 'native', data: pasted + '\r' }); await until(() => output.includes('ECHO 10240 ' + digest));
     await request('input', { key: 'native', data: '\x03' }); await until(() => output.includes('INTERRUPT'));
     await request('input', { key: 'native', data: '/burst\r' }); await until(() => output.includes('BURST_DONE'));
-    const expected = new Scrollback(); expected.append(output); replayOutput = ''; replayFrames = 0;
+    const expected = new headless.Terminal({ cols: 120, rows: 40, scrollback: 5000, allowProposedApi: true });
+    const addon = new serialize.SerializeAddon(); expected.loadAddon(addon);
+    await new Promise((resolve) => expected.write(output, resolve));
+    const expectedReplay = addon.serialize(); expected.dispose(); replayOutput = ''; replayFrames = 0;
     const replayAttach = await request('attach', { key: 'native' });
     if (replayAttach.readOnly) throw new Error('replay became read-only');
-    await until(() => replayOutput.length >= expected.read().join('').length);
-    if (replayOutput !== expected.read().join('') || replayFrames > Math.ceil(replayOutput.length / 4096)) throw new Error('replay mismatch');
+    await until(() => replayOutput.length >= expectedReplay.length);
+    if (replayOutput !== expectedReplay || replayFrames > Math.ceil(replayOutput.length / 4096)) throw new Error('replay mismatch');
     await request('input', { key: 'native', data: '/exit\r' }); await until(() => exited);
     socket.destroy(); console.log('SYNTHETIC_NATIVE_PASS');
   `;

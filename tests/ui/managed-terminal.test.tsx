@@ -166,6 +166,18 @@ describe("managed terminal", () => {
     expect(fake.terminal.mock.calls.some(([op]) => ["stop", "kill", "create"].includes(op))).toBe(false);
     expect(fake.dispose).toHaveBeenCalledTimes(1);
   });
+  it("accepts a 4 MiB serialized replay and configures 5000 lines of scrollback", async () => {
+    fake.write.mockImplementation(() => {});
+    render(<ManagedTerminalPanel terminal={entry} />);
+    await waitFor(() => expect(fake.write).toHaveBeenCalledWith("replay", expect.any(Function)));
+    expect(fake.construct).toHaveBeenCalledWith(expect.objectContaining({ scrollback: 5000 }));
+    emit("output", { data: "x".repeat(4 * 1024 * 1024), replay: true });
+    expect(fake.write.mock.calls.at(-1)?.[0]).toHaveLength(4 * 1024 * 1024);
+    const remainingLiveBudget = 256 * 1024 - "replay".length;
+    emit("output", { data: "y".repeat(remainingLiveBudget) });
+    expect(fake.write.mock.calls.at(-1)?.[0]).toHaveLength(remainingLiveBudget);
+    expect(screen.queryByText("Reconnection unavailable. The session may still be running.")).not.toBeInTheDocument();
+  });
   it.each(["\x1b[6n", "\x1b[c"])("drops replay query %j replies until parsing finishes and answers live queries", async (query) => {
     let finish!: (value: unknown) => void;
     const writes: { value: string; done: () => void }[] = [];

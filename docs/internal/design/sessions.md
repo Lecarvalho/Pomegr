@@ -164,6 +164,8 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - The Terminal tab sends input, paste, resize, and detach only through fixed trusted desktop IPC.
 - A task's Terminal start view says **Waiting for the session to report** before binding. Binding opens the session's Terminal tab.
 - A host reconnection keeps input disabled until the terminal attaches and received replay finishes parsing.
+- Reopening Terminal restores the full screen, cursor, active buffer, and modes, with up to 5000 lines of scrollback.
+- Replay is capped at 4 MiB by omitting the oldest scrollback lines when needed.
 - Replayed terminal queries send no input back to the session; live queries keep their normal replies.
 - A detached view stays unavailable even when its attach answer arrives later.
 - An unavailable host shows **Reconnection unavailable. The session may still be running.** and disables input.
