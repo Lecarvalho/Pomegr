@@ -10,6 +10,7 @@ const TASK_ACTIONS = new Set([
   "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings",
   "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set",
+  "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
 const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);

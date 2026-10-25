@@ -16,14 +16,15 @@ export const TASK_ACTION_NAMES = Object.freeze([
   "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings",
   "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set",
+  "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
 ]);
 export const TASK_ACTION_ERRORS = Object.freeze([
-  "invalid", "not_found", "limit", "conflict", "unsupported", "unavailable",
+  "invalid", "not_found", "limit", "conflict", "unsupported", "not_ready", "unavailable",
 ]);
 export const TASK_ACTION_PAYLOAD_MAX_BYTES = 16 * 1024;
 
 const ACTION_SET = new Set(TASK_ACTION_NAMES);
-const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
+const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported", "not_ready"]);
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const INVALID = Object.freeze({ ok: false, error: "invalid" });
