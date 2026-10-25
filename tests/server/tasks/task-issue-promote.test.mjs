@@ -177,7 +177,7 @@ test("the store schema version is unchanged and promote_issue is not a routable 
   const database = new DatabaseSync(path.join(env.directory, "tasks.sqlite"), { readOnly: true });
   try {
     assert.equal(database.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, "1");
-    assert.deepEqual(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((row) => row.name), ["columns", "features", "meta", "repositories", "task_events", "task_outcomes", "tasks"]);
+    assert.deepEqual(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((row) => row.name), ["columns", "features", "meta", "repositories", "task_events", "task_outcomes", "task_scorecard_snapshots", "tasks"]);
   } finally { database.close(); }
 });
 

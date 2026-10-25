@@ -87,6 +87,15 @@ export function setTaskAfter({ database, repositoryId, now }, payload) {
   return { ok: true };
 }
 
+// What an agent's `add_task` or `update_task` sets the task to run after, through the board's `after_set` and in the
+// same transaction, so a refused list writes nothing of the call. A task that is not on the board answers
+// `after_not_found`, and a list that would make tasks wait for each other answers `after_loop`.
+export function agentSetAfter(context, id, after) {
+  const result = setTaskAfter(context, { id, after });
+  if (result.ok || result.error === "invalid") return result;
+  return { ok: false, error: result.error === "not_found" ? "after_not_found" : "after_loop" };
+}
+
 // The tasks a task still waits for: those it runs after that are on the board and not Done. `states` maps each task
 // number of the board to its state.
 export function unfinishedAfter(numbers, states) {
