@@ -5,7 +5,7 @@ import { subscribeLiveEvents } from "../../../live-events";
 import { encodeSessionRoute } from "../../../../shared/session-route.mjs";
 import "@xterm/xterm/css/xterm.css";
 
-export type ManagedTerminal = { key: string; repositoryId: string | null; taskId: string | null; sessionId: string | null; continuedFrom?: string; state: "starting" | "live" | "exited" | "host_unavailable"; exitCode?: number };
+export type ManagedTerminal = { key: string; repositoryId: string | null; taskId: string | null; role?: "build" | "review"; sessionId: string | null; continuedFrom?: string; state: "starting" | "live" | "exited" | "host_unavailable"; exitCode?: number };
 type TerminalEvent = { attachId: string; event: "output" | "exit" | "detached"; data?: string; replay?: boolean; exitCode?: number; reason?: string };
 type Answer = { ok: boolean; status: string; readOnly?: boolean; sessions?: ManagedTerminal[]; hosts?: { state: string }[] };
 type TerminalBridge = { terminal(operation: string, payload?: Record<string, unknown>): Promise<Answer>; onTerminalOutput(callback: (event: TerminalEvent) => void): () => void };

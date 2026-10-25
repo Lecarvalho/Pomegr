@@ -166,6 +166,7 @@ export function SessionTerminalPanel(props: { sessionId: string; live: boolean }
 
 function ManagedSessionPanel({ sessionId, live }: { sessionId: string; live: boolean }) {
   const { listing, refresh } = useManagedTerminals();
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [exited, setExited] = useState<{ key: string; code: number } | null>(null);
   const [continuing, setContinuing] = useState(false);
   const onContinued = async () => { setExited(null); setContinuing(true); try { await refresh(); } finally { setContinuing(false); } };
@@ -184,12 +185,20 @@ function ManagedSessionPanel({ sessionId, live }: { sessionId: string; live: boo
     return <ManagedTerminalPanel terminal={continued} onExit={(code) => setExited({ key: continued.key, code })} />;
   }
   if (continuing) return <ManagedTerminalSurface state="starting" />;
-  const terminal = listing?.sessions?.find((item) => item.sessionId === sessionId);
+  const current = listing?.sessions?.find((item) => item.sessionId === sessionId);
+  const siblings = current?.taskId ? listing?.sessions?.filter((item) => item.repositoryId === current.repositoryId && item.taskId === current.taskId) ?? [] : [];
+  const terminal = siblings.find((item) => item.key === selectedKey) ?? current;
+  const selector = siblings.length > 0 && <div className="sessionTerminalBar" role="group" aria-label="Task terminals">
+    {siblings.map((item) => <button key={item.key} type="button" className="commandQuietAction" aria-pressed={item.key === terminal?.key} onClick={() => setSelectedKey(item.key)}>
+      {item.taskId} <span className="commandChip">{item.role === "review" ? "Review" : "Build"}</span>
+    </button>)}
+  </div>;
   if (terminal && (exited?.key === terminal.key || terminal.state === "exited")) return <>
+    {selector}
     <p className="sessionTerminalMuted">Process exited with code {(exited?.key === terminal.key ? exited.code : terminal.exitCode) ?? 0}.</p>
-    <HistoryPanel sessionId={sessionId} live={false} onContinued={onContinued} allowContinue={!live} />
+    {terminal.sessionId && <HistoryPanel key={terminal.key} sessionId={terminal.sessionId} live={false} onContinued={onContinued} allowContinue={!live && terminal === current} />}
   </>;
-  if (terminal) return <ManagedTerminalPanel terminal={terminal} onExit={(code) => setExited({ key: terminal.key, code })} />;
+  if (terminal) return <>{selector}<ManagedTerminalPanel key={terminal.key} terminal={terminal} onExit={(code) => setExited({ key: terminal.key, code })} /></>;
   if (!listing) return <ManagedTerminalSurface state="reconnecting" />;
   if (!listing.ok) return <ManagedTerminalSurface state="host_unavailable" />;
   return <>

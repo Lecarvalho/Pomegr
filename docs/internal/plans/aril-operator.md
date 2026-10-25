@@ -161,7 +161,7 @@ Each phase ships on its own and is useful without the next.
   - [ ] 9b. Merge settings: merge or auto-merge, and branch deletion, each settled or the repository's own; Aril sees the repository's GitHub merge settings.
   - [ ] 9c. Worktree cleanup: Aril sees the task worktrees that remain and proposes removing them; the owner applies each removal.
   - [ ] 9d. Settled rules: Aril does not ask again what memory or settings settled, and sees when the repository's workflow sources changed since a rule was settled.
-  - [ ] 9e. Review terminals: the terminal view lists a review session, so the owner can watch it.
+  - [x] 9e. Review terminals: the terminal view lists a review session, so the owner can watch it.
   - [ ] 9f. Docs and pages: the Home dashboard, the landing page, and the public guides describe what Aril does under a grant.
 - Later: a machine-usage metric that a tasks-at-a-time limit can weigh.
 
@@ -180,7 +180,7 @@ Phases 1 to 3 add no authority.
 2026-10-25: the owner answered the five open decisions (recorded under Owner decisions). Added Aril settings, the repository memory, and phase 3; removed fixed default limits and the squash default. Next action: the owner reviews the revised plan.
 2026-10-25: the owner decided that Aril proposes every settings change for the owner to accept, except the paired-device setting, which only the owner sets, in the desktop app.
 2026-10-25: phase 1 shipped in #313 (task log and cursor), #315 (pull-request events), #316 (Aril reads the log since its last answer), #317 (desktop Log panel), and #318 (Log on a paired device). Phase 2 started: the reviewer session's monitor side (plan, bind, verdict, outcome fields). Next action: the desktop review start, the report_review MCP tool, and the verdict on the board.
-2026-10-25: phase 2 shipped in #319 (monitor side: plan, bind, verdict, outcome fields), #320 (report_review tool, plugins 0.9.15), #321 (desktop Start review), and the verdict on the task and in Aril's snapshot. Known follow-up: review terminals are not listed in the terminal view. Next action: phase 3, Aril settings and the repository memory.
+2026-10-25: phase 2 shipped in #319 (monitor side: plan, bind, verdict, outcome fields), #320 (report_review tool, plugins 0.9.15), #321 (desktop Start review), and the verdict on the task and in Aril's snapshot. Next action: phase 3, Aril settings and the repository memory.
 2026-10-25: phase 3 shipped in #323 (settings and memory store), #324 (Aril settings panel), and #325 (Aril reads and proposes settings and memory). Phase 4 started: the grant record and the monitor's grant read. Next action: the desktop grant runner with the boundary change, then the grant controls.
 2026-10-25: phase 4 shipped in #326 (grant record and grant read), #327 (desktop grant runner and the AGENTS.md boundary change), #328 (grant reviews follow the reviewer rule), and #329 (grant controls). Phase 5 (send-back) ships with this checkpoint. Next action: phase 6, merge on green.
 2026-10-25: phase 6 shipped in #331 (merge on green) and #332 (a passing review meets an order dependency under a grant); phase 7 in #333 (plan rules and grant-written tasks) and this change (the grant run that writes tasks). Next action: phase 8, the acceptance run of experiment 2 under a grant, which needs the owner; and the owner's wording for the Home and landing claims that Aril never acts.

@@ -2275,6 +2275,7 @@ Aril's provider run gains no authority and never starts a review; an active gran
 - Desktop main uses the task's worktree when Git lists it on `tasks/T-n`, looking under `.pomegr/worktrees` and the legacy task-worktree directory; otherwise it uses the repository root, and never creates a worktree.
 - Review starts share the busy slot with builder starts and return only the same fixed start statuses; a failure after planning aborts the matching review dispatch.
 - Review terminal keys end in `review-` plus 16 random bytes in hex and never participate in the task's builder terminal binding.
+- The owner can watch a reviewer beside its task's builder sessions in the desktop Terminal tab, labeled **Review**, with the same attach and owner-only input rules; nothing ends the session.
 - Review starts are Windows-only and have no paired-device, Aril-run, or queue start path; the desktop grant runner is the only additional start path.
 - `review-abort` clears only the dispatch whose token matches.
 - Binding compares every review candidate after no builder dispatch matches; it refuses any builder session or another task's reviewer.
@@ -2419,9 +2420,8 @@ terminal text as session state.
 - Desktop main keeps the in-memory binding key `(repositoryId, taskId, nonce)` for each
   terminal it creates. It binds the key only after session binding links that session to
   the task.
-- After a desktop app restart, desktop main rebuilds bindings from a compatible host's
-  session list and the task store's confirmed links (`task.session.id`). It persists no terminal binding.
-- Desktop main binds a task link only when exactly one candidate key matches that task.
+- After a desktop app restart, desktop main rebuilds build bindings from a compatible host's session list and `task.session.id`, and review bindings from `review-session`'s separately stored reviewer ID; it persists no terminal binding.
+- Desktop main binds a task link only when exactly one candidate key matches that task and role.
   If multiple live keys match, it refuses to bind any of them because the task store
   keeps only one current session link.
 - A host with an incompatible protocol cannot provide its session list. After a cold
@@ -2761,6 +2761,7 @@ serves no other client.
 | `POST /internal/tasks/review-plan` | Desktop main, desktop token; no browser or paired route | Existing `{ repositoryId, payload }` envelope; payload `{ id }` or `{ id, provider, model, effort }`; answers the private review plan |
 | `pomegr:task-review-start` IPC | Trusted desktop main frame only, behind native confirmation | Repository ID and task ID only; answers one fixed start status, never the private review plan |
 | `POST /internal/tasks/review-abort` | Desktop main, desktop token | Existing repository envelope with `{ id, token }`; clears only the matching review dispatch |
+| `POST /internal/tasks/review-session` | Desktop token, loopback Host, no Origin; no browser or paired route (the LAN gateway forwards no internal task path) | `{ repositoryId, payload: { id } }`; read-only `{ ok: true, sessionId }` from `task_reviewer`, qualified ID or null; fixed `invalid`, `not_found`, or `unavailable` refusal; `no-store` |
 | `POST /api/agent/v1/tasks/review` | Local agent-query capability, same gate as complete/block | `{ sessionRef, verdict, taskId?, reasons? }`; existing `schemaVersion: 1` envelope with `ok`, or fixed `reason`: `invalid`, `not_found`, `not_reviewable`, `unavailable`; no reasons or identity returned |
 | `POST /internal/tasks/scorecard-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { appVersion } }`; upserts the version's snapshot and answers `{ ok: true, scorecard }` with formula, current snapshot, and nullable baseline; counts, shares, medians, snapshot times, and app versions only |
 | `POST /internal/tasks/log-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { limit, after? } }`; answers `{ ok: true, log }` with entries carrying nullable `pullRequest`, pagination, cursors, and latest ID |

@@ -14,7 +14,7 @@ const taskHref = (repositoryId: string, taskId: string) => `/tasks?repository=${
 
 export function TaskTerminalHint({ taskId }: { taskId: string }) {
   const context = useContext(Terminals);
-  const terminal = context?.sessions.find((item) => item.taskId === taskId && item.repositoryId === context.repositoryId && item.state === "starting" && !item.sessionId);
+  const terminal = context?.sessions.find((item) => item.taskId === taskId && item.role !== "review" && item.repositoryId === context.repositoryId && item.state === "starting" && !item.sessionId);
   return terminal && context ? <p className="taskCardDetail"><Link className="commandTextLink" href={taskHref(context.repositoryId, taskId)}>Waiting in terminal</Link></p> : null;
 }
 
@@ -65,7 +65,7 @@ function DesktopTaskTerminal({ repositoryId, revision, children }: { repositoryI
     });
     return () => { disposed = true; };
   }, [address, repositoryId]);
-  const candidates = selected ? listing?.sessions?.filter((item) => item.repositoryId === repositoryId && item.taskId === selected.taskId && (item.state !== "exited" || !item.sessionId)) ?? [] : [];
+  const candidates = selected ? listing?.sessions?.filter((item) => item.repositoryId === repositoryId && item.taskId === selected.taskId && item.role !== "review" && (item.state !== "exited" || !item.sessionId)) ?? [] : [];
   const terminal = candidates.findLast((item) => item.state !== "exited") ?? candidates.at(-1);
   useEffect(() => {
     const href = terminal?.sessionId && taskSessionHref(terminal.sessionId);

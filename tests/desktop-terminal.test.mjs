@@ -10,6 +10,8 @@ import Module from "node:module";
 const repositoryId = "repo-0123456789abcdef01234567";
 const key = `${repositoryId}/T-3/${"a".repeat(32)}`;
 const sessionId = "claude:synthetic";
+const reviewKey = `${repositoryId}/T-3/review-${"b".repeat(32)}`;
+const reviewerId = "codex:reviewer";
 const json = (value) => new Response(JSON.stringify(value));
 
 test("dispatch creates exactly one host PTY with validated arguments and the owner's session environment", async () => {
@@ -34,7 +36,7 @@ test("dispatch creates exactly one host PTY with validated arguments and the own
   assert.equal(calls.length, 1);
 });
 
-function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, taskSession = sessionId, sessionForProcess } = {}) {
+function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, taskSession = sessionId, reviewSession = reviewerId, sessionForProcess } = {}) {
   const calls = [];
   const client = {
     listHosts: async () => [], ensureHost: async () => {}, list: async () => sessions,
@@ -43,7 +45,15 @@ function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, ta
   };
   const controller = createTerminalController({ client, sessionForProcess, isTrustedEvent: (e) => e.trusted,
     monitorOrigin: "http://127.0.0.1:4317", authorizationToken: "secret",
-    fetch: async (_url, options) => { assert.equal(options.headers["x-pomegr-desktop-authorization"], "secret"); return json({ readiness: "ready", repositoryId, tasks: [{ id: "T-3", session: taskSession ? { id: taskSession } : null, text: "private" }] }); },
+    fetch: async (url, options) => {
+      assert.equal(options.headers["x-pomegr-desktop-authorization"], "secret");
+      if (url.endsWith("/internal/tasks/review-session")) {
+        assert.equal(options.method, "POST");
+        assert.deepEqual(JSON.parse(options.body), { repositoryId, payload: { id: "T-3" } });
+        return json({ ok: true, sessionId: reviewSession });
+      }
+      return json({ readiness: "ready", repositoryId, tasks: [{ id: "T-3", session: taskSession ? { id: taskSession } : null, text: "private" }] });
+    },
   });
   const sender = new EventEmitter(); sender.isDestroyed = () => false;
   const output = []; const frame = { send: (...args) => output.push(args) }; sender.mainFrame = frame;
@@ -55,18 +65,59 @@ test("restart binding uses the authenticated task board, and never returns task 
   const f = fixture();
   const answer = await f.controller.run(f.event, "list");
   assert.equal(answer.ok, true);
-  assert.deepEqual(answer.sessions, [{ key, repositoryId, taskId: "T-3", sessionId, state: "live" }]);
+  assert.deepEqual(answer.sessions, [{ key, repositoryId, taskId: "T-3", role: "build", sessionId, state: "live" }]);
   assert.equal(JSON.stringify(answer).includes("private"), false);
 });
 
-test("review keys never take or confuse the builder terminal binding", async () => {
-  const reviewKey = `${repositoryId}/T-3/review-${"b".repeat(32)}`;
+test("review keys list their own identity without taking or confusing the builder binding", async () => {
   for (const builder of [[], [{ key, exited: false }], [{ key, exited: true }]]) {
     const f = fixture({ sessions: [...builder, { key: reviewKey, exited: false }] });
     const rows = (await f.controller.run(f.event, "list")).sessions;
-    assert.equal(rows.length, builder.length);
+    assert.equal(rows.length, builder.length + 1);
+    assert.deepEqual(rows.at(-1), { key: reviewKey, repositoryId, taskId: "T-3", role: "review", sessionId: reviewerId, state: "live" });
     if (builder.length) { assert.equal(rows[0].key, key); assert.equal(rows[0].sessionId, sessionId); }
     f.controller.dispose();
+  }
+});
+
+test("unbound roles never borrow the other role's identity and ambiguous reviews stay unbound", async () => {
+  for (const [taskSession, reviewSession] of [[null, reviewerId], [sessionId, null], [sessionId, "invalid"]]) {
+    const f = fixture({ sessions: [{ key }, { key: reviewKey }], taskSession, reviewSession });
+    const rows = (await f.controller.run(f.event, "list")).sessions;
+    assert.equal(rows[0].sessionId, taskSession);
+    assert.equal(rows[1].sessionId, reviewSession === reviewerId ? reviewerId : null);
+    f.controller.dispose();
+  }
+  const f = fixture({ sessions: [{ key: reviewKey }, { key: reviewKey.replace(/b{32}$/, "c".repeat(32)) }] });
+  assert.ok((await f.controller.run(f.event, "list")).sessions.every((row) => row.sessionId === null));
+  f.controller.dispose();
+});
+
+test("review key validation rejects malformed task identities and nonces for listing and attach", async () => {
+  const invalid = [reviewKey.slice(0, -1), `${reviewKey}a`, reviewKey.replace("review-", "review/"),
+    reviewKey.replace("T-3", "T-0"), reviewKey.replace("review-", "Review-"), reviewKey.replace(/b{32}$/, "g".repeat(32))];
+  const f = fixture({ sessions: [{ key: reviewKey }, ...invalid.map((key) => ({ key }))] });
+  assert.deepEqual((await f.controller.run(f.event, "list")).sessions.map((row) => row.key), [reviewKey]);
+  for (const key of invalid) assert.equal((await f.controller.run(f.event, "attach", { key, attachId: "bad" })).status, "invalid");
+  f.controller.dispose();
+});
+
+test("reviews attach with replay and preserve the trusted owner's input and read-only rules", async () => {
+  for (const readOnly of [false, true]) {
+    let finish;
+    const tail = new Promise((resolve) => { finish = resolve; });
+    const f = fixture({ sessions: [{ key: reviewKey }], clientOverrides: {
+      attach: async () => ({ readOnly, async *[Symbol.asyncIterator]() { yield { event: "output", data: "review output" }; await tail; }, return: async () => finish() }),
+    } });
+    assert.deepEqual(await f.controller.run(f.event, "attach", { key: reviewKey, attachId: "owner" }), { ok: true, status: "attached", readOnly });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(f.output[0][1].data, "review output");
+    assert.equal((await f.controller.run(f.event, "attach", { key: reviewKey, attachId: "second" })).status, "read_only");
+    assert.equal((await f.controller.run({ ...f.event, trusted: false }, "input", { attachId: "owner", data: "x" })).status, "invalid");
+    assert.equal((await f.controller.run(f.event, "input", { attachId: "owner", data: "x" })).status, readOnly ? "read_only" : "ready");
+    assert.deepEqual(f.calls, readOnly ? [] : [["input", reviewKey, "x"]]);
+    assert.equal((await f.controller.run(f.event, "detach", { attachId: "owner" })).ok, true);
+    f.controller.dispose(); finish();
   }
 });
 

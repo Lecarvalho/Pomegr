@@ -108,6 +108,7 @@ Windows.
 - Main sends a live host PID through private worker messages to resolve its unique committed session identity.
 - The monitor returns only that qualified session ID or null; the PID never reaches the renderer or HTTP.
 - Terminal listings may include `continuedFrom`, the qualified original session ID, beside the currently observed `sessionId` to identify a provider replacement.
+- Task terminal listings carry `role: "build" | "review"`, the repository and task IDs, and the corresponding bound session ID; review identity comes only from the desktop-token [review-session read](../tasks.md#boundaries), never the builder link.
 - Continue mappings stay in memory and rebuild from host keys; no mapping or plan is persisted.
 
 - Terminal output flows only from the desktop-owned terminal host, through desktop main,

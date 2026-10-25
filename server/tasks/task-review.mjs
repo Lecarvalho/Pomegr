@@ -36,6 +36,14 @@ const shaped = (payload, keys) => payload !== null && typeof payload === "object
 const startable = (database, row, at) => row?.state === "needs_review" && row.session_id !== null
   && !isLive(parseStoredDispatch(valueOf(database, dispatchKey(row.repository_id, row.number))), at);
 
+function reviewSession({ database, repositoryId, payload }) {
+  if (!shaped(payload, ["id"]) || !isRepositoryId(repositoryId) || !isTaskId(payload.id)) return { ok: false, error: "invalid" };
+  const number = Number(payload.id.slice(2));
+  if (!rowOf(database, repositoryId, number)) return { ok: false, error: "not_found" };
+  const sessionId = valueOf(database, reviewerKey(repositoryId, number));
+  return { ok: true, sessionId: isTaskSessionId(sessionId) ? sessionId : null };
+}
+
 function planReview({ database, transaction, repositoryId, payload, resolveFacts, now }) {
   const override = shaped(payload, ["id", "provider", "model", "effort"]);
   if ((!override && !shaped(payload, ["id"])) || !isRepositoryId(repositoryId) || !isTaskId(payload.id)) return { ok: false, error: "invalid" };
@@ -153,6 +161,7 @@ export function taskReviewOutcome(database, repositoryId, number) {
 }
 
 export const reviewOperations = (dispatch, now) => ({
+  reviewSession: (repositoryId, payload) => dispatch(reviewSession, { repositoryId, payload }),
   planReview: (repositoryId, payload, resolveFacts) => dispatch(planReview, { repositoryId, payload, resolveFacts, now }),
   abortReview: (repositoryId, payload) => dispatch(abortReview, { repositoryId, payload }),
   reportReview: (payload) => dispatch(reportReview, { payload, now }),
