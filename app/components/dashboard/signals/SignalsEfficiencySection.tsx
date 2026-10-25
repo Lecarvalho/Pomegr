@@ -20,7 +20,7 @@ export function SignalsEfficiencySection({ insights, readiness, onNavigateAgent 
     {insights.length === 0 ? <p className="signalsEmpty">No deterministic efficiency signals were recorded.</p> : <ul className="signalsInsightList">
       {insights.map((insight) => <li className={`signalsInsight signalsInsight-${insight.level}`} key={insight.id}>
         <div><strong>{insight.title}</strong><p>{insight.detail}</p></div>
-        {typeof insight.agentId === "string" && insight.agentId.length > 0 && <button className="commandTextLink" type="button" onClick={() => onNavigateAgent(insight.agentId!)}>Show agent</button>}
+        {typeof insight.agentId === "string" && insight.agentId.length > 0 && <button className="commandQuietAction" type="button" onClick={() => onNavigateAgent(insight.agentId!)}>Show agent</button>}
       </li>)}
     </ul>}
   </section>;

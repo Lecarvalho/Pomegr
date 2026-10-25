@@ -1,11 +1,11 @@
 # Session overview sparse state and link rule
 
-> Status: active; design approved on the canvas on 2026-09-20, no code written yet.
+> Status: active; tasks 1, 2, 3, 5, and 6 are built, verified against current code on 2026-10-25. Tasks 4 and 7 remain open.
 > Created: 2026-09-20.
 > Scope: make the session **Overview** tab read well when a session has just started, and stop repeating brand-colored text links on panel headers and evidence rows (Overview and Signals tabs, desktop and phone). UI only: no monitor, contract, or API change.
 > Continuation owner: the agent that picks up this plan in a fresh session; the user reviews the result against the artboards.
 > Authority: working checklist. `AGENTS.md`, `DESIGN.md`, and `docs/internal/architecture/metrics.md` stay authoritative; this plan changes `DESIGN.md` in task 1 and task 6.
-> Next task or decision: start task 1. Do the tasks in order; each ends with a command that must pass before the next begins.
+> Next task or decision: the owner must ship or drop task 4's data-density layout, then complete task 7 against the current surface contract.
 > Completion criteria: every checkbox below is ticked with its verification recorded under the continuation checkpoint, `npm run verify:fast` and `npm run test:ui` pass, and the running app matches the artboards listed below apart from the written differences.
 > Permanent destinations: `DESIGN.md` (link rule, heading link, sparse overview rule), `/design-system` (heading link sample), and the information architecture redesign plan's T08 (Repository tab links).
 > Lifetime: temporary; delete this file in the change that completes the last task. The artboards stay with the [information architecture redesign plan](ia-redesign.md), which owns their deletion.
@@ -59,7 +59,7 @@ A session that started minutes ago has one agent, about five requests, no progre
 
 ### Task 1 — Add the shared panel heading link
 
-- [ ] Done
+- [x] Done
 
 Files: `app/components/PanelHeadingLink.tsx` (new), `app/styles/shell.css`, `DESIGN.md`, `app/components/design-system/DesignSystemView.tsx`, `tests/ui/pomegr-design-contract.test.tsx`, `tests/ui/design-system.test.tsx`.
 
@@ -128,7 +128,7 @@ If `var(--command-faint)` does not exist in `app/styles/tokens.css`, use `var(--
 
 ### Task 2 — Overview: heading links and quieter signal rows
 
-- [ ] Done
+- [x] Done
 
 File: `app/components/dashboard/SessionOverview.tsx`. Line numbers refer to the file before any edit.
 
@@ -176,7 +176,7 @@ npm run lint
 
 ### Task 3 — Overview: fixed-slot request strip
 
-- [ ] Done
+- [x] Done
 
 Files: `app/components/dashboard/SessionOverview.tsx`, `app/styles/session.css`.
 
@@ -253,7 +253,7 @@ Verify: `npx vitest run tests/ui/dashboard-t04.test.tsx`.
 
 ### Task 5 — Overview: no empty bottom panels, no `0m median`
 
-- [ ] Done
+- [x] Done
 
 Files: `app/components/dashboard/SessionOverview.tsx`, `app/styles/session.css`.
 
@@ -310,7 +310,7 @@ Verify: `npx vitest run tests/ui/dashboard-t04.test.tsx`.
 
 ### Task 6 — Signals tab rows
 
-- [ ] Done
+- [x] Done
 
 Files: `app/components/dashboard/signals/SignalsEfficiencySection.tsx`, `app/components/dashboard/signals/SignalsCacheEvidenceSection.tsx`, `app/components/dashboard/SignalsTab.module.css`.
 
@@ -360,4 +360,45 @@ npx vitest run tests/ui/signals-tab.test.tsx tests/ui/efficiency-signals.test.ts
 
 ## Continuation checkpoint
 
-2026-09-20: design approved on the canvas (version 53). Exports of artboards 2, 2b, 5, 6, and 7 are in the prototype folder and its README records the two rules. No application code has changed. Next action: task 1.
+2026-10-25: verified tasks 1, 2, 3, and 5 against the current implementation; completed task 6's remaining efficiency action.
+The original task instructions above describe the approved 2026-09-20 design, before subsequent surface changes.
+[Sessions design](../design/sessions.md) owns the current surface; [DESIGN.md](../../../DESIGN.md#buttons) owns the shared link rule.
+
+| Task | Current implementation evidence |
+| --- | --- |
+| 1 | `app/components/PanelHeadingLink.tsx:3` composes Quiet; `app/styles/shell.css:214` supplies heading styling and line 434 supplies phone sizing. `DesignSystemView.tsx:182` renders the sample; `pomegr-design-contract.test.tsx` checks its shared styles. |
+| 2 | `SessionOverview.tsx:70`, line 89, and line 115 use heading links for Right now, Requests, and Repository. Efficiency now lives only in Signals. `dashboard-t04.test.tsx:421` checks current heading destinations and absence of redundant links. |
+| 3 | `SessionOverview.tsx:14` fixes desktop capacity at 48; lines 29 and 100 cap and pad the strip. Phone uses 24 slots, tested in `dashboard-t04.test.tsx:495`; role tracks now have their own row. |
+| 5 | `SessionOverview.tsx:45` through line 47 gate Progress, Tool calls by kind, and Cost. Readiness and plan-task fallback remain at line 129. Tool calls now show counts only, so no sub-minute median appears. Repository always occupies the current bottom row. |
+| 6 | `app/components/dashboard/signals/SignalsEfficiencySection.tsx:22` now uses Quiet for Show agent, with unchanged normalized-agent navigation. `SignalsTab.module.css` centers the action without shrinking it and preserves content width through 760px. |
+
+Task 6's cache-evidence half is moot: `SignalsCacheEvidenceSection.tsx`, its row, and `cache-evidence-disclosure.test.tsx` no longer exist.
+No unused chevron or cache-row CSS was added.
+The component remains under `dashboard/signals/`, rather than directly under `dashboard/` as the request describes.
+Sessions design already owns the current link and bottom-panel rules.
+Task 6's original DESIGN.md paragraph would duplicate authority and claim unbuilt task 4 behavior and a removed cache row.
+
+Task 4 remains open for the owner to ship or drop.
+`SessionOverview.tsx:67` has no `data-density`; `dashboard-t04.test.tsx:434` explicitly checks its absence in the current Events-rail layout.
+Task 7 remains open: this change does not perform the full artboard comparison or resolve task 4.
+Keep this plan until those obligations are resolved, then apply its closure steps.
+
+Tests first: the efficiency action and responsive design-contract checks failed before implementation for the expected class and missing CSS.
+The responsive check now lives in `tests/ui/efficiency-signals.test.tsx` to keep the shared design-contract suite below its 800-line limit.
+
+Verification:
+
+- Focused Signals suites: 4 tests pass, including navigation and both new regression checks.
+- Six focused UI suites: 88 tests pass; two existing design-system sample tests time out.
+- `npm run test:ui -- --maxWorkers=1`: 2,450 tests pass; three tests time out in `tests/ui/design-system.test.tsx:118`, line 147, and line 547.
+- The timeouts affect Task fields (40 seconds), Events rail (20 seconds), and Feature modal (20 seconds); no timeout was increased.
+- `npm run lint`: passes with 55 warnings in unchanged files; the relocated regression test also passes focused lint.
+- `npm run check:architecture`: passes after relocating the regression test.
+- `npm run check:boundaries`: passes, with no dependency violations.
+- `npm run check:docs`: passes.
+- `npm run verify:fast` initially stops at the test-file size limit; the corrected architecture check and all remaining constituent checks pass separately.
+- Type checks, provider documentation, contract tests, and operations tests pass; two operations tests skip unsupported file-symlink cases.
+- `npm run build`: passes in the host environment; tracked legal and favicon rewrites are restored only when their content differs by line endings.
+
+Open questions: the owner must ship or drop task 4 and complete task 7's visual comparison; the broad UI suite's timeouts remain unresolved.
+The only added file scope is the existing efficiency-signal test, for regression coverage; no backend, API, or data-density behavior changes.
