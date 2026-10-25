@@ -40,6 +40,11 @@ This plan adds that authority as a **standing grant** that the owner approves be
 | 2026-10-25 | The reviewer choice has no built-in bias: it follows the repository's rule, or what the owner settled, informed by Pomegr's metrics, or a combination. |
 | 2026-10-25 | A paired device can talk with Aril and settle all of this. A setting, off by default, lets the owner allow paired devices to manage Aril settings and grants. |
 | 2026-10-25 | Aril proposes every Aril settings change and the owner accepts it. The paired-device setting is the exception: only the owner sets it, only in the desktop app, and Aril never proposes it. |
+| 2026-10-25 | A grant's limits count tasks, not sessions: how many tasks it takes on and how many run at a time, plus a provider usage limit. A task's build, review, and send-backs are one task. |
+| 2026-10-25 | Merge, auto-merge, and branch deletion are settled with the owner, after consulting the repository's own rules and GitHub settings. |
+| 2026-10-25 | Aril may propose removing task worktrees to free disk space; the owner confirms each removal. |
+| 2026-10-25 | A settled rule is not asked again. Aril asks again only when it detects a change in the repository's workflow or the owner says the rule changed. |
+| 2026-10-25 | A concurrency limit may later also weigh the machine's load; Pomegr has no machine-usage metric yet. |
 
 ## Lessons from the first pilot
 
@@ -61,7 +66,7 @@ This plan answers each finding before it widens authority:
 A grant is one record per repository, set in the desktop app only, and shown on the Tasks page while active.
 
 - **Scope:** which actions it allows (start, review and send back, merge, write tasks), each a separate switch.
-- **Limits:** an end time, a maximum number of starts, a maximum of concurrent sessions (at most the repository's queue limit), a send-back limit per task, and the provider allowance Aril's own runs may use. None has a fixed default: the owner and Aril settle them for the work at hand.
+- **Limits:** an end time, a maximum number of tasks, a maximum of tasks at a time (at most the repository's queue limit), a send-back limit per task, and a provider usage limit that every grant start respects. None has a fixed default: the owner and Aril settle them for the work at hand.
 - **Work set:** the board's Ready column in order, plus the tasks and plans that the repository's work rules select. Nothing else.
 - **Stop:** one action ends the grant at once. Running sessions continue (Pomegr never ends a session); Aril starts, sends back, and merges nothing more.
 - **Expiry:** the grant ends at its end time, when its limits are reached, or when the app quits; it never renews itself.
@@ -151,6 +156,14 @@ Each phase ships on its own and is useful without the next.
 - [x] **6. Merge on green.** The merge action with every check above.
 - [x] **7. Tasks from plans.** Aril writes tasks for the next step of a plan its work rules select.
 - [ ] **8. Acceptance.** Experiment 2 runs under a grant; record whether its targets passed.
+- [ ] **9. Owner refinements.** The owner's decisions of 2026-10-25 after phase 7, each its own slice:
+  - [ ] 9a. Limits by tasks and usage: the tasks limit and tasks at a time replace starts and concurrent sessions; the usage limit holds every grant start while the provider that would run is at or above it, or its usage is unknown.
+  - [ ] 9b. Merge settings: merge or auto-merge, and branch deletion, each settled or the repository's own; Aril sees the repository's GitHub merge settings.
+  - [ ] 9c. Worktree cleanup: Aril sees the task worktrees that remain and proposes removing them; the owner applies each removal.
+  - [ ] 9d. Settled rules: Aril does not ask again what memory or settings settled, and sees when the repository's workflow sources changed since a rule was settled.
+  - [ ] 9e. Review terminals: the terminal view lists a review session, so the owner can watch it.
+  - [ ] 9f. Docs and pages: the Home dashboard, the landing page, and the public guides describe what Aril does under a grant.
+- Later: a machine-usage metric that a tasks-at-a-time limit can weigh.
 
 Phases 1 to 3 add no authority.
 
@@ -159,7 +172,7 @@ Phases 1 to 3 add no authority.
 - Any action whose checks cannot be evaluated (for example, CI facts unavailable) is refused with a reason; Aril never assumes green.
 - A crashed or restarted app resumes from the event cursor; an action performed but not logged is detected from its result (a session, a merge) and logged once.
 - Two events for the same task are handled in order; a merge is attempted at most once per head commit.
-- When the provider allowance for Aril's runs is spent, the grant pauses and the inbox says so.
+- When the provider that would run is at or above the usage limit, or its usage is unknown, the grant starts nothing and the log says so.
 
 ## Checkpoint
 
@@ -171,3 +184,4 @@ Phases 1 to 3 add no authority.
 2026-10-25: phase 3 shipped in #323 (settings and memory store), #324 (Aril settings panel), and #325 (Aril reads and proposes settings and memory). Phase 4 started: the grant record and the monitor's grant read. Next action: the desktop grant runner with the boundary change, then the grant controls.
 2026-10-25: phase 4 shipped in #326 (grant record and grant read), #327 (desktop grant runner and the AGENTS.md boundary change), #328 (grant reviews follow the reviewer rule), and #329 (grant controls). Phase 5 (send-back) ships with this checkpoint. Next action: phase 6, merge on green.
 2026-10-25: phase 6 shipped in #331 (merge on green) and #332 (a passing review meets an order dependency under a grant); phase 7 in #333 (plan rules and grant-written tasks) and this change (the grant run that writes tasks). Next action: phase 8, the acceptance run of experiment 2 under a grant, which needs the owner; and the owner's wording for the Home and landing claims that Aril never acts.
+2026-10-25: phase 7 shipped in #333 and #334. The owner refined limits, merge, worktree cleanup, settled rules, and the docs (phase 9). Next action: phase 9 slices; phase 8 still needs the owner.
