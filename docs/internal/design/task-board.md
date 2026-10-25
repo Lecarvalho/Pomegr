@@ -265,10 +265,11 @@ The head actions appear in this order:
 - The threshold and the time of that line use the data font and ink. The stop clause shows only when a stop time is set.
 - In the desktop app only, **Scorecard** comes just before **Queue settings**, in the same Quiet role. It opens the [Scorecard panel](#scorecard-panel).
 - In the desktop app and on a paired device, **Log** comes before **Scorecard** when present, otherwise before **Queue settings**, in the same Quiet role and sizes, with `aria-haspopup="dialog"`, and opens the [Task log panel](#task-log-panel).
+- Every client showing the board has **Aril settings** immediately before **Log**, when present, with the same Quiet role, sizes, and `aria-haspopup="dialog"`.
 - **Queue settings** (`.taskQueueSettingsAction`) is last in the strip, in any client. It is the [Quiet](../../../DESIGN.md#buttons) role, 32px high, 12px/500 ink, underlined.
 - It is 44px high on phone and coarse pointers.
 - It has `aria-haspopup="dialog"` and opens the [Queue settings panel](#queue-settings-panel).
-- A board that sends no gates draws only the **Queue settings** action in the strip.
+- A board that sends no gates draws the available panel actions without capacity readings.
 
 ### States
 
@@ -574,6 +575,32 @@ Each row below the tags shows only when it is set, in this order:
 - A browser reads the two schedule values as a two-row definition list.
 - **When the queue blocks** holds a two-item list and one closing line. The state words Stalled and Blocked by agent carry the error color. The closing line says that Needs review, in amber, does not block the queue.
 - The panel reads only what the board already serves. Without the desktop app or a paired device, it is read-only.
+
+### Aril settings panel
+
+- **Aril settings** opens the Queue settings frame, titled **Aril settings**.
+- Focus starts on **Close** and returns to **Aril settings** when the panel closes.
+- **Cancel**, **Close**, Escape, and a click outside close the panel.
+- The sections are **Actions under a grant**, **Limits**, **Work rules**, **Reviewer**, **Paired devices**, and **Memory**.
+- Five action switches carry the caption “Aril uses these only while a grant you start is active. Grants are not available yet.”
+- Each limit uses the threshold select pattern with the bounds in [Aril settings and memory](../architecture/tasks.md#aril-settings-and-memory).
+- An unset limit reads “Not settled: Aril will ask”.
+- Work rule rows show the kind and value, with feature titles and task IDs.
+- The add row selects a kind and accepts its value; feature values come from the board's features.
+- Tasks rules accept comma-separated IDs validated against the board.
+- The reviewer fields are provider, model identifier, and **Use a different provider than the builder**.
+- Only the desktop app shows **Allow paired devices to change Aril settings and memory** as a switch.
+- Paired devices show their permission as text and remain read-only unless the committed setting allows editing.
+- **Save** sends only changed settings sections; supplied sections include all nested fields.
+- A failed save preserves the draft and shows “Aril settings could not be saved. Try again.”.
+- Memory appears oldest first, with its text and an “n of 100” counter.
+- The memory caption reads “What Aril remembers about how you like this repository worked. Aril proposes entries; you can edit or delete any of them.”
+- Memory edits use a single-line field of at most 300 characters and save independently of settings.
+- **Delete** requires **Delete entry** inside the panel; **Keep entry** cancels deletion.
+- **Add entry** is unavailable when memory has 100 entries.
+- A failed memory action preserves the draft and shows “Memory could not be saved. Try again.”.
+- Read-only clients have no Save, memory edit, delete, or add actions.
+- Design-system samples cover desktop editable, paired read-only, paired allowed, empty memory, full memory, and save failure.
 
 ### Scorecard panel
 

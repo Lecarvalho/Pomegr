@@ -8,7 +8,7 @@ import { timeOfDay } from "./task-schedule";
 const PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 
 /** `onOpenSettings` adds the Board's end of the strip: the threshold, the stop time and the action that opens Queue settings. `onOpenScorecard` adds Scorecard before it (desktop app only). */
-export function CapacityStrip({ queue, settingsRef, onOpenSettings, scorecardRef, onOpenScorecard, logRef, onOpenLog }: {
+export function CapacityStrip({ queue, settingsRef, onOpenSettings, scorecardRef, onOpenScorecard, logRef, onOpenLog, arilRef, onOpenAril }: {
   queue: TaskBoard["queue"];
   settingsRef?: RefObject<HTMLButtonElement | null>;
   onOpenSettings?(): void;
@@ -16,6 +16,8 @@ export function CapacityStrip({ queue, settingsRef, onOpenSettings, scorecardRef
   onOpenScorecard?(): void;
   logRef?: RefObject<HTMLButtonElement | null>;
   onOpenLog?(): void;
+  arilRef?: RefObject<HTMLButtonElement | null>;
+  onOpenAril?(): void;
 }) {
   const gates = queue.gates;
   if (!gates && !onOpenSettings) return null;
@@ -34,6 +36,7 @@ export function CapacityStrip({ queue, settingsRef, onOpenSettings, scorecardRef
         Do not start above <span className="taskCapacityValue">{gates.threshold}%</span>
         {stop !== "" && <> · stops starting after <span className="taskCapacityValue">{stop}</span></>}
       </span>}
+      {onOpenAril && <button ref={arilRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenAril}>Aril settings</button>}
       {onOpenLog && <button ref={logRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenLog}>Log</button>}
       {onOpenScorecard && <button ref={scorecardRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenScorecard}>Scorecard</button>}
       <button ref={settingsRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenSettings}>Queue settings</button>

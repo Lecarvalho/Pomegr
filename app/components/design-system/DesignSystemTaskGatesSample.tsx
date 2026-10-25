@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { TaskQueue } from "../../../shared/task-contract";
+import type { ArilSettings as Settings, TaskQueue } from "../../../shared/task-contract";
+import { ArilSettings } from "../tasks/ArilSettingsPanel";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { NewFeatureAction } from "../tasks/FeatureActions";
 import { QueueBanner } from "../tasks/QueueBanner";
@@ -24,6 +25,22 @@ const QUEUE_WITH_STOP: TaskQueue = { ...BOARD_RUNNING.queue, schedule: { startAt
 const SCHEDULED: TaskQueue = { ...QUEUE_IDLE, schedule: { startAt: SAMPLE_FUTURE, stopAfter: SAMPLE_FUTURE_STOP } };
 const STOP_ONLY: TaskQueue = { ...QUEUE_RUNNING, schedule: { startAt: null, stopAfter: SAMPLE_FUTURE_STOP } };
 const NO_GATES: TaskQueue = { status: "idle", blockedBy: null, pauseReason: null, order: [] };
+const ARIL_SETTINGS: Settings = {
+  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+};
+
+export function ArilSettingsSamples() {
+  return <div className="designSystemGrid">{["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure"].map((state, index) => {
+    const memory = Array.from({ length: state === "empty memory" ? 0 : state === "full memory" ? 100 : 1 }, (_, id) => ({ id: id + 1, text: `Repository habit ${id + 1}: keep changes focused.`, createdAt: id, updatedAt: id }));
+    const board = { ...BOARD_RUNNING, aril: { settings: { ...ARIL_SETTINGS, pairedDevices: state === "paired allowed" }, memory } };
+    return <Sample key={state} label={`Aril settings, ${state}`} note="Queue settings frame, existing fields and button roles. Settings and memory grant no actions.">
+      <Frame><ArilSettings board={board} desktop={!state.startsWith("paired")} editable={state !== "paired read-only"} onClose={noop}
+        titleId={`design-system-aril-${index}`} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })} /></Frame>
+    </Sample>;
+  })}</div>;
+}
 
 function Frame({ children }: { children: ReactNode }) {
   return <div className="designSystemTaskFrame">{children}</div>;
@@ -70,6 +87,7 @@ export function QueueControlsSection() {
         <Frame><QueueSettings queue={QUEUE_WITH_STOP} onClose={noop} titleId="design-system-queue-settings-browser" /></Frame>
       </Sample>
     </div>
+    <ArilSettingsSamples />
   </Section>;
 }
 

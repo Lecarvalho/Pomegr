@@ -9,8 +9,14 @@ import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 import { StorageUsageBar } from "../../app/settings/StorageSettings";
 import { SessionTerminalSection } from "../../app/components/design-system/DesignSystemTerminalSample";
 import { ScorecardSection } from "../../app/components/design-system/DesignSystemScorecardSample";
+import { ArilSettingsSamples } from "../../app/components/design-system/DesignSystemTaskGatesSample";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+it("includes every Aril settings and memory panel state", () => {
+  render(<ArilSettingsSamples />);
+  for (const state of ["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure"]) expect(screen.getByText(`Aril settings, ${state}`)).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent("Aril settings could not be saved. Try again.");
+});
 it("includes desktop and paired task log samples", () => { render(<ScorecardSection />); for (const name of ["entries", "paired"]) expect(screen.getByText(`Task log, ${name}`)).toBeInTheDocument(); });
 it("renders each read-only Terminal state from synthetic samples", () => {
   const { container } = render(<SessionTerminalSection />);
@@ -77,10 +83,8 @@ describe("Pomegr visual contract", () => {
   it("keeps the phone Signals title below sticky application chrome", () => {
     expect(signalsTabStyles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.tab\s*\{[^}]*--signals-phone-sticky-offset:\s*56px;[^}]*margin-top:\s*calc\(-1 \* var\(--signals-phone-sticky-offset\)\);[^}]*padding-top:\s*var\(--signals-phone-sticky-offset\);[^}]*scroll-margin-top:\s*var\(--signals-phone-sticky-offset\)/);
   });
-
   it("keeps the application identity provider-neutral with a shared logo and wordmark", () => {
     render(<SettingsPage initialSection="about" />);
-
     expect(screen.getByRole("heading", { name: "About Pomegr" })).toBeInTheDocument();
     expect(shellSource).toMatch(/<PomegrBrand href="\/" label="Pomegr home"/);
     expect(brandSource).not.toMatch(/<svg|brandMobileWordmark|brandText/);
@@ -93,7 +97,6 @@ describe("Pomegr visual contract", () => {
     expect(screen.getByRole("link", { name: "openai/codex#35300 (opens in a new tab)", hidden: true })).toHaveAttribute("href", "https://github.com/openai/codex/issues/35300");
     expect(layoutSource).toMatch(/icons:\s*\{[\s\S]*?\/favicon\.png/);
   });
-
   it("uses restrained typography, shared readable typography and restrained control geometry", () => {
     expect(designContract).toContain("The header reaches the viewport edge without an unused root scrollbar gutter.");
     expect(styles).not.toMatch(/Arial|Helvetica/);
@@ -147,7 +150,6 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.agentsPanel:has\(\.cacheRefillPopover\)\s*\{\s*z-index:\s*10/);
     expect(styles).toMatch(/\.tooltipPopover\s*\{[^}]*padding:\s*9px 11px[^}]*border:\s*1px solid var\(--popover-line\)[^}]*background:\s*var\(--popover\)/);
   });
-
   it("keeps request lanes labeled and collapsible, the minimap neutral, and role tint in the single-chart track only", () => {
     expect(styles).toMatch(/\.requestsActionsPlot\s*\{\s*--lane-label-width:\s*220px;/);
     expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow, \.requestLaneGroupHeader\s*\{[^}]*grid-template-columns:\s*var\(--lane-label-width\) minmax\(0, 1fr\)/);
@@ -162,13 +164,11 @@ describe("Pomegr visual contract", () => {
     expect(laneChartSource).toMatch(/className="commandQuietAction requestLaneLabel"/);
     expect(laneModelSource).toMatch(/export const LANE_COLLAPSE_THRESHOLD = 8;/);
     expect(requestsPanelSource).toMatch(/\{!phone && <div className="commandSegmented" role="group" aria-label="Chart layout">/);
-
     const tinted = [...styles.matchAll(/([^{}]+)\{[^}]*var\(--(?:session-role|role-)[^}]*\}/g)].map((match) => match[1].trim());
     expect(tinted.filter((selector) => /requestLane|requestsActionsMini/.test(selector))).toEqual([]);
     expect(styles).toMatch(/\.requestRoleSegment\s*\{\s*fill:\s*var\(--session-role, var\(--command-line-strong\)\)/);
     expect(styles).toMatch(/\.sessionRoleLegend\.requestRoleLegend > span\s*\{\s*text-transform:\s*none/);
     for (const source of [laneChartSource, laneModelSource, minimapSource]) expect(source).not.toMatch(/roleFamily|role-family/);
-
     expect(styles).toMatch(/\.requestsActionsMiniBar\s*\{\s*fill:\s*var\(--command-line-strong\)/);
     expect(styles).toMatch(/\.requestsActionsMiniWindow\s*\{\s*fill:\s*color-mix\(in srgb, var\(--command-muted\) 12%, transparent\);\s*stroke:\s*var\(--command-muted\)/);
     expect(styles).not.toMatch(/\.requestsActionsMini[^{]*\{[^}]*(?:--command-brand|--brand|--session-role|--role-)/);
