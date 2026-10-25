@@ -300,7 +300,7 @@ test("the generated bundle holds no token and has no output path", async () => {
 });
 
 test("the agent task POST transport carries exactly the task and feature paths, including reads", () => {
-  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, "/api/agent/v1/tasks/complete", "/api/agent/v1/tasks/block", "/api/agent/v1/tasks/remove", "/api/agent/v1/tasks/update",
+  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, "/api/agent/v1/tasks/complete", "/api/agent/v1/tasks/review", "/api/agent/v1/tasks/block", "/api/agent/v1/tasks/remove", "/api/agent/v1/tasks/update",
     "/api/agent/v1/tasks/assign", "/api/agent/v1/tasks/unassign", "/api/agent/v1/tasks/feature-get", "/api/agent/v1/tasks/feature-create", "/api/agent/v1/tasks/feature-update", "/api/agent/v1/tasks/feature-delete",
     "/api/agent/v1/tasks/get", "/api/agent/v1/tasks/list"]);
   assert.equal(Object.isFrozen(AGENT_TASK_WRITE_PATHS), true);

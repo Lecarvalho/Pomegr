@@ -19,7 +19,7 @@ import {
   AGENT_TASK_ADD_PATH,
   AGENT_TASK_BIND_PATH,
   AGENT_TASK_BLOCK_PATH,
-  AGENT_TASK_COMPLETE_PATH,
+  AGENT_TASK_REVIEW_PATH, AGENT_TASK_COMPLETE_PATH,
   AGENT_TASK_COMPLETE_TIMEOUT_MS,
   AGENT_TASK_NO_ANSWER,
   AGENT_TASK_REMOVE_PATH,
@@ -200,7 +200,7 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   assert.equal(requests[0].init.body, JSON.stringify({ text: "x" }));
 
   // Only these task POST paths are reachable, including the read-only task and feature reads.
-  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, TASK_REMOVE_PATH, TASK_UPDATE_PATH,
+  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REVIEW_PATH, AGENT_TASK_BLOCK_PATH, TASK_REMOVE_PATH, TASK_UPDATE_PATH,
     TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH, FEATURE_GET_PATH, FEATURE_CREATE_PATH, FEATURE_UPDATE_PATH, FEATURE_DELETE_PATH, TASK_GET_PATH, TASK_LIST_PATH]);
   assert.equal(AGENT_TASK_COMPLETE_PATH, TASK_COMPLETE_PATH);
   assert.equal(AGENT_TASK_BLOCK_PATH, TASK_BLOCK_PATH);
@@ -758,14 +758,14 @@ test("a write waits longer than a read, complete outlasts the monitor's 20-secon
   try {
     const hang = (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
     const write = createAgentTaskWriter({ ...base, fetchFn: hang });
-    for (const pathname of [AGENT_TASK_ADD_PATH, AGENT_TASK_REMOVE_PATH, TASK_UPDATE_PATH, TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH]) {
+    for (const pathname of [AGENT_TASK_ADD_PATH, AGENT_TASK_REMOVE_PATH, TASK_UPDATE_PATH, TASK_ASSIGN_PATH, TASK_UNASSIGN_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REVIEW_PATH]) {
       await assert.rejects(() => write(pathname, {}), /AGENT_QUERY_NO_ANSWER/u);
     }
     await assert.rejects(() => createAgentTaskWriter({ ...base, fetchFn: hang, timeoutMs: AGENT_QUERY_TIMEOUT_MS })(AGENT_TASK_BIND_PATH, {}), /AGENT_QUERY_NO_ANSWER/u);
   } finally {
     globalThis.setTimeout = original;
   }
-  assert.deepEqual(waits, [10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 25_000, 2_000]);
+  assert.deepEqual(waits, [10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 25_000, 10_000, 2_000]);
 });
 
 test("an unanswered write says the outcome is unknown, and an unreachable monitor says nothing was written", async () => {

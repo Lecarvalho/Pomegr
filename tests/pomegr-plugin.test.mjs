@@ -615,7 +615,7 @@ test("installed plugin starts its MCP server without node_modules and lists ever
     } });
 
     const tools = await readMcpToolInventory(path.join(isolatedPlugin, "mcp", "server.bundle.mjs"), clientRepository);
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["add_task", "assign_task", "block_task", "clear_agent_signal", "clear_session_progress", "clear_session_signal", "complete_task", "create_feature", "delete_feature", "get_agent_context", "get_feature", "get_provider_health", "get_recent_failures", "get_session_report", "get_task", "get_usage_limits", "list_session_agents", "list_sessions", "list_tasks", "remove_task", "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal", "unassign_task", "update_feature", "update_task"]);
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), ["add_task", "assign_task", "block_task", "clear_agent_signal", "clear_session_progress", "clear_session_signal", "complete_task", "create_feature", "delete_feature", "get_agent_context", "get_feature", "get_provider_health", "get_recent_failures", "get_session_report", "get_task", "get_usage_limits", "list_session_agents", "list_sessions", "list_tasks", "remove_task", "rename_session", "report_agent_signal", "report_review", "report_session_progress", "report_session_signal", "report_task_signal", "unassign_task", "update_feature", "update_task"]);
 
     const renameHook = spawnSync(process.execPath, [path.join(isolatedPlugin, "scripts", "rename-session.bundle.mjs")], {
       cwd: clientRepository,
@@ -645,7 +645,7 @@ test("plugin MCP inventory contains bounded reporting, clearing, and native titl
   const tools = Object.keys(server._registeredTools).sort();
   const reads = ["get_agent_context", "get_provider_health", "get_recent_failures", "get_session_report", "get_usage_limits", "list_session_agents", "list_sessions"];
 
-  const writes = ["add_task", "update_task", "remove_task", "assign_task", "unassign_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature"];
+  const writes = ["add_task", "update_task", "remove_task", "assign_task", "unassign_task", "complete_task", "report_review", "block_task", "create_feature", "update_feature", "delete_feature"];
   // The task tools that only read.
   const boardReads = ["get_feature", "get_task", "list_tasks"];
   assert.deepEqual(tools, [...writes, ...boardReads, "clear_agent_signal", "clear_session_progress", "clear_session_signal", ...reads, "rename_session", "report_agent_signal", "report_session_progress", "report_session_signal", "report_task_signal"].sort());
@@ -655,8 +655,8 @@ test("plugin MCP inventory contains bounded reporting, clearing, and native titl
   assert.ok([...reads, ...writes, ...boardReads].every((name) => server._registeredTools[name]._meta === undefined));
   for (const name of writes) {
     assert.equal(server._registeredTools[name].annotations.readOnlyHint, false);
-    // Setting a feature's or a task's fields again leaves it as it is.
-    assert.equal(server._registeredTools[name].annotations.idempotentHint, name === "update_feature" || name === "update_task" || name === "assign_task" || name === "unassign_task");
+    // Setting fields or reporting the same review again leaves them as they are.
+    assert.equal(server._registeredTools[name].annotations.idempotentHint, name === "update_feature" || name === "update_task" || name === "assign_task" || name === "unassign_task" || name === "report_review");
     // Only the tools that delete are marked destructive.
     assert.equal(server._registeredTools[name].annotations.destructiveHint, name === "remove_task" || name === "delete_feature");
   }

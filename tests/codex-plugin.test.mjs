@@ -170,6 +170,7 @@ test("installed Codex plugin starts without repository dependencies and lists bo
       "list_tasks",
       "remove_task",
       "report_agent_signal",
+      "report_review",
       "report_session_progress",
       "report_session_signal",
       "report_task_signal",

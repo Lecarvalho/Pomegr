@@ -16,7 +16,7 @@
 
 **Status: built, except the later slices named under [Review sessions](#review-sessions).** Shipped capabilities include the board, features,
 parallel groups, the queue with its start gates and schedule, session start for Claude Code and
-Codex on Windows, session binding, assigned sessions, the thirteen agent tools, verified
+Codex on Windows, session binding, assigned sessions, the fourteen agent tools, verified
 conditions, and the task reference on the Sessions list and in the session view. The user guide is
 [Tasks](../../public/using-pomegr/tasks.md). Report-less completion (a task finishing
 from a deterministic condition with no agent report) is deliberately not designed or
@@ -2153,7 +2153,8 @@ How it is built:
 ## Review sessions
 
 The monitor supports owner-started reviews of tasks in `needs_review` with a linked builder session.
-Desktop launching, the `report_review` MCP tool, and board display arrive in later slices.
+Desktop launching and board display arrive in later slices.
+The reviewer uses `report_review` in Claude Code or Codex, never `complete_task` or `block_task`.
 Aril gains no authority, and no review starts automatically.
 
 - `review-plan` accepts `{ id }` or `{ id, provider, model, effort }` inside the existing repository envelope.

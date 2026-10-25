@@ -46,7 +46,7 @@ Guide: [MCP queries](mcp-queries.md).
 
 ## Task tools
 
-These thirteen tools work on the task board of the repository. Ten of them write to
+These fourteen tools work on the task board of the repository. Eleven of them write to
 it; they are the only tools that change something you made or that Pomegr manages.
 `get_task`, `list_tasks`, and `get_feature` only read. Guide: [Tasks](tasks-agents.md).
 
@@ -60,11 +60,14 @@ it; they are the only tools that change something you made or that Pomegr manage
 | `assign_task` | Assigns the session to a task of the board that is not done, so the session can report it. It changes no state and starts nothing. |
 | `unassign_task` | Removes the session's own assignment from a task. |
 | `complete_task` | Reports that a task of the session is complete. The task goes to **Review**. An earlier block still holds the queue until you resolve it. A plain completion takes no input. The optional `attention` field gives the owner one line to look at. |
+| `report_review` | Reports pass, or fail with one-line reasons, without changing task state. Only you decide what happens next. |
 | `block_task` | Reports that the agent cannot continue a task, with a short reason. |
 | `get_feature` | Reads the title, description, and app version of one feature. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. |
 | `update_feature` | Changes the title, description, or app version of a feature. |
 | `delete_feature` | Deletes a feature that has no task. |
+
+`report_review` works only in a review session Pomegr started for a task. It needs plugin 0.9.15 or later.
 
 `complete_task` and `block_task` work in a session that Pomegr started for a task, and
 in a session that is assigned to a task. A session with more than one task names the
