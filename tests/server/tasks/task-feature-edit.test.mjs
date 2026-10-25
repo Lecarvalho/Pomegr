@@ -234,3 +234,47 @@ test("scorecard-read returns unavailable for a missing reader, failed read, or n
     if (reader === undefined) assert.equal(answer.headers.connection, "close");
   }
 });
+
+test("log routes serve exact payloads only to desktop main", async (context) => {
+  const store = await realStore(context);
+  const port = await startRoute(context, store);
+  for (const payload of [{ limit: 10 }, { limit: 10, after: 0 }]) {
+    const answer = await action(port, "log-read", payload);
+    assert.equal(answer.status, 200);
+    assert.equal(answer.headers["cache-control"], "no-store");
+    assert.deepEqual(answer.json, { ok: true, log: store.readLog(REPOSITORY, payload) });
+  }
+  const ack = await action(port, "log-ack", { consumer: "aril", through: 0 });
+  assert.equal(ack.status, 200);
+  assert.deepEqual(ack.json, { ok: true, cursor: 0 });
+  const invalidReads = [{}, { limit: 1, extra: 0 }, { limit: 1, after: 0, extra: 0 },
+    ...[0, 201, -1, 1.5, "1", null].map((limit) => ({ limit })),
+    ...[-1, 1.5, "1", null, Number.MAX_SAFE_INTEGER + 1].map((after) => ({ limit: 1, after }))];
+  const invalidAcks = [{}, { consumer: "other", through: 0 }, { consumer: "aril" }, { through: 0 }, { consumer: "aril", through: 0, extra: 0 },
+    ...[-1, 1.5, "1", null, Number.MAX_SAFE_INTEGER + 1].map((through) => ({ consumer: "aril", through }))];
+  for (const [name, invalid, payload] of [["log-read", invalidReads, { limit: 1 }], ["log-ack", invalidAcks, { consumer: "aril", through: 0 }]]) {
+    for (const bad of invalid) {
+      const refused = await action(port, name, bad);
+      assert.equal(refused.status, 400, JSON.stringify(bad));
+      assert.deepEqual(refused.json, { ok: false, error: "invalid" });
+    }
+    assert.equal((await post(port, name, { repositoryId: REPOSITORY, payload, extra: 1 })).status, 400);
+    for (const headers of [JSON_BODY, { ...JSON_BODY, "x-pomegr-desktop-authorization": "x".repeat(40) }, { ...JSON_BODY, ...withToken, origin: "http://127.0.0.1:3003" }]) {
+      assert.equal((await post(port, name, { repositoryId: REPOSITORY, payload }, headers)).status, 401);
+    }
+  }
+});
+
+test("log routes fail closed for absent or failed store methods", async (context) => {
+  const inner = await realStore(context);
+  const base = { readBoard: inner.readBoard, apply: inner.apply, close() {} };
+  for (const [name, method, payload] of [["log-read", "readLog", { limit: 1 }], ["log-ack", "ackLog", { consumer: "aril", through: 0 }]]) {
+    for (const operation of [undefined, () => null, () => { throw new Error("private detail"); }]) {
+      const port = await startRoute(context, { ...base, [method]: operation });
+      const answer = await action(port, name, payload);
+      assert.equal(answer.status, 503);
+      assert.deepEqual(answer.json, { ok: false, error: "unavailable" });
+      if (operation === undefined) assert.equal(answer.headers.connection, "close");
+    }
+  }
+});

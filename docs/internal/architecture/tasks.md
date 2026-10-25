@@ -61,7 +61,10 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
 - `task_outcomes` stores one outcome per task at Done, from its events in the same transaction, without backfilling older tasks.
 - `task_scorecard_snapshots` stores one row per repository, app version, and formula; snapshots are kept when a task is deleted.
-- Opening a store creates missing `task_events`, `task_outcomes`, and `task_scorecard_snapshots` tables; these additive tables keep schema version 1 and change no existing table or meta key.
+- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, and `task_log_cursors` tables. These additive tables keep schema version 1 and change no existing table or meta key.
+- `task_log` appends `started`, `assigned`, `review`, `blocked`, `requeued`, `done`, `stalled`, and `recovered` in each transition's transaction. It keeps the newest 1000 entries per repository and survives task deletion. Entry IDs never repeat, and each consumer's durable cursor only moves forward.
+- `readLog(repositoryId, { limit, after? })` returns `{ entries: [{ id, task, kind, at }], more, cursors: { aril }, latestId }`. Each task is `T-<number>`; `limit` is an integer from 1 to 200. Without `after`, it returns the newest entries, ascending, and `more` indicates older entries. With a nonnegative integer `after`, it returns subsequent entries, ascending, and `more` indicates later entries. Missing cursors and an empty repository's `latestId` are zero.
+- `ackLog(repositoryId, "aril", through)` returns the stored cursor. It accepts a nonnegative integer, clamps it to the repository's latest entry ID, and never decreases the cursor.
 - `readScorecard(repositoryId, appVersion)` refreshes that version's measures in a transaction, keeping its first snapshot time; the baseline is the earliest other version for the same repository and formula, ordered by snapshot time then app version, or null (see [G1 scorecard](metrics.md#g1-scorecard)).
 - Outcome facts stay null without a review or a resolver; a resolver failure leaves them null and never prevents Done.
 - Version 0.8.x verifies only its listed tables, so it can still open the store.
@@ -2591,6 +2594,8 @@ serves no other client.
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `POST /internal/tasks/scorecard-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { appVersion } }`; upserts the version's snapshot and answers `{ ok: true, scorecard }` with formula, current snapshot, and nullable baseline; counts, shares, medians, snapshot times, and app versions only |
+| `POST /internal/tasks/log-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { limit, after? } }`; answers `{ ok: true, log }` with entries, pagination, cursors, and latest ID |
+| `POST /internal/tasks/log-ack` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { consumer: "aril", through } }`; answers `{ ok: true, cursor }` with the stored entry ID |
 | `pomegr:task-scorecard` IPC | The renderer, through a trusted main frame only | A repository ID in; `{ ok: true, scorecard }` with the fixed scorecard above or `{ ok: false, error }` with `invalid` or `unavailable` out. The app version comes from the main process, never the renderer |
 | `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked and each assigned session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
 | `GET /api/tasks?view=home` | The same clients, under the same gate and the same forwarding | The [Tasks home](#tasks-home), `no-store`: for each stored board its five column counts, its count of open features, its queue status with the blocking task's ID and the fixed pause reason, and the time of its newest task change; and for at most 50 tasks that wait for the owner, the repository ID, the task ID, the state, and one title line. A denied client gets `readiness: "desktop_only"` and no content |
@@ -2740,6 +2745,8 @@ serves no other client.
 
 - `task_events` stores only event kind, time, and nullable session ID under its repository and task identifiers, never text.
 - Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
+- `task_log` stores only repository ID, task number, kind, and time under its entry ID. `task_log_cursors` stores only a consumer name and entry ID under its repository ID. Neither stores text, title, session ID, URL, or branch.
+- Only `POST /internal/tasks/log-read` and `log-ack` expose log entries or cursors, exclusively to desktop main. Nothing else reads them yet: no browser, paired device, agent tool, Aril prompt, or `/api/state`.
 - `task_outcomes` stores only counts, times, a pull request number and its fixed state, under repository and task identifiers.
 - Outcomes are computed at Done and deleted with the task; no text, title, URL, or branch name is stored.
 - Outcomes stay private to the task store; no route, agent tool, or observation surface reads them.
