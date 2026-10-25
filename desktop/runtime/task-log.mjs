@@ -39,7 +39,7 @@ function boundedLog(value) {
   return { entries, more: value.more, arilCursor: value.cursors.aril };
 }
 
-/** Native-only task log read; viewing never advances a consumer cursor. */
+/** Desktop-main task log read; viewing never advances a consumer cursor. */
 export function createTaskLog(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
   const fetchImpl = options.fetch || fetch;
@@ -48,8 +48,7 @@ export function createTaskLog(options = {}) {
   const timeoutMs = options.timeoutMs ?? 10_000;
   let disposed = false;
 
-  async function run(event, repositoryId) {
-    if (!isTrustedEvent(event)) return INVALID;
+  async function readLog(repositoryId) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return INVALID;
     if (!monitorOrigin || !authorizationToken || disposed) return UNAVAILABLE;
     try {
@@ -72,7 +71,11 @@ export function createTaskLog(options = {}) {
     } catch { return UNAVAILABLE; }
   }
 
-  return Object.freeze({ run, dispose() { disposed = true; } });
+  async function run(event, repositoryId) {
+    return isTrustedEvent(event) ? readLog(repositoryId) : INVALID;
+  }
+
+  return Object.freeze({ run, readLog, dispose() { disposed = true; } });
 }
 
 export function installTaskLogIpc(options = {}) {

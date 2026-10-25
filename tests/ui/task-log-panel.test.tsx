@@ -9,7 +9,8 @@ import { ScorecardSection } from "../../app/components/design-system/DesignSyste
 import { TaskLogPanel } from "../../app/components/tasks/TaskLogPanel";
 import { scheduleLabel, timeOfDay } from "../../app/components/tasks/task-schedule";
 
-const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
+const { useTasks, access } = vi.hoisted(() => ({ useTasks: vi.fn(), access: { mode: "local" } }));
+vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => access, clientAccessMode: () => access.mode }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
 const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [] };
@@ -24,10 +25,11 @@ const kinds: TaskLog["entries"][number]["kind"][] = ["started", "assigned", "rev
 const log = (): TaskLog => ({ entries: kinds.map((kind, i) => ({ id: i + 1, task: `T-${i + 1}`, kind, at: new Date(2026, 9, 23, 8, i).getTime(), pullRequest: i === 10 ? 42 : null })), more: false, arilCursor: 6 });
 const setBridge = (bridge: unknown) => { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge; };
 beforeEach(() => {
+  access.mode = "local";
   const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns: [{ id: "col-1", name: "Backlog", position: 0 }], features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] } };
   useTasks.mockReturnValue({ board, refresh: vi.fn(async () => {}) }); setBridge({ taskAction, taskLog });
 });
-afterEach(() => { setBridge(undefined); vi.clearAllMocks(); });
+afterEach(() => { setBridge(undefined); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 const show = (value = log()) => render(<TaskLogPanel read={{ state: "ready", log: value }} onClose={() => {}} titleId="log-title" />);
 
 it("shows newest entries first with every fixed label, PR suffix, local times and the Aril divider", () => {
@@ -56,6 +58,42 @@ it("hides Log without the desktop bridge and during server rendering", () => {
   expect(renderToString(<TaskBoardPane repositoryId={repositoryId} />)).not.toContain(">Log<");
   setBridge({ taskAction }); render(<TaskBoardPane repositoryId={repositoryId} />);
   expect(screen.queryByRole("button", { name: "Log" })).toBeNull(); expect(taskLog).not.toHaveBeenCalled();
+});
+it("draws paired Log at first render, reads through POST and uses the paired caption without Scorecard", async () => {
+  setBridge(undefined); access.mode = "lan";
+  const post = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, log: log() }) });
+  vi.stubGlobal("fetch", post);
+  expect(renderToString(<TaskBoardPane repositoryId={repositoryId} />)).toContain(">Log<");
+  const user = userEvent.setup(); render(<TaskBoardPane repositoryId={repositoryId} />);
+  expect(screen.queryByRole("button", { name: "Scorecard" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Log" }));
+  expect(await screen.findByText("PR #42")).toBeInTheDocument();
+  expect(screen.getByText("The task log stays on the computer that runs Pomegr.")).toBeInTheDocument();
+  expect(post).toHaveBeenCalledExactlyOnceWith("/api/tasks/log-read", { method: "POST", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId }) });
+  expect(taskLog).not.toHaveBeenCalled();
+});
+it.each(["local", "unknown"])("never draws Log for an absent %s client, including after first render", async (mode) => {
+  setBridge(undefined); access.mode = mode;
+  const post = vi.fn(); vi.stubGlobal("fetch", post);
+  expect(renderToString(<TaskBoardPane repositoryId={repositoryId} />)).not.toContain(">Log<");
+  const { rerender } = render(<TaskBoardPane repositoryId={repositoryId} />);
+  expect(screen.queryByRole("button", { name: "Log" })).toBeNull();
+  rerender(<TaskBoardPane repositoryId={repositoryId} />);
+  expect(screen.queryByRole("button", { name: "Log" })).toBeNull();
+  expect(await readDesktopTaskLog(repositoryId)).toEqual({ ok: false });
+  expect(post).not.toHaveBeenCalled();
+});
+it("strictly parses paired responses and contains failed HTTP and network reads", async () => {
+  setBridge(undefined); access.mode = "lan";
+  const post = vi.fn(); vi.stubGlobal("fetch", post);
+  for (const answer of [{ ok: true, log: { ...log(), arilCursor: -1 } }, { ok: false, error: "unavailable" }]) {
+    post.mockResolvedValue({ ok: true, json: async () => answer });
+    expect(await readDesktopTaskLog(repositoryId)).toEqual({ ok: false });
+  }
+  post.mockResolvedValue({ ok: false, json: async () => ({ ok: true, log: log() }) });
+  expect(await readDesktopTaskLog(repositoryId)).toEqual({ ok: false });
+  post.mockRejectedValue(new Error("private"));
+  expect(await readDesktopTaskLog(repositoryId)).toEqual({ ok: false });
 });
 it("reads once on open, returns focus to Log, and reads again on reopening", async () => {
   let answer: (value: unknown) => void = () => {};
@@ -95,7 +133,8 @@ it("strictly parses the renderer answer and strips extra fields", async () => {
 
 it("renders the desktop Log action and each task log state from synthetic samples", () => {
   const { container } = render(<ScorecardSection />);
-  for (const label of ["Task log, entries", "Task log, empty", "Task log, reading", "Task log, failed", "Task log, more"]) expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
+  for (const label of ["Task log, entries", "Task log, empty", "Task log, reading", "Task log, failed", "Task log, more", "Task log, paired"]) expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
+  expect(screen.getByText("The task log stays on the computer that runs Pomegr.")).toBeInTheDocument();
   for (const button of screen.getAllByRole("button", { name: "Log" })) {
     expect(button).toHaveClass("commandQuietAction", "taskQueueSettingsAction");
     expect(button).toHaveAttribute("aria-haspopup", "dialog");

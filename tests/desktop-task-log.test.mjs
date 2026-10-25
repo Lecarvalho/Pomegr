@@ -29,7 +29,9 @@ test("fixed channel, kinds, export, registration and packaging", async () => {
   assert.ok(DESKTOP_RUNTIME_FILES.includes("desktop/runtime/task-log.mjs"));
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.ok(pkg.build.files.includes("desktop/runtime/task-log.mjs"));
-  assert.match(await readFile(new URL("../desktop/runtime/shell-main.mjs", import.meta.url), "utf8"), /installTaskLogIpc\(taskBridge\)/u);
+  const shell = await readFile(new URL("../desktop/runtime/shell-main.mjs", import.meta.url), "utf8");
+  assert.match(shell, /installTaskLogIpc\(\{ \.\.\.taskBridge, action: taskLog \}\)/u);
+  assert.match(shell, /taskLog: taskLog\.readLog/u);
 });
 
 test("untrusted events and bad repositories send nothing", async () => {
@@ -56,6 +58,19 @@ test("reads exactly 200 without ack and re-bounds all fields", async () => {
   assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload: { limit: 200 } });
   const full = { entries: Array.from({ length: 200 }, (_, i) => ({ ...entry(), id: i + 1 })), more: true, cursors: { aril: 100 } };
   assert.deepEqual(await harness(response({ ok: true, log: full })).action.run(trusted, repositoryId), { ok: true, log: { entries: full.entries, more: true, arilCursor: 100 } });
+});
+
+test("the shared reader re-bounds without a window event while IPC still requires trust", async () => {
+  const value = log(); value.entries[0].private = "hidden"; value.cursors.private = "hidden";
+  const { action, calls } = harness(response({ ok: true, log: value }));
+  assert.deepEqual(await action.readLog(repositoryId), { ok: true, log: { entries: [entry()], more: false, arilCursor: 0 } });
+  const handlers = new Map();
+  const remove = installTaskLogIpc({ action, ipcMain: { handle: (channel, handler) => handlers.set(channel, handler), removeHandler: (channel) => handlers.delete(channel) } });
+  assert.deepEqual(await handlers.get(TASK_LOG_CHANNEL)({}, repositoryId), invalid);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(await handlers.get(TASK_LOG_CHANNEL)(trusted, repositoryId), await action.readLog(repositoryId));
+  remove();
+  assert.deepEqual(await action.readLog(repositoryId), unavailable);
 });
 
 test("malformed entries, kind, bounds, cursor and envelopes are unavailable", async () => {

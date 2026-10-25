@@ -249,10 +249,10 @@ test("the monitor server composes the injected task store into the same gated ro
   assert.equal(unavailable.json.readiness, "unavailable");
 });
 
-test("the LAN gateway permits only board reads, fixed actions, task images, and confirmed manual starts", async () => {
+test("the LAN gateway permits only board and log reads, fixed actions, task images, and confirmed manual starts", async () => {
   const gateway = await readFile(new URL("../../../desktop/runtime/lan-gateway.mjs", import.meta.url), "utf8");
-  // Manual starts and images terminate in desktop main; issues and private monitor routes stay off the gateway.
-  assert.deepEqual([...new Set(gateway.match(/["`]\/(?:api|internal)\/tasks[^"`]*["`]/gu))].sort(), ['"/api/tasks"', '"/api/tasks/action"', '"/api/tasks/image-add"', '"/api/tasks/image-read"', '"/api/tasks/image-remove"', '"/api/tasks/start"']);
+  // Manual starts, images and log reads terminate in desktop main; issues and private monitor routes stay off the gateway.
+  assert.deepEqual([...new Set(gateway.match(/["`]\/(?:api|internal)\/tasks[^"`]*["`]/gu))].sort(), ['"/api/tasks"', '"/api/tasks/action"', '"/api/tasks/image-add"', '"/api/tasks/image-read"', '"/api/tasks/image-remove"', '"/api/tasks/log-read"', '"/api/tasks/start"']);
 });
 
 test("the board carries runModels.codex from the injected lookup: bounded to 64, invalid ids and labels dropped", async (context) => {

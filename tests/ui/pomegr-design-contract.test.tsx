@@ -11,7 +11,7 @@ import { SessionTerminalSection } from "../../app/components/design-system/Desig
 import { ScorecardSection } from "../../app/components/design-system/DesignSystemScorecardSample";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
-it("includes task log samples", () => { render(<ScorecardSection />); expect(screen.getByText("Task log, entries")).toBeInTheDocument(); });
+it("includes desktop and paired task log samples", () => { render(<ScorecardSection />); for (const name of ["entries", "paired"]) expect(screen.getByText(`Task log, ${name}`)).toBeInTheDocument(); });
 it("renders each read-only Terminal state from synthetic samples", () => {
   const { container } = render(<SessionTerminalSection />);
   expect(container.querySelector(".sessionTerminalMessage strong")).toHaveTextContent("previous revision");

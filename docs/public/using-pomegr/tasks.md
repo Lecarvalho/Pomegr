@@ -39,9 +39,9 @@ column. [Board and task states](tasks-board.md) explains each state and move.
 
 ### Read the task log
 
-In the desktop app, select **Log** in the strip above the board, just before
-**Scorecard**. It lists task starts, reports, stalls, CI results, and merges, newest
-first. The task log stays on this computer. Aril reads entries after its last answer;
+In the desktop app or on your paired phone, select **Log** in the strip above the
+board. It lists task starts, reports, stalls, CI results, and merges, newest
+first. The task log stays on the computer that runs Pomegr. Aril reads entries after its last answer;
 the divider shows how far it has read. Opening the log does not move that marker.
 
 ## Before you start

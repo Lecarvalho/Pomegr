@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useId, useRef, useState, type RefObject } from "react";
 import { CommandIcon } from "../command-center/CommandIcon";
-import { TASK_LOG_LABELS, type TaskLog, type TaskLogAnswer } from "./task-desktop";
+import { TASK_LOG_LABELS, useTaskLogAvailability, type TaskLog, type TaskLogAnswer } from "./task-desktop";
 import { TaskDialog } from "./TaskModalFrame";
 import { scheduleLabel, timeOfDay } from "./task-schedule";
 
@@ -15,7 +15,7 @@ function logTime(at: number) {
   return date.toDateString() === new Date().toDateString() ? timeOfDay(instant) : scheduleLabel(instant);
 }
 
-export function TaskLogPanel({ read, onClose, titleId, closeRef }: { read: TaskLogRead; onClose(): void; titleId: string; closeRef?: RefObject<HTMLButtonElement | null> }) {
+export function TaskLogPanel({ read, onClose, titleId, closeRef, paired = false }: { read: TaskLogRead; onClose(): void; titleId: string; closeRef?: RefObject<HTMLButtonElement | null>; paired?: boolean }) {
   const log = read.state === "ready" ? read.log : null;
   const entries = log ? [...log.entries].sort((a, b) => b.id - a.id) : [];
   const divider = log && entries.some((entry) => entry.id > log.arilCursor) ? entries.find((entry) => entry.id <= log.arilCursor)?.id : undefined;
@@ -39,11 +39,12 @@ export function TaskLogPanel({ read, onClose, titleId, closeRef }: { read: TaskL
       </Fragment>)}
     </ol>)}
     {log?.more && <p className="taskGatesCaption">Showing the newest 200 entries.</p>}
-    <p className="taskGatesCaption">The task log stays on this computer.</p>
+    <p className="taskGatesCaption">{paired ? "The task log stays on the computer that runs Pomegr." : "The task log stays on this computer."}</p>
   </div>;
 }
 
 export function TaskLogDialog({ readTaskLog, returnFocus, onClose }: { readTaskLog(): Promise<TaskLogAnswer>; returnFocus: RefObject<HTMLElement | null>; onClose(): void }) {
+  const availability = useTaskLogAvailability();
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [read, setRead] = useState<TaskLogRead>({ state: "pending" });
@@ -59,6 +60,6 @@ export function TaskLogDialog({ readTaskLog, returnFocus, onClose }: { readTaskL
     return () => { current = false; };
   }, [readTaskLog]);
   return <TaskDialog className="taskModalScrim taskQueueSettingsScrim" labelledBy={titleId} closeOnScrim onClose={onClose}>
-    <TaskLogPanel read={read} onClose={onClose} titleId={titleId} closeRef={closeRef} />
+    <TaskLogPanel read={read} onClose={onClose} titleId={titleId} closeRef={closeRef} paired={availability === "paired"} />
   </TaskDialog>;
 }

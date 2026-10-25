@@ -116,7 +116,7 @@ export function TaskBoardPane({ repositoryId, featureId = null, switcher, breadc
         {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
-      <TaskBoardView board={board} readTaskLog={logBridge === "available" ? readTaskLog : undefined} readScorecard={scorecardBridge === "available" ? readScorecard : undefined} reveal={reveal} featureSelection={featureSelection} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
+      <TaskBoardView board={board} readTaskLog={logBridge !== "absent" ? readTaskLog : undefined} readScorecard={scorecardBridge === "available" ? readScorecard : undefined} reveal={reveal} featureSelection={featureSelection} onOpenTask={editable ? openCard : undefined} edits={editable ? edits : undefined}
         newTask={editable ? { triggerRef: trigger, onOpen: openNew } : undefined} features={desktop ? featureEntry : undefined} />
       {editable && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onFollowUpFailed={openCreated} onClose={close} />}
       {editable && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} focus={modal?.kind === "task" ? modal.focus : undefined} />}

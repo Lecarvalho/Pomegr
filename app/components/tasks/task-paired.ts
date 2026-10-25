@@ -1,6 +1,13 @@
 "use client";
 
-// Fixed writes from a paired device.
+// Fixed requests from a paired device.
+
+export async function postPairedTaskLog(repositoryId: string): Promise<unknown> {
+  const response = await fetch("/api/tasks/log-read", {
+    method: "POST", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId }),
+  });
+  return response.ok ? response.json() : null;
+}
 
 export async function postPairedTaskAction(repositoryId: string, action: string, payload: unknown): Promise<unknown> {
   const response = await fetch("/api/tasks/action", {

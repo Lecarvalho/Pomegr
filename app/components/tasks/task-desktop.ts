@@ -5,7 +5,7 @@ import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThresho
 import { clientAccessMode, useClientAccess } from "../../hooks/ClientAccessContext";
 import type { FeatureInput } from "./task-features";
 import { parseScorecard, type ScorecardAnswer } from "./scorecard-model";
-import { postPairedTaskAction, postPairedTaskStart } from "./task-paired";
+import { postPairedTaskAction, postPairedTaskLog, postPairedTaskStart } from "./task-paired";
 
 // The two ways a client changes a task.
 
@@ -51,8 +51,10 @@ export function useScorecardAvailability(): TaskDesktopAvailability {
   return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => typeof taskDesktopBridge()?.taskScorecard === "function" ? "available" : "absent", () => "pending");
 }
 
-export function useTaskLogAvailability(): TaskDesktopAvailability {
-  return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => typeof taskDesktopBridge()?.taskLog === "function" ? "available" : "absent", () => "pending");
+export function useTaskLogAvailability(): "desktop" | "paired" | "absent" {
+  const desktop = useSyncExternalStore(subscribeBridge, () => typeof taskDesktopBridge()?.taskLog === "function", () => false);
+  const { mode } = useClientAccess();
+  return desktop ? "desktop" : mode === "lan" ? "paired" : "absent";
 }
 
 export type TaskEditAvailability = "pending" | "desktop" | "paired" | "absent";
@@ -201,12 +203,13 @@ export const TASK_LOG_LABELS = {
 export type TaskLog = { entries: { id: number; task: string; kind: keyof typeof TASK_LOG_LABELS; at: number; pullRequest: number | null }[]; more: boolean; arilCursor: number };
 export type TaskLogAnswer = { ok: true; log: TaskLog } | { ok: false };
 
-/** Re-bounds the desktop-only log; viewing never acknowledges entries. */
+/** Re-bounds the log from desktop main, through the bridge or paired route; never acknowledges entries. */
 export async function readDesktopTaskLog(repositoryId: string): Promise<TaskLogAnswer> {
   const bridge = taskDesktopBridge();
-  if (typeof bridge?.taskLog !== "function") return { ok: false };
+  const native = typeof bridge?.taskLog === "function";
+  if (!native && clientAccessMode() !== "lan") return { ok: false };
   try {
-    const result = await bridge.taskLog(repositoryId);
+    const result = native ? await bridge!.taskLog!(repositoryId) : await postPairedTaskLog(repositoryId);
     if (!result || typeof result !== "object" || Array.isArray(result) || (result as { ok?: unknown }).ok !== true) return { ok: false };
     const log = (result as { log?: TaskLog }).log;
     if (!log || Array.isArray(log) || !Array.isArray(log.entries) || log.entries.length > 200 || typeof log.more !== "boolean"

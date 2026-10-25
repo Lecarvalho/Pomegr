@@ -25,6 +25,7 @@ const readLog = (): Promise<TaskLogAnswer> => Promise.resolve({ ok: true, log: L
 const LOG_SAMPLES: [string, TaskLogRead][] = [
   ["entries", { state: "ready", log: LOG }], ["empty", { state: "ready", log: { entries: [], more: false, arilCursor: 0 } }],
   ["reading", { state: "pending" }], ["failed", { state: "failed" }], ["more", { state: "ready", log: { ...LOG, more: true } }],
+  ["paired", { state: "ready", log: LOG }],
 ];
 
 // Synthetic values only.
@@ -78,8 +79,8 @@ export function ScorecardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      {LOG_SAMPLES.map(([name, read]) => <Sample key={name} label={`Task log, ${name}`} note="Desktop app only. A neutral record, newest first; viewing never advances Aril's cursor.">
-        <TaskLogPanel read={read} onClose={noop} titleId={`task-log-sample-${name}`} />
+      {LOG_SAMPLES.map(([name, read]) => <Sample key={name} label={`Task log, ${name}`} note="Desktop app and paired device. A neutral record, newest first; viewing never advances Aril's cursor.">
+        <TaskLogPanel read={read} onClose={noop} titleId={`task-log-sample-${name}`} paired={name === "paired"} />
       </Sample>)}
     </div>
   </Section>;
