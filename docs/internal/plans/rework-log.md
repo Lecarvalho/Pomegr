@@ -1,11 +1,11 @@
 # Rework log: record when work is redone, and let Aril learn from it
 
-> Status: proposed; the owner asked for it on 2026-10-25 and reviews this plan before any build.
+> Status: accepted on 2026-10-25; R1 is next.
 > Created: 2026-10-25.
 > Scope: a recorded link that says one piece of work reworks an earlier one, with its cause; where it is declared, how the task log, Aril's snapshot, and the model record show it, and one scorecard measure. Pre-merge rework that Pomegr already records (send-backs, failed reviews, owner requeues) is counted, not redeclared.
 > Continuation owner: the product owner decides; the agent that builds a slice records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [Agent chat](../architecture/agent-chat.md), and [MCP tools](../../public/using-pomegr/mcp-tools.md) govern shipped behavior until each slice changes them.
-> Next task or decision: the owner reviews this plan and answers the open decision.
+> Next task or decision: build R1.
 > Completion criteria: a rework declared by a session, Aril, or the owner appears in the task log and in Aril's snapshot, counts in the model record, and moves the rework measure on the scorecard; every rule below has a test.
 > Permanent destinations: [Tasks](../architecture/tasks.md) for the record, the log kind, and the privacy row; [Agent chat](../architecture/agent-chat.md) for the snapshot and the proposal operation; [MCP tools](../../public/using-pomegr/mcp-tools.md) for the tool field; [Metrics](../architecture/metrics.md) for the measure; the task board design page for the panel and the task window.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -22,6 +22,7 @@ This plan adds that link, with a cause, so Aril can see which kinds of work get 
 | --- | --- |
 | 2026-10-25 | Rework counts before merge (send-backs, failed reviews) and after merge (fix pull requests). |
 | 2026-10-25 | Whoever detects it first declares it: the session that does the fix, Aril, or the owner. A link needs no per-link confirmation from the owner. |
+| 2026-10-25 | Aril records a link directly, without Apply, limited to links with a cause from the list; each one shows in the log. R3 adds this narrow exception to `AGENTS.md`. |
 
 ## Worked examples
 
@@ -49,7 +50,7 @@ Four fixes on 2026-10-25 reworked the Aril operator slices merged the same day. 
 ## Who declares
 
 - **The fixing session.** `complete_task` and `block_task` take an optional `reworks` list (`[{ "ref": "T-12" | "#336", "cause": "missed_wiring" }]`, at most 5). The route's exact-key check and the plugin hook field list change with it.
-- **Aril.** A new proposal operation `declare_rework`. See the open decision.
+- **Aril.** A `declare_rework` operation that Pomegr records without Apply, the narrow exception the owner chose on 2026-10-25.
 - **The owner.** A **Reworks** field in the task window: a task or pull request number and a cause.
 
 ## Where it shows
@@ -73,10 +74,7 @@ A link holds only references, a cause from the fixed list, the declarer, and a t
 | R3 | Aril: the snapshot fields, the 30-day summary, the model-record rule, the proposal operation, the memory suggestion | Rework rate trend after Aril memory lines exist |
 | R4 | The scorecard measure and its panel row | Rework rate |
 
-## Open decision
-
-- **Does Aril record a link without Apply?** The owner decided that a link needs no per-link confirmation. `AGENTS.md` lets Aril change nothing outside the grant actions without the owner's Apply. A link changes no task, so recording it directly is a narrow exception to add to `AGENTS.md`, as the grant task writes are. The alternative keeps `declare_rework` a proposal that the owner applies. Recommendation: allow the direct record, limited to links with a cause from the list, and show each one in the log.
-
 ## Checkpoint
 
 - 2026-10-25: plan written from the code map of the task log, the pull-request facts, the MCP task tools, the proposal operations, the snapshot, and the scorecard. Next action: the owner reviews it.
+- 2026-10-25: the owner accepted the plan and chose the direct record for Aril. Next action: build R1.
