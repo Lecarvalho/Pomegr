@@ -308,7 +308,9 @@
 .taskReport { display: flex; flex-direction: column; gap: var(--space-2); }
 .taskReportNotice { margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--command-amber); border-radius: var(--control-radius); background: var(--color-amber-soft); color: var(--command-ink); font: 400 var(--text-sm)/1.5 var(--font-ui); overflow-wrap: anywhere; }
 .taskReportNotice strong { font-weight: 650; }
-.taskReportCode { padding: 0 var(--space-1); border-radius: var(--control-radius); background: color-mix(in srgb, var(--command-amber) 14%, transparent); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskReportNotice .agentChatMarkdown { font: inherit; }
+.taskReportNotice .agentChatInlineCode { padding: 0 var(--space-1); border-radius: var(--control-radius); background: color-mix(in srgb, var(--command-amber) 14%, transparent); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskReportNotice .agentChatCode > code { padding: 0; background: none; font: inherit; }
 @media (max-width: 760px), (pointer: coarse) {
   .taskCheckRow { min-height: 44px; }
   .taskCompleteWhen .taskOwnInput { min-height: 44px; }

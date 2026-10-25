@@ -180,8 +180,19 @@ The task board is in [Task board design](task-board.md).
 ### Answer text
 
 - `SafeMarkdown` builds React elements from the answer and sets no HTML.
-- So HTML, a link, and an image stay the literal characters they were written with, and nothing navigates.
-- It reads paragraphs, `-`, `*`, and `1.` lists, `**bold**`, `` `inline code` ``, fenced code blocks, and `#` headings.
+- The renderer uses `react-markdown@10.1.0` with `remark-gfm@4.0.1`.
+- It renders paragraphs, headings as styled lines, fenced code, inline code, bold, italic, strikethrough, and escapes.
+- It renders GFM tables, blockquotes, rules, nested ordered and unordered lists, and task lists.
+- Raw HTML and images stay literal source text.
+- Links stay literal in agent chat and task report notes.
+- Bare URLs, reference links, and footnotes stay literal even when a caller supplies a link opener.
+- Task-list checkboxes are non-interactive glyphs labelled Checked or Unchecked, never inputs.
+- Tables scroll horizontally inside their message without widening the panel.
+- Table cells use `--space-1` by `--space-3` padding and `--command-line` row rules, with no zebra fill.
+- Table headers have weight 650.
+- Blockquotes use muted ink and a left rule in `--command-line-strong`.
+- Horizontal rules use `--command-line`.
+- Task report notes share this renderer and keep their amber inline-code fill through the notice's CSS scope.
 - A blank line separates paragraphs, and a single line break is kept.
 - Text is 13px/1.55.
 - A heading is a 13px/650 line, not a heading element.

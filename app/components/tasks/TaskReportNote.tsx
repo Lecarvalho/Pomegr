@@ -1,6 +1,6 @@
 import type { Task } from "../../../shared/task-contract";
 import { sessionListTime } from "../../dashboard-utils";
-import { inlineMarkdown } from "../markdown/inline-markdown";
+import { SafeMarkdown } from "../markdown/SafeMarkdown";
 
 /** The agent's report under Complete when: one muted line, then the agent's own words in a notice when it gave any. */
 export function TaskReportNote({ report }: { report: Pick<NonNullable<Task["report"]>, "at" | "blockReason" | "attention"> }) {
@@ -11,6 +11,6 @@ export function TaskReportNote({ report }: { report: Pick<NonNullable<Task["repo
   const line = blocked ? <>Agent reported it cannot continue{time}</> : <>Agent reported complete{time}{words !== null && " and asks for your attention"}</>;
   return <div className="taskCompleteWhenNote taskReport">
     <span className="newTaskHelper">{line}{words === null ? "." : ":"}</span>
-    {words !== null && <p className="taskReportNotice">{inlineMarkdown(words, "taskReportCode")}</p>}
+    {words !== null && <div className="taskReportNotice"><SafeMarkdown text={words} /></div>}
   </div>;
 }

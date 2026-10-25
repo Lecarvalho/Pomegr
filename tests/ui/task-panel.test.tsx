@@ -647,7 +647,7 @@ describe("Task modal resolutions", () => {
     expect(header().getByText("Blocked by agent")).toHaveClass("commandChip");
     expect(dialog.getByRole("heading", { level: 3, name: "Blocked by agent" })).toBeInTheDocument();
     expect(dialog.getByText(/Agent reported it cannot continue/).textContent).toMatch(/^Agent reported it cannot continue \(.+\):$/u);
-    expect(dialog.getByText("The schema needs a decision.")).toHaveClass("taskReportNotice");
+    expect(dialog.getByText("The schema needs a decision.").closest(".taskReportNotice")).not.toBeNull();
     await user.click(dialog.getByRole("button", { name: "Requeue task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-14" }));
     // A requeued task can be edited again, so its modal stays.
@@ -748,7 +748,7 @@ describe("Task modal resolutions", () => {
     const notice = line.parentElement!.querySelector(".taskReportNotice") as HTMLElement;
     expect(notice).toHaveTextContent("The retry limit of five is a guess; confirm RETRY_LIMIT and [the PR](https://example.test).");
     expect(within(notice).getByText("five").tagName).toBe("STRONG");
-    expect(within(notice).getByText("RETRY_LIMIT")).toHaveClass("taskReportCode");
+    expect(within(notice).getByText("RETRY_LIMIT")).toHaveClass("agentChatInlineCode");
     expect(notice.querySelector("a")).toBeNull();
     expect(dialog.getByRole("button", { name: "Mark done" })).toBeInTheDocument();
   });

@@ -2,11 +2,67 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { SafeMarkdown as AgentChatMarkdown, parseBlocks } from "../../app/components/markdown/SafeMarkdown";
+import { SafeMarkdown as AgentChatMarkdown } from "../../app/components/markdown/SafeMarkdown";
+import { TaskReportNote } from "../../app/components/tasks/TaskReportNote";
+import { AgentChatSection } from "../../app/components/design-system/DesignSystemAgentChatSample";
 
 const html = (text: string) => render(<AgentChatMarkdown text={text} />).container.firstElementChild as HTMLElement;
 
 describe("AgentChatMarkdown", () => {
+  it("shows GFM elements in the agent chat samples", () => {
+    const { container } = render(<AgentChatSection />);
+    for (const selector of ["table thead th", "table tbody td code", "blockquote", "hr", "ul ul", "em", "del", ".agentChatTaskGlyph"]) {
+      expect(container.querySelector(`.agentChatMarkdown ${selector}`)).not.toBeNull();
+    }
+    expect(container.querySelector(".agentChatMarkdown input")).toBeNull();
+    expect(container.querySelector(".agentChatTableScroll")).toHaveAttribute("tabindex", "0");
+  });
+  it("renders the owner's proof table inside a scroll wrapper", () => {
+    const root = html("| Proof | Result |\n|---|---|\n| `npm test` | Pass: 4,011 Node, 2,418 UI; four skips |\n| `npm run lint` | Pass: 55 warnings, zero errors |");
+    expect(root.querySelectorAll("table")).toHaveLength(1);
+    expect(root.querySelectorAll("thead th")).toHaveLength(2);
+    expect(root.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(root.querySelectorAll("td code")).toHaveLength(2);
+    expect(root.querySelector("table")?.parentElement).toHaveClass("agentChatTableScroll");
+    expect(root.textContent).not.toContain("|");
+  });
+
+  it("renders GFM blocks and inline formatting with non-interactive task glyphs", () => {
+    const root = html("> Quoted *emphasis*\n\n---\n\n- Parent\n  - Child\n\n- [x] Finished\n- [ ] Pending\n\n~~Removed~~ and \\*literal star\\* and snake_case_name");
+    expect(root.querySelector("blockquote em")).toHaveTextContent("emphasis");
+    expect(root.querySelectorAll("hr")).toHaveLength(1);
+    expect(root.querySelector("ul ul li")).toHaveTextContent("Child");
+    expect(root.querySelector('[aria-label="Checked"]')).toHaveTextContent("☑");
+    expect(root.querySelector('[aria-label="Unchecked"]')).toHaveTextContent("☐");
+    expect(root.querySelector("input")).toBeNull();
+    expect(root.querySelector("del")).toHaveTextContent("Removed");
+    expect(root.textContent).toContain("*literal star* and snake_case_name");
+    expect(root.querySelectorAll("em")).toHaveLength(1);
+  });
+
+  it("keeps footnotes and reference images literal without generated links", () => {
+    const root = html("Note[^1]\n\n[^1]: Footnote\n\n![pixel][image]\n\n[image]: https://example.test/p.png");
+    expect(root.textContent).toContain("Note[^1]");
+    expect(root.textContent).toContain("[^1]: Footnote");
+    expect(root.textContent).toContain("![pixel][image]");
+    expect(root.querySelector("a, img, sup, section")).toBeNull();
+  });
+
+  it.each([undefined, vi.fn()])("keeps reference links and their destinations literal", (onOpenLink) => {
+    const { container } = render(<AgentChatMarkdown text={"[label][id]\n\n[id]: https://example.test/"} onOpenLink={onOpenLink} />);
+    expect(container.textContent).toContain("[label][id]");
+    expect(container.textContent).toContain("[id]: https://example.test/");
+    expect(container.querySelector("a")).toBeNull();
+  });
+
+  it("uses the same GFM renderer in task report notes", () => {
+    const { container } = render(<TaskReportNote report={{ at: "2026-10-08T12:00:00.000Z", blockReason: null, attention: "*Review* `RETRY_LIMIT`\n\n| Check | Result |\n|---|---|\n| Tests | Pass |" }} />);
+    expect(container.querySelector(".taskReportNotice em")).toHaveTextContent("Review");
+    expect(container.querySelector(".taskReportNotice code")).toHaveTextContent("RETRY_LIMIT");
+    expect(container.querySelectorAll(".taskReportNotice table")).toHaveLength(1);
+    expect(container.querySelector("p div, p table")).toBeNull();
+  });
+
   it("opts into HTTPS links, preserves label formatting, and prevents navigation", () => {
     const onOpenLink = vi.fn();
     const url = "https://github.com/o/r/pull/927";
@@ -80,11 +136,11 @@ describe("AgentChatMarkdown", () => {
 
   it("renders a fenced block as one code element, including a fence that is still open", () => {
     const closed = html("Before\n\n```ts\nconst a = `x`;\n**not bold**\n```\n\nAfter");
-    expect(closed.querySelector("pre.agentChatCode code")?.textContent).toBe("const a = `x`;\n**not bold**");
+    expect(closed.querySelector("pre.agentChatCode code")?.textContent).toBe("const a = `x`;\n**not bold**\n");
     expect(closed.querySelector("pre strong")).toBeNull();
     expect(closed.querySelectorAll("p")).toHaveLength(2);
     // The answer is still being written: the open fence holds the rest of the text.
-    expect(html("```\nstill writing").querySelector("pre code")?.textContent).toBe("still writing");
+    expect(html("```\nstill writing").querySelector("pre code")?.textContent).toBe("still writing\n");
   });
 
   it("renders a # heading as a line of its own, and not as a heading element", () => {
@@ -92,7 +148,7 @@ describe("AgentChatMarkdown", () => {
     expect(root.querySelector(".agentChatMdHeading")).toHaveTextContent("Plan");
     expect(root.querySelector("h1, h2, h3, h4, h5, h6")).toBeNull();
     expect(root.textContent).not.toContain("#");
-    expect(parseBlocks("# One\n\n- item").map((block) => block.kind)).toEqual(["heading", "list"]);
+    expect([...html("# One\n\n- item").children].map((block) => block.tagName)).toEqual(["P", "UL"]);
   });
 
   it("shows HTML, links and images as literal text and builds none of them", () => {
@@ -109,7 +165,7 @@ describe("AgentChatMarkdown", () => {
       "**<img src=x onerror=alert(1)>**",
     ].join("\n\n");
     const root = html(hostile);
-    expect(root.querySelector("img, a, script, iframe, b, svg, object, embed, form, style")).toBeNull();
+    expect(root.querySelector("img, a, script, iframe, input, b, svg, object, embed, form, style")).toBeNull();
     expect(root.querySelector("[onerror], [onclick], [href], [src]")).toBeNull();
     expect(root.textContent).toContain("<img src=x onerror=alert(1)>");
     expect(root.textContent).toContain("[click](javascript:alert(1))");
@@ -118,7 +174,8 @@ describe("AgentChatMarkdown", () => {
     expect(root.textContent).toContain("https://example.test/auto");
     // Nothing the text said became an element: only the renderer's own tags exist.
     const tags = new Set([...root.querySelectorAll("*")].map((element) => element.tagName.toLowerCase()));
-    expect([...tags].filter((tag) => !["p", "ul", "ol", "li", "pre", "code", "strong"].includes(tag))).toEqual([]);
+    expect([...tags].filter((tag) => !["p", "ul", "ol", "li", "pre", "code", "strong", "table", "thead", "tbody", "tr", "th", "td", "blockquote", "hr", "em", "del", "span", "div"].includes(tag))).toEqual([]);
+    expect([...root.querySelectorAll("*")].flatMap((element) => [...element.attributes].filter((attribute) => /^on/i.test(attribute.name)))).toEqual([]);
   });
 
   it("never sets markup from a string", () => {
