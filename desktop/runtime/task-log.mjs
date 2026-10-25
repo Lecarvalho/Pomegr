@@ -22,7 +22,7 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed"]);
+export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review"]);
 
 function boundedLog(value) {
   if (!isPlainObject(value) || !Array.isArray(value.entries) || value.entries.length > 200

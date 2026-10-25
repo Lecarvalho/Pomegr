@@ -61,7 +61,8 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
 - `task_outcomes` stores one outcome per task at Done, from its events in the same transaction, without backfilling older tasks.
 - `task_scorecard_snapshots` stores one row per repository, app version, and formula; snapshots are kept when a task is deleted.
-- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, `task_log_cursors`, `task_reviews`, `aril_settings`, and `aril_memory` tables. These additive tables keep schema version 1.
+- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, `task_log_cursors`, `task_reviews`, `aril_settings`, `aril_memory`, and `aril_grants` tables. These additive tables keep schema version 1.
+- `aril_grants` holds an autoincrement `id`, `repository_id`, integer `started_at`, `ends_at`, and `starts_used` (default zero), JSON `actions` and `limits` snapshots, and nullable `ended_at` and `end_reason`; a unique partial index permits at most one row per repository with `ended_at IS NULL`.
 - `aril_settings` holds one normalized JSON value and integer update time per repository, keyed by `repository_id`, without a rowid.
 - `aril_memory` holds at most 100 entries per repository, with an autoincrement integer ID, one-line text, and integer creation and update times.
 - Opening a store adds nullable `reviews INTEGER` and `first_review_passed INTEGER` columns to `task_outcomes` when absent, preserving existing rows.
@@ -156,7 +157,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 ## Aril settings and memory
 
 - Settings and memory are stored and served in phase 3; they grant no action and have no automatic behavior.
-- Each ready repository board includes `aril: { settings, memory }`; memory is oldest first, ordered by creation time then ID, and unavailable or denied boards omit owner content.
+- Each ready repository board includes `aril: { settings, memory, grant }`; memory is oldest first, ordered by creation time then ID, and unavailable or denied boards omit owner content.
 - `actions` has boolean `start`, `review`, `sendBack`, `merge`, and `writeTasks`, all false by default.
 - `limits` has nullable integers: `hours` 1–72, `starts` 1–100, `concurrent` 1–10, `sendBacks` 0–10, and `allowancePercent` 1–100; all default to null, meaning not settled yet, so Aril must ask.
 - `concurrent` also obeys the queue's parallel group bound, currently 16; there is no separate per-repository queue limit setting.
@@ -172,6 +173,29 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - Aril reads settings and memory in its chat prompt. It may propose settings changes except `pairedDevices`, and add, update, or remove memory entries; the owner applies these through `aril_settings_set` or the matching `aril_memory_*` action.
 - A paired device may apply these proposals only when stored `pairedDevices` is true; otherwise Apply answers `desktop_only`. Only the desktop action may change `pairedDevices`.
 - Memory operations may combine only with other memory operations. A settings operation is standalone. Follow-up proposals cannot contain these operations.
+
+## Aril grants
+
+Phase 4a stores grants and selects permitted next steps. Nothing acts on a grant in this slice: no session starts, review starts, task writes, send-backs, or merges happen through it.
+
+- `grant_start` accepts exactly `{}` through the task action envelope and answers `{ ok: true, grant }`; `not_ready` refuses unset `hours`, `starts`, or `concurrent` limits, or both `actions.start` and `actions.review` false, and `conflict` refuses an already active grant.
+- Starting snapshots `settings.actions` and `settings.limits`, records the start time, and sets the end time to that time plus `limits.hours`; later settings edits do not change either snapshot.
+- A grant is active exactly while `ended_at IS NULL`, the current time is before `ends_at`, and `starts_used` is below its snapshotted `limits.starts`.
+- Reading a grant, including a board read, ends a timed-out or exhausted grant in the same transaction, with `expired` taking precedence over `starts_used` when both limits are reached.
+- `grant_stop` accepts exactly `{}`, ends an active grant with `stopped`, and answers `{ ok: true }` even without an active grant; it never ends a session.
+- The desktop may start and stop grants; the monitor accepts a paired start only when stored `pairedDevices` is true, while a paired stop is always allowed.
+- The board's `aril.grant` is null before any grant, otherwise the latest grant's `{ startedAt, endsAt, startsUsed, actions, limits, active }`; ended grants also carry `endedAt` and `endReason`, with times in epoch milliseconds.
+- `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 `{ repositoryId, taskId, kind: "start" | "review" }` entries across repositories; it starts nothing and does not change queue behavior.
+- Selection uses current settings work rules, with any matching rule sufficient: an exact tag from the leading tag run (the board parser with the settings' 40-character bound), a case-insensitive text substring, a matching feature ID, or a listed task ID; no rules select nothing.
+- Reviews require the grant's `review` switch, `needs_review`, a linked builder, no review dispatch (including an expired dispatch), no bound reviewer, and no verdict since the latest entry into Review; earlier verdicts do not exclude the task.
+- Starts require the grant's `start` switch, a Ready card in startable state with no linked session or live dispatch, and no unfinished task in its `after` list; selection follows Ready position then task number. Ready is the store's Ready column, as the queue reads it; a board without the fixed columns has none, so a grant starts nothing there.
+- Available session capacity is computed once per repository as `limits.concurrent` minus linked, unreported builders in flight minus running bound reviews; each selected review consumes one slot first, then builder starts consume the remaining slots, also capped by `limits.starts - startsUsed`; reviews do not consume the starts allowance.
+- Each start passes the same `startGates`, committed gate facts resolver, repository threshold, and earlier-task checks as `nextQueueStarts`; when a queue stop time is set, the queue window hold also applies, including its start time.
+- `grant-record` accepts `{ repositoryId, taskId, kind }` after a successful launch; `start` increments `starts_used`, `review` does not, and both append `grant_start` or `grant_review` to the task log in the same transaction, ending an exhausted grant with `starts_used`.
+- A record after the grant ends returns `not_active` and changes neither count nor log; an unknown task returns `not_found`, and recording does not launch or retry work.
+- `grant-check` accepts `{ repositoryId }` and answers `{ ok: true, active }` for an in-flight authorization check.
+- `grant-end` accepts `{ repositoryId, reason }`, with only `start_failed` or `app_restart`, and answers `{ ok: true }`; ending an inactive grant is idempotent.
+- The next slice's desktop runner may launch selected starts and reviews only while authorization remains active, record successful launches, end the grant after a failed start to prevent a retry loop, and end leftover grants with `app_restart` at desktop startup because grants end when the app quits; this slice has no runner or automatic restart cleanup.
 
 ## Record
 
@@ -2661,7 +2685,15 @@ serves no other client.
 | --- | --- | --- |
 | `POST /internal/tasks/aril_settings_set`, `aril_memory_add`, `aril_memory_update`, `aril_memory_remove` | Desktop token; paired proxy additionally gated by stored `pairedDevices` | Fixed payloads and settings or memory entry answers in [Aril settings and memory](#aril-settings-and-memory); no board in these action answers |
 | `POST /api/tasks/action` with an Aril action | Authenticated paired gateway; opt-in checked by the monitor using the proxy's fixed paired marker | Same fixed payloads and answers; `settings.pairedDevices` is refused even after opt-in |
-| `GET /api/tasks?repositoryId=repo-<24 hex>` field `aril` | Existing board read gate, including paired devices regardless of the edit switch | Normalized settings and ordered memory entries; no grant or action authority |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` field `aril` | Existing board read gate, including paired devices regardless of the edit switch | Normalized settings, ordered memory entries, and the nullable latest grant; nothing acts on the grant in this slice |
+| `POST /internal/tasks/grant_start` | Desktop token | `{ repositoryId, payload: {} }`; `{ ok: true, grant }` or fixed refusal; no desktop runner yet |
+| `POST /internal/tasks/grant_stop` | Desktop token | `{ repositoryId, payload: {} }`; idempotent `{ ok: true }` |
+| `POST /internal/tasks/grant_start` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, only when stored `pairedDevices` is true | Same start envelope and answer; client wiring is deferred |
+| `POST /internal/tasks/grant_stop` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, regardless of `pairedDevices` | Same stop envelope and answer; client wiring is deferred |
+| `POST /internal/tasks/grant-next` | Desktop token only; paired marker refused; no Next route | `{}`; `{ ok: true, steps }` containing at most 16 repository IDs, task IDs, and start/review kinds |
+| `POST /internal/tasks/grant-record` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, taskId, kind }`; `{ ok: true }` or fixed refusal |
+| `POST /internal/tasks/grant-check` | Desktop token only; paired marker refused; no Next route | `{ repositoryId }`; `{ ok: true, active }` |
+| `POST /internal/tasks/grant-end` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, reason: "start_failed" | "app_restart" }`; `{ ok: true }` |
 | `POST /internal/tasks/review-plan` | Desktop main, desktop token; no browser or paired route | Existing `{ repositoryId, payload }` envelope; payload `{ id }` or `{ id, provider, model, effort }`; answers the private review plan |
 | `pomegr:task-review-start` IPC | Trusted desktop main frame only, behind native confirmation | Repository ID and task ID only; answers one fixed start status, never the private review plan |
 | `POST /internal/tasks/review-abort` | Desktop main, desktop token | Existing repository envelope with `{ id, token }`; clears only the matching review dispatch |
@@ -2817,6 +2849,11 @@ serves no other client.
   `feature-get`.
 
 ## Privacy
+
+- A grant holds times, counts, a fixed end reason, and fixed action and limit settings snapshots under repository and grant IDs; the board exposes only the latest grant's documented fields, never its internal ID.
+- Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, and active state, never task text, prompts, paths, session IDs, or dispatch tokens.
+- The log gains the fixed kinds `grant_start` and `grant_review`, readable through its existing desktop, paired-device, and Aril prompt paths; grant records never enter `/api/state`, observation, or agent tools.
+- Grants survive task deletion and must be deleted with the board if board deletion is introduced; this slice adds no automatic action authority.
 
 - Aril settings hold fixed values, task and feature IDs, a model name, and short owner-written rule text; memory holds owner-approved one-line text, entry IDs, and timestamps.
 - Settings and memory reach the trusted desktop renderer and a paired device through the board, and their fixed action answers reach the authorized caller; neither reaches `/api/state`, observation, an agent tool, or Aril's prompt in this slice.

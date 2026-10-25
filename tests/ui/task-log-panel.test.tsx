@@ -20,8 +20,8 @@ import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 const repositoryId = "repo-0123456789abcdef01234567";
 const taskAction = vi.fn(async () => ({ ok: true }));
 const taskLog = vi.fn<(repositoryId: string) => Promise<unknown>>();
-const labels = ["Started", "Assigned to a session", "Reported complete", "Blocked", "Requeued", "Marked done", "Session ended without a report", "Session working again", "CI passed", "CI failed", "Merged", "Review started", "Review passed", "Review failed"];
-const kinds: TaskLog["entries"][number]["kind"][] = ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed"];
+const labels = ["Started", "Assigned to a session", "Reported complete", "Blocked", "Requeued", "Marked done", "Session ended without a report", "Session working again", "CI passed", "CI failed", "Merged", "Review started", "Review passed", "Review failed", "Started by Aril under a grant", "Review started by Aril under a grant"];
+const kinds: TaskLog["entries"][number]["kind"][] = ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review"];
 const log = (): TaskLog => ({ entries: kinds.map((kind, i) => ({ id: i + 1, task: `T-${i + 1}`, kind, at: new Date(2026, 9, 23, 8, i).getTime(), pullRequest: i === 10 ? 42 : null })), more: false, arilCursor: 6 });
 const setBridge = (bridge: unknown) => { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge; };
 beforeEach(() => {

@@ -22,11 +22,11 @@ const invalid = (answer) => assert.deepEqual(answer, { ok: false, error: "invali
 
 test("defaults, subset replacement, repository isolation and persistence", (t) => {
   const { store, directory, set } = setup(t);
-  assert.deepEqual(store.readBoard(REPO).aril, { settings: defaults(), memory: [] });
+  assert.deepEqual(store.readBoard(REPO).aril, { settings: defaults(), memory: [], grant: null });
   assert.deepEqual(set({}), { ok: true, settings: defaults() });
   assert.equal(set({ actions: { ...defaults().actions, start: true }, pairedDevices: true }).ok, true);
   assert.deepEqual(set({ actions: defaults().actions }), { ok: true, settings: { ...defaults(), pairedDevices: true } });
-  assert.deepEqual(store.readBoard(OTHER).aril, { settings: defaults(), memory: [] });
+  assert.deepEqual(store.readBoard(OTHER).aril, { settings: defaults(), memory: [], grant: null });
   const again = openTaskStore({ directory });
   try { assert.equal(again.readBoard(REPO).aril.settings.pairedDevices, true); } finally { again.close(); }
   const leaked = store.readBoard(REPO).aril;
@@ -130,7 +130,7 @@ test("opening an existing version-one store adds both tables without losing task
   const reopened = openTaskStore({ directory });
   try {
     assert.equal(reopened.readBoard(REPO).tasks[0].text, "Existing");
-    assert.deepEqual(reopened.readBoard(REPO).aril, { settings: defaults(), memory: [] });
+    assert.deepEqual(reopened.readBoard(REPO).aril, { settings: defaults(), memory: [], grant: null });
     assert.equal(reopened.apply(REPO, "aril_memory_add", { text: "New" }).ok, true);
     const inspect = new DatabaseSync(path.join(directory, "tasks.sqlite"));
     try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, "1"); } finally { inspect.close(); }

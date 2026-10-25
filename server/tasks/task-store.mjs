@@ -6,6 +6,7 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { arilMemoryAdd, arilMemoryRemove, arilMemoryUpdate, arilSettingsSet, ensureArilSettings, pruneArilTask, readAril } from "./task-aril-settings.mjs";
+import { ensureArilGrants, grantOperations, grantStart, grantStop, readGrant } from "./task-aril-grant.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
@@ -127,6 +128,7 @@ function createFreshStore(database) {
     ensureTaskLog(database);
     ensureTaskReviews(database);
     ensureArilSettings(database);
+    ensureArilGrants(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
@@ -164,6 +166,7 @@ function openDatabase(directory) {
       ensureTaskLog(database);
       ensureTaskReviews(database);
       ensureArilSettings(database);
+      ensureArilGrants(database);
     }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
@@ -512,7 +515,7 @@ function removeFromQueue({ database, repositoryId, now }, payload) {
 }
 // Actions by name.
 const ACTIONS = Object.freeze({
-  aril_settings_set: arilSettingsSet, aril_memory_add: arilMemoryAdd, aril_memory_update: arilMemoryUpdate, aril_memory_remove: arilMemoryRemove,
+  grant_start: grantStart, grant_stop: grantStop, aril_settings_set: arilSettingsSet, aril_memory_add: arilMemoryAdd, aril_memory_update: arilMemoryUpdate, aril_memory_remove: arilMemoryRemove,
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   feature_create: createFeature, feature_update: updateFeature, feature_delete: deleteFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_group: groupTasks, queue_ungroup: ungroupTasks, queue_settings: queueSettings,
@@ -523,14 +526,12 @@ const ACTIONS = Object.freeze({
   agent_create: agentCreateTask, agent_remove: agentRemoveTask, agent_update: agentUpdateTask,
   agent_feature_create: agentCreateFeature, agent_feature_update: agentUpdateFeature, agent_feature_delete: agentDeleteFeature,
 });
-
 class ActionRejected extends Error {
   constructor(code) {
     super(code);
     this.code = code;
   }
 }
-
 // Opens the task store in `directory`.
 export function openTaskStore({ directory, now = Date.now } = {}) {
   let database = openDatabase(directory);
@@ -559,9 +560,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     settleReadyColumn(database, repositoryId, readTaskGroups(database, repositoryId));
     settleGroupLanes(database, repositoryId, now());
   }
-
   const newGroupId = () => newOpaqueId("grp");
-
   function migrateGroups(repositoryId) {
     runTransaction(database, () => {
       migrateStepGroups(database, repositoryId, newGroupId);
@@ -575,7 +574,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       if (!projectBoard(repositoryId, loadRows(repositoryId), { at: now() })) throw new ActionRejected("conflict");
     });
   }
-
   function storedSchedule(repositoryId) {
     const { startAt, stopAfter } = readQueueSchedule(database, repositoryId);
     return { start_at: startAt, stop_after: stopAfter };
@@ -625,7 +623,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     let asked = null;
     const gateFacts = typeof resolveGateFacts === "function" ? (id) => (asked ??= { facts: resolveGateFacts(id) }).facts : null;
     const gated = fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), rows, resolveGateFacts: gateFacts, at });
-    return { ...fillTaskReviews(database, fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at })), aril: readAril(database, board.repositoryId) };
+    const aril = { ...readAril(database, board.repositoryId), grant: runTransaction(database, () => readGrant(database, board.repositoryId, at)) };
+    return { ...fillTaskReviews(database, fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at })), aril };
   };
   function readBoard(repositoryId, resolvers = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
@@ -683,6 +682,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     // A store that cannot be used refuses the write before any handler can touch it.
     if (!database) return { ok: false, error: "conflict" };
     try {
+      if (action === "grant_start" || action === "grant_stop") return runTransaction(database, () => handler({ database, repositoryId, ensureRepository, now }, payload));
       const board = runTransaction(database, () => {
         if (repositoryExists(repositoryId)) {
           reconcileColumns(repositoryId);
@@ -795,6 +795,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const readScorecard = (repositoryId, appVersion) => link(() => runTransaction(database, () => readScorecardSnapshot(database, repositoryId, appVersion, now())));
   const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
-  return Object.freeze({ ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ ...grantOperations(dispatch, loadRows, now), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, readScorecard, readLog, ackLog, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
