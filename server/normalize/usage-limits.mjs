@@ -4,6 +4,7 @@ import { isoTimestampFromDateInput } from "./primitives.mjs";
 import { copyUsageNotificationSource } from "./usage-notification-facts.mjs";
 
 export const USAGE_REFRESH_INTERVAL_MS = 5 * 60_000;
+const USAGE_RETRY_MAX_MS = 60 * 60_000;
 
 export function retryAfterDelay(value, now = Date.now()) {
   if (typeof value !== "string" || !value.trim()) return null;
@@ -63,6 +64,7 @@ function normalizedUsageLimits(body) {
  *   failureKind?: (error: any) => "authentication_required" | "rate_limited" | "unavailable" | "runtime_unavailable",
  *   retryDelay?: (error: any, currentTime: number) => number,
  *   now?: () => number,
+ *   random?: () => number,
  *   initialState?: { value: any, nextAttemptAt: number } | null,
  *   signInRetryFailures?: string[],
  *   signInRetryEmpty?: boolean,
@@ -75,12 +77,14 @@ export function createCoordinatedUsageLimitsReader({
   failureKind = () => "unavailable",
   retryDelay = () => USAGE_REFRESH_INTERVAL_MS,
   now = () => Date.now(),
+  random = Math.random,
   initialState = null,
   signInRetryFailures = ["authentication_required"],
   signInRetryEmpty = false,
   onUpdate = () => {},
 }) {
   const cache = { value: initialState?.value ?? null, nextAttemptAt: initialState?.nextAttemptAt ?? 0, pending: null };
+  let retryWindowMs = USAGE_REFRESH_INTERVAL_MS;
 
   function cachedValue() {
     return cache.value || emptyUsageLimits();
@@ -110,10 +114,16 @@ export function createCoordinatedUsageLimitsReader({
         };
         copyUsageNotificationSource(result, value);
         cache.value = value;
+        retryWindowMs = USAGE_REFRESH_INTERVAL_MS;
         return value;
       } catch (error) {
         const attemptedAtMs = now();
-        const nextRetryDelay = Math.max(USAGE_REFRESH_INTERVAL_MS, Number(retryDelay(error, attemptedAtMs)) || 0);
+        const nextRetryDelay = Math.max(
+          USAGE_REFRESH_INTERVAL_MS,
+          Number(retryDelay(error, attemptedAtMs)) || 0,
+          Math.floor(random() * retryWindowMs),
+        );
+        retryWindowMs = Math.min(USAGE_RETRY_MAX_MS, retryWindowMs * 2);
         nextAttemptAt = attemptedAtMs + nextRetryDelay;
         const attemptedAt = new Date(attemptedAtMs).toISOString();
         const safeError = String(errorMessage(error) || "Usage limits are temporarily unavailable.").slice(0, 120);
@@ -154,9 +164,10 @@ export function createCoordinatedUsageLimitsReader({
   return { get, peek: () => cache.value };
 }
 
-export function createUsageLimitsCoordinator({ request, now = () => Date.now(), initialState = null, onUpdate = undefined }) {
+export function createUsageLimitsCoordinator({ request, now = () => Date.now(), random = Math.random, initialState = null, onUpdate = undefined }) {
   return createCoordinatedUsageLimitsReader({
     now,
+    random,
     initialState,
     onUpdate,
     async read() {

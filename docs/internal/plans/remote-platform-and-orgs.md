@@ -1,8 +1,8 @@
 # Pomegr remote platform, mobile clients, and organizations plan
 
-> Status: proposed, not implemented. No backend, relay, mobile app, organization
-> feature, or poll lease exists, and no milestone has started. Milestones are ordered
-> hypotheses, not commitments.
+> Status: R1 retry backoff and jitter implemented on 2026-10-25; machine-derived phase offset remains open.
+> No backend, relay, mobile app, organization feature, or poll lease exists.
+> Remaining milestones are hypotheses, not commitments.
 > Created: 2026-08-18.
 > Scope: the agreed direction for making Pomegr a self-contained, multi-device product
 > (remote access, native mobile clients, cross-machine usage-limit coordination, and
@@ -12,7 +12,7 @@
 > Authority: proposal only. AGENTS.md and the
 > [Observation cache](../architecture/observation-cache.md) govern runtime behavior and
 > every privacy boundary this plan must preserve.
-> Next decision: whether to start any milestone. R1 needs no backend and can ship
+> Next decision: whether to add R1's machine-derived phase offset. R1 needs no backend and can ship
 > alone; R3 onward depends on the hosting question under Open questions and on the
 > validation outcome in the [commercial strategy plan](commercial-strategy.md).
 > Completion criteria: R1 through R5 are shipped and documented in their permanent
@@ -29,8 +29,9 @@
 
 ## Current status
 
-Checked against the code on 2026-09-30. `server/normalize/usage-limits.mjs` retries at a
-fixed interval once `Retry-After` expires, so R1 is not implemented. The desktop
+Checked against the code on 2026-10-25. `server/normalize/usage-limits.mjs` implements R1 retry backoff and full jitter.
+The [polling contract](../architecture/metrics.md#plan-usage) defines its one-hour sampling cap, floors, reset, and restart behavior.
+R1's machine-derived phase offset remains open. The desktop
 [Phone access guide](../../public/using-pomegr/phone-access.md) describes a shipped
 same-network precursor to R2's pairing: a single-use, five-minute QR code, up to four
 browser authorizations that are not persisted, HTTP only, and no account. It has no
@@ -152,9 +153,8 @@ Instead the backend coordinates *which* machine polls:
 Interim, backend-free mitigations (Milestone R1) reduce collisions between two PCs
 sharing a subscription:
 
-- Exponential backoff on repeated `429` responses (the current reader retries at a
-  fixed interval once `Retry-After` expires).
-- A per-machine phase offset derived from a stable machine identifier, plus schedule
+- [x] Exponential backoff with full jitter on consecutive failures, including `429`; see the [polling contract](../architecture/metrics.md#plan-usage).
+- [ ] A per-machine phase offset derived from a stable machine identifier, plus schedule
   jitter, so two monitors polling every five minutes stop aligning.
 
 ## Organizations
@@ -183,9 +183,8 @@ Numbered `R` (remote platform) to stay distinct from the desktop `POMEGR-DT` tas
 which the [desktop milestone table](../operations/desktop-beta-acceptance.md#desktop-milestone-ids)
 lists.
 
-- **R1 — Cross-machine 429 mitigation (no backend).** Add exponential backoff,
-  jitter, and machine-derived phase offset to `server/normalize/usage-limits.mjs`. Small,
-  shippable immediately, and still the fallback path after the backend exists.
+- **R1 — Cross-machine 429 mitigation (no backend).** Exponential retry backoff and jitter are implemented in `server/normalize/usage-limits.mjs`.
+  The machine-derived phase offset remains open. R1 can ship alone and remains the fallback after the backend exists.
 - **R2 — Device pairing and auth.** QR/short-code pairing, per-device tokens, and a
   token check in the Next.js API proxies. Transport-agnostic: secures the LAN
   dashboard today and becomes the backend enrollment mechanism later.
@@ -201,6 +200,7 @@ lists.
 
 ## Open questions
 
+- Whether to implement R1's machine-derived phase offset; it remains outside the 2026-10-25 retry-backoff change.
 - Backend hosting: managed multi-tenant first, or self-hosted from day one for
   Enterprise prospects (the [commercial strategy plan](commercial-strategy.md) raises
   the same question)?
@@ -210,3 +210,15 @@ lists.
   until the backend ships.
 - Retention defaults for backend-stored normalized state, per edition.
 - How org policy interacts with a member's personal devices observing the same PC.
+
+## Continuation checkpoint — 2026-10-25
+
+R1 retry backoff and jitter are implemented, with tests for growth, cap, Retry-After floors, success reset, and restart scheduling.
+The existing five-minute minimum remains; the one-hour cap bounds the jitter window, not a longer Retry-After floor.
+The saved deadline survives restart; the in-memory failure streak starts over without adding persisted fields.
+Pomegr maintainers own the remaining phase-offset decision and R2–R6. This partial milestone does not complete the plan.
+
+Verification: all 45 focused usage tests, `npm run verify:fast`, and `npm run build` pass.
+`npm test` records 4,019 passes, four skips, and one ConPTY paste timeout in `tests/desktop-terminal-host.test.mjs`; the timeout repeats separately.
+The separate `npm run test:ui` records 2,449 passes and three timeouts in `tests/ui/design-system.test.tsx`.
+These failures remain outside R1; full-suite verification is not green.

@@ -255,6 +255,130 @@ test("uses blue through 74, yellow from 75 through 84, and red from 85", () => {
   assert.equal(clampUsageLimitPercent(101), 100);
 });
 
+test("consecutive failures grow the full-jitter window up to one hour", async () => {
+  let currentTime = Date.parse("2026-10-25T12:00:00.000Z");
+  let calls = 0;
+  const coordinator = createUsageLimitsCoordinator({
+    now: () => currentTime,
+    random: () => 0.75,
+    request: async () => {
+      calls += 1;
+      return new Response("", { status: calls % 2 ? 503 : 429 });
+    },
+  });
+
+  for (const minutes of [5, 7.5, 15, 30, 45, 45]) {
+    await coordinator.get({ afterSignIn: true });
+    const retryAt = Date.parse(coordinator.peek().retryAt);
+    assert.equal(retryAt - currentTime, minutes * 60_000);
+    const previousCalls = calls;
+    currentTime = retryAt - 1;
+    await coordinator.get();
+    assert.equal(calls, previousCalls);
+    currentTime = retryAt;
+  }
+  assert.equal(calls, 6);
+});
+
+test("full jitter samples the entire capped window while retaining the five-minute floor", async () => {
+  let currentTime = Date.parse("2026-10-25T12:00:00.000Z");
+  let sample = 0.5;
+  const coordinator = createUsageLimitsCoordinator({
+    now: () => currentTime,
+    random: () => sample,
+    request: async () => { throw new Error("Synthetic unavailable read"); },
+  });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await coordinator.get({ afterSignIn: true });
+    currentTime = Date.parse(coordinator.peek().retryAt);
+  }
+  for (const [random, delay] of [[0, 5 * 60_000], [0.25, 15 * 60_000], [0.999999, 3_599_996]]) {
+    sample = random;
+    await coordinator.get({ afterSignIn: true });
+    const retryAt = Date.parse(coordinator.peek().retryAt);
+    assert.equal(retryAt - currentTime, delay);
+    currentTime = retryAt;
+  }
+});
+
+test("Retry-After is a floor even beyond the exponential cap", async () => {
+  let currentTime = Date.parse("2026-10-25T12:00:00.000Z");
+  let retryAfter = "7200";
+  const coordinator = createUsageLimitsCoordinator({
+    now: () => currentTime,
+    random: () => 0.75,
+    request: async () => new Response("", { status: 429, headers: { "retry-after": retryAfter } }),
+  });
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    retryAfter = attempt % 2 ? new Date(currentTime + 7_200_000).toUTCString() : "7200";
+    await coordinator.get({ afterSignIn: true });
+    assert.equal(Date.parse(coordinator.peek().retryAt) - currentTime, 7_200_000);
+    currentTime += 7_200_000;
+  }
+  retryAfter = "30";
+  await coordinator.get({ afterSignIn: true });
+  assert.equal(Date.parse(coordinator.peek().retryAt) - currentTime, 45 * 60_000);
+});
+
+test("a successful read resets exponential backoff and the normal refresh interval", async () => {
+  let currentTime = Date.parse("2026-10-25T12:00:00.000Z");
+  let succeeds = false;
+  let saved;
+  const coordinator = createUsageLimitsCoordinator({
+    now: () => currentTime,
+    random: () => 0.75,
+    request: async () => succeeds ? usageResponse(23) : new Response("", { status: 503 }),
+    onUpdate: (value, nextAttemptAt) => { saved = { value, nextAttemptAt }; },
+  });
+  for (const minutes of [5, 7.5, 15]) {
+    await coordinator.get({ afterSignIn: true });
+    assert.equal(saved.nextAttemptAt - currentTime, minutes * 60_000);
+    currentTime = saved.nextAttemptAt;
+  }
+  succeeds = true;
+  const good = await coordinator.get({ afterSignIn: true });
+  assert.equal(good.retryAt, null);
+  assert.equal(saved.nextAttemptAt - currentTime, USAGE_REFRESH_INTERVAL_MS);
+  currentTime = saved.nextAttemptAt;
+  succeeds = false;
+  await coordinator.get({ afterSignIn: true });
+  assert.equal(saved.nextAttemptAt - currentTime, USAGE_REFRESH_INTERVAL_MS);
+  assert.deepEqual(saved.value.limits, good.limits);
+  assert.equal(saved.value.fetchedAt, good.fetchedAt);
+});
+
+test("restart preserves the persisted jittered deadline without sampling or reading early", async () => {
+  let currentTime = Date.parse("2026-10-25T12:00:00.000Z");
+  let persisted;
+  const coordinator = createUsageLimitsCoordinator({
+    now: () => currentTime,
+    random: () => 0.7654321,
+    request: async () => new Response("", { status: 503 }),
+    onUpdate: (value, nextAttemptAt) => { persisted = JSON.stringify({ value, nextAttemptAt }); },
+  });
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await coordinator.get({ afterSignIn: true });
+    if (attempt < 3) currentTime = JSON.parse(persisted).nextAttemptAt;
+  }
+  const initialState = JSON.parse(persisted);
+  assert.equal(initialState.nextAttemptAt - currentTime, 1_837_037);
+  assert.equal(Number.isInteger(initialState.nextAttemptAt), true);
+  assert.equal(Date.parse(initialState.value.retryAt), initialState.nextAttemptAt);
+  let calls = 0;
+  const restarted = createUsageLimitsCoordinator({
+    initialState,
+    now: () => currentTime,
+    random: () => { assert.fail("A restored deadline must not be resampled"); },
+    request: async () => { calls += 1; return usageResponse(); },
+  });
+  currentTime = initialState.nextAttemptAt - 1;
+  assert.deepEqual(await restarted.get(), initialState.value);
+  assert.equal(calls, 0);
+  currentTime += 1;
+  assert.equal((await restarted.get({ afterSignIn: true })).failureKind, null);
+  assert.equal(calls, 1);
+});
+
 
 test("retains the last good observation when a successful response has no complete limits array", async () => {
   let currentTime = Date.parse("2026-08-10T14:00:00.000Z");
