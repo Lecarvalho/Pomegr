@@ -1,6 +1,6 @@
 # Design system gaps
 
-> Status: active; four samples were promoted by the documentation migration and the patterns below are still missing from the page.
+> Status: active; DSG-8a is complete. DSG-1 through DSG-7, DSG-8b, and DSG-9 remain open.
 > Created: 2026-09-30.
 > Scope: accepted reusable UI patterns whose shipped components have no static sample on `/design-system`, plus two critique findings that were still open. It adds no feature and no new component.
 > Continuation owner: Pomegr maintainers.
@@ -35,9 +35,17 @@ The design promotion gate of the documentation migration (closed 2026-09-30) rep
 
 Two Impeccable critiques (2026-08-15 and 2026-09-01) of the old session page were triaged against the current tabbed session page and then deleted. Of their nine findings, eight are resolved or superseded; the ninth (dense chart interaction on keyboard and phone) remains in part, as these two items.
 
-- [ ] **DSG-8a Duplicate close names in the phone navigation.** The first critique found two controls sharing one accessible name. Today the header menu button (`CommandCenterShell.tsx`, label "Close primary menu" while the drawer is open) and the drawer scrim button (same file, same label, focusable) still share one. Give the scrim no tab stop and no accessible name, or give the two distinct roles. Verify with the phone drawer open.
+- [x] **DSG-8a Duplicate close names in the phone navigation.** Completed 2026-10-25. The scrim has no accessible name or tab stop and stays hidden from assistive technology. The header button keeps "Close primary menu" while the drawer is open. Tap dismissal, keyboard activation, Escape, and focus return remain available. `tests/ui/app-shell.test.tsx` checks unique accessible names for the open-menu shell controls and the dismissal behavior.
 - [ ] **DSG-8b Per-request tab stops in Request charts.** The first critique asked for one keyboard-inspectable chart surface instead of one focus stop per bucket. The old context chart is gone, but every request bar in `RequestBarsChart.tsx` is still `tabIndex={0}` (up to 60 stops on desktop and 20 on phone) even though arrow-key stepping exists. Decide whether a roving tab stop would keep selection and the minimap predictable, and confirm phone bar sizes against the 44px rule in DESIGN.md. Not re-measured in a browser, and neither are the other phone targets that may be under 44px (agent chips, text actions, and footer links).
 - [ ] **DSG-9 Non-persisting roster sample.** The agent roster sample renders `AgentActivityPanel` with the fixed session `design-system-roster`, and the roster keeps viewer choices (selected agent, open groups, Hide finished) in browser `localStorage` under that session ID, so a stored choice can change the initial state the page documents. The page is otherwise static-data-only. Add a non-persisting mode to the roster (for example an omitted or disabled persistence prop) or have the sample clear its keys on mount, without changing production persistence. The sample's note and the comment in `DesignSystemKit.tsx` state the caveat until then. Rating: low.
+
+## Continuation checkpoint
+
+2026-10-25: DSG-8a is complete. Its regression test failed on duplicate accessible names before the fix; the final 63-test focused rerun passes.
+`npm run verify:fast` and `npm run build` pass. The final test revision also passes ESLint and TypeScript checks.
+Full UI verification remains incomplete: Task fields, Events rail, and Feature modal samples time out in `tests/ui/design-system.test.tsx`.
+The two-worker full run reports 2,449 passes and four failures, including an intermediate shell-test assertion corrected before the focused rerun.
+DSG-1 through DSG-7, DSG-8b, and DSG-9 remain open. Continue with the next task listed above.
 
 ## Owned elsewhere
 
