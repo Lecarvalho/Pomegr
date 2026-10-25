@@ -38,6 +38,7 @@ import {
   AGENT_NAME,
   BOARD_TEXT_BUDGET,
   BOARD_TEXT_PREVIEW,
+  BOARD_SNAPSHOT_BUDGET,
   boardSnapshot,
   composePrompt,
   conversationHistory,
@@ -305,6 +306,79 @@ const budgetColumns = [
   { id: "progress", name: "Working", role: "in_progress" }, { id: "review", name: "Review", role: "review" },
   { id: "done", name: "Done", role: "done" },
 ];
+
+function largeBoard(done, backlog, active = 3) {
+  return { columns: budgetColumns, tasks: Array.from({ length: done + backlog + active }, (_, index) => fullTask({
+    id: `T-${index + 1}`, columnId: index < done ? "done" : index < done + backlog ? "backlog" : ["ready", "progress", "review"][index % 3],
+    group: null, position: index, text: `Task ${index + 1}\n${"body".repeat(990)}`,
+    updatedAt: new Date(now.getTime() + index * 1000).toISOString(),
+    completeWhen: { checks: ["pr_open"], own: "c".repeat(500) },
+    report: { results: [{ check: "pr_open", passed: true }], attention: "a".repeat(200), blockReason: "b".repeat(200) },
+  })) };
+}
+
+test("400 tasks fit with full history and a follow-up outcome", () => {
+  const board = largeBoard(190, 190, 20);
+  const messages = [{ role: "user", text: "h".repeat(HISTORY_BUDGET - "Owner: ".length) }];
+  const followUp = { summary: "Moved", state: "applied", operations: [{ op: "move_task", id: "T-1", column: "Done" }], results: [{ ok: true }] };
+  const prompt = composePrompt({ board, messages, followUp, now });
+  assert.ok(prompt);
+  assert.ok(prompt.length < PROMPT_LIMIT);
+  const snapshot = boardSnapshot(board, { now });
+  assert.ok(JSON.stringify(snapshot).length <= BOARD_SNAPSHOT_BUDGET);
+  assert.equal(snapshot.tasks_omitted.done, 190);
+  assert.ok(snapshot.tasks_omitted.backlog > 0);
+  assert.deepEqual(snapshot.tasks.filter(({ column }) => !["Done", "Backlog"].includes(column)).map(({ id }) => id), board.tasks.slice(380).map(({ id }) => id));
+  const keptBacklog = snapshot.tasks.filter(({ column }) => column === "Backlog");
+  assert.deepEqual(keptBacklog.map(({ id }) => id), board.tasks.slice(190, 190 + keptBacklog.length).map(({ id }) => id));
+  assert.deepEqual(snapshot.task_text, { cut: snapshot.tasks.filter(({ text_cut }) => text_cut).length, total: snapshot.tasks.length });
+  assert.deepEqual(boardSnapshot({ ...board, tasks: board.tasks.toReversed() }, { now }), snapshot);
+});
+
+test("snapshot omits oldest Done tasks before any Backlog task", () => {
+  const board = largeBoard(180, 10);
+  const snapshot = boardSnapshot(board, { now });
+  assert.ok(snapshot.tasks_omitted?.done > 0 && snapshot.tasks_omitted.done < 180);
+  assert.equal(snapshot.tasks_omitted.backlog, 0);
+  assert.deepEqual(snapshot.tasks.map(({ id }) => id), board.tasks.slice(snapshot.tasks_omitted.done).map(({ id }) => id));
+});
+
+test("active tasks keep their fields and shorten text further when necessary", () => {
+  const board = largeBoard(0, 0, 40);
+  const snapshot = boardSnapshot(board, { now });
+  assert.ok(JSON.stringify(snapshot).length <= BOARD_SNAPSHOT_BUDGET);
+  assert.equal(snapshot.tasks.length, 40);
+  assert.equal(snapshot.tasks_omitted, undefined);
+  assert.ok(snapshot.tasks.reduce((sum, task) => sum + task.text.length, 0) < BOARD_TEXT_BUDGET);
+  for (const task of snapshot.tasks) {
+    const source = board.tasks.find(({ id }) => id === task.id);
+    assert.ok(source.text.startsWith(task.text));
+    assert.equal(task.own_condition, source.completeWhen.own);
+    assert.equal(task.report.attention, source.report.attention);
+  }
+});
+
+test("small snapshots have no omission field and retain their task shape", () => {
+  const snapshot = boardSnapshot(fullBoard(), { now });
+  assert.equal(Object.hasOwn(snapshot, "tasks_omitted"), false);
+  assert.equal(snapshot.tasks[0].text, fullTask().text);
+  assert.equal(snapshot.tasks[0].own_condition, fullTask().completeWhen.own);
+});
+
+test("unbounded image paths leave out whole rows with an explicit notice", () => {
+  const images = [{ id: "img-0123456789ab", type: "png", file: "x".repeat(PROMPT_LIMIT) }];
+  const prompt = composePrompt({ board: largeBoard(190, 190, 20), message: "Look", images, now });
+  assert.ok(prompt);
+  assert.match(prompt, /More image files are left out to fit the prompt/u);
+  assert.ok(!prompt.includes("x".repeat(100)));
+});
+
+test("history counts the separators between messages", () => {
+  const messages = Array.from({ length: 5 }, () => ({ role: "user", text: "x" }));
+  const history = conversationHistory(messages, 40);
+  assert.ok(history.lines.join("\n").length <= 40);
+  assert.equal(history.omitted, true);
+});
 const budgetTask = (id, columnId, length = 4000, overrides = {}) => ({
   id: `T-${id}`, text: `Task ${id}\n`.padEnd(length, "x"), columnId, position: id, ...overrides,
 });

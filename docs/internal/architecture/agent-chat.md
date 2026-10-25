@@ -268,7 +268,7 @@ characters, in this order:
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the grant summary,
    the queue (status, order, blocker, start threshold, and the usage percentages of the start gates), the
-   model lists (`models`), and every task with its column and its position in that column.
+   model lists (`models`), and the shown tasks with their columns and positions.
 3. **Workflow changes.** Left out until the settings or a memory entry is settled. Otherwise the
    repository's workflow sources that changed since (see [Workflow changes](#workflow-changes)).
 4. **Task worktrees.** Owner-message and grant-write turns list the Pomegr task worktrees
@@ -294,6 +294,7 @@ characters, in this order:
    error, and how many were not applied.
 8. **Images.** One line for each image of the conversation whose file is still there:
    its ID, its type, and the absolute file. The section is left out when there is none.
+   Image rows share 8,000 characters. Excess rows are omitted whole, with a notice; paths are never shortened.
 9. **The owner's message**, and one line with the IDs of its images, in order. A
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
@@ -316,8 +317,24 @@ That prefix includes any line separator after the title. A cut never splits a Un
 If titles alone exceed the budget, Pomegr allocates one code point per nonempty task per round, in numeric ID order.
 It stops when no next code point fits. A source starting with a newline retains that character; empty source stays empty.
 The owner approved this bounded title-overflow rule for T-141 on 2026-10-17.
-Each shortened source prefix carries `text_cut`. The snapshot always includes `task_text: { cut, total }`, counting shortened and total tasks.
+Each shortened source prefix carries `text_cut`. The snapshot always includes `task_text: { cut, total }`, counting shortened and total shown tasks.
 Allocation changes neither snapshot card order nor report fields. Aril retrieves needed omitted text with `get_task` instead of guessing.
+
+`BOARD_SNAPSHOT_BUDGET` budgets the complete serialized snapshot, including JSON escaping and every task field.
+It subtracts instruction length, `HISTORY_BUDGET`, 60,000 characters for other sections, and 5,000 characters of margin from `PROMPT_LIMIT`.
+The current snapshot budget is 79,872 characters.
+Workflow changes reserve 12,000 characters. Owner turns reserve 10,000 each for task logs and worktrees, 500 for GitHub settings, and 4,000 for messages.
+Follow-ups instead reserve 32,000 for the outcome and request. Grant requests reserve 6,000. Image rows reserve 8,000 in either conversation turn.
+History includes the separators between messages in its budget.
+
+Pomegr omits whole Done tasks by oldest update, then Backlog tasks by highest position, until the snapshot fits.
+Numeric task ID breaks ties. Dependency and group membership do not exempt Done or Backlog tasks from omission.
+Ready, In progress, and Review tasks stay. Remaining texts use progressively smaller shared budgets if the snapshot still exceeds its budget.
+If retained metadata alone exceeds the snapshot budget, shortening text cannot satisfy it; the whole-prompt limit remains enforced.
+Task fields retain their shape. When tasks are omitted, `tasks_omitted: { done, backlog }` counts them by column.
+The field is absent when no task is omitted. Omitted tasks still exist on the board.
+Aril uses `get_task` with a known ID and states when an answer may depend on tasks not shown.
+Its model advice weighs the shown task records.
 
 `models` holds one list for `claude` and one for `codex`. Each list starts with the
 models the Run on list of the task form offers for that provider, from the same code

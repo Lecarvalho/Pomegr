@@ -384,7 +384,7 @@ test("a board that is not ready, or a root that is missing, is unavailable, stor
 
 test("a prompt past its limit is refused as invalid and stores nothing", async (context) => {
   const h = await chatHarness(context);
-  h.state.board.tasks = Array.from({ length: 1500 }, (_, index) => ({ id: `T-${index + 1}`, text: "t", columnId: "col-a", state: "queued" }));
+  h.state.board.features = [{ id: "feat-1", name: "x".repeat(200_000) }];
   assert.deepEqual(await send(h), invalid);
   assert.equal(h.runs.length, 0);
   assert.deepEqual(await h.reload().list(repositoryId), []);
