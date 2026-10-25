@@ -1,3 +1,4 @@
+import { isBranchName } from "../../shared/git-branch-name.mjs";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { createTaskMerge } from "./task-merge.mjs";
 
@@ -66,9 +67,10 @@ function stepsFrom(answer) {
       && step.plans.every((plan) => typeof plan === "string" && plan.length <= 200
         && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.md$/u.test(plan)
         && !plan.split("/").some((part) => part === "." || part === ".."));
-    if (typeof step.taskId !== "string" || !TASK_ID.test(step.taskId) || !["start", "review", "send_back", "merge"].includes(step.kind)) return false;
+    if (typeof step.taskId !== "string" || !TASK_ID.test(step.taskId) || !["start", "review", "send_back", "merge", "delete_branch"].includes(step.kind)) return false;
     if (step.kind === "merge") return Number.isSafeInteger(step.pullRequest) && step.pullRequest > 0 && /^[a-f0-9]{40}$/u.test(step.headOid)
-      && (step.mergeMethod === null || ["squash", "merge", "rebase"].includes(step.mergeMethod)) && !Object.hasOwn(step, "run");
+      && (step.mergeMethod === null || ["squash", "merge", "rebase"].includes(step.mergeMethod)) && ["direct", "auto"].includes(step.mergeMode) && !Object.hasOwn(step, "run");
+    if (step.kind === "delete_branch") return Number.isSafeInteger(step.pullRequest) && step.pullRequest > 0 && isBranchName(step.branch) && !Object.hasOwn(step, "run");
     if (step.kind === "send_back") return !Object.hasOwn(step, "run");
     return !Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
       && ["claude", "codex"].includes(step.run.provider)
@@ -120,7 +122,7 @@ export function createTaskQueueRunner(options = {}) {
     return response.json();
   }
 
-  const taskMerge = createTaskMerge({ post, execFile: options.execFile, timeoutMs: options.mergeTimeoutMs });
+  const taskMerge = createTaskMerge({ post, execFile: options.execFile, timeoutMs: options.mergeTimeoutMs, github: options.repositoryGithub });
 
   async function pause(repositoryId, taskId, reason) {
     try { await post("queue-pause", { repositoryId, payload: { id: taskId, reason } }); } catch { /* best effort */ }
@@ -179,8 +181,8 @@ export function createTaskQueueRunner(options = {}) {
           return answer?.ok === true && answer.active === true && !disposed;
         } catch { return false; }
       };
-      if (kind === "merge") {
-        try { await taskMerge.merge(step, isAuthorized); } catch { /* merge failures never end a grant */ }
+      if (kind === "merge" || kind === "delete_branch") {
+        try { await (kind === "merge" ? taskMerge.merge : taskMerge.deleteBranch)(step, isAuthorized); } catch { /* merge and delete failures never end a grant */ }
         continue;
       }
       let status;

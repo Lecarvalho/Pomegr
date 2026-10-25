@@ -139,7 +139,7 @@ test("a selected card in Review holds writing even before a builder is linked", 
 
 test("written tasks keep grant selection for reviews, send-back and merge", (t) => {
   const f = setup(t);
-  f.configure({ ...writing, actions: { ...writing.actions, sendBack: true, merge: true }, limits: { ...limits, sendBacks: 1 } }); f.start(); write(f);
+  f.configure({ ...writing, actions: { ...writing.actions, sendBack: true, merge: true }, mergeMode: "direct", limits: { ...limits, sendBacks: 1 } }); f.start(); write(f);
   updateTask(f.directory, 1, { state: "needs_review", session_id: "codex:builder-1", report_at: f.clock.now, report_results: "[]" });
   assert.deepEqual(f.next().steps, [step("T-1", "review")]);
   failedReview(f);
@@ -147,7 +147,7 @@ test("written tasks keep grant selection for reviews, send-back and merge", (t) 
   assert.equal(f.store.sendBackGrant(REPO, { taskId: "T-1" }).ok, true);
   f.clock.now++; failedReview(f, 1, "pass");
   const headOid = "a".repeat(40), resolvePullRequestFacts = () => ({ number: 42, state: "open", checks: "passed", headOid });
-  assert.deepEqual(f.store.nextGrantSteps({ resolvePullRequestFacts }).steps, [{ repositoryId: REPO, taskId: "T-1", kind: "merge", pullRequest: 42, headOid, mergeMethod: null }]);
+  assert.deepEqual(f.store.nextGrantSteps({ resolvePullRequestFacts }).steps, [{ repositoryId: REPO, taskId: "T-1", kind: "merge", pullRequest: 42, headOid, mergeMethod: null, mergeMode: "direct" }]);
   assert.equal(f.store.attemptGrantMerge(REPO, { taskId: "T-1", headOid }, resolvePullRequestFacts).ok, true);
 });
 

@@ -4,7 +4,7 @@ const MAX_PULL_REQUESTS = 8;
 const CACHE_TTL_MS = 60_000;
 const GH_TIMEOUT_MS = 6_000;
 const GITHUB_PULL_REQUEST_URL = /https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})\/pull\/(\d{1,10})(?![A-Za-z0-9/?#])/g;
-const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt,headRefOid";
+const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt,headRefOid,isCrossRepository";
 // Asked for with the metadata when gh can read it; a gh that cannot answers the metadata alone.
 const GH_CHECK_FIELD = "statusCheckRollup";
 const MAX_CHECK_ENTRIES = 200;
@@ -101,7 +101,8 @@ function recordCheckStatus(url, value, checkedAt) {
   const readAt = Number.isFinite(parsed) ? parsed : Date.now();
   const held = checkStatuses.get(url);
   const headOid = typeof value?.headRefOid === "string" && /^[a-f0-9]{40}$/iu.test(value.headRefOid) ? value.headRefOid : null;
-  const read = { url, status, readAt, headOid };
+  // Monitor-private: only the task control plane asks whether the head branch lives in another repository.
+  const read = { url, status, readAt, headOid, ...(typeof value?.isCrossRepository === "boolean" ? { crossRepository: value.isCrossRepository } : {}) };
   // Keep the last known-good observation. The caller's snapshot still records an unknown current read.
   if (status === null || held && (held.readAt > readAt || held.headOid !== null && headOid === null)) return read;
   checkStatuses.delete(url);

@@ -158,7 +158,7 @@ Each phase ships on its own and is useful without the next.
 - [ ] **8. Acceptance.** Experiment 2 runs under a grant; record whether its targets passed.
 - [ ] **9. Owner refinements.** The owner's decisions of 2026-10-25 after phase 7, each its own slice:
   - [x] 9a. Limits by tasks and usage: the tasks limit and tasks at a time replace starts and concurrent sessions; the usage limit holds every grant start while the provider that would run is at or above it, or its usage is unknown.
-  - [ ] 9b. Merge settings: merge or auto-merge, and branch deletion, each settled or the repository's own; Aril sees the repository's GitHub merge settings.
+  - [x] 9b. Merge settings: merge or auto-merge, and branch deletion, each settled or the repository's own; Aril sees the repository's GitHub merge settings.
   - [x] 9c. Worktree cleanup: Aril sees the task worktrees that remain and proposes removing them; the owner applies each removal.
   - [x] 9d. Settled rules: Aril does not ask again what memory or settings settled, and sees when the repository's workflow sources changed since a rule was settled.
   - [x] 9e. Review terminals: the terminal view lists a review session, so the owner can watch it.

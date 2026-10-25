@@ -17,7 +17,7 @@ export function ensureArilSettings(database) {
 
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
-  mergeMethod: null,
+  mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -80,6 +80,8 @@ export function arilSettingsSet({ database, repositoryId, ensureRepository, now 
   for (const [field, value] of Object.entries(input)) {
     if (field === "actions" && (!exact(value, Object.keys(base.actions)) || !Object.values(value).every((v) => typeof v === "boolean"))) return invalid();
     if (field === "mergeMethod" && value !== null && !["squash", "merge", "rebase"].includes(value)) return invalid();
+    if (field === "mergeMode" && ![null, "direct", "auto"].includes(value)) return invalid();
+    if (field === "deleteBranch" && ![null, true, false].includes(value)) return invalid();
     if (field === "limits" && (!exact(value, Object.keys(bounds)) || !Object.entries(value).every(([key, v]) => v === null
       || (Number.isInteger(v) && v >= bounds[key][0] && v <= bounds[key][1])))) return invalid();
     if (field === "workRules" && (!Array.isArray(value) || value.length > 20 || !value.every((rule) => validRule(database, repositoryId, rule)))) return invalid();

@@ -76,6 +76,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/task-issues.mjs",
   "desktop/runtime/task-queue-runner.mjs",
   "desktop/runtime/task-merge.mjs",
+  "desktop/runtime/repository-github.mjs",
   "desktop/runtime/task-worktree.mjs",
   "desktop/runtime/plugin-cli.mjs",
   "desktop/runtime/security-policy.mjs",
@@ -102,6 +103,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "shared/release-notification.mjs",
   "shared/model-notification.mjs",
   "shared/task-run-models.mjs",
+  "shared/git-branch-name.mjs",
   "server/web/server.mjs",
 ]);
 

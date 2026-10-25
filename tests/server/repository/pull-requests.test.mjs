@@ -232,6 +232,25 @@ test("the check status is read with the pull request and kept out of the normali
   for (const value of [undefined, null, 7, "", "https://example.invalid/pull/7"]) assert.equal(checkStatus(value), null);
 });
 
+test("whether the head is in another repository is asked for and kept in the monitor-private check read only", async () => {
+  const url = "https://github.com/PomegrHQ/pomegr-cross/pull/31";
+  const fields = [];
+  const ghRunner = (extra) => async (_cwd, args) => {
+    fields.push(args.at(-1));
+    return JSON.stringify({ number: 31, state: "MERGED", mergedAt: "2026-10-01T00:00:00Z", url, headRefName: "tasks/31", headRefOid: HEAD_OID, statusCheckRollup: [], ...extra });
+  };
+  const read = (extra) => readPullRequests([], { cwd: "C:\\repo", sessionCreations: [{ url }], ghRunner: ghRunner(extra) });
+  for (const [extra, expected] of [[{ isCrossRepository: false }, false], [{ isCrossRepository: true }, true]]) {
+    const result = await read(extra);
+    assert.equal(result.checkReads[0].crossRepository, expected);
+    assert.doesNotMatch(JSON.stringify(result.items), /crossRepository|isCrossRepository/u);
+  }
+  for (const extra of [{}, { isCrossRepository: "false" }, { isCrossRepository: null }]) {
+    assert.equal(Object.hasOwn((await read(extra)).checkReads[0], "crossRepository"), false, JSON.stringify(extra));
+  }
+  assert.ok(fields.every((value) => /(^|,)isCrossRepository(,|$)/u.test(value)));
+});
+
 test("a check status keeps the time and revision of its last known-good read", async () => {
   const url = "https://github.com/PomegrHQ/pomegr-checks/pull/21";
   const ghRunner = (rollup, headRefOid = HEAD_OID) => async () => JSON.stringify([{ number: 21, state: "OPEN", url, headRefName: "tasks/21", headRefOid, statusCheckRollup: rollup }]);

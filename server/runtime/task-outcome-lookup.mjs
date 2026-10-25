@@ -24,7 +24,10 @@ export function resolveTaskPullRequestFacts(sessionId, taskId, { observationStor
   const read = Array.isArray(pulls?.checkReads) ? committed : selected ? checkRead(selected.url) : null;
   const checks = headOid && typeof read?.headOid === "string" && read.headOid.toLowerCase() === headOid
     && ["passed", "failed"].includes(read.status) ? read.status : null;
-  return { number: selected?.number ?? null, state: selected?.state ?? null, headOid, checks };
+  return {
+    number: selected?.number ?? null, state: selected?.state ?? null, headOid, checks,
+    headBranch: selected?.headBranch || null, baseBranch: selected?.baseBranch || null, sameRepository: committed?.crossRepository === false,
+  };
 }
 
 // Only retained, committed facts cross into the task control plane.

@@ -79,11 +79,13 @@ function arilRule(rule) {
 }
 
 function arilSettings(input) {
-  if (!isPlainObject(input) || !only(input, ["actions", "mergeMethod", "limits", "workRules", "reviewer"])) return null;
+  if (!isPlainObject(input) || !only(input, ["actions", "mergeMethod", "mergeMode", "deleteBranch", "limits", "workRules", "reviewer"])) return null;
   const settings = { ...input };
   for (const [field, value] of Object.entries(input)) {
     if (field === "actions" && (!exact(value, ["start", "review", "sendBack", "merge", "writeTasks"]) || !Object.values(value).every((v) => typeof v === "boolean"))) return null;
     if (field === "mergeMethod" && value !== null && !["squash", "merge", "rebase"].includes(value)) return null;
+    if (field === "mergeMode" && ![null, "direct", "auto"].includes(value)) return null;
+    if (field === "deleteBranch" && ![null, true, false].includes(value)) return null;
     if (field === "limits" && (!exact(value, Object.keys(ARIL_LIMITS)) || !Object.entries(value).every(([key, v]) => v === null
       || (Number.isInteger(v) && v >= ARIL_LIMITS[key][0] && v <= ARIL_LIMITS[key][1])))) return null;
     if (field === "workRules" && (!Array.isArray(value) || value.length > 20 || !value.every(arilRule))) return null;

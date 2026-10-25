@@ -75,7 +75,7 @@ test("pruning keeps 1000 per repository and IDs never repeat after deletion", as
   const { store, directory } = await openTemporaryStore(t);
   const { appendTaskLog, TASK_LOG_KEEP, TASK_LOG_KINDS, TASK_LOG_CONSUMERS } = await import("../../../server/tasks/task-log.mjs");
   assert.equal(TASK_LOG_KEEP, 1000);
-  assert.deepEqual(TASK_LOG_KINDS, ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
+  assert.deepEqual(TASK_LOG_KINDS, ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
   assert.deepEqual(TASK_LOG_CONSUMERS, ["aril"]);
   assert.ok(Object.isFrozen(TASK_LOG_KINDS) && Object.isFrozen(TASK_LOG_CONSUMERS));
   withDatabase(directory, (db) => {

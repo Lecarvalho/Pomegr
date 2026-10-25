@@ -13,6 +13,9 @@ const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send
 const LIMITS = { hours: ["Hours", 1, 72], tasks: ["Tasks", 1, 100], tasksAtATime: ["Tasks at a time", 1, 10], sendBacks: ["Send-backs per task", 0, 10], usagePercent: ["Usage limit %", 1, 100] } as const;
 const KINDS = { tag: "Tag", text: "Text", feature: "Feature", tasks: "Tasks", plan: "Plan" };
 const UNSET = "Not settled: Aril will ask";
+const METHODS = [{ value: "", label: "Repository default" }, { value: "squash", label: "Squash" }, { value: "merge", label: "Merge commit" }, { value: "rebase", label: "Rebase" }];
+const MODES = [{ value: "", label: "Not set" }, { value: "direct", label: "Merge when green" }, { value: "auto", label: "Auto-merge when green" }];
+const BRANCHES = [{ value: "", label: "Repository default" }, { value: "delete", label: "Delete" }, { value: "keep", label: "Keep" }];
 const MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/;
 const PLAN_PATH = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*\.md$/;
 const line = (value: string, max: number) => value.trim().length > 0 && value.length <= max && !/[\p{Cc}\u2028\u2029]/u.test(value);
@@ -53,6 +56,7 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const unsaved = allowed && Object.keys(changed).length > 0;
   const notReady = saved.actions.sendBack && saved.limits.sendBacks === null ? "Set Send-backs per task first."
     : [saved.limits.hours, saved.limits.tasks, saved.limits.tasksAtATime, saved.limits.usagePercent].includes(null) ? "Set Hours, Tasks, Tasks at a time, and Usage limit % first."
+    : saved.actions.merge && saved.mergeMode === null ? "Choose how a grant merges first."
     : saved.actions.writeTasks && !saved.workRules.some((rule) => rule.kind === "plan") ? "Add a plan rule first: a grant writes tasks only from named plans."
       : saved.actions.writeTasks && !saved.actions.start ? "Allow starting tasks to use Write tasks from plans."
         : !saved.actions.start && !saved.actions.review && !saved.actions.merge ? "Allow starting tasks, reviews, or merges first."
@@ -81,6 +85,10 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const toggle = (label: string, checked: boolean, onChange: (next: boolean) => void) => allowed
     ? <label className="taskCheckRow"><input type="checkbox" role="switch" checked={checked} disabled={busy} onChange={(event) => onChange(event.currentTarget.checked)} /><span>{label}</span></label>
     : <div className="taskGateRow"><span>{label}</span><span className="taskGateReadOnly">{checked ? "On" : "Off"}</span></div>;
+  const choice = (label: string, options: typeof METHODS, value: string, onChange: (next: string) => void) => <div className="taskGateField taskGateThreshold"><span className="taskGateFieldLabel">{label}</span>
+    {allowed ? <CommandSelect aria-label={label} disabled={busy} value={value} options={options} onChange={onChange} />
+      : <span className="taskGateReadOnly">{options.find((option) => option.value === value)?.label}</span>}
+  </div>;
   return <div className="taskQueueSettings" aria-busy={busy} style={{ overflowWrap: "anywhere" }}>
     <header className="taskQueueSettingsHead"><h2 id={titleId}>Aril settings</h2>
       <button ref={closeRef} type="button" className="commandIconAction" aria-label="Close" onClick={onClose}><CommandIcon name="close" /></button>
@@ -108,12 +116,9 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       <h3 className="taskGatesHeading">Actions under a grant</h3>
       <p className="taskGatesCaption">Aril uses these only while a grant you start is active.</p>
       {(Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]).map((key) => <div key={key}>{toggle(ACTIONS[key], draft.actions[key], (next) => change("actions", { ...draft.actions, [key]: next }))}</div>)}
-      <div className="taskGateField taskGateThreshold"><span className="taskGateFieldLabel">Merge method</span>
-        {allowed ? <CommandSelect aria-label="Merge method" disabled={busy} value={draft.mergeMethod ?? ""}
-          options={[{ value: "", label: "Repository default" }, { value: "squash", label: "Squash" }, { value: "merge", label: "Merge commit" }, { value: "rebase", label: "Rebase" }]}
-          onChange={(next) => change("mergeMethod", next as Settings["mergeMethod"] || null)} />
-          : <span className="taskGateReadOnly">{draft.mergeMethod === null ? "Repository default" : { squash: "Squash", merge: "Merge commit", rebase: "Rebase" }[draft.mergeMethod]}</span>}
-      </div>
+      {choice("Merge method", METHODS, draft.mergeMethod ?? "", (next) => change("mergeMethod", next as Settings["mergeMethod"] || null))}
+      {choice("Merge mode", MODES, draft.mergeMode ?? "", (next) => change("mergeMode", next as Settings["mergeMode"] || null))}
+      {choice("Delete branch after merge", BRANCHES, draft.deleteBranch === null ? "" : draft.deleteBranch ? "delete" : "keep", (next) => change("deleteBranch", next === "" ? null : next === "delete"))}
     </section>
     <section className="taskGatesPanel taskSchedulePanel">
       <h3 className="taskGatesHeading">Limits</h3>

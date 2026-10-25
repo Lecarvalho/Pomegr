@@ -83,7 +83,7 @@ test("nothing runs before the first interval and the timer is unref'd", () => {
 });
 
 test("merge steps use the grant authorization check and do not end a refused grant", async () => {
-  const steps = { ok: true, steps: [{ repositoryId: repoA, taskId: "T-8", kind: "merge", pullRequest: 22, headOid: "b".repeat(40), mergeMethod: "squash" }] };
+  const steps = { ok: true, steps: [{ repositoryId: repoA, taskId: "T-8", kind: "merge", pullRequest: 22, headOid: "b".repeat(40), mergeMethod: "squash", mergeMode: "direct" }] };
   const h = harness({
     grantStarter: true,
     grantNext: steps,
@@ -97,6 +97,29 @@ test("merge steps use the grant authorization check and do not end a refused gra
   assert.deepEqual(h.calls.find(({ route }) => route === "grant-merge-result").body,
     { repositoryId: repoA, taskId: "T-8", headOid: "b".repeat(40), outcome: "refused" });
   assert.equal(h.calls.some(({ route }) => route === "grant-end"), false);
+});
+
+test("merge and branch delete steps are accepted only in their exact shapes", async () => {
+  const merge = { repositoryId: repoA, taskId: "T-8", kind: "merge", pullRequest: 22, headOid: "b".repeat(40), mergeMethod: null, mergeMode: "auto" };
+  const remove = { repositoryId: repoA, taskId: "T-9", kind: "delete_branch", pullRequest: 31, branch: "tasks/T-9" };
+  const dropped = [{ ...merge, mergeMode: null }, { ...merge, mergeMode: "queue" }, { ...merge, mergeMode: undefined }, { ...merge, run: { provider: "codex", model: null, effort: null } },
+    { ...remove, branch: "a..b" }, { ...remove, branch: "-x" }, { ...remove, branch: undefined }, { ...remove, pullRequest: 0 }, { ...remove, taskId: undefined },
+    { ...remove, run: { provider: "codex", model: null, effort: null } }];
+  const h = harness({ grantStarter: true, grantNext: { ok: true, steps: dropped },
+    execFile: (_executable, _args, _options, callback) => callback(Object.assign(new Error("refused"), { code: 1 }), "") });
+  h.runner.start();
+  await h.timers.fire();
+  assert.equal(h.calls.some(({ route }) => ["grant-merge-attempt", "grant-branch-result", "worktree-root"].includes(route)), false);
+  const accepted = harness({ grantStarter: true, grantNext: { ok: true, steps: [merge, remove] },
+    execFile: (_executable, args, _options, callback) => callback(null, args[0] === "repo" ? JSON.stringify({ nameWithOwner: "PomegrHQ/pomegr", squashMergeAllowed: true, mergeCommitAllowed: false,
+      rebaseMergeAllowed: false, autoMergeAllowed: true, deleteBranchOnMerge: false, defaultBranchRef: { name: "main" } }) : args[1] === "view" ? JSON.stringify({ state: "MERGED" }) : "") });
+  accepted.runner.start();
+  await accepted.timers.fire();
+  assert.deepEqual(accepted.calls.filter(({ route }) => ["grant-merge-result", "grant-branch-result"].includes(route)).map(({ route, body }) => [route, body]), [
+    ["grant-merge-result", { repositoryId: repoA, taskId: "T-8", headOid: "b".repeat(40), outcome: "merged" }],
+    ["grant-branch-result", { repositoryId: repoA, taskId: "T-9", outcome: "deleted" }],
+  ]);
+  assert.equal(accepted.calls.some(({ route }) => route === "grant-end"), false);
 });
 
 test("the interval defaults to 15 seconds and never drops below 5", () => {

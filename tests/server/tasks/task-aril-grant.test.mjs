@@ -44,7 +44,7 @@ test("old grant limits and end reason migrate on read and the next write", (t) =
 
 for (const closed of ["merged", "grant_merge", "done", "blocked", "sendbacks", "refused"]) test(`open task slot is freed by ${closed}`, (t) => {
   const f = setup(t); f.ready(); f.ready();
-  f.configure({ actions: { ...actions, sendBack: true, merge: true }, limits: { ...limits, tasksAtATime: 1, sendBacks: 1 } }); f.start();
+  f.configure({ actions: { ...actions, sendBack: true, merge: true }, mergeMode: "direct", limits: { ...limits, tasksAtATime: 1, sendBacks: 1 } }); f.start();
   assert.equal(f.store.recordGrant(REPO, { taskId: "T-1", kind: "start" }).ok, true);
   failedReview(f, 1, "pass");
   assert.deepEqual(f.next().steps, []);
@@ -62,7 +62,7 @@ for (const closed of ["merged", "grant_merge", "done", "blocked", "sendbacks", "
 
 test("task cap retains review, send-back, restart and merge until its last task closes", (t) => {
   const f = setup(t); f.ready(); f.ready();
-  f.configure({ actions: { ...actions, sendBack: true, merge: true }, limits: { ...limits, tasks: 1, tasksAtATime: 1, sendBacks: 2 } }); f.start();
+  f.configure({ actions: { ...actions, sendBack: true, merge: true }, mergeMode: "direct", limits: { ...limits, tasks: 1, tasksAtATime: 1, sendBacks: 2 } }); f.start();
   f.store.recordGrant(REPO, { taskId: "T-1", kind: "start" });
   updateTask(f.directory, 1, { state: "needs_review", session_id: "codex:builder" });
   assert.deepEqual(f.next().steps, [step("T-1", "review")]);
@@ -357,6 +357,8 @@ test("grant preconditions, exact actions, conflict, stop, and board history", (t
     error(start(), "not_ready");
   }
   configure({ actions: { ...actions, start: false, review: false, merge: true } });
+  error(start(), "not_ready");
+  configure({ actions: { ...actions, start: false, review: false, merge: true }, mergeMode: "direct" });
   assert.equal(start().ok, true, "merge uses the desktop's repository method source without an extra limit");
   store.apply(REPO, "grant_stop", {});
   configure();
@@ -383,7 +385,7 @@ function mergeSetup(t) {
     db.prepare("INSERT INTO task_events(repository_id, number, kind, at) VALUES (?, 1, 'review', ?)").run(REPO, clock.now);
     db.prepare("INSERT INTO task_reviews(repository_id, number, session_id, at, verdict) VALUES (?, 1, 'codex:reviewer', ?, 'pass')").run(REPO, clock.now);
   });
-  configure({ actions: { ...actions, start: false, review: false, merge: true } });
+  configure({ actions: { ...actions, start: false, review: false, merge: true }, mergeMode: "direct" });
   assert.equal(start().ok, true);
   const resolvePullRequestFacts = (sessionId, taskId) => {
     assert.equal(sessionId, "codex:builder"); assert.equal(taskId, "T-1"); return green;
@@ -395,8 +397,13 @@ function mergeSetup(t) {
 
 test("merge selection requires current pass, open PR, passed checks, head, work rule and merge authority", (t) => {
   const { nextMerge, directory, clock, set, store, start } = mergeSetup(t);
-  const expected = { repositoryId: REPO, taskId: "T-1", kind: "merge", pullRequest: 42, headOid: HEAD, mergeMethod: null };
+  const expected = { repositoryId: REPO, taskId: "T-1", kind: "merge", pullRequest: 42, headOid: HEAD, mergeMethod: null, mergeMode: "direct" };
   assert.deepEqual(nextMerge(), [expected]);
+  set({ mergeMode: "auto" });
+  assert.deepEqual(nextMerge(), [{ ...expected, mergeMode: "auto" }], "auto mode uses the same selection");
+  set({ mergeMode: null });
+  assert.deepEqual(nextMerge(), [], "an unsettled merge mode offers no merge");
+  set({ mergeMode: "direct" });
   set({ mergeMethod: "rebase" });
   assert.deepEqual(nextMerge(), [{ ...expected, mergeMethod: "rebase" }]);
   for (const facts of [null, {}, ...["closed", "merged", null].map((state) => ({ ...green, state })),
