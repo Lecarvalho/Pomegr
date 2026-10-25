@@ -165,6 +165,9 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 - The page uses the real shared classes with static sample data only.
 - **Agent grid tile states** renders the shipped grid with fixed finished, idle, active, stopped, warning, and selected examples for all three metrics.
 - **Repository setup row states** renders plugin updates, all feedback tones, five capture states, the inline confirmation, and the provider section head.
+- **Inspector sheet frame** renders the shared phone header, Back action, and 44px body actions inline, without modal effects.
+- **Revision evidence** renders repository facts, summary cards, the category grid, and the shipped initial, deferred, and reserved context allocation breakdown.
+- The roster sample neither reads nor writes viewer choices in localStorage; real sessions retain their default persistence.
 - The page renders the six roles and their states, selects, chips and pills, page headers, tab bars, sidebar limits, panels, the agent roster and inspector, the command table, the settings tab rail, and the token scale.
 - The page renders on the web development server only.
 - The page is absent from every navigation menu and from the LAN allowlist.

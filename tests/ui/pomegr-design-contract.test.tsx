@@ -50,7 +50,6 @@ const fileHistoryPanelSource = readFileSync(join(repositoriesComponentsPath, "Fi
 const sessionFilePanelSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SessionFilePanel.tsx"), "utf8");
 /** Innermost rules only: the selector is whatever precedes a brace-free declaration block. */
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
-
 describe("Pomegr visual contract", () => {
   it("keeps consecutive-event counts in a separate non-shrinking data column", () => {
     const styles = readFileSync(join(process.cwd(), "app", "styles", "session.css"), "utf8");
@@ -703,7 +702,8 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/\| Sortable header \|/);
     expect(designContract).toMatch(/`\.commandSettingsNav`, `role="tab"` \| Rendered with its pane at `\/design-system`/);
     expect(designContract).toMatch(/the agent roster and inspector, the command table, the settings tab rail/);
-
+    for (const title of ["Inspector sheet frame", "Revision evidence"]) expect(designContract).toContain(`**${title}**`);
+    expect(designContract).toMatch(/roster sample neither reads nor writes viewer choices in localStorage/);
     // The static reference adds layout only: tokens for color, radius, and size, never literals.
     expect(designSystemStyles).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
     expect(designSystemStyles).not.toMatch(/font(?:-size)?:[^;}]*\b\d+px/);

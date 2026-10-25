@@ -22,7 +22,7 @@ export type AgentRosterProps = {
   agents: Agent[]; executionTasks: ExecutionTask[]; planTasks: PlanTask[]; historical: boolean;
   cacheRefills?: CacheRefillCount[]; cacheReadDrops?: CacheReadDropCount[]; contextBoundaries?: ContextHistoryBoundary[];
   requestSnapshots?: RequestSnapshotFeed; workflows?: Workflow[]; insights?: Insight[]; loops?: LoopPattern[];
-  sessionId?: string; viewMode?: AgentActivityViewMode; onViewModeChange?: (mode: AgentActivityViewMode) => void;
+  persistPreferences?: boolean; sessionId?: string; viewMode?: AgentActivityViewMode; onViewModeChange?: (mode: AgentActivityViewMode) => void;
   selectedAgentId?: string | null; onSelectAgent?: (id: string | null) => void; workflowNavigation?: { id: string; request: number } | null;
   agentNavigation?: { id: string; request: number } | null;
   inspector?: AgentDomain | null; onOpenActivities?: (agentId: string) => void;
@@ -65,7 +65,7 @@ function RosterGroupHeader({ group, open, onToggle, onOpenTree, agentsById }: { 
 
 export function AgentActivityPanel(props: AgentRosterProps) { return <SessionAgentRoster key={props.sessionId || "agent-activity"} {...props} />; }
 
-function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshots, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], workflows = [], insights = [], loops = [], historical, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {}, selectedAgentId, onSelectAgent, workflowNavigation, agentNavigation, inspector, inspectorPendingText, onOpenActivities }: AgentRosterProps) {
+function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshots, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], workflows = [], insights = [], loops = [], historical, persistPreferences = true, sessionId = "agent-activity", viewMode = "list", onViewModeChange = () => {}, selectedAgentId, onSelectAgent, workflowNavigation, agentNavigation, inspector, inspectorPendingText, onOpenActivities }: AgentRosterProps) {
   const now = useLiveNow();
   const phone = usePhoneLayout();
   const [filters, setFilters] = useState<RosterFilters>(DEFAULT_FILTERS);
@@ -89,6 +89,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const selectionCandidate = selectedAgentId === undefined ? selection : selectedAgentId;
   const selected = selectionCandidate && agents.some((agent) => agent.id === selectionCandidate) ? selectionCandidate : defaultSelection;
   useEffect(() => {
+    if (!persistPreferences) return;
     // Restore browser-only preferences after hydration; the server renders closed groups.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpenGroups(readOpenGroups(sessionId));
@@ -103,18 +104,18 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     }
   // The preference is intentionally not re-read on polling updates.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, persistPreferences]);
   const groups = buildRosterGroups(agents, workflows, { historical, now });
-  const saveOpen = (next: Set<string>) => { setOpenGroups(next); try { window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next])); } catch { /* Local preferences are optional. */ } };
+  const saveOpen = (next: Set<string>) => { setOpenGroups(next); try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next])); } catch { /* Local preferences are optional. */ } };
   const targetGroupId = groups.find((item) => item.kind !== "primary" && selected && item.agents.some((agent) => agent.id === selected))?.id;
   useEffect(() => {
     if (targetGroupId) {
       // External selection/navigation explicitly requests revealing the target group.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOpenGroups((current) => { const next = new Set(current).add(targetGroupId); try { window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next])); } catch { /* Optional. */ } return next; });
+      setOpenGroups((current) => { const next = new Set(current).add(targetGroupId); try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next])); } catch { /* Optional. */ } return next; });
       setRevealed((current) => new Set(current).add(targetGroupId));
     }
-  }, [targetGroupId, sessionId]);
+  }, [targetGroupId, sessionId, persistPreferences]);
   useEffect(() => {
     if (!phone || !selectedAgentId || !agents.some((agent) => agent.id === selectedAgentId)) return;
     const selectionKey = `${sessionId}:${selectedAgentId}`;
@@ -132,13 +133,13 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     setOpenGroups((current) => {
       const next = new Set(current).add(requestedWorkflowGroup);
       try {
-        window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next]));
-        window.localStorage.setItem(`pomegr-agent-activity-show-finished-${sessionId}`, "true");
+        if (persistPreferences) window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next]));
+        if (persistPreferences) window.localStorage.setItem(`pomegr-agent-activity-show-finished-${sessionId}`, "true");
       } catch { /* Local preferences are optional. */ }
       return next;
     });
     setRevealed((current) => new Set(current).add(requestedWorkflowGroup));
-  }, [requestedWorkflowGroup, workflowNavigation?.request, sessionId]);
+  }, [requestedWorkflowGroup, workflowNavigation?.request, sessionId, persistPreferences]);
   const requestedAgentId = agentNavigation?.id;
   const requestedAgentRequest = agentNavigation?.request;
   const requestedAgentGroupId = groups.find((group) => group.kind !== "primary" && group.agents.some((agent) => agent.id === requestedAgentId))?.id;
@@ -156,17 +157,17 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
       queueMicrotask(() => {
         setOpenGroups((current) => {
           const next = new Set(current).add(requestedAgentGroupId);
-          try { window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next])); } catch { /* Optional. */ }
+          try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-roster-open-${sessionId}`, JSON.stringify([...next])); } catch { /* Optional. */ }
           return next;
         });
         setRevealed((current) => new Set(current).add(requestedAgentGroupId));
       });
     }
     onViewModeChange("list");
-    try { window.localStorage.setItem(`pomegr-agent-roster-selected-${sessionId}`, requestedAgentId); } catch { /* Optional. */ }
+    try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-roster-selected-${sessionId}`, requestedAgentId); } catch { /* Optional. */ }
     if (phone) queueMicrotask(() => setPhoneInspectorOpen(true));
-  }, [agents, onViewModeChange, phone, requestedAgentGroupId, requestedAgentId, requestedAgentRequest, sessionId]);
-  const changeFilters = (next: RosterFilters) => { setFilters(next); try { window.localStorage.setItem(`pomegr-agent-activity-show-finished-${sessionId}`, String(!next.hideFinished)); } catch { /* Optional. */ } };
+  }, [agents, onViewModeChange, phone, requestedAgentGroupId, requestedAgentId, requestedAgentRequest, sessionId, persistPreferences]);
+  const changeFilters = (next: RosterFilters) => { setFilters(next); try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-activity-show-finished-${sessionId}`, String(!next.hideFinished)); } catch { /* Optional. */ } };
   const visible = agentsWithFinishedVisibility(agents, !filters.hideFinished).filter((agent) => {
     const statusMatches = filters.status === "all" || (filters.status === "idle" ? ["idle", "waiting", "warm", "needs_input"].includes(agent.status) : agent.status === filters.status);
     return statusMatches && (filters.model === "all" || agent.model === filters.model) && `${agent.label} ${agentAssignment(agent) || ""}`.toLowerCase().includes(filters.search.trim().toLowerCase());
@@ -200,7 +201,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
   const select = (id: string) => {
     if (phone) phoneInspectorOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSelection(id);
-    try { window.localStorage.setItem(`pomegr-agent-roster-selected-${sessionId}`, id); } catch { /* Local preferences are optional. */ }
+    try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-roster-selected-${sessionId}`, id); } catch { /* Local preferences are optional. */ }
     if (phone) setPhoneInspectorOpen(true);
     onSelectAgent?.(id);
   };
@@ -226,7 +227,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
       setSelection(id);
       setPhoneTreeInspectorId(id);
       onSelectAgent?.(id);
-      try { window.localStorage.setItem(`pomegr-agent-roster-selected-${sessionId}`, id); } catch { /* Local preferences are optional. */ }
+      try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-roster-selected-${sessionId}`, id); } catch { /* Local preferences are optional. */ }
     }
     setTreeReturnsToSheet(phone);
     setPhoneInspectorOpen(false);
@@ -283,7 +284,7 @@ function SessionAgentRoster({ agents, executionTasks, planTasks, requestSnapshot
     <div className="rosterActivitySurface" hidden={Boolean(activeTreeFocusId)}>
     <RosterDistribution agents={agents} phone={phone} />
     <RosterFilterBar filters={filters} models={[...new Set(agents.map((agent) => agent.model))].sort()} onChange={changeFilters} allowGrouping={viewMode === "list"} />
-    {viewMode === "grid" && <AgentGridToolbar metric={gridMetric} historical={historical} onChange={(metric) => { setGridMetric(metric); try { window.localStorage.setItem(`pomegr-agent-grid-metric-${sessionId}`, metric); } catch { /* Optional. */ } }} />}
+    {viewMode === "grid" && <AgentGridToolbar metric={gridMetric} historical={historical} onChange={(metric) => { setGridMetric(metric); try { if (persistPreferences) window.localStorage.setItem(`pomegr-agent-grid-metric-${sessionId}`, metric); } catch { /* Optional. */ } }} />}
     <div className="rosterWorkspace"><div className="rosterMain">
       {viewMode === "list" && <div className="rosterColumns sessionEyebrow" aria-hidden="true"><span /><span>Agent</span><span>{historical ? "Final" : "Latest"} context</span><span>Wall time</span><span>Calls</span><span>Cache TTL</span><span>Status</span><span /></div>}
       <div className="rosterScrollFrame"><div className={`rosterRegion ${visibleIds.has("primary") ? "rosterHasPrimary" : ""}`} role="region" aria-label="Agent roster" tabIndex={0}>

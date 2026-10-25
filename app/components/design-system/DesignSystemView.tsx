@@ -41,9 +41,9 @@ import {
 } from "../command-center/CommandPage";
 import { CommandSplitAction } from "../command-center/CommandSplitAction";
 import { useClientAccess } from "../../hooks/ClientAccessContext";
-import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSamples";
+import { AgentInspectorSection, AgentRosterSection, InspectorSheetSection } from "./DesignSystemAgentSamples";
 import { AgentGridSection } from "./DesignSystemAgentGridSample";
-import { RepositorySetupSection } from "./DesignSystemRepositorySamples";
+import { RepositorySetupSection, RevisionEvidenceSection } from "./DesignSystemRepositorySamples";
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
 import { EventsRailSection } from "./DesignSystemEventsSample";
 import { SessionTerminalSection } from "./DesignSystemTerminalSample";
@@ -86,10 +86,12 @@ export function DesignSystemView() {
     <AgentRosterSection />
     <AgentGridSection />
     <AgentInspectorSection />
+    <InspectorSheetSection />
     <ChipsSection />
     <FileTreeSection />
     <FileHistoryPanelSection />
     <RepositorySetupSection />
+    <RevisionEvidenceSection />
     <PanelsSection />
     <EventsRailSection />
     <SessionTerminalSection />

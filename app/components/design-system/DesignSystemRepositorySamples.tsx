@@ -1,5 +1,6 @@
 import type { ContextInventoryRevisionSummary, RepositoryProviderInventory, RepositorySummary } from "../../../shared/monitor-contract";
 import { ProviderBadge } from "../ProviderBadge";
+import { ContextAllocationBreakdown } from "../context-inventory/ContextAllocationBreakdown";
 import { InventoryCaptureAction, InventoryCaptureConfirmation } from "../repositories/InventoryCapture";
 import { PluginSetupRow } from "../repositories/PluginSetupRow";
 import { RepositoryRow } from "../repositories/RepositoryRow";
@@ -60,6 +61,40 @@ export function RepositorySetupSection() {
       </div></Sample>
       <Sample label="Capture confirmation"><div className="repositoryDetail designSystemRepositoryFrame">
         <InventoryCaptureConfirmation repository={REPOSITORY} provider={PROVIDER} busy={false} onCancel={() => undefined} onCapture={() => undefined} />
+      </div></Sample>
+    </div>
+  </Section>;
+}
+
+const CATEGORIES = [
+  { name: "System instructions", tokens: "12k", percentage: 60, kind: "initial" as const },
+  { name: "Tool definitions", tokens: "6k", percentage: 30, kind: "deferred" as const },
+  { name: "Compaction headroom", tokens: "2k", percentage: 10, kind: "reserved" as const },
+];
+
+export function RevisionEvidenceSection() {
+  return <Section id="revision-evidence" title="Revision evidence" lede="Repository facts, summary cards, and category evidence use shared classes with fixed illustrative strings. The allocation breakdown renders the shipped component from synthetic props.">
+    <div className="designSystemRows">
+      <Sample label="Repository facts"><div className="designSystemRepositoryFrame">
+        <dl className="repositoryOverviewFacts" aria-label="Sample repository facts">
+          <div><dt>Live sessions</dt><dd className="live">2</dd></div><div><dt>History</dt><dd>12</dd></div>
+          <div><dt>Last activity</dt><dd>25 Oct 2026, 12:00 UTC</dd></div><div><dt>Providers</dt><dd className="repositoryOverviewProviders"><ProviderBadge source="Claude Code" /></dd></div>
+        </dl>
+      </div></Sample>
+      <Sample label="Setup summaries"><div className="repositoryOverviewCards designSystemRepositoryFrame">
+        {[{ title: "Pomegr plugin", label: "Installed", detail: "Illustrative plugin version 1.0.0" }, { title: "Reporting policy", label: "Configured", detail: "Shared repository policy" }, { title: "Context inventory", label: "Current", detail: "12k estimated initial tokens" }].map((card) => <div className="repositoryOverviewCard" key={card.title}>
+          <h4>{card.title}</h4><span className="commandChip positive">{card.label}</span><p>{card.detail}</p><button type="button" className="commandTextLink">Open {card.title.toLowerCase()}</button>
+        </div>)}
+      </div></Sample>
+      <Sample label="Saved revision summary"><section className="repositoryInventorySummary designSystemRepositoryFrame" aria-label="Sample inventory summary">
+        <div><span>Captured</span><strong>25 Oct 2026, 12:00 UTC</strong></div><div><span>Model</span><strong>sample-model</strong></div>
+        <div><span>Revision</span><strong>r1</strong></div><div className="repositoryInventoryInitial"><span>Estimated initial context</span><strong className="repositoryInventoryTokens">12k tokens</strong></div>
+      </section></Sample>
+      <Sample label="Category grid" note="This shared category grid has no current production caller."><div className="repositoryCategoryGrid designSystemRepositoryFrame">
+        {CATEGORIES.map((category) => <div className="repositoryCategory" key={category.name}><span>{category.name}</span><strong>{category.tokens}</strong><small>{category.percentage}%</small></div>)}
+      </div></Sample>
+      <Sample label="Context allocation"><div className="designSystemRepositoryFrame">
+        <ContextAllocationBreakdown allocation={{ initialTokens: 12_000, deferredTokens: 6_000, reservedTokens: 2_000 }} categoryTotal={20_000} categories={CATEGORIES} />
       </div></Sample>
     </div>
   </Section>;
