@@ -4,6 +4,8 @@ import test from "node:test";
 test("Aril instructions explain review log kinds", () => {
   assert.ok(AGENT_CHAT_INSTRUCTIONS.includes("review_started / review_passed / review_failed (a reviewer session started, or reported its verdict)"));
   assert.ok(AGENT_CHAT_INSTRUCTIONS.includes("grant_start / grant_review (a session started, or a review started, by Aril under a grant)"));
+  assert.ok(AGENT_CHAT_INSTRUCTIONS.includes("sent_back (Aril sent work back under a grant)"));
+  assert.ok(AGENT_CHAT_INSTRUCTIONS.includes("When Send work back is enabled, a grant also requires Send-backs per task."));
 });
 
 test("task log renders oldest first, after the board, with UTC times and PR numbers", () => {
@@ -88,6 +90,7 @@ test("Aril instructions describe the active grant and where it comes from", () =
   assert.match(AGENT_CHAT_INSTRUCTIONS, /active grant means the desktop starts allowed tasks and reviews itself/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /you do not start them or need to propose starts/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /grant_start and grant_review/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /sent_back/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /cannot start or extend a grant/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Aril settings.*owner presses Start grant/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /When the owner asks for a grant, explain.*hours, starts, concurrent sessions.*work rule/u);

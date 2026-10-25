@@ -143,6 +143,7 @@ export function fillTaskReviews(database, board) {
 
 export function deleteTaskReviews(database, repositoryId, number) {
   clearTaskReviewer(database, repositoryId, number);
+  preparedStatement(database, "DELETE FROM meta WHERE key = ?").run(`task_send_back:${repositoryId}:T-${number}`);
   preparedStatement(database, "DELETE FROM task_reviews WHERE repository_id = ? AND number = ?").run(repositoryId, number);
 }
 

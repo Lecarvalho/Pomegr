@@ -101,6 +101,7 @@ test("grant runner routes require desktop authorization and reject paired reques
     ["grant-next", {}],
     ["grant-check", { repositoryId: REPOSITORY_ID }],
     ["grant-record", { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "start" }],
+    ["grant-send-back", { repositoryId: REPOSITORY_ID, taskId: "T-1" }],
     ["grant-end", { repositoryId: REPOSITORY_ID, reason: "app_restart" }],
     ["grant-end-all", { reason: "app_restart" }],
   ];
@@ -147,7 +148,7 @@ test("grant-next projects at most sixteen fixed start and review steps", async (
   const steps = Array.from({ length: 20 }, (_, index) => ({
     repositoryId: `repo-${index.toString(16).padStart(24, "0")}`,
     taskId: `T-${index + 1}`,
-    kind: index % 2 ? "review" : "start",
+    kind: ["send_back", "review", "start"][index % 3],
     path: "C:\\private\\repository",
   }));
   const taskStore = {
@@ -191,4 +192,23 @@ test("grant endpoints reject malformed envelopes and flat bodies", async (t) => 
     ["grant-record", { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "unknown" }],
     ["grant-end", { repositoryId: REPOSITORY_ID, reason: "unknown" }],
   ]) fixedError(await post(port, route, body), 400, "invalid");
+});
+
+test("grant-send-back validates its body and exposes only fixed results", async (t) => {
+  let result = { ok: true, reasons: ["private"] };
+  const taskStore = { sendBackGrant(repositoryId, payload) {
+    assert.equal(repositoryId, REPOSITORY_ID);
+    assert.deepEqual(payload, { taskId: "T-1" });
+    return result;
+  } };
+  const { port } = await setup(t, { taskStore });
+  const body = { repositoryId: REPOSITORY_ID, taskId: "T-1" };
+  assert.deepEqual((await post(port, "grant-send-back", body)).json, { ok: true });
+  for (const error of ["not_active", "not_eligible"]) {
+    result = { ok: false, error, reasons: ["private"] };
+    fixedError(await post(port, "grant-send-back", body), 409, error);
+  }
+  for (const invalid of [{}, { ...body, taskId: "bad" }, { ...body, extra: true }]) {
+    fixedError(await post(port, "grant-send-back", invalid), 400, "invalid");
+  }
 });

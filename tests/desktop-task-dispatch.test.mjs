@@ -81,6 +81,44 @@ test("granted starts require an authorization callback and fail closed if it thr
   assert.deepEqual(h.spawns, []);
 });
 
+test("queued and granted starts for a sent-back task reuse its existing worktree", async () => {
+  for (const mode of ["queued", "granted"]) {
+    const worktrees = fakeWorktrees();
+    worktrees.locate = async (request) => { worktrees.calls.push(["locate", request]); return "C:\\Data\\legacy-task-worktree"; };
+    const h = harness({ plan: { ...basePlan(), sendBack: true }, overrides: { worktrees } });
+    const result = mode === "queued"
+      ? await h.start.startQueued(repositoryId, "T-3")
+      : await h.start.startGranted(repositoryId, "T-3", async () => true);
+    assert.deepEqual(result, { status: "started" });
+    assert.deepEqual(worktrees.calls, [["locate", { repositoryRoot: root, repositoryId, taskId: "T-3" }]]);
+    assert.equal(h.spawns[0][2].cwd, "C:\\Data\\legacy-task-worktree");
+  }
+});
+
+test("ordinary queued and granted plans do not look up or change their worktree", async () => {
+  for (const mode of ["queued", "granted"]) for (const plan of [basePlan(), { ...basePlan(), sendBack: false }]) {
+    const worktrees = fakeWorktrees();
+    const h = harness({ plan, overrides: { worktrees } });
+    const result = mode === "queued"
+      ? await h.start.startQueued(repositoryId, "T-3")
+      : await h.start.startGranted(repositoryId, "T-3", async () => true);
+    assert.deepEqual(result, { status: "started" });
+    assert.equal(h.spawns[0][2].cwd, root);
+    assert.deepEqual(worktrees.calls, []);
+  }
+});
+
+test("a broken or malformed sent-back worktree lookup refuses without creating a worktree", async () => {
+  for (const located of [new Error("lookup failed"), "relative-path"]) {
+    const worktrees = fakeWorktrees();
+    worktrees.locate = async (request) => { worktrees.calls.push(["locate", request]); if (located instanceof Error) throw located; return located; };
+    const h = harness({ plan: { ...basePlan(), sendBack: true }, overrides: { worktrees } });
+    assert.deepEqual(await h.start.startQueued(repositoryId, "T-3"), { status: "failed" });
+    assert.equal(h.spawns.length, 0);
+    assert.deepEqual(worktrees.calls.map(([name]) => name), ["locate"]);
+  }
+});
+
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");
   assert.ok(Object.isFrozen(TASK_START_STATUSES));
@@ -186,6 +224,7 @@ test("malformed plans fail, spawn nothing and abort with the token", async () =>
     { provider: "gemini" }, { provider: "__proto__" }, { taskId: "T-4" }, { repositoryRoot: "relative\\dir" }, { repositoryRoot: "C:\\Work\\..\\repo" },
     { repositoryRoot: "C:\\Work\\missing" }, { repositoryRoot: "C:\\Work\\\"x" },
     { model: "bad model" }, { model: "a/b" }, { effort: "max" }, { prompt: "-rf" }, { prompt: "" }, { prompt: "a\u0000b" },
+    { sendBack: "yes" }, { sendBack: 1 },
     { prompt: "x".repeat(8001) },
   ];
   for (const change of bad) {
@@ -409,6 +448,7 @@ function fakeWorktrees(made = { ok: true, directory: worktreeDirectory, created:
     calls,
     ensure: async (request) => { calls.push(["ensure", request]); if (made instanceof Error) throw made; return made; },
     remove: async (request) => { calls.push(["remove", request]); return "removed"; },
+    locate: async (request) => { calls.push(["locate", request]); return null; },
   };
 }
 

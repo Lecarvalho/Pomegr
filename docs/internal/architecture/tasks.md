@@ -176,20 +176,27 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 ## Aril grants
 
-An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews. It permits no task writes, send-backs, or merges.
+An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews, and send failed work back within its send-back limit. It permits no other task writes or merges.
 
-- The Aril settings panel's first section, Grant, summarizes saved settings and requires hours, starts, concurrent sessions, a start or review action, and at least one work rule before offering **Start grant**; unsaved changes block starting.
+- The Aril settings panel's first section, Grant, summarizes saved settings and requires hours, starts, concurrent sessions, at least one of **Start tasks** or **Start reviews**, and at least one work rule before offering **Start grant**; if **Send work back** is enabled, it also requires **Send-backs per task**. Unsaved changes block starting.
 - **Start grant** first shows an in-panel confirmation with the end time; confirming sends `grant_start` with `{}`. **Stop grant** sends `grant_stop` with `{}` immediately, including on a paired device without edit permission.
 - The panel shows the active grant's end time and snapshotted starts allowance, or the latest ended grant's time and fixed reason; the capacity strip shows “Aril grant until HH:MM” before **Aril settings** only while active.
-- `grant_start` accepts exactly `{}` through the task action envelope and answers `{ ok: true, grant }`; `not_ready` refuses unset `hours`, `starts`, or `concurrent` limits, or both `actions.start` and `actions.review` false, and `conflict` refuses an already active grant.
+- `grant_start` accepts exactly `{}` through the task action envelope and answers `{ ok: true, grant }`; `not_ready` refuses unset `hours`, `starts`, or `concurrent`, both `actions.start` and `actions.review` false, or `actions.sendBack` true with a null `limits.sendBacks`; `conflict` refuses an already active grant.
 - Starting snapshots `settings.actions` and `settings.limits`, records the start time, and sets the end time to that time plus `limits.hours`; later settings edits do not change either snapshot.
 - A grant is active exactly while `ended_at IS NULL`, the current time is before `ends_at`, and `starts_used` is below its snapshotted `limits.starts`.
 - Reading a grant, including a board read, ends a timed-out or exhausted grant in the same transaction, with `expired` taking precedence over `starts_used` when both limits are reached.
 - `grant_stop` accepts exactly `{}`, ends an active grant with `stopped`, and answers `{ ok: true }` even without an active grant; it never ends a session.
 - The desktop may start and stop grants; the monitor accepts a paired start only when stored `pairedDevices` is true, while a paired stop is always allowed.
 - The board's `aril.grant` is null before any grant, otherwise the latest grant's `{ startedAt, endsAt, startsUsed, actions, limits, active }`; ended grants also carry `endedAt` and `endReason`, with times in epoch milliseconds.
-- `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 `{ repositoryId, taskId, kind: "start" | "review" }` entries across repositories; it starts nothing and does not change queue behavior.
+- `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 `{ repositoryId, taskId, kind: "send_back" | "review" | "start" }` entries across repositories, with send-backs first; it starts nothing and does not change queue behavior.
 - Review steps add exactly `run: { provider, model, effort }` only when the [reviewer rule](#review-sessions) changes the task's stored run.
+- Send-back selection runs before reviews and starts and requires `actions.sendBack`, a matching work rule, a task in `needs_review`, a latest verdict of `fail` since its latest entry into Review, and a send-back count below `limits.sendBacks`. It does not consume concurrent-session capacity.
+- A null `limits.sendBacks` offers no send-back; reaching the per-task limit leaves the task in Review for the owner.
+- `POST /internal/tasks/grant-send-back` accepts `{ repositoryId, taskId }` with the desktop token, rechecks eligibility in one transaction, calls the shared `resolveRequeue`, moves the card to Ready, and appends `sent_back`; it answers `{ ok: true }`, `not_active`, or `not_eligible` (malformed requests remain `invalid`).
+- The same transaction stores `meta` key `task_send_back:<repositoryId>:<taskId>` with `{ grantId, count, reasons }`; Done and task deletion remove it, and a different grant ID resets the count on the next send-back.
+- The normal start path starts a new builder session, reusing the task's existing worktree or the repository root when none exists; send-back itself starts nothing, and Continue's provider resume remains a later option.
+- A private builder plan adds `sendBack: true` only while send-back metadata exists, so either a queue or grant start reuses the existing task worktree; ordinary Requeue keeps its existing behavior.
+- The builder prompt adds "A reviewer session found problems in the previous attempt. Fix them, then report again:" after the task text, followed by one `- ` line per stored reason, within the 8000-character prompt bound.
 - Review selection reads `settings.reviewer` live, like work rules; manual reviews keep the task's run.
 - Selection uses current settings work rules, with any matching rule sufficient: an exact tag from the leading tag run (the board parser with the settings' 40-character bound), a case-insensitive text substring, a matching feature ID, or a listed task ID; no rules select nothing.
 - Reviews require the grant's `review` switch, `needs_review`, a linked builder, no review dispatch (including an expired dispatch), no bound reviewer, and no verdict since the latest entry into Review; earlier verdicts do not exclude the task.
@@ -203,7 +210,8 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - A grant ends when the app quits. One desktop runner timer polls every 15 seconds with the queue runner. Its first tick posts `POST /internal/tasks/grant-end-all` once with exactly `{ reason: "app_restart" }`.
   One transaction ends active grants across repositories and answers `{ ok: true, ended: count }`. The route accepts the desktop token only, refuses a paired marker, and has no Next route.
 - If that once-only startup request fails or its answer is invalid, grant execution stays disabled for that runner and app run. Queue ticks continue, and the startup request is not retried.
-- Each tick handles queue starts first, then posts `grant-next` with `{}` and starts offered steps serially through `startGranted` or `startGrantedReview`. It checks `grant-check` before planning, after planning, before terminal-host launch, and after `ensureHost`.
+- Each tick handles queue starts first, then posts `grant-next` with `{}`; it posts all offered send-backs before starting reviews or builders, swallows request failures, and treats refusals as settled without taking a session slot.
+- Offered session steps run serially through `startGranted` or `startGrantedReview`; each checks `grant-check` before planning, after planning, before terminal-host launch, and after `ensureHost`.
 - After a successful launch, `grant-record` receives `{ repositoryId, taskId, kind }`. `not_active` is benign and causes no further logging. `busy`, `not_startable`, `gate_held`, `tree_dirty`, `cancelled`, and `not_found` skip that step without ending the grant. Any other status ends that repository's grant with `start_failed` and skips its remaining steps for that tick.
 - Grant-runner failures are swallowed so the timer remains alive; disposing the runner stops the timer. The per-repository `grant-end` remains available for `start_failed`.
 
@@ -2705,7 +2713,8 @@ serves no other client.
 | `POST /internal/tasks/grant_stop` | Desktop token | `{ repositoryId, payload: {} }`; idempotent `{ ok: true }` |
 | `POST /internal/tasks/grant_start` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, only when stored `pairedDevices` is true | Same start envelope and answer |
 | `POST /internal/tasks/grant_stop` with `x-pomegr-lan-gateway: 1` | Paired proxy with desktop token, regardless of `pairedDevices` | Same stop envelope and answer |
-| `POST /internal/tasks/grant-next` | Desktop token only; paired marker refused; no Next route | `{}`; `{ ok: true, steps }` containing at most 16 repository IDs, task IDs, and start/review kinds; the desktop grant runner starts them |
+| `POST /internal/tasks/grant-next` | Desktop token only; paired marker refused; no Next route | `{}`; `{ ok: true, steps }` containing at most 16 repository IDs, task IDs, and `send_back`, `review`, or `start` kinds; the desktop grant runner handles them |
+| `POST /internal/tasks/grant-send-back` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, taskId }`; `{ ok: true }` or fixed refusal; requeues an eligible task under its active grant |
 | `POST /internal/tasks/grant-record` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, taskId, kind }` after the runner launches; `{ ok: true }` or fixed refusal |
 | `POST /internal/tasks/grant-check` | Desktop token only; paired marker refused; no Next route | `{ repositoryId }` at each runner authorization checkpoint; `{ ok: true, active }` |
 | `POST /internal/tasks/grant-end` | Desktop token only; paired marker refused; no Next route | `{ repositoryId, reason: "start_failed" \| "app_restart" }`; `{ ok: true }`; the runner sends `start_failed` after a launch failure |
@@ -2867,9 +2876,10 @@ serves no other client.
 ## Privacy
 
 - A grant holds times, counts, a fixed end reason, and fixed action and limit settings snapshots under repository and grant IDs; the board exposes only the latest grant's documented fields, never its internal ID.
+- Send-back metadata holds the grant-scoped count and verdict reasons until Done or deletion; the reasons reach the next builder prompt, and a `sendBack: true` hint reaches desktop main in the private start plan, never the renderer or board.
 - Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, active state, the count ended, and optional review provider, model, and effort overrides, never task text, prompts, paths, session IDs, or dispatch tokens.
-- The log gains the fixed kinds `grant_start` and `grant_review`, readable through its existing desktop, paired-device, and Aril prompt paths; grant records never enter `/api/state`, observation, or agent tools.
-- Grants survive task deletion and must be deleted with the board if board deletion is introduced; the desktop runner may start only offered tasks and reviews while a grant is active.
+- The log gains the fixed kinds `grant_start`, `grant_review`, and `sent_back`, readable through its existing desktop, paired-device, and Aril prompt paths; grant records never enter `/api/state`, observation, or agent tools.
+- Grants survive task deletion and must be deleted with the board if board deletion is introduced; the desktop runner may start only offered tasks and reviews and send offered tasks back while a grant is active.
 
 - Aril settings hold fixed values, task and feature IDs, a model name, and short owner-written rule text; memory holds owner-approved one-line text, entry IDs, and timestamps.
 - Settings and memory reach the trusted desktop renderer and a paired device through the board, and their fixed action answers reach the authorized caller; neither reaches `/api/state`, observation, an agent tool, or Aril's prompt in this slice.

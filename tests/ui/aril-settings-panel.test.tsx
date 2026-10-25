@@ -243,6 +243,13 @@ describe("Aril settings panel", () => {
     expect(screen.getByRole("switch", { name: "Start tasks" })).toBeChecked();
   });
 
+  it("requires a send-back limit when grant send-backs are enabled", async () => {
+    board.aril!.settings.actions.sendBack = true;
+    await open();
+    expect(screen.getByText("Set Send-backs per task first.")).toHaveClass("taskGatesCaption");
+    expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
+  });
+
   it("sends paired memory actions and removes editing immediately when permission is revoked", async () => {
     access.mode = "lan"; setBridge(undefined); board.aril!.settings.pairedDevices = true;
     board.aril!.memory = [{ id: 1, text: "Existing habit", createdAt: 1, updatedAt: 1 }];

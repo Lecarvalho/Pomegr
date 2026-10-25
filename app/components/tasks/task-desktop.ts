@@ -220,7 +220,7 @@ export const TASK_LOG_LABELS = {
   started: "Started", assigned: "Assigned to a session", review: "Reported complete", blocked: "Blocked", requeued: "Requeued", done: "Marked done",
   stalled: "Session ended without a report", recovered: "Session working again", checks_passed: "CI passed", checks_failed: "CI failed", merged: "Merged",
   review_started: "Review started", review_passed: "Review passed", review_failed: "Review failed",
-  grant_start: "Started by Aril under a grant", grant_review: "Review started by Aril under a grant",
+  grant_start: "Started by Aril under a grant", grant_review: "Review started by Aril under a grant", sent_back: "Sent back by Aril under a grant",
 } as const;
 export type TaskLog = { entries: { id: number; task: string; kind: keyof typeof TASK_LOG_LABELS; at: number; pullRequest: number | null }[]; more: boolean; arilCursor: number };
 export type TaskLogAnswer = { ok: true; log: TaskLog } | { ok: false };

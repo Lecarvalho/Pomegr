@@ -1,6 +1,6 @@
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 
-export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review"]);
+export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back"]);
 export const TASK_LOG_CONSUMERS = Object.freeze(["aril"]);
 export const TASK_LOG_KEEP = 1000;
 

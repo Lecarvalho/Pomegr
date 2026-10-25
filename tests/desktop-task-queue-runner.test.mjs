@@ -356,6 +356,25 @@ test("grant runner forwards valid review runs and drops malformed run steps", as
   }
 });
 
+test("grant send-backs are posted before starts and reviews without launching a session", async () => {
+  const h = grantHarness({ steps: [grantStep("T-1", "start"), grantStep("T-2", "send_back"), grantStep("T-3", "review"), grantStep("T-4", "send_back"), grantStep("T-5", "sent_back")] });
+  h.runner.start(); await h.timers.fire();
+  assert.deepEqual(h.calls.filter(({ route }) => route === "grant-send-back").map(({ body }) => body), [
+    { repositoryId: repoA, taskId: "T-2" }, { repositoryId: repoA, taskId: "T-4" },
+  ]);
+  assert.deepEqual(h.launches.map(({ taskId, kind }) => [taskId, kind]), [["T-1", "start"], ["T-3", "review"]]);
+  assert.ok(routes(h).indexOf("grant-send-back") < routes(h).indexOf("grant-check"));
+});
+
+test("grant send-back refusals and request failures are settled and do not end the grant", async () => {
+  for (const response of [() => { throw Error("offline"); }, () => new Response("invalid json"), () => json({ ok: false, error: "not_ready" })]) {
+    const h = grantHarness({ steps: [grantStep("T-1", "send_back"), grantStep("T-2", "start")], responses: { "grant-send-back": response } });
+    h.runner.start(); await h.timers.fire();
+    assert.deepEqual(h.launches.map(({ taskId, kind }) => [taskId, kind]), [["T-2", "start"]]);
+    assert.equal(routes(h).includes("grant-end"), false);
+  }
+});
+
 test("grant restart cleanup runs once on the first tick before any queue or grant work", async () => {
   const h = grantHarness(); h.runner.start();
   assert.deepEqual(h.calls, []);
