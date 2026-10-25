@@ -5,7 +5,7 @@ import test from "node:test";
 import * as grants from "../../../server/tasks/task-aril-grant.mjs";
 import { buildTaskPrompt } from "../../../server/tasks/task-dispatch.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
-import { REPOSITORY as REPO, passingGates, GATE_FACTS, createTask, queueTask, updateTask, setMeta, withDatabase, dispatchMintedAt, repositoryNumber } from "./queue-test-support.mjs";
+import { REPOSITORY as REPO, passingGates, GATE_FACTS, FACTS, createTask, queueTask, updateTask, setMeta, withDatabase, dispatchMintedAt, repositoryNumber } from "./queue-test-support.mjs";
 
 const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false };
 const limits = { hours: 1, starts: 4, concurrent: 3, sendBacks: null, allowancePercent: null };
@@ -495,6 +495,91 @@ test("review selection excludes dispatch, bound reviewer, missing builder and cu
   });
   configure(); start();
   assert.deepEqual(next().steps, [step("T-1", "review"), step("T-7", "review")]);
+});
+
+for (const [parent, offered] of [
+  ["in flight", false], ["no verdict", false], ["failed", false], ["stale pass", false],
+  ["passed", true], ["later failure", false], ["passed outside Review", false],
+  ["merged", true], ["grant_merge", true], ["done", true],
+]) test(`grant chain T-1 -> T-2 with parent ${parent}; queue still requires Done`, (t) => {
+  const f = setup(t);
+  const { store, directory, clock } = f;
+  f.ready(); f.ready();
+  assert.equal(store.apply(REPO, "after_set", { id: "T-2", after: ["T-1"] }).ok, true);
+  f.configure({ workRules: [{ kind: "tasks", value: ["T-2"] }] });
+  assert.equal(f.start().ok, true);
+  assert.equal(store.apply(REPO, "queue_settings", { on: true }).ok, true);
+  updateTask(directory, 1, { state: parent === "done" ? "done" : "needs_review", session_id: "codex:builder-1", report_at: clock.now, report_results: "[]" });
+  if (parent === "in flight") updateTask(directory, 1, { state: "queued", report_at: null });
+  if (["failed", "stale pass", "passed", "later failure", "passed outside Review"].includes(parent)) {
+    failedReview(f, 1, parent === "failed" ? "fail" : "pass", clock.now - (parent === "stale pass" ? 1 : 0));
+    if (parent === "later failure") failedReview(f);
+    if (parent === "passed outside Review") updateTask(directory, 1, { state: "blocked" });
+  }
+  if (["merged", "grant_merge"].includes(parent)) withDatabase(directory, (db) => {
+    db.prepare("INSERT INTO task_log(repository_id, number, kind, at) VALUES (?, 1, ?, ?)").run(REPO, parent, clock.now);
+  });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }).starts,
+    parent === "done" ? [{ repositoryId: REPO, taskId: "T-2" }] : []);
+  const before = store.readBoard(REPO);
+  assert.deepEqual(f.next(), { ok: true, steps: offered ? [step("T-2")] : [] });
+  assert.deepEqual(f.next(() => ({ ...GATE_FACTS, treeClean: false })).steps, [], "satisfied dependencies do not bypass start gates");
+  assert.deepEqual(store.readBoard(REPO), before, "grant selection changes neither task state, dependencies nor queue");
+  if (parent !== "done") error(store.planStart(REPO, { id: "T-2" }, () => FACTS, passingGates), "gate_held");
+  const plan = store.planStart(REPO, { id: "T-2", grant: true }, () => FACTS, passingGates);
+  if (offered) assert.equal(plan.ok, true);
+  else error(plan, "gate_held");
+});
+
+for (const condition of ["absent", "stopped", "expired", "start off", "not selected"]) {
+  test(`grant start-plan refuses ${condition} authority`, (t) => {
+    const f = setup(t);
+    f.ready();
+    f.configure(condition === "start off" ? { actions: { ...actions, start: false } } : {});
+    if (condition !== "absent") assert.equal(f.start().ok, true);
+    if (condition === "stopped") assert.equal(f.store.apply(REPO, "grant_stop", {}).ok, true);
+    if (condition === "expired") f.clock.now += 3600000;
+    if (condition === "not selected") assert.equal(f.set({ workRules: [] }).ok, true);
+    error(f.store.planStart(REPO, { id: "T-1", grant: true }, () => FACTS, passingGates), "not_startable");
+    assert.equal(withDatabase(f.directory, (db) => db.prepare("SELECT dispatch_token FROM tasks WHERE number = 1").get().dispatch_token), null);
+  });
+}
+
+test("grant start-plan validates exact keys, supports worktrees, and rechecks authority before minting", (t) => {
+  const f = setup(t);
+  f.ready(); f.ready();
+  assert.equal(f.store.apply(REPO, "after_set", { id: "T-2", after: ["T-1"] }).ok, true);
+  failedReview(f, 1, "pass");
+  f.configure(); f.start();
+  const plan = (payload, facts = () => FACTS, gates = passingGates) => f.store.planStart(REPO, payload, facts, gates);
+  for (const payload of [{ id: "T-2", grant: false }, { id: "T-2", grant: 1 }, { id: "T-2", grant: true, extra: true },
+    { id: "T-2", grant: true, worktree: false }, { grant: true }]) error(plan(payload), "invalid");
+  error(plan({ id: "T-2", grant: true }, () => FACTS, () => ({ ...GATE_FACTS, treeClean: false })), "tree_dirty");
+  const separate = plan({ id: "T-2", grant: true, worktree: true });
+  assert.equal(separate.ok, true);
+  assert.equal(separate.plan.worktree, true);
+  assert.equal(f.store.abortStart(REPO, { id: "T-2", token: separate.plan.token }).ok, true);
+  error(plan({ id: "T-2", grant: true }, () => {
+    f.clock.now += 3600000;
+    return FACTS;
+  }), "not_startable");
+});
+
+test("grant dependencies require every parent and scope merge evidence to its repository and task", (t) => {
+  const f = setup(t);
+  f.ready(); f.ready(); f.ready();
+  assert.equal(f.store.apply(REPO, "after_set", { id: "T-3", after: ["T-1", "T-2"] }).ok, true);
+  failedReview(f, 1, "pass");
+  updateTask(f.directory, 2, { state: "needs_review", session_id: "codex:builder-2", report_at: f.clock.now, report_results: "[]" });
+  f.configure({ workRules: [{ kind: "tasks", value: ["T-3"] }] }); f.start();
+  withDatabase(f.directory, (db) => {
+    const insert = db.prepare("INSERT INTO task_log(repository_id, number, kind, at) VALUES (?, ?, 'merged', ?)");
+    insert.run(REPO, 1, f.clock.now);
+    insert.run(repositoryNumber(2), 2, f.clock.now);
+  });
+  assert.deepEqual(f.next().steps, []);
+  failedReview(f, 2, "pass");
+  assert.deepEqual(f.next().steps, [step("T-3")]);
 });
 
 test("starts use Ready order, startability and after rules without changing the queue", (t) => {

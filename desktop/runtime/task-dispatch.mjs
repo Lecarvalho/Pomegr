@@ -180,7 +180,7 @@ export function createTaskStart(options = {}) {
     try { await post("start-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ }
   }
 
-  async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false, isAuthorized }) {
+  async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false, isAuthorized, grant = false }) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
@@ -200,7 +200,7 @@ export function createTaskStart(options = {}) {
     if (!await authorized()) return result("cancelled");
 
     let answer;
-    try { answer = await post("start-plan", repositoryId, separateWorktree ? { id: taskId, worktree: true } : { id: taskId }); } catch { return result("unavailable"); }
+    try { answer = await post("start-plan", repositoryId, { id: taskId, ...(separateWorktree ? { worktree: true } : {}), ...(grant ? { grant: true } : {}) }); } catch { return result("unavailable"); }
     if (!isPlainObject(answer)) return result("unavailable");
     if (answer.ok !== true) {
       return result(typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
@@ -389,7 +389,7 @@ export function createTaskStart(options = {}) {
 
   function startGranted(repositoryId, taskId, isAuthorized) {
     if (typeof isAuthorized !== "function") return Promise.resolve(result("invalid"));
-    return exclusive({ confirmRequired: false, isAuthorized }, repositoryId, taskId);
+    return exclusive({ confirmRequired: false, isAuthorized, grant: true }, repositoryId, taskId);
   }
 
   function startGrantedReview(repositoryId, taskId, isAuthorized, run) {
