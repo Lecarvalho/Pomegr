@@ -45,10 +45,11 @@ export function conversationTitle(text) {
 }
 
 // The stored operation is already normalized, so it reads back through the agent-facing shape it came from.
-function storedOperation(operation) {
+function storedOperation(operation, grantWrite) {
   if (!isPlainObject(operation) || !BOARD_OPERATIONS.includes(operation.op)) return null;
-  const { run, completeWhen, placeAfter, ...rest } = operation;
+  const { run, completeWhen, placeAfter, after, ...rest } = operation;
   const source = { ...rest };
+  if (after !== undefined) source[grantWrite ? "runs_after" : "after"] = after;
   if (placeAfter !== undefined) source.place_after = placeAfter;
   if (run !== undefined) { if (!isPlainObject(run)) return null; Object.assign(source, run); }
   if (completeWhen !== undefined) {
@@ -56,7 +57,7 @@ function storedOperation(operation) {
     if (Object.hasOwn(completeWhen, "checks")) source.complete_when = completeWhen.checks;
     if (Object.hasOwn(completeWhen, "own")) source.own_condition = completeWhen.own;
   }
-  return normalizeOperation(source);
+  return normalizeOperation(source, { grantWrite });
 }
 
 function storedResult(result) {
@@ -81,7 +82,9 @@ function storedProposal(proposal) {
   if (!isPlainObject(proposal) || typeof proposal.id !== "string" || !PROPOSAL_ID.test(proposal.id) || !PROPOSAL_STATES.has(proposal.state)
     || !bounded(proposal.summary, PROPOSAL_SUMMARY_LIMIT) || !Array.isArray(proposal.operations)
     || proposal.operations.length === 0 || proposal.operations.length > PROPOSAL_OPERATION_LIMIT) return null;
-  const operations = proposal.operations.map(storedOperation);
+  const grantWrite = proposal.appliedBy === "grant";
+  if (grantWrite && (proposal.state !== "applied" || proposal.operations.length > 5)) return null;
+  const operations = proposal.operations.map((operation) => storedOperation(operation, grantWrite));
   if (operations.some((operation) => operation === null)) return null;
   const start = operations.some((operation) => operation.op === START_OPERATION);
   // A start stands alone, and it either launched (`applied`) or waits for the owner's next answer.
@@ -90,6 +93,7 @@ function storedProposal(proposal) {
   const queueOn = queueProposalState({ operations });
   if (operations.some((operation) => operation.op === QUEUE_OPERATION) && (queueOn === null || proposal.state === "partial")) return null;
   const stored = { id: proposal.id, summary: proposal.summary, operations, state: proposal.state };
+  if (grantWrite) stored.appliedBy = "grant";
   if (proposal.results !== undefined) {
     if (!Array.isArray(proposal.results) || proposal.results.length !== operations.length) return null;
     const results = proposal.results.map(storedResult);

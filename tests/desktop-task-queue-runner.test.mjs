@@ -340,7 +340,7 @@ const rootA = "C:\\Work\\a";
 const cleanup = (repositoryId, taskId, repositoryRoot = rootA) => ({ repositoryId, taskId, repositoryRoot });
 const routes = (h) => h.calls.map((call) => call.route);
 
-function grantHarness({ steps = [], next = [], start, responses = {} } = {}) {
+function grantHarness({ steps = [], next = [], start, grantWrite, responses = {} } = {}) {
   const timers = scheduler(), calls = [], launches = [];
   const granted = (kind) => async (repositoryId, taskId, authorized, run) => {
     launches.push({ repositoryId, taskId, kind, ...(run === undefined ? {} : { run }) });
@@ -348,6 +348,7 @@ function grantHarness({ steps = [], next = [], start, responses = {} } = {}) {
   };
   const runner = createTaskQueueRunner({
     monitorOrigin: origin, authorizationToken: "secret", setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+    ...(grantWrite ? { grantWrite } : {}),
     starter: { startQueued: granted("queue"), startGranted: granted("start"), startGrantedReview: granted("review") },
     fetch: async (url, options) => {
       const route = url.split("/").pop(), body = JSON.parse(options.body);
@@ -362,6 +363,44 @@ function grantHarness({ steps = [], next = [], start, responses = {} } = {}) {
   return { runner, timers, calls, launches };
 }
 const grantStep = (taskId, kind = "start", repositoryId = repoA) => ({ repositoryId, taskId, kind });
+const writeStep = (repositoryId = repoA, plans = ["docs/plan.md"]) => ({ repositoryId, kind: "write_tasks", plans });
+
+test("grant write step invokes grantWrite with repository and plans without waiting for its promise", async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const received = [];
+  const h = grantHarness({ steps: [writeStep()], grantWrite: (...args) => { received.push(args); return pending; } });
+  h.runner.start();
+  await h.timers.fire();
+  assert.deepEqual(received, [[{ repositoryId: repoA, plans: ["docs/plan.md"] }]]);
+  assert.equal(h.timers.pending().length, 1);
+  release({ ok: true });
+});
+
+test("only one grant write may be pending across ticks and repositories", async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const calls = [];
+  const h = grantHarness({ steps: [writeStep(repoA), writeStep(repoB, ["plans/other.md"])], grantWrite: (request) => { calls.push(request); return pending; } });
+  h.runner.start();
+  await h.timers.fire();
+  await h.timers.fire();
+  assert.deepEqual(calls, [{ repositoryId: repoA, plans: ["docs/plan.md"] }]);
+  release({ ok: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  await h.timers.fire();
+  assert.deepEqual(calls, [{ repositoryId: repoA, plans: ["docs/plan.md"] }, { repositoryId: repoA, plans: ["docs/plan.md"] }]);
+});
+
+test("missing grantWrite skips writing and a rejected or thrown callback can be retried", async () => {
+  const absent = grantHarness({ steps: [writeStep()] });
+  absent.runner.start(); await absent.timers.fire();
+  assert.deepEqual(absent.launches, []);
+  let count = 0;
+  const h = grantHarness({ steps: [writeStep()], grantWrite: () => { count += 1; if (count === 1) throw Error("sync"); if (count === 2) return Promise.reject(Error("async")); return Promise.resolve({ ok: true }); } });
+  h.runner.start(); await h.timers.fire(); await h.timers.fire(); await new Promise((resolve) => setImmediate(resolve)); await h.timers.fire();
+  assert.equal(count, 3);
+});
 
 test("grant runner forwards valid review runs and drops malformed run steps", async () => {
   const valid = [grantStep("T-1", "review"),

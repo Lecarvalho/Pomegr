@@ -731,7 +731,7 @@ async function startDesktop() {
           ipcMain,
           monitorOrigin: privateMonitorOrigin,
           authorizationToken,
-          starter: taskStarter,
+          starter: taskStarter, grantWrite: agentChat.grantWrite,
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

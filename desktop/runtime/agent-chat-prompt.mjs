@@ -527,7 +527,7 @@ export function conversationHistory(messages, budget = HISTORY_BUDGET) {
  * A follow-up has no owner message: `followUp` is the stored proposal the owner answered, and the prompt ends with its
  * outcome. Null when that proposal has no outcome yet.
  */
-export function composePrompt({ board, repositoryName, runs = [], taskLog = undefined, messages = [], message, followUp = null, images = [], attached = [], now = new Date() }) {
+export function composePrompt({ board, repositoryName, runs = [], taskLog = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
   const history = conversationHistory(messages);
   const outcome = followUp ? proposalOutcome(followUp) : null;
   if (followUp && !outcome) return null;
@@ -551,7 +551,10 @@ export function composePrompt({ board, repositoryName, runs = [], taskLog = unde
     "</conversation>",
     "",
     ...(images.length > 0 ? ["<images>", ...images.map((image) => `${image.id} (${image.type}): ${image.file}`), "</images>", ""] : []),
-    ...(outcome
+    ...(grantPlans ? ["<grant_request>",
+      `Pomegr started this run because the owner's active grant allows writing tasks from these plans:\n${grantPlans.join("\n")}\nRead the plan file in the repository. Find the next step that has no task on this board and is not built yet (check the code, the board, and the git log). Write the tasks for that step only, one to five, in order. Each task's text must let a fresh coding session finish it without asking: the goal, the files or areas to read and change, what must not change, the tests to add or update, the repository's own verification commands, and how to deliver (branch, pull request). Set complete_when to the conditions that prove it. When one task must wait for another you write, say so with runs_after using "#1".."#5" for earlier tasks in this answer. End with one proposal block that contains only create_task operations. If the plan has no unbuilt step, or you cannot tell what is next, answer in two lines and write no block.`,
+      "For this grant request only, Pomegr applies those tasks without owner Apply. Use only op, text, complete_when, own_condition, and runs_after; runs_after may also name existing task IDs. Write no other fields or operations.",
+      "</grant_request>"] : outcome
       ? ["<proposal_outcome>", JSON.stringify(outcome), "</proposal_outcome>", `${FOLLOW_UP_COMMON} ${["applied", "partial"].includes(outcome.outcome) ? FOLLOW_UP_PROPOSAL : "Write no proposal block."} ${followUpRequest(outcome)}`]
       : ["<owner_message>", message, "</owner_message>", ...(attached.length > 0 ? [`Images attached to this message, in order: ${imageList(attached)}.`] : [])]),
   ].join("\n");

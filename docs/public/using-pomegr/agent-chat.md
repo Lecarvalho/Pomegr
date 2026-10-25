@@ -11,7 +11,9 @@ the repository's files, and what Pomegr observed, then answers. Aril proposes bo
 changes, and you apply them. In **Tasks → Aril settings**, save the actions, limits, and work
 rules, then select **Start grant** and confirm in the panel. The desktop starts allowed
 Ready tasks and their reviews, sends failed work back within its limit, and merges eligible
-pull requests on green CI after a passing review using the selected merge method. Select **Stop grant** in the same
+pull requests on green CI after a passing review using the selected merge method. If you
+enable **Write tasks from plans**, Aril can also create tasks from the grant's named plans
+when the chat is free; they appear in Ready without **Apply changes**. Select **Stop grant** in the same
 panel to end it; running sessions continue. Paired devices can always stop a grant and
 can start one when you allow them. Aril cannot start or extend a grant.
 See [Tasks](tasks.md#aril-grants) for its actions and limits.
