@@ -4,9 +4,8 @@ import type { MonitorState, PomegrPluginMetadata } from "../../../shared/monitor
 import { createEmptyProviderCapabilities } from "../../../shared/monitor-state.mjs";
 import { sessionListTime } from "../../dashboard-utils";
 import { RelativeTimeText } from "../LiveTime";
-import { DashboardDisclosurePanel } from "./DashboardDisclosurePanel";
+import { CopyTranscriptButton } from "../CopyTranscriptButton";
 import { MachineryPanel } from "./MachineryPanel";
-import { UsageLimitsPanel } from "./UsageLimitsPanel";
 
 type SessionCost = NonNullable<NonNullable<MonitorState["session"]>["cost"]>;
 
@@ -30,32 +29,6 @@ function estimatedCostLabel(cost: SessionCost) {
   }).format(cost.amount);
 }
 
-function SessionDetailsSummary({ state, showEstimatedCost }: { state: MonitorState; showEstimatedCost: boolean }) {
-  if (!state.session) return null;
-  const capabilities = state.capabilities || createEmptyProviderCapabilities();
-  const cost = showEstimatedCost && capabilities.estimatedCost ? state.session.cost : null;
-  const plugin = state.session.pomegrPlugin;
-  const pluginVersion = plugin?.version ? pluginVersionLabel(plugin.version) : null;
-  const policyVersion = plugin?.policyVersion ?? null;
-  const fallback = "Approval mode, usage limits, machinery";
-
-  return (
-    <span className="sessionEvidenceSummary sessionDetailsSummary">
-      <span className="sessionDesktopLabel">
-        {cost && <>Estimated cost <span className="sessionSummaryData">{estimatedCostLabel(cost)}</span> (Claude Code estimate)</>}
-        {pluginVersion && <>{cost ? " · " : ""}plugin <span className="sessionSummaryData">{pluginVersion}</span></>}
-        {policyVersion !== null && <>{cost || pluginVersion ? " · " : ""}policy <span className="sessionSummaryData">v{policyVersion}</span></>}
-        {!cost && !pluginVersion && policyVersion === null && fallback}
-      </span>
-      <span className="sessionPhoneLabel">
-        {cost && <>Est. cost <span className="sessionSummaryData">{estimatedCostLabel(cost)}</span></>}
-        {pluginVersion && <>{cost ? " · " : ""}plugin <span className="sessionSummaryData">{pluginVersion}</span></>}
-        {!cost && !pluginVersion && fallback}
-      </span>
-    </span>
-  );
-}
-
 export function SessionDetailsPanel({
   historical,
   showEstimatedCost = true,
@@ -69,50 +42,44 @@ export function SessionDetailsPanel({
   const session = state.session;
   const capabilities = state.capabilities || createEmptyProviderCapabilities();
   const plugin = session.pomegrPlugin;
+  const primaryAgent = state.agents.find((agent) => agent.id === "primary");
 
   return (
-    <DashboardDisclosurePanel
-      bodyClassName="sessionDetailsBody"
-      className="sessionDetails sessionEvidenceDisclosure"
-      defaultOpen={false}
-      icon="chevron"
-      storageKey="pomegr-session-details-open"
-      summary={<SessionDetailsSummary state={state} showEstimatedCost={showEstimatedCost} />}
-      title="Session details"
-    >
-      {plugin && (
-        <section className="sessionPomegrIntegration" aria-label="Pomegr integration">
-          <div className="sessionPomegrIntegrationHeader">
-            <span>Pomegr integration</span>
-            <small>{historical ? "Recorded for this session" : "Observed at session start"}</small>
-          </div>
-          <div className="sessionPomegrIntegrationGrid">
-            <div>
-              <span>Plugin</span>
-              <strong title={plugin.version || undefined}>{pluginVersionLabel(plugin.version)}</strong>
-            </div>
-            <div className={`sessionPomegrPolicy sessionPomegrPolicy-${plugin.policyStatus || "unknown"}`}>
-              <span>Policy</span>
-              <strong>{policyStatusLabel(plugin.policyStatus)}{plugin.policyVersion === null ? "" : ` · v${plugin.policyVersion}`}</strong>
-            </div>
-          </div>
+    <section className="sessionDetails" aria-label="Session details">
+      <div className="sessionDetailsFacts">
+        <section className="panel sessionFactsPanel" aria-label="Session">
+          <header className="sessionDetailsHeader">
+            <h2>Session</h2>
+            {primaryAgent?.transcriptAvailable && <CopyTranscriptButton key={session.id} sessionId={session.id} agentId={primaryAgent.id} agentLabel={session.title || "this session"} showLabel />}
+          </header>
+          <dl className="sessionFacts">
+            <div><dt>Provider</dt><dd>{state.source}</dd></div>
+            <div><dt>Session ID</dt><dd className="sessionFactId">{session.id}</dd></div>
+            <div><dt>Project</dt><dd>{session.project}</dd></div>
+            <div><dt>Started</dt><dd>{session.startedAt ? sessionListTime(session.startedAt) : "Unavailable"}</dd></div>
+            <div><dt>Approval mode</dt><dd>{capabilities.approvalMode ? session.approvalMode?.label || "Unavailable" : "Not supported"}</dd></div>
+            {plugin && <div className="sessionPluginFact">
+              <dt>Pomegr plugin</dt>
+              <dd>
+                <span>{pluginVersionLabel(plugin.version)}</span>
+                <span>Policy: <strong className={`sessionPolicy-${plugin.policyStatus || "unknown"}`}>{policyStatusLabel(plugin.policyStatus)}{plugin.policyVersion === null ? "" : ` · v${plugin.policyVersion}`}</strong></span>
+                <small>{historical ? "Recorded for this session" : "Observed at session start"}</small>
+              </dd>
+            </div>}
+          </dl>
         </section>
-      )}
-      {showEstimatedCost && capabilities.estimatedCost && session.cost && (
-        <div className="sessionCostDetail">
-          <div>
-            <span>{state.source} API list-rate estimate</span>
-            <small>
+        {showEstimatedCost && capabilities.estimatedCost && session.cost && (
+          <section className="panel sessionCostDetail" aria-label="Cost estimate">
+            <header className="sessionDetailsHeader"><h2>Cost estimate</h2><strong>{estimatedCostLabel(session.cost)}</strong></header>
+            <p><span>{state.source} API list-rate estimate</span><br />
               Reference only — not a bill or subscription spend. {historical
                 ? `Recorded ${sessionListTime(session.cost.observedAt)}`
                 : <>Observed <RelativeTimeText value={session.cost.observedAt} /></>}
-            </small>
-          </div>
-          <strong>{estimatedCostLabel(session.cost)}</strong>
-        </div>
-      )}
-      {!historical && capabilities.usageLimits && <UsageLimitsPanel source={state.source} usageLimits={state.usageLimits} />}
+            </p>
+          </section>
+        )}
+      </div>
       <MachineryPanel machinery={session.contextMachinery} supported={capabilities.contextMachinery} historical={historical} inventoryRef={session.contextInventoryRef} />
-    </DashboardDisclosurePanel>
+    </section>
   );
 }

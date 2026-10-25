@@ -160,7 +160,7 @@ describe("T04 session workspace", () => {
 
   it("fetches composed state only after a transitional tab mounts", async () => {
     const { fetchMock } = mount({ tab: "details" });
-    expect(await screen.findByText("Session details")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Session details" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/state"))).toBe(true);
   });
 
@@ -307,7 +307,7 @@ describe("T04 session workspace", () => {
     FakeEventSource.instances[0]!.open();
     try {
       const { fetchMock } = mount({ tab: "details" });
-      await screen.findByText("Session details");
+      await screen.findByRole("region", { name: "Session details" });
       expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/state"))).toHaveLength(1);
     } finally {
       keepAlive();

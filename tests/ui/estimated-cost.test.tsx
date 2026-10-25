@@ -22,7 +22,7 @@ describe("estimated session cost", () => {
 
     render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} /></LiveClockProvider>);
 
-    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Estimated cost $1.23 (Claude Code estimate)");
+    expect(screen.getByRole("heading", { name: "Cost estimate" })).toBeVisible();
     expect(screen.getByText("Claude Code API list-rate estimate")).toBeInTheDocument();
     expect(within(document.querySelector(".sessionCostDetail")!).getByText("$1.23")).toBeInTheDocument();
     expect(screen.getByText(/Reference only — not a bill or subscription spend\. Observed/)).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe("estimated session cost", () => {
 
     render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical /></LiveClockProvider>);
 
-    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Estimated cost $0.0042 (Claude Code estimate)");
+    expect(screen.getByRole("heading", { name: "Cost estimate" })).toBeVisible();
     expect(within(document.querySelector(".sessionCostDetail")!).getByText("$0.0042")).toBeInTheDocument();
   });
 
@@ -47,8 +47,8 @@ describe("estimated session cost", () => {
     };
     render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} showEstimatedCost={false} /></LiveClockProvider>);
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
-    expect(document.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent("Estimated cost");
-    expect(screen.getByText("Session details")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cost estimate" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session details" })).toBeInTheDocument();
   });
 
   it("omits unobserved and unrecorded placeholder estimates", () => {
@@ -56,7 +56,7 @@ describe("estimated session cost", () => {
     const { rerender } = render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} /></LiveClockProvider>);
 
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
-    expect(document.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent("Estimated cost");
+    expect(screen.queryByRole("heading", { name: "Cost estimate" })).not.toBeInTheDocument();
     rerender(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical /></LiveClockProvider>);
     expect(document.querySelector(".sessionCostDetail")).not.toBeInTheDocument();
     expect(screen.queryByText(/estimate/i)).not.toBeInTheDocument();

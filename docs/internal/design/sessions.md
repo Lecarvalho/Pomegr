@@ -384,6 +384,24 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - **Reported signals** are agent-reported updates and may be stale.
 - The tab introduction says **Not a quality assessment**.
 
+## Details tab
+
+- Details opens directly into Session facts and Cost estimate on the left, with Context inventory on the right.
+- The columns stack below 1101px, with Session facts first.
+- Session facts list provider, full session ID, project, start time, approval mode, and session-observed plugin and policy metadata.
+- Plugin and policy metadata keep their recorded state in historical sessions.
+- Copy transcript path uses the existing one-shot action for the primary agent and the existing client-access and transcript-availability gates.
+- The transcript path is never rendered or stored in the browser.
+- Cost estimate keeps its capability gate, display preference, sub-cent precision, observation time, and **Reference only — not a bill or subscription spend** caveat.
+- Context inventory shows the three allocation totals and the Category, Tokens, Share, and Kind table inline.
+- Share preserves the provider-reported percentage for initial categories; deferred and reserved categories show a dash.
+- Groups expands inline into the existing group disclosures.
+- A bound repository inventory revision remains linked even when in-session inventory is present.
+- Without in-session evidence, a bound immutable revision shows its summary and retention state.
+- The context inventory heading's info popover carries the estimate and sanitization explanations.
+- Details has no outer disclosure, audience chip, usage limits, flow score, or flow-score inputs.
+- Usage limits remain shell chrome; flow score belongs to Signals.
+
 ## Samples
 
 - `/design-system` renders an open and a collapsed session group.
