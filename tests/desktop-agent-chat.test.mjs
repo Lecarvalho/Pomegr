@@ -78,6 +78,9 @@ test("failed, stopped, and timed-out turns never acknowledge the log", async (co
 
 test("log reads start beside the existing reads and use their timeout", async (context) => {
   const h = await chatHarness(context, { timeoutMs: 25 });
+  // AbortSignal.timeout does not hold the event loop; this timer keeps it running until the abort fires.
+  const keepAlive = setInterval(() => {}, 1_000);
+  context.after(() => clearInterval(keepAlive));
   let releaseBoard;
   h.state.gate = new Promise((resolve) => { releaseBoard = resolve; });
   h.state.actions = async (_action, _payload, _body, call) => new Promise((_resolve, reject) => {
