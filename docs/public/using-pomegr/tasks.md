@@ -48,15 +48,25 @@ the divider shows how far it has read. Opening the log does not move that marker
 
 Select **Aril settings** above the board to edit action preferences, limits, work rules, and reviewer preferences.
 An unset limit means “Not settled: Aril will ask”. Select **Save** to save your changes.
-These settings grant no actions, and you cannot start a grant from the app yet. When
-grant controls ship, an active grant will let the desktop runner start the Ready tasks
-its work rules select and their reviews while you are away.
 
 The **Memory** section lists repository preferences, oldest first. You can add, edit, or delete entries independently of settings.
 Each entry holds at most 300 characters; a repository holds at most 100 entries. Confirm deletion inside the panel.
 
 Paired devices can read these settings and entries. To allow changes, enable **Allow paired devices to change Aril settings and memory** in the desktop app.
 Only the desktop app can change that permission.
+
+### Aril grants
+
+Settings alone grant no actions. To start a grant, allow **Start tasks**, **Start reviews**,
+or both, set **Hours**, **Starts**, and **Concurrent sessions**, and add a work rule.
+Save your changes, then select **Start grant** in the panel's **Grant** section and confirm.
+The desktop app starts the selected Ready tasks and reviews within the grant's limits,
+without asking for each start. It does not send work back, merge, or write tasks.
+The strip above the board shows the active grant's end time; the panel also shows starts used.
+Select **Stop grant** to stop further starts at once. Running sessions continue.
+The panel shows when the last grant ended and why; a grant never renews itself.
+
+A paired device can always stop an active grant; starting one requires that permission.
 
 ## Before you start
 

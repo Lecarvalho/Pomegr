@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { ArilSettings as Settings, TaskQueue } from "../../../shared/task-contract";
+import type { ArilGrant, ArilSettings as Settings, TaskQueue } from "../../../shared/task-contract";
 import { ArilSettings } from "../tasks/ArilSettingsPanel";
+import { CapacityStrip } from "../tasks/CapacityStrip";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { NewFeatureAction } from "../tasks/FeatureActions";
 import { QueueBanner } from "../tasks/QueueBanner";
@@ -32,12 +33,19 @@ const ARIL_SETTINGS: Settings = {
 };
 
 export function ArilSettingsSamples() {
-  return <div className="designSystemGrid">{["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure"].map((state, index) => {
+  return <div className="designSystemGrid">{["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure", "not ready", "ready", "confirm", "active", "last ended", "paired stop-only"].map((state, index) => {
     const memory = Array.from({ length: state === "empty memory" ? 0 : state === "full memory" ? 100 : 1 }, (_, id) => ({ id: id + 1, text: `Repository habit ${id + 1}: keep changes focused.`, createdAt: id, updatedAt: id }));
-    const board = { ...BOARD_RUNNING, aril: { settings: { ...ARIL_SETTINGS, pairedDevices: state === "paired allowed" }, memory } };
+    const ready = ["paired allowed", "ready", "confirm", "active", "last ended", "paired stop-only"].includes(state);
+    const settings: Settings = { ...ARIL_SETTINGS, pairedDevices: state === "paired allowed", ...(ready ? {
+      actions: { ...ARIL_SETTINGS.actions, start: true, review: true }, limits: { ...ARIL_SETTINGS.limits, hours: 2, starts: 5, concurrent: 2 }, workRules: [{ kind: "tag", value: "backend" }],
+    } : {}) };
+    const active: ArilGrant = { active: true, startedAt: Date.parse(SAMPLE_FUTURE), endsAt: Date.parse(SAMPLE_FUTURE_STOP), startsUsed: 2, actions: settings.actions, limits: settings.limits };
+    const grant: ArilGrant | null = state === "last ended" ? { ...active, active: false, endedAt: active.endsAt, endReason: "expired" } : ["active", "paired stop-only"].includes(state) ? active : null;
+    const board = { ...BOARD_RUNNING, aril: { settings, memory, grant } };
     return <Sample key={state} label={`Aril settings, ${state}`} note="Queue settings frame, existing fields and button roles. Settings and memory grant no actions.">
-      <Frame><ArilSettings board={board} desktop={!state.startsWith("paired")} editable={state !== "paired read-only"} onClose={noop}
-        titleId={`design-system-aril-${index}`} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })} /></Frame>
+      <Frame>{state === "active" && <CapacityStrip queue={board.queue} grant={grant} onOpenSettings={noop} onOpenAril={noop} />}
+        <ArilSettings board={board} desktop={!state.startsWith("paired")} editable={state !== "paired read-only"} onClose={noop}
+        titleId={`design-system-aril-${index}`} initialConfirm={state === "confirm"} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })} /></Frame>
     </Sample>;
   })}</div>;
 }

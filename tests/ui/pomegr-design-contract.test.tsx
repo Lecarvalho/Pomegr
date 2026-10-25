@@ -14,7 +14,7 @@ import type { StorageSnapshot } from "../../shared/storage-contract";
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 it("includes every Aril settings and memory panel state", () => {
   render(<ArilSettingsSamples />);
-  for (const state of ["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure"]) expect(screen.getByText(`Aril settings, ${state}`)).toBeInTheDocument();
+  for (const state of ["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure", "not ready", "ready", "confirm", "active", "last ended", "paired stop-only"]) expect(screen.getByText(`Aril settings, ${state}`)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("Aril settings could not be saved. Try again.");
 });
 it("includes desktop and paired task log samples", () => { render(<ScorecardSection />); for (const name of ["entries", "paired"]) expect(screen.getByText(`Task log, ${name}`)).toBeInTheDocument(); });

@@ -6,7 +6,8 @@ import { useTasks } from "../../tasks-store";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { TaskDialog } from "./TaskModalFrame";
-import { sendTaskAction, useTaskEditAvailability, type TaskActionResult } from "./task-desktop";
+import { sendTaskAction, useTaskEditAvailability, type GrantActionResult } from "./task-desktop";
+import { timeOfDay } from "./task-schedule";
 
 const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send work back", merge: "Merge on green", writeTasks: "Write tasks from plans" };
 const LIMITS = { hours: ["Hours", 1, 72], starts: ["Starts", 1, 100], concurrent: ["Concurrent sessions", 1, 10], sendBacks: ["Send-backs per task", 0, 10], allowancePercent: ["Provider allowance %", 1, 100] } as const;
@@ -14,15 +15,19 @@ const KINDS = { tag: "Tag", text: "Text", feature: "Feature", tasks: "Tasks" };
 const UNSET = "Not settled: Aril will ask";
 const MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/;
 const line = (value: string, max: number) => value.trim().length > 0 && value.length <= max && !/[\p{Cc}\u2028\u2029]/u.test(value);
-type Action = "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove";
+const END_REASONS = { stopped: "you stopped it", expired: "its time ran out", starts_used: "it used all its starts", start_failed: "a start failed", app_restart: "the app restarted" };
+const FAILURES = { settings: "Aril settings could not be saved. Try again.", memory: "Memory could not be saved. Try again.",
+  not_ready: "The grant is not ready. Check the saved limits, actions, and work rules.", conflict: "A grant is already active. Refresh the board.", grant: "The grant could not be changed. Try again." };
+const grantTime = (at: number) => timeOfDay(new Date(at).toISOString());
+type Action = "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove" | "grant_start" | "grant_stop";
 type Props = {
   board: TaskBoard & { aril: NonNullable<TaskBoard["aril"]> }; desktop: boolean; editable: boolean;
-  onAction(action: Action, payload: unknown): Promise<TaskActionResult>; onClose(): void;
+  onAction(action: Action, payload: unknown): Promise<GrantActionResult>; onClose(): void;
 };
 
 /** The same content in the live dialog and the static design-system frames. */
-export function ArilSettings({ board, desktop, editable, onAction, onClose, titleId, closeRef, initialFailure = null }: Props & {
-  titleId: string; closeRef?: RefObject<HTMLButtonElement | null>; initialFailure?: "settings" | "memory" | null;
+export function ArilSettings({ board, desktop, editable, onAction, onClose, titleId, closeRef, initialFailure = null, initialConfirm = false }: Props & {
+  titleId: string; closeRef?: RefObject<HTMLButtonElement | null>; initialFailure?: "settings" | "memory" | null; initialConfirm?: boolean;
 }) {
   const allowed = editable && (desktop || board.aril.settings.pairedDevices);
   const [original] = useState(board.aril.settings);
@@ -34,11 +39,20 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState(initialFailure);
-  const change = <K extends keyof Settings>(key: K, next: Settings[K]) => setDraft({ ...draft, [key]: next });
+  const [failure, setFailure] = useState<keyof typeof FAILURES | null>(initialFailure);
+  const saved = board.aril.settings;
+  const grant = board.aril.grant;
+  const confirmation = () => ({ settings: JSON.stringify(saved), until: Date.now() + saved.limits.hours! * 3600000 });
+  const [confirm, setConfirm] = useState<ReturnType<typeof confirmation> | null>(() => initialConfirm ? confirmation() : null);
+  const change = <K extends keyof Settings>(key: K, next: Settings[K]) => { setConfirm(null); setDraft({ ...draft, [key]: next }); };
   const changed = Object.fromEntries((Object.keys(draft) as (keyof Settings)[])
     .filter((key) => (desktop || key !== "pairedDevices") && JSON.stringify(draft[key]) !== JSON.stringify(original[key]))
     .map((key) => [key, draft[key]]));
+  const unsaved = allowed && Object.keys(changed).length > 0;
+  const notReady = saved.limits.hours === null || saved.limits.starts === null || saved.limits.concurrent === null ? "Set Hours, Starts, and Concurrent sessions first."
+    : !saved.actions.start && !saved.actions.review ? "Allow starting tasks or reviews first."
+      : saved.workRules.length === 0 ? "Add a work rule first: a grant starts nothing without one." : null;
+  const confirming = confirm && !unsaved && !notReady && confirm.settings === JSON.stringify(saved);
   const model = draft.reviewer.model?.trim() ?? "";
   const modelValid = draft.reviewer.model === null || draft.reviewer.model === "" || MODEL.test(model);
   const ids = value.split(",").map((id) => id.trim());
@@ -47,12 +61,15 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       : kind === "tag" ? line(value, 40) && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}._-]*$/u.test(value) && value.toLowerCase() !== "image" : line(value, 80);
   const memory = board.aril.memory;
   const send = async (action: Action, payload: unknown, done: () => void) => {
-    if (!allowed || busy) return;
+    if (!(action === "grant_stop" ? editable : allowed) || busy) return;
+    if (action === "grant_start" && (unsaved || notReady || !confirming)) return;
+    const grantAction = action === "grant_start" || action === "grant_stop";
+    const errorKind = grantAction ? "grant" : action === "aril_settings_set" ? "settings" : "memory";
     setBusy(true); setFailure(null);
     try {
       const result = await onAction(action, payload);
-      if (result.ok) done(); else setFailure(action === "aril_settings_set" ? "settings" : "memory");
-    } catch { setFailure(action === "aril_settings_set" ? "settings" : "memory"); }
+      if (result.ok) done(); else setFailure(grantAction && (result.error === "not_ready" || result.error === "conflict") ? result.error : errorKind);
+    } catch { setFailure(errorKind); }
     finally { setBusy(false); }
   };
   const toggle = (label: string, checked: boolean, onChange: (next: boolean) => void) => allowed
@@ -63,8 +80,27 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       <button ref={closeRef} type="button" className="commandIconAction" aria-label="Close" onClick={onClose}><CommandIcon name="close" /></button>
     </header>
     <section className="taskGatesPanel">
+      <h3 className="taskGatesHeading">Grant</h3>
+      {grant?.active ? <>
+        <p className="taskGatesCaption">Active until <span className="taskCapacityValue">{grantTime(grant.endsAt)}</span> · <span className="taskCapacityValue">{grant.startsUsed}</span> of <span className="taskCapacityValue">{grant.limits.starts}</span> starts used</p>
+        {editable && <button type="button" className="commandSecondaryAction" disabled={busy} onClick={() => void send("grant_stop", {}, () => setConfirm(null))}>Stop grant</button>}
+        <p className="taskGatesCaption">Stopping takes effect at once. Running sessions continue.</p>
+      </> : <>
+        {notReady ? <p className="taskGatesCaption">{notReady}</p> : <p className="taskGatesCaption">Starts {saved.actions.start ? saved.actions.review ? "tasks and reviews" : "tasks" : "reviews"} that your work rules select, for {saved.limits.hours} hours, at most {saved.limits.starts} starts, {saved.limits.concurrent} at a time.</p>}
+        {unsaved && <p className="taskGatesCaption">Save your changes first.</p>}
+        {allowed && !notReady && <>
+          {confirming && <p className="taskGatesCaption">Aril will start sessions without asking until {grantTime(confirm.until)} or until you stop it.</p>}
+          <div className="taskHeadActions"><button type="button" className="commandPrimaryAction" disabled={busy || unsaved}
+            onClick={() => confirming ? void send("grant_start", {}, () => setConfirm(null)) : setConfirm(confirmation())}>Start grant</button>
+            {confirming && <button type="button" className="commandQuietAction" disabled={busy} onClick={() => setConfirm(null)}>Cancel</button>}</div>
+        </>}
+        {grant && <p className="taskGatesCaption">Last grant ended {grantTime(grant.endedAt)}: {END_REASONS[grant.endReason]}</p>}
+      </>}
+      {failure && ["grant", "not_ready", "conflict"].includes(failure) && <p className="newTaskError" role="alert">{FAILURES[failure]}</p>}
+    </section>
+    <section className="taskGatesPanel taskSchedulePanel">
       <h3 className="taskGatesHeading">Actions under a grant</h3>
-      <p className="taskGatesCaption">Aril uses these only while a grant you start is active. Grants are not available yet.</p>
+      <p className="taskGatesCaption">Aril uses these only while a grant you start is active.</p>
       {(Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]).map((key) => <div key={key}>{toggle(ACTIONS[key], draft.actions[key], (next) => change("actions", { ...draft.actions, [key]: next }))}</div>)}
     </section>
     <section className="taskGatesPanel taskSchedulePanel">
@@ -124,7 +160,7 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       {allowed && <button type="button" className="commandPrimaryAction" disabled={busy || !modelValid || Object.keys(changed).length === 0}
         onClick={() => void send("aril_settings_set", { settings: changed.reviewer ? { ...changed, reviewer: { ...draft.reviewer, model: model || null } } : changed }, onClose)}>Save</button>}
     </div>
-    {failure && <p className="newTaskError" role="alert">{failure === "settings" ? "Aril settings could not be saved. Try again." : "Memory could not be saved. Try again."}</p>}
+    {(failure === "settings" || failure === "memory") && <p className="newTaskError" role="alert">{FAILURES[failure]}</p>}
     <section className="taskGatesPanel taskSchedulePanel">
       <h3 className="taskGatesHeading">Memory</h3>
       <p className="taskGatesCaption">What Aril remembers about how you like this repository worked. Aril proposes entries; you can edit or delete any of them.</p>

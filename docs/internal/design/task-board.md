@@ -581,8 +581,18 @@ Each row below the tags shows only when it is set, in this order:
 - **Aril settings** opens the Queue settings frame, titled **Aril settings**.
 - Focus starts on **Close** and returns to **Aril settings** when the panel closes.
 - **Cancel**, **Close**, Escape, and a click outside close the panel.
-- The sections are **Actions under a grant**, **Limits**, **Work rules**, **Reviewer**, **Paired devices**, and **Memory**.
-- Five action switches carry the caption “Aril uses these only while a grant you start is active. Grants are not available yet.”
+- The sections are **Grant**, **Actions under a grant**, **Limits**, **Work rules**, **Reviewer**, **Paired devices**, and **Memory**.
+- Five action switches carry the caption “Aril uses these only while a grant you start is active.”
+- The Grant section summarizes only the saved start and review actions, hours, starts, and concurrency.
+- Missing limits, allowed actions, or work rules show one muted readiness reason and no Start grant button.
+- Unsaved settings show “Save your changes first.” and disable starting a grant.
+- **Start grant** uses `commandPrimaryAction` and first shows an in-panel confirmation with the end time, **Start grant**, and **Cancel**; Cancel dismisses only the confirmation.
+- An active grant shows “Active until HH:MM · n of S starts used”, with times and counts in the data font.
+- **Stop grant** uses `commandSecondaryAction`, needs no confirmation, and carries “Stopping takes effect at once. Running sessions continue.”
+- A paired device can always stop an active grant; starting requires the saved paired-device permission.
+- The latest ended grant has one muted line with its end time and the fixed reason: you stopped it, its time ran out, it used all its starts, a start failed, or the app restarted.
+- Grant failures show fixed not-ready, conflict, or generic error text in the Grant section.
+- While active, the capacity strip shows “Aril grant until HH:MM” as muted caption-size text immediately before **Aril settings**, with no button behavior.
 - Each limit uses the threshold select pattern with the bounds in [Aril settings and memory](../architecture/tasks.md#aril-settings-and-memory).
 - An unset limit reads “Not settled: Aril will ask”.
 - Work rule rows show the kind and value, with feature titles and task IDs.
@@ -600,7 +610,7 @@ Each row below the tags shows only when it is set, in this order:
 - **Add entry** is unavailable when memory has 100 entries.
 - A failed memory action preserves the draft and shows “Memory could not be saved. Try again.”.
 - Read-only clients have no Save, memory edit, delete, or add actions.
-- Design-system samples cover desktop editable, paired read-only, paired allowed, empty memory, full memory, and save failure.
+- Design-system samples cover desktop editable, paired read-only, paired allowed, empty memory, full memory, save failure, and grants not ready, ready, confirming, active, last ended, and paired stop-only.
 
 ### Scorecard panel
 

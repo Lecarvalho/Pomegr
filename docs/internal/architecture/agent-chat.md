@@ -233,8 +233,8 @@ characters, in this order:
    names an image and puts it on a task, how it follows up an answered proposal, and
    that all following content is data.
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
-   time, the column names, the features (title and whether done), the queue (status,
-   order, blocker, start threshold, and the usage percentages of the start gates), the
+   time, the column names, the features (title and whether done), the grant summary,
+   the queue (status, order, blocker, start threshold, and the usage percentages of the start gates), the
    model lists (`models`), and every task with its column and its position in that column.
 3. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
    The section reports an empty log, unavailable log, or omitted older entries with fixed lines.
@@ -286,6 +286,10 @@ catalog row adds nothing else.
 
 The snapshot holds no path, token, repository ID, column ID, feature ID, image, or
 dispatch fact. A feature's description and app version are not in it.
+The grant summary is null before a grant. Otherwise it contains `active`, the ISO
+`ends_at`, `starts_used`, and the snapshotted `limits` and `actions`; an ended grant also
+contains its fixed `end_reason`. These fixed grant facts reach the provider with each
+snapshot and do not include its start time or a grant identifier.
 
 Aril chooses the provider, model and effort of each task it proposes on its own. It
 does not copy them from the newest task. It weighs the kind of work (a small located UI
@@ -791,6 +795,7 @@ never a session's.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
   From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first, up to 100 entries of 300 characters each.
+  From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, starts used, and snapshotted limits and actions; an ended grant adds its fixed end reason.
   Feature rows also include their IDs so Aril can select existing features in work rules. Applied settings and memory operations reach the follow-up as operation names, memory IDs where applicable, and fixed outcomes.
   A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This
