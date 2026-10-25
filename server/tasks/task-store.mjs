@@ -18,6 +18,7 @@ import { ackTaskLog, ensureTaskLog, readTaskLog } from "./task-log.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
+import { deleteTaskPullRequestSeen, logPullRequests } from "./task-pull-request-log.mjs";
 import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs";
 import { assignSession, deleteTaskAssigned, readTaskAssignments, unassignSession } from "./task-assignments.mjs";
 import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
@@ -303,6 +304,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskReportHistory(database, repositoryId, input.number);
   deleteTaskEvents(database, repositoryId, input.number);
   deleteTaskOutcome(database, repositoryId, input.number);
+  deleteTaskPullRequestSeen(database, repositoryId, input.number);
   deleteTaskBlockHold(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
   deleteTaskAdder(database, repositoryId, input.number);
@@ -741,12 +743,10 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       return { ok: false, error: "unavailable" };
     }
   }
-
   function close() {
     try { database?.close(); } catch { /* already closed or unusable */ }
     database = null;
   }
-
   // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
@@ -795,6 +795,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const readScorecard = (repositoryId, appVersion) => link(() => runTransaction(database, () => readScorecardSnapshot(database, repositoryId, appVersion, now())));
   const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
-  return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, readScorecard, readLog, ackLog, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

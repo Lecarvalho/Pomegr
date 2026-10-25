@@ -651,6 +651,7 @@ export function createMonitorRuntime(options = {}) {
     resolveTaskSessionFacts: observation.resolveTaskSessionFacts,
     resolveTaskCheckFacts: observation.resolveTaskCheckFacts,
     resolveTaskOutcomeFacts: observation.resolveTaskOutcomeFacts,
+    resolveTaskPullRequestFacts: observation.resolveTaskPullRequestFacts,
     readTaskCheckFacts: observation.readTaskCheckFacts,
     resolveTaskGateFacts: observation.resolveTaskGateFacts,
     serveStorage: observation.serveStorage,
@@ -760,7 +761,8 @@ export async function startMonitorServer(options = {}) {
     await runtime.startObservation?.();
     if (tasks.store && typeof runtime.resolveTaskSessionFacts === "function") {
       stallWatcher = createTaskStallWatcher({ taskStore: tasks.store, subscribe: runtime.subscribeRevisionEvents,
-        resolveSessionFacts: (id) => runtime.resolveTaskSessionFacts(id) });
+        resolveSessionFacts: (id) => runtime.resolveTaskSessionFacts(id),
+        resolvePullRequestFacts: (id, taskId) => runtime.resolveTaskPullRequestFacts(id, taskId) });
     }
     await registry.watchTargets();
     options.logger?.log?.(`[pomegr] Monitor ready on ${handle.origin}.`);

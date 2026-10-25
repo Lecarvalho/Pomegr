@@ -74,6 +74,48 @@ test("createTaskLookups binds the committed outcome sources", () => {
   assert.deepEqual(lookups.resolveTaskOutcomeFacts([SESSION], SINCE, "T-172"), { ...UNKNOWN, owner_turns: 1, commits_after_review: 1 });
 });
 
+test("PR log facts share outcome selection and use checks only on the selected head", async () => {
+  const { resolveTaskPullRequestFacts } = await import("../../../server/runtime/task-outcome-lookup.mjs");
+  const headOid = "a".repeat(40);
+  const chosen = { ...pull(42, "tasks/T-172", "branch"), headOid, url: "chosen" };
+  const other = { ...pull(200, "other"), headOid: "b".repeat(40), url: "other" };
+  const block = entry([other, chosen]);
+  block.publicState.session.pullRequests.checkReads = [
+    { url: "chosen", headOid, status: "passed" }, { url: "other", headOid: other.headOid, status: "failed" },
+  ];
+  const inputs = sources({ [SESSION]: block });
+  const result = resolveTaskPullRequestFacts(SESSION, "T-172", inputs);
+  assert.deepEqual(result, { number: 42, state: "open", headOid, checks: "passed" });
+  assert.equal(result.number, (await resolve({ [SESSION]: block }, {}, [SESSION])).pull_request);
+  for (const read of [{ headOid: "b".repeat(40), status: "passed" }, { headOid, status: "pending" }, { headOid, status: null }]) {
+    block.publicState.session.pullRequests.checkReads = [{ url: "chosen", ...read }];
+    assert.equal(resolveTaskPullRequestFacts(SESSION, "T-172", inputs).checks, null);
+  }
+  block.publicState.session.pullRequests.checkReads = [];
+  assert.equal(resolveTaskPullRequestFacts(SESSION, "T-172", inputs).checks, null);
+  delete block.publicState.session.pullRequests.checkReads;
+  assert.equal(resolveTaskPullRequestFacts(SESSION, "T-172", { ...inputs, checkRead: () => ({ headOid, status: "failed" }) }).checks, "failed");
+  block.publicState.session.pullRequests.items = [pull(5, "other"), other, pull(900, "other", "branch")];
+  assert.equal(resolveTaskPullRequestFacts(SESSION, "T-172", inputs).number, 200);
+  assert.equal((await resolve({ [SESSION]: block }, {}, [SESSION])).pull_request, 200);
+});
+
+test("PR facts reuse the response-bound head when normalized items have no head OID", async () => {
+  const { resolveTaskPullRequestFacts } = await import("../../../server/runtime/task-outcome-lookup.mjs");
+  const headOid = "a".repeat(40);
+  const block = entry([pull(42, "tasks/T-172")]);
+  block.publicState.session.pullRequests.checkReads = [{ url: "private", headOid, status: "failed" }];
+  const inputs = sources({ [SESSION]: block });
+  const expected = { number: 42, state: "open", headOid, checks: "failed" };
+  assert.deepEqual(resolveTaskPullRequestFacts(SESSION, "T-172", inputs), expected);
+  const lookups = createTaskLookups({ ...inputs, repositoryInventory: {}, catalogSessions: () => [] });
+  assert.deepEqual(lookups.resolveTaskPullRequestFacts(SESSION, "T-172"), expected);
+  block.publicState.session.pullRequests.checkReads[0].headOid = "invalid";
+  assert.deepEqual(lookups.resolveTaskPullRequestFacts(SESSION, "T-172"), { ...expected, headOid: null, checks: null });
+  block.publicState.session.pullRequests.status = "loading";
+  assert.deepEqual(lookups.resolveTaskPullRequestFacts(SESSION, "T-172"), { number: null, state: null, headOid: null, checks: null });
+});
+
 test("the monitor outcome lookup never loads an absent repository sidecar", async () => {
   const reads = [];
   const runtime = createMonitorRuntime({
@@ -86,6 +128,7 @@ test("the monitor outcome lookup never loads an absent repository sidecar", asyn
     },
   });
   assert.deepEqual(runtime.resolveTaskOutcomeFacts([SESSION], SINCE, "T-172"), UNKNOWN);
+  assert.deepEqual(runtime.resolveTaskPullRequestFacts(SESSION, "T-172"), { number: null, state: null, headOid: null, checks: null });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(reads, []);
 });

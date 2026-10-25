@@ -155,7 +155,7 @@ export function stallEndedTasks({ database, transaction, resolveFacts, confirmat
   return { ok: true, stalled, recovered };
 }
 
-export function createTaskStallWatcher({ taskStore, subscribe, resolveSessionFacts, delayMs = SWEEP_DELAY_MS,
+export function createTaskStallWatcher({ taskStore, subscribe, resolveSessionFacts, resolvePullRequestFacts, delayMs = SWEEP_DELAY_MS,
   confirmDelayMs = END_CONFIRM_DELAY_MS, now = undefined, setTimer = setTimeout, clearTimer = clearTimeout }) {
   const confirmation = createEndConfirmation({ delayMs: confirmDelayMs, now });
   const recovery = createLiveConfirmation({ delayMs: confirmDelayMs, now });
@@ -165,6 +165,7 @@ export function createTaskStallWatcher({ taskStore, subscribe, resolveSessionFac
   const sweep = () => {
     if (stopped) return;
     try { taskStore?.stallEndedTasks?.(resolveSessionFacts, confirmation, recovery); } catch { /* the next revision sweeps again */ }
+    try { taskStore?.logPullRequests?.(resolvePullRequestFacts); } catch { /* the next revision sweeps again */ }
     // A quiet catalog commits no revision, so the second reading has its own timer.
     const waits = [confirmation.dueIn(), recovery.dueIn()].filter((due) => due !== null);
     if (waits.length === 0 || confirmTimer !== null) return;
