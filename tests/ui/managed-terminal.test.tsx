@@ -9,9 +9,10 @@ const fake = vi.hoisted(() => ({
   data: null as ((value: string) => void) | null,
   output: null as ((value: unknown) => void) | null,
   revision: null as ((value: LiveEvent) => void) | null,
-  terminal: vi.fn(), replace: vi.fn(),
+  terminal: vi.fn(), replace: vi.fn(), construct: vi.fn(),
 }));
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
+  constructor(options: unknown) { fake.construct(options); }
   cols = 80; rows = 24; options = {};
   open = vi.fn(); loadAddon = vi.fn(); write = fake.write; dispose = fake.dispose; focus = fake.focus;
   onData(callback: (value: string) => void) { fake.data = callback; return { dispose: vi.fn() }; }
@@ -28,6 +29,7 @@ import { SessionTerminalSection } from "../../app/components/design-system/Desig
 
 const entry = { key: "terminal-one", repositoryId: "repo-one", taskId: "T-1", sessionId: "codex:one", state: "live" as const };
 const read = vi.fn(async () => ({ ok: true, page: { messages: [], cursor: null, older: null, status: "ok", reset: false } }));
+const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 function install() {
   Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: {
     terminal: fake.terminal, sessionHistory: read, taskStart: vi.fn(async () => ({ status: "started" })),
@@ -51,8 +53,51 @@ beforeEach(() => {
   });
 });
 afterEach(() => { Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: undefined }); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
+afterEach(() => { if (originalFonts) Object.defineProperty(document, "fonts", originalFonts); else Reflect.deleteProperty(document, "fonts"); });
 
 describe("managed terminal", () => {
+  it("waits for the computed data font and font readiness before measuring xterm", async () => {
+    let loaded!: () => void, ready!: () => void;
+    const load = vi.fn(() => new Promise<void>((resolve) => { loaded = resolve; }));
+    Object.defineProperty(document, "fonts", { configurable: true, value: { load, ready: new Promise<void>((resolve) => { ready = resolve; }) } });
+    render(<ManagedTerminalPanel terminal={entry} />);
+    const node = screen.getByLabelText("Live session terminal");
+    node.style.fontFamily = '"Geist Mono", Consolas, monospace'; node.style.fontSize = "12px";
+    const computed = getComputedStyle(node);
+    await waitFor(() => expect(load).toHaveBeenCalledWith(`${computed.fontSize} ${computed.fontFamily}`));
+    expect(fake.construct).not.toHaveBeenCalled();
+    await act(async () => loaded());
+    expect(fake.construct).not.toHaveBeenCalled();
+    await act(async () => ready());
+    expect(fake.construct).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.4, fontFamily: computed.fontFamily, fontSize: 12 }));
+  });
+  it("opens after a bounded font wait and refits the host when the font arrives later", async () => {
+    let loaded!: () => void;
+    const load = vi.fn(() => new Promise<void>((resolve) => { loaded = resolve; }));
+    Object.defineProperty(document, "fonts", { configurable: true, value: { load, ready: Promise.resolve() } });
+    render(<ManagedTerminalPanel terminal={entry} />);
+    await waitFor(() => expect(load).toHaveBeenCalled());
+    expect(fake.construct).not.toHaveBeenCalled();
+    await waitFor(() => expect(fake.construct).toHaveBeenCalledTimes(1), { timeout: 1500 });
+    await screen.findByText("Connected · desktop only");
+    const fits = fake.fit.mock.calls.length;
+    const resizes = fake.terminal.mock.calls.filter(([op]) => op === "resize").length;
+    await act(async () => loaded());
+    expect(fake.fit).toHaveBeenCalledTimes(fits + 1);
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "resize")).toHaveLength(resizes + 1);
+    expect(fake.construct).toHaveBeenCalledTimes(1);
+  });
+  it("does not construct a terminal when its view closes during the font wait", async () => {
+    let loaded!: () => void;
+    const load = vi.fn(() => new Promise<void>((resolve) => { loaded = resolve; }));
+    Object.defineProperty(document, "fonts", { configurable: true, value: { load, ready: Promise.resolve() } });
+    const view = render(<ManagedTerminalPanel terminal={entry} />);
+    await waitFor(() => expect(load).toHaveBeenCalled());
+    view.unmount();
+    await act(async () => loaded());
+    expect(fake.construct).not.toHaveBeenCalled();
+    expect(fake.terminal).not.toHaveBeenCalled();
+  });
   it("renders every synthetic managed state with one CLI surface and no artificial input or focus ring", () => {
     const { container } = render(<SessionTerminalSection />);
     for (const label of ["Managed live", "Starting before binding", "Reconnecting", "Host unavailable", "New launch failed", "Incompatible host", "Queued start"]) {
@@ -82,6 +127,61 @@ describe("managed terminal", () => {
     expect(fake.terminal).toHaveBeenCalledWith("detach", expect.objectContaining({ attachId: expect.any(String) }));
     expect(fake.terminal.mock.calls.some(([op]) => ["stop", "kill", "create"].includes(op))).toBe(false);
     expect(fake.dispose).toHaveBeenCalledTimes(1);
+  });
+  it.each(["\x1b[6n", "\x1b[c"])("drops replay query %j replies until parsing finishes and answers live queries", async (query) => {
+    let finish!: (value: unknown) => void;
+    const writes: { value: string; done: () => void }[] = [];
+    fake.write.mockImplementation((value, done) => { writes.push({ value, done }); });
+    fake.terminal.mockImplementation((op) => op === "attach" ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve({ ok: true }));
+    render(<ManagedTerminalPanel terminal={entry} />);
+    await waitFor(() => expect(fake.terminal).toHaveBeenCalledWith("attach", expect.anything()));
+    emit("output", { data: query, replay: true });
+    emit("output", { data: query, replay: true });
+    await act(async () => finish({ ok: true, status: "attached", readOnly: false }));
+    await act(async () => fake.data?.("early key"));
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "input")).toHaveLength(0);
+    const parse = async () => {
+      await act(async () => {
+        const write = writes.shift()!;
+        if (write.value === query) fake.data?.(query === "\x1b[6n" ? "\x1b[1;1R" : "\x1b[?1;2c");
+        write.done();
+      });
+    };
+    await parse();
+    await act(async () => fake.data?.("still parsing"));
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "input")).toHaveLength(0);
+    await parse();
+    await screen.findByText("Connected · desktop only");
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "input")).toHaveLength(0);
+    emit("output", { data: query, replay: true });
+    await parse();
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "input")).toHaveLength(0);
+    emit("output", { data: query });
+    await parse();
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "input")).toHaveLength(1);
+  });
+  it.each(["detached", "overflow"])("keeps %s before the attach answer unavailable and input disabled", async (failure) => {
+    let finish!: (value: unknown) => void;
+    fake.terminal.mockImplementation((op) => op === "attach" ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve({ ok: true }));
+    render(<ManagedTerminalPanel terminal={entry} />);
+    await waitFor(() => expect(fake.terminal).toHaveBeenCalledWith("attach", expect.anything()));
+    if (failure === "detached") emit("detached", { reason: "slow_client" });
+    else emit("output", { data: "x".repeat(256 * 1024 + 1) });
+    await act(async () => finish({ ok: true, status: "attached", readOnly: false }));
+    expect(screen.getByRole("status")).toHaveTextContent("Reconnection unavailable");
+    await act(async () => fake.data?.("ignored"));
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "input")).toHaveLength(0);
+  });
+  it("does not reenable input when replay finishes after a process exit", async () => {
+    let parsed!: () => void;
+    fake.write.mockImplementation((_value, done) => { parsed = done; });
+    render(<ManagedTerminalPanel terminal={entry} />);
+    await waitFor(() => expect(fake.write).toHaveBeenCalled());
+    emit("output", { data: "replayed", replay: true });
+    emit("exit", { exitCode: 0 });
+    await act(async () => parsed());
+    await act(async () => fake.data?.("ignored"));
+    expect(fake.terminal.mock.calls.filter(([op]) => op === "input")).toHaveLength(0);
   });
   it("detaches again when an attach completes after its view closed", async () => {
     let finish!: (value: unknown) => void;

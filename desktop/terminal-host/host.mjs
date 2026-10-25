@@ -71,6 +71,10 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
   function output(client, key, data, replay = false) {
     let chunk = '';
     for (const character of data) {
+      if (chunk.length + character.length > 4096) {
+        if (!send(client, { event: 'output', key, data: chunk, ...(replay ? { replay: true } : {}) }, true)) return false;
+        chunk = '';
+      }
       chunk += character;
       if (chunk.length >= 4096) { if (!send(client, { event: 'output', key, data: chunk, ...(replay ? { replay: true } : {}) }, true)) return false; chunk = ''; }
     }
@@ -122,7 +126,7 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
       session.clients.add(client); client.attached.add(frame.key);
       if (!session.exited && !session.writer) session.writer = client;
       client.replaying = true;
-      for (const data of session.replay.read()) if (!output(client, frame.key, data, true)) { client.replaying = false; return; }
+      if (!output(client, frame.key, session.replay.read().join(''), true)) { client.replaying = false; return; }
       reply({ readOnly: session.exited || session.writer !== client });
       if (session.exited) send(client, { event: 'exit', key: frame.key, exitCode: session.exitCode });
       client.replaying = false; return;

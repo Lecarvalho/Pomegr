@@ -292,6 +292,23 @@ test('worst-case JSON escaping still delivers bounded replay and attach response
   assert.equal(a.frames.filter((frame) => frame.replay).reduce((size, frame) => size + Buffer.byteLength(frame.data), 0), 256 * 1024);
 });
 
+test('attach coalesces retained ANSI replay into bounded output frames', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  const data = '\x1b[0m+x'.repeat(20000) + 'a'.repeat(4095) + '\u{1f600}z';
+  f.ptys[0].output(data);
+  const attached = await a.request('attach', { key: 'synthetic' });
+  assert.equal(attached.readOnly, false);
+  const replay = a.frames.filter((frame) => frame.event === 'output' && frame.replay);
+  const retained = new Scrollback(); retained.append(data);
+  const text = replay.map((frame) => frame.data).join('');
+  assert.equal(text, retained.read().join(''));
+  assert.ok(replay.length <= Math.ceil(text.length / 4096));
+  assert.equal(a.frames.some((frame) => frame.event === 'detached'), false);
+  assert.ok(replay.every((frame) => frame.data.length <= 4096 && !frame.data.includes('\ufffd')
+    && !/[\ud800-\udbff]$/u.test(frame.data) && !/^[\udc00-\udfff]/u.test(frame.data)));
+});
+
 test('scrollback prefers complete lines and drops oversized unfinished ANSI sequences', () => {
   const lines = new Scrollback(12); lines.append('old\npartial\nlast\n'); assert.equal(lines.read().join(''), 'last\n');
   const escaped = new Scrollback(32); escaped.append('\x1b]' + 'x'.repeat(10000)); escaped.append('\x07safe');
@@ -312,10 +329,11 @@ test('real ConPTY fake CLI supports Unicode, resize, paste, interrupt and natura
     import { createHash } from 'node:crypto';
     const { startTerminalHost } = await import(process.argv[2] + 'desktop/terminal-host/host.mjs');
     const { encodeFrame, decodeFrames } = await import(process.argv[2] + 'desktop/terminal-host/protocol.mjs');
+    const { Scrollback } = await import(process.argv[2] + 'desktop/terminal-host/scrollback.mjs');
     const host = await startTerminalHost({ runtimeDirectory: process.argv[1], spawnPty: pty.spawn, idleMilliseconds: 1500, onIdle: () => process.exit(0) });
     const socket = net.connect(host.pipe); await once(socket, 'connect');
-    const responses = new Map(); let output = ''; let exited = false; let id = 0;
-    decodeFrames(socket, (frame) => { if (frame.id) { responses.get(frame.id)?.(frame); responses.delete(frame.id); } else if (frame.event === 'output') output += frame.data; else if (frame.event === 'exit') exited = true; });
+    const responses = new Map(); let output = ''; let replayOutput = ''; let replayFrames = 0; let exited = false; let id = 0;
+    decodeFrames(socket, (frame) => { if (frame.id) { responses.get(frame.id)?.(frame); responses.delete(frame.id); } else if (frame.event === 'output') { output += frame.data; if (frame.replay) { replayOutput += frame.data; replayFrames++; } } else if (frame.event === 'exit') exited = true; });
     function request(command, fields = {}) { return new Promise((resolve) => { const current = ++id; responses.set(current, resolve); socket.write(encodeFrame({ id: current, command, ...fields })); }); }
     async function until(predicate) { const deadline = Date.now() + 20000; while (Date.now() < deadline) { if (predicate()) return; await new Promise((r) => setTimeout(r, 10)); } throw new Error('synthetic timeout: ' + output); }
     const auth = await request('hello', { token: await readFile(process.argv[1] + '/host.token', 'utf8'), protocol: 1 });
@@ -328,6 +346,12 @@ test('real ConPTY fake CLI supports Unicode, resize, paste, interrupt and natura
     const pasted = '0123456789'.repeat(1024); const digest = createHash('sha256').update(pasted).digest('hex');
     await request('input', { key: 'native', data: pasted + '\r' }); await until(() => output.includes('ECHO 10240 ' + digest));
     await request('input', { key: 'native', data: '\x03' }); await until(() => output.includes('INTERRUPT'));
+    await request('input', { key: 'native', data: '/burst\r' }); await until(() => output.includes('BURST_DONE'));
+    const expected = new Scrollback(); expected.append(output); replayOutput = ''; replayFrames = 0;
+    const replayAttach = await request('attach', { key: 'native' });
+    if (replayAttach.readOnly) throw new Error('replay became read-only');
+    await until(() => replayOutput.length >= expected.read().join('').length);
+    if (replayOutput !== expected.read().join('') || replayFrames > Math.ceil(replayOutput.length / 4096)) throw new Error('replay mismatch');
     await request('input', { key: 'native', data: '/exit\r' }); await until(() => exited);
     socket.destroy(); console.log('SYNTHETIC_NATIVE_PASS');
   `;

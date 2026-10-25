@@ -18,7 +18,8 @@ function outputStream(onReturn) {
     readOnly: true,
     push(frame) {
       if (ended) return true;
-      const size = Buffer.byteLength(frame.data || "") + 128;
+      // A 256 KiB replay plus up to 4096 retained parts fits before attach resolves.
+      const size = Buffer.byteLength(frame.data || "") + 32;
       if (bytes + size > 512 * 1024) return false;
       if (waiter) { const resolve = waiter; waiter = null; resolve({ value: frame, done: false }); }
       else { queue.push({ frame, size }); bytes += size; }
