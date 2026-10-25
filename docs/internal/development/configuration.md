@@ -231,8 +231,14 @@ The same reference lists Pomegr-specific limitations separately.
 | `POMEGR_RETENTION_DAYS` | Monitor | Resource-history retention age: `30`, `90`, `180`, `365`, or `all` to keep every session | `90` |
 | `POMEGR_STORE_MAX_MB` | Monitor | Soft size threshold that triggers pruning the oldest resource history first: `250`, `500`, `1024`, or `2048` | `500` |
 | `SESSION_PULSE_PORT` | Monitor and development launcher | Loopback monitor port | `4317` |
+| `POMEGR_DEV_REQUEST_LOG` | Development web launcher only | Set `all` to show every request log line, including HTTP 204 | Omit HTTP 204 request lines |
 
 Do not point provider roots at a browser-served directory. Do not place OAuth tokens, auth-file contents, transcripts, or environment dumps in Pomegr configuration.
+
+Development launches omit HTTP 204 request lines from vinext's stdout. Other stdout
+lines and stderr pass through unchanged. Set `POMEGR_DEV_REQUEST_LOG=all` before
+`npm run dev` or `npm run dev:web` to restore all request lines. Build and production
+output remain unchanged.
 
 ## Agent display roles
 

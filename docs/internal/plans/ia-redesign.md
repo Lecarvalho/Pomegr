@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: active; Sessions 1–5 are complete. Session 6 (T10, T11 and T12) is the next unchecked implementation session.
+> Status: active; Sessions 1–5 and T11 are complete. Session 6 remains open for T10 and T12.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/internal/architecture/observation-cache.md`, and `docs/internal/architecture/metrics.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/internal/architecture/observation-cache.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Start Session 6 (T10, T11 and T12) in a fresh user-requested session, from the Session 5 checkpoint handoff below.
+> Next task or decision: Continue Session 6 with T10, then T12, in a fresh user-requested session.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/metrics.md`, `docs/internal/architecture/overview.md`, `docs/internal/development/configuration.md`, and `AGENTS.md`.
 
@@ -508,6 +508,8 @@ Owner: UI (`SessionDetailsPanel.tsx`, `MachineryPanel.tsx` successors). Artboard
 
 ### T11 Development request log
 
+- [x] T11 complete — 2026-10-25; see the Session 6 T11 checkpoint.
+
 Owner: `scripts/dev.mjs`, `scripts/run-vinext.mjs`.
 
 - The per-request lines come from vinext's development server (`node_modules/vinext/dist/server/request-log.js`), not from Pomegr scripts; both scripts spawn children with inherited stdio and log nothing per request. First check whether the installed vinext version exposes a request-log option. If not, `scripts/run-vinext.mjs` pipes the child's stdout, drops lines whose status is 204, and writes the rest through unchanged. Keep TTY color detection working by forwarding `FORCE_COLOR` when the parent is a TTY.
@@ -547,6 +549,42 @@ No unresolved product decision blocks implementation. The latest approved rules 
 - Keep the coordinator's context small through focused task briefs and concise handoffs. Follow the ownership, dependency waves, model choices, integration/review responsibilities and verification protocol above; checkpoints must allow work to continue without repeating investigations.
 
 ## Continuation checkpoint
+
+### Session 6 T11 checkpoint
+
+2026-10-25 · **T11 complete.** Only the development request-log task is implemented.
+Session 6 stays unchecked because T10 and T12 remain open. No visual surface changes.
+
+- `scripts/run-vinext.mjs` filters HTTP 204 request lines from development stdout.
+  Other output, stderr, child exit status, build commands, and production behavior remain unchanged.
+- `POMEGR_DEV_REQUEST_LOG=all` restores inherited stdout. The permanent flag contract lives in
+  [Configuration](../development/configuration.md#environment-variables).
+- Vinext 0.0.50 has no request-log option. Both request-log callers invoke the logger without a configuration gate.
+- The wrapper forwards `FORCE_COLOR` for a TTY and preserves explicit values.
+  Vinext's own request-line colors still use `process.stdout.isTTY`, which becomes false when stdout is piped.
+  This upstream limitation remains; no dependency patch or terminal emulation is added.
+- `tests/dev-request-log.test.mjs` exercises the wrapper with a synthetic child.
+  Tests cover filtering, chunk boundaries, colors, retained output, the opt-out, and production isolation.
+- Tests first: the original wrapper failed the new filtering and TTY-color checks.
+  The focused request-log and dev-startup suites now pass all 17 tests; independent review found no remaining T11 issues.
+- Proof: `npm run build` and `npm run verify:fast` pass.
+  The latter includes lint (zero errors, 55 warnings), architecture, boundaries, docs, type checks, and contract/operations tests.
+- `npm test`: 4,020 Node tests pass, four skip, and one unrelated ConPTY test fails.
+  `tests/desktop-terminal-host.test.mjs:320` times out awaiting the synthetic paste response and fails again in isolation.
+  The Node failure prevents the combined command from starting UI tests. Separate `npm run test:ui`: 2,448 pass; four design-system tests time out.
+  Retrying the two affected suites with one worker yields 47 passes and two timeouts in `tests/ui/design-system.test.tsx:118` and `:547`.
+  All 29 design-contract tests pass on retry. Original timeouts and assertions remain unchanged.
+- Goal met: development filtering and its opt-out are covered. Non-goals remain untouched.
+  Legal/favicon build rewrites contained only line-ending changes and were restored.
+- Scope: four files, including this plan and the configuration owner; no files outside the requested scope.
+  Budget: 82 changed lines across three non-test files; T11 specifies no numeric limit. No commit or push is made.
+- Open questions: T11's color wording assumes `FORCE_COLOR` controls vinext request colors;
+  `node_modules/vinext/dist/server/request-log.js:14` checks only `stdout.isTTY`. The wrapper forwards the flag as specified.
+  The unrelated native-terminal and design-system timeouts remain outside T11; their implementations and tests are unchanged.
+- Branch: `plans/ia-t11`; base `e582a9a419d749c9fca8961d4303ff128bfbb80f`. Changes remain uncommitted.
+  Next: T10, then T12 and the plan's closure steps, in a fresh user-requested session.
+
+### Earlier continuation note
 
 2026-09-20 · **T03 sidebar limits correction complete.** The rail now follows the
 approved one-row-per-recent-provider rule and selects each provider's
