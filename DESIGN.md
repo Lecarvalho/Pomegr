@@ -21,39 +21,39 @@ colors:
   focus: "#255fa1"
 typography:
   title:
-    fontFamily: "Inter, sans-serif"
-    fontSize: "26px"
+    fontFamily: "Segoe UI, Inter Variable, system-ui, sans-serif"
+    fontSize: "28px"
     fontWeight: 650
     lineHeight: 1.1
     letterSpacing: "-0.025em"
   section:
-    fontFamily: "Inter, sans-serif"
-    fontSize: "16px"
+    fontFamily: "Segoe UI, Inter Variable, system-ui, sans-serif"
+    fontSize: "18px"
     fontWeight: 650
     lineHeight: 1.35
   body:
-    fontFamily: "Inter, sans-serif"
-    fontSize: "14px"
+    fontFamily: "Segoe UI, Inter Variable, system-ui, sans-serif"
+    fontSize: "16px"
     fontWeight: 400
     lineHeight: 1.5
   control:
-    fontFamily: "Inter, sans-serif"
-    fontSize: "13px"
+    fontFamily: "Segoe UI, Inter Variable, system-ui, sans-serif"
+    fontSize: "15px"
     fontWeight: 500
     lineHeight: 1.4
   metadata:
-    fontFamily: "Inter, sans-serif"
-    fontSize: "12px"
+    fontFamily: "Segoe UI, Inter Variable, system-ui, sans-serif"
+    fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.4
   caption:
-    fontFamily: "Inter, sans-serif"
-    fontSize: "11px"
+    fontFamily: "Segoe UI, Inter Variable, system-ui, sans-serif"
+    fontSize: "12px"
     fontWeight: 500
     lineHeight: 1.4
   data:
-    fontFamily: "Geist Mono, Consolas, monospace"
-    fontSize: "12px"
+    fontFamily: "Cascadia Mono Variable, Cascadia Mono, Consolas, monospace"
+    fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.4
 rounded:
@@ -133,7 +133,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 **Key Characteristics:**
 
 - Charcoal dark mode and light neutral mode use the same layout and the same semantic roles.
-- Inter is the font for all interface hierarchy. Geist Mono is the font for data and execution metadata.
+- Segoe UI is the interface font, with bundled Inter as fallback. Cascadia Mono is the data font.
 - Evidence surfaces are flat, with 4px controls, 6px panels, and restrained borders.
 - The header is 60px high and the desktop rail is 220px wide. Compact and phone widths adapt them.
 - Idle states are neutral. Semantic error red is only for an actual error.
@@ -198,7 +198,7 @@ The application palette is a quiet neutral field with pomegranate identity ink a
 
 - **Charcoal canvas / panel / raised** (`#111315`, `#191c20`, `#23272d`): dark application surfaces.
 - **Light canvas / panel / raised** (`#f3f4f5`, `#ffffff`, `#e9edf1`): light application surfaces.
-- **Text and quiet copy** (`#20252b` / `#edf0f3`, `#525b66` / `#a8afb9`): primary and supporting content by theme.
+- **Text and quiet copy** (`#20252b` / `#cbcfd5`, `#525b66` / `#8f96a0`): primary and supporting content by theme.
 - **Rules and controls** (`#d4d9df` / `#333941`, `#7b8592` / `#697482`): boundaries and affordances.
 - **Semantic error** (`#a43440` light, `#f09a9f` dark): actual failures only.
 
@@ -208,24 +208,27 @@ Role tint is the one exception that colors agent roles. [Agents design](docs/int
 
 ## Typography
 
-**UI Font:** Inter (with sans-serif fallback), token `--font-ui`<br>
-**Data Font:** Geist Mono (with Consolas and monospace fallbacks), token `--font-data`
+**UI Font:** Segoe UI, Inter Variable, system-ui, sans-serif, token `--font-ui`<br>
+**Data Font:** Cascadia Mono Variable, Cascadia Mono, Consolas, monospace, token `--font-data`
 
-- Inter keeps the dense monitoring workspace readable and direct.
-- Geist Mono is for values, timestamps, counts, identifiers, and other execution metadata.
-- The two fonts keep evidence distinct from explanatory interface copy.
+- Segoe UI is a Windows system font; it is not bundled.
+- Fontsource bundles Inter and Cascadia Mono; font files load from same-origin assets with no external network requests.
+- Inter supplies the interface fallback for paired phones and systems without Segoe UI.
+- The compatibility token `--font-inter` resolves to `--font-ui`.
+- The owner compared pairings at real size and chose Segoe UI, Cascadia Mono, and a 14px reading size.
+- Windows Terminal-like dark ink reduces glare: primary text is `#cbcfd5`, and supporting text is `#8f96a0`.
 
 ### Hierarchy
 
-- **Title** (650, 26px, line-height 1.1): route and page titles.
-- **Section** (650, 16px, line-height 1.35): panel headings and major section labels.
-- **Body** (400, 14px, line-height 1.5): explanations and ordinary UI text.
-- **Control** (500, 13px, line-height 1.4): buttons, filters, navigation, and compact labels.
-- **Metadata** (400, 12px, line-height 1.4, Inter): quiet labels and supporting status details.
-- **Caption** (500, 11px, line-height 1.4, Inter, `--text-caption`): the smallest step, for uppercase eyebrows, evidence chips, chart axis ticks, and tiny counts. Never running text.
-- **Data** (400, 12px, line-height 1.4, Geist Mono): timestamps, counts, IDs, and execution values.
+- **Title** (650, 28px, line-height 1.1, `--text-title`): route and page titles.
+- **Section** (650, 18px, line-height 1.35, `--text-heading`): panel headings and major section labels.
+- **Body** (400, 16px, line-height 1.5, `--text-base`): explanations and ordinary UI text.
+- **Control** (500, 15px, line-height 1.4, `--text-sm`): buttons, filters, navigation, and compact labels.
+- **Metadata** (400, 14px, line-height 1.4, `--text-xs`): quiet labels and supporting status details.
+- **Caption** (500, 12px, line-height 1.4, `--text-caption`): uppercase eyebrows, evidence chips, chart axis ticks, and tiny counts. Never running text.
+- **Data** (400, 14px, line-height 1.4, `--text-xs`): timestamps, counts, IDs, and execution values.
 
-**The Two Voice Rule.** Use Inter for interface language and Geist Mono for data. Landing typography is a separate surface decision.
+**The Two Voice Rule.** Use the UI font for interface language and the data font for execution evidence. Landing typography is separate.
 
 ## Layout
 
@@ -253,7 +256,7 @@ Role tint is the one exception that colors agent roles. [Agents design](docs/int
 Every page uses `CommandPageHeader`.
 
 - It holds an optional breadcrumb trail, the title, an optional meta line, bottom-aligned actions, and an optional tab bar.
-- The breadcrumb trail is 12px muted sentence case with brand-text links.
+- The breadcrumb trail uses muted `--text-xs` sentence case with brand-text links.
 - `CommandBreadcrumbSeparator` draws the 12px chevron separators.
 - The current page carries `aria-current`.
 
@@ -311,11 +314,11 @@ Every button in the application has one of six roles. `app/styles/shell.css` imp
 
 | Role | Class | Size | Look | Use |
 | --- | --- | --- | --- | --- |
-| Primary | `.commandPrimaryAction` | 36px | Pomegranate fill, white text, 13px/500 | One for each view, for a real commitment only: install, reconnect, confirm |
-| Secondary | `.commandSecondaryAction` | 32px | One-pixel panel-line rule, application text at 12px/500, transparent background | Prev/Next, Copy, toolbar actions, and independent toggles such as Group by workflow |
-| Segmented | `.commandSegmented` with `> button` | 30px segments | One frame with a panel-line border and 4px radius. Segments are borderless, muted 12px/500, and divided by one-pixel lines | Mutually exclusive views, such as Fresh tokens / Full breakdown and List / Grid |
-| Quiet | `.commandQuietAction` | 28px minimum | No border, no fill, muted 12px/500, 6px horizontal padding, optional 14px icon | Optional actions such as Download report, and sort cycling |
-| Text link | `.commandTextLink` | Inline | Brand-text color, 12px/400, no border or fill | Section expanders such as "Show 20", "Show more", and "Expand all" |
+| Primary | `.commandPrimaryAction` | 36px | Pomegranate fill, white text, 15px/500 | One for each view, for a real commitment only: install, reconnect, confirm |
+| Secondary | `.commandSecondaryAction` | 32px | One-pixel panel-line rule, application text at 14px/500, transparent background | Prev/Next, Copy, toolbar actions, and independent toggles such as Group by workflow |
+| Segmented | `.commandSegmented` with `> button` | 30px segments | One frame with a panel-line border and 4px radius. Segments are borderless, muted 14px/500, and divided by one-pixel lines | Mutually exclusive views, such as Fresh tokens / Full breakdown and List / Grid |
+| Quiet | `.commandQuietAction` | 28px minimum | No border, no fill, muted 14px/500, 6px horizontal padding, optional 14px icon | Optional actions such as Download report, and sort cycling |
+| Text link | `.commandTextLink` | Inline | Brand-text color, 14px/400, no border or fill | Section expanders such as "Show 20", "Show more", and "Expand all" |
 | Icon | `.commandIconAction` | 32px square | Quiet button with a 16px stroke icon | An action that a glyph names. It must have a `title` or an `aria-label`. |
 
 All six roles share these rules:
@@ -346,7 +349,7 @@ Split action:
 - The caret (`.commandSplitCaret`) is a Primary with 8px side padding and a 14px chevron-down. It has an `aria-label`, `aria-haspopup="menu"`, and `aria-expanded`.
 - The caret opens a menu (`.commandSplitMenu`, `role="menu"`) of the other forms of the same action, above the button and aligned to its end.
 - The menu has the panel fill, a one-pixel `--command-line-strong` border, the control radius, the overlay shadow, and 4px padding.
-- A menu item is a 13px/500 ink label over one optional muted 12px line. Hover and focus give it the raised fill.
+- A menu item is a 15px/500 ink label over one optional muted 14px line. Hover and focus give it the raised fill.
 - Opening the menu focuses its first item. The arrow keys, Home, and End move between items.
 - Escape closes the menu and returns focus to the caret. A press outside and focus leaving also close it.
 - Choosing an item closes the menu and runs that form.
@@ -404,7 +407,7 @@ Compositions that are not a seventh role:
 
 - `.commandChip` is the one chip. It is a transparent outline label, so it never reads as a button.
 - The chip is at least 20px high with 2px 7px padding, a one-pixel panel line, and the control radius.
-- The chip text is the Caption step: 500, 11px, line-height 1.3, Inter, with no uppercase transform.
+- The chip text is the Caption step: 500, 12px, line-height 1.3, the UI font, with no uppercase transform.
 - An optional status dot is 6px.
 - A tone recolors only the text. A tone never adds a fill.
 

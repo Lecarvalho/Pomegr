@@ -65,6 +65,11 @@ test("the embedded terminal bridge and pinned renderer dependencies ship with th
   assert.ok(DESKTOP_RUNTIME_FILES.includes(bridge));
   assert.ok(packageJson.build.files.includes(bridge));
   const notices = await readFile(new URL("../THIRD_PARTY_NOTICES.md", import.meta.url), "utf8");
+  for (const name of ["@fontsource-variable/inter", "@fontsource-variable/cascadia-mono"]) {
+    assert.equal(packageJson.dependencies[name], "5.3.0");
+    assert.equal(lock.packages[`node_modules/${name}`].version, "5.3.0");
+    assert.ok(notices.includes(`| ${name} | 5.3.0 | OFL-1.1 |`));
+  }
   for (const [name, version] of [["@xterm/xterm", "6.0.0"], ["@xterm/addon-fit", "0.11.0"], ["react-markdown", "10.1.0"], ["remark-gfm", "4.0.1"]]) {
     assert.equal(packageJson.dependencies[name], version);
     assert.equal(lock.packages[`node_modules/${name}`].version, version);

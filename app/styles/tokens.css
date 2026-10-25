@@ -1,14 +1,15 @@
 /* Approved Pomegr app tokens. Marketing styles are independently scoped. */
 :root {
   color-scheme: light;
-  --font-ui: var(--font-inter), sans-serif;
-  --font-data: var(--font-geist-mono), Consolas, monospace;
-  --text-caption: 11px;
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 14px;
-  --text-heading: 16px;
-  --text-title: 26px;
+  --font-ui: "Segoe UI", "Inter Variable", system-ui, sans-serif;
+  --font-inter: var(--font-ui);
+  --font-data: "Cascadia Mono Variable", "Cascadia Mono", Consolas, monospace;
+  --text-caption: 12px;
+  --text-xs: 14px;
+  --text-sm: 15px;
+  --text-base: 16px;
+  --text-heading: 18px;
+  --text-title: 28px;
   --control-height: 36px;
   --control-compact: 32px;
   --command-brand-mark-size: 24px;
@@ -97,8 +98,8 @@ html[data-theme="dark"] {
   --color-canvas: #111315;
   --color-panel: #191c20;
   --color-raised: #23272d;
-  --color-text: #edf0f3;
-  --color-muted: #a8afb9;
+  --color-text: #cbcfd5;
+  --color-muted: #8f96a0;
   --color-line: #333941;
   --color-control: #697482;
   --color-brand-text: #e58b80;

@@ -6,6 +6,8 @@ Pomegr includes the following installed Windows x64 runtime dependencies selecte
 | --- | --- | --- |
 | @anthropic-ai/claude-agent-sdk | 0.3.241 | SEE LICENSE IN README.md |
 | @anthropic-ai/claude-agent-sdk-win32-x64 | 0.3.241 | SEE LICENSE IN LICENSE.md |
+| @fontsource-variable/cascadia-mono | 5.3.0 | OFL-1.1 |
+| @fontsource-variable/inter | 5.3.0 | OFL-1.1 |
 | @img/colour | 1.1.0 | MIT |
 | @img/sharp-win32-x64 | 0.34.5 | Apache-2.0 AND LGPL-3.0-or-later |
 | @jridgewell/sourcemap-codec | 1.5.5 | MIT |

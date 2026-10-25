@@ -1,18 +1,9 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter } from "next/font/google";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/cascadia-mono";
 import { AppShell } from "./components/AppShell";
 import { ClientAccessProvider } from "./hooks/ClientAccessContext";
 import "./globals.css";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Pomegr",
@@ -44,14 +35,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootScript }} /></head>
       <body
         className="antialiased"
       >
         <div hidden dangerouslySetInnerHTML={{ __html: `<!--
 THESIS: Pomegr makes recorded agent work legible through a calm, consistent evidence workspace.
-OWN-WORLD: Charcoal and neutral light surfaces, pomegranate action accents, Inter UI, data-only Geist Mono, 4px controls and 6px panels.
+OWN-WORLD: Charcoal and neutral light surfaces, pomegranate action accents, Segoe UI with Inter fallback, data-only Cascadia Mono, 4px controls and 6px panels.
 STORY: Return to a session, inspect agent activity, follow actual context levels, then open supporting evidence without exposing the conversation.
 FIRST VIEWPORT: A 60px global header, 220px route rail, compact sans page title, aligned actions, and primary evidence at a readable scale.
 FORM: The /design-system page (app/design-system/page.tsx, app/components/design-system/) and DESIGN.md; production retains every real route and capability.

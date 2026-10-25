@@ -8,7 +8,7 @@
 
 The Activities tab shows session evidence with one bar per request and a grouped feed of the calls linked to each request.
 
-Use Inter for panel language and controls. Use the data font (Geist Mono) for request counts, ordinals, timestamps, and other execution data.
+Use the [shared UI and data font tokens](../../../DESIGN.md#typography) for panel language and execution data.
 
 Metric definitions, ranking rules, and counting rules are in [Metrics](../architecture/metrics.md#request-snapshots). The privacy rules are in [Session evidence](../architecture/privacy/session-evidence.md).
 
