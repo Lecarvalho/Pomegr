@@ -23,7 +23,7 @@ function record(timestamp, type, payload) {
   return JSON.stringify({ timestamp: iso(timestamp), type, payload });
 }
 
-test("accepted async input reconstructs after cold restart, remains through work, and ends only as uncertain or turn-scoped", async (context) => {
+test("async messages stay working through cold restart, continued work and later user text", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-async-pipeline-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const sessions = path.join(root, "sessions", "2000", "01", "01");
@@ -55,24 +55,24 @@ test("accepted async input reconstructs after cold restart, remains through work
     return { observer, candidates, catalogs };
   };
   let run = await start();
-  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "needs_input");
-  assert.equal(run.catalogs.at(-1).find((row) => row.localId === "async-root").activityStatus, "needs_input");
+  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "active");
+  assert.equal(run.catalogs.at(-1).find((row) => row.localId === "async-root").activityStatus, "working");
   const pendingRow = run.catalogs.at(-1).find((row) => row.localId === "async-root");
-  assert.equal(inputNotificationTime(pendingRow), iso(pendingAt), "private occurrence clock stays at the question through continued work");
+  assert.equal(inputNotificationTime(pendingRow), null, "async messages do not supply a Needs input occurrence clock");
   assert.ok(pendingRow.updatedAt > iso(pendingAt), "public activity clock still reflects newer work");
   assert.doesNotMatch(JSON.stringify([run.candidates, run.catalogs]), /PRIVATE_/);
   run.observer.stop();
   now += 3 * 60 * 60_000;
   run = await start();
-  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "needs_input");
-  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").liveness.observedAt, iso(pendingAt));
-  assert.equal(inputNotificationTime(run.catalogs.at(-1).find((row) => row.localId === "async-root")), iso(pendingAt));
+  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "active");
+  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").liveness.observedAt, iso(NOW + 3_000));
+  assert.equal(inputNotificationTime(run.catalogs.at(-1).find((row) => row.localId === "async-root")), null);
   now += 1_000;
   await appendFile(rollout, record(now, "response_item", { type: "message", role: "user",
     content: [{ type: "input_text", text: "PRIVATE_ANSWER" }],
     internal_chat_message_metadata_passthrough: { turn_id: "async-turn", content_item_kinds: ["user.text"] } }) + "\n");
   await run.observer.hydrate("async-root");
-  assert.equal(run.catalogs.at(-1).find((row) => row.localId === "async-root").activityStatus, "unknown");
+  assert.equal(run.catalogs.at(-1).find((row) => row.localId === "async-root").activityStatus, "working");
   now += 1_000;
   await appendFile(rollout, record(now, "event_msg", { type: "task_complete", turn_id: "async-turn" }) + "\n");
   await run.observer.hydrate("async-root");
