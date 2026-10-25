@@ -75,6 +75,14 @@ With **Merge on green**, it merges a task's open pull request
 only when the task needs review, its latest review passed, and CI passed for the known pull-request head.
 The **Merge method** setting uses the repository default unless you choose **Squash**,
 **Merge commit**, or **Rebase**. If the repository allows several methods, choose one before the grant runs.
+Choose a **Merge mode** before a grant may merge: **Merge when green** merges once CI passes, and
+**Auto-merge when green** asks GitHub to merge through the repository's own auto-merge or merge queue, so GitHub merges
+when its rules, such as required reviews, allow. Auto-merge needs the repository to allow it, and Aril logs
+“Auto-merge enabled by Aril” when GitHub accepts it. **Delete branch after merge** is **Repository default** unless you choose
+**Delete**, which deletes the task's branch from the repository after its pull request is merged (never the default branch,
+and never a fork's branch), or **Keep**; Pomegr deletes nothing otherwise. A grant that has used all its tasks
+waits up to ten minutes after the last merge for that deletion. Ask Aril to propose these: it reads the repository's own
+rules and GitHub settings first.
 Aril attempts each head commit at most once. A merge leaves the task in Review for your **Mark done**.
 When **Send work back** is enabled and **Send-backs per task**
 is set, it sends matching tasks with failed reviews to a new builder session in the same worktree.

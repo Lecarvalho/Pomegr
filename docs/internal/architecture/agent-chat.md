@@ -263,9 +263,15 @@ characters, in this order:
 4. **Task worktrees.** Owner-message and grant-write turns list the Pomegr task worktrees
    that remain on disk, as facts only, and the fixed instruction for `remove_worktree` (see
    [Worktree removal](#worktree-removal)). The section is left out when there are none.
-5. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
+5. **Repository GitHub settings.** Owner-message turns include a `<repository_github>` section: the repository's `squashMergeAllowed`,
+   `mergeCommitAllowed`, `rebaseMergeAllowed`, `autoMergeAllowed`, and `deleteBranchOnMerge` booleans and its default branch name as one JSON
+   line, or `unknown` when desktop main could not read them (see [Repository GitHub settings](tasks.md#repository-github-settings)). The section is left out
+   when no reader is wired. The instructions tell Aril to read the repository's own rules (such as `AGENTS.md`, `CONTRIBUTING.md`, and its pull-request
+   template) and these settings before it proposes `mergeMode`, `deleteBranch`, or a merge method, to propose the value they settle and say where it came
+   from, and to ask the owner only what they leave open.
+6. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
    The section reports an empty log, unavailable log, or omitted older entries with fixed lines.
-6. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
+7. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
    first. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
@@ -275,9 +281,9 @@ characters, in this order:
    An answer that is a follow-up is marked as one. A proposal of board changes that
    stopped also says how many operations succeeded, which one failed with which fixed
    error, and how many were not applied.
-7. **Images.** One line for each image of the conversation whose file is still there:
+8. **Images.** One line for each image of the conversation whose file is still there:
    its ID, its type, and the absolute file. The section is left out when there is none.
-8. **The owner's message**, and one line with the IDs of its images, in order. A
+9. **The owner's message**, and one line with the IDs of its images, in order. A
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
@@ -400,7 +406,7 @@ message would lead to materially different proposals.
 | `start_session` | `id` | None. It is not a board change: see [Session start](#session-start) |
 | `remove_worktree` | `id`, `branch` (a boolean) | None. It is not a board change, and a proposal holds only these, 1 to 30: see [Worktree removal](#worktree-removal) |
 | `set_queue` | `on`, a boolean | `queue_settings` with `{ on }`, sent on its own path: see [Queue change](#queue-change) |
-| `set_aril_settings` | `settings`: a subset of `actions`, `limits`, `workRules`, and `reviewer`; each supplied field replaces the whole field | `aril_settings_set` with `{ settings }`; it must be the only operation |
+| `set_aril_settings` | `settings`: a subset of `actions`, `mergeMethod`, `mergeMode` (null, `direct`, or `auto`), `deleteBranch` (null, true, or false), `limits`, `workRules`, and `reviewer`; each supplied field replaces the whole field | `aril_settings_set` with `{ settings }`; it must be the only operation |
 | `add_memory` | `text` | `aril_memory_add` with `{ text }` |
 | `update_memory` | Numeric `id`, `text` | `aril_memory_update` with `{ id, text }` |
 | `remove_memory` | Numeric `id` | `aril_memory_remove` with `{ id }` |
@@ -914,6 +920,7 @@ never a session's.
   From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first, up to 100 entries of 300 characters each.
   From 2026-10-25 (Aril operator phase 4), it also sends the current grant's active state, end time, tasks used, and snapshotted limits and actions; an ended grant adds its fixed end reason. Aril uses these existing settings and grant facts to determine whether an active grant permits a send-back or merge. The owner-set merge method is part of the settings sent with the board; merge outcomes are reported from fixed `grant_merge` and `grant_merge_refused` log entries.
   From 2026-10-25 (Aril operator phase 9d), the prompt also sends the time the settings were last saved, each memory entry's last update time, and, once something is settled, the [workflow changes](#workflow-changes): the repository-relative names of changed workflow sources (the fixed list and the files under `.github/workflows/`) with a commit or last-edit date and whether they are uncommitted. It sends no file content, no absolute path, and no Git output beyond those names and dates; a Git failure sends only "Workflow changes are unknown." The provider run can read those files itself, as it can read any file of the repository.
+  From 2026-10-25 (Aril operator phase 9b), an owner-message prompt also holds the repository's five GitHub merge-setting booleans and its default branch name, or `unknown`. Desktop main reads them with `gh repo view` and the owner's own gh login and keeps them in memory (30 minutes; a failed read 5); nothing else of the `gh` answer is kept or sent.
   Feature rows also include their IDs so Aril can select existing features in work rules. Applied settings and memory operations reach the follow-up as operation names, memory IDs where applicable, and fixed outcomes.
   A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This

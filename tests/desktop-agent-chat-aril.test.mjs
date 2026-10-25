@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { normalizeOperation, normalizeProposal, applyOperations } from "../desktop/runtime/agent-chat-proposal.mjs";
 import { AGENT_CHAT_INSTRUCTIONS, boardSnapshot, composePrompt, PROMPT_LIMIT, proposalOutcome } from "../desktop/runtime/agent-chat-prompt.mjs";
-import { chatHarness, seed, pendingProposal, withProposal, repositoryId } from "./helpers/agent-chat-harness.mjs";
+import { chatHarness, seed, pendingProposal, withProposal, repositoryId, root, send } from "./helpers/agent-chat-harness.mjs";
 
 const actions = { start: false, review: true, sendBack: false, merge: false, writeTasks: false };
 const limits = { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null };
 const reviewer = { provider: null, model: null, differentFromBuilder: false };
-const settings = { actions, mergeMethod: null, limits, workRules: [], reviewer };
+const settings = { actions, mergeMethod: null, mergeMode: null, deleteBranch: null, limits, workRules: [], reviewer };
 const operations = [
   { op: "set_aril_settings", settings }, { op: "add_memory", text: "Use focused tests." },
   { op: "update_memory", id: 1, text: "Use the full suite." }, { op: "remove_memory", id: 2 },
@@ -23,6 +23,11 @@ test("Aril settings mirror phase 3a fields, nested shapes, numeric and text boun
   assert.ok(validSettings({}));
   for (const method of [null, "squash", "merge", "rebase"]) assert.deepEqual(validSettings({ mergeMethod: method }).settings, { mergeMethod: method });
   for (const method of ["fast-forward", "", 1, false]) assert.equal(validSettings({ mergeMethod: method }), null);
+  for (const mode of [null, "direct", "auto"]) assert.deepEqual(validSettings({ mergeMode: mode }).settings, { mergeMode: mode });
+  for (const mode of ["queue", "", "Direct", 1, false, undefined]) assert.equal(validSettings({ mergeMode: mode }), null, String(mode));
+  for (const value of [null, true, false]) assert.deepEqual(validSettings({ deleteBranch: value }).settings, { deleteBranch: value });
+  for (const value of ["true", 0, 1, "delete", undefined]) assert.equal(validSettings({ deleteBranch: value }), null, String(value));
+  assert.deepEqual(validSettings({ mergeMethod: "squash", mergeMode: "auto", deleteBranch: true }).settings, { mergeMethod: "squash", mergeMode: "auto", deleteBranch: true });
   for (const bad of [null, [], { pairedDevices: false }, { pairedDevices: true }, { other: 1 },
     { actions: { start: true } }, { actions: { ...actions, merge: 1 } }, { actions: { ...actions, pairedDevices: false } },
     { limits: { hours: 1 } }, { reviewer: { provider: null } }, { reviewer: { ...reviewer, provider: "other" } },
@@ -139,6 +144,35 @@ test("snapshot includes served settings and bounded oldest-first memory within t
   for (const { op } of operations) assert.ok(AGENT_CHAT_INSTRUCTIONS.includes(`"op":"${op}"`));
   assert.ok(AGENT_CHAT_INSTRUCTIONS.includes("What your settings and memory answer is settled: act on it and do not ask the owner again. Ask again only when the owner says a rule changed, or when <workflow_changes> lists a source that the rule depends on; then read that source, and propose an update to the setting or memory entry, or ask only about what the change left unclear. A null setting is not settled: ask before relying on it, once, and propose the answer as a setting or memory entry."));
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Never store secrets, credentials, or personal data/u);
+});
+
+const GITHUB = { squashMergeAllowed: true, mergeCommitAllowed: false, rebaseMergeAllowed: false, autoMergeAllowed: true, deleteBranchOnMerge: false, defaultBranch: "main" };
+test("the prompt shows the repository's GitHub merge settings, or unknown, and tells Aril to read the repository's rules first", () => {
+  const board = { aril: { settings, memory: [] }, tasks: [] };
+  const section = (repositoryGithub) => composePrompt({ board, repositoryName: "Repo", message: "Advice", repositoryGithub }).match(/<repository_github>\n([\s\S]*?)\n<\/repository_github>/u)?.[1];
+  assert.equal(section(undefined), undefined, "a caller without a reader gets no section");
+  assert.deepEqual(JSON.parse(section({ ...GITHUB, private: "omitted", defaultBranchRef: { name: "x" } })), GITHUB);
+  assert.equal(section(null), "unknown");
+  assert.equal(section({ ...GITHUB, autoMergeAllowed: "yes" }), "unknown");
+  assert.deepEqual(JSON.parse(section({ ...GITHUB, defaultBranch: "bad..name" })), { ...GITHUB, defaultBranch: null });
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Before you propose merge settings, read the repository's own rules \(such as AGENTS\.md, CONTRIBUTING\.md, and its pull-request template\) and these GitHub settings, and propose values that fit them\. When they settle the answer, propose it and say where it came from; ask the owner only what they leave open\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /mergeMode is null \(not settled\), direct, or auto/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /deleteBranch is null \(the repository's own setting decides\), true, or false/u);
+  for (const kind of ["grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused"]) assert.match(AGENT_CHAT_INSTRUCTIONS, new RegExp(kind, "u"));
+});
+
+test("a message reads the repository's GitHub settings once for its prompt, and a failed read is unknown", async (context) => {
+  const reads = [];
+  const h = await chatHarness(context, { repositoryGithub: { read: async (id, folder) => { reads.push([id, folder]); return GITHUB; } } });
+  assert.equal((await send(h)).ok, true);
+  assert.deepEqual(reads, [[repositoryId, root]]);
+  assert.ok(h.runs[0].options.prompt.includes(`<repository_github>\n${JSON.stringify(GITHUB)}\n</repository_github>`));
+  const failing = await chatHarness(context, { repositoryGithub: { read: async () => { throw new Error("offline"); } } });
+  assert.equal((await send(failing)).ok, true);
+  assert.match(failing.runs[0].options.prompt, /<repository_github>\nunknown\n<\/repository_github>/u);
+  const without = await chatHarness(context);
+  assert.equal((await send(without)).ok, true);
+  assert.equal(without.runs[0].options.prompt.includes("<repository_github>"), false);
 });
 
 test("LAN composition marks chat calls paired without accepting a client origin flag", async () => {

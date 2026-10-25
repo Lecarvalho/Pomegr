@@ -63,6 +63,7 @@ import { installSessionHistoryIpc, installSessionLinkIpc, installTaskActionIpc, 
 import { createTaskLog } from "./task-log.mjs";
 import { createTaskImage } from "./task-image.mjs";
 import { createAgentChat, installAgentChatIpc } from "./agent-chat.mjs";
+import { createRepositoryGithub } from "./repository-github.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { confirmTaskReviewStart, confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
 import { confirmSessionContinue, installSessionContinueIpc } from "./session-continue.mjs";
@@ -674,7 +675,8 @@ async function startDesktop() {
           }),
         });
         // An applied chat start takes the Tasks page's manual start, including its native confirmation.
-        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
+        const repositoryGithub = createRepositoryGithub();
+        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           sessionForProcess: (pid) => requestTerminalSession(monitorChild, pid),
           isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken,
@@ -728,10 +730,8 @@ async function startDesktop() {
             confirm: (plan) => confirmSessionContinue(dialog, () => mainWindow, plan) })];
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
-          ipcMain,
-          monitorOrigin: privateMonitorOrigin,
-          authorizationToken,
-          starter: taskStarter, grantWrite: agentChat.grantWrite,
+          ipcMain, monitorOrigin: privateMonitorOrigin, authorizationToken,
+          starter: taskStarter, grantWrite: agentChat.grantWrite, repositoryGithub,
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

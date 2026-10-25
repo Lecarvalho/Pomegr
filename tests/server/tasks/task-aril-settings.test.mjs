@@ -9,7 +9,7 @@ const REPO = `repo-${"a".repeat(24)}`;
 const OTHER = `repo-${"b".repeat(24)}`;
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
-  mergeMethod: null,
+  mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -77,6 +77,22 @@ test("merge method accepts only the supported values and old stored settings rea
       .run(JSON.stringify(Object.fromEntries(Object.entries(defaults()).filter(([key]) => key !== "mergeMethod"))), REPO);
   } finally { database.close(); }
   assert.equal(store.readBoard(REPO).aril.settings.mergeMethod, null);
+});
+
+test("merge mode and branch deletion accept only their values, default to not settled, and old rows read the defaults", (t) => {
+  const { store, directory, set } = setup(t);
+  for (const mode of [null, "direct", "auto"]) assert.equal(set({ mergeMode: mode }).settings.mergeMode, mode);
+  for (const value of [null, true, false]) assert.equal(set({ deleteBranch: value }).settings.deleteBranch, value);
+  for (const mode of [undefined, "", "queue", "Direct", 1, true, {}]) invalid(set({ mergeMode: mode }));
+  for (const value of [undefined, "true", 0, 1, "delete", {}]) invalid(set({ deleteBranch: value }));
+  assert.equal(set({ mergeMode: "auto", deleteBranch: true }).ok, true);
+  assert.deepEqual([store.readBoard(REPO).aril.settings.mergeMode, store.readBoard(REPO).aril.settings.deleteBranch], ["auto", true]);
+  const database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  try {
+    database.prepare("UPDATE aril_settings SET value = ? WHERE repository_id = ?")
+      .run(JSON.stringify(Object.fromEntries(Object.entries(defaults()).filter(([key]) => !["mergeMode", "deleteBranch"].includes(key)))), REPO);
+  } finally { database.close(); }
+  assert.deepEqual([store.readBoard(REPO).aril.settings.mergeMode, store.readBoard(REPO).aril.settings.deleteBranch], [null, null]);
 });
 
 test("every limit accepts null and inclusive integer bounds only", (t) => {

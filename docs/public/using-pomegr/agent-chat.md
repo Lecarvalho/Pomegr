@@ -11,7 +11,8 @@ the repository's files, and what Pomegr observed, then answers. Aril proposes bo
 changes, and you apply them. In **Tasks → Aril settings**, save the actions, limits, and work
 rules, then select **Start grant** and confirm in the panel. The desktop starts allowed
 Ready tasks and their reviews, sends failed work back within its limit, and merges eligible
-pull requests on green CI after a passing review using the selected merge method. If you
+pull requests on green CI after a passing review using the selected merge method, directly or through the repository's
+auto-merge, and deletes a task's branch after the merge when you chose that. If you
 enable **Write tasks from plans**, Aril can also create tasks from the grant's named plans
 when the chat is free; they appear in Ready without **Apply changes**. Select **Stop grant** in the same
 panel to end it; running sessions continue. Paired devices can always stop a grant and
@@ -232,7 +233,8 @@ provider.
   you sent in the conversation go to the provider too, and the prompt names the folder
   where Pomegr keeps them. The board snapshot also sends a grant's active state, end
   time, tasks used, and fixed limits and actions; an ended grant includes its end reason.
-  Repository settings include the selected merge method. Merge results appear as fixed task-log labels.
+  Repository settings include the selected merge method, merge mode, and branch deletion choice. Aril also gets the repository's GitHub merge
+  settings (whether squash, merge commit, rebase, auto-merge, and delete-branch-on-merge are on) and its default branch name. Merge and branch results appear as fixed task-log labels.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without

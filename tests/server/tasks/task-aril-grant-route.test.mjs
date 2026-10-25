@@ -54,7 +54,7 @@ const fixedError = (response, status, error) => {
 
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
-  mergeMethod: null,
+  mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: 80 },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -128,6 +128,7 @@ test("grant runner routes require desktop authorization and reject paired reques
     ["grant-send-back", { repositoryId: REPOSITORY_ID, taskId: "T-1" }],
     ["grant-merge-attempt", { repositoryId: REPOSITORY_ID, taskId: "T-1", headOid: "a".repeat(40) }],
     ["grant-merge-result", { repositoryId: REPOSITORY_ID, taskId: "T-1", headOid: "a".repeat(40), outcome: "merged" }],
+    ["grant-branch-result", { repositoryId: REPOSITORY_ID, taskId: "T-1", outcome: "deleted" }],
     ["grant-end", { repositoryId: REPOSITORY_ID, reason: "app_restart" }],
     ["grant-end-all", { reason: "app_restart" }],
   ];
@@ -153,7 +154,7 @@ test("grant runner routes require desktop authorization and reject paired reques
 
 test("merge routes pass the committed PR resolver and project only the desktop merge fields", async (t) => {
   const headOid = "a".repeat(40);
-  const step = { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "merge", pullRequest: 42, headOid, mergeMethod: null };
+  const step = { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "merge", pullRequest: 42, headOid, mergeMethod: null, mergeMode: "auto" };
   const facts = { number: 42, headOid, state: "open", checks: "passed" };
   const checkResolver = (resolve) => assert.deepEqual(resolve("codex:builder", "T-1"), facts);
   let outcome = { ok: true, pullRequest: 42, output: "private" };
@@ -178,6 +179,23 @@ test("merge routes pass the committed PR resolver and project only the desktop m
   }
   for (const invalid of [{ ...body, headOid: "bad" }, { ...body, extra: true }, { ...body, taskId: "bad" }]) fixedError(await post(port, "grant-merge-attempt", invalid), 400, "invalid");
   fixedError(await post(port, "grant-merge-result", { ...body, outcome: "unknown" }), 400, "invalid");
+});
+
+test("merge steps carry a known merge mode and branch delete steps project only their fixed fields", async (t) => {
+  const headOid = "a".repeat(40);
+  const merge = { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "merge", pullRequest: 42, headOid, mergeMethod: "squash", mergeMode: "direct" };
+  const remove = { repositoryId: REPOSITORY_ID, taskId: "T-2", kind: "delete_branch", pullRequest: 7, branch: "tasks/T-2" };
+  const { port } = await setup(t, { taskStore: {
+    nextGrantSteps: () => ({ ok: true, steps: [{ ...merge, output: "private" }, { ...merge, taskId: "T-3", mergeMode: null }, { ...merge, taskId: "T-4", mergeMode: "queue" },
+      { ...remove, output: "private" }, { ...remove, taskId: "T-5", branch: "a..b" }, { ...remove, taskId: "T-6", pullRequest: 0 }, { ...remove, taskId: "T-7", branch: undefined }] }),
+    recordGrantBranchDelete(repo, payload) { assert.equal(repo, REPOSITORY_ID); assert.deepEqual(payload, { taskId: "T-2", outcome: "refused" }); return { ok: true, output: "private" }; },
+    recordGrantMerge: () => ({ ok: true }),
+  } });
+  assert.deepEqual((await post(port, "grant-next", {})).json, { ok: true, steps: [merge, remove] });
+  const body = { repositoryId: REPOSITORY_ID, taskId: "T-2", outcome: "refused" };
+  assert.deepEqual((await post(port, "grant-branch-result", body)).json, { ok: true });
+  for (const invalid of [{ ...body, outcome: "gone" }, { ...body, extra: true }, { ...body, taskId: "bad" }, { repositoryId: REPOSITORY_ID, taskId: "T-2" }]) fixedError(await post(port, "grant-branch-result", invalid), 400, "invalid");
+  assert.deepEqual((await post(port, "grant-merge-result", { repositoryId: REPOSITORY_ID, taskId: "T-1", headOid, outcome: "auto_enabled" })).json, { ok: true });
 });
 
 test("grant-end-all accepts only the restart reason and returns the number ended without eligible work", async (t) => {

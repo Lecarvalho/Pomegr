@@ -41,6 +41,16 @@ test("owner turns show only valid unseen log entries and acknowledge the highest
   assert.deepEqual(logCalls(h, "ack").map((call) => call.body), [{ repositoryId, payload: { consumer: "aril", through: 5 } }]);
 });
 
+test("grant merge-mode and branch transitions reach Aril as their fixed kinds", async (context) => {
+  const h = await chatHarness(context);
+  const kinds = ["grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused"];
+  h.state.actions = (action) => action === "log-read" ? logAnswer(kinds.map((kind, index) => logEntry(index + 1, { kind, pullRequest: null })).concat(logEntry(4, { kind: "grant_branch_pushed" }))) : { ok: true };
+  const sent = await send(h);
+  assert.match(h.runs[0].options.prompt, /<task_log_since_last_turn>\n1970-01-01T00:00:01.000Z T-1 grant_merge_auto\n1970-01-01T00:00:02.000Z T-2 grant_branch_deleted\n1970-01-01T00:00:03.000Z T-3 grant_branch_delete_refused\n<\/task_log_since_last_turn>/u);
+  assert.doesNotMatch(h.runs[0].options.prompt, /grant_branch_pushed/u);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Done." }, sent.conversationId);
+});
+
 test("grant usage transitions reach Aril with only a provider ID, and malformed ones are dropped", async (context) => {
   const h = await chatHarness(context);
   const usage = (id, kind, reason) => logEntry(id, { task: null, kind, reason });

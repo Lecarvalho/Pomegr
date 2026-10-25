@@ -12,6 +12,7 @@ const SINCE = Date.parse("2026-10-24T12:00:00Z");
 const BEFORE = "2026-10-24T11:59:59Z";
 const AT = "2026-10-24T12:00:00Z";
 const AFTER = "2026-10-24T12:00:01Z";
+const NO_FACTS = { number: null, state: null, headOid: null, checks: null, headBranch: null, baseBranch: null, sameRepository: false };
 const UNKNOWN = { owner_turns: null, commits_after_review: null, pull_request: null, pull_request_state: null };
 
 function sources(entries = {}, records = {}) {
@@ -85,7 +86,7 @@ test("PR log facts share outcome selection and use checks only on the selected h
   ];
   const inputs = sources({ [SESSION]: block });
   const result = resolveTaskPullRequestFacts(SESSION, "T-172", inputs);
-  assert.deepEqual(result, { number: 42, state: "open", headOid, checks: "passed" });
+  assert.deepEqual(result, { number: 42, state: "open", headOid, checks: "passed", headBranch: "tasks/T-172", baseBranch: null, sameRepository: false });
   assert.equal(result.number, (await resolve({ [SESSION]: block }, {}, [SESSION])).pull_request);
   for (const read of [{ headOid: "b".repeat(40), status: "passed" }, { headOid, status: "pending" }, { headOid, status: null }]) {
     block.publicState.session.pullRequests.checkReads = [{ url: "chosen", ...read }];
@@ -106,14 +107,28 @@ test("PR facts reuse the response-bound head when normalized items have no head 
   const block = entry([pull(42, "tasks/T-172")]);
   block.publicState.session.pullRequests.checkReads = [{ url: "private", headOid, status: "failed" }];
   const inputs = sources({ [SESSION]: block });
-  const expected = { number: 42, state: "open", headOid, checks: "failed" };
+  const expected = { number: 42, state: "open", headOid, checks: "failed", headBranch: "tasks/T-172", baseBranch: null, sameRepository: false };
   assert.deepEqual(resolveTaskPullRequestFacts(SESSION, "T-172", inputs), expected);
   const lookups = createTaskLookups({ ...inputs, repositoryInventory: {}, catalogSessions: () => [] });
   assert.deepEqual(lookups.resolveTaskPullRequestFacts(SESSION, "T-172"), expected);
   block.publicState.session.pullRequests.checkReads[0].headOid = "invalid";
   assert.deepEqual(lookups.resolveTaskPullRequestFacts(SESSION, "T-172"), { ...expected, headOid: null, checks: null });
   block.publicState.session.pullRequests.status = "loading";
-  assert.deepEqual(lookups.resolveTaskPullRequestFacts(SESSION, "T-172"), { number: null, state: null, headOid: null, checks: null });
+  assert.deepEqual(lookups.resolveTaskPullRequestFacts(SESSION, "T-172"), NO_FACTS);
+});
+
+test("PR facts carry the head and base branch names, and the head is the same repository only when the committed read says so", async () => {
+  const { resolveTaskPullRequestFacts } = await import("../../../server/runtime/task-outcome-lookup.mjs");
+  const headOid = "a".repeat(40);
+  const block = entry([{ ...pull(42, "tasks/T-172", "branch", "merged"), baseBranch: "main", url: "chosen" }]);
+  const facts = (read) => {
+    block.publicState.session.pullRequests.checkReads = [{ url: "chosen", headOid, status: "passed", ...read }];
+    return resolveTaskPullRequestFacts(SESSION, "T-172", sources({ [SESSION]: block }));
+  };
+  assert.deepEqual(facts({ crossRepository: false }), { number: 42, state: "merged", headOid, checks: "passed", headBranch: "tasks/T-172", baseBranch: "main", sameRepository: true });
+  for (const crossRepository of [true, null, undefined, "false", 0]) assert.equal(facts({ crossRepository }).sameRepository, false, String(crossRepository));
+  block.publicState.session.pullRequests.items[0].headBranch = "";
+  assert.equal(facts({ crossRepository: false }).headBranch, null);
 });
 
 test("the monitor outcome lookup never loads an absent repository sidecar", async () => {
@@ -128,7 +143,7 @@ test("the monitor outcome lookup never loads an absent repository sidecar", asyn
     },
   });
   assert.deepEqual(runtime.resolveTaskOutcomeFacts([SESSION], SINCE, "T-172"), UNKNOWN);
-  assert.deepEqual(runtime.resolveTaskPullRequestFacts(SESSION, "T-172"), { number: null, state: null, headOid: null, checks: null });
+  assert.deepEqual(runtime.resolveTaskPullRequestFacts(SESSION, "T-172"), NO_FACTS);
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(reads, []);
 });

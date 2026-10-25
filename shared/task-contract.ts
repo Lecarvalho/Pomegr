@@ -92,6 +92,8 @@ export type Task = {
 export type ArilSettings = {
   actions: { start: boolean; review: boolean; sendBack: boolean; merge: boolean; writeTasks: boolean };
   mergeMethod: "squash" | "merge" | "rebase" | null;
+  mergeMode: "direct" | "auto" | null; // null: not settled, a grant merges nothing
+  deleteBranch: boolean | null; // null: the repository's own GitHub setting decides
   limits: { hours: number | null; tasks: number | null; tasksAtATime: number | null; sendBacks: number | null; usagePercent: number | null };
   workRules: ({ kind: "tag" | "text" | "feature" | "plan"; value: string } | { kind: "tasks"; value: string[] })[];
   reviewer: { provider: TaskProvider | null; model: string | null; differentFromBuilder: boolean };

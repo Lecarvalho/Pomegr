@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArilGrant, ArilSettings, TaskBoard } from "../../shared/task-contract";
@@ -11,7 +11,7 @@ vi.mock("../../app/tasks-store", () => ({ useTasks: () => ({ refresh }) }));
 vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => access, clientAccessMode: () => access.mode }));
 const defaults = (): ArilSettings => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
-  mergeMethod: null,
+  mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
@@ -156,6 +156,47 @@ describe("Aril settings panel", () => {
       await userEvent.click(save());
       expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { mergeMethod: method } });
     }
+  });
+  it("offers merge mode and branch deletion under Actions and saves each choice", async () => {
+    await open();
+    const dialog = screen.getByRole("dialog");
+    expect(screen.getByRole("combobox", { name: "Merge mode" })).toHaveTextContent("Not set");
+    expect(screen.getByRole("combobox", { name: "Delete branch after merge" })).toHaveTextContent("Repository default");
+    const names = within(dialog).getAllByRole("combobox").map((box) => box.getAttribute("aria-label"));
+    expect(names.slice(0, 3)).toEqual(["Merge method", "Merge mode", "Delete branch after merge"]);
+    await userEvent.click(screen.getByRole("combobox", { name: "Merge mode" }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Not set", "Merge when green", "Auto-merge when green"]);
+    await userEvent.click(screen.getByRole("option", { name: "Merge when green" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Delete branch after merge" }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Repository default", "Delete", "Keep"]);
+    await userEvent.click(screen.getByRole("option", { name: "Keep" }));
+    await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { mergeMode: "direct", deleteBranch: false } });
+    for (const [label, key, value] of [["Auto-merge when green", "mergeMode", "auto"], ["Delete", "deleteBranch", true]] as const) {
+      board.aril!.settings.mergeMode = key === "mergeMode" ? "direct" : "auto"; board.aril!.settings.deleteBranch = key === "deleteBranch" ? false : null;
+      cleanup(); await open();
+      await choose(key === "mergeMode" ? "Merge mode" : "Delete branch after merge", label);
+      await userEvent.click(save());
+      expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { [key]: value } });
+    }
+  });
+  it("shows merge mode and branch deletion read-only without permission", async () => {
+    board.aril!.settings.mergeMode = "auto"; board.aril!.settings.deleteBranch = true; access.mode = "lan"; setBridge(undefined);
+    vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ ok: true }) })));
+    await open();
+    expect(screen.queryByRole("combobox", { name: "Merge mode" })).toBeNull();
+    expect(screen.getByText("Auto-merge when green")).toHaveClass("taskGateReadOnly");
+    expect(screen.getByText("Delete")).toHaveClass("taskGateReadOnly");
+  });
+  it("needs a saved merge mode before a grant may merge", async () => {
+    ready(); board.aril!.settings.actions.merge = true;
+    const view = await open();
+    expect(screen.getByText("Choose how a grant merges first.")).toHaveClass("taskGatesCaption");
+    expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
+    board.aril!.settings.mergeMode = "direct";
+    view.rerender(<TaskBoardView board={board} readTaskLog={async () => ({ ok: false })} />);
+    expect(screen.queryByText("Choose how a grant merges first.")).toBeNull();
+    expect(start()).toBeInTheDocument();
   });
   it("opens the Queue settings frame before Log, renders defaults and returns focus on Cancel and Escape", async () => {
     await open();

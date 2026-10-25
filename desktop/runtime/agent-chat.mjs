@@ -38,7 +38,7 @@ const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
 const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"]);
-const TASK_LOG_KINDS = new Set(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
+const TASK_LOG_KINDS = new Set(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -97,6 +97,8 @@ export function createAgentChat(options = {}) {
   const startTask = typeof options.startTask === "function" ? options.startTask : null;
   // The same Git worktrees as the dispatcher, found where it makes them. Their paths stay in this file's calls and never leave desktop main.
   const worktrees = options.worktrees || createTaskWorktrees({ root: options.dataRoot ? path.join(options.dataRoot, TASK_WORKTREE_DIRECTORY) : undefined, environment: sourceEnvironment, platform });
+  // The repository's own GitHub merge settings, so Aril proposes merge settings that fit them: `read(repositoryId, root)`.
+  const repositoryGithub = typeof options.repositoryGithub?.read === "function" ? options.repositoryGithub : null;
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
   const store = options.store || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
     ? createAgentChatStore({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
@@ -445,6 +447,11 @@ export function createAgentChat(options = {}) {
       if (held.length + imageIds.length > CHAT_IMAGES_PER_CONVERSATION) return refused("limit");
       const [board, root, runs, taskLog] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId), readRuns(), readTaskLog(repositoryId)]);
       if (!board || !root || disposed) return UNAVAILABLE;
+      let github;
+      if (repositoryGithub) {
+        try { github = await repositoryGithub.read(repositoryId, root); } catch { github = null; }
+        if (disposed) return UNAVAILABLE;
+      }
       const conversation = existing ?? await store.create(repositoryId, { provider, model, title: conversationTitle(text) });
       if (!conversation) return refused("limit");
       // A conversation that was made for this message is not kept when the message is refused.
@@ -458,7 +465,7 @@ export function createAgentChat(options = {}) {
       const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const inventory = await readWorktrees(repositoryId, root, board);
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, repositoryGithub: github, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
