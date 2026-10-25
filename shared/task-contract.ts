@@ -27,6 +27,7 @@ export type TaskImage = { id: string; type: TaskImageType; bytes: number };
 export type TaskCheckResult = { check: TaskCheck; passed: boolean; unavailable?: boolean };
 export type TaskCheckOutcome = "passed" | "failed" | "unavailable";
 export type TaskReport = { at: string; results: TaskCheckResult[]; blockReason: string | null; attention?: string | null };
+export type TaskReview = { state: "running" } | { state: "passed" | "failed"; at: string; reasons: string[] };
 export type TaskQueue = {
   status: TaskQueueStatus;
   blockedBy: string | null;
@@ -83,6 +84,7 @@ export type Task = {
   source: TaskSource | null;
   images?: TaskImage[];
   report: TaskReport | null;
+  review: TaskReview | null;
   createdAt: string;
   updatedAt: string;
 };

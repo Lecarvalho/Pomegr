@@ -777,6 +777,7 @@ never a session's.
   chose, through the owner's CLI. From 2026-10-25 (Aril operator phase 1), an owner-message prompt also holds unseen task-log entries.
   These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
+  From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
   A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This
   is the widening of 2026-10-13 (task T-95): until then only a message started a run.

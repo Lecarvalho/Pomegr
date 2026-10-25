@@ -12,7 +12,7 @@ export const features = [{ id: "f1", name: "Tasks adjustments", done: false }, {
 export const running = { id: "claude:s", title: null, state: "working", observedModel: null } as NonNullable<Task["session"]>;
 
 export function task(id: number, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: `T-${id}`, text: `Task ${id}`, columnId: "col-2", position: id, featureId: null, group: null,
     run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["pr_open"], own: null },
     state: "queued", scheduledAt: null, session: null, source: null, report: null,

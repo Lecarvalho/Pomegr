@@ -4,6 +4,7 @@ import { CheckGlyph, RingGlyph } from "./TaskGlyphs";
 import { TaskReportNote } from "./TaskReportNote";
 import { AGENT_REPORTED_LABEL, CHECK_OUTCOME_CLASSES, CHECK_OUTCOME_LABELS, CHECK_SHORT_LABELS, checkOutcome, isAgentJudged } from "./task-fields";
 import { taskStateLabels } from "./task-presentation";
+import { sessionListTime } from "../../dashboard-utils";
 
 export const STALLED_NOTE = "The session ended with no report.";
 
@@ -28,12 +29,13 @@ function reviewHeading(state: Task["state"]): string {
  * What a started task needs from the user: the state in words, the agent's report, and the checked conditions with their results.
  * `session` is the task's session line, which closes the panel.
  */
-export function TaskReviewPanel({ task, session }: { task: Pick<Task, "state" | "report" | "completeWhen">; session?: ReactNode }) {
+export function TaskReviewPanel({ task, session }: { task: Pick<Task, "state" | "report" | "completeWhen" | "review">; session?: ReactNode }) {
   const headingId = useId();
   const results = new Map<string, TaskCheckOutcome>((task.report?.results ?? []).map((entry) => [entry.check, checkOutcome(entry)]));
   const checks = TASK_CHECKS.filter((check) => task.completeWhen.checks.includes(check));
   const own = task.completeWhen.own;
   const listed = reviewListsConditions(task);
+  const review = task.state === "needs_review" ? task.review : null;
   return <section className="taskReview" aria-labelledby={headingId}>
     <div className="taskReviewHead">
       <h3 id={headingId} className="taskReviewHeading">{reviewHeading(task.state)}</h3>
@@ -57,6 +59,13 @@ export function TaskReviewPanel({ task, session }: { task: Pick<Task, "state" | 
         <span className="taskCheckResult">{AGENT_REPORTED_LABEL}</span>
       </li>}
     </ul>}
+    {review && <dl className="taskRows"><div className="taskRow isTopText">
+      <dt>Review</dt>
+      <dd>{review.state === "running" ? <span className="taskRowNone">Review running…</span> : <div className="taskRowValue">
+        <span>{review.state === "passed" ? "Passed" : "Failed"} (<time dateTime={review.at}>{sessionListTime(review.at)}</time>)</span>
+        {review.state === "failed" && <ul>{review.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul>}
+      </div>}</dd>
+    </div></dl>}
     {session}
   </section>;
 }

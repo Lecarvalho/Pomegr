@@ -173,6 +173,9 @@ function snapshotTask(task, columns, features, groups) {
       attention: typeof report.attention === "string" ? report.attention : null,
     };
   }
+  if (task.state === "needs_review" && isPlainObject(task.review) && ["passed", "failed"].includes(task.review.state)) {
+    entry.review = { state: task.review.state, at: task.review.at, reasons: task.review.reasons };
+  }
   if (isPlainObject(task.source) && Number.isInteger(task.source.number)) entry.github_issue = task.source.number;
   if (typeof task.scheduledAt === "string") entry.scheduled_at = task.scheduledAt;
   entry.updated_at = text(task.updatedAt);

@@ -16,7 +16,7 @@ const FEATURES = [{ id: SAMPLE_FEATURE_ID, name: "Upload reliability", done: fal
 const NO_RUN = { provider: null, model: null, effort: null } as const;
 
 export function sampleTask(id: string, text: string, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id, text, columnId: "col-ready", position: 0, featureId: null, group: null, run: NO_RUN, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null, createdAt: CREATED, updatedAt: CREATED, ...overrides,
   };

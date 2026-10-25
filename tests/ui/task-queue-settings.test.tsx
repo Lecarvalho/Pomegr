@@ -22,7 +22,7 @@ const FEATURE = { id: "feature-board", name: "Board", done: false };
 const STOP = new Date(2099, 0, 1, 23, 0).toISOString();
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: `T-${id}`, text: `Task ${id}`, columnId: "col-2", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "queued", scheduledAt: null, session: null, source: null, report: null,

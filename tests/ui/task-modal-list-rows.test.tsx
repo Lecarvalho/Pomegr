@@ -18,7 +18,7 @@ const taskAction = vi.fn(async () => ({ ok: true }));
 const refresh = vi.fn(async () => {});
 
 function task(id: string, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id, text: `Text of ${id}`, columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: "claude", model: "model-a", effort: "high" }, completeWhen: { checks: ["pr_open"], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,

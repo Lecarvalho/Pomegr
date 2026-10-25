@@ -22,7 +22,7 @@ const onFollowUpFailed = vi.fn();
 const board: TaskBoard = { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }] };
 
 function created(): Task {
-  return {
+  return { review: null,
     id: "T-50", text: "Write the guide", columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
     session: null, source: null, report: null, createdAt: "2026-10-12T10:00:00.000Z", updatedAt: "2026-10-12T10:00:00.000Z",

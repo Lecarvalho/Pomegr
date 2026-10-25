@@ -125,6 +125,22 @@ export function clearTaskReviewer(database, repositoryId, number) {
   preparedStatement(database, "DELETE FROM meta WHERE key IN (?, ?)").run(dispatchKey(repositoryId, number), reviewerKey(repositoryId, number));
 }
 
+export function fillTaskReviews(database, board) {
+  return { ...board, tasks: board.tasks.map((task) => {
+    let review = null;
+    if (task.state === "needs_review") {
+      const number = Number(task.id.slice(2));
+      const entered = preparedStatement(database, "SELECT at FROM task_events WHERE repository_id = ? AND number = ? AND kind = 'review' ORDER BY id DESC LIMIT 1")
+        .get(board.repositoryId, number)?.at ?? 0;
+      const verdict = preparedStatement(database, "SELECT at, verdict, reasons FROM task_reviews WHERE repository_id = ? AND number = ? AND at >= ? ORDER BY id DESC LIMIT 1")
+        .get(board.repositoryId, number, entered);
+      if (verdict) review = { state: verdict.verdict === "pass" ? "passed" : "failed", at: new Date(verdict.at).toISOString(), reasons: verdict.verdict === "pass" ? [] : JSON.parse(verdict.reasons) };
+      else if (valueOf(database, reviewerKey(board.repositoryId, number))) review = { state: "running" };
+    }
+    return { ...task, review };
+  }) };
+}
+
 export function deleteTaskReviews(database, repositoryId, number) {
   clearTaskReviewer(database, repositoryId, number);
   preparedStatement(database, "DELETE FROM task_reviews WHERE repository_id = ? AND number = ?").run(repositoryId, number);

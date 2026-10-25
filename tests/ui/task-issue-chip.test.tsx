@@ -7,7 +7,7 @@ import { taskIssueNumber, validIssueNumber } from "../../app/components/tasks/ta
 import type { Task } from "../../shared/task-contract";
 
 function task(overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: "T-34", text: "Retry a failed upload", columnId: "col-1", position: 0, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,

@@ -8,7 +8,7 @@ import { fillTaskSessions } from "./task-board.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
-import { deleteTaskReviews, ensureTaskReviews, reviewOperations } from "./task-review.mjs";
+import { deleteTaskReviews, ensureTaskReviews, fillTaskReviews, reviewOperations } from "./task-review.mjs";
 import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { deleteTaskReportHistory } from "./task-report-history.mjs";
@@ -625,7 +625,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     let asked = null;
     const gateFacts = typeof resolveGateFacts === "function" ? (id) => (asked ??= { facts: resolveGateFacts(id) }).facts : null;
     const gated = fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), rows, resolveGateFacts: gateFacts, at });
-    return fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at });
+    return fillTaskReviews(database, fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at }));
   };
 
   function readBoard(repositoryId, resolvers = {}) {

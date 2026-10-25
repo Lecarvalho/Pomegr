@@ -6,9 +6,24 @@ import { parseTaskBoard, resetTasksStoreForTests, useTasks } from "../../app/tas
 import type { Task, TaskBoard } from "../../shared/task-contract";
 
 const repositoryId = "repo-0123456789abcdef01234567";
+describe("review projection parsing", () => {
+  const at = "2026-10-25T12:00:00.000Z";
+  it.each([null, { state: "running" }, { state: "passed", at, reasons: [] }, { state: "failed", at, reasons: Array(10).fill("x".repeat(200)) }])("accepts %j", (review) => {
+    expect(parseTaskBoard(board({ tasks: [{ ...task(), review } as Task] }), repositoryId)?.tasks[0].review).toEqual(review);
+  });
+  it.each([undefined, {}, [], { state: "pass", at, reasons: [] }, { state: "running", sessionId: "private" },
+    { state: "failed", at: "yesterday", reasons: [] }, { state: "failed", at: "October 25, 2026", reasons: [] },
+    { state: "failed", at: "2026-02-30T12:00:00.000Z", reasons: [] },
+    { state: "failed", at, reasons: Array(11).fill("x") }, { state: "failed", at, reasons: ["x".repeat(201)] },
+    { state: "failed", at, reasons: [1] }, { state: "failed", at, reasons: "x" }, { state: "failed", at },
+    { state: "passed", at, reasons: ["unexpected"] }, { state: "failed", at, reasons: ["a\nb"] },
+    { state: "failed", at, reasons: [], sessionId: "private" }])("drops malformed %j without dropping the board", (review) => {
+    expect(parseTaskBoard(board({ tasks: [{ ...task(), review } as Task] }), repositoryId)?.tasks[0].review).toBeNull();
+  });
+});
 
 function task(overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: "T-1", text: "Write the changelog", columnId: "col-1", position: 0, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
