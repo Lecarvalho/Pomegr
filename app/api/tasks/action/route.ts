@@ -10,6 +10,7 @@ const ACTIONS = new Set([
   "feature_create",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings",
   "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set",
+  "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove",
 ]);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -17,7 +18,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const PAYLOAD_MAX_BYTES = 16 * 1024;
 const BODY_MAX_BYTES = PAYLOAD_MAX_BYTES + 1024;
 
-type Answer = { ok: true; taskId?: string } | { ok: false; error: string };
+type Answer = { ok: true; taskId?: string; settings?: Record<string, unknown>; entry?: Record<string, unknown> } | { ok: false; error: string };
 
 function answer(body: Answer, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -43,13 +44,14 @@ export async function POST(request: Request) {
   const { repositoryId, action, payload } = body;
   // A paired device makes a feature from a name alone; the description and app version are the desktop app's.
   if (action === "feature_create" && Object.keys(payload).some((key) => key !== "name")) return answer({ ok: false, error: "invalid" });
+  if (action === "aril_settings_set" && plainObject(payload.settings) && Object.hasOwn(payload.settings, "pairedDevices")) return answer({ ok: false, error: "invalid" });
   const serialized = JSON.stringify(payload);
   if (Buffer.byteLength(serialized, "utf8") > PAYLOAD_MAX_BYTES) return answer({ ok: false, error: "invalid" });
   try {
     const response = await fetch(`${monitorOrigin()}/internal/tasks/${action}`, {
       method: "POST",
       cache: "no-store",
-      headers: { "x-pomegr-desktop-authorization": process.env.POMEGR_MONITOR_TOKEN || "", "content-type": "application/json" },
+      headers: { "x-pomegr-desktop-authorization": process.env.POMEGR_MONITOR_TOKEN || "", "x-pomegr-lan-gateway": "1", "content-type": "application/json" },
       body: `{"repositoryId":${JSON.stringify(repositoryId)},"payload":${serialized}}`,
       signal: AbortSignal.timeout(10_000),
       redirect: "error",
@@ -58,6 +60,10 @@ export async function POST(request: Request) {
     if (!plainObject(parsed)) return answer({ ok: false, error: "unavailable" });
     if (parsed.ok === true) {
       if (!response.ok) return answer({ ok: false, error: "unavailable" });
+      if (action === "aril_settings_set" && plainObject(parsed.settings)) return answer({ ok: true, settings: parsed.settings });
+      if ((action === "aril_memory_add" || action === "aril_memory_update") && plainObject(parsed.entry)) return answer({ ok: true, entry: parsed.entry });
+      if (action === "aril_memory_remove") return answer({ ok: true });
+      if (action.startsWith("aril_")) return answer({ ok: false, error: "unavailable" });
       return answer(action === "create" && typeof parsed.taskId === "string" && TASK_ID.test(parsed.taskId) ? { ok: true, taskId: parsed.taskId } : { ok: true });
     }
     return answer({ ok: false, error: typeof parsed.error === "string" && MONITOR_ERRORS.has(parsed.error) ? parsed.error : "unavailable" });

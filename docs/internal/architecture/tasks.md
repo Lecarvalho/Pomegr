@@ -61,7 +61,9 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
 - `task_outcomes` stores one outcome per task at Done, from its events in the same transaction, without backfilling older tasks.
 - `task_scorecard_snapshots` stores one row per repository, app version, and formula; snapshots are kept when a task is deleted.
-- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, `task_log_cursors`, and `task_reviews` tables. These additive tables keep schema version 1.
+- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, `task_log_cursors`, `task_reviews`, `aril_settings`, and `aril_memory` tables. These additive tables keep schema version 1.
+- `aril_settings` holds one normalized JSON value and integer update time per repository, keyed by `repository_id`, without a rowid.
+- `aril_memory` holds at most 100 entries per repository, with an autoincrement integer ID, one-line text, and integer creation and update times.
 - Opening a store adds nullable `reviews INTEGER` and `first_review_passed INTEGER` columns to `task_outcomes` when absent, preserving existing rows.
 - Opening a store adds the nullable `pull_request INTEGER` column to `task_log` when absent, preserving existing rows.
 - `task_log` appends `started`, `assigned`, `review`, `blocked`, `requeued`, `done`, `stalled`, and `recovered` in each transition's transaction. It keeps the newest 1000 entries per repository and survives task deletion. Entry IDs never repeat, and each consumer's durable cursor only moves forward.
@@ -150,6 +152,24 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   done, and it goes in the write that deletes the feature. A store with no such row, an
   older one included, reads every feature as not done; it needs no schema change and no
   migration step (see [Done features](#done-features)).
+
+## Aril settings and memory
+
+- Settings and memory are stored and served in phase 3a; they grant no action until a grant exists in phase 4, and have no automatic behavior.
+- Each ready repository board includes `aril: { settings, memory }`; memory is oldest first, ordered by creation time then ID, and unavailable or denied boards omit owner content.
+- `actions` has boolean `start`, `review`, `sendBack`, `merge`, and `writeTasks`, all false by default.
+- `limits` has nullable integers: `hours` 1–72, `starts` 1–100, `concurrent` 1–10, `sendBacks` 0–10, and `allowancePercent` 1–100; all default to null, meaning not settled yet, so Aril must ask.
+- `concurrent` also obeys the queue's parallel group bound, currently 16; there is no separate per-repository queue limit setting.
+- `workRules` defaults to an empty list and holds at most 20 `{ kind, value }` records: `tag`, `text`, `feature`, or `tasks`.
+- A tag is 1–40 characters without whitespace, using the board tag parser's word syntax and reserved-image exclusion; the board display retains its existing 24-character bound.
+- A text rule is one nonblank line of 1–80 characters without control characters; a feature rule names an existing feature of that board; a tasks rule names 1–50 existing task IDs of that board.
+- `reviewer` defaults to `{ provider: null, model: null, differentFromBuilder: false }`; provider is null, `claude`, or `codex`, model is null or at most 120 characters normalized like a task run model, and `differentFromBuilder` is boolean.
+- `pairedDevices` is boolean and defaults to false; only a desktop-token action may set it.
+- `aril_settings_set` accepts exactly `{ settings }`, with any subset of the five top-level settings fields; each supplied field replaces that whole field, with every nested field required and unknown keys rejected, and answers `{ ok: true, settings }`.
+- `aril_memory_add` accepts `{ text }`, `aril_memory_update` accepts `{ id, text }`, and both answer `{ ok: true, entry: { id, text, createdAt, updatedAt } }`; `aril_memory_remove` accepts `{ id }` and answers `{ ok: true }`.
+- Memory text is a nonblank line of 1–300 characters with no control characters; the 101st entry is refused with `limit`, and update or removal of an unknown ID in that repository answers `not_found`.
+- The paired action route refuses all four actions unless that repository's stored `pairedDevices` is true; a paired settings action containing `settings.pairedDevices` is always `invalid`.
+- No agent route, MCP tool, Aril proposal, or provider prompt reads or changes these settings or memory in this slice.
 
 ## Record
 
@@ -2637,6 +2657,9 @@ serves no other client.
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
+| `POST /internal/tasks/aril_settings_set`, `aril_memory_add`, `aril_memory_update`, `aril_memory_remove` | Desktop token; paired proxy additionally gated by stored `pairedDevices` | Fixed payloads and settings or memory entry answers in [Aril settings and memory](#aril-settings-and-memory); no board in these action answers |
+| `POST /api/tasks/action` with an Aril action | Authenticated paired gateway; opt-in checked by the monitor using the proxy's fixed paired marker | Same fixed payloads and answers; `settings.pairedDevices` is refused even after opt-in |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` field `aril` | Existing board read gate, including paired devices regardless of the edit switch | Normalized settings and ordered memory entries; no grant or action authority |
 | `POST /internal/tasks/review-plan` | Desktop main, desktop token; no browser or paired route | Existing `{ repositoryId, payload }` envelope; payload `{ id }` or `{ id, provider, model, effort }`; answers the private review plan |
 | `pomegr:task-review-start` IPC | Trusted desktop main frame only, behind native confirmation | Repository ID and task ID only; answers one fixed start status, never the private review plan |
 | `POST /internal/tasks/review-abort` | Desktop main, desktop token | Existing repository envelope with `{ id, token }`; clears only the matching review dispatch |
@@ -2792,6 +2815,10 @@ serves no other client.
   `feature-get`.
 
 ## Privacy
+
+- Aril settings hold fixed values, task and feature IDs, a model name, and short owner-written rule text; memory holds owner-approved one-line text, entry IDs, and timestamps.
+- Settings and memory reach the trusted desktop renderer and a paired device through the board, and their fixed action answers reach the authorized caller; neither reaches `/api/state`, observation, an agent tool, or Aril's prompt in this slice.
+- Both are retained on task deletion and must be deleted with the repository's board if board deletion is introduced; task deletion removes its ID from tasks rules and removes any such rule left empty, in the same transaction.
 
 - From 2026-10-25 (Aril operator phase 2), `Task.review` sends the current review state, latest verdict time, and stored one-line reasons to the trusted desktop renderer and a paired device through `GET /api/tasks`, under its existing read gate.
 - The latest verdict and its reasons for a task in Review also reach Aril's provider prompt through the board snapshot; the reviewer session ID never leaves the private store through either projection.

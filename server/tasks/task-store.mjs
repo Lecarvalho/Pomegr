@@ -5,6 +5,7 @@ import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
+import { arilMemoryAdd, arilMemoryRemove, arilMemoryUpdate, arilSettingsSet, ensureArilSettings, pruneArilTask, readAril } from "./task-aril-settings.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
@@ -117,7 +118,6 @@ function runTransaction(database, work) {
     throw error;
   }
 }
-
 function createFreshStore(database) {
   runTransaction(database, () => {
     createSchema(database);
@@ -126,12 +126,12 @@ function createFreshStore(database) {
     ensureScorecardSnapshots(database);
     ensureTaskLog(database);
     ensureTaskReviews(database);
+    ensureArilSettings(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
   database.exec("PRAGMA journal_mode = WAL");
 }
-
 // Throws unless the file is an intact store of exactly this version.
 function verifyExistingStore(database) {
   const check = database.prepare("PRAGMA quick_check").get();
@@ -140,7 +140,6 @@ function verifyExistingStore(database) {
   if (!version || version.value !== String(TASK_STORE_SCHEMA_VERSION)) throw new Error("TASK_STORE_VERSION");
   for (const table of TABLES) database.prepare(`SELECT 1 FROM ${table} LIMIT 0`).all();
 }
-
 // The open database, or null when the store cannot be used.
 function openDatabase(directory) {
   let database = null;
@@ -164,6 +163,7 @@ function openDatabase(directory) {
       ensureScorecardSnapshots(database);
       ensureTaskLog(database);
       ensureTaskReviews(database);
+      ensureArilSettings(database);
     }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
@@ -290,7 +290,6 @@ function updatedPlacement(database, repositoryId, stored, input) {
   if (!featureExists(database, repositoryId, input.featureId)) return { error: "not_found" };
   return featureIsDone(database, repositoryId, input.featureId) ? { error: "conflict" } : { featureId: input.featureId };
 }
-
 function deleteTask({ database, repositoryId, now }, payload) {
   const input = normalizeDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
@@ -304,6 +303,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskEvents(database, repositoryId, input.number);
   deleteTaskOutcome(database, repositoryId, input.number);
   deleteTaskReviews(database, repositoryId, input.number);
+  pruneArilTask({ database, repositoryId, now }, payload.id);
   deleteTaskPullRequestSeen(database, repositoryId, input.number);
   deleteTaskBlockHold(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
@@ -510,9 +510,9 @@ function removeFromQueue({ database, repositoryId, now }, payload) {
   releasePause({ database, repositoryId, now }, taskIdFromNumber(input.number));
   return { ok: true };
 }
-
 // Actions by name.
 const ACTIONS = Object.freeze({
+  aril_settings_set: arilSettingsSet, aril_memory_add: arilMemoryAdd, aril_memory_update: arilMemoryUpdate, aril_memory_remove: arilMemoryRemove,
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   feature_create: createFeature, feature_update: updateFeature, feature_delete: deleteFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_group: groupTasks, queue_ungroup: ungroupTasks, queue_settings: queueSettings,
@@ -625,9 +625,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     let asked = null;
     const gateFacts = typeof resolveGateFacts === "function" ? (id) => (asked ??= { facts: resolveGateFacts(id) }).facts : null;
     const gated = fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), rows, resolveGateFacts: gateFacts, at });
-    return fillTaskReviews(database, fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at }));
+    return { ...fillTaskReviews(database, fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at })), aril: readAril(database, board.repositoryId) };
   };
-
   function readBoard(repositoryId, resolvers = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
     if (!isRepositoryId(repositoryId)) return emptyBoard("", "unavailable");
@@ -673,12 +672,12 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       return null;
     }
   }
-
   function apply(repositoryId, action, payload, resolvers = {}) {
     if (!isRepositoryId(repositoryId)) return { ok: false, error: "invalid" };
     let taskId = null;
     let featureId = null;
     let added = null;
+    let arilResult = null;
     const handler = typeof action === "string" && Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
     if (!handler) return { ok: false, error: "unsupported" };
     // A store that cannot be used refuses the write before any handler can touch it.
@@ -691,6 +690,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         }
         const result = handler({ database, repositoryId, ensureRepository, now, recentAdds, newGroupId, resolveOutcomeFacts: resolvers.resolveOutcomeFacts ?? null }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
+        if (action.startsWith("aril_")) arilResult = result;
         added = typeof result.addKey === "string" ? { key: result.addKey, number: result.number } : null;
         featureId = typeof result.featureId === "string" ? result.featureId : null;
         settleGroupsAndReady(repositoryId);
@@ -704,13 +704,13 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       });
       // An agent's add is remembered only once it has committed, so a rolled-back add is never answered as made.
       if (added) recentAdds.remember(added.key, added.number);
+      if (arilResult) return arilResult;
       if (action === "delete" || action === "agent_remove") removeTaskImageFiles(directory, repositoryId, payload?.id);
       return { ok: true, board: served(board.projected, board.rows, resolvers), ...(taskId === null ? {} : { taskId }), ...(featureId === null ? {} : { featureId }) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }
   }
-
   function promotedIssues(repositoryId) {
     const promoted = new Map();
     if (!database || !isRepositoryId(repositoryId)) return promoted;

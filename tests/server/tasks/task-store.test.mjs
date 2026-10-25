@@ -63,7 +63,7 @@ function insertTask(database, repositoryId, columnId, overrides = {}) {
   });
 }
 
-const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
+const BOARD_KEYS = ["aril", "columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
 const COLUMN_KEYS = ["id", "name", "position", "role"];
 const FEATURE_KEYS = ["done", "id", "name"];
 const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "review", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
@@ -207,10 +207,10 @@ test("the served board holds only the contract keys and never private store fiel
   assert.equal(JSON.stringify(wire).includes("secret-dispatch-token"), false);
   assert.equal(JSON.stringify(wire).includes("queue_position"), false);
 
-  // The same key sets hold for a board with no tasks and for an unavailable one.
+  // Ready boards carry Aril defaults; unavailable boards carry no owner content.
   const empty = JSON.parse(JSON.stringify(store.readBoard(OTHER_REPOSITORY)));
   assert.deepEqual(keysOf(empty), BOARD_KEYS);
-  assert.deepEqual(keysOf(JSON.parse(JSON.stringify(store.readBoard("nope")))), BOARD_KEYS);
+  assert.deepEqual(keysOf(JSON.parse(JSON.stringify(store.readBoard("nope")))), BOARD_KEYS.filter((key) => key !== "aril"));
 });
 
 test("a store from before the done flag opens with every feature not done, then keeps the flag it is given", async (t) => {

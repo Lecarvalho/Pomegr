@@ -108,6 +108,28 @@ describe("POST /api/tasks/action", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it("forwards Aril action results without the board and preserves paired identity for the monitor gate", async () => {
+    const limits = { hours: null, starts: 3, concurrent: null, sendBacks: null, allowancePercent: null };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(monitorAnswer({ ok: true, settings: { limits } }));
+    const settings = { repositoryId, action: "aril_settings_set", payload: { settings: { limits } } };
+    expect(await (await post(settings)).json()).toEqual({ ok: true, settings: { limits } });
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ headers: {
+      "x-pomegr-desktop-authorization": TOKEN, "x-pomegr-lan-gateway": "1", "content-type": "application/json",
+    } });
+
+    fetchMock.mockResolvedValueOnce(monitorAnswer({ ok: true, entry: { id: 1, text: "Use pull requests", createdAt: 1, updatedAt: 1 } }));
+    const memory = { repositoryId, action: "aril_memory_add", payload: { text: "Use pull requests" } };
+    expect(await (await post(memory)).json()).toEqual({ ok: true, entry: { id: 1, text: "Use pull requests", createdAt: 1, updatedAt: 1 } });
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)![1]?.body))).toEqual({ repositoryId, payload: memory.payload });
+  });
+
+  it("does not let a paired device set pairedDevices through Aril settings", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const body = { repositoryId, action: "aril_settings_set", payload: { settings: { pairedDevices: true } } };
+    expect(await (await post(body)).json()).toEqual({ ok: false, error: "invalid" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("answers the monitor's fixed error, and unavailable for anything else, never its text", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock.mockResolvedValueOnce(monitorAnswer({ ok: false, error: "conflict", detail: "PRIVATE" }, 409));

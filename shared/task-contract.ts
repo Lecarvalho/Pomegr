@@ -89,6 +89,15 @@ export type Task = {
   updatedAt: string;
 };
 
+export type ArilSettings = {
+  actions: { start: boolean; review: boolean; sendBack: boolean; merge: boolean; writeTasks: boolean };
+  limits: { hours: number | null; starts: number | null; concurrent: number | null; sendBacks: number | null; allowancePercent: number | null };
+  workRules: ({ kind: "tag" | "text" | "feature"; value: string } | { kind: "tasks"; value: string[] })[];
+  reviewer: { provider: TaskProvider | null; model: string | null; differentFromBuilder: boolean };
+  pairedDevices: boolean;
+};
+export type ArilMemoryEntry = { id: number; text: string; createdAt: number; updatedAt: number };
+
 export type TaskBoard = {
   version: 1;
   readiness: TaskBoardReadiness;
@@ -99,6 +108,8 @@ export type TaskBoard = {
   queue: TaskQueue;
   // Last committed Codex client-catalog models for the Run on list; never entitlement.
   runModels?: TaskRunModels;
+  // Present on a ready repository board; settings grant no actions.
+  aril?: { settings: ArilSettings; memory: ArilMemoryEntry[] };
 };
 
 export type TaskRunModels = { codex: { id: string; label: string | null }[] };

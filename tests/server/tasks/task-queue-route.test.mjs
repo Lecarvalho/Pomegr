@@ -270,7 +270,7 @@ test("GET /api/tasks carries the pause reason and never a next start, and a GET 
   setMeta(directory, pauseReasonKey(REPOSITORY_ID), "start_failed");
   const idle = await send(port, { method: "GET", path: query, headers: withToken });
   assert.equal(idle.json.queue.pauseReason, null);
-  for (const served of [running, paused, idle]) assert.deepEqual(Object.keys(served.json).toSorted(), ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
+  for (const served of [running, paused, idle]) assert.deepEqual(Object.keys(served.json).toSorted(), ["aril", "columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
   assert.equal(calls.includes("nextQueueStarts"), false);
   const denied = await send(port, { method: "GET", path: query, headers: {} });
   assert.deepEqual(denied.json.queue, { status: "idle", blockedBy: null, pauseReason: null, order: [] });
@@ -278,7 +278,17 @@ test("GET /api/tasks carries the pause reason and never a next start, and a GET 
 });
 
 test("the route serves only the contract's four queue keys even when the store hands back more", async (context) => {
-  const base = { version: 1, readiness: "ready", columns: [], features: [], tasks: [] };
+  const base = {
+    version: 1, readiness: "ready", columns: [], features: [], tasks: [],
+    aril: {
+      settings: {
+        actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+        limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+        workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+      },
+      memory: [],
+    },
+  };
   const board = (queue) => ({ ...base, queue });
   for (const [queue, expected] of [
     [{ status: "paused", blockedBy: "T-1", pauseReason: "start_failed", order: ["T-1"], nextStart: "T-1", path: "C:\\secret" }, { status: "paused", blockedBy: "T-1", pauseReason: "start_failed", order: ["T-1"] }],
