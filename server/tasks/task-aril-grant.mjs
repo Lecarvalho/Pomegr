@@ -64,6 +64,11 @@ function selected(task, rules) {
       : kind === "feature" ? task.featureId === value : kind === "tasks" && value.includes(task.id));
 }
 
+export function grantStartAllowed(database, repositoryId, task, at) {
+  const grant = readGrant(database, repositoryId, at);
+  return grant?.active === true && grant.actions.start && selected(task, readAril(database, repositoryId).settings.workRules);
+}
+
 function sendBackFor(database, repositoryId, grant, task, rules) {
   if (!grant.actions.sendBack || grant.limits.sendBacks === null || task?.state !== "needs_review"
     || task.review?.state !== "failed" || !selected(task, rules)) return null;
@@ -139,6 +144,24 @@ function recordGrantMerge({ database, transaction, repositoryId, payload, now })
   });
 }
 
+function grantAfterMet(database, repositoryId, task, board) {
+  return (task.after ?? []).every((id) => {
+    const parent = board.tasks.find((other) => other.id === id);
+    return !parent || parent.state === "done" || (parent.state === "needs_review" && parent.review?.state === "passed")
+      || Boolean(preparedStatement(database, "SELECT 1 FROM task_log WHERE repository_id = ? AND number = ? AND kind IN ('merged', 'grant_merge') LIMIT 1")
+        .get(repositoryId, Number(id.slice(2))));
+  });
+}
+
+export function grantStartGates(input) {
+  const { database, repositoryId, board, taskId } = input;
+  const task = board.tasks.find((candidate) => candidate.id === taskId);
+  if (!grantAfterMet(database, repositoryId, task, board)) return { ok: false, reasons: [], early: true, after: true };
+  // The grant has settled this task's dependencies; all other start gates keep their existing inputs.
+  const gateBoard = { ...board, tasks: board.tasks.map((other) => other.id === taskId ? { ...other, after: [] } : other) };
+  return startGates({ ...input, board: gateBoard });
+}
+
 function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, resolvePullRequestFacts, now }) {
   return transaction(() => {
     const at = now(), steps = [], sendBacks = [];
@@ -179,7 +202,7 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, res
       for (const task of candidates.filter((task) => task.columnId === ready).sort((a, b) => a.position - b.position || Number(a.id.slice(2)) - Number(b.id.slice(2)))) {
         if (steps.length >= 16 || available <= 0) break;
         const row = rows.tasks.find((row) => `T-${row.number}` === task.id);
-        if (!startable(row, at) || !startGates({ database, repositoryId, board, rows, taskId: task.id, resolveGateFacts, at }).ok) continue;
+        if (!startable(row, at) || !grantStartGates({ database, repositoryId, board, rows, taskId: task.id, resolveGateFacts, at }).ok) continue;
         steps.push({ repositoryId, taskId: task.id, kind: "start" });
         available -= 1;
       }

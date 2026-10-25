@@ -77,30 +77,31 @@ export const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.s
   && !isLive(parseStoredDispatch(row.dispatch_token), now);
 
 // `start-plan`.
-export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, imagePaths = null, featureOf = null, now }) {
+export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, grantAllows = null, imagePaths = null, featureOf = null, now }) {
   const separate = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.hasOwn(payload, "worktree");
-  if (separate && payload.worktree !== true) return { ok: false, error: "invalid" };
-  const number = isRepositoryId(repositoryId) ? taskNumber(payload, separate ? ["id", "worktree"] : ["id"]) : undefined;
+  const grant = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.hasOwn(payload, "grant");
+  if ((separate && payload.worktree !== true) || (grant && payload.grant !== true)) return { ok: false, error: "invalid" };
+  const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id", ...(separate ? ["worktree"] : []), ...(grant ? ["grant"] : [])]) : undefined;
   if (number === undefined) return { ok: false, error: "invalid" };
   const row = loadRow(database, repositoryId, number);
   if (!row) return { ok: false, error: "not_found" };
   const task = normalizeStoredTask(row);
   if (!task) return { ok: false, error: "unavailable" };
   const at = now();
-  if (!startable(row, at)) return { ok: false, error: "not_startable" };
+  if (!startable(row, at) || (grant && !transaction(() => grantAllows?.(task, at)))) return { ok: false, error: "not_startable" };
   const provider = task.run.provider ?? "claude";
   if (!TASK_START_PROVIDERS.includes(provider)) return { ok: false, error: "unsupported_provider" };
   let facts;
   try { facts = resolveFacts(provider); } catch { facts = null; }
   if (typeof facts?.root !== "string" || facts.root.length === 0) return { ok: false, error: "unavailable" };
   if (facts.pluginReady !== true) return { ok: false, error: "plugin_missing" };
-  const held = gatesHold(task.id);
+  const held = gatesHold(task.id, grant);
   if (held === "tree_dirty" ? !separate : held !== false) return { ok: false, error: held === "tree_dirty" ? "tree_dirty" : "gate_held" };
   const token = crypto.randomBytes(32).toString("base64url");
   const minted = transaction(() => {
     // The state may have moved since the read above; the mint stands only if the task is still startable.
     const fresh = loadRow(database, repositoryId, number);
-    if (!fresh || !startable(fresh, at)) return null;
+    if (!fresh || !startable(fresh, at) || (grant && !grantAllows?.(normalizeStoredTask(fresh), now()))) return null;
     preparedStatement(database, "UPDATE tasks SET dispatch_token = ? WHERE repository_id = ? AND number = ?")
       .run(`${digestOf(token)}:${at}`, repositoryId, number);
     return { worktree: separate || worktreeRequired(database, fresh) };

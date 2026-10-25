@@ -6,7 +6,7 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { arilMemoryAdd, arilMemoryRemove, arilMemoryUpdate, arilSettingsSet, ensureArilSettings, pruneArilTask, readAril } from "./task-aril-settings.mjs";
-import { ensureArilGrants, grantOperations, grantStart, grantStop, readGrant } from "./task-aril-grant.mjs";
+import { ensureArilGrants, grantOperations, grantStart, grantStartAllowed, grantStartGates, grantStop, readGrant } from "./task-aril-grant.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
@@ -747,16 +747,16 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     try { database?.close(); } catch { /* already closed or unusable */ }
     database = null;
   }
-  // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
     featureOf: (featureId) => readFeature({ database, repositoryId, feature: featureId }),
     imagePaths: (taskId) => taskImagePaths({ database, directory, repositoryId, taskId }),
-    gatesHold: (taskId) => {
+    grantAllows: (task, at) => grantStartAllowed(database, repositoryId, task, at),
+    gatesHold: (taskId, grant) => {
       const rows = loadRows(repositoryId);
       const board = projectBoard(repositoryId, rows, { at: now() });
       if (!board) return true;
-      const gates = startGates({ database, repositoryId, board, rows, taskId, resolveGateFacts, at: now(), manual: true });
+      const gates = (grant ? grantStartGates : startGates)({ database, repositoryId, board: grant ? fillTaskReviews(database, board) : board, rows, taskId, resolveGateFacts, at: now(), manual: !grant });
       if (gates.ok) return false;
       return gates.early !== true && gates.reasons.length === 1 && gates.reasons[0] === "tree_dirty" ? "tree_dirty" : true;
     },

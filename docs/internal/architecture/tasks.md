@@ -215,9 +215,10 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - A merge leaves the task in Review; the owner uses **Mark done**.
 - Selection uses current settings work rules, with any matching rule sufficient: an exact tag from the leading tag run (the board parser with the settings' 40-character bound), a case-insensitive text substring, a matching feature ID, or a listed task ID; no rules select nothing.
 - Reviews require the grant's `review` switch, `needs_review`, a linked builder, no review dispatch (including an expired dispatch), no bound reviewer, and no verdict since the latest entry into Review; earlier verdicts do not exclude the task.
-- Starts require the grant's `start` switch, a Ready card in startable state with no linked session or live dispatch, and no unfinished task in its `after` list; selection follows Ready position then task number. Ready is the store's Ready column, as the queue reads it; a board without the fixed columns has none, so a grant starts nothing there.
+- Starts require the grant's `start` switch, a Ready card in startable state with no linked session or live dispatch, and satisfied [order dependencies](#runs-after); selection follows Ready position then task number. Ready is the store's Ready column, as the queue reads it; a board without the fixed columns has none, so a grant starts nothing there.
 - Available session capacity is computed once per repository as `limits.concurrent` minus linked, unreported builders in flight minus running bound reviews; each selected review consumes one slot first, then builder starts consume the remaining slots, also capped by `limits.starts - startsUsed`; reviews do not consume the starts allowance.
-- Each start passes the same `startGates`, committed gate facts resolver, repository threshold, and earlier-task checks as `nextQueueStarts`; when a queue stop time is set, the queue window hold also applies, including its start time.
+- Grant selection settles dependencies separately, then uses the same `startGates`, committed gate facts resolver, repository threshold, and earlier-task checks as `nextQueueStarts`; when a queue stop time is set, the queue window hold also applies, including its start time.
+- Granted builder launches send `start-plan` exactly `{ id, grant: true }`, optionally with `worktree: true`. The plan requires an active grant with `actions.start` and a matching current work rule; otherwise it answers `not_startable`. It rechecks this authority before minting a dispatch token. Dependency holds use the same grant rule as selection; other starts keep Done-only dependency holds.
 - `grant-record` accepts `{ repositoryId, taskId, kind }` after a successful launch; `start` increments `starts_used`, `review` does not, and both append `grant_start` or `grant_review` to the task log in the same transaction, ending an exhausted grant with `starts_used`.
 - A record after the grant ends returns `not_active` and changes neither count nor log; an unknown task returns `not_found`, and recording does not launch or retry work.
 - `grant-check` accepts `{ repositoryId }` and answers `{ ok: true, active }` for an in-flight authorization check.
@@ -767,8 +768,8 @@ Backlog the way Ready reads, before any card is queued.
 
 ## Runs after
 
-Task T-101, approved by the product owner on 2026-10-14. The owner says that a task runs
-after other tasks of the same board: it never starts until each of them is Done or deleted.
+Task T-101, approved by the product owner on 2026-10-14. A task runs after other tasks of the same board.
+Queue and manual starts wait until each parent is Done or deleted; grants use the rule below.
 
 - **A hold, not an order.** A task that runs after an unfinished task is not in
   `queue.order` and is no candidate for a start, like a scheduled task before its time. It
@@ -776,9 +777,10 @@ after other tasks of the same board: it never starts until each of them is Done 
   Once every task it runs after is Done or deleted, it starts at its place by the
   [Queue](#queue) rule. The one ordering rule stays `orderQueue`.
 - **Done or deleted frees it.** Review is not enough. The owner's Mark done or explicit move to Done frees the task.
+- **Under a grant only**, start selection and launch also accept a parent in Review whose latest verdict since entering Review passes. A recorded `task_log` event of `merged` or `grant_merge` for that parent also satisfies the dependency. Every parent must qualify; queue and manual starts still require Done or deletion.
 - A deleted task leaves every dependency list in the write that deletes it.
 - Dependency checks use the persisted task state, never its column name. Board order, wait reasons, and start eligibility use that state.
-- **Every start.** The queue never starts the task, and `start-plan` answers `gate_held`
+- **Queue and manual starts.** The queue never starts the task, and `start-plan` answers `gate_held`
   for a manual start (`startGates` in `server/tasks/task-queue-advance.mjs`). It is judged
   before the start gates and is no start gate.
 - **Explained like the other holds.** `queue.waits` carries `runs_after` with the

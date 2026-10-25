@@ -56,6 +56,17 @@ function harness({ plan = basePlan(), answer, createImpl, confirmImpl, overrides
 const go = (h, id = "T-3", repo = repositoryId, event = trusted) => h.start.start(event, repo, id);
 const aborted = (h) => h.calls.filter((c) => c.url.endsWith("start-abort"));
 
+test("only granted builder starts post grant authority to start-plan", async () => {
+  for (const mode of ["granted", "queued", "manual", "paired"]) {
+    const h = harness();
+    const result = mode === "granted" ? await h.start.startGranted(repositoryId, "T-3", async () => true)
+      : mode === "queued" ? await h.start.startQueued(repositoryId, "T-3")
+        : mode === "paired" ? await h.start.startPaired(repositoryId, "T-3", undefined, async () => true) : await go(h);
+    assert.deepEqual(result, { status: "started" });
+    assert.deepEqual(h.calls[0].body, { repositoryId, payload: { id: "T-3", ...(mode === "granted" ? { grant: true } : {}) } });
+  }
+});
+
 test("granted builder starts never confirm and recheck authority at all four boundaries", async () => {
   for (let revokedAt = 1; revokedAt <= 5; revokedAt++) {
     const order = [];
