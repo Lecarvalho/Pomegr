@@ -41,6 +41,20 @@ test("owner turns show only valid unseen log entries and acknowledge the highest
   assert.deepEqual(logCalls(h, "ack").map((call) => call.body), [{ repositoryId, payload: { consumer: "aril", through: 5 } }]);
 });
 
+test("grant usage transitions reach Aril with only a provider ID, and malformed ones are dropped", async (context) => {
+  const h = await chatHarness(context);
+  const usage = (id, kind, reason) => logEntry(id, { task: null, kind, reason });
+  h.state.actions = (action) => action === "log-read" ? logAnswer([usage(1, "grant_usage_hold", "codex"), usage(2, "grant_usage_resume", "codex"),
+    usage(3, "grant_usage_hold", "private provider error"), logEntry(4, { kind: "grant_usage_hold", reason: "codex" }), usage(5, "grant_usage_hold", undefined),
+    logEntry(6, { reason: "codex" }), usage(7, "grant_usage_resume", "claude")]) : { ok: true };
+  const sent = await send(h);
+  const prompt = h.runs[0].options.prompt;
+  assert.match(prompt, /<task_log_since_last_turn>\n1970-01-01T00:00:01.000Z provider:codex grant_usage_hold\n1970-01-01T00:00:02.000Z provider:codex grant_usage_resume\n1970-01-01T00:00:07.000Z provider:claude grant_usage_resume\n<\/task_log_since_last_turn>/u);
+  assert.doesNotMatch(prompt, /private provider error/u);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Done." }, sent.conversationId);
+  assert.deepEqual(logCalls(h, "ack").map((call) => call.body.payload.through), [7]);
+});
+
 test("review transitions reach Aril and advance its cursor", async (context) => {
   const h = await chatHarness(context);
   const kinds = ["review_started", "review_passed", "review_failed"];

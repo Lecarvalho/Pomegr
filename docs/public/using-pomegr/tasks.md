@@ -58,19 +58,33 @@ Only the desktop app can change that permission.
 ### Aril grants
 
 Settings alone grant no actions. To start a grant, allow **Start tasks**, **Start reviews**,
-**Merge on green**, or any combination, set **Hours**, **Starts**, and **Concurrent sessions**, and add a work rule.
+**Merge on green**, or any combination, set **Hours**, **Tasks**, **Tasks at a time**, and **Usage limit %**,
+and add a work rule. If **Send work back** is enabled, also set **Send-backs per task**.
 Save your changes, then select **Start grant** in the panel's **Grant** section and confirm.
-The desktop app starts the selected Ready tasks and reviews within the grant's limits,
-without asking for each start. With **Merge on green**, it merges a task's open pull request
+
+The limits count tasks and provider usage, not sessions. **Tasks** is how many different tasks the grant takes on;
+a task counts once, when the grant first starts it, and its reviews and send-backs are part of that task.
+**Tasks at a time** is how many of those tasks are open at once. A task is open until it is merged, marked done,
+or needs you: blocked, out of send-backs, or a refused merge for its current pull-request head.
+When the grant has taken **Tasks** tasks, it starts no new task but keeps reviewing, sending back, and merging
+the open ones, and it ends when none remains open. **Usage limit %** is the provider usage at or above which the grant
+starts nothing.
+
+The desktop app starts the selected Ready tasks and reviews without asking for each start.
+With **Merge on green**, it merges a task's open pull request
 only when the task needs review, its latest review passed, and CI passed for the known pull-request head.
 The **Merge method** setting uses the repository default unless you choose **Squash**,
 **Merge commit**, or **Rebase**. If the repository allows several methods, choose one before the grant runs.
 Aril attempts each head commit at most once. A merge leaves the task in Review for your **Mark done**.
 When **Send work back** is enabled and **Send-backs per task**
 is set, it sends matching tasks with failed reviews to a new builder session in the same worktree.
-The strip above the board shows the active grant's end time; the panel also shows starts used.
+The strip above the board shows the active grant's end time; the panel also shows the tasks used.
 Select **Stop grant** to stop further grant actions at once. Running sessions continue.
 The panel shows when the last grant ended and why; a grant never renews itself.
+
+The grant starts no task, review, or send-back, and writes no tasks, for a provider whose usage is
+unknown, stale, unavailable, or at the usage limit. It resumes when that usage is current and below
+the limit. The task log shows each pause and resume with the provider name. Merges are never held for usage.
 
 A paired device can always stop an active grant; starting one requires that permission.
 

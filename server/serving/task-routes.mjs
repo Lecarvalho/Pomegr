@@ -349,7 +349,7 @@ function sessionOfRepository(resolveSession, sessionId, repositoryId) {
 }
 
 // `POST /internal/tasks/<action>`.
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null, resolveOutcomeFacts = null, resolvePullRequestFacts = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveUsage = null, resolveCheckFacts = null, resolveOutcomeFacts = null, resolvePullRequestFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
@@ -382,7 +382,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     writeActionResult(response, 400, rejected("invalid"));
     return;
   }
-  if (GRANT_ACTIONS.includes(action)) return serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolvePullRequestFacts, action, body });
+  if (GRANT_ACTIONS.includes(action)) return serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, action, body });
   if (action === "queue-next") {
     serveQueueNext({ response, taskStore, resolveGateFacts, body });
     return;

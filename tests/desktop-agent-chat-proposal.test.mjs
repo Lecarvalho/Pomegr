@@ -53,6 +53,16 @@ test("every operation is accepted in its minimal form and kept as written", () =
   for (const [source, expected] of accepted) assert.deepEqual(normalizeOperation(source), expected, source.op);
 });
 
+test("Aril settings proposals accept only the current limit names", () => {
+  const current = { limits: { hours: 2, tasks: 5, tasksAtATime: 2, sendBacks: 1, usagePercent: 80 } };
+  assert.deepEqual(normalizeOperation({ op: "set_aril_settings", settings: current }), { op: "set_aril_settings", settings: current });
+  for (const limits of [
+    { hours: 2, starts: 5, concurrent: 2, sendBacks: 1, allowancePercent: 80 },
+    { ...current.limits, starts: 5 },
+    { ...current.limits, allowancePercent: 80 },
+  ]) assert.equal(normalizeOperation({ op: "set_aril_settings", settings: { limits } }), null);
+});
+
 test("a full create_task is normalized: flat run and complete-when fields become partial objects", () => {
   const operation = normalizeOperation({
     op: "create_task", text: "  Ship it  ", feature: " Auth ", provider: "claude", model: "claude-opus-4-1[1m]", effort: "high",

@@ -6,7 +6,7 @@ import { AGENT_CHAT_INSTRUCTIONS, boardSnapshot, composePrompt, PROMPT_LIMIT, pr
 import { chatHarness, seed, pendingProposal, withProposal, repositoryId } from "./helpers/agent-chat-harness.mjs";
 
 const actions = { start: false, review: true, sendBack: false, merge: false, writeTasks: false };
-const limits = { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null };
+const limits = { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null };
 const reviewer = { provider: null, model: null, differentFromBuilder: false };
 const settings = { actions, mergeMethod: null, limits, workRules: [], reviewer };
 const operations = [
@@ -29,10 +29,14 @@ test("Aril settings mirror phase 3a fields, nested shapes, numeric and text boun
     { reviewer: { ...reviewer, differentFromBuilder: null } }, { reviewer: { ...reviewer, extra: 1 } },
     { reviewer: { ...reviewer, model: "x".repeat(121) } }, { reviewer: { ...reviewer, model: "bad/model" } }, { reviewer: { ...reviewer, model: "C:private" } },
   ]) assert.equal(validSettings(bad), null, JSON.stringify(bad));
-  for (const [field, min, max] of [["hours", 1, 72], ["starts", 1, 100], ["concurrent", 1, 10], ["sendBacks", 0, 10], ["allowancePercent", 1, 100]]) {
+  for (const [field, min, max] of [["hours", 1, 72], ["tasks", 1, 100], ["tasksAtATime", 1, 10], ["sendBacks", 0, 10], ["usagePercent", 1, 100]]) {
     for (const value of [null, min, max]) assert.ok(validSettings({ limits: { ...limits, [field]: value } }));
     for (const value of [min - 1, max + 1, 1.5, "1", true]) assert.equal(validSettings({ limits: { ...limits, [field]: value } }), null);
   }
+  for (const retired of [
+    { hours: 2, starts: 5, concurrent: 2, sendBacks: 1, allowancePercent: 50 },
+    { ...limits, starts: 5 }, { ...limits, allowancePercent: 50 },
+  ]) assert.equal(validSettings({ limits: retired }), null);
   for (const provider of [null, "claude", "codex"]) assert.ok(validSettings({ reviewer: { ...reviewer, provider, model: "x".repeat(120) } }));
   for (const [model, normalized] of [["", null], [" model-1 ", "model-1"], ["model@1+fast", "model@1+fast"]]) assert.equal(validSettings({ reviewer: { ...reviewer, model } }).settings.reviewer.model, normalized);
   const rule = (kind, value) => validSettings({ workRules: [{ kind, value }] });

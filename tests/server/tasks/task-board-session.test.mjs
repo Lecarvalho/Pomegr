@@ -343,7 +343,7 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
     catalogSessions: () => { touched.push(["catalog"]); return [catalogRow()]; },
     repositoryInventory: new Proxy({}, { get(_target, key) { touched.push(["inventory", String(key)]); return undefined; } }),
   });
-  assert.deepEqual(Object.keys(lookups).toSorted(), ["readTaskCheckFacts", "resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskOutcomeFacts", "resolveTaskPullRequestFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart", "taskIssues"]);
+  assert.deepEqual(Object.keys(lookups).toSorted(), ["readTaskCheckFacts", "resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskOutcomeFacts", "resolveTaskPullRequestFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart", "resolveTaskUsage", "taskIssues"]);
   assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, observedEffort: null, writerReleased: false });
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
 });

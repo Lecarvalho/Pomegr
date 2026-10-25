@@ -230,7 +230,7 @@ provider.
   tasks. Aril may also send file content and session evidence that it reads. The images
   you sent in the conversation go to the provider too, and the prompt names the folder
   where Pomegr keeps them. The board snapshot also sends a grant's active state, end
-  time, starts used, and fixed limits and actions; an ended grant includes its end reason.
+  time, tasks used, and fixed limits and actions; an ended grant includes its end reason.
   Repository settings include the selected merge method. Merge results appear as fixed task-log labels.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows.

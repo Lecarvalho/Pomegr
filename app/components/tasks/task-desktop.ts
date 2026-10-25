@@ -223,8 +223,9 @@ export const TASK_LOG_LABELS = {
   grant_start: "Started by Aril under a grant", grant_review: "Review started by Aril under a grant", sent_back: "Sent back by Aril under a grant",
   grant_merge: "Merged by Aril under a grant", grant_merge_refused: "Merge refused",
   grant_task_written: "Written by Aril from a plan",
+  grant_usage_hold: "Paused for provider usage", grant_usage_resume: "Resumed after provider usage",
 } as const;
-export type TaskLog = { entries: { id: number; task: string; kind: keyof typeof TASK_LOG_LABELS; at: number; pullRequest: number | null }[]; more: boolean; arilCursor: number };
+export type TaskLog = { entries: { id: number; task: string | null; kind: keyof typeof TASK_LOG_LABELS; at: number; pullRequest: number | null; reason?: "claude" | "codex" }[]; more: boolean; arilCursor: number };
 export type TaskLogAnswer = { ok: true; log: TaskLog } | { ok: false };
 
 /** Re-bounds the log from desktop main, through the bridge or paired route; never acknowledges entries. */
@@ -241,10 +242,13 @@ export async function readDesktopTaskLog(repositoryId: string): Promise<TaskLogA
     const entries: TaskLog["entries"] = [];
     for (const entry of log.entries) {
       if (!entry || typeof entry !== "object" || Array.isArray(entry) || !Number.isSafeInteger(entry.id) || entry.id <= 0
-        || typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task) || typeof entry.kind !== "string" || !Object.hasOwn(TASK_LOG_LABELS, entry.kind)
+        || typeof entry.kind !== "string" || !Object.hasOwn(TASK_LOG_LABELS, entry.kind)
         || !Number.isSafeInteger(entry.at) || (entry.pullRequest !== null && (!Number.isSafeInteger(entry.pullRequest) || entry.pullRequest <= 0))) return { ok: false };
+      const usageTransition = entry.kind === "grant_usage_hold" || entry.kind === "grant_usage_resume";
+      if (usageTransition ? entry.task !== null || (entry.reason !== "claude" && entry.reason !== "codex") || entry.pullRequest !== null
+        : typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task) || Object.hasOwn(entry, "reason")) return { ok: false };
       const { id, task, kind, at, pullRequest } = entry;
-      entries.push({ id, task, kind, at, pullRequest });
+      entries.push(usageTransition ? { id, task, kind, at, pullRequest, reason: entry.reason } : { id, task, kind, at, pullRequest });
     }
     return { ok: true, log: { entries, more: log.more, arilCursor: log.arilCursor } };
   } catch { return { ok: false }; }

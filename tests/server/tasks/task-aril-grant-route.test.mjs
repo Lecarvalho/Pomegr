@@ -12,7 +12,7 @@ const DESKTOP = { "x-pomegr-desktop-authorization": TOKEN, "content-type": "appl
 const PAIRED = { "x-pomegr-desktop-authorization": TOKEN, "x-pomegr-lan-gateway": "1", "content-type": "application/json" };
 const GATEWAY = { "x-pomegr-lan-gateway": "1", "content-type": "application/json" };
 
-async function setup(t, { taskStore, runtime = {} } = {}) {
+async function setup(t, { taskStore, runtime = { resolveTaskUsage: () => 10 } } = {}) {
   const directory = await mkdtemp(path.join(process.cwd(), ".aril-grant-route-test-"));
   const store = taskStore ?? openTaskStore({ directory });
   const server = http.createServer(createRequestHandler({ runtime, taskStore: store, authorizationToken: TOKEN }));
@@ -55,7 +55,7 @@ const fixedError = (response, status, error) => {
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null,
-  limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+  limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: 80 },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
 
@@ -65,7 +65,7 @@ test("grant writing routes keep exact payloads and fixed answers, and serve writ
   fixedError(await post(port, "grant-write-tasks", body), 409, "not_active");
   const settings = defaults();
   settings.actions = { ...settings.actions, start: true, writeTasks: true };
-  settings.limits = { ...settings.limits, hours: 1, starts: 1, concurrent: 1 };
+  settings.limits = { ...settings.limits, hours: 1, tasks: 1, tasksAtATime: 1 };
   settings.workRules = [{ kind: "plan", value: "next.md" }];
   assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings }).ok, true);
   assert.equal(store.apply(REPOSITORY_ID, "grant_start", {}).ok, true);
@@ -90,7 +90,7 @@ test("grant actions use fixed envelopes and the start grant is not ready by defa
   const settings = defaults();
   settings.actions.start = true;
   settings.actions.review = true;
-  settings.limits = { ...settings.limits, hours: 1, starts: 1, concurrent: 1 };
+  settings.limits = { ...settings.limits, hours: 1, tasks: 1, tasksAtATime: 1 };
   assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings }).ok, true);
   const started = await post(port, "grant_start", envelope({}));
   assert.equal(started.status, 200);
@@ -109,7 +109,7 @@ test("paired-device marker can stop a grant, never start one, and needs the pair
   const readySettings = defaults();
   readySettings.actions.start = true;
   readySettings.actions.review = true;
-  readySettings.limits = { ...readySettings.limits, hours: 1, starts: 1, concurrent: 1 };
+  readySettings.limits = { ...readySettings.limits, hours: 1, tasks: 1, tasksAtATime: 1 };
   readySettings.pairedDevices = true;
   assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings: readySettings }).ok, true);
   const started = await post(port, "grant_start", envelope({}), PAIRED);
@@ -184,7 +184,7 @@ test("grant-end-all accepts only the restart reason and returns the number ended
   const { port, store } = await setup(t);
   const settings = defaults();
   settings.actions.start = true;
-  settings.limits = { ...settings.limits, hours: 1, starts: 1, concurrent: 1 };
+  settings.limits = { ...settings.limits, hours: 1, tasks: 1, tasksAtATime: 1 };
   store.apply(REPOSITORY_ID, "aril_settings_set", { settings });
   store.apply(REPOSITORY_ID, "grant_start", {});
   assert.deepEqual(store.nextGrantSteps().steps, []);
@@ -224,7 +224,7 @@ test("grant check, record, and end answer their fixed shapes", async (t) => {
   const settings = defaults();
   settings.actions.start = true;
   settings.actions.review = true;
-  settings.limits = { ...settings.limits, hours: 1, starts: 1, concurrent: 1 };
+  settings.limits = { ...settings.limits, hours: 1, tasks: 1, tasksAtATime: 1 };
   assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings }).ok, true);
   const started = await post(port, "grant_start", envelope({}));
   assert.equal(started.status, 200);

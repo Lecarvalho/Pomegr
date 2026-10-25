@@ -440,7 +440,7 @@ test("Aril actions use the real store; paired writes are denied by default and g
   const store = await realStore(context);
   const { port } = await startRoute(context, { taskStore: store });
   const paired = { headers: { "x-pomegr-lan-gateway": "1" } };
-  const limits = { hours: 24, starts: 3, concurrent: 2, sendBacks: 1, allowancePercent: 75 };
+  const limits = { hours: 24, tasks: 3, tasksAtATime: 2, sendBacks: 1, usagePercent: 75 };
   const setSettings = (settings, extra = {}) => action("aril_settings_set", REPOSITORY_ID, { settings }, { port, ...extra });
 
   const settings = await setSettings({ limits });

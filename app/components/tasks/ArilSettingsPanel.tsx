@@ -10,14 +10,14 @@ import { sendTaskAction, useTaskEditAvailability, type GrantActionResult } from 
 import { timeOfDay } from "./task-schedule";
 
 const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send work back", merge: "Merge on green", writeTasks: "Write tasks from plans" };
-const LIMITS = { hours: ["Hours", 1, 72], starts: ["Starts", 1, 100], concurrent: ["Concurrent sessions", 1, 10], sendBacks: ["Send-backs per task", 0, 10], allowancePercent: ["Provider allowance %", 1, 100] } as const;
+const LIMITS = { hours: ["Hours", 1, 72], tasks: ["Tasks", 1, 100], tasksAtATime: ["Tasks at a time", 1, 10], sendBacks: ["Send-backs per task", 0, 10], usagePercent: ["Usage limit %", 1, 100] } as const;
 const KINDS = { tag: "Tag", text: "Text", feature: "Feature", tasks: "Tasks", plan: "Plan" };
 const UNSET = "Not settled: Aril will ask";
 const MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/;
 const PLAN_PATH = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*\.md$/;
 const line = (value: string, max: number) => value.trim().length > 0 && value.length <= max && !/[\p{Cc}\u2028\u2029]/u.test(value);
 const validPlanPath = (value: string) => line(value, 200) && PLAN_PATH.test(value) && !value.split("/").some((part) => part === "." || part === "..");
-const END_REASONS = { stopped: "you stopped it", expired: "its time ran out", starts_used: "it used all its starts", start_failed: "a start failed", app_restart: "the app restarted" };
+const END_REASONS = { stopped: "you stopped it", expired: "its time ran out", tasks_used: "it used all its tasks", start_failed: "a start failed", app_restart: "the app restarted" };
 const FAILURES = { settings: "Aril settings could not be saved. Try again.", memory: "Memory could not be saved. Try again.",
   not_ready: "The grant is not ready. Check the saved limits, actions, and work rules.", conflict: "A grant is already active. Refresh the board.", grant: "The grant could not be changed. Try again." };
 const grantTime = (at: number) => timeOfDay(new Date(at).toISOString());
@@ -52,7 +52,7 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
     .map((key) => [key, draft[key]]));
   const unsaved = allowed && Object.keys(changed).length > 0;
   const notReady = saved.actions.sendBack && saved.limits.sendBacks === null ? "Set Send-backs per task first."
-    : saved.limits.hours === null || saved.limits.starts === null || saved.limits.concurrent === null ? "Set Hours, Starts, and Concurrent sessions first."
+    : [saved.limits.hours, saved.limits.tasks, saved.limits.tasksAtATime, saved.limits.usagePercent].includes(null) ? "Set Hours, Tasks, Tasks at a time, and Usage limit % first."
     : saved.actions.writeTasks && !saved.workRules.some((rule) => rule.kind === "plan") ? "Add a plan rule first: a grant writes tasks only from named plans."
       : saved.actions.writeTasks && !saved.actions.start ? "Allow starting tasks to use Write tasks from plans."
         : !saved.actions.start && !saved.actions.review && !saved.actions.merge ? "Allow starting tasks, reviews, or merges first."
@@ -88,11 +88,11 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
     <section className="taskGatesPanel">
       <h3 className="taskGatesHeading">Grant</h3>
       {grant?.active ? <>
-        <p className="taskGatesCaption">Active until <span className="taskCapacityValue">{grantTime(grant.endsAt)}</span> · <span className="taskCapacityValue">{grant.startsUsed}</span> of <span className="taskCapacityValue">{grant.limits.starts}</span> starts used</p>
+        <p className="taskGatesCaption">Active until <span className="taskCapacityValue">{grantTime(grant.endsAt)}</span> · <span className="taskCapacityValue">{grant.startsUsed}</span> of <span className="taskCapacityValue">{grant.limits.tasks}</span> tasks used</p>
         {editable && <button type="button" className="commandSecondaryAction" disabled={busy} onClick={() => void send("grant_stop", {}, () => setConfirm(null))}>Stop grant</button>}
         <p className="taskGatesCaption">Stopping takes effect at once. Running sessions continue.</p>
       </> : <>
-        {notReady ? <p className="taskGatesCaption">{notReady}</p> : <p className="taskGatesCaption">Starts {saved.actions.start ? saved.actions.review ? "tasks and reviews" : "tasks" : "reviews"} that your work rules select, for {saved.limits.hours} hours, at most {saved.limits.starts} starts, {saved.limits.concurrent} at a time.</p>}
+        {notReady ? <p className="taskGatesCaption">{notReady}</p> : <p className="taskGatesCaption">Starts {saved.actions.start ? saved.actions.review ? "tasks and reviews" : "tasks" : "reviews"} that your work rules select, for {saved.limits.hours} hours, at most {saved.limits.tasks} tasks, {saved.limits.tasksAtATime} at a time.</p>}
         {unsaved && <p className="taskGatesCaption">Save your changes first.</p>}
         {allowed && !notReady && <>
           {confirming && <p className="taskGatesCaption">Aril will start sessions without asking until {grantTime(confirm.until)} or until you stop it.</p>}

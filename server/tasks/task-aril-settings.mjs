@@ -18,7 +18,7 @@ export function ensureArilSettings(database) {
 const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null,
-  limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+  limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -26,11 +26,24 @@ const keys = (value, allowed) => object(value) && Object.keys(value).every((key)
 const exact = (value, allowed) => keys(value, allowed) && Object.keys(value).length === allowed.length;
 const invalid = () => ({ ok: false, error: "invalid" });
 const line = (value, max) => typeof value === "string" && value.trim().length > 0 && value.length <= max && !/[\p{Cc}\u2028\u2029]/u.test(value);
-const bounds = { hours: [1, 72], starts: [1, 100], concurrent: [1, Math.min(10, TASK_GROUP_LIMIT)], sendBacks: [0, 10], allowancePercent: [1, 100] };
+const bounds = { hours: [1, 72], tasks: [1, 100], tasksAtATime: [1, Math.min(10, TASK_GROUP_LIMIT)], sendBacks: [0, 10], usagePercent: [1, 100] };
+
+export function normalizeArilLimits(value) {
+  const limits = { ...value };
+  if (!Object.hasOwn(limits, "tasks") && Object.hasOwn(limits, "starts")) limits.tasks = limits.starts;
+  if (!Object.hasOwn(limits, "tasksAtATime") && Object.hasOwn(limits, "concurrent")) limits.tasksAtATime = limits.concurrent;
+  if (!Object.hasOwn(limits, "usagePercent") && Object.hasOwn(limits, "allowancePercent")) limits.usagePercent = limits.allowancePercent;
+  for (const key of ["starts", "concurrent", "allowancePercent"]) delete limits[key];
+  return { ...defaults().limits, ...limits };
+}
+function currentSettings(value) {
+  const saved = JSON.parse(value);
+  return { ...defaults(), ...saved, limits: normalizeArilLimits(saved.limits ?? {}) };
+}
 
 function readSettings(database, repositoryId) {
   const row = preparedStatement(database, "SELECT value FROM aril_settings WHERE repository_id = ?").get(repositoryId);
-  return row ? { ...defaults(), ...JSON.parse(row.value) } : defaults();
+  return row ? currentSettings(row.value) : defaults();
 }
 function writeSettings(database, repositoryId, settings, at) {
   preparedStatement(database, `INSERT INTO aril_settings (repository_id, value, updated_at) VALUES (?, ?, ?)

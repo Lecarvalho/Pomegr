@@ -290,7 +290,7 @@ test("the served source is validated again at the route", async (context) => {
       version: 1, readiness: "ready", repositoryId: REPOSITORY, columns: [], features: [],
       aril: { settings: { actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
         mergeMethod: null,
-        limits: { hours: null, starts: null, concurrent: null, sendBacks: null, allowancePercent: null },
+        limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
         workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false }, memory: [] },
       queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] },
       tasks: [
