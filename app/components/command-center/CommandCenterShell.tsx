@@ -311,7 +311,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
       <Palette key={paletteOpen ? "open" : "closed"} open={paletteOpen} onClose={closePalette} query={query} onQueryChange={setQuery} results={paletteResults} onSelect={selectPaletteResult} inputRef={searchRef}
         placeholder={scope?.placeholder ?? "Search destinations, sessions, and repositories"} emptyLine={scope?.emptyLine ?? "No destinations match that search."} />
 
-      {mobileNavigationOpen && <button className="commandNavScrim" type="button" aria-label="Close primary menu" onClick={() => closeMobileNavigation()} />}
+      {mobileNavigationOpen && <button className="commandNavScrim" type="button" tabIndex={-1} aria-hidden="true" onClick={() => closeMobileNavigation()} />}
       <aside ref={mobileNavigationRef} className={`commandSidebar${mobileNavigationOpen ? " isOpen" : ""}`} id="command-primary-navigation" aria-label="Primary navigation">
         <nav>{navigation.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} onNavigate={() => closeMobileNavigation(false)} />)}</nav>
         <div className="commandNavDivider" />

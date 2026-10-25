@@ -287,6 +287,46 @@ describe("Command Center app shell", () => {
     expect(screen.getByRole("button", { name: "Open primary menu" })).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("keeps open-menu shell controls uniquely named and skips the scrim on the keyboard", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    const { container } = render(<AppShell><main>Home content</main></AppShell>);
+
+    const menu = await screen.findByRole("button", { name: "Open primary menu" });
+    menu.focus();
+    await user.keyboard("{Enter}");
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    const shell = within(container.querySelector<HTMLElement>(".commandShell")!);
+    const accessibleNames = new Map<Element, string>();
+    const controls = ["button", "link"].flatMap((role) => shell.getAllByRole(role, {
+      name: (name, element) => { accessibleNames.set(element, name); return true; },
+    }));
+    const names = controls.map((control) => accessibleNames.get(control)!);
+    expect(names.every((name) => name.length > 0)).toBe(true);
+    expect(new Set(names).size).toBe(names.length);
+    expect(shell.getByRole("button", { name: "Close primary menu" })).toBe(menu);
+
+    const scrim = container.querySelector<HTMLElement>(".commandNavScrim")!;
+    expect(scrim).not.toHaveAccessibleName();
+    expect(scrim).toHaveAttribute("aria-hidden", "true");
+    expect(scrim.tabIndex).toBe(-1);
+    shell.getByRole("button", { name: "Local profile, coming soon" }).focus();
+    await user.tab();
+    expect(shell.getByRole("link", { name: "Home" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(menu).toHaveFocus());
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard(" ");
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Enter}");
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    await user.click(menu);
+    await user.click(container.querySelector<HTMLElement>(".commandNavScrim")!);
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(menu).toHaveFocus());
+  });
+
   it("opens the palette, retains focus, and restores the trigger on escape", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
