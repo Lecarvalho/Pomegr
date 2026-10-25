@@ -209,6 +209,14 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
       return { title: ["Start a session for ", { id: operation.id }], text: current(operation.id), details: [] };
     case "set_queue":
       return { title: [operation.on ? "Turn the queue on" : "Turn the queue off"], details: [] };
+    case "set_aril_settings":
+      return { title: ["Set Aril settings"], details: Object.entries(operation.settings).map(([key, value]) => `${key}: ${JSON.stringify(value)}`) };
+    case "add_memory":
+      return { title: ["Add Aril memory"], details: [operation.text] };
+    case "update_memory":
+      return { title: [`Update Aril memory ${operation.id}`], details: [operation.text] };
+    case "remove_memory":
+      return { title: [`Remove Aril memory ${operation.id}`], details: [] };
   }
 }
 

@@ -23,7 +23,7 @@ test("the proposal contract constants are fixed", () => {
   assert.equal(PROPOSAL_FENCE, "pomegr-board");
   assert.equal(PROPOSAL_OPERATION_LIMIT, 40);
   assert.equal(PROPOSAL_SUMMARY_LIMIT, 300);
-  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue"]);
+  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory"]);
   assert.equal(IMAGES_PER_OPERATION, 4);
   assert.equal(IMAGE_OPERATION, "attach_images");
   assert.deepEqual([...BOARD_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
@@ -44,6 +44,10 @@ test("every operation is accepted in its minimal form and kept as written", () =
     [{ op: "attach_images", id: "T-1", images: ["img-0123456789ab"] }, { op: "attach_images", id: "T-1", images: ["img-0123456789ab"] }],
     [{ op: "start_session", id: "T-1" }, { op: "start_session", id: "T-1" }],
     [{ op: "set_queue", on: false }, { op: "set_queue", on: false }],
+    [{ op: "set_aril_settings", settings: {} }, { op: "set_aril_settings", settings: {} }],
+    [{ op: "add_memory", text: "Use tests" }, { op: "add_memory", text: "Use tests" }],
+    [{ op: "update_memory", id: 1, text: "Use tests" }, { op: "update_memory", id: 1, text: "Use tests" }],
+    [{ op: "remove_memory", id: 1 }, { op: "remove_memory", id: 1 }],
   ];
   assert.equal(accepted.length, BOARD_OPERATIONS.length);
   for (const [source, expected] of accepted) assert.deepEqual(normalizeOperation(source), expected, source.op);

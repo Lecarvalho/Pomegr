@@ -12,7 +12,7 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
-import { applyOperations, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
+import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
 import { runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
@@ -34,7 +34,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
-const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set"]);
+const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"]);
 const TASK_LOG_KINDS = new Set(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
@@ -366,7 +366,7 @@ export function createAgentChat(options = {}) {
       if (turn.followUp) {
         message.followUp = turn.followUp;
         if (read.proposal && (!["applied", "partial"].includes(turn.followUpOutcome)
-          || startProposalTask(read.proposal) || queueProposalState(read.proposal) !== null)) {
+          || startProposalTask(read.proposal) || queueProposalState(read.proposal) !== null || read.proposal.operations.some(({ op }) => ARIL_OPERATIONS.includes(op)))) {
           read = { text: read.text, proposal: null, unreadable: true };
         }
       }
@@ -561,6 +561,9 @@ export function createAgentChat(options = {}) {
       } else if (approve) {
         const board = await readBoard(repositoryId);
         if (!board) return UNAVAILABLE;
+        // Only the trusted window applies Aril settings or memory freely; any other caller needs the desktop's paired-device switch.
+        if (!origin?.event && message.proposal.operations.some(({ op }) => ARIL_OPERATIONS.includes(op))
+          && board.aril?.settings?.pairedDevices !== true) return refused("desktop_only");
         const results = await applyOperations(message.proposal.operations, {
           board, post: (action, body) => taskAction(repositoryId, action, body),
           attach: (taskId, imageId) => attachImage(repositoryId, found.conversation, taskId, imageId),
@@ -584,7 +587,7 @@ export function createAgentChat(options = {}) {
 
   /**
    * One operation for the owner: from the desktop window, or from a paired device through the LAN gateway. `origin`
-   * is `{ event }` only for a call the trusted desktop window made; without it the chat starts no session.
+   * is `{ event }` for the trusted desktop window and `{ paired: true }` for the LAN gateway; only the window starts sessions.
    */
   async function handle(operation, payload, origin) {
     if (typeof operation !== "string" || !Object.hasOwn(handlers, operation) || !isPlainObject(payload)) return INVALID;

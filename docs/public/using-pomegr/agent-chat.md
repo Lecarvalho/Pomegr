@@ -202,6 +202,14 @@ always a proposal of its own.
 > **Caution:** Aril can be wrong. Its advice on models is a reading of the tasks
 > recorded on your board, not a measurement. Check a proposal before you apply it.
 
+## Aril's settings and memory
+
+Ask Aril to settle this repository's actions, limits, work rules, or reviewer choice, or
+to remember a working preference. Aril proposes each change; select **Apply changes**
+to save it. Only you can allow paired devices to manage these settings, in the desktop
+app. Settings and repository memory are sent with each chat prompt to your chosen
+provider.
+
 ## Understand what is kept and sent
 
 - **Kept on this computer.** Pomegr saves every conversation in its private data folder

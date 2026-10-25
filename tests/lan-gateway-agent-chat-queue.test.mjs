@@ -36,8 +36,8 @@ test("a paired device applies a queue proposal through the gateway, and an unaut
   const gateway = await startLanGateway({
     host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin: `http://127.0.0.1:${upstream.address().port}`,
     authorizationToken: AUTHORIZATION, isNetworkAllowed: async () => true, networkPolicy: loopbackTestNetwork,
-    // The wiring of `shell-main.mjs`: the operation and the payload, and no origin.
-    agentChat: (...args) => { handed.push(args); return h.chat.handle(args[0], args[1]); },
+    // The wiring of `shell-main.mjs`: the gateway origin is supplied by desktop main.
+    agentChat: (...args) => { handed.push(args); return h.chat.handle(args[0], args[1], { paired: true }); },
   });
   try {
     const cookie = await pair(gateway);

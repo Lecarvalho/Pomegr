@@ -506,7 +506,7 @@ test("every request the controller makes refuses redirects, is bounded in time, 
   assert.equal([...controller.matchAll(/fetchImpl\(/gu)].length, 1, "one function makes every request");
   assert.match(controller, /cache: "no-store", redirect: "error", signal: AbortSignal\.timeout\(/u);
   assert.match(controller, /\[DESKTOP_AUTH_HEADER\]: authorizationToken/u);
-  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set"\]\);/u);
+  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"\]\);/u);
   for (const forbidden of ["queue_settings", "resolve_done", "resolve_requeue", "start", "image"]) assert.equal(new RegExp(`TASK_ACTIONS[^;]*"${forbidden}"`, "u").test(controller), false, forbidden);
   assert.match(controller, /if \(!TASK_ACTIONS\.has\(action\)\) return refused\("invalid"\);/u);
 });
@@ -514,8 +514,8 @@ test("every request the controller makes refuses redirects, is bounded in time, 
 test("the chat is wired once into the shell, the LAN gateway, and the preload", async () => {
   const [main, preload, sharing] = await Promise.all(["shell-main.mjs", "preload.cjs", "lan-sharing.mjs"].map(sourceOf));
   assert.match(main, /installAgentChatIpc\(\{ \.\.\.taskBridge, chat: agentChat \}\)/u);
-  // A paired device's call carries no origin, so it can never start a session from the chat.
-  assert.match(main, /agentChat: \(operation, payload\) => agentChat\.handle\(operation, payload\), agentChatImage: \(operation, payload\) => agentChat\.image\(operation, payload\), taskStart:/u);
+  // A paired device's call is marked paired and carries no window event, so it can never start a session from the chat.
+  assert.match(main, /agentChat: \(operation, payload\) => agentChat\.handle\(operation, payload, \{ paired: true \}\), agentChatImage: \(operation, payload\) => agentChat\.image\(operation, payload\), taskStart:/u);
   assert.match(main, /createAgentChat\(\{\s+monitorOrigin: privateMonitorOrigin, authorizationToken,/u);
   assert.match(main, /startTask: \(event, repositoryId, taskId\) => taskStarter\.startApproved\(event, repositoryId, taskId\) \}\);/u);
   assert.equal([...main.matchAll(/createAgentChat\(/gu)].length, 1);

@@ -4,8 +4,9 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory",
 ]);
+export const ARIL_OPERATIONS = Object.freeze(["set_aril_settings", "add_memory", "update_memory", "remove_memory"]);
 // The one operation that puts images the owner sent in the chat on a task that is already on the board.
 export const IMAGE_OPERATION = "attach_images";
 // The one operation that is not a board change: it asks the desktop to start a session for a task, and stands alone in its proposal.
@@ -57,6 +58,39 @@ export function chatImageIds(value) {
 
 const only = (value, keys) => Object.keys(value).every((key) => keys.includes(key));
 const taskId = (value) => (typeof value === "string" && TASK_ID.test(value) ? value : null);
+
+// Mirror phase 3a's field replacement and bounds; the monitor checks feature and task membership when applied.
+const exact = (value, keys) => isPlainObject(value) && only(value, keys) && Object.keys(value).length === keys.length;
+const arilLine = (value, max) => typeof value === "string" && value.trim().length > 0 && value.length <= max && ONE_LINE.test(value);
+const ARIL_LIMITS = { hours: [1, 72], starts: [1, 100], concurrent: [1, 10], sendBacks: [0, 10], allowancePercent: [1, 100] };
+const ARIL_MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/u;
+
+function arilRule(rule) {
+  if (!exact(rule, ["kind", "value"])) return false;
+  const { kind, value } = rule;
+  if (kind === "tag") return arilLine(value, 40) && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}._-]*$/u.test(value) && value.toLowerCase() !== "image";
+  if (kind === "text") return arilLine(value, 80);
+  if (kind === "feature") return typeof value === "string";
+  return kind === "tasks" && Array.isArray(value) && value.length >= 1 && value.length <= 50 && value.every((id) => taskId(id));
+}
+
+function arilSettings(input) {
+  if (!isPlainObject(input) || !only(input, ["actions", "limits", "workRules", "reviewer"])) return null;
+  const settings = { ...input };
+  for (const [field, value] of Object.entries(input)) {
+    if (field === "actions" && (!exact(value, ["start", "review", "sendBack", "merge", "writeTasks"]) || !Object.values(value).every((v) => typeof v === "boolean"))) return null;
+    if (field === "limits" && (!exact(value, Object.keys(ARIL_LIMITS)) || !Object.entries(value).every(([key, v]) => v === null
+      || (Number.isInteger(v) && v >= ARIL_LIMITS[key][0] && v <= ARIL_LIMITS[key][1])))) return null;
+    if (field === "workRules" && (!Array.isArray(value) || value.length > 20 || !value.every(arilRule))) return null;
+    if (field === "reviewer") {
+      if (!exact(value, ["provider", "model", "differentFromBuilder"]) || ![null, "claude", "codex"].includes(value.provider) || typeof value.differentFromBuilder !== "boolean") return null;
+      const model = value.model === null || value.model === "" ? null : typeof value.model === "string" ? value.model.trim() : undefined;
+      if (model !== null && (typeof model !== "string" || !ARIL_MODEL.test(model))) return null;
+      settings.reviewer = { ...value, model };
+    }
+  }
+  return settings;
+}
 
 function boundedLine(value, limit) {
   if (typeof value !== "string") return null;
@@ -152,6 +186,17 @@ function placement(source) {
 export function normalizeOperation(source) {
   if (!isPlainObject(source) || typeof source.op !== "string" || !BOARD_OPERATIONS.includes(source.op)) return null;
   const { op } = source;
+  if (op === "set_aril_settings") {
+    const settings = arilSettings(source.settings);
+    return only(source, ["op", "settings"]) && settings ? { op, settings } : null;
+  }
+  if (ARIL_OPERATIONS.includes(op)) {
+    const hasId = op !== "add_memory";
+    const hasText = op !== "remove_memory";
+    if (!only(source, ["op", ...(hasId ? ["id"] : []), ...(hasText ? ["text"] : [])])
+      || (hasId && (!Number.isSafeInteger(source.id) || source.id < 1)) || (hasText && !arilLine(source.text, 300))) return null;
+    return { op, ...(hasId ? { id: source.id } : {}), ...(hasText ? { text: source.text } : {}) };
+  }
   if (op === "create_feature") {
     const name = boundedLine(source.name, FEATURE_LIMIT);
     return only(source, ["op", "name"]) && name ? { op, name } : null;
@@ -235,7 +280,8 @@ export function normalizeProposal(source) {
   }
   // A start is answered on its own, so the owner approves one session for one named task and nothing else. A queue
   // change is too: turning the queue on lets Pomegr start tasks by itself, so it is never approved beside a board change.
-  if (operations.length > 1 && operations.some((operation) => operation.op === START_OPERATION || operation.op === QUEUE_OPERATION)) return null;
+  if (operations.length > 1 && operations.some((operation) => [START_OPERATION, QUEUE_OPERATION, "set_aril_settings"].includes(operation.op))) return null;
+  if (operations.some((operation) => ARIL_OPERATIONS.includes(operation.op)) && !operations.every((operation) => ARIL_OPERATIONS.includes(operation.op))) return null;
   return { summary, operations };
 }
 
@@ -374,6 +420,13 @@ export async function applyOperations(operations, { post, board, attach }) {
     const { op } = operation;
     // A start is never a task action, and a queue change has its own one request. The chat never sends either here.
     if (op === START_OPERATION || op === QUEUE_OPERATION) { results.push(failure("unsupported")); continue; }
+    if (ARIL_OPERATIONS.includes(op)) {
+      const action = { set_aril_settings: "aril_settings_set", add_memory: "aril_memory_add", update_memory: "aril_memory_update", remove_memory: "aril_memory_remove" }[op];
+      const payload = op === "set_aril_settings" ? { settings: operation.settings }
+        : { ...(op !== "add_memory" ? { id: operation.id } : {}), ...(op !== "remove_memory" ? { text: operation.text } : {}) };
+      results.push((await act(action, payload)).answer);
+      continue;
+    }
     if (op === "create_feature") {
       // A feature that is already there is the outcome the operation asked for.
       results.push(openFeature(operation.name) ? { ok: true } : (await act("feature_create", { name: operation.name })).answer);

@@ -1,7 +1,7 @@
 // The Pomegr agent chat: a conversation with Aril, the task-board agent, held by the desktop app.
 // The executable rules live in `desktop/runtime/agent-chat*.mjs`; this file is the browser-visible shape.
 
-import type { TaskCheck, TaskEffort, TaskImageType, TaskProvider } from "./task-contract";
+import type { ArilSettings, TaskCheck, TaskEffort, TaskImageType, TaskProvider } from "./task-contract";
 
 export const AGENT_CHAT_AGENT_NAME = "Aril";
 
@@ -21,7 +21,7 @@ export type AgentChatOperationName = "list" | "read" | "send" | "stop" | "apply"
 export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "send", "stop", "apply", "dismiss", "delete"];
 
 // Why an operation was refused.
-// `desktop_only` answers an Apply of a session start that did not come from the desktop window.
+// `desktop_only` refuses a non-desktop session start or paired settings/memory Apply without pairedDevices enabled.
 export type AgentChatError = "invalid" | "not_found" | "busy" | "limit" | "cli_missing" | "conflict" | "unavailable" | "desktop_only";
 export const AGENT_CHAT_ERRORS: readonly AgentChatError[] = ["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"];
 
@@ -60,11 +60,15 @@ export type AgentChatBoardOperation =
   | { op: "set_after"; id: string; after: string[] }
   | { op: "attach_images"; id: string; images: string[] }
   | { op: "start_session"; id: string }
-  | { op: "set_queue"; on: boolean };
+  | { op: "set_queue"; on: boolean }
+  | { op: "set_aril_settings"; settings: Partial<Omit<ArilSettings, "pairedDevices">> }
+  | { op: "add_memory"; text: string }
+  | { op: "update_memory"; id: number; text: string }
+  | { op: "remove_memory"; id: number };
 
 export type AgentChatBoardOperationName = AgentChatBoardOperation["op"];
 export const AGENT_CHAT_BOARD_OPERATIONS: readonly AgentChatBoardOperationName[] = [
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory",
 ];
 
 // What an approved queue change left: on, on and held by a stalled or blocked task, or off.
@@ -119,7 +123,7 @@ export type AgentChatAgentMessage = {
   proposalUnreadable?: boolean;
   // The ID of the proposal this answer follows up: the desktop asked for it after the owner applied or dismissed that
   // proposal, with no message of the owner before it. After an applied or partial outcome it may carry
-  // another board proposal that waits for the owner; never start_session or set_queue.
+  // another board proposal that waits for the owner; never start_session, set_queue, settings, or memory operations.
   followUp?: string;
 };
 export type AgentChatMessage = AgentChatUserMessage | AgentChatAgentMessage;
