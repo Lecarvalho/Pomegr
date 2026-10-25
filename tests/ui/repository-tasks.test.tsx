@@ -374,7 +374,7 @@ describe("task board", () => {
     expect(screen.getByText("<img src=x onerror=alert(1)> **bold**")).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
     // The one control opens Queue settings, which a browser reads and cannot change.
-    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Queue settings"]);
+    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Aril settings", "Queue settings"]);
     expect(screen.queryAllByRole("link")).toEqual([]);
     expect(document.querySelector("[draggable]")).toBeNull();
   });
