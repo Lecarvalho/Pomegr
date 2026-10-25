@@ -14,6 +14,7 @@ const history: HistoryPage = {
     { kind: "tool", at: null, name: "Edit", outcome: "failed" },
     { kind: "tool", at: null, name: "Test", outcome: "pending" },
     { kind: "agent", at: null, text: "## Saved revision\n\nThe **previous revision** stays visible until its `replacement` commits.\n\n```ts\nconst revision = previous;\ncommit(replacement);\n```\n\n- Keep the last good state\n- Replace after validation" },
+    { kind: "agent", at: null, text: "| Proof | Result |\n|---|---|\n| `npm test` | Pass |\n| `npm run lint` | Pass |\n\n> Keep *validated evidence*; ~~partial replacement~~ is removed.\n\n---\n\n- Validation\n  - [x] Retain revision\n  - [ ] Review replacement" },
   ],
 };
 const ignore = () => {};

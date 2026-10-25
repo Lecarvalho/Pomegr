@@ -9,18 +9,18 @@ import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 import { StorageUsageBar } from "../../app/settings/StorageSettings";
 import { SessionTerminalSection } from "../../app/components/design-system/DesignSystemTerminalSample";
 import type { StorageSnapshot } from "../../shared/storage-contract";
-
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 it("renders each read-only Terminal state from synthetic samples", () => {
   const { container } = render(<SessionTerminalSection />);
   expect(container.querySelector(".sessionTerminalMessage strong")).toHaveTextContent("previous revision");
-  expect(container.querySelector(".sessionTerminalMessage pre code")?.textContent).toBe("const revision = previous;\ncommit(replacement);");
+  expect(container.querySelector(".sessionTerminalMessage pre code")?.textContent).toBe("const revision = previous;\ncommit(replacement);\n");
   for (const label of ["History", "Live with Refresh", "Ended", "Continue refused", "Empty", "Unavailable", "Failed", "Reading"]) expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
   expect(screen.getByText(/Continue unavailable/u).closest(".sessionTerminal")?.querySelectorAll(".sessionTerminalBar")).toHaveLength(1);
   expect(container.querySelectorAll(".sessionManagedTerminal")).toHaveLength(6);
   expect(container.querySelector("a.safeMarkdownLink")).toHaveAttribute("title", "https://github.com/o/r/pull/927");
+  for (const selector of ["table thead th", "table tbody td code", "blockquote", "hr", "ul ul", "em", "del", ".agentChatTaskGlyph"]) expect(container.querySelector(`.agentChatMarkdown ${selector}`)).not.toBeNull();
 });
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
   .map((match) => readFileSync(join(process.cwd(), "app", match[1]), "utf8")).join("\n");

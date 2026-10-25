@@ -226,8 +226,21 @@ export function AgentChatSection() {
         <div className="designSystemTaskFrame"><SampleComposer initial="Is any task too big?" runningElsewhere /></div>
       </Sample>
     </div>
-    <Wide label="Answer text" note="Paragraphs, lists, bold, inline code and fenced code. HTML, links and images stay literal text: nothing here can navigate.">
-      <SafeMarkdown text={[ANSWER, "", "<img src=x onerror=alert(1)> [a link](javascript:alert(1))"].join("\n")} />
+    <Wide label="Answer text" note="Tables, quotes, rules, nested and task lists, emphasis, strikethrough, and code. HTML, links and images stay literal text: nothing here can navigate.">
+      <SafeMarkdown text={[
+        ANSWER, "",
+        "| Proof | Result |",
+        "|---|---|",
+        "| `npm test` | Pass |",
+        "| `npm run lint` | Pass |",
+        "",
+        "> Keep *one retry policy*; ~~duplicate retries~~ are removed.",
+        "", "---", "",
+        "- Client",
+        "  - [x] Add retry",
+        "  - [ ] Review limits",
+        "", "<img src=x onerror=alert(1)> [a link](javascript:alert(1))",
+      ].join("\n")} />
     </Wide>
   </Section>;
 }

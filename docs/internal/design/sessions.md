@@ -174,7 +174,14 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - An owner message longer than 8 lines or 600 characters folds to about 8 lines, with **Show more** and **Show less**.
 - Agent replies stay unboxed text, and tool lines stay one muted line.
 - Each tool appears as one muted line: `Tool · <name> · <outcome>`.
-- Owner and agent text renders through the shared safe Markdown renderer; no HTML is set; tool lines stay plain.
+- Owner and agent text renders through `SafeMarkdown` using `react-markdown@10.1.0` and `remark-gfm@4.0.1`.
+- Tool lines stay plain text.
+- Saved history renders paragraphs, styled heading lines, code blocks, inline code, bold, italic, strikethrough, and escapes.
+- Saved history renders GFM tables, blockquotes, rules, nested ordered and unordered lists, and task lists.
+- Tables scroll horizontally inside their message without widening the panel.
+- Task-list checkboxes are non-interactive glyphs labelled Checked or Unchecked, never inputs.
+- Raw HTML and images stay literal source text; no HTML is set.
+- Bare URLs, reference links, and footnotes stay literal.
 - In desktop saved history, HTTPS Markdown links without userinfo, at most 2048 characters, with non-empty single-line labels open in the system browser only when the owner clicks them; other links and images stay literal.
 - Without the desktop `openSessionLink` bridge, all links stay literal, as they do by default in agent chat and task report notes.
 - Saved-history links use `.safeMarkdownLink`, the brand-text token, the Text link hover underline, and the shared focus ring; their label keeps the surrounding type scale and their title shows the full URL.

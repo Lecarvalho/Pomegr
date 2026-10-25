@@ -87,6 +87,15 @@ describe("Terminal tab availability", () => {
 });
 
 describe("SessionTerminalPanel", () => {
+  it("renders GFM tables in saved agent history", async () => {
+    read.mockResolvedValue(page([agent("| Proof | Result |\n|---|---|\n| `npm test` | Pass |\n| `npm run lint` | Pass |\n\n> *Reviewed*\n\n- [x] Done")]));
+    const { container } = mount();
+    await screen.findByRole("table");
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(container.querySelector("td code")).toHaveTextContent("npm test");
+    expect(container.querySelector("blockquote em")).toHaveTextContent("Reviewed");
+    expect(container.querySelector("input")).toBeNull();
+  });
   it.each([false, true])("opens owner and agent history links only with the bridge capability (%s)", async (available) => {
     const url = "https://github.com/o/r/pull/927";
     const text = `[PR #927](${url})`;
@@ -122,7 +131,7 @@ describe("SessionTerminalPanel", () => {
     const { container } = mount();
     expect(await screen.findByText("bold", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("code", { selector: "code" })).toBeInTheDocument();
-    expect(container.querySelector("pre code")?.textContent).toBe("first line\nsecond line");
+    expect(container.querySelector("pre code")?.textContent).toBe("first line\nsecond line\n");
     expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["one", "two"]);
     const ownerMessage = screen.getByText("Review", { selector: "strong" }).closest(".sessionTerminalMessage");
     expect(ownerMessage?.textContent).toBe("YouReview this");
