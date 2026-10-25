@@ -51,8 +51,11 @@ function writeSettings(database, repositoryId, settings, at) {
     .run(repositoryId, JSON.stringify(settings), at);
 }
 const entry = (row) => ({ id: Number(row.id), text: row.text, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) });
+// settledAt is when the owner last settled the settings (the row's update time), or null while nothing is stored.
 export function readAril(database, repositoryId) {
-  return { settings: readSettings(database, repositoryId), memory: preparedStatement(database,
+  const row = preparedStatement(database, "SELECT updated_at FROM aril_settings WHERE repository_id = ?").get(repositoryId);
+  const settledAt = row ? new Date(Number(row.updated_at)).toISOString() : null;
+  return { settings: { ...readSettings(database, repositoryId), settledAt }, memory: preparedStatement(database,
     "SELECT id, text, created_at, updated_at FROM aril_memory WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId).map(entry) };
 }
 

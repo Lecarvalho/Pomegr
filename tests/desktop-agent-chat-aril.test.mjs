@@ -124,20 +124,20 @@ test("a follow-up containing any settings or memory operation is unreadable", as
 });
 
 test("snapshot includes served settings and bounded oldest-first memory within the prompt budget", () => {
-  const served = { ...settings, pairedDevices: true };
+  const served = { ...settings, pairedDevices: true, settledAt: "2026-10-25T12:00:00.000Z" };
   const memory = Array.from({ length: 110 }, (_, index) => ({ id: index + 1, text: "x".repeat(310), createdAt: index, updatedAt: 999, private: "omitted" })).reverse();
   const board = { aril: { settings: served, memory }, features: [{ id: "feat-1", name: "Delivery", done: false }], tasks: Array.from({ length: 100 }, (_, i) => ({ id: `T-${i + 1}`, text: "x".repeat(4000) })) };
   const snapshot = boardSnapshot(board, { repositoryName: "Repo" });
   assert.deepEqual(snapshot.aril_settings, served);
   assert.deepEqual(snapshot.features, [{ id: "feat-1", name: "Delivery", done: false }], "work rules need feature IDs, not titles");
-  assert.deepEqual(snapshot.memory, Array.from({ length: 100 }, (_, i) => ({ id: i + 1, text: "x".repeat(300) })));
+  assert.deepEqual(snapshot.memory, Array.from({ length: 100 }, (_, i) => ({ id: i + 1, text: "x".repeat(300), updatedAt: new Date(999).toISOString() })));
   const prompt = composePrompt({ board, repositoryName: "Repo", message: "Advice" });
   assert.ok(prompt && prompt.length <= PROMPT_LIMIT);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Your settings and memory/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /grant_task_written/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /plan \(a repository-relative Markdown path/u);
   for (const { op } of operations) assert.ok(AGENT_CHAT_INSTRUCTIONS.includes(`"op":"${op}"`));
-  assert.match(AGENT_CHAT_INSTRUCTIONS, /null means not settled/u);
+  assert.ok(AGENT_CHAT_INSTRUCTIONS.includes("What your settings and memory answer is settled: act on it and do not ask the owner again. Ask again only when the owner says a rule changed, or when <workflow_changes> lists a source that the rule depends on; then read that source, and propose an update to the setting or memory entry, or ask only about what the change left unclear. A null setting is not settled: ask before relying on it, once, and propose the answer as a setting or memory entry."));
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Never store secrets, credentials, or personal data/u);
 });
 

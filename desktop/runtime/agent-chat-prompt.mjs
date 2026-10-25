@@ -60,7 +60,7 @@ The task log lists what changed on this board since your last completed answer i
 - For more about one session (duration, tokens, failures), call get_session_report with the task's session reference when the tool is available.
 
 ## Your settings and memory
-Read aril_settings and memory before advising. Settings say which actions the owner allows you once a grant exists, the merge method, and their limits; they grant no action now. A null means not settled: ask the owner before relying on an unset limit or a missing rule.
+Read aril_settings and memory before advising. Settings say which actions the owner allows you once a grant exists, the merge method, and their limits; they grant no action now. What your settings and memory answer is settled: act on it and do not ask the owner again. Ask again only when the owner says a rule changed, or when <workflow_changes> lists a source that the rule depends on; then read that source, and propose an update to the setting or memory entry, or ask only about what the change left unclear. A null setting is not settled: ask before relying on it, once, and propose the answer as a setting or memory entry.
 Propose set_aril_settings only when the owner asks to change a setting or agrees to one you suggested. Never propose pairedDevices: it is read-only here, and only the owner sets it on the desktop. A paired device may apply settings or memory proposals only when pairedDevices is true.
 Memory is how this owner likes this repository worked. When the owner settles a preference that will matter again, propose add_memory with one line. Propose update_memory or remove_memory when an entry is wrong or outdated. Never store secrets, credentials, or personal data in memory. Memory guides advice and grants no authority.
 
@@ -332,7 +332,7 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
 
   return {
     repository: repositoryName,
-    aril_settings: source.aril?.settings ?? null,
+    aril_settings: isPlainObject(source.aril?.settings) ? { ...source.aril.settings, settledAt: typeof source.aril.settings.settledAt === "string" ? source.aril.settings.settledAt : null } : null,
     grant: isPlainObject(source.aril?.grant) ? {
       active: source.aril.grant.active === true,
       ends_at: new Date(source.aril.grant.endsAt).toISOString(),
@@ -344,7 +344,7 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
     } : null,
     memory: (Array.isArray(source.aril?.memory) ? [...source.aril.memory] : [])
       .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id).slice(0, 100)
-      .map((entry) => ({ id: entry.id, text: prefix(text(entry.text), 300) })),
+      .map((entry) => ({ id: entry.id, text: prefix(text(entry.text), 300), updatedAt: Number.isFinite(entry.updatedAt) ? new Date(entry.updatedAt).toISOString() : null })),
     now: now.toISOString(),
     columns: columnList.map((column) => column.name),
     features: featureList.map((feature) => ({ id: feature.id, name: feature.name, done: feature.done === true })),
@@ -526,8 +526,10 @@ export function conversationHistory(messages, budget = HISTORY_BUDGET) {
  * `runs` are the observed agent runs the snapshot's Claude model list reads.
  * A follow-up has no owner message: `followUp` is the stored proposal the owner answered, and the prompt ends with its
  * outcome. Null when that proposal has no outcome yet.
+ * `workflowChanges` is the desktop's read of the repository's workflow sources: undefined when nothing is settled (no
+ * section), null when Git could not tell, else the changed sources `{ path, changedAt, uncommitted }`.
  */
-export function composePrompt({ board, repositoryName, runs = [], taskLog = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
+export function composePrompt({ board, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
   const history = conversationHistory(messages);
   const outcome = followUp ? proposalOutcome(followUp) : null;
   if (followUp && !outcome) return null;
@@ -537,6 +539,11 @@ export function composePrompt({ board, repositoryName, runs = [], taskLog = unde
     "<board_snapshot>",
     JSON.stringify(boardSnapshot(board, { repositoryName, now, runs })),
     "</board_snapshot>",
+    ...(workflowChanges === undefined ? [] : ["", "<workflow_changes>",
+      ...(workflowChanges === null ? ["Workflow changes are unknown."] : workflowChanges.length === 0
+        ? ["No workflow source changed since your settings and memory were settled."]
+        : workflowChanges.map((entry) => `${entry.path} ${entry.changedAt ?? "date unknown"} ${entry.uncommitted ? "uncommitted" : "committed"}`)),
+      "</workflow_changes>"]),
     ...(taskLog === undefined ? [] : ["", "<task_log_since_last_turn>",
       ...(taskLog === null ? ["(The task log is unavailable.)"] : [
         ...(taskLog.omitted ? ["(Older entries are left out.)"] : []),

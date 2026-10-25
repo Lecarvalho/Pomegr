@@ -445,7 +445,9 @@ test("Aril actions use the real store; paired writes are denied by default and g
 
   const settings = await setSettings({ limits });
   assert.equal(settings.status, 200);
-  assert.deepEqual(settings.json, { ok: true, settings: { ...store.readBoard(REPOSITORY_ID).aril.settings, limits } });
+  const { settledAt, ...writable } = store.readBoard(REPOSITORY_ID).aril.settings;
+  assert.equal(typeof settledAt, "string");
+  assert.deepEqual(settings.json, { ok: true, settings: { ...writable, limits } });
   const added = await action("aril_memory_add", REPOSITORY_ID, { text: "Use pull requests" }, { port });
   assert.equal(added.status, 200);
   assert.deepEqual(added.json, { ok: true, entry: { id: 1, text: "Use pull requests", createdAt: added.json.entry.createdAt, updatedAt: added.json.entry.updatedAt } });

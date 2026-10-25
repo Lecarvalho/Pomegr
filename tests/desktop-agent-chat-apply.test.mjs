@@ -456,7 +456,7 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-images.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-images.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {
@@ -474,7 +474,9 @@ test("the chat's runtime files are a closed surface: no console, no shell, no ex
     assert.doesNotMatch(source, /console\./u, `${file} logs`);
     assert.doesNotMatch(source, /shell\s*:\s*true/u, `${file} uses a shell`);
     assert.doesNotMatch(source, /openExternal|shell\.open|Menu\.|dialog\./u, `${file} opens something outside the app`);
-    assert.doesNotMatch(source, /\bexec(?:Sync|File|FileSync)?\(|\beval\(|new Function\(|spawnSync|fork\(/u, `${file} runs code by another route`);
+    // Only the workflow reader starts a process besides the provider run: Git, read-only, from an argument array.
+    const reader = file === "agent-chat-workflow.mjs";
+    assert.doesNotMatch(source, reader ? /\bexec(?:Sync|FileSync)?\(|\beval\(|new Function\(|spawn|fork\(/u : /\bexec(?:Sync|File|FileSync)?\(|\beval\(|new Function\(|spawnSync|fork\(/u, `${file} runs code by another route`);
     assert.doesNotMatch(source, /server\//u, `${file} reaches into the monitor`);
     assert.doesNotMatch(source, /\bprocess\.(?:exit|kill)|child\.kill\(\)\s*;\s*process/u, `${file} ends processes`);
     for (const specifier of [...source.matchAll(/(?:from\s+|import\s*\()\s*["']([^"']+)["']/gu)].map((match) => match[1])) {
@@ -488,6 +490,10 @@ test("the chat's runtime files are a closed surface: no console, no shell, no ex
   assert.deepEqual([...sources.get("agent-chat-images.mjs").matchAll(/from\s+"(node:[^"]+|\.\/[^"]+)"/gu)].map((match) => match[1]).sort(), ["./agent-chat-proposal.mjs", "node:crypto", "node:fs/promises", "node:path"]);
   assert.doesNotMatch(sources.get("agent-chat-runner.mjs"), /\bimport\b/u);
   assert.doesNotMatch(sources.get("agent-chat-proposal.mjs"), /\bimport\b/u);
+  const workflow = sources.get("agent-chat-workflow.mjs");
+  assert.equal([...workflow.matchAll(/\bexecFile\(/gu)].length, 1, "the workflow reader has one process start");
+  assert.match(workflow, /execFile\("git", \[\.\.\.GIT_PREFIX, \.\.\.args\], \{\s*cwd: root, shell: false/u);
+  assert.match(workflow, /"--no-optional-locks"/u);
 });
 
 test("every process the chat starts is started without a shell, from an argument array", async () => {
