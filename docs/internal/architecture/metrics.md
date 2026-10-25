@@ -22,6 +22,16 @@ These rules apply to every metric and to every surface that shows one.
 - Label elapsed duration as wall time because it includes idle gaps.
 - Rule-generated recommendations must trace to concrete events.
 
+## G1 scorecard
+
+Formula 1 uses only `task_outcomes` rows whose `pull_request_state` is `merged`, within one repository. S1 and S2 are heuristic proxies for owner effort and first-pass acceptance, not authoritative quality or productivity measurements.
+
+- S1 `ownerTurns` is the median non-null `owner_turns`; its sample is the number of those rows, including zero counts.
+- S1 `reviewToDoneMs` is the median wall time `done_at - review_at` in milliseconds; its sample includes only non-null `review_at` with `done_at >= review_at`.
+- S2 `firstPass` is the share with `commits_after_review === 0` among rows with non-null `commits_after_review`; its sample is that denominator.
+- Each measure is `{ value, sample }`; an empty sample gives null and 0, and an even median is the mean of the middle two sorted values.
+- The [task store](tasks.md#store) owns version snapshots and baseline selection; a version comparison does not establish that an app version caused a change.
+
 ## Session closure
 
 Session **Closed** reports confirmed native runtime departure from Claude's private

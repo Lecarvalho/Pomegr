@@ -203,3 +203,34 @@ test("GET /api/tasks holds no description and no app version after a feature has
   const home = await send(port, { method: "GET", path: "/api/tasks?view=home", headers: withToken });
   assert.doesNotMatch(home.text, /FEATURE-DESCRIPTION|7\.7\.7/u);
 });
+
+test("scorecard-read serves the snapshot only to desktop main and validates the exact payload", async (context) => {
+  const store = await realStore(context);
+  const port = await startRoute(context, store);
+  const payload = { appVersion: "1.2.3-beta+4" };
+  const answer = await action(port, "scorecard-read", payload);
+  assert.equal(answer.status, 200);
+  assert.deepEqual(answer.json, { ok: true, scorecard: store.readScorecard(REPOSITORY, payload.appVersion) });
+  for (const appVersion of ["", "x".repeat(41), "1 2", "1/2", "1\n", null, 1]) {
+    const refused = await action(port, "scorecard-read", { appVersion });
+    assert.equal(refused.status, 400);
+    assert.deepEqual(refused.json, { ok: false, error: "invalid" });
+  }
+  assert.equal((await action(port, "scorecard-read", { ...payload, extra: 1 })).status, 400);
+  assert.equal((await action(port, "scorecard-read", {})).status, 400);
+  for (const headers of [JSON_BODY, { ...JSON_BODY, "x-pomegr-desktop-authorization": "x".repeat(40) }, { ...JSON_BODY, ...withToken, origin: "http://127.0.0.1:3003" }]) {
+    assert.equal((await post(port, "scorecard-read", { repositoryId: REPOSITORY, payload }, headers)).status, 401);
+  }
+});
+
+test("scorecard-read returns unavailable for a missing reader, failed read, or non-object result", async (context) => {
+  const inner = await realStore(context);
+  const base = { readBoard: inner.readBoard, apply: inner.apply, close() {} };
+  for (const reader of [undefined, () => null, () => undefined, () => 1, () => "secret", () => { throw new Error("private detail"); }]) {
+    const port = await startRoute(context, { ...base, readScorecard: reader });
+    const answer = await action(port, "scorecard-read", { appVersion: "1" });
+    assert.equal(answer.status, 503);
+    assert.deepEqual(answer.json, { ok: false, error: "unavailable" });
+    if (reader === undefined) assert.equal(answer.headers.connection, "close");
+  }
+});

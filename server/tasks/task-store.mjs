@@ -13,6 +13,7 @@ import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDon
 import { deleteTaskReportHistory } from "./task-report-history.mjs";
 import { deleteTaskEvents, ensureTaskEvents } from "./task-events.mjs";
 import { deleteTaskOutcome, ensureTaskOutcomes } from "./task-outcomes.mjs";
+import { ensureScorecardSnapshots, readScorecardSnapshot } from "./task-scorecard.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -22,7 +23,7 @@ import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { deleteFeatureDetails, findFeature, readFeature, readFeatureDone, readFeaturesDone, writeFeatureDetails, writeFeatureDone } from "./task-feature-details.mjs";
 import { deleteFeature } from "./task-feature-actions.mjs";
-import { deleteTaskAfter, readTaskAfter, setTaskAfter } from "./task-after.mjs";
+import { agentSetAfter, deleteTaskAfter, readTaskAfter, setTaskAfter } from "./task-after.mjs";
 import { agentTaskEntries } from "./task-agent-read.mjs";
 import { moveTask, queueGroupCards } from "./task-card-moves.mjs";
 import { groupTasks, markReadyGroupsMigrated, migrateStepGroups, pruneTaskGroups, readTaskGroups, settleGroupLanes, ungroupTasks, writeTaskGroup } from "./task-groups.mjs";
@@ -123,6 +124,7 @@ function createFreshStore(database) {
     createSchema(database);
     ensureTaskEvents(database);
     ensureTaskOutcomes(database);
+    ensureScorecardSnapshots(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
@@ -158,6 +160,7 @@ function openDatabase(directory) {
       verifyExistingStore(database);
       ensureTaskEvents(database);
       ensureTaskOutcomes(database);
+      ensureScorecardSnapshots(database);
     }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
@@ -316,15 +319,6 @@ function deleteTask({ database, repositoryId, now }, payload) {
 
 // The agent's `add_task`, `remove_task` (task-adder.mjs), and `update_task`.
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-
-// What an agent's `add_task` or `update_task` sets the task to run after, through the board's `after_set` and in the
-// same transaction, so a refused list writes nothing of the call. A task that is not on the board answers
-// `after_not_found`, and a list that would make tasks wait for each other answers `after_loop`.
-function agentSetAfter(context, id, after) {
-  const result = setTaskAfter(context, { id, after });
-  if (result.ok || result.error === "invalid") return result;
-  return { ok: false, error: result.error === "not_found" ? "after_not_found" : "after_loop" };
-}
 
 function agentCreateTask(context, payload) {
   if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "task" && key !== "after") || !isTaskSessionId(payload.sessionId)
@@ -795,6 +789,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const addImage = (repositoryId, payload) => image(addTaskImage, repositoryId, payload);
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
+  const readScorecard = (repositoryId, appVersion) => link(() => runTransaction(database, () => readScorecardSnapshot(database, repositoryId, appVersion, now())));
   return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
-    addImage, removeImage, readImage, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, readScorecard, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

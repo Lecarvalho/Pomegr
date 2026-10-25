@@ -60,7 +60,9 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 - `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
 - `task_outcomes` stores one outcome per task at Done, from its events in the same transaction, without backfilling older tasks.
-- Opening a store creates missing `task_events` and `task_outcomes` tables; these additive tables keep schema version 1 and change no existing table or meta key.
+- `task_scorecard_snapshots` stores one row per repository, app version, and formula; snapshots are kept when a task is deleted.
+- Opening a store creates missing `task_events`, `task_outcomes`, and `task_scorecard_snapshots` tables; these additive tables keep schema version 1 and change no existing table or meta key.
+- `readScorecard(repositoryId, appVersion)` refreshes that version's measures in a transaction, keeping its first snapshot time; the baseline is the earliest other version for the same repository and formula, ordered by snapshot time then app version, or null (see [G1 scorecard](metrics.md#g1-scorecard)).
 - Outcome facts stay null without a review or a resolver; a resolver failure leaves them null and never prevents Done.
 - Version 0.8.x verifies only its listed tables, so it can still open the store.
 - The store is versioned. A malformed or newer store is never overwritten by a routine
@@ -2588,6 +2590,7 @@ serves no other client.
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
+| `POST /internal/tasks/scorecard-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { appVersion } }`; upserts the version's snapshot and answers `{ ok: true, scorecard }` with formula, current snapshot, and nullable baseline; counts, shares, medians, snapshot times, and app versions only |
 | `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked and each assigned session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
 | `GET /api/tasks?view=home` | The same clients, under the same gate and the same forwarding | The [Tasks home](#tasks-home), `no-store`: for each stored board its five column counts, its count of open features, its queue status with the blocking task's ID and the fixed pause reason, and the time of its newest task change; and for at most 50 tasks that wait for the owner, the repository ID, the task ID, the state, and one title line. A denied client gets `readiness: "desktop_only"` and no content |
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), on a session that is assigned to a task `assignedTasks` (the same reference for each such task), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
@@ -2739,6 +2742,8 @@ serves no other client.
 - `task_outcomes` stores only counts, times, a pull request number and its fixed state, under repository and task identifiers.
 - Outcomes are computed at Done and deleted with the task; no text, title, URL, or branch name is stored.
 - Outcomes stay private to the task store; no route, agent tool, or observation surface reads them.
+- `task_scorecard_snapshots` holds only versions, formula, time, counts, shares, and medians under a repository identifier.
+- The scorecard read (`POST /internal/tasks/scorecard-read`) is their only way out: formula, counts, shares, medians, snapshot times, and app versions to the desktop main process; never a browser, paired device, agent tool, or `/api/state`.
 - A task session and its assigned sessions borrow only the primary agent's provider-reported `observedEffort` per read, bounded as above; it is never stored and adds no value to `/api/state`.
 
 - The block-hold marker stays only in the task store. It is served indirectly through existing queue status and `blockedBy`, never as task content.
