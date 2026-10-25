@@ -25,7 +25,7 @@ const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col
 const FOOTNOTE = "Drag a card to move it. Ready starts from the top, one card at a time. To run cards together, in Backlog or Ready, choose Run in parallel between them or drop a card on a group. Drag a card out of a group to take it out.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id - 1, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,

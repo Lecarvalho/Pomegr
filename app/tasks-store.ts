@@ -96,6 +96,17 @@ function validTask(value: unknown): value is Task {
     && timestamp(task.createdAt) && timestamp(task.updatedAt);
 }
 
+function parseReview(value: unknown): Task["review"] {
+  const review = record(value);
+  if (!review) return null;
+  if (review.state === "running") return Object.keys(review).length === 1 ? { state: "running" } : null;
+  if ((review.state !== "passed" && review.state !== "failed") || Object.keys(review).length !== 3
+    || !timestamp(review.at) || new Date(review.at).toISOString() !== review.at) return null;
+  const reasons = listOf(review.reasons, 10, (reason): reason is string => text(reason, 200) && reason.trim().length > 0 && !/[\r\n\u2028\u2029]/u.test(reason));
+  if (!reasons || (review.state === "passed" && reasons.length !== 0)) return null;
+  return { state: review.state, at: review.at, reasons };
+}
+
 const COLUMN_ROLES = new Set<string>(TASK_COLUMN_ROLES);
 function validColumn(value: unknown): value is TaskBoard["columns"][number] {
   const column = record(value);
@@ -179,7 +190,7 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   const columns = listOf(body.columns, LIMITS.columns, validColumn);
   const features = listOf(body.features, LIMITS.features, validFeature);
   const validated = listOf(body.tasks, LIMITS.tasks, validTask);
-  const tasks = validated && validated.map((task) => (task.source === undefined ? { ...task, source: null } : task));
+  const tasks = validated && validated.map((task) => ({ ...task, source: task.source ?? null, review: parseReview(task.review) }));
   const queue = record(body.queue);
   if (!columns || !features || !tasks || !queue || !QUEUE_STATUSES.has(queue.status as string) || !nullableText(queue.blockedBy, LIMITS.label)) return null;
   const order = listOf(queue.order, LIMITS.tasks, (entry): entry is string => typeof entry === "string" && TASK_ID_PATTERN.test(entry));

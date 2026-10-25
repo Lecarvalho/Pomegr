@@ -26,7 +26,7 @@ const refresh = vi.fn(async () => {});
 const columns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position, role: null }));
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: `T-${id}`, text, columnId: "col-2", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "queued", scheduledAt: null, session: null, source: null, report: null,

@@ -95,9 +95,11 @@ or the repository folder when no task worktree is available. No worktree is crea
 
 The reviewer checks the work and runs the repository's checks. It changes no code,
 does not move the task, and is instructed to report **pass** or **fail**. The verdict
-is recorded in the task log for now; display on the task comes later. Reporting
-through the plugin requires the separate review-reporting slice, which is not yet
-included. Starting a review is available only in the Windows desktop app.
+appears in the task modal's **Review** row, on the desktop and a paired device.
+The row reads **Review running…** until the reviewer reports, then **Passed** or
+**Failed** with the time and, for a failure, its reasons. It shows only verdicts
+from the task's current stay in Review. Starting a review is available only in
+the Windows desktop app.
 
 ## Run the queue
 

@@ -31,7 +31,7 @@ const columns = ["Backlog", "Ready"].map((name, position) => ({ id: `col-${posit
 const DEFAULT_COMPLETE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,

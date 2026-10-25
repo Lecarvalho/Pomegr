@@ -136,9 +136,9 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(effort).toHaveAttribute("aria-pressed", "true");
     expect(effort.parentElement).toHaveClass("commandSegmented");
     expect(within(sample(section, "Complete when, new task")).getByRole("checkbox", { name: "PR open" })).toBeChecked();
-    // Complete when, reported, the edit modal that needs review, and the done task's panel (3 Passed) show the report's outcomes.
-    expect(within(section).getAllByText("Not passed")).toHaveLength(2);
-    expect(within(section).getAllByText("Passed")).toHaveLength(5);
+    // The three review verdict samples also show the builder report's outcomes.
+    expect(within(section).getAllByText("Not passed")).toHaveLength(5);
+    expect(within(section).getAllByText("Passed")).toHaveLength(8);
     // A condition Pomegr could not verify is muted: it takes neither result color.
     const unverified = within(section).getAllByText("Not verified");
     expect(unverified.length).toBeGreaterThan(0);

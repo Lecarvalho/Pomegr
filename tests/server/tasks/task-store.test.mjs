@@ -66,7 +66,7 @@ function insertTask(database, repositoryId, columnId, overrides = {}) {
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
 const COLUMN_KEYS = ["id", "name", "position", "role"];
 const FEATURE_KEYS = ["done", "id", "name"];
-const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "review", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
 
 function keysOf(value) {
   return Object.keys(value).toSorted();
@@ -160,7 +160,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",
     session: { id: "session-abc", title: null, state: "unknown", observedModel: null, observedEffort: null },
-    source: null, images: [],
+    source: null, images: [], review: null,
     report: {
       at: "2023-11-14T22:13:23.000Z",
       results: [{ check: "pr_open", passed: true }, { check: "tree_clean", passed: false }],

@@ -28,7 +28,7 @@ const first = session("one", "First assigned");
 const second = session("two", "Second assigned", "needs_input");
 
 function task(overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: "T-1", text: "Task text", columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,

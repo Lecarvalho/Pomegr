@@ -543,6 +543,10 @@ A task has started when it has a session or an outcome: Needs review, Stalled, B
 - A task that is done with a report reads **Agent report**.
 - The report line follows the heading as 13px muted text, in the words of the report: “Agent reported complete (time).” or “Agent reported it cannot continue (time).”
 - A Stalled task has no report, so its line reads “The session ended with no report.”
+- In Review, a non-null `Task.review` adds a **Review** row before the session line; null draws no row.
+- A running review reads “Review running…” in muted ink.
+- A verdict reads **Passed** or **Failed** and its time with the existing report time formatter, in neutral ink without good or bad color.
+- A failed verdict lists its one-line reasons as plain text; a passed verdict has no reason list.
 - An attention line or a block reason follows the report line in an amber notice: an amber line, the amber-soft fill, and 13px text in the text color.
 - The report line ends with a colon when the notice follows, and with a period when it does not.
 - The notice reads `**bold**` and `` `inline code` `` in the agent's words.
@@ -924,6 +928,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 
 - `/design-system` renders the task fields as Run settings rows, including Feature, Remote Control, and When done.
 - `/design-system` renders the Review panel for Needs review, Stalled, and Blocked by agent, and for a Done task with a report, headed **Agent report**.
+- `/design-system` renders running, passed, and failed review verdicts, including a failed verdict with reasons.
 - `/design-system` renders the Task read view with a tag run, a numbered list, code, a UUID, and a date, and again with an inline image.
 - `/design-system` renders the Run settings of a started task, and again with the **Observed model differs** notice under Run on.
 - `/design-system` renders the Queue block for a task behind earlier cards, a queue that is off, a held start, a scheduled task, and no known hold.

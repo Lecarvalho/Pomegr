@@ -494,7 +494,7 @@ describe("Run on, Effort and Complete when", () => {
   });
 
   it("fills the Run on and Effort that the newest task on the board lacks", async () => {
-    const stored = (run: Task["run"]): Task => ({
+    const stored = (run: Task["run"]): Task => ({ review: null,
       id: "T-4", text: "Added by an agent", columnId: "col-1", position: 0, featureId: null, group: null,
       run, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
       session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z",
@@ -517,7 +517,7 @@ describe("Run on, Effort and Complete when", () => {
   });
 
   it("starts from the Run on, Effort and Complete when of the newest task on the board", async () => {
-    const earlier = (id: string, overrides: Partial<Task>): Task => ({
+    const earlier = (id: string, overrides: Partial<Task>): Task => ({ review: null,
       id, text: "Earlier work", columnId: "col-1", position: 0, featureId: null, group: null,
       run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
       session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,

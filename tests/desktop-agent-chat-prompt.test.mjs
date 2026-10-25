@@ -50,6 +50,19 @@ import {
 import { POMEGR_READ_TOOLS } from "../desktop/runtime/agent-chat-runner.mjs";
 
 const now = new Date("2026-10-01T12:00:00.000Z");
+test("snapshot and prompt carry the review verdict without reviewer identity", () => {
+  for (const review of [{ state: "passed", at: now.toISOString(), reasons: [] }, { state: "failed", at: now.toISOString(), reasons: ["Checks failed"] }]) {
+    const board = fullBoard({ tasks: [fullTask({ review: { ...review, sessionId: "PRIVATE_REVIEWER" } })] });
+    assert.deepEqual(boardSnapshot(board).tasks[0].review, review);
+    const prompt = composePrompt({ board, message: "Review status", now });
+    const snapshot = JSON.parse(prompt.split("<board_snapshot>\n")[1].split("\n</board_snapshot>")[0]);
+    assert.deepEqual(snapshot.tasks[0].review, review);
+    assert.ok(!prompt.includes("PRIVATE_REVIEWER"));
+  }
+  for (const task of [fullTask({ review: null }), fullTask({ review: { state: "running" } }), fullTask({ state: "done", review: { state: "passed", at: now.toISOString(), reasons: [] } })]) {
+    assert.equal(Object.hasOwn(boardSnapshot(fullBoard({ tasks: [task] })).tasks[0], "review"), false);
+  }
+});
 const PRIVATE_ROOT = "C:\\Users\\tester\\private-repo";
 
 function fullTask(overrides = {}) {

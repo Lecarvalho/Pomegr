@@ -10,7 +10,7 @@ const storedQueue = ({ waits: _waits, ...queue }) => queue;
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "group", "id", "images", "position", "report", "review", "run", "scheduledAt", "session", "source", "state", "text", "updatedAt"];
 const INVALID_PAYLOADS = [{}, { id: "" }, { id: "T-0" }, { id: "t-1" }, { id: "T-01" }, { id: 1 }, { id: null }, { id: "T-1", extra: true }, null, "T-1", [], 7, undefined];
 
 async function temporaryStore(t) {

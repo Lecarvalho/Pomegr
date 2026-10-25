@@ -210,7 +210,7 @@ export const STORAGE_KEY = "pomegr.agentChat.repository";
 const COLUMNS = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
 
 function task(id: string, text: string): Task {
-  return {
+  return { review: null,
     id, text, columnId: "col-1", position: 0, featureId: null, group: null, run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z",
   };

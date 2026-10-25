@@ -204,7 +204,7 @@ describe("Runs after, Sessions, and Start at rows", () => {
 describe("the samples and the tokens", () => {
   it("renders the four edit samples and the issue row samples on /design-system", () => {
     const sample = read("app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx");
-    for (const label of ["Task modal, edit\"", "Task modal, edit, needs review\"", "Task modal, edit, running\"", "Task modal, edit, create issue\"", "Review panel, needs review", "Task, read view", "GitHub issue, confirmation"]) {
+    for (const label of ["Task modal, edit\"", "Task modal, edit, needs review\"", "Task modal, edit, running\"", "Task modal, edit, create issue\"", "Review panel, needs review", "Review verdict, running", "Review verdict, passed", "Review verdict, failed", "Task, read view", "GitHub issue, confirmation"]) {
       expect(sample).toContain(`label="${label.replace(/"$/, "")}`);
     }
     expect(sample).not.toMatch(/<TaskModalFrame|TaskModalSource/);

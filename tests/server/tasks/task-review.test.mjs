@@ -7,6 +7,29 @@ import { TASK_DISPATCH_UNBOUND_TTL_MS } from "../../../server/tasks/task-dispatc
 import { createTask, FACTS, metaValue, openTemporaryStore, passingGates, REPOSITORY, SESSION, updateTask, withDatabase } from "./queue-test-support.mjs";
 
 const REVIEWER = "codex:reviewer";
+test("board review shows only the current Review verdict without reviewer identity", async (t) => {
+  const env = await setup(t);
+  const current = () => env.store.readBoard(REPOSITORY).tasks[0].review;
+  assert.equal(current(), null);
+  assert.equal(env.store.bindSession({ token: plan(env).plan.token, sessionId: REVIEWER }).ok, true);
+  assert.deepEqual(current(), { state: "running" });
+  assert.equal(report(env).ok, true);
+  assert.deepEqual(current(), { state: "passed", at: new Date(env.clock.now).toISOString(), reasons: [] });
+  const reasons = ["Checks failed", "Rule unmet"];
+  assert.equal(report(env, { verdict: "fail", reasons }).ok, true);
+  assert.deepEqual(current(), { state: "failed", at: new Date(env.clock.now).toISOString(), reasons });
+  assert.ok(!JSON.stringify(env.store.readBoard(REPOSITORY)).includes(REVIEWER));
+  assert.equal(env.store.apply(REPOSITORY, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(current(), null);
+  env.clock.now += 1000;
+  updateTask(env.directory, 1, { session_id: SESSION });
+  assert.equal(env.store.completeTask({ sessionId: SESSION }).ok, true);
+  assert.equal(current(), null);
+  assert.equal(env.store.bindSession({ token: plan(env).plan.token, sessionId: "codex:next" }).ok, true);
+  assert.deepEqual(current(), { state: "running" });
+  assert.equal(report(env, { sessionId: "codex:next" }).ok, true);
+  assert.deepEqual(current(), { state: "passed", at: new Date(env.clock.now).toISOString(), reasons: [] });
+});
 const key = (kind, id = "T-1") => `task_${kind}:${REPOSITORY}:${id}`;
 const plan = (env, payload = { id: "T-1" }, facts = FACTS) => env.store.planReview(REPOSITORY, payload, () => facts);
 const rows = (env, table) => withDatabase(env.directory, (db) => db.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
@@ -66,7 +89,7 @@ test("review binding preserves builder fields and column, rejects linked session
   const token = plan(env).plan.token;
   assert.deepEqual(env.store.bindSession({ token, sessionId: SESSION }), { ok: false, error: "not_found" });
   assert.deepEqual(env.store.bindSession({ token, sessionId: REVIEWER }), { ok: true });
-  assert.deepEqual(env.store.readBoard(REPOSITORY).tasks[0], before);
+  assert.deepEqual(env.store.readBoard(REPOSITORY).tasks[0], { ...before, review: { state: "running" } });
   assert.equal(metaValue(env.directory, key("reviewer")), REVIEWER);
   assert.equal(metaValue(env.directory, key("review_dispatch")), null);
   assert.deepEqual(rows(env, "task_log").map((r) => r.kind), ["review_started"]);
@@ -96,7 +119,8 @@ test("only the reviewer reports; changed verdicts append, identical retries do n
   assert.deepEqual(rows(env, "task_log").map((r) => r.kind), ["review_started", "review_passed", "review_failed"]);
   assert.equal(env.store.readBoard(REPOSITORY).tasks[0].state, "needs_review");
   const exposed = JSON.stringify([env.store.readBoard(REPOSITORY), env.store.readAgentTasks(REPOSITORY), env.store.readLog(REPOSITORY, { limit: 20 })]);
-  assert.ok(!exposed.includes(REVIEWER) && !exposed.includes(fail.reasons[0]));
+  assert.ok(!exposed.includes(REVIEWER));
+  assert.ok(!JSON.stringify([env.store.readAgentTasks(REPOSITORY), env.store.readLog(REPOSITORY, { limit: 20 })]).includes(fail.reasons[0]));
   updateTask(env.directory, 1, { state: "done" });
   assert.deepEqual(report(env), { ok: false, error: "not_reviewable" });
 });

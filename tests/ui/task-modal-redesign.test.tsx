@@ -22,7 +22,7 @@ const refresh = vi.fn(async () => {});
 const onClose = vi.fn();
 
 function task(overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: "T-20", text: "Retry failed uploads.", columnId: "col-1", position: 1, featureId: null, group: null,
     run: { provider: "claude", model: "model-a", effort: "high" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
@@ -32,6 +32,29 @@ function task(overrides: Partial<Task> = {}): Task {
 
 const session = { id: "claude:abc123", title: "Retry the uploads", state: "idle", observedModel: "model-a", observedEffort: null };
 const report = { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }], blockReason: null };
+describe("the task's review verdict", () => {
+  it("shows a muted running row", () => {
+    open(task({ state: "needs_review", review: { state: "running" } }));
+    expect(screen.getByText("Review running…")).toHaveClass("taskRowNone");
+    expect(row("Review")).toBeInTheDocument();
+  });
+  it.each(["passed", "failed"] as const)("shows %s with a time and plain failure reasons", (state) => {
+    const at = "2026-10-25T12:00:00.000Z";
+    open(task({ state: "needs_review", review: { state, at, reasons: state === "failed" ? ["**Rule unmet**", "Checks failed"] : [] } }));
+    expect(within(row("Review")).getByText(state === "passed" ? /^Passed \(/ : /^Failed \(/)).toBeInTheDocument();
+    expect(row("Review").querySelector("time")).toHaveAttribute("dateTime", at);
+    expect(row("Review").querySelector(".isPassed, .isFailed, strong")).toBeNull();
+    if (state === "failed") expect(within(row("Review")).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["**Rule unmet**", "Checks failed"]);
+    else expect(within(row("Review")).queryByRole("list")).not.toBeInTheDocument();
+  });
+  it("omits absent verdicts and verdicts outside Review", () => {
+    const view = open(task({ state: "needs_review", review: null }));
+    expect(row("Review")).toBeUndefined();
+    view.unmount();
+    open(task({ state: "done", report, review: { state: "passed", at: report.at, reasons: [] } }));
+    expect(row("Review")).toBeUndefined();
+  });
+});
 
 function boardOf(...tasks: Task[]): Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue: TaskBoard["queue"] } {
   return { columns, features, tasks, queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] } };

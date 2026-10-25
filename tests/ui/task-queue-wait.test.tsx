@@ -21,7 +21,7 @@ const columns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name,
 const setBridge = (bridge: unknown) => { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge; };
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: `T-${id}`, text, columnId: "col-2", position: id, featureId: null, group: null,
     run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: [], own: null },
     state: "queued", scheduledAt: null, session: null, source: null, report: null,

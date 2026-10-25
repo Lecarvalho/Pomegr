@@ -178,6 +178,7 @@ type Task = {
   report: { at: string; results: { check: TaskCheck; passed: boolean; unavailable?: true }[];   // `unavailable`: not verified
     blockReason: string | null;
     attention: string | null } | null;                 // what the agent asked the owner to look at
+  review: { state: "running" } | { state: "passed" | "failed"; at: string; reasons: string[] } | null;
   source: { kind: "github_issue"; number: number } | null;   // set once, by a promote or an issue create
   images?: { id: string; type: "png" | "jpeg" | "gif" | "webp"; bytes: number }[];   // at most four; never the bytes
   createdAt: string; updatedAt: string;
@@ -2153,7 +2154,7 @@ How it is built:
 ## Review sessions
 
 The desktop app supports owner-started reviews of tasks in `needs_review` with a linked builder session.
-The reviewer uses `report_review` in Claude Code or Codex, never `complete_task` or `block_task`. Board verdict display arrives in a later slice; verdicts appear in the task log for now.
+The reviewer uses `report_review` in Claude Code or Codex, never `complete_task` or `block_task`. The task modal shows the review state and latest verdict; Aril's board snapshot includes that verdict.
 Aril gains no authority, and no review starts automatically.
 
 - `review-plan` accepts `{ id }` or `{ id, provider, model, effort }` inside the existing repository envelope.
@@ -2176,6 +2177,9 @@ Aril gains no authority, and no review starts automatically.
 - Only the stored reviewer may report, and only while the task remains `needs_review`; an omitted task ID requires exactly one reviewed task.
 - A verdict is `pass` without reasons, or `fail` with 1–10 nonempty single-line reasons of at most 200 characters each.
 - Verdicts append to `task_reviews`; the latest verdict wins, while an identical retry from the same reviewer appends nothing.
+- The board serves `Task.review` as null outside Review or without a reviewer or current verdict, `{ state: "running" }` after binding without a verdict, or `{ state: "passed" | "failed", at, reasons }` for the latest verdict since the latest `review` event.
+- Verdict times are ISO strings; passed verdicts have no reasons, and failed verdicts carry the stored one-line reasons, at most 10 of at most 200 characters each.
+- A requeue and return to Review excludes earlier verdicts; no review projection carries the reviewer session ID.
 - Reports append `review_passed` or `review_failed` to the task log and return only the existing fixed agent outcome envelope.
 - Reviews never move the task, edit the board, or change the builder session, builder dispatch, or column.
 - Leaving Review clears both review meta keys; deleting the task also deletes its review rows.
@@ -2643,7 +2647,7 @@ serves no other client.
 | `pomegr:task-scorecard` IPC | The renderer, through a trusted main frame only | A repository ID in; `{ ok: true, scorecard }` with the fixed scorecard above or `{ ok: false, error }` with `invalid` or `unavailable` out. The app version comes from the main process, never the renderer |
 | `pomegr:task-log` IPC | The renderer, through a trusted main frame only | A repository ID in; `{ ok: true, log: { entries, more, arilCursor } }` out, with at most 200 entries of positive safe-integer ID, task ID, fixed kind, safe-integer time, and nullable positive safe-integer PR number, a boolean `more`, and a nonnegative safe-integer Aril cursor; failures are `invalid` or `unavailable`. Reads never acknowledge entries |
 | `POST /api/tasks/log-read` on the LAN gateway | A paired device only, with an authenticated session and the gateway's own Origin | Exactly `{ repositoryId }` matching the repository ID pattern, JSON of at most 256 bytes, no query; the same bounded `{ ok: true, log: { entries, more, arilCursor } }` or `{ ok: false, error }` as the log IPC, `no-store`. Answered in desktop main by the shared reader, never forwarded to the web host; reads never acknowledge entries |
-| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked and each assigned session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked and each assigned session's borrowed title, state, and model, a waiting task's per-condition reading, and `Task.review` (current review state, verdict time, and reasons; never reviewer session ID). A denied client gets `readiness: "desktop_only"` and no task content |
 | `GET /api/tasks?view=home` | The same clients, under the same gate and the same forwarding | The [Tasks home](#tasks-home), `no-store`: for each stored board its five column counts, its count of open features, its queue status with the blocking task's ID and the fixed pause reason, and the time of its newest task change; and for at most 50 tasks that wait for the owner, the repository ID, the task ID, the state, and one title line. A denied client gets `readiness: "desktop_only"` and no content |
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), on a session that is assigned to a task `assignedTasks` (the same reference for each such task), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
@@ -2788,6 +2792,10 @@ serves no other client.
   `feature-get`.
 
 ## Privacy
+
+- From 2026-10-25 (Aril operator phase 2), `Task.review` sends the current review state, latest verdict time, and stored one-line reasons to the trusted desktop renderer and a paired device through `GET /api/tasks`, under its existing read gate.
+- The latest verdict and its reasons for a task in Review also reach Aril's provider prompt through the board snapshot; the reviewer session ID never leaves the private store through either projection.
+- Review reasons never enter `/api/state`, observation surfaces, or task-log entries.
 
 - `task_events` stores only event kind, time, and nullable session ID under its repository and task identifiers, never text.
 - Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
@@ -3209,7 +3217,6 @@ layer rule (`server-tasks-layer`) in `.dependency-cruiser.cjs`. Run
 `npm run check:boundaries` for import direction and `npm run check:docs` for this
 page.
 - `task_reviews` stores verdict, time, reviewer session ID, and nullable JSON reasons under repository and task identifiers.
-- Reasons are bounded agent-written text, like report results; no current store read, route, board, observation surface, or log exposes them.
-- A later board slice may expose review reasons; this slice adds no such read.
+- Reasons are bounded reviewer-written text; only the current Review projection exposes them under [Privacy](#privacy).
 - `task_review_dispatch:<repositoryId>:<T-n>` stores only a SHA-256 digest and mint time; `task_reviewer:<repositoryId>:<T-n>` stores only the reviewer session ID.
 - The review plan sends task text, Complete when, and feature title and ID only through the private desktop launch path.

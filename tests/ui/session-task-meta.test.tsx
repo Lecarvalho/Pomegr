@@ -13,7 +13,7 @@ const repositoryId = "repo-0123456789abcdef01234567";
 const taskHref = "/sessions/claude%3Aabc?tab=task";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
-  return {
+  return { review: null,
     id: `T-${id}`, text: `Secret task text ${id}`, columnId: "col-1", position: id, featureId: null, group: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,

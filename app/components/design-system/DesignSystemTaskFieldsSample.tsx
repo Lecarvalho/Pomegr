@@ -112,14 +112,23 @@ export function TaskFieldsSection() {
         <RunSettings><StartAtDemo initial="2026-10-22T02:00" failure={TASK_SCHEDULE_FAILURE_MESSAGE} /></RunSettings>
       </Sample>
       <Sample label="Review panel, needs review" note="A started task that needs the user opens with this panel on the raised fill: the state in words, the agent's report line, the agent's own words in an amber notice when it gave any, and each checked condition with its result. Passed is green with a check glyph. Not verified is muted: Pomegr had no current evidence, so the condition is neither passed nor failed. Validated with the user and the own condition are judged by the agent, so they show Agent-reported. The session closes the panel.">
-        <TaskReviewPanel task={{ state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT }} session={SAMPLE_SESSION} />
+        <TaskReviewPanel task={{ review: null, state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT }} session={SAMPLE_SESSION} />
+      </Sample>
+      <Sample label="Review verdict, running" note="The reviewer is bound and has not reported a verdict.">
+        <TaskReviewPanel task={{ state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT, review: { state: "running" } }} />
+      </Sample>
+      <Sample label="Review verdict, passed" note="The latest verdict in this Review, with its time in neutral ink.">
+        <TaskReviewPanel task={{ state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT, review: { state: "passed", at: "2026-10-25T12:00:00.000Z", reasons: [] } }} />
+      </Sample>
+      <Sample label="Review verdict, failed" note="The reviewer's one-line reasons are a plain list in neutral ink.">
+        <TaskReviewPanel task={{ state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT, review: { state: "failed", at: "2026-10-25T12:00:00.000Z", reasons: ["The focused checks failed.", "The required documentation is missing."] } }} />
       </Sample>
       <Sample label="Review panel, stalled and blocked" note="A stalled task has no report, so the panel says the session ended with none and lists no results. A blocked task shows the agent's reason in the same amber notice.">
-        <TaskReviewPanel task={{ state: "stalled", completeWhen: { checks: ["pr_open"], own: null }, report: null }} />
-        <TaskReviewPanel task={{ state: "blocked", completeWhen: { checks: ["pr_open"], own: null }, report: { at: "", blockReason: "The upload service rejects every retry in the test environment.", results: [] } }} />
+        <TaskReviewPanel task={{ review: null, state: "stalled", completeWhen: { checks: ["pr_open"], own: null }, report: null }} />
+        <TaskReviewPanel task={{ review: null, state: "blocked", completeWhen: { checks: ["pr_open"], own: null }, report: { at: "", blockReason: "The upload service rejects every retry in the test environment.", results: [] } }} />
       </Sample>
       <Sample label="Review panel, done with a report" note="A done task that has an agent report keeps the panel, headed Agent report instead of a state. The report line and each checked condition with its result follow, and the session closes the panel. A done task offers no Mark done and no Requeue.">
-        <TaskReviewPanel task={{ state: "done", completeWhen: REVIEWED_WHEN, report: DONE_REPORT }} session={SAMPLE_SESSION} />
+        <TaskReviewPanel task={{ review: null, state: "done", completeWhen: REVIEWED_WHEN, report: DONE_REPORT }} session={SAMPLE_SESSION} />
       </Sample>
       <Sample label="Task, read view" note="A started task's text is read-only: the lock line, the tag chips, the 16px/650 title, then the rest as a document. Paragraphs split on blank lines, numbered and bulleted lists are lists, other line breaks stay, `code` is the data font, and a UUID or an ISO date and time is muted data-font text. This is a display heuristic, not Markdown. The text is drawn as React text, never as HTML.">
         <TaskReadView text={DOCUMENT_TEXT} urls={SAMPLE_IMAGE_URLS} note={STARTED_REQUEUE_NOTE} />
@@ -261,7 +270,7 @@ function TaskModalEditSamples() {
             <button type="button" className="commandSecondaryAction" onClick={noop}>Requeue task</button>
             <button type="button" className="commandPrimaryAction" onClick={noop}>Mark done</button>
           </>}>
-          <TaskReviewPanel task={{ state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT }} session={SAMPLE_SESSION} />
+          <TaskReviewPanel task={{ review: null, state: "needs_review", completeWhen: REVIEWED_WHEN, report: REVIEWED_REPORT }} session={SAMPLE_SESSION} />
           <TaskReadView text={DOCUMENT_TEXT} urls={SAMPLE_IMAGE_URLS} note={STARTED_REQUEUE_NOTE} />
           <TaskRunSettingsRead task={REVIEWED_TASK} board={BOARD_RUNNING} models={MODELS} conditionsListed
             issue={<IssueRowDemo disabled={false} />}
