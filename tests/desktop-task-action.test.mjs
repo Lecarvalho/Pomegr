@@ -40,6 +40,7 @@ test("task action channel and list are fixed", () => {
   assert.deepEqual([...TASK_ACTION_NAMES], [
     "create", "update", "delete", "move",
     "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set",
+    "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
   ]);
 });
 
@@ -105,7 +106,7 @@ test("every fixed action maps to its own internal path", async () => {
 });
 
 test("monitor errors map to the bounded set and nothing else crosses back", async () => {
-  for (const error of ["invalid", "not_found", "limit", "conflict", "unsupported"]) {
+  for (const error of ["invalid", "not_found", "limit", "conflict", "unsupported", "not_ready"]) {
     const { action } = harness(() => json({ ok: false, error, detail: "C:\\secret\\path", board: { tasks: [] } }, 400));
     assert.deepEqual(await action.run(trusted, repositoryId, "update", { id: "T-1" }), { ok: false, error });
   }
