@@ -8,8 +8,10 @@ import { FileTree } from "../../app/components/repositories/FileTree";
 import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 import { StorageUsageBar } from "../../app/settings/StorageSettings";
 import { SessionTerminalSection } from "../../app/components/design-system/DesignSystemTerminalSample";
+import { ScorecardSection } from "../../app/components/design-system/DesignSystemScorecardSample";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+it("includes task log samples", () => { render(<ScorecardSection />); expect(screen.getByText("Task log, entries")).toBeInTheDocument(); });
 it("renders each read-only Terminal state from synthetic samples", () => {
   const { container } = render(<SessionTerminalSection />);
   expect(container.querySelector(".sessionTerminalMessage strong")).toHaveTextContent("previous revision");
@@ -69,11 +71,9 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandPageHeader h1\s*\{[^}]*font:\s*600 var\(--text-title\)\/1\.25 var\(--font-ui\)/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSessionView > \.commandPageHeader h1\s*\{\s*font-size:\s*22px/);
   });
-
   it("keeps the phone request identity on a stable row above the minimap", () => {
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.requestRoleNamed\s*\{[^}]*flex:\s*0 0 100%;[^}]*width:\s*100%/);
   });
-
   it("keeps the phone Signals title below sticky application chrome", () => {
     expect(signalsTabStyles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.tab\s*\{[^}]*--signals-phone-sticky-offset:\s*56px;[^}]*margin-top:\s*calc\(-1 \* var\(--signals-phone-sticky-offset\)\);[^}]*padding-top:\s*var\(--signals-phone-sticky-offset\);[^}]*scroll-margin-top:\s*var\(--signals-phone-sticky-offset\)/);
   });

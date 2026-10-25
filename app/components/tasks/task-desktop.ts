@@ -17,6 +17,7 @@ export type TaskDesktopBridge = {
   taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
   taskFeature?: (repositoryId: string, featureId: string) => Promise<unknown>;
   taskScorecard?: (repositoryId: string) => Promise<unknown>;
+  taskLog?: (repositoryId: string) => Promise<unknown>;
 };
 
 /** Fixed outcome of opening a task's worktree folder. */
@@ -48,6 +49,10 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
 /** Only the desktop app reads the scorecard; decided at first render, like the other desktop-only actions. */
 export function useScorecardAvailability(): TaskDesktopAvailability {
   return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => typeof taskDesktopBridge()?.taskScorecard === "function" ? "available" : "absent", () => "pending");
+}
+
+export function useTaskLogAvailability(): TaskDesktopAvailability {
+  return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => typeof taskDesktopBridge()?.taskLog === "function" ? "available" : "absent", () => "pending");
 }
 
 export type TaskEditAvailability = "pending" | "desktop" | "paired" | "absent";
@@ -187,6 +192,35 @@ export async function readDesktopScorecard(repositoryId: string): Promise<Scorec
   } catch {
     return { ok: false };
   }
+}
+
+export const TASK_LOG_LABELS = {
+  started: "Started", assigned: "Assigned to a session", review: "Reported complete", blocked: "Blocked", requeued: "Requeued", done: "Marked done",
+  stalled: "Session ended without a report", recovered: "Session working again", checks_passed: "CI passed", checks_failed: "CI failed", merged: "Merged",
+} as const;
+export type TaskLog = { entries: { id: number; task: string; kind: keyof typeof TASK_LOG_LABELS; at: number; pullRequest: number | null }[]; more: boolean; arilCursor: number };
+export type TaskLogAnswer = { ok: true; log: TaskLog } | { ok: false };
+
+/** Re-bounds the desktop-only log; viewing never acknowledges entries. */
+export async function readDesktopTaskLog(repositoryId: string): Promise<TaskLogAnswer> {
+  const bridge = taskDesktopBridge();
+  if (typeof bridge?.taskLog !== "function") return { ok: false };
+  try {
+    const result = await bridge.taskLog(repositoryId);
+    if (!result || typeof result !== "object" || Array.isArray(result) || (result as { ok?: unknown }).ok !== true) return { ok: false };
+    const log = (result as { log?: TaskLog }).log;
+    if (!log || Array.isArray(log) || !Array.isArray(log.entries) || log.entries.length > 200 || typeof log.more !== "boolean"
+      || !Number.isSafeInteger(log.arilCursor) || log.arilCursor < 0) return { ok: false };
+    const entries: TaskLog["entries"] = [];
+    for (const entry of log.entries) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry) || !Number.isSafeInteger(entry.id) || entry.id <= 0
+        || typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task) || typeof entry.kind !== "string" || !Object.hasOwn(TASK_LOG_LABELS, entry.kind)
+        || !Number.isSafeInteger(entry.at) || (entry.pullRequest !== null && (!Number.isSafeInteger(entry.pullRequest) || entry.pullRequest <= 0))) return { ok: false };
+      const { id, task, kind, at, pullRequest } = entry;
+      entries.push({ id, task, kind, at, pullRequest });
+    }
+    return { ok: true, log: { entries, more: log.more, arilCursor: log.arilCursor } };
+  } catch { return { ok: false }; }
 }
 
 export function addDesktopQueueTask(repositoryId: string, id: string): Promise<TaskActionResult> {

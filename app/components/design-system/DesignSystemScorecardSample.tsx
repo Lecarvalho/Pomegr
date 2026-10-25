@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { CapacityStrip } from "../tasks/CapacityStrip";
 import { ScorecardPanel } from "../tasks/ScorecardPanel";
+import { TaskLogPanel, type TaskLogRead } from "../tasks/TaskLogPanel";
+import type { TaskLog, TaskLogAnswer } from "../tasks/task-desktop";
 import type { Scorecard, ScorecardAnswer } from "../tasks/scorecard-model";
 import { Sample, SAMPLE_TIME, Section } from "./DesignSystemKit";
 import { TaskBoardView } from "../tasks/TaskBoardView";
@@ -13,6 +15,17 @@ const EDITS = inertEdits(BOARD_RUNNING);
 const noop = () => undefined;
 const readLater = (): Promise<ScorecardAnswer> => Promise.resolve({ ok: true, scorecard: LATER });
 const HOUR = 3_600_000;
+
+const LOG: TaskLog = { entries: [
+  { id: 1, task: "T-12", kind: "started", at: SAMPLE_TIME - HOUR, pullRequest: null },
+  { id: 2, task: "T-12", kind: "review", at: SAMPLE_TIME, pullRequest: 42 },
+  { id: 3, task: "T-12", kind: "checks_failed", at: SAMPLE_TIME, pullRequest: 42 },
+], more: false, arilCursor: 2 };
+const readLog = (): Promise<TaskLogAnswer> => Promise.resolve({ ok: true, log: LOG });
+const LOG_SAMPLES: [string, TaskLogRead][] = [
+  ["entries", { state: "ready", log: LOG }], ["empty", { state: "ready", log: { entries: [], more: false, arilCursor: 0 } }],
+  ["reading", { state: "pending" }], ["failed", { state: "failed" }], ["more", { state: "ready", log: { ...LOG, more: true } }],
+];
 
 // Synthetic values only.
 const FIRST: Scorecard = {
@@ -38,13 +51,13 @@ function Frame({ children }: { children: ReactNode }) {
 export function ScorecardSection() {
   return <Section id="task-scorecard" title="Scorecard" lede="Desktop app only. Heuristic proxies from the board's Done tasks, each with its sample. The first snapshot is the baseline. Values never leave this computer.">
     <div className="designSystemGrid">
-      <Sample label="Capacity strip, desktop app" note="Desktop app only: the Quiet Scorecard sits before Queue settings at the strip's end and opens the Scorecard panel. Without a scorecard the strip is unchanged.">
-        <Frame><CapacityStrip queue={BOARD_RUNNING.queue} onOpenSettings={noop} onOpenScorecard={noop} /></Frame>
+      <Sample label="Capacity strip, desktop app" note="Desktop app only: the Quiet Log and Scorecard actions sit before Queue settings at the strip's end.">
+        <Frame><CapacityStrip queue={BOARD_RUNNING.queue} onOpenSettings={noop} onOpenLog={noop} onOpenScorecard={noop} /></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
       <Sample label="Board, desktop app, with Scorecard" note="Scorecard opens the side panel from the right edge, like Queue settings. The board keeps its height.">
-        <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} readScorecard={readLater} edits={EDITS} onOpenTask={noop} /></div></Frame>
+        <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} readTaskLog={readLog} readScorecard={readLater} edits={EDITS} onOpenTask={noop} /></div></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
@@ -63,6 +76,11 @@ export function ScorecardSection() {
       <Sample label="Panel, the read failed" note="An unavailable store or a malformed answer. Reopening the panel reads again.">
         <ScorecardPanel read={{ state: "failed" }} onClose={noop} titleId="scorecard-sample-failed" />
       </Sample>
+    </div>
+    <div className="designSystemGrid">
+      {LOG_SAMPLES.map(([name, read]) => <Sample key={name} label={`Task log, ${name}`} note="Desktop app only. A neutral record, newest first; viewing never advances Aril's cursor.">
+        <TaskLogPanel read={read} onClose={noop} titleId={`task-log-sample-${name}`} />
+      </Sample>)}
     </div>
   </Section>;
 }

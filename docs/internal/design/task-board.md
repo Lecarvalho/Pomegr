@@ -264,6 +264,7 @@ The head actions appear in this order:
 - On the Board, the strip's end (`.taskCapacityEnd`, `margin-left: auto`) reads “Do not start above 80% · stops starting after 23:00”.
 - The threshold and the time of that line use the data font and ink. The stop clause shows only when a stop time is set.
 - In the desktop app only, **Scorecard** comes just before **Queue settings**, in the same Quiet role. It opens the [Scorecard panel](#scorecard-panel).
+- In the desktop app only, **Log** comes just before **Scorecard**, in the same Quiet role and sizes, with `aria-haspopup="dialog"`, and opens the [Task log panel](#task-log-panel).
 - **Queue settings** (`.taskQueueSettingsAction`) is last in the strip, in any client. It is the [Quiet](../../../DESIGN.md#buttons) role, 32px high, 12px/500 ink, underlined.
 - It is 44px high on phone and coarse pointers.
 - It has `aria-haspopup="dialog"` and opens the [Queue settings panel](#queue-settings-panel).
@@ -590,6 +591,26 @@ Each row below the tags shows only when it is set, in this order:
 - The closing caption names when and in which version the baseline was saved, or says that this version's values become the baseline. It ends with “Scorecard values stay on this computer.”
 - [Metrics](../architecture/metrics.md) defines the measures, and [Tasks](../architecture/tasks.md) owns the snapshots and their privacy rules.
 
+### Task log panel
+
+- Only the desktop app draws **Log**, decided at first render like **Scorecard**.
+- The panel uses the Queue settings side panel frame, with the title **Task log** and a close button.
+- Closing the panel returns focus to **Log**.
+- It reads once on opening through the desktop bridge; reopening reads again.
+- Viewing never acknowledges entries or moves Aril's cursor.
+- While reading, it says “Reading the task log…”.
+- A failed or malformed read says “The task log could not be read.” as an alert.
+- The muted caption reads “Task starts, reports, stalls, CI results, and merges on this board, newest first. Aril reads the entries after its last answer.”
+- Entries appear newest first, one row each, with local time, task ID, event label, and muted “PR #n” when set.
+- Time and task and PR identifiers use the data font.
+- Today's times use HH:MM; older entries use the existing short date and time format.
+- Labels are Started, Assigned to a session, Reported complete, Blocked, Requeued, Marked done, Session ended without a report, Session working again, CI passed, CI failed, and Merged.
+- A thin divider row says “Aril has read up to here” after the newest entry at or below the cursor, only when entries appear both above and at or below the cursor.
+- No row carries a good or bad color, including CI failed.
+- An empty log says “Nothing logged yet.”.
+- When older entries exist, the closing caption says “Showing the newest 200 entries.”.
+- The panel ends with “The task log stays on this computer.”.
+
 ## Start gates section
 
 - The **Start gates** section of the Queue settings panel holds the heading, one caption, and a definition list of five rows.
@@ -738,6 +759,7 @@ Each row of the aside shows the ID, a title, and its chip. The title is clamped 
 - Under **Queue controls**: the queue switch (off, on, busy), the banner (blocked, paused, browser), and the Queue settings panel (desktop app, browser).
 - Under **Start gates and schedule**: the Start gates and Schedule sections in each state.
 - Under **Scorecard**: the capacity strip with **Scorecard**, a desktop board with it, and the panel for a later version, the first version, no Done task yet, reading, and a failed read.
+- Under **Scorecard**: the strip with **Log**, and task log panels with entries and the Aril divider, empty, reading, failed, and more.
 - The Sessions list Task cell.
 - Under **Assigned sessions**: the card's sessions line, the Task modal's Sessions block, and the Task cell of an assigned session.
 - Under **Terminal start**: the manual start view before binding and an unbound task card with its **Waiting in terminal** link.

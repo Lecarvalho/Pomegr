@@ -4,6 +4,7 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 export { installTaskImageIpc } from "./task-image.mjs";
 // A feature's description and app version are read on a channel of their own (task-feature.mjs).
 export { installTaskFeatureIpc } from "./task-feature.mjs";
+export { installTaskLogIpc } from "./task-log.mjs";
 export { installTaskScorecardIpc } from "./task-scorecard.mjs";
 // A session's saved history is read on a channel of its own (session-history.mjs).
 export { installSessionHistoryIpc } from "./session-history.mjs";
