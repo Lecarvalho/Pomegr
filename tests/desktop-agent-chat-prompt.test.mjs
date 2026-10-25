@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+test("Aril instructions explain review log kinds", () => {
+  assert.ok(AGENT_CHAT_INSTRUCTIONS.includes("review_started / review_passed / review_failed (a reviewer session started, or reported its verdict)"));
+});
+
 test("task log renders oldest first, after the board, with UTC times and PR numbers", () => {
   const entries = [
     { id: 3, task: "T-2", kind: "merged", at: 2000, pullRequest: 42 },

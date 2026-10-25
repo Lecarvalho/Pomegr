@@ -143,7 +143,7 @@ These change `AGENTS.md` and the owner pages, each in the phase that ships it:
 
 Each phase ships on its own and is useful without the next.
 
-- [ ] **1. Log and events.** The action log store and view, and committed events with durable cursors, with no new authority. Aril can be asked "what happened since I left" from the log.
+- [x] **1. Log and events.** The action log store and view, and committed events with durable cursors, with no new authority. Aril can be asked "what happened since I left" from the log.
 - [ ] **2. Reviewer session.** The reviewer role, its brief, and its verdict report; started by the owner from a task in Review. Verdicts recorded with G1.
 - [ ] **3. Settings and memory.** Aril settings and the repository memory, both changed by the owner or by an applied proposal; the desktop-only paired-device setting. No new authority.
 - [ ] **4. Grant with start and review.** The grant record, its limits and stop; Aril starts the tasks its work rules select, and their reviews, on events. Owner merges.
@@ -166,3 +166,4 @@ Phases 1 to 3 add no authority.
 2026-10-24: plan written after the owner asked what Aril lacks to run the delivery loop an agent ran by hand that day. The owner answered the scope questions (start, review and send back, merge on green, write tasks; a separate reviewer session; plan first). Next action: the owner reviews the plan and answers the open decisions.
 2026-10-25: the owner answered the five open decisions (recorded under Owner decisions). Added Aril settings, the repository memory, and phase 3; removed fixed default limits and the squash default. Next action: the owner reviews the revised plan.
 2026-10-25: the owner decided that Aril proposes every settings change for the owner to accept, except the paired-device setting, which only the owner sets, in the desktop app.
+2026-10-25: phase 1 shipped in #313 (task log and cursor), #315 (pull-request events), #316 (Aril reads the log since its last answer), #317 (desktop Log panel), and #318 (Log on a paired device). Phase 2 started: the reviewer session's monitor side (plan, bind, verdict, outcome fields). Next action: the desktop review start, the report_review MCP tool, and the verdict on the board.

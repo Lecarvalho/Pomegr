@@ -64,7 +64,7 @@ test("two requeues retain the first review and count distinct started and assign
   const events = withDatabase(temp, (database) => readTaskEvents(database, REPOSITORY, 1));
   assert.deepEqual(outcome(temp), {
     repository_id: REPOSITORY, number: 1, review_at: 1_000_000, done_at: events.at(-1).at,
-    requeues: 2, sessions: 2, ...UNKNOWN,
+    requeues: 2, sessions: 2, reviews: 0, first_review_passed: null, ...UNKNOWN,
   });
 });
 

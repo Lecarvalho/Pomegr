@@ -48,9 +48,11 @@ export async function serveAgentTaskAssignRoute({ request, response, requestUrl,
 
 export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
+export const AGENT_TASK_REVIEW_PATH = "/api/agent/v1/tasks/review";
 const AGENT_REPORT_BODY_LIMIT_BYTES = 2048;
+const AGENT_REVIEW_BODY_LIMIT_BYTES = 16 * 1024;
 const AGENT_BLOCK_REASON_LIMIT = 200;
-const AGENT_REPORT_STATUS = Object.freeze({ invalid: 400, not_found: 404, task_required: 409, already_reported: 409, stalled: 409, unavailable: 503 });
+const AGENT_REPORT_STATUS = Object.freeze({ invalid: 400, not_found: 404, not_reviewable: 409, task_required: 409, already_reported: 409, stalled: 409, unavailable: 503 });
 const REPORT_CHECKS = Object.freeze(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"]);
 
 function writeAgentReportResult(response, reason, answer = null, { close = false } = {}) {
@@ -72,12 +74,41 @@ function reportResults(results) {
 // it is assigned to. With more than one task, the body names the one.
 export async function serveAgentTaskReportRoute({ request, response, requestUrl, taskStore, resolveCheckFacts = null, readCheckFacts = null }) {
   const blocking = requestUrl.pathname === AGENT_TASK_BLOCK_PATH;
-  const read = await readAgentJson(request, requestUrl, AGENT_REPORT_BODY_LIMIT_BYTES);
+  const reviewing = requestUrl.pathname === AGENT_TASK_REVIEW_PATH;
+  const read = await readAgentJson(request, requestUrl, reviewing ? AGENT_REVIEW_BODY_LIMIT_BYTES : AGENT_REPORT_BODY_LIMIT_BYTES);
   if (read.failed) {
     writeAgentReportResult(response, "invalid", null, { close: true });
     return;
   }
   const { body } = read;
+  if (reviewing) {
+    const keys = isPlainObject(body) ? Object.keys(body) : [];
+    const reasonsValid = (value) => Array.isArray(value) && value.length >= 1 && value.length <= 10
+      && value.every((reason) => typeof reason === "string" && reason.length >= 1 && reason.length <= AGENT_BLOCK_REASON_LIMIT
+        && reason.trim().length > 0 && !/[\r\n\u2028\u2029]/u.test(reason));
+    const valid = isPlainObject(body) && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
+      && ((body.verdict === "pass" && keys.every((key) => ["sessionRef", "verdict", "taskId"].includes(key)) && !Object.hasOwn(body, "reasons"))
+        || (body.verdict === "fail" && keys.every((key) => ["sessionRef", "verdict", "taskId", "reasons"].includes(key)) && reasonsValid(body.reasons)))
+      && (!Object.hasOwn(body, "taskId") || (typeof body.taskId === "string" && AGENT_TASK_ID_PATTERN.test(body.taskId)))
+      && keys.includes("sessionRef") && keys.includes("verdict");
+    if (!valid) {
+      writeAgentReportResult(response, "invalid");
+      return;
+    }
+    try {
+      if (typeof taskStore?.reportReview !== "function") {
+        writeAgentReportResult(response, "unavailable");
+        return;
+      }
+      const result = taskStore.reportReview({ sessionId: body.sessionRef, verdict: body.verdict,
+        ...(Object.hasOwn(body, "taskId") ? { taskId: body.taskId } : {}), ...(body.verdict === "fail" ? { reasons: body.reasons } : {}) });
+      if (result?.ok === true) writeAgentReportResult(response, null);
+      else writeAgentReportResult(response, ["invalid", "not_found", "not_reviewable", "unavailable"].includes(result?.error) ? result.error : "unavailable");
+    } catch {
+      writeAgentReportResult(response, "unavailable");
+    }
+    return;
+  }
   const noted = !blocking && isPlainObject(body) && Object.hasOwn(body, "attention");
   const named = isPlainObject(body) && Object.hasOwn(body, "taskId");
   const keys = [...(blocking ? ["sessionRef", "reason"] : noted ? ["sessionRef", "attention"] : ["sessionRef"]), ...(named ? ["taskId"] : [])];

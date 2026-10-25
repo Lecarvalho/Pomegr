@@ -16,14 +16,18 @@ export function ensureTaskOutcomes(database) {
       PRIMARY KEY (repository_id, number)
     ) WITHOUT ROWID;
   `);
+  const columns = database.prepare("PRAGMA table_info(task_outcomes)").all();
+  for (const column of ["reviews", "first_review_passed"]) {
+    if (!columns.some((entry) => entry.name === column)) database.exec(`ALTER TABLE task_outcomes ADD COLUMN ${column} INTEGER`);
+  }
 }
 
 export function writeTaskOutcome(database, repositoryId, number, outcome) {
   preparedStatement(database, `INSERT OR REPLACE INTO task_outcomes
-    (repository_id, number, review_at, done_at, requeues, sessions, owner_turns, commits_after_review, pull_request, pull_request_state)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    (repository_id, number, review_at, done_at, requeues, sessions, owner_turns, commits_after_review, pull_request, pull_request_state, reviews, first_review_passed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(repositoryId, number, outcome.review_at, outcome.done_at, outcome.requeues, outcome.sessions,
-      outcome.owner_turns, outcome.commits_after_review, outcome.pull_request, outcome.pull_request_state);
+      outcome.owner_turns, outcome.commits_after_review, outcome.pull_request, outcome.pull_request_state, outcome.reviews ?? null, outcome.first_review_passed ?? null);
 }
 
 export function readTaskOutcome(database, repositoryId, number) {

@@ -604,7 +604,7 @@ Each row below the tags shows only when it is set, in this order:
 - Entries appear newest first, one row each, with local time, task ID, event label, and muted “PR #n” when set.
 - Time and task and PR identifiers use the data font.
 - Today's times use HH:MM; older entries use the existing short date and time format.
-- Labels are Started, Assigned to a session, Reported complete, Blocked, Requeued, Marked done, Session ended without a report, Session working again, CI passed, CI failed, and Merged.
+- Labels are Started, Assigned to a session, Reported complete, Blocked, Requeued, Marked done, Session ended without a report, Session working again, CI passed, CI failed, Merged, Review started, Review passed, and Review failed.
 - A thin divider row says “Aril has read up to here” after the newest entry at or below the cursor, only when entries appear both above and at or below the cursor.
 - No row carries a good or bad color, including CI failed.
 - An empty log says “Nothing logged yet.”.
