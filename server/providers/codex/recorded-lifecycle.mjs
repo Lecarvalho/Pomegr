@@ -37,25 +37,9 @@ function normalizedToolName(value) {
   return typeof value === "string" ? value.split(/[.:/]/).at(-1).trim().toLowerCase() : "";
 }
 
-function inputKind(payload) {
-  if (!["function_call", "custom_tool_call"].includes(payload?.type)) return null;
-  const name = normalizedToolName(payload.name);
-  return name === "request_user_input" ? "sync" : name === "request_user_input_async" ? "async" : null;
-}
-
-function asyncAcceptance(payload) {
-  let output = payload.output;
-  if (typeof output === "string") {
-    if (output.length > 65_536) return null;
-    try { output = JSON.parse(output); } catch { return null; }
-  }
-  return output && typeof output === "object" && !Array.isArray(output)
-    && typeof output.accepted === "boolean" ? output.accepted : null;
-}
-
-function isUserArrival(record, payload) {
-  return (record.type === "event_msg" && ["user_message", "user_prompt"].includes(payload?.type))
-    || (record.type === "response_item" && payload?.type === "message" && payload.role === "user");
+function isInputCall(payload) {
+  return ["function_call", "custom_tool_call"].includes(payload?.type)
+    && normalizedToolName(payload.name) === "request_user_input";
 }
 
 function isCallOutput(payload) {
@@ -92,9 +76,7 @@ function validState(state) {
       .filter((item) => item && SAFE_ID.test(item.callId || "") && codexTimestamp(item.observedAt))
       .slice(-MAX_PENDING_INPUTS)
       .map((item) => ({ callId: item.callId, turnId: typeof item.turnId === "string" && SAFE_ID.test(item.turnId) ? item.turnId : null,
-        observedAt: codexTimestamp(item.observedAt), kind: item.kind === "async" ? "async" : "sync",
-        state: item.kind === "async" && ["submitted", "accepted", "uncertain"].includes(item.state) ? item.state
-          : item.kind === "async" ? "uncertain" : "accepted" })) : [],
+        observedAt: codexTimestamp(item.observedAt) })) : [],
   };
 }
 
@@ -134,8 +116,8 @@ export function reduceCodexRecordedLifecycle(previous, record) {
     pendingInputs = [];
     inputOverflow = false;
   } else if (currentOrNewer && belongsToCurrentTurn && nextTurn?.kind !== "end") {
-    const kind = record.type === "response_item" ? inputKind(payload) : null;
-    if (kind && acceptedActivity) {
+    // Async questions emit messages and acknowledge delivery, never a wait.
+    if (record.type === "response_item" && isInputCall(payload) && acceptedActivity) {
       const id = callId(payload);
       if (id && !pendingInputs.some((item) => item.callId === id)) {
         if (pendingInputs.length >= MAX_PENDING_INPUTS) inputOverflow = true;
@@ -143,28 +125,14 @@ export function reduceCodexRecordedLifecycle(previous, record) {
           callId: id,
           turnId: turnId ?? currentTurnId,
           observedAt: timestamp,
-          kind, state: kind === "async" ? "submitted" : "accepted",
         }];
       }
     } else if (record.type === "response_item" && isCallOutput(payload) && acceptedActivity) {
       const id = callId(payload);
       const pending = pendingInputs.find((item) => item.callId === id);
       if (pending && (!turnId || !pending.turnId || pending.turnId === turnId)) {
-        if (pending.kind === "sync") pendingInputs = pendingInputs.filter((item) => item !== pending);
-        else {
-          const accepted = asyncAcceptance(payload);
-          if (accepted === false) pendingInputs = pendingInputs.filter((item) => item !== pending);
-          // Duplicate acknowledgements cannot undo uncertainty or renew time.
-          else if (pending.state === "submitted") pendingInputs = pendingInputs.map((item) => item === pending
-            ? { ...item, state: accepted === true ? "accepted" : "uncertain" } : item);
-        }
+        pendingInputs = pendingInputs.filter((item) => item !== pending);
       }
-    } else if (isUserArrival(record, payload)) {
-      // Ordinary user text carries no async-call correlation. It can be an
-      // answer, cancellation, or unrelated steering; never claim resolution.
-      pendingInputs = pendingInputs.map((item) => item.kind === "async" && item.state !== "uncertain"
-        && timestampValue(timestamp) >= timestampValue(item.observedAt)
-        ? { ...item, state: "uncertain" } : item);
     }
   }
   if (nextTurn === state.turn && latestActivityAt === state.latestActivityAt && pendingInputs === state.pendingInputs
@@ -213,7 +181,7 @@ export function codexRecordedLiveness(previous, { now = Date.now(), complete = t
   // Silence is not a lifecycle event. Retain a validated turn or structured wait
   // until matching provider evidence resolves it; never manufacture a heartbeat.
   if (!state.turn && !state.pendingInputs.length) return unknownLiveness(state, nowMs);
-  const pending = state.pendingInputs.find((item) => item.state === "accepted");
+  const pending = state.pendingInputs[0];
   if (pending) return {
     live: true,
     status: "needs_input",

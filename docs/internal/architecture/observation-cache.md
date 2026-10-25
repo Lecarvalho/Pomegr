@@ -1888,31 +1888,28 @@ This terminal-only path retains normalized evidence in bounded private memory; i
 does not acquire detail or history, change checkpoints, or run from a GET. Writer
 ownership can retain presence but cannot turn the terminal into working execution.
 
-Codex recognizes only the exact `request_user_input` and `request_user_input_async`
-tool identities after its existing namespace normalization. Matching synchronous
-output closes only that call's wait. Async calls begin as unconfirmed submissions;
-a bounded transient parse of their matching output confirms outstanding user action
-only for a structured boolean `accepted: true`. That acknowledgement is never an
-answer. `accepted: false` rejects the submission; other result shapes leave it
-unknown, without retaining output text. Accepted action can coexist with continued
-agent work and keeps the original call observation time through duplicate calls,
-acknowledgements and polling.
+Codex recognizes only the exact `request_user_input` tool identity as a blocking
+input request after namespace normalization. Its matching output closes only that
+call's wait. Generic user messages and unrelated tool results do not close it.
 
-The supported async recording contains no verified per-question answer or cancellation
-identity. Generic later user messages can be answers, cancellation or unrelated
-steering. They make same-turn async submissions uncertain, never answered; synchronous
-waits remain intact. Known wrong-turn and older arrivals are ignored. A validated turn
-completion, interruption or new turn ends the old turn's question scope; it does not
-prove an individual question was answered. Same-turn context does not end it. The
-private reducer holds at most sixteen safe call identities, turn identities, original
-times and fixed kind/state values, plus a bounded overflow flag. Overflow cannot turn
-forgotten questions into confirmed resolution. Cold source replay reconstructs this
-state; no question state enters checkpoints or public responses. Complete retained
-and tail input reduction share these rules, while incomplete acquisition, writer
-release and owning-runtime precedence keep the contracts above. Existing notifications
-follow committed Needs input facts; a resolved tray occurrence means that condition
-ended, including a transition to Unknown, not proof of an answer. Questions, options,
-answers and result contents never enter browser or native payloads.
+`request_user_input_async` emits an agent message and immediately acknowledges it.
+Its `accepted: true` result confirms message emission, never a blocking wait or an
+outstanding user action. Async calls and outputs neither create Needs input nor
+make known execution Unknown. They do not clear concurrent blocking requests.
+Pomegr derives no pending-question indicator or Needs input notification from them.
+
+A validated turn completion, interruption or new turn ends the old turn's blocking
+request scope. Same-turn context does not end it. The private reducer holds at
+most sixteen safe call identities, turn identities and original times, plus a
+bounded overflow flag. Overflow cannot confirm resolution of forgotten requests.
+Cold source replay reconstructs this state. No question state enters checkpoints
+or public responses. Complete retained and tail input reduction share these rules.
+Changing the tail acquisition budget retains validated boundaries for the same source generation.
+Incomplete acquisition, writer release and owning-runtime precedence keep the
+contracts above. Existing notifications follow committed Needs input facts.
+A resolved tray occurrence means that condition ended, including a transition to
+Unknown, not proof of an answer. Questions, options, answers and result contents
+never enter browser or native payloads.
 The original question time travels as an out-of-band, monitor-private catalog fact
 through validation and notification projection. It never replaces the public
 `updatedAt` activity clock or enters serialized catalogs or checkpoints. Continuous

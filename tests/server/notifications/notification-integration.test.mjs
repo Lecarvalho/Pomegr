@@ -40,7 +40,7 @@ test("private original input time survives validation and committed visibility p
   assert.equal(next.occurredAt, oldestAt, "removing the oldest question preserves active occurrence time");
 });
 
-test("async lifecycle feeds one private-safe tray occurrence and native claim, then uncertainty and recurrence", async (context) => {
+test("only blocking input feeds private-safe tray occurrences and native claims", async (context) => {
   let clock = Date.parse(at);
   let state = initialCodexRecordedLifecycle();
   const observed = createNotificationObservation({ now: () => clock, sourceScope: scope });
@@ -62,7 +62,7 @@ test("async lifecycle feeds one private-safe tray occurrence and native claim, t
     const liveness = codexRecordedLiveness(state, { now: clock });
     const reference = codexSessionReference({ localId: "async-fixture", title: "Async input fixture", project: "Fixture",
       createdAt: at, updatedAt: new Date(clock).toISOString() }, { isLive: liveness?.live === true,
-      needsInput: liveness?.needsInput === true, activityStatus: liveness?.status || "unknown", observedAt: liveness?.observedAt });
+      needsInput: liveness?.needsInput === true, activityStatus: liveness?.status === "active" ? "working" : liveness?.status || "unknown", observedAt: liveness?.observedAt });
     const row = publicCatalogEntry("codex", "Codex", parseProviderSessionReference(reference));
     assert.equal(row.updatedAt, new Date(clock).toISOString(), "activity clock must not rewind to the question");
     assert.doesNotMatch(JSON.stringify(row), /observedAt|questionTime|PRIVATE_/);
@@ -77,8 +77,14 @@ test("async lifecycle feeds one private-safe tray occurrence and native claim, t
   add("event_msg", { type: "task_started", turn_id: "async-turn" });
   add("response_item", { type: "function_call", name: "request_user_input_async", call_id: "PRIVATE_CALL",
     arguments: '{"questions":[{"title":"PRIVATE_QUESTION","options":["PRIVATE_OPTION"]}]}' });
-  const pendingAt = new Date(clock).toISOString();
   add("response_item", { type: "function_call_output", call_id: "PRIVATE_CALL", output: '{"accepted":true}' });
+  const asyncMessage = commit();
+  assert.equal(codexRecordedLiveness(state, { now: clock }).status, "active");
+  assert.equal(asyncMessage.occurrences.length, 0);
+  assert.equal(await delivery.observe(asyncMessage), 0);
+  add("response_item", { type: "function_call", name: "request_user_input", call_id: "PRIVATE_SYNC",
+    arguments: '{"questions":[{"title":"PRIVATE_QUESTION","options":["PRIVATE_OPTION"]}]}' });
+  const pendingAt = new Date(clock).toISOString();
   const pending = commit();
   assert.equal(pending.occurrences.length, 1);
   const occurrence = pending.occurrences[0];
@@ -99,13 +105,16 @@ test("async lifecycle feeds one private-safe tray occurrence and native claim, t
   assert.equal(await restarted.observe(continued), 0, "durable claim prevents replay");
   add("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "PRIVATE_ANSWER" }],
     internal_chat_message_metadata_passthrough: { turn_id: "async-turn", content_item_kinds: ["user.text"] } });
-  const uncertain = commit();
-  assert.equal(codexRecordedLiveness(state, { now: clock }).status, "unknown");
-  assert.equal(uncertain.occurrences[0].lifecycle, "resolved", "the Needs input condition ended; no answer is asserted");
+  const stillWaiting = commit();
+  assert.equal(codexRecordedLiveness(state, { now: clock }).status, "needs_input");
+  assert.equal(stillWaiting.occurrences[0].lifecycle, "active");
+  add("response_item", { type: "function_call_output", call_id: "PRIVATE_SYNC", output: "PRIVATE_ANSWER" });
+  const resolved = commit();
+  assert.equal(codexRecordedLiveness(state, { now: clock }).status, "active");
+  assert.equal(resolved.occurrences[0].lifecycle, "resolved");
   add("event_msg", { type: "task_complete", turn_id: "async-turn" });
   add("event_msg", { type: "task_started", turn_id: "next-turn" });
-  add("response_item", { type: "function_call", name: "request_user_input_async", call_id: "PRIVATE_CALL_2" });
-  add("response_item", { type: "function_call_output", call_id: "PRIVATE_CALL_2", output: '{"accepted":true}' });
+  add("response_item", { type: "function_call", name: "request_user_input", call_id: "PRIVATE_CALL_2" });
   const recurrence = commit();
   assert.notEqual(recurrence.occurrences.find((row) => row.lifecycle === "active").id, occurrence.id);
   assert.equal(await restarted.observe(recurrence), 1);

@@ -25,6 +25,27 @@ const asyncOutput = (offset = 2_000, call_id = "async-private", output = '{"acce
 });
 const asyncStart = record(0, "turn_started", { turn_id: "async-turn" });
 
+test("async questions and acknowledgements do not create execution waits", () => {
+  equivalentInputs([asyncStart, asyncCall()], "active");
+  assert.deepEqual(reduce([asyncCall(), asyncOutput()]).pendingInputs, []);
+  for (const output of ['{"accepted":true}', '{"accepted":false}', 'PRIVATE_RESULT']) {
+    const records = [asyncStart, asyncCall(), asyncOutput(2_000, "async-private", output)];
+    const state = equivalentInputs(records, "active");
+    assert.deepEqual(state.pendingInputs, []);
+    equivalentInputs([...records, record(3_000, "event_msg", { type: "user_message", message: "PRIVATE_ANSWER" })], "active");
+  }
+  equivalentInputs([asyncStart, asyncCall(1_000, "custom", { type: "custom_tool_call" }),
+    record(2_000, "response_item", { type: "custom_tool_call_output", call_id: "custom", output: '{"accepted":true}' })], "active");
+});
+
+test("async messages cannot create or clear a concurrent blocking wait", () => {
+  const sync = record(500, "response_item", { type: "function_call", name: "request_user_input", call_id: "sync" });
+  const records = [asyncStart, sync, asyncCall(), asyncOutput()];
+  const state = equivalentInputs(records, "needs_input");
+  assert.equal(state.pendingInputs.length, 1);
+  equivalentInputs([...records, record(3_000, "response_item", { type: "function_call_output", call_id: "sync" })], "active");
+});
+
 function equivalentInputs(records, expected, now = START + 8_000) {
   const state = reduce(records);
   const retained = codexRecordedLiveness(state, { now });
@@ -36,57 +57,46 @@ function equivalentInputs(records, expected, now = START + 8_000) {
   return state;
 }
 
-test("async acceptance confirms outstanding action through continued work and repeated acknowledgements", () => {
-  equivalentInputs([asyncStart, asyncCall()], "unknown");
-  const records = [asyncStart, asyncCall(), asyncOutput(), record(3_000, "response_item", {
-    type: "function_call", name: "exec", call_id: "work", arguments: "PRIVATE_RESULT",
-  }), asyncCall(4_000), asyncOutput(5_000)];
-  const state = equivalentInputs(records, "needs_input", START + 4 * 60 * 60_000);
-  assert.equal(state.pendingInputs[0].observedAt, new Date(START + 1_000).toISOString());
-  assert.equal(codexRecordedLiveness(state, { now: START + 20_000, complete: false }).status, "unknown");
+const syncCall = (offset = 1_000, call_id = "sync-private", extra = {}) => record(offset, "response_item", {
+  type: "function_call", name: "functions.request_user_input", call_id,
+  arguments: JSON.stringify({ questions: [{ title: "PRIVATE_QUESTION" }] }),
+  internal_chat_message_metadata_passthrough: { turn_id: "async-turn" }, ...extra,
 });
 
-test("async rejected submissions cannot leave a confirmed wait; malformed results stay uncertain", () => {
-  equivalentInputs([asyncStart, asyncCall(), asyncOutput(2_000, "async-private", '{"accepted":false}')], "active");
-  for (const output of ["PRIVATE_RESULT", '{"error":"PRIVATE_RESULT"}', "x".repeat(65_537), '{"accepted":"true"}']) {
-    equivalentInputs([asyncStart, asyncCall(), asyncOutput(2_000, "async-private", output)], "unknown");
-  }
-});
-
-test("generic user arrivals create uncertainty without answering async or clearing synchronous questions", () => {
+test("blocking input survives work, duplicate calls and generic user arrivals until its matching result", () => {
   for (const user of [record(3_000, "event_msg", { type: "user_message", message: "PRIVATE_ANSWER" }),
-    record(3_000, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "PRIVATE_ANSWER" }],
-      internal_chat_message_metadata_passthrough: { turn_id: "async-turn", content_item_kinds: ["user.text"] } })]) {
-    const records = [asyncStart, asyncCall(), asyncOutput(), user, asyncOutput(4_000)];
-    const state = equivalentInputs(records, "unknown");
-    assert.equal(state.pendingInputs.length, 1, "uncertainty is retained rather than asserted answered");
-    const sync = record(2_500, "response_item", { type: "custom_tool_call", name: "functions/request_user_input", call_id: "sync" });
-    equivalentInputs([asyncStart, asyncCall(), asyncOutput(), sync, user], "needs_input");
-    equivalentInputs([asyncStart, asyncCall(), asyncOutput(), sync, user,
-      record(4_000, "response_item", { type: "custom_tool_call_output", call_id: "sync" })], "unknown");
+    record(3_000, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "PRIVATE_ANSWER" }] })]) {
+    const records = [asyncStart, syncCall(), record(2_000, "response_item", {
+      type: "function_call", name: "exec", call_id: "work", arguments: "PRIVATE_RESULT",
+    }), user, syncCall(4_000)];
+    const state = equivalentInputs(records, "needs_input", START + 4 * 60 * 60_000);
+    assert.equal(state.pendingInputs.length, 1);
+    assert.equal(state.pendingInputs[0].observedAt, new Date(START + 1_000).toISOString());
+    assert.equal(codexRecordedLiveness(state, { now: START + 20_000, complete: false }).status, "unknown");
+    equivalentInputs([...records, record(5_000, "response_item", {
+      type: "function_call_output", call_id: "sync-private", output: "PRIVATE_ANSWER",
+    })], "active");
   }
 });
 
-test("wrong-turn, unrelated and older records never resolve or manufacture an async question", () => {
-  const base = [asyncStart, asyncCall(), asyncOutput()];
-  for (const extra of [asyncOutput(3_000, "other", '{"accepted":false}'),
-    asyncOutput(3_000, "async-private", '{"accepted":false}', { turn_id: "wrong-turn" }),
-    record(3_000, "response_item", { type: "message", role: "user", content: "PRIVATE_ANSWER",
-      internal_chat_message_metadata_passthrough: { turn_id: "wrong-turn" } }),
-    record(500, "event_msg", { type: "user_message", message: "PRIVATE_ANSWER" }),
-    asyncOutput(500, "async-private", '{"accepted":false}')]) equivalentInputs([...base, extra], "needs_input");
-  equivalentInputs([asyncStart, asyncOutput(), asyncCall(500)], "active");
-  equivalentInputs([asyncStart, asyncCall(1_000, "wrong", { turn_id: "wrong-turn" }), asyncOutput(2_000, "wrong")], "active");
-  for (const name of ["request_user_input_async_extra", "some_request_user_input_async", "exec"]) {
-    equivalentInputs([asyncStart, asyncCall(1_000, "async-private", { name }), asyncOutput()], "active");
+test("wrong-turn, unrelated and older records never resolve or manufacture a blocking wait", () => {
+  const base = [asyncStart, syncCall()];
+  for (const extra of [asyncOutput(3_000, "other"),
+    asyncOutput(3_000, "sync-private", "PRIVATE_ANSWER", { turn_id: "wrong-turn" }),
+    asyncOutput(500, "sync-private", "PRIVATE_ANSWER")]) equivalentInputs([...base, extra], "needs_input");
+  equivalentInputs([asyncStart, syncCall(1_000, "wrong", { turn_id: "wrong-turn" })], "active");
+  for (const name of ["request_user_input_async", "request_user_input_extra", "some_request_user_input", "exec"]) {
+    equivalentInputs([asyncStart, syncCall(1_000, "other", { name }), asyncOutput(2_000, "other")], "active");
   }
 });
 
-test("multiple questions preserve the oldest outstanding time and turn boundaries cancel their turn scope", () => {
-  const base = [asyncStart, asyncCall(), asyncOutput(), asyncCall(3_000, "second"), asyncOutput(4_000, "second")];
+test("multiple blocking questions preserve oldest time and turn boundaries cancel their scope", () => {
+  const base = [asyncStart, syncCall(), syncCall(3_000, "second")];
   const state = equivalentInputs(base, "needs_input");
   assert.equal(state.pendingInputs.length, 2);
   assert.equal(codexRecordedLiveness(state, { now: START + 20_000 }).observedAt, new Date(START + 1_000).toISOString());
+  const next = equivalentInputs([...base, asyncOutput(4_000, "sync-private")], "needs_input");
+  assert.equal(codexRecordedLiveness(next, { now: START + 20_000 }).observedAt, new Date(START + 3_000).toISOString());
   for (const type of ["task_complete", "turn_aborted", "task_failed"]) {
     const ended = equivalentInputs([...base, record(5_000, "event_msg", { type, turn_id: "async-turn" })],
       type === "task_complete" ? "idle" : "stopped");
@@ -96,8 +106,8 @@ test("multiple questions preserve the oldest outstanding time and turn boundarie
   equivalentInputs([...base, record(5_000, "turn_context", { turn_id: "async-turn" })], "needs_input");
 });
 
-test("delayed completion and new-turn context cannot cancel a newer accepted question", () => {
-  const base = [asyncStart, asyncCall(), asyncOutput()];
+test("delayed completion and new-turn context cannot cancel a newer blocking question", () => {
+  const base = [asyncStart, syncCall()];
   for (const older of [record(500, "turn_completed", { turn_id: "async-turn", status: "completed" }),
     record(500, "turn_context", { turn_id: "different-turn" })]) {
     const state = reduce([...base, older]);
@@ -107,16 +117,16 @@ test("delayed completion and new-turn context cannot cancel a newer accepted que
   }
 });
 
-test("overflow stays bounded and uncertain until a turn boundary; restart replay reconstructs private state", () => {
+test("blocking input overflow stays bounded and unresolved until a turn boundary", () => {
   const records = [asyncStart];
-  for (let n = 0; n < 20; n++) records.push(asyncCall(100 + n * 2, `q-${n}`), asyncOutput(101 + n * 2, `q-${n}`));
+  for (let n = 0; n < 20; n++) records.push(syncCall(100 + n * 2, `q-${n}`));
   const pending = equivalentInputs(records, "needs_input");
   assert.equal(pending.pendingInputs.length, 16);
   assert.equal(pending.inputOverflow, true);
   assert.deepEqual(reduce(records), pending, "cold replay reconstructs the same private state");
-  records.push(record(1_000, "event_msg", { type: "user_message", message: "PRIVATE_ANSWER" }));
+  for (let n = 0; n < 16; n++) records.push(asyncOutput(1_000 + n, `q-${n}`));
   const uncertain = equivalentInputs(records, "unknown");
-  assert.equal(uncertain.pendingInputs.length, 16);
+  assert.equal(uncertain.pendingInputs.length, 0);
   const ended = reduce([...records, record(2_000, "turn_completed", { turn_id: "async-turn" })]);
   assert.equal(ended.inputOverflow, false);
 });

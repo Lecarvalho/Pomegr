@@ -19,7 +19,7 @@ function thread(localId, options = {}) {
     updatedAt: options.updatedAt || new Date(START).toISOString(), runtimeStatus: null, rolloutFile: options.rolloutFile || null };
 }
 
-test("continuous bounded tail retains accepted and uncertain async input after the call slides out", async (context) => {
+test("continuous bounded tail keeps async questions working after the call slides out", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-async-tail-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const rolloutFile = path.join(root, "rollout.jsonl");
@@ -32,21 +32,23 @@ test("continuous bounded tail retains accepted and uncertain async input after t
     maximumTailBytes: 600, maximumOwnerTailBytes: 1200, writerLockState: () => "held",
     currentWriterOwner: () => ownerPresent ? { pid: 4242, processStartIdentity: "134000000000000000" } : null });
   const threads = [thread("tail-root", { rolloutFile })];
-  assert.equal(coordinator.observe(threads).sessions.get("tail-root").needsInput, true);
+  assert.equal(coordinator.observe(threads).sessions.get("tail-root").needsInput, false);
   for (let n = 0; n < 15; n++) {
     await appendFile(rolloutFile, line(3_000 + n * 1_000, "response_item", { type: "function_call", name: "exec", call_id: `work-${n}` }));
     const pending = coordinator.observe(threads).sessions.get("tail-root");
-    assert.equal(pending.needsInput, true);
-    assert.equal(inputNotificationTime(pending), new Date(START + 1_000).toISOString());
+    assert.equal(pending.needsInput, false);
+    assert.equal(pending.activityStatus, "working");
+    assert.equal(inputNotificationTime(pending), null);
   }
   ownerPresent = false;
-  assert.equal(coordinator.observe(threads).sessions.get("tail-root").needsInput, true,
-    "changing acquisition budget on unchanged evidence cannot discard the pending question");
+  assert.equal(coordinator.observe(threads).sessions.get("tail-root").needsInput, false,
+    "changing acquisition budget cannot turn an async message into a wait");
+  assert.equal(coordinator.observe(threads).sessions.get("tail-root").activityStatus, "working");
   await appendFile(rolloutFile, line(20_000, "event_msg", { type: "user_message", message: "PRIVATE_ANSWER" }));
-  assert.equal(coordinator.observe(threads).sessions.get("tail-root").activityStatus, "unknown");
+  assert.equal(coordinator.observe(threads).sessions.get("tail-root").activityStatus, "working");
   for (let n = 0; n < 15; n++) {
     await appendFile(rolloutFile, line(21_000 + n * 1_000, "response_item", { type: "function_call", name: "exec", call_id: `later-${n}` }));
-    assert.equal(coordinator.observe(threads).sessions.get("tail-root").activityStatus, "unknown");
+    assert.equal(coordinator.observe(threads).sessions.get("tail-root").activityStatus, "working");
   }
   await appendFile(rolloutFile, line(40_000, "turn_completed", { turn_id: "tail-turn", status: "completed" }));
   assert.equal(coordinator.observe(threads).sessions.get("tail-root").activityStatus, "idle");
@@ -57,9 +59,7 @@ test("multiple waiting descendants select the oldest remaining question without 
   context.after(() => rm(root, { recursive: true, force: true }));
   const records = (questionAt, callId) => [boundary(0, "task_started", "multi-turn"),
     { timestamp: new Date(START + questionAt).toISOString(), type: "response_item",
-      payload: { type: "function_call", name: "request_user_input_async", call_id: callId } },
-    { timestamp: new Date(START + questionAt + 1_000).toISOString(), type: "response_item",
-      payload: { type: "function_call_output", call_id: callId, output: '{"accepted":true}' } }];
+      payload: { type: "function_call", name: "request_user_input", call_id: callId } }];
   const childA = path.join(root, "a.jsonl"); const childB = path.join(root, "b.jsonl");
   const childWork = path.join(root, "work.jsonl");
   await writeFile(childA, records(20_000, "a").map(JSON.stringify).join("\n") + "\n");

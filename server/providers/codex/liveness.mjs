@@ -188,7 +188,7 @@ export function createCodexLivenessCoordinator(options = {}) {
     if (!cached || cached.key !== key) {
       const read = readCodexLivenessTail(file, tailBytes, tailRecords);
       const appended = cached && compatibleAppend(file, cached.generation, current);
-      const previousBoundary = appended ? cached.boundary : null;
+      const previousBoundary = cached && (sameGeneration(current, cached.generation) || appended) ? cached.boundary : null;
       const tailBoundary = observedCodexRolloutLifecycle(read.records, { now: nowMs }).boundary;
       const continuous = !cached || !appended
         || (cached.generation.size >= read.startOffset && cached.continuous !== false);
@@ -228,8 +228,7 @@ export function createCodexLivenessCoordinator(options = {}) {
     const retainedInput = codexRecordedLiveness(cached.inputState, { now: nowMs });
     if (cached.inputState?.pendingInputs.length || cached.inputState?.inputOverflow) return retainedInput;
     if (inferred?.needsInputKind === "user_input" && (!explicit || inferred.observedAt >= explicit.observedAt)) return { ...inferred, source: "structured_lifecycle", evidence: "observed", freshness: "current" };
-    // A generic user arrival cannot confirm resolution of an accepted async
-    // question. Do not let an older open-turn boundary erase this uncertainty.
+    // An older open-turn boundary cannot resolve blocking input overflow.
     if (inferred?.status === "unknown" && inferred?.source === "structured_lifecycle") return inferred;
     if (explicit?.evidence === "observed") return explicit;
     if (inferred && (ownerConfirmed
