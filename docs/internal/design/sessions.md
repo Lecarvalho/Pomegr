@@ -156,6 +156,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - On phone widths, the desktop app places Terminal in **More**.
 - A Terminal deep link falls back to Overview when the bridge is absent.
 - A session Pomegr started in the terminal host shows its live output in one data-font terminal surface.
+- A task's Terminal tab lists its build and review terminals in host order, with the task ID and a quiet **Build** or **Review** chip; selecting a row attaches that terminal under the same owner-only input and read-only attachment rules.
 - The live terminal uses line height 1.4 to preserve joined box-drawing characters.
 - The live terminal inset matches history: `--space-6` above 760px and `--space-4` at 760px or below.
 - The live terminal waits up to 500 ms, measures with a monospace-only family, and re-measures before fitting after the data font loads.

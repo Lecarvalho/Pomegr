@@ -166,3 +166,48 @@ test("a closed task store answers review unavailable without exposing an excepti
   env.closeStore();
   refused(await review(env, { sessionRef: REVIEWER, verdict: "pass" }), 503, "unavailable");
 });
+
+test("desktop review-session returns only the bound reviewer identity, never the builder", async (t) => {
+  const env = await setup(t);
+  await prepareReviewable(env);
+  const unbound = await action(env, "review-session", { id: "T-1" });
+  assert.equal(unbound.status, 200);
+  assert.equal(unbound.headers["cache-control"], "no-store");
+  assert.deepEqual(unbound.json, { ok: true, sessionId: null });
+  const planned = await action(env, "review-plan", { id: "T-1" });
+  assert.equal(env.store.bindSession({ token: planned.json.plan.token, sessionId: REVIEWER }).ok, true);
+  const bound = await action(env, "review-session", { id: "T-1" });
+  assert.equal(bound.status, 200);
+  assert.deepEqual(bound.json, { ok: true, sessionId: REVIEWER });
+  assert.doesNotMatch(bound.text, /builder|repositoryRoot|prompt|token|reasons|plan/u);
+  withDatabase(env.directory, (database) => database.prepare("UPDATE meta SET value = ? WHERE key = ?")
+    .run("C:/private/reviewer.txt", `task_reviewer:${REPOSITORY_ID}:T-1`));
+  assert.deepEqual((await action(env, "review-session", { id: "T-1" })).json, { ok: true, sessionId: null });
+});
+
+test("review-session rejects non-desktop callers and GET", async (t) => {
+  const env = await setup(t);
+  for (const headers of [
+    { "content-type": "application/json" },
+    { ...DESKTOP_HEADERS, "x-pomegr-desktop-authorization": "wrong" },
+    AGENT_HEADERS,
+    { ...DESKTOP_HEADERS, origin: "http://localhost" },
+  ]) assert.equal((await action(env, "review-session", { id: "T-1" }, { headers })).status, 401);
+  assert.equal((await action(env, "review-session", { id: "T-1" }, { method: "GET" })).status, 401);
+});
+
+test("review-session validates the repository envelope and task and fixes missing/unavailable answers", async (t) => {
+  const env = await setup(t);
+  for (const payload of [{}, { id: "T-0" }, { id: 1 }, { id: "T-1", extra: true }]) {
+    actionRefused(await action(env, "review-session", payload), 400, "invalid");
+  }
+  for (const body of [
+    { repositoryId: "../private", payload: { id: "T-1" } },
+    { repositoryId: REPOSITORY_ID, payload: { id: "T-1" }, extra: true },
+  ]) actionRefused(await send(env.port, {
+    path: "/internal/tasks/review-session", headers: DESKTOP_HEADERS, body: JSON.stringify(body),
+  }), 400, "invalid");
+  actionRefused(await action(env, "review-session", { id: "T-9" }), 404, "not_found");
+  env.closeStore();
+  actionRefused(await action(env, "review-session", { id: "T-1" }), 503, "unavailable");
+});

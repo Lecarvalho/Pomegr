@@ -6,7 +6,7 @@ import { createTerminalHostClient } from "./terminal-host-client.mjs";
 
 export const TERMINAL_CHANNEL = "pomegr:terminal";
 export const TERMINAL_OUTPUT_CHANNEL = "pomegr:terminal-output";
-const KEY = /^(repo-[a-f0-9]{24})\/(T-[1-9][0-9]{0,8})\/[a-f0-9]{32}$/u;
+const KEY = /^(repo-[a-f0-9]{24})\/(T-[1-9][0-9]{0,8})\/(review-)?[a-f0-9]{32}$/u;
 const CONTINUE_KEY = /^continue\/(claude|codex)\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/[a-f0-9]{32}$/iu;
 const SESSION = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const ATTACH = /^[A-Za-z0-9_-]{1,128}$/u;
@@ -55,6 +55,18 @@ export function createTerminalController(options = {}) {
     } catch { return null; }
   }
 
+  async function readReviewSession(repositoryId, taskId) {
+    try {
+      const response = await fetchImpl(`${origin}/internal/tasks/review-session`, {
+        method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
+        headers: { [DESKTOP_AUTH_HEADER]: options.authorizationToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ repositoryId, payload: { id: taskId } }),
+      });
+      const answer = await response.json();
+      return response.ok && answer?.ok === true ? answer.sessionId : null;
+    } catch { return null; }
+  }
+
   async function snapshot() {
     if (!client) return failed("host_unavailable");
     const hosts = [];
@@ -91,6 +103,7 @@ export function createTerminalController(options = {}) {
             try { observed = await options.sessionForProcess?.(row.pid); } catch { /* No identity claim without observation. */ }
           }
           records.set(row.key, { key: row.key, repositoryId: match ? match[1] : null, taskId: match ? match[2] : null,
+            ...(match ? { role: match[3] ? "review" : "build" } : {}),
             sessionId: continued ? (typeof observed === "string" && SESSION.test(observed) ? observed : previous?.sessionId ?? continuedFrom) : previous?.sessionId ?? null,
             ...(continuedFrom ? { continuedFrom } : {}),
             state: row.exited === true ? "exited" : "starting", ...(row.exited === true && Number.isInteger(row.exitCode) ? { exitCode: row.exitCode } : {}), connection });
@@ -101,13 +114,14 @@ export function createTerminalController(options = {}) {
     const repositories = [...new Set([...records.values()].map((row) => row.repositoryId).filter(Boolean))];
     const boards = await Promise.all(repositories.map(async (id) => [id, await readBoard(id)]));
     for (const [id, board] of boards) {
-      for (const task of board?.tasks || []) {
-        const taskRows = [...records.values()].filter((row) => row.repositoryId === id && row.taskId === task.id && (seen.has(row.key) || row.state === "exited"));
+      for (const task of board?.tasks || []) for (const role of ["build", "review"]) {
+        const taskRows = [...records.values()].filter((row) => row.repositoryId === id && row.taskId === task.id && row.role === role && (seen.has(row.key) || row.state === "exited"));
         const live = taskRows.filter((row) => row.state !== "exited");
         const candidates = live.length ? live : taskRows;
-        const linked = typeof task.session?.id === "string" && SESSION.test(task.session.id) ? task.session.id : null;
+        if (candidates.length !== 1 || candidates[0].sessionId) continue;
+        const linked = role === "review" ? await readReviewSession(id, task.id) : task.session?.id;
         // More than one key cannot be reconstructed from a store that keeps only the current link.
-        if (candidates.length === 1 && linked && !candidates[0].sessionId) candidates[0].sessionId = linked;
+        if (typeof linked === "string" && SESSION.test(linked)) candidates[0].sessionId = linked;
       }
     }
     const sessions = [...records.values()].map(({ connection: _connection, ...row }) => ({ ...row, state: row.state === "starting" && row.sessionId ? "live" : row.state }));
@@ -205,6 +219,7 @@ export function createTerminalController(options = {}) {
         if ((!match && !continued) || row.exited !== true || !Number.isInteger(row.exitCode)) continue;
         const continuedFrom = continued ? `${continued[1]}:${continued[2]}` : null;
         records.set(row.key, { key: row.key, repositoryId: match ? match[1] : null, taskId: match ? match[2] : null,
+          ...(match ? { role: match[3] ? "review" : "build" } : {}),
           sessionId: records.get(row.key)?.sessionId ?? continuedFrom, ...(continuedFrom ? { continuedFrom } : {}),
           state: "exited", exitCode: row.exitCode, connection: client });
         await client.detach(row.key, true);

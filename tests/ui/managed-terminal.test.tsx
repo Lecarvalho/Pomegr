@@ -62,6 +62,23 @@ afterEach(() => { Object.defineProperty(window, "pomegrDesktop", { configurable:
 afterEach(() => { if (originalFonts) Object.defineProperty(document, "fonts", originalFonts); else Reflect.deleteProperty(document, "fonts"); });
 
 describe("managed terminal", () => {
+  it.each([null, "codex:reviewer"])("lists build and review terminals and attaches the review with identity %s", async (sessionId) => {
+    const review = { ...entry, key: "review-one", role: "review", sessionId };
+    const original = fake.terminal.getMockImplementation()!;
+    fake.terminal.mockImplementation(async (op, payload) => op === "list"
+      ? { ok: true, sessions: [{ ...entry, role: "build" }, review, { ...review, key: "other", repositoryId: "other-repo" }] }
+      : original(op, payload));
+    render(<SessionTerminalPanel sessionId={entry.sessionId} live />);
+    const reviewButton = await screen.findByRole("button", { name: "T-1 Review" });
+    expect(screen.getByRole("button", { name: "T-1 Build" })).toBeInTheDocument();
+    expect(screen.getAllByText("Review")).toHaveLength(1);
+    expect(screen.getByText("Review")).toHaveClass("commandChip");
+    fireEvent.click(reviewButton);
+    await waitFor(() => expect(fake.terminal).toHaveBeenCalledWith("attach", expect.objectContaining({ key: review.key })), { timeout: 5000 });
+    expect(reviewButton).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "T-1 Build" }));
+    await waitFor(() => expect(fake.terminal.mock.calls.filter(([op]) => op === "attach").at(-1)?.[1].key).toBe(entry.key), { timeout: 5000 });
+  });
   it.each([
     '"Cascadia Mono Variable", "Generated Fallback", Consolas, monospace',
     '"Cascadia Mono Variable", sans-serif, Consolas, monospace',
@@ -343,6 +360,17 @@ describe("task start terminal", () => {
     fake.terminal.mockResolvedValue({ ok: true, status: "ready", sessions: [entry], hosts: [] });
     view.rerender(<TaskTerminalBoundary repositoryId="repo-one" revision="2"><p>Board</p></TaskTerminalBoundary>);
     await waitFor(() => expect(fake.replace).toHaveBeenCalledWith("/sessions/codex-one?tab=terminal", { scroll: false }));
+  });
+  it("never takes a task's review terminal for its manual start or its waiting hint", async () => {
+    const review = { ...entry, key: "review-one", role: "review", sessionId: null, state: "starting" };
+    fake.terminal.mockResolvedValue({ ok: true, status: "ready", sessions: [{ ...entry, role: "build", state: "exited", exitCode: 0 }, review], hosts: [] });
+    const view = render(<TaskTerminalBoundary repositoryId="repo-one" revision="1"><p><TaskTerminalHint taskId="T-1" /></p></TaskTerminalBoundary>);
+    await waitFor(() => expect(fake.terminal).toHaveBeenCalledWith("list"));
+    expect(screen.queryByRole("link", { name: "Waiting in terminal" })).not.toBeInTheDocument();
+    await act(async () => { await startDesktopTask("repo-one", "T-1"); });
+    await screen.findByRole("region", { name: "Starting T-1" });
+    expect(fake.terminal.mock.calls.some(([op, payload]) => op === "attach" && payload.key === review.key)).toBe(false);
+    view.unmount();
   });
   it("does not open the view just because a queued terminal exists", async () => {
     render(<TaskTerminalBoundary repositoryId="repo-one" revision="1"><p>Board</p></TaskTerminalBoundary>);
