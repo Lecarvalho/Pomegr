@@ -13,7 +13,6 @@ import { FileHistoryPanel } from "../repositories/FileHistoryPanel";
 import { cacheRefillEvidenceView } from "../dashboard/AgentHistoryIndicators";
 import { SessionFilePanel } from "../dashboard/SessionFilePanel";
 import { FileTree, type FileTreeFile } from "../repositories/FileTree";
-import { RepositoryRow } from "../repositories/RepositoryRow";
 import { StorageUsageBar } from "../../settings/StorageSettings";
 import { DashboardDisclosurePanel } from "../dashboard/DashboardDisclosurePanel";
 import type { HistoryActivity } from "../../../shared/session-history-contract";
@@ -43,6 +42,8 @@ import {
 import { CommandSplitAction } from "../command-center/CommandSplitAction";
 import { useClientAccess } from "../../hooks/ClientAccessContext";
 import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSamples";
+import { AgentGridSection } from "./DesignSystemAgentGridSample";
+import { RepositorySetupSection } from "./DesignSystemRepositorySamples";
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
 import { EventsRailSection } from "./DesignSystemEventsSample";
 import { SessionTerminalSection } from "./DesignSystemTerminalSample";
@@ -83,13 +84,12 @@ export function DesignSystemView() {
     <RequestChartsSection />
     <CacheRefillEvidenceSection />
     <AgentRosterSection />
+    <AgentGridSection />
     <AgentInspectorSection />
     <ChipsSection />
     <FileTreeSection />
     <FileHistoryPanelSection />
-    <Section id="repository-row" title="Repository setup row" lede="Shared settings geometry, standard chips, and independent row actions.">
-      <RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail={<><code>v1.0.0</code> · Project installation · Up to date</>} actions={<button type="button" className="commandQuietAction">Recheck</button>} />
-    </Section>
+    <RepositorySetupSection />
     <PanelsSection />
     <EventsRailSection />
     <SessionTerminalSection />

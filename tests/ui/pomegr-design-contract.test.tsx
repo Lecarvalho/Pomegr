@@ -58,6 +58,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.sessionEventCount\s*\{[^}]*var\(--text-caption\)[^}]*var\(--font-data\)[^}]*white-space: nowrap/);
   });
   it("reuses settings row geometry and standard chips for repository setup", () => {
+    for (const title of ["Agent grid tile states", "Repository setup row states"]) expect(designContract).toContain(title);
     const { container } = render(<RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail="Project installation" actions={<button className="commandQuietAction">Recheck</button>} />);
     expect(container.firstChild).toHaveClass("commandSettingRow", "repositoryRow");
     expect(screen.getByText("Enabled")).toHaveClass("commandChip", "positive");

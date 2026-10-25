@@ -21,6 +21,8 @@
 /* Samples of Run settings rows give each cell the room of a row, one under another inside a sample. */
 .designSystemRowGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
 .designSystemRows { display: grid; gap: var(--space-4); }
+.designSystemGridFrame { flex: 1 1 100%; min-width: 0; }
+.designSystemRepositoryFrame { flex: 1 1 100%; min-width: 0; }
 .designSystemSampleBody > :is(.taskReview, .taskRead, .taskRunSettings) { flex: 1 1 100%; }
 .designSystemPanelBody { padding: 0 var(--space-4) var(--space-2); }
 .designSystemPanelBody .commandSettingRow:first-child { border-top: 0; }
