@@ -47,13 +47,37 @@ export function AgentRosterSection() {
   return <Section id="agent-roster" title="Agent roster" lede="AgentActivityPanel renders the session roster from static agents: a pinned, selected primary row, an open workflow group with phase progress, a collapsed Direct subagents group with its rollup, the status distribution strip, filters, and the inline inspector column. The List / Grid switch also draws the tile grid.">
     <LiveClockProvider running={false}>
       <AgentActivityPanel agents={ROSTER_AGENTS} executionTasks={[]} planTasks={ROSTER_PLAN} historical={false} workflows={ROSTER_WORKFLOWS} loops={ROSTER_LOOPS}
-        workflowNavigation={{ id: WORKFLOW_ID, request: 1 }} sessionId="design-system-roster" viewMode={viewMode} onViewModeChange={setViewMode} />
+        workflowNavigation={{ id: WORKFLOW_ID, request: 1 }} sessionId="design-system-roster" persistPreferences={false} viewMode={viewMode} onViewModeChange={setViewMode} />
     </LiveClockProvider>
-    <p className="designSystemNote">Status pills and the distribution strip keep lifecycle meaning: neutral for idle and finished, amber for needs input, red for stopped. The repeat chip marks a recorded repeated-call pattern, never a judgment. The primary row and group headers stay sticky while the region scrolls; columns omit Calls and Cache TTL from 761 to 1250px, and the inspector keeps them. At 760px and narrower the inspector column is replaced by the full-screen InspectorSheet, which opens when a row is tapped. The roster keeps viewer choices (selected agent, open groups, Hide finished) in browser local storage under the session ID design-system-roster, so a stored choice can change the initial state shown here.</p>
+    <p className="designSystemNote">Status pills and the distribution strip keep lifecycle meaning: neutral for idle and finished, amber for needs input, red for stopped. The repeat chip marks a recorded repeated-call pattern, never a judgment. The primary row and group headers stay sticky while the region scrolls; columns omit Calls and Cache TTL from 761 to 1250px, and the inspector keeps them. At 760px and narrower the inspector column is replaced by the full-screen InspectorSheet, which opens when a row is tapped. This sample keeps selection, open groups, Hide finished, and the grid metric in memory only. Reloading restores the documented initial state.</p>
   </Section>;
 }
 
 const INSPECTED = ROSTER_AGENTS[6];
+
+export function InspectorSheetSection() {
+  const agent = ROSTER_AGENTS[3];
+  return <Section id="inspector-sheet" title="Inspector sheet frame" lede="The phone inspector frame uses the shipped sheet classes with fixed illustrative evidence. It stays inline without a portal, focus trap, or body lock.">
+    <Sample label="Static phone frame" note="The header Back action and body actions keep their 44px targets. Sample actions do nothing.">
+      <div className="agentInspectorSheet designSystemInspectorSheetFrame">
+        <header className="inspectorSheetHeader">
+          <button type="button" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg></button>
+          <div><strong dir="auto">{agent.label}</strong><span>Reviewer · small-model</span></div>
+        </header>
+        <div className="agentInspector agentInspector-sheet">
+          <header className="inspectorHeader"><div className="inspectorStatus"><span className="statusPill needs_input">needs input</span></div><p>Reviewer · review</p></header>
+          <section className="inspectorSection"><h4>Facts</h4><dl className="inspectorFacts">
+            <dt>Model</dt><dd>{agent.model}</dd><dt>Context</dt><dd className="inspectorContext">51.7k</dd><dt>Tool calls</dt><dd>29</dd><dt>Wall time</dt><dd>16m</dd>
+          </dl></section>
+          <div className="inspectorActions">
+            <button type="button" className="commandSecondaryAction inspectorActionRow">Open agent tree</button>
+            <button type="button" className="commandSecondaryAction inspectorActionRow">Activities for this agent</button>
+          </div>
+        </div>
+      </div>
+    </Sample>
+  </Section>;
+}
 
 export function AgentInspectorSection() {
   return <Section id="agent-inspector" title="Agent inspector" lede="AgentInspector is the 340px inline column: status, role, workflow and phase, the lineage rail with context snapshots, facts, skills, signals, and full-width exits. This sample inspects a workflow worker so the lineage shows its workflow and phase rows.">

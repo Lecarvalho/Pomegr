@@ -36,6 +36,9 @@
 .designSystemSidebarLimits { width: min(220px, 100%); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--command-line); background: var(--command-sidebar); }
 .designSystemInspectorFrame { width: min(340px, 100%); overflow: hidden; border: 1px solid var(--command-line); border-radius: var(--panel-radius); }
 .designSystemInspectorFrame .agentInspector-inline { max-height: none; border-left: 0; }
+/* Keep the phone sheet in document flow while retaining its shared header and touch targets. */
+.designSystemInspectorSheetFrame { position: relative; inset: auto; z-index: auto; width: min(380px, 100%); max-height: 560px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); }
+.designSystemInspectorSheetFrame .agentInspector-sheet { min-height: 0; }
 .designSystemTable { min-width: 560px; }
 .designSystemEventsFrame { width: min(380px, 100%); }
 /* Task compositions: a full-width stack inside a sample, standing in for the Tasks page column the real controls sit in. */

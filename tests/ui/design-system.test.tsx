@@ -5,14 +5,11 @@ import userEvent from "@testing-library/user-event";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-
 const clientAccess = vi.hoisted(() => ({ mode: "unknown" as "unknown" | "local" | "lan" }));
-
 vi.mock("../../app/hooks/ClientAccessContext", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../app/hooks/ClientAccessContext")>();
   return { ...actual, useClientAccess: () => ({ mode: clientAccess.mode, canCopyTranscriptPath: false, accessExpired: false, markAccessExpired() {}, async refreshAccess() {} }) };
 });
-
 import { DesignSystemView } from "../../app/components/design-system/DesignSystemView";
 import { TaskFieldsSection } from "../../app/components/design-system/DesignSystemTaskFieldsSample";
 import { FeatureModalSamples } from "../../app/components/design-system/DesignSystemFeatureModalSample";
@@ -21,30 +18,26 @@ import { TaskBoardSection } from "../../app/components/design-system/DesignSyste
 import { QueueControlsSection, TaskGatesSection } from "../../app/components/design-system/DesignSystemTaskGatesSample";
 import { SessionTaskSection } from "../../app/components/design-system/DesignSystemSessionTaskSample";
 import { AgentChatSection } from "../../app/components/design-system/DesignSystemAgentChatSample";
-import { AgentRosterSection, AgentInspectorSection } from "../../app/components/design-system/DesignSystemAgentSamples";
+import { AgentRosterSection, AgentInspectorSection, InspectorSheetSection } from "../../app/components/design-system/DesignSystemAgentSamples";
 import { CommandTableSection, SettingsRailSection } from "../../app/components/design-system/DesignSystemLayoutSamples";
+import { RevisionEvidenceSection } from "../../app/components/design-system/DesignSystemRepositorySamples";
 import DesignSystemPage from "../../app/design-system/page";
-
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent grid tile states", "Agent inspector", "Repository setup row states", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Assigned sessions", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent grid tile states", "Agent inspector", "Inspector sheet frame", "Revision evidence", "Repository setup row states", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Queue controls", "Start gates and schedule", "Sessions list Task cell", "Assigned sessions", "Promote issues", "GitHub settings", "Agent chat", "Typography and tokens"];
 const SAMPLE_SOURCES = [
   "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemAgentGridSample", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample", "DesignSystemFeatureModalSample",
   "DesignSystemTaskBoardSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample", "DesignSystemAssignedSessionsSample", "DesignSystemAgentChatSample", "DesignSystemRepositorySamples",
 ].map((name) => `app/components/design-system/${name}.tsx`).concat("app/components/design-system/DesignSystemTaskSampleData.ts");
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
-
 function source(relativePath: string) {
   return readFileSync(path.join(process.cwd(), relativePath), "utf8");
 }
-
 function sectionOf(name: string) {
   return screen.getByRole("heading", { level: 2, name }).closest("section") as HTMLElement;
 }
-
 function sample(root: HTMLElement, label: string) {
   return within(root).getByText(label, { selector: ".designSystemSample > span" }).closest(".designSystemSample") as HTMLElement;
 }
-
 function reading(root: HTMLElement, label: string) {
   return within(root).getByText(label, { selector: "dt" }).nextElementSibling as HTMLElement;
 }
@@ -91,7 +84,7 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(screen.getByRole("combobox", { name: "Sample scope, disabled" })).toBeDisabled();
     expect(screen.getAllByText("Claude Code").find((element) => element.classList.contains("providerBadge"))).toBeDefined();
     expect(screen.getAllByText("Codex").find((element) => element.classList.contains("providerBadge"))).toBeDefined();
-    expect(screen.getByText("needs input")).toHaveClass("statusPill", "needs_input");
+    expect(within(screen.getByRole("region", { name: "Chips and pills" })).getByText("needs input")).toHaveClass("statusPill", "needs_input");
     expect(screen.getByRole("button", { name: /Live/, pressed: true })).toHaveClass("commandFilterChip");
     expect(screen.getByRole("region", { name: "Sample session totals" })).toHaveClass("sessionKpiStrip");
     expect(screen.getByText("--color-brand-fill")).toBeInTheDocument();
@@ -100,6 +93,13 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     // The full-page composition check retains its cold-render allowance.
   }, 40_000);
+
+  it("mounts the inspector sheet and revision evidence sections directly", () => {
+    render(<><InspectorSheetSection /><RevisionEvidenceSection /></>);
+    expect(screen.getByRole("heading", { name: "Inspector sheet frame" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Revision evidence" })).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  }, 5_000);
 
   it("renders static lane and single-chart samples with a neutral, described minimap", () => {
     render(<DesignSystemView />);
