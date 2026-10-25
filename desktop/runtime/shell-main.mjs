@@ -686,7 +686,7 @@ async function startDesktop() {
         const taskImage = createTaskImage({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
         const taskLog = createTaskLog({ isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken });
         phoneAccess = createLanSharingController({
-          upstreamOrigin: web.origin, agentChat: (operation, payload) => agentChat.handle(operation, payload), agentChatImage: (operation, payload) => agentChat.image(operation, payload), taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired, taskLog: taskLog.readLog,
+          upstreamOrigin: web.origin, agentChat: (operation, payload) => agentChat.handle(operation, payload, { paired: true }), agentChatImage: (operation, payload) => agentChat.image(operation, payload), taskStart: taskStarter.startPaired, taskImage: taskImage.runPaired, taskLog: taskLog.readLog,
           authorizationToken,
           autoStart: desktopSettings.lanSharingAutoStart,
           canPersist: settingsLoad.canPersist,

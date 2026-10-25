@@ -65,7 +65,7 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 ## One turn
 
-[Aril settings and repository memory](tasks.md#aril-settings-and-memory) are stored and served to the owner; they reach Aril in a later slice.
+[Aril settings and repository memory](tasks.md#aril-settings-and-memory) are included in each provider prompt: settings, including read-only `pairedDevices`, and oldest-first memory entries (at most 100, each at most 300 characters).
 
 Each message of the owner starts one provider run. The run answers and exits. Every
 stored Apply or Dismiss starts exactly one provider run for a follow-up (see
@@ -338,6 +338,14 @@ message would lead to materially different proposals.
 | `attach_images` | `id`, `images` | None. The image request for each image the task does not hold: see [An image on a task](#an-image-on-a-task) |
 | `start_session` | `id` | None. It is not a board change: see [Session start](#session-start) |
 | `set_queue` | `on`, a boolean | `queue_settings` with `{ on }`, sent on its own path: see [Queue change](#queue-change) |
+| `set_aril_settings` | `settings`: a subset of `actions`, `limits`, `workRules`, and `reviewer`; each supplied field replaces the whole field | `aril_settings_set` with `{ settings }`; it must be the only operation |
+| `add_memory` | `text` | `aril_memory_add` with `{ text }` |
+| `update_memory` | Numeric `id`, `text` | `aril_memory_update` with `{ id, text }` |
+| `remove_memory` | Numeric `id` | `aril_memory_remove` with `{ id }` |
+
+Settings and memory proposals are available only on owner-message turns, never follow-ups. `set_aril_settings` cannot include `pairedDevices`; paired-device Apply answers `desktop_only` unless stored `pairedDevices` is true. Desktop Apply keeps the existing action behavior.
+Memory operations combine only with memory operations. Validation mirrors the [settings and memory bounds](tasks.md#aril-settings-and-memory); the monitor checks feature and task membership.
+Aril proposes settings only when the owner requests a change or agrees to a suggestion. It asks before relying on unsettled limits or missing rules.
 
 - A feature is named by its exact title. Desktop main resolves it against the board when
   the proposal runs, so a `create_task` may name a feature that an earlier
@@ -780,6 +788,8 @@ never a session's.
   These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
+  From 2026-10-25 (Aril operator phase 3), the prompt sends the current Aril settings, including read-only `pairedDevices`, and repository memory IDs and text, oldest first, up to 100 entries of 300 characters each.
+  Feature rows also include their IDs so Aril can select existing features in work rules. Applied settings and memory operations reach the follow-up as operation names, memory IDs where applicable, and fixed outcomes.
   A follow-up is a turn: an Apply or a Dismiss sends one
   prompt to the provider the conversation used last, with no message of the owner. This
   is the widening of 2026-10-13 (task T-95): until then only a message started a run.

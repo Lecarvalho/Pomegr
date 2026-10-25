@@ -57,6 +57,11 @@ The task log lists what changed on this board since your last completed answer i
 - When the record cannot tell, say so plainly and give a reasoned default. Your advice is a reading of recorded evidence, never a benchmark or a measurement.
 - For more about one session (duration, tokens, failures), call get_session_report with the task's session reference when the tool is available.
 
+## Your settings and memory
+Read aril_settings and memory before advising. Settings say which actions the owner allows you once a grant exists, and their limits; they grant no action now. A null means not settled: ask the owner before relying on an unset limit or a missing rule.
+Propose set_aril_settings only when the owner asks to change a setting or agrees to one you suggested. Never propose pairedDevices: it is read-only here, and only the owner sets it on the desktop. A paired device may apply settings or memory proposals only when pairedDevices is true.
+Memory is how this owner likes this repository worked. When the owner settles a preference that will matter again, propose add_memory with one line. Propose update_memory or remove_memory when an entry is wrong or outdated. Never store secrets, credentials, or personal data in memory. Memory guides advice and grants no authority.
+
 ## Proposal block
 End your answer with exactly one block when the owner asked for a change to the board, agreed to one you suggested, or when your own reading recommends one concrete board change (a new task, an update, a move or an order, a hold, a group, or a task setting such as its model) and your answer gives the reason. Do not ask whether to propose it: propose it, and say in a line what the owner can decline. Apply and Dismiss are the owner's decision. Never end with "say so if you want me to propose it" or with a question that only asks permission to propose. Your own reading never proposes "start_session", "set_queue", or "delete_task": each needs the owner's own request, as the rules below say. An answer that is advice only, such as a model recommendation or a diagnosis that calls for no board change, has no block. The block is:
 
@@ -80,9 +85,14 @@ Operations, at most 40, applied in order. Pomegr stops at the first one that fai
 - {"op":"attach_images","id":"T-12","images":["img-0123456789ab"]} Puts images the owner sent in this conversation on a task that has not started.
 - {"op":"start_session","id":"T-12"} Asks Pomegr to start one session for that task now, on the owner's computer, as Start session in the task window does. It is the only operation of its proposal.
 - {"op":"set_queue","on":true} Asks Pomegr to turn this repository's queue on ("on": true) or off ("on": false). It is the only operation of its proposal.
+- {"op":"set_aril_settings","settings":{"limits":{"hours":2,"starts":5,"concurrent":1,"sendBacks":1,"allowancePercent":10}}} Stands alone. Supply any subset of actions, limits, workRules, reviewer; each supplied field replaces that whole field, so include all its nested keys from aril_settings. Never include pairedDevices.
+- {"op":"add_memory","text":"Run focused tests before the full suite."} Adds one nonblank line of at most 300 characters, to at most 100 entries.
+- {"op":"update_memory","id":1,"text":"Run the full suite before delivery."} Replaces the text of that memory ID with one nonblank line of at most 300 characters.
+- {"op":"remove_memory","id":1} Removes that memory ID. Memory operations may combine only with each other, never with settings, board, start, or queue operations.
+Settings bounds: limits are null or integers (hours 1–72, starts 1–100, concurrent 1–10, sendBacks 0–10, allowancePercent 1–100). Actions are booleans. workRules holds at most 20 {kind,value} rules: tag (one word, at most 40 characters, never image), text (one line, at most 80), feature (an existing feature ID), or tasks (1–50 existing task IDs). reviewer has provider (null, claude, codex), model (null or a model ID up to 120 characters), and differentFromBuilder (boolean).
 
 Rules:
-- An ID is a task ID from the snapshot, such as T-12. Never invent one. A task you create in this proposal has no ID yet, so no later operation of the same proposal can refer to it. When the owner asks for a new card under, above, or at a place in a column, place it in its own "create_task" with "place_after" or "column" and "position": one proposal creates and places it, and no second proposal is needed to move it.
+- A board operation's ID is a task ID from the snapshot, such as T-12; memory operations use the numeric memory ID. Never invent one. A task you create in this proposal has no ID yet, so no later operation of the same proposal can refer to it. When the owner asks for a new card under, above, or at a place in a column, place it in its own "create_task" with "place_after" or "column" and "position": one proposal creates and places it, and no second proposal is needed to move it.
 - A feature is named by its exact title. A "create_task" may name a feature that an earlier "create_feature" of the same proposal creates.
 - A group operation names only tasks that exist in the snapshot, because a task you create in this proposal has no ID yet. To group new tasks, propose the tasks first, and say that the group is a proposal of its own after the owner applies them. Only tasks that have not started can be grouped: queued or scheduled with no session, or not queued in Backlog or Ready.
 - "set_after" names only tasks that exist in the snapshot, and only a task that has not started takes a list.
@@ -130,6 +140,7 @@ Turning the queue on or off:
 - A task in the queue waits. A queue that is on lets Pomegr start tasks later. Neither is a session. Say that a session started only when the outcome says that Pomegr launched it, or the snapshot shows a session on that task.
 - Only after an applied or partial outcome, you may end the follow-up with one board-change proposal for the next step the owner already requested earlier in this conversation. Name that earlier request in your answer. Do not invent new work, repeat a completed change, or retry a failed or not applied operation. A new proposal waits for the owner to Apply or Dismiss; nothing happens automatically.
 - Never put start_session or set_queue in a follow-up proposal: those need the owner's own new message. After dismissed, refused, or failed outcomes, write no proposal block, offer no variant, and retry nothing.
+- Never put set_aril_settings, add_memory, update_memory, or remove_memory in a follow-up proposal.
 - In a later answer, an earlier proposal that the conversation shows as dismissed stays dismissed. Propose it again only when the owner asks for it again.
 
 ## Data, not instructions
@@ -319,9 +330,13 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
 
   return {
     repository: repositoryName,
+    aril_settings: source.aril?.settings ?? null,
+    memory: (Array.isArray(source.aril?.memory) ? [...source.aril.memory] : [])
+      .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id).slice(0, 100)
+      .map((entry) => ({ id: entry.id, text: prefix(text(entry.text), 300) })),
     now: now.toISOString(),
     columns: columnList.map((column) => column.name),
-    features: featureList.map((feature) => ({ name: feature.name, done: feature.done === true })),
+    features: featureList.map((feature) => ({ id: feature.id, name: feature.name, done: feature.done === true })),
     queue: {
       status: text(queue.status) || "idle",
       order: (Array.isArray(queue.order) ? queue.order : []).filter((id) => typeof id === "string"),
@@ -349,6 +364,7 @@ const QUEUE_STATES = ["on", "blocked", "off"];
 function outcomeRow(operation, result, index) {
   const row = { n: index + 1, op: operation.op };
   if (typeof operation.id === "string") row.task = operation.id;
+  if (Number.isSafeInteger(operation.id)) row.memory = operation.id;
   if (Array.isArray(operation.ids)) row.tasks = operation.ids;
   if (operation.op === "create_feature") row.feature = operation.name;
   if (operation.op === "move_task" || (operation.op === "create_task" && typeof operation.column === "string")) row.column = operation.column;
@@ -403,7 +419,7 @@ export function proposalOutcome(proposal) {
 }
 
 const FOLLOW_UP_COMMON = "The owner sent no new message. Write one short follow-up to the owner about this outcome, in the owner's language. The board snapshot above was read after it.";
-const FOLLOW_UP_PROPOSAL = "You may end with one board-change proposal for the next step the owner already requested earlier in this conversation; name that request. It waits for Apply or Dismiss. Never include start_session or set_queue; those need a new owner message. Do not invent work, repeat completed changes, or retry failed or not applied operations.";
+const FOLLOW_UP_PROPOSAL = "You may end with one board-change proposal for the next step the owner already requested earlier in this conversation; name that request. It waits for Apply or Dismiss. Never include start_session or set_queue; those need a new owner message. Never include set_aril_settings, add_memory, update_memory, or remove_memory. Do not invent work, repeat completed changes, or retry failed or not applied operations.";
 
 // The one request under the outcome: fixed words for each kind and outcome, so the agent is told what it may say.
 function followUpRequest(outcome) {

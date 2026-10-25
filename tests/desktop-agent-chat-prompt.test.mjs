@@ -117,7 +117,7 @@ test("a task is mapped field by field, with names for its column and feature and
   assert.equal(snapshot.repository, "pomegr");
   assert.equal(snapshot.now, "2026-10-01T12:00:00.000Z");
   assert.deepEqual(snapshot.columns, ["Backlog", "Ready"]);
-  assert.deepEqual(snapshot.features, [{ name: "Auth", done: false }, { name: "Old", done: true }]);
+  assert.deepEqual(snapshot.features, [{ id: "feat-1", name: "Auth", done: false }, { id: "feat-2", name: "Old", done: true }]);
   assert.deepEqual(snapshot.tasks, [{
     id: "T-1", column: "Ready", position: 2, state: "needs_review", feature: "Auth", group: "group A",
     provider: "claude", model: "claude-opus-4-1", effort: "high",
@@ -411,7 +411,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
   assert.equal(serialized.includes("--evil"), false);
   assert.equal(serialized.includes("private model"), false);
   assert.equal(serialized.includes("gemini"), false);
-  assert.deepEqual(snapshot.features, [{ name: "Real", done: false }]);
+  assert.deepEqual(snapshot.features, [{ id: "feat-2", name: "Real", done: false }]);
   assert.deepEqual(snapshot.models, { claude: [], codex: [] });
   const [first, second] = snapshot.tasks;
   assert.deepEqual(first, {

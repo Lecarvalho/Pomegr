@@ -26,6 +26,7 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
 });
 
 import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
+import { AgentChatProposalCard } from "../../app/components/agent-chat/AgentChatProposalCard";
 
 let chat: FakeChat;
 
@@ -59,6 +60,25 @@ describe("proposals", () => {
     agentMessage("Here is the plan.", { proposal: proposalOf(operations, "pending", extra) }),
   ]));
   const card = () => within(log()).getByRole("region", { name: "Proposed board changes" });
+
+  it("shows proposed Aril settings and complete memory text before apply", async () => {
+    const proposal = { id: PROPOSAL_ID, summary: "Adjust Aril's working notes.", state: "pending", operations: [
+      { op: "set_aril_settings", settings: { actions: { start: true, review: false, sendBack: true, merge: false, writeTasks: true } } },
+      { op: "add_memory", text: "Keep uploads backward compatible, including the legacy endpoint." },
+      { op: "update_memory", id: 4, text: "Prefer a streaming upload path, and document the migration." },
+      { op: "remove_memory", id: 5 },
+    ] } as never;
+    render(<AgentChatProposalCard proposal={proposal} tasks={[]} busy={false} onApply={() => {}} onDismiss={() => {}} />);
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("Set Aril settings");
+    expect(rows[0]).toHaveTextContent('actions: {"start":true,"review":false,"sendBack":true,"merge":false,"writeTasks":true}');
+    expect(rows[1]).toHaveTextContent("Add Aril memory");
+    expect(rows[1]).toHaveTextContent("Keep uploads backward compatible, including the legacy endpoint.");
+    expect(rows[2]).toHaveTextContent("Update Aril memory 4");
+    expect(rows[2]).toHaveTextContent("Prefer a streaming upload path, and document the migration.");
+    expect(rows[3]).toHaveTextContent("Remove Aril memory 5");
+    expect(screen.getByRole("button", { name: "Apply changes" })).toBeEnabled();
+  });
 
   it("draws one row for each of the eight operations with fixed words, a first line of text and a muted line of what is set", async () => {
     withProposal();

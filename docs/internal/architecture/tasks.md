@@ -155,7 +155,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 ## Aril settings and memory
 
-- Settings and memory are stored and served in phase 3a; they grant no action until a grant exists in phase 4, and have no automatic behavior.
+- Settings and memory are stored and served in phase 3; they grant no action and have no automatic behavior.
 - Each ready repository board includes `aril: { settings, memory }`; memory is oldest first, ordered by creation time then ID, and unavailable or denied boards omit owner content.
 - `actions` has boolean `start`, `review`, `sendBack`, `merge`, and `writeTasks`, all false by default.
 - `limits` has nullable integers: `hours` 1–72, `starts` 1–100, `concurrent` 1–10, `sendBacks` 0–10, and `allowancePercent` 1–100; all default to null, meaning not settled yet, so Aril must ask.
@@ -169,7 +169,9 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `aril_memory_add` accepts `{ text }`, `aril_memory_update` accepts `{ id, text }`, and both answer `{ ok: true, entry: { id, text, createdAt, updatedAt } }`; `aril_memory_remove` accepts `{ id }` and answers `{ ok: true }`.
 - Memory text is a nonblank line of 1–300 characters with no control characters; the 101st entry is refused with `limit`, and update or removal of an unknown ID in that repository answers `not_found`.
 - The paired action route refuses all four actions unless that repository's stored `pairedDevices` is true; a paired settings action containing `settings.pairedDevices` is always `invalid`.
-- No agent route, MCP tool, Aril proposal, or provider prompt reads or changes these settings or memory in this slice.
+- Aril reads settings and memory in its chat prompt. It may propose settings changes except `pairedDevices`, and add, update, or remove memory entries; the owner applies these through `aril_settings_set` or the matching `aril_memory_*` action.
+- A paired device may apply these proposals only when stored `pairedDevices` is true; otherwise Apply answers `desktop_only`. Only the desktop action may change `pairedDevices`.
+- Memory operations may combine only with other memory operations. A settings operation is standalone. Follow-up proposals cannot contain these operations.
 
 ## Record
 
