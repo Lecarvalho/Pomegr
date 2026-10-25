@@ -39,6 +39,7 @@ This plan adds that authority as a **standing grant** that the owner approves be
 | 2026-10-25 | Aril learns each repository and how the owner likes it to work, through a repository memory. It asks more and decides less at first, and settles rules with the owner over time. A work rule may select by tag, content, project, feature, or a list of tasks. |
 | 2026-10-25 | The reviewer choice has no built-in bias: it follows the repository's rule, or what the owner settled, informed by Pomegr's metrics, or a combination. |
 | 2026-10-25 | A paired device can talk with Aril and settle all of this. A setting, off by default, lets the owner allow paired devices to manage Aril settings and grants. |
+| 2026-10-25 | Aril proposes every Aril settings change and the owner accepts it. The paired-device setting is the exception: only the owner sets it, only in the desktop app, and Aril never proposes it. |
 
 ## Lessons from the first pilot
 
@@ -73,9 +74,10 @@ Aril settings are one record per repository in the app, next to the grant:
 - the grant's limits and switches, as settled for the next run;
 - the work rules: which tasks and plans Aril may take, selected by tag, content, project, feature, or a list of tasks;
 - the reviewer rule, when the repository or the owner set one;
-- whether a paired device may manage settings and grants (off by default).
+- whether a paired device may manage settings and grants (off by default; set by the owner in the desktop app only).
 
-The owner edits them directly. Aril changes them only through a proposal that the owner applies, the same way it changes the board today, so it never widens its own authority.
+The owner edits them directly. Aril changes them only through a proposal that the owner accepts, the same way it changes the board today, so it never widens its own authority.
+The paired-device setting is the exception: the owner sets it only in the desktop app, Aril cannot propose it, and no paired device can change it.
 The owner and Aril settle them in the chat: Aril proposes values for what is on the plate, and asks what it may do when a rule is missing.
 
 ## Repository memory
@@ -143,7 +145,7 @@ Each phase ships on its own and is useful without the next.
 
 - [ ] **1. Log and events.** The action log store and view, and committed events with durable cursors, with no new authority. Aril can be asked "what happened since I left" from the log.
 - [ ] **2. Reviewer session.** The reviewer role, its brief, and its verdict report; started by the owner from a task in Review. Verdicts recorded with G1.
-- [ ] **3. Settings and memory.** Aril settings and the repository memory, both changed by the owner or by an applied proposal; the paired-device setting. No new authority.
+- [ ] **3. Settings and memory.** Aril settings and the repository memory, both changed by the owner or by an applied proposal; the desktop-only paired-device setting. No new authority.
 - [ ] **4. Grant with start and review.** The grant record, its limits and stop; Aril starts the tasks its work rules select, and their reviews, on events. Owner merges.
 - [ ] **5. Send-back.** Failing verdicts go back to a builder session within the limit (G9).
 - [ ] **6. Merge on green.** The merge action with every check above.
@@ -163,3 +165,4 @@ Phases 1 to 3 add no authority.
 
 2026-10-24: plan written after the owner asked what Aril lacks to run the delivery loop an agent ran by hand that day. The owner answered the scope questions (start, review and send back, merge on green, write tasks; a separate reviewer session; plan first). Next action: the owner reviews the plan and answers the open decisions.
 2026-10-25: the owner answered the five open decisions (recorded under Owner decisions). Added Aril settings, the repository memory, and phase 3; removed fixed default limits and the squash default. Next action: the owner reviews the revised plan.
+2026-10-25: the owner decided that Aril proposes every settings change for the owner to accept, except the paired-device setting, which only the owner sets, in the desktop app.
