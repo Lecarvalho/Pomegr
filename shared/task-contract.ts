@@ -93,7 +93,7 @@ export type ArilSettings = {
   actions: { start: boolean; review: boolean; sendBack: boolean; merge: boolean; writeTasks: boolean };
   mergeMethod: "squash" | "merge" | "rebase" | null;
   limits: { hours: number | null; starts: number | null; concurrent: number | null; sendBacks: number | null; allowancePercent: number | null };
-  workRules: ({ kind: "tag" | "text" | "feature"; value: string } | { kind: "tasks"; value: string[] })[];
+  workRules: ({ kind: "tag" | "text" | "feature" | "plan"; value: string } | { kind: "tasks"; value: string[] })[];
   reviewer: { provider: TaskProvider | null; model: string | null; differentFromBuilder: boolean };
   pairedDevices: boolean;
 };

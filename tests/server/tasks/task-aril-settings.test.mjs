@@ -21,6 +21,16 @@ function setup(t) {
 }
 const invalid = (answer) => assert.deepEqual(answer, { ok: false, error: "invalid" });
 
+test("plan rules accept only bounded repository-relative Markdown paths", (t) => {
+  const { set } = setup(t);
+  for (const value of ["next.md", "docs/plans/next-step_2.md", ".plans/v1.2.md", `${"a".repeat(197)}.md`]) {
+    assert.equal(set({ workRules: [{ kind: "plan", value }] }).ok, true, value);
+  }
+  for (const value of ["", "/next.md", "C:/next.md", "docs\\next.md", "../next.md", "docs/../next.md", "./next.md", "docs/./next.md", "next.txt", "next.MD", "docs//next.md", "next.md\n", `${"a".repeat(198)}.md`, null]) {
+    invalid(set({ workRules: [{ kind: "plan", value }] }));
+  }
+});
+
 test("defaults, subset replacement, repository isolation and persistence", (t) => {
   const { store, directory, set } = setup(t);
   assert.deepEqual(store.readBoard(REPO).aril, { settings: defaults(), memory: [], grant: null });

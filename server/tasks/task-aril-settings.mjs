@@ -48,6 +48,8 @@ function validRule(database, repositoryId, rule) {
   const { kind, value } = rule;
   if (kind === "tag") return line(value, 40) && !/\s/u.test(value) && splitTaskTags(`[ ${value} ]`, 40).tags[0] === value;
   if (kind === "text") return line(value, 80);
+  if (kind === "plan") return line(value, 200) && /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*\.md$/u.test(value)
+    && !value.split("/").some((segment) => segment === "." || segment === "..");
   if (kind === "feature") return typeof value === "string" && preparedStatement(database,
     "SELECT 1 FROM features WHERE repository_id = ? AND id = ?").get(repositoryId, value) !== undefined;
   return kind === "tasks" && Array.isArray(value) && value.length >= 1 && value.length <= 50

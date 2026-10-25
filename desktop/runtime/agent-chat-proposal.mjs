@@ -71,6 +71,9 @@ function arilRule(rule) {
   if (kind === "tag") return arilLine(value, 40) && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}._-]*$/u.test(value) && value.toLowerCase() !== "image";
   if (kind === "text") return arilLine(value, 80);
   if (kind === "feature") return typeof value === "string";
+  if (kind === "plan") return typeof value === "string" && value.length >= 1 && value.length <= 200
+    && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.md$/u.test(value)
+    && !value.split("/").some((segment) => segment === "." || segment === "..");
   return kind === "tasks" && Array.isArray(value) && value.length >= 1 && value.length <= 50 && value.every((id) => taskId(id));
 }
 

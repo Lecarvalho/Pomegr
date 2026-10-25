@@ -59,6 +59,28 @@ const defaults = () => ({
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
 });
 
+test("grant writing routes keep exact payloads and fixed answers, and serve write steps", async (t) => {
+  const { port, store } = await setup(t);
+  const body = { repositoryId: REPOSITORY_ID, plan: "next.md", tasks: [{ text: "written" }] };
+  fixedError(await post(port, "grant-write-tasks", body), 409, "not_active");
+  const settings = defaults();
+  settings.actions = { ...settings.actions, start: true, writeTasks: true };
+  settings.limits = { ...settings.limits, hours: 1, starts: 1, concurrent: 1 };
+  settings.workRules = [{ kind: "plan", value: "next.md" }];
+  assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings }).ok, true);
+  assert.equal(store.apply(REPOSITORY_ID, "grant_start", {}).ok, true);
+  assert.deepEqual((await post(port, "grant-next", {})).json, { ok: true, steps: [{ repositoryId: REPOSITORY_ID, kind: "write_tasks", plans: ["next.md"] }] });
+  for (const invalid of [{ ...body, extra: true }, { ...body, tasks: [{ text: "" }] }, { ...body, tasks: [{ text: "x", run: {} }] }]) fixedError(await post(port, "grant-write-tasks", invalid), 400, "invalid");
+  fixedError(await post(port, "grant-write-tasks", { ...body, plan: "else.md" }), 409, "not_allowed");
+  assert.deepEqual((await post(port, "grant-write-tasks", body)).json, { ok: true, taskIds: ["T-1"] });
+  fixedError(await post(port, "grant-write-tasks", body), 409, "limit");
+});
+
+test("grant writing never returns an arbitrary store failure", async (t) => {
+  const { port } = await setup(t, { taskStore: { writeGrantTasks: () => ({ ok: false, error: "unavailable", detail: "private" }) } });
+  fixedError(await post(port, "grant-write-tasks", { repositoryId: REPOSITORY_ID, plan: "next.md", tasks: [{ text: "work" }] }), 400, "invalid");
+});
+
 test("grant actions use fixed envelopes and the start grant is not ready by default", async (t) => {
   const { port, store } = await setup(t);
   const initial = await post(port, "grant_start", envelope({}));
@@ -100,6 +122,7 @@ test("grant runner routes require desktop authorization and reject paired reques
   const { port } = await setup(t);
   const requests = [
     ["grant-next", {}],
+    ["grant-write-tasks", { repositoryId: REPOSITORY_ID, plan: "next.md", tasks: [{ text: "work" }] }],
     ["grant-check", { repositoryId: REPOSITORY_ID }],
     ["grant-record", { repositoryId: REPOSITORY_ID, taskId: "T-1", kind: "start" }],
     ["grant-send-back", { repositoryId: REPOSITORY_ID, taskId: "T-1" }],

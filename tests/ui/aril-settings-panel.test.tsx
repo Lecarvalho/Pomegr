@@ -39,6 +39,22 @@ describe("Aril grant controls", () => {
     expect(screen.getByText(allowed ? "Add a work rule first: a grant starts nothing without one." : "Allow starting tasks, reviews, or merges first.")).toHaveClass("taskGatesCaption");
     expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
   });
+  it("requires a plan rule and task starting before granting plan task writing", async () => {
+    ready();
+    board.aril!.settings.actions.start = false;
+    board.aril!.settings.actions.review = false;
+    board.aril!.settings.actions.merge = false;
+    board.aril!.settings.actions.writeTasks = true;
+    board.aril!.settings.workRules = [{ kind: "tag", value: "backend" }];
+    const view = await open();
+    expect(screen.getByText("Add a plan rule first: a grant writes tasks only from named plans.")).toHaveClass("taskGatesCaption");
+    expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
+
+    board.aril!.settings.workRules = [{ kind: "plan", value: "docs/plans/next.md" }];
+    view.rerender(<TaskBoardView board={board} readTaskLog={async () => ({ ok: false })} />);
+    expect(screen.getByText("Allow starting tasks to use Write tasks from plans.")).toHaveClass("taskGatesCaption");
+    expect(screen.queryByRole("button", { name: "Start grant" })).toBeNull();
+  });
   it.each([[true, true, "tasks and reviews"], [true, false, "tasks"], [false, true, "reviews"]] as const)("summarizes saved allowed actions: %s %s", async (tasks, reviews, words) => {
     ready(); board.aril!.settings.actions.start = tasks; board.aril!.settings.actions.review = reviews; await open();
     expect(screen.getByText(`Starts ${words} that your work rules select, for 2 hours, at most 5 starts, 2 at a time.`)).toBeInTheDocument();
@@ -175,16 +191,35 @@ describe("Aril settings panel", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it.each([["Tag", "backend"], ["Text", "Fix imports"], ["Feature", ""], ["Tasks", ""]])("adds a %s rule", async (kind, input) => {
+  it.each([["Tag", "backend"], ["Text", "Fix imports"], ["Feature", ""], ["Tasks", ""], ["Plan", "docs/plans/next.md"]])("adds a %s rule", async (kind, input) => {
     await open(); await choose("Rule kind", kind);
     const value = kind === "Tasks" ? board.tasks[0].id : input;
     if (kind === "Feature") await choose("Feature", board.features[0].name);
-    else fireEvent.change(screen.getByRole("textbox", { name: "Rule value" }), { target: { value } });
+    else if (kind === "Plan") {
+      expect(screen.getByText("A Markdown file in this repository, such as docs/plans/next.md")).toBeInTheDocument();
+      fireEvent.change(screen.getByRole("textbox", { name: "Plan path" }), { target: { value } });
+    } else fireEvent.change(screen.getByRole("textbox", { name: "Rule value" }), { target: { value } });
     await userEvent.click(screen.getByRole("button", { name: "Add rule" }));
     expect(screen.getByRole("button", { name: `Remove ${kind} rule` })).toBeInTheDocument();
     await userEvent.click(save());
     const rule = { kind: kind.toLowerCase(), value: kind === "Feature" ? board.features[0].id : kind === "Tasks" ? [value] : value };
     expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { workRules: [rule] } });
+  });
+
+  it("accepts only repository-relative Markdown plan paths up to 200 characters", async () => {
+    await open(); await choose("Rule kind", "Plan");
+    const path = screen.getByRole("textbox", { name: "Plan path" });
+    const add = screen.getByRole("button", { name: "Add rule" });
+    for (const invalid of ["/docs/plan.md", "C:/docs/plan.md", "docs\\plan.md", "../plan.md", "docs/../plan.md", "docs/plan.txt", `${"a".repeat(198)}.md`]) {
+      fireEvent.change(path, { target: { value: invalid } });
+      expect(add, invalid).toBeDisabled();
+    }
+    const valid = `${"a".repeat(197)}.md`;
+    expect(valid).toHaveLength(200);
+    fireEvent.change(path, { target: { value: valid } });
+    expect(add).toBeEnabled();
+    await userEvent.click(add); await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { workRules: [{ kind: "plan", value: valid }] } });
   });
 
   it("removes existing rules of every kind and validates task IDs and tags", async () => {
