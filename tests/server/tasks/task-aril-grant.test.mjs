@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import * as grants from "../../../server/tasks/task-aril-grant.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { REPOSITORY as REPO, passingGates, GATE_FACTS, createTask, queueTask, updateTask, setMeta, withDatabase, dispatchMintedAt, repositoryNumber } from "./queue-test-support.mjs";
 
@@ -24,8 +25,53 @@ function setup(t) {
   const configure = (settings = {}, repo = REPO) => assert.equal(set({ actions, limits, workRules: [{ kind: "text", value: "task" }], ...settings }, repo).ok, true);
   return { store, directory, clock, set, start, ready, next, configure };
 }
-const step = (taskId, kind = "start", repositoryId = REPO) => ({ repositoryId, taskId, kind });
+const step = (taskId, kind = "start", repositoryId = REPO) => ({ repositoryId, taskId, kind,
+  ...(kind === "review" ? { run: { provider: "claude", model: null, effort: null } } : {}) });
 const error = (answer, code) => assert.deepEqual(answer, { ok: false, error: code });
+
+test("grant reviewer rule covers providers, model precedence, effort and identical runs", () => {
+  for (const model of [null, "builder-model"]) for (const effort of [null, "low", "medium", "high", "xhigh"]) {
+    for (const reviewerModel of [null, "builder-model", "review-model"]) {
+      // Expected runs with differentFromBuilder off and on, including explicit-provider precedence.
+      const claude = { provider: "claude", model: null, effort: null }, codex = { provider: "codex", model: null, effort: null };
+      const ownClaude = { provider: "claude", model, effort }, ownCodex = { provider: "codex", model, effort };
+      const chosenClaude = { ...ownClaude, model: reviewerModel ?? model }, chosenCodex = { ...ownCodex, model: reviewerModel ?? model };
+      const crossClaude = { ...claude, model: reviewerModel }, crossCodex = { ...codex, model: reviewerModel };
+      const cases = [
+        [null, null, claude, claude], [null, "claude", crossClaude, crossClaude], [null, "codex", crossCodex, crossCodex],
+        ["claude", null, ownClaude, codex], ["claude", "claude", chosenClaude, chosenClaude], ["claude", "codex", crossCodex, crossCodex],
+        ["codex", null, ownCodex, claude], ["codex", "claude", crossClaude, crossClaude], ["codex", "codex", chosenCodex, chosenCodex],
+      ];
+      for (const [builder, preference, same, different] of cases) for (const differentFromBuilder of [false, true]) {
+        if (builder === null && model !== null) continue;
+        const run = Object.freeze({ provider: builder, model, effort });
+        const reviewer = Object.freeze({ provider: preference, model: reviewerModel, differentFromBuilder });
+        const expected = differentFromBuilder ? different : same;
+        const unchanged = expected.provider === builder && expected.model === model && expected.effort === effort;
+        assert.deepEqual(grants.grantReviewRun(run, reviewer), unchanged ? null : expected, JSON.stringify({ run, reviewer }));
+      }
+    }
+  }
+});
+
+test("grant review steps read the live reviewer rule and omit identical overrides", (t) => {
+  const { store, configure, start, ready, directory, set, next } = setup(t);
+  ready(); ready();
+  assert.equal(store.apply(REPO, "update", { id: "T-1", run: { provider: "codex", model: "builder-model", effort: "high" } }).ok, true);
+  updateTask(directory, 1, { state: "needs_review", session_id: "codex:builder" });
+  configure(); start();
+  const review = { repositoryId: REPO, taskId: "T-1", kind: "review" };
+  assert.deepEqual(next().steps, [review, step("T-2")]);
+  for (const [reviewer, run] of [
+    [{ provider: null, model: "ignored-model", differentFromBuilder: true }, { provider: "claude", model: null, effort: null }],
+    [{ provider: "claude", model: "review-model", differentFromBuilder: false }, { provider: "claude", model: "review-model", effort: null }],
+    [{ provider: "codex", model: "review-model", differentFromBuilder: true }, { provider: "codex", model: "review-model", effort: "high" }],
+    [{ provider: "codex", model: "builder-model", differentFromBuilder: true }, null],
+  ]) {
+    assert.equal(set({ reviewer }).ok, true);
+    assert.deepEqual(next().steps, [{ ...review, ...(run ? { run } : {}) }, step("T-2")]);
+  }
+});
 
 test("restart ends all active grants atomically, including grants with no eligible work", (t) => {
   const { store, configure, start, clock, directory, next } = setup(t);

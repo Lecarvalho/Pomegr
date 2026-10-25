@@ -61,6 +61,13 @@ function selected(task, rules) {
       : kind === "feature" ? task.featureId === value : kind === "tasks" && value.includes(task.id));
 }
 
+export function grantReviewRun(run, reviewer) {
+  const provider = reviewer.provider ?? (reviewer.differentFromBuilder ? (run.provider === "claude" ? "codex" : "claude") : run.provider ?? "claude");
+  const model = reviewer.provider !== null && reviewer.model !== null ? reviewer.model : provider === run.provider ? run.model : null;
+  const effort = provider === run.provider ? run.effort : null;
+  return provider === run.provider && model === run.model && effort === run.effort ? null : { provider, model, effort };
+}
+
 function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, now }) {
   return transaction(() => {
     const at = now(), steps = [];
@@ -71,7 +78,7 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, now
       const projected = projectBoard(repositoryId, rows, { at });
       if (!projected) continue;
       const board = fillTaskReviews(database, projected);
-      const rules = readAril(database, repositoryId).settings.workRules;
+      const { workRules: rules, reviewer } = readAril(database, repositoryId).settings;
       const candidates = board.tasks.filter((task) => selected(task, rules));
       const flying = rows.tasks.filter((row) => row.session_id !== null && row.report_at === null && rowInFlight(row, at)).length;
       const reviews = board.tasks.filter((task) => task.review?.state === "running").length;
@@ -82,7 +89,8 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, now
         const row = rows.tasks.find((row) => `T-${row.number}` === task.id);
         if (task.state === "needs_review" && row.session_id !== null && task.review === null
           && !reviewMeta(task, "task_review_dispatch") && !reviewMeta(task, "task_reviewer")) {
-          steps.push({ repositoryId, taskId: task.id, kind: "review" });
+          const run = grantReviewRun(task.run, reviewer);
+          steps.push({ repositoryId, taskId: task.id, kind: "review", ...(run ? { run } : {}) });
           available -= 1;
         }
       }

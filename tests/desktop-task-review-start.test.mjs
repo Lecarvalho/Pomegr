@@ -38,6 +38,16 @@ function harness({ plan = basePlan(), answer, locate = async () => null, overrid
 const go = (h) => h.starter.startReview(trusted, repositoryId, taskId);
 const aborted = (h) => h.calls.filter(({ route }) => route === "review-abort");
 
+test("granted reviews post exactly the supplied run override or only the task ID", async () => {
+  for (const run of [undefined, { provider: "codex", model: "review-model", effort: "high" }, { provider: "claude", model: null, effort: null }]) {
+    const h = harness({ plan: { ...basePlan(), ...run } });
+    assert.deepEqual(await h.starter.startGrantedReview(repositoryId, taskId, async () => true, run), { status: "started" });
+    assert.deepEqual(h.calls, [{ route: "review-plan", body: { repositoryId, payload: { id: taskId, ...run } } }]);
+    assert.equal(h.order.includes("confirm"), false);
+    assert.deepEqual(h.launches[0].args, run?.model ? ["--model", "review-model", "-c", "model_reasoning_effort=high", "Review the work"] : ["Review the work"]);
+  }
+});
+
 test("granted reviews never confirm and check authority before and after the plan and host", async () => {
   for (let revokedAt = 1; revokedAt <= 5; revokedAt++) {
     const order = [];

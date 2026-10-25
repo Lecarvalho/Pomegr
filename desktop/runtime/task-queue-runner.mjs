@@ -2,6 +2,8 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
+const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
+const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const DEFAULT_INTERVAL_MS = 15_000;
 const MIN_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -58,7 +60,11 @@ function cleanupsFrom(answer) {
 function stepsFrom(answer) {
   if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.steps)) return [];
   return answer.steps.filter((step) => isPlainObject(step) && typeof step.repositoryId === "string" && REPOSITORY_ID.test(step.repositoryId)
-    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review"].includes(step.kind)).slice(0, MAX_STARTS);
+    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review"].includes(step.kind)
+    && (!Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
+      && ["claude", "codex"].includes(step.run.provider)
+      && (step.run.model === null || (typeof step.run.model === "string" && MODEL.test(step.run.model)))
+      && (step.run.effort === null || EFFORTS.has(step.run.effort))))).slice(0, MAX_STARTS);
 }
 
 function pauseReason(status) {
@@ -133,7 +139,7 @@ export function createTaskQueueRunner(options = {}) {
     let answer;
     try { answer = await post("grant-next", {}); } catch { return; }
     const ended = new Set();
-    for (const { repositoryId, taskId, kind } of stepsFrom(answer)) {
+    for (const { repositoryId, taskId, kind, run } of stepsFrom(answer)) {
       if (disposed) return;
       if (ended.has(repositoryId)) continue;
       const isAuthorized = async () => {
@@ -143,7 +149,7 @@ export function createTaskQueueRunner(options = {}) {
       let status;
       try {
         status = (await (kind === "start" ? starter.startGranted(repositoryId, taskId, isAuthorized)
-          : starter.startGrantedReview(repositoryId, taskId, isAuthorized)))?.status;
+          : starter.startGrantedReview(repositoryId, taskId, isAuthorized, run)))?.status;
       } catch { status = undefined; }
       if (disposed) return;
       if (status === "started") {

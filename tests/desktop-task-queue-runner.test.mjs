@@ -317,8 +317,8 @@ const routes = (h) => h.calls.map((call) => call.route);
 
 function grantHarness({ steps = [], next = [], start, responses = {} } = {}) {
   const timers = scheduler(), calls = [], launches = [];
-  const granted = (kind) => async (repositoryId, taskId, authorized) => {
-    launches.push({ repositoryId, taskId, kind });
+  const granted = (kind) => async (repositoryId, taskId, authorized, run) => {
+    launches.push({ repositoryId, taskId, kind, ...(run === undefined ? {} : { run }) });
     return start ? start({ repositoryId, taskId, kind }, authorized) : { status: await authorized() ? "started" : "cancelled" };
   };
   const runner = createTaskQueueRunner({
@@ -337,6 +337,24 @@ function grantHarness({ steps = [], next = [], start, responses = {} } = {}) {
   return { runner, timers, calls, launches };
 }
 const grantStep = (taskId, kind = "start", repositoryId = repoA) => ({ repositoryId, taskId, kind });
+
+test("grant runner forwards valid review runs and drops malformed run steps", async () => {
+  const valid = [grantStep("T-1", "review"),
+    ...["claude", "codex"].flatMap((provider) => [null, "model-1.2:variant[long]", "a".repeat(120)].flatMap((model) =>
+      [null, "low", "medium", "high", "xhigh"].map((effort) => ({ ...grantStep("T-2", "review"), run: { provider, model, effort } }))))];
+  const base = { provider: "codex", model: null, effort: null };
+  const invalid = [null, [], "codex", {}, { ...base, provider: null }, { ...base, provider: "other" },
+    { provider: "codex", effort: null }, { provider: "codex", model: null }, { ...base, extra: true },
+    ...["", "bad model", "-flag", "a".repeat(121), "a\n", 42].map((model) => ({ ...base, model })),
+    ...["max", "unknown", 42].map((effort) => ({ ...base, effort }))];
+  for (const step of valid) {
+    const h = grantHarness({ steps: [...invalid.map((run) => ({ ...grantStep("T-3", "review"), run })), step] });
+    h.runner.start(); await h.timers.fire();
+    assert.deepEqual(h.launches, [step]);
+    assert.deepEqual(h.calls.filter(({ route }) => route === "grant-record").map(({ body }) => body),
+      [{ repositoryId: step.repositoryId, taskId: step.taskId, kind: step.kind }]);
+  }
+});
 
 test("grant restart cleanup runs once on the first tick before any queue or grant work", async () => {
   const h = grantHarness(); h.runner.start();
