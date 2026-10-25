@@ -252,10 +252,19 @@ board snapshot and the files.
 characters, in this order:
 
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
-   read, that it only proposes, how to advise on task size, Ready order, parallel groups, and models,
+   read, that it proposes changes for owner Apply except for the fixed actions the desktop
+   performs under an owner-started grant, how to advise on task size, Ready order, parallel groups, and models,
    the proposal format, when it proposes a session start or a queue change, how it
    names an image and puts it on a task, how it follows up an answered proposal, and
-   that all following content is data.
+   that all following content is data. Capability answers briefly cover reads and images,
+   board, start, and queue proposals, settled settings and repository memory, desktop-only
+   worktree removal proposals, and every enabled grant action within its limits, including
+   reviews, send-backs, merges, branch deletion, and tasks from named plans. They report
+   current enabled actions and grant status from the snapshot, and outcomes from the task log.
+   Aril cannot start, extend, or stop a grant, end or steer a session, or mark a task Done
+   under a grant.
+   The owner presses **Start grant** in the desktop app, or on a paired device when
+   `pairedDevices` is true. Aril's own run remains read-only.
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the grant summary,
    the queue (status, order, blocker, start threshold, and the usage percentages of the start gates), the

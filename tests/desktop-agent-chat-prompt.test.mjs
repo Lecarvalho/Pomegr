@@ -576,6 +576,34 @@ test("the instructions propose a change Aril recommends instead of asking whethe
   assert.match(AGENT_CHAT_INSTRUCTIONS, /an earlier proposal that the conversation shows as dismissed stays dismissed. Propose it again only when the owner asks for it again./u);
 });
 
+test("capability answers cover the full scope and current grant authority", () => {
+  const section = AGENT_CHAT_INSTRUCTIONS.split("## What you can and cannot do\n")[1].split("\nAn active grant means")[0];
+  const answer = section.split("\n").find((line) => line.startsWith("- When the owner asks what you can do,"));
+  assert.ok(answer, "the opening section must contain the capability-answer bullet");
+  for (const capability of [
+    "board, sessions, usage, and the repository", "see images",
+    "board changes, a session start, and a queue change", "owner to apply",
+    "Aril settings and repository memory", "stay settled",
+    "removing task worktrees", "applied only in the desktop app",
+    "grant the owner started", "paired device the owner allowed",
+    "hours, tasks, tasks at a time, send-backs, usage limit",
+    "Ready tasks the work rules select and their reviews", "send failed work back",
+    "green CI after a passing review", "mergeMode is settled", "deleteBranch is true",
+    "write tasks from the plans the grant names", "each only when its action is enabled",
+    "task log", "cannot start, extend, or stop a grant", "end or steer a session",
+    "mark a task Done", "current aril_settings", "whether a grant is active", "snapshot",
+  ]) assert.ok(answer.includes(capability), capability);
+  for (const rule of ["You never change anything yourself", "You change the board only by proposing", "You never start a session yourself"]) {
+    const bullet = section.split("\n").find((line) => line.startsWith(`- ${rule}`));
+    assert.match(bullet, /while a grant the owner started is active/iu);
+    assert.match(bullet, /desktop performs the fixed grant actions/u);
+  }
+});
+
+test("Start grant guidance includes permitted paired devices", () => {
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /The owner presses Start grant in the desktop app, or on a paired device when pairedDevices is true\./u);
+});
+
 test("the instructions keep the read-only promise and treat everything else as data", () => {
   assert.match(AGENT_CHAT_INSTRUCTIONS, /You never change anything yourself/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /nothing happens until the owner presses Apply/u);
