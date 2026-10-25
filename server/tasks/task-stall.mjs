@@ -1,5 +1,6 @@
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { appendTaskLog } from "./task-log.mjs";
 import { blockQueue, releaseQueue } from "./task-report.mjs";
 import { IN_FLIGHT_STATES, isTaskSessionId, taskIdFromNumber } from "./task-record.mjs";
 
@@ -106,10 +107,12 @@ function recoverLiveTasks({ database, resolveFacts, confirmation, now }) {
   confirmation?.retain(read);
   let count = 0;
   for (const row of live) {
+    const at = now();
     const written = preparedStatement(database, `UPDATE tasks SET state = 'not_queued', queue_position = NULL, updated_at = ?
       WHERE repository_id = ? AND number = ? AND session_id = ? AND report_at IS NULL AND state = 'stalled'`)
-      .run(now(), row.repository_id, row.number, row.session_id);
+      .run(at, row.repository_id, row.number, row.session_id);
     if (Number(written.changes) !== 1) continue;
+    appendTaskLog(database, row.repository_id, row.number, "recovered", at);
     releaseQueue(database, row.repository_id);
     count += 1;
   }
@@ -138,10 +141,12 @@ export function stallEndedTasks({ database, transaction, resolveFacts, confirmat
   const stalled = transaction(() => {
     let count = 0;
     for (const row of ended) {
+      const at = now();
       const written = preparedStatement(database, `UPDATE tasks SET state = 'stalled', queue_position = NULL, updated_at = ?
         WHERE repository_id = ? AND number = ? AND session_id = ? AND report_at IS NULL AND state IN (${WAITING_SQL})`)
-        .run(now(), row.repository_id, row.number, row.session_id);
+        .run(at, row.repository_id, row.number, row.session_id);
       if (Number(written.changes) !== 1) continue;
+      appendTaskLog(database, row.repository_id, row.number, "stalled", at);
       blockQueue(database, row.repository_id, taskIdFromNumber(Number(row.number)));
       count += 1;
     }

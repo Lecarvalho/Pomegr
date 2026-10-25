@@ -1,4 +1,5 @@
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { appendTaskLog } from "./task-log.mjs";
 
 export function ensureTaskEvents(database) {
   database.exec(`
@@ -17,6 +18,7 @@ export function ensureTaskEvents(database) {
 export function recordTaskEvent(database, repositoryId, number, kind, at, sessionId = null) {
   preparedStatement(database, "INSERT INTO task_events (repository_id, number, kind, at, session_id) VALUES (?, ?, ?, ?, ?)")
     .run(repositoryId, number, kind, at, sessionId);
+  appendTaskLog(database, repositoryId, number, kind, at);
 }
 
 export function readTaskEvents(database, repositoryId, number) {

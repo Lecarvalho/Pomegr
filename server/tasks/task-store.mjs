@@ -14,6 +14,7 @@ import { deleteTaskReportHistory } from "./task-report-history.mjs";
 import { deleteTaskEvents, ensureTaskEvents } from "./task-events.mjs";
 import { deleteTaskOutcome, ensureTaskOutcomes } from "./task-outcomes.mjs";
 import { ensureScorecardSnapshots, readScorecardSnapshot } from "./task-scorecard.mjs";
+import { ackTaskLog, ensureTaskLog, readTaskLog } from "./task-log.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -125,6 +126,7 @@ function createFreshStore(database) {
     ensureTaskEvents(database);
     ensureTaskOutcomes(database);
     ensureScorecardSnapshots(database);
+    ensureTaskLog(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
@@ -161,6 +163,7 @@ function openDatabase(directory) {
       ensureTaskEvents(database);
       ensureTaskOutcomes(database);
       ensureScorecardSnapshots(database);
+      ensureTaskLog(database);
     }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
@@ -790,6 +793,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
   const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
   const readScorecard = (repositoryId, appVersion) => link(() => runTransaction(database, () => readScorecardSnapshot(database, repositoryId, appVersion, now())));
+  const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
+  const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
   return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
-    addImage, removeImage, readImage, readScorecard, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, readScorecard, readLog, ackLog, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
