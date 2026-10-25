@@ -296,7 +296,7 @@ export function createTaskStart(options = {}) {
     try { return await (mode.review ? runReview(repositoryId, taskId, mode) : run(repositoryId, taskId, mode)); } catch { return result("failed"); } finally { active = false; }
   }
 
-  async function runReview(repositoryId, taskId, { confirmRequired, isAuthorized }) {
+  async function runReview(repositoryId, taskId, { confirmRequired, isAuthorized, run }) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
@@ -314,7 +314,7 @@ export function createTaskStart(options = {}) {
     };
     if (!await authorized()) return result("cancelled");
     let answer;
-    try { answer = await post("review-plan", repositoryId, { id: taskId }); } catch { return result("unavailable"); }
+    try { answer = await post("review-plan", repositoryId, { id: taskId, ...(run ? { provider: run.provider, model: run.model, effort: run.effort } : {}) }); } catch { return result("unavailable"); }
     if (!isPlainObject(answer)) return result("unavailable");
     if (answer.ok !== true) return result(typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
     const raw = isPlainObject(answer.plan) ? answer.plan : {};
@@ -382,9 +382,9 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: false, isAuthorized }, repositoryId, taskId);
   }
 
-  function startGrantedReview(repositoryId, taskId, isAuthorized) {
+  function startGrantedReview(repositoryId, taskId, isAuthorized, run) {
     if (typeof isAuthorized !== "function") return Promise.resolve(result("invalid"));
-    return exclusive({ review: true, confirmRequired: false, isAuthorized }, repositoryId, taskId);
+    return exclusive({ review: true, confirmRequired: false, isAuthorized, run }, repositoryId, taskId);
   }
 
   function startPaired(repositoryId, taskId, separateWorktree, isAuthorized) {

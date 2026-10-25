@@ -186,6 +186,8 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - The desktop may start and stop grants; the monitor accepts a paired start only when stored `pairedDevices` is true, while a paired stop is always allowed.
 - The board's `aril.grant` is null before any grant, otherwise the latest grant's `{ startedAt, endsAt, startsUsed, actions, limits, active }`; ended grants also carry `endedAt` and `endReason`, with times in epoch milliseconds.
 - `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 `{ repositoryId, taskId, kind: "start" | "review" }` entries across repositories; it starts nothing and does not change queue behavior.
+- Review steps add exactly `run: { provider, model, effort }` only when the [reviewer rule](#review-sessions) changes the task's stored run.
+- Review selection reads `settings.reviewer` live, like work rules; manual reviews keep the task's run.
 - Selection uses current settings work rules, with any matching rule sufficient: an exact tag from the leading tag run (the board parser with the settings' 40-character bound), a case-insensitive text substring, a matching feature ID, or a listed task ID; no rules select nothing.
 - Reviews require the grant's `review` switch, `needs_review`, a linked builder, no review dispatch (including an expired dispatch), no bound reviewer, and no verdict since the latest entry into Review; earlier verdicts do not exclude the task.
 - Starts require the grant's `start` switch, a Ready card in startable state with no linked session or live dispatch, and no unfinished task in its `after` list; selection follows Ready position then task number. Ready is the store's Ready column, as the queue reads it; a board without the fixed columns has none, so a grant starts nothing there.
@@ -2210,6 +2212,11 @@ Aril's provider run gains no authority and never starts a review; an active gran
 
 - `review-plan` accepts `{ id }` or `{ id, provider, model, effort }` inside the existing repository envelope.
 - An override uses a supported start provider and the task run's model and effort validation; otherwise the task's own run applies.
+- Grant reviews use `settings.reviewer.provider` when set. Otherwise, `differentFromBuilder` chooses the other provider; without it, the task's provider applies. Both cases use `claude` when the task's provider is null.
+- A reviewer model applies only when both reviewer provider and model are set. Otherwise, the task's model applies for the same provider; a different provider uses null.
+- Effort follows the task only when the chosen provider equals its stored provider; otherwise effort is null.
+- An identical provider, model, and effort sends no override; an unset stored provider differs from the resolved `claude` provider.
+- Manual **Start review** always requests `{ id }` and keeps the task's own run.
 - Planning requires the same repository root and plugin readiness as a builder start, but applies no start gates.
 - A live review dispatch refuses another plan with `not_startable`; its SHA-256 digest and mint time expire after the builder dispatch TTL.
 - The plan carries task ID, provider, model, effort, repository root, prompt, and token; it carries no worktree flag, images, or remote control.
@@ -2857,7 +2864,7 @@ serves no other client.
 ## Privacy
 
 - A grant holds times, counts, a fixed end reason, and fixed action and limit settings snapshots under repository and grant IDs; the board exposes only the latest grant's documented fields, never its internal ID.
-- Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, active state, and the count ended, never task text, prompts, paths, session IDs, or dispatch tokens.
+- Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, active state, the count ended, and optional review provider, model, and effort overrides, never task text, prompts, paths, session IDs, or dispatch tokens.
 - The log gains the fixed kinds `grant_start` and `grant_review`, readable through its existing desktop, paired-device, and Aril prompt paths; grant records never enter `/api/state`, observation, or agent tools.
 - Grants survive task deletion and must be deleted with the board if board deletion is introduced; the desktop runner may start only offered tasks and reviews while a grant is active.
 
