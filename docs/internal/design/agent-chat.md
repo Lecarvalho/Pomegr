@@ -215,6 +215,8 @@ The task board is in [Task board design](task-board.md).
 - The card is a region named “Proposed board changes”, or “Proposed session start” for a session start.
 - The card of a queue change is a region named “Proposed queue change”.
 - A queue change that was applied has the standard positive chip **Applied**.
+- The card of a worktree removal is a region named “Proposed worktree removal”.
+- A worktree removal in which every worktree was removed has the chip **Applied**, and one that kept a worktree has **Partly applied**.
 
 ### Operations
 
@@ -237,6 +239,7 @@ The task board is in [Task board design](task-board.md).
 | **Take T-n out of its parallel group** | Nothing more |
 | **Attach n images to T-n** | The board's current first line of that task in muted text, and the image strip named “Images for this task” |
 | **Start a session for T-n** | The board's current first line of that task in muted text |
+| **Remove worktree for T-n** | A muted 12px line: “Also delete its task branch when safe.” or “Keep its task branch.” |
 | **Turn the queue on** | Nothing more |
 | **Turn the queue off** | Nothing more |
 
@@ -246,6 +249,7 @@ The task board is in [Task board design](task-board.md).
 - **Update T-n** leaves the current first line out when the board does not hold the task.
 - **Start a session for T-n** is the only row of its card.
 - **Turn the queue on** or **Turn the queue off** is the only row of its card.
+- A worktree removal card holds one **Remove worktree for T-n** row for each worktree, and nothing else.
 
 ### Results
 
@@ -262,6 +266,9 @@ The task board is in [Task board design](task-board.md).
 | “Not run”, for an operation after the one that failed | Muted |
 | “Session started in a new terminal window.”, for a session start that launched | Green |
 | “Not started.” and one fixed sentence for the start status, for a session start that launched nothing | The error color |
+| “Worktree removed”, for a worktree that was removed | Green |
+| “Worktree kept: uncommitted changes”, “Worktree kept: commits exist nowhere else”, or “Worktree kept: task or review is running” | The error color |
+| “Worktree removal failed”, for a worktree that Git or the file system would not remove, and “Not found”, for one that is not there | The error color |
 | “Queue turned on.” or “Queue turned off.”, for a queue change that was made | Green |
 | “Queue turned on. A stalled or blocked task holds it, so nothing starts until you resolve that task.” | Muted |
 | “Queue not changed. Pomegr refused this change.”, for a queue change the monitor refused | The error color |
@@ -295,6 +302,10 @@ The task board is in [Task board design](task-board.md).
 - The footer line of a queue change that turns the queue on reads “Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, in Ready order, as each passes the start gates.”
 - The footer line of a queue change that turns the queue off reads “Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.”
 - No native dialog follows the Primary of a queue change.
+- The Primary of a worktree removal reads **Remove worktree** for one worktree and **Remove worktrees** for more.
+- The footer line of a worktree removal reads “Nothing is removed until you apply. Pomegr keeps any worktree with uncommitted changes or commits that exist nowhere else.”
+- On a paired device a worktree removal has no Primary, only **Dismiss**, and its footer line reads “Aril's worktree removal can be applied only in the Pomegr desktop app.”
+- A worktree removal does not stop at a worktree it kept: every row shows its own result.
 
 ### Unreadable proposal
 

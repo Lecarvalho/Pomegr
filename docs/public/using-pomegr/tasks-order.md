@@ -85,6 +85,11 @@ repository.
   working where it is.
 - A requeued task reuses its worktree only if Git still lists it on the task branch and
   it is clean. Otherwise the start fails and nothing is touched.
+- To free disk space, ask [Aril](agent-chat.md) which task worktrees remain. Aril sees each
+  one's task, whether it has uncommitted changes or a commit that exists nowhere else, and
+  about how large it is, and may propose removing some. Nothing is removed until you apply
+  the proposal in the desktop app, and the same checks apply to each worktree: one with
+  uncommitted changes or unpushed commits stays, and so does one whose task is running.
 
 When a start is refused because the task's worktree has uncommitted changes, the task
 window says "This task's worktree has uncommitted changes. Pomegr never removes them.

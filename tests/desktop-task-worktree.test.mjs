@@ -18,12 +18,13 @@ const listing = (branch = "refs/heads/tasks/T-3", at = directory) =>
   `worktree ${repositoryRoot.replaceAll("\\", "/")}\nHEAD abc\nbranch refs/heads/main\n\nworktree ${at.replaceAll("\\", "/")}\nHEAD abc\n${branch ? `branch ${branch}` : "detached"}\n\n`;
 
 /** Fake Git: `answers` maps the first argument after `-C <directory>` (two words for `worktree`) to `{ ok, stdout }`. */
-function harness({ answers = {}, exists = false, legacyExists = false, legacyRoot = root } = {}) {
+function harness({ answers = {}, exists = false, legacyExists = false, legacyRoot = root, managerOptions = {} } = {}) {
   const calls = [];
   const made = [];
   const ignored = [];
   const present = new Set([...(exists ? [directory] : []), ...(legacyExists ? [legacy] : [])]);
   const worktrees = createTaskWorktrees({
+    ...managerOptions,
     root: legacyRoot,
     environment: { PATH: "C:\\Windows", SECRET_KEY: "nope" },
     directoryExists: (target) => present.has(target),
@@ -45,6 +46,110 @@ test("the task branch and the worktree folders are fixed", () => {
   assert.equal(taskBranch("T-3"), "tasks/T-3");
   assert.deepEqual(TASK_WORKTREE_REPOSITORY_PATH, [".pomegr", "worktrees"]);
   assert.equal(TASK_WORKTREE_DIRECTORY, "task-worktrees");
+});
+
+test("inventory includes only exact Git-known task folders and reports safe task and worktree facts", async () => {
+  const old = path.join(repositoryRoot, ".pomegr", "worktrees", "T-2");
+  const oldLegacy = path.join(root, repositoryId, "T-4");
+  const arbitrary = path.join(repositoryRoot, "elsewhere", "T-1");
+  const output = [
+    `worktree ${repositoryRoot.replaceAll("\\", "/")}\nHEAD abc\nbranch refs/heads/main`,
+    `worktree ${old.replaceAll("\\", "/")}\nHEAD def\nbranch refs/heads/tasks/T-2`,
+    `worktree ${directory.replaceAll("\\", "/")}\nHEAD ghi\nbranch refs/heads/tasks/T-3`,
+    `worktree ${oldLegacy.replaceAll("\\", "/")}\nHEAD mno\nbranch refs/heads/tasks/T-4`,
+    `worktree ${arbitrary.replaceAll("\\", "/")}\nHEAD jkl\nbranch refs/heads/tasks/T-1`,
+  ].join("\n\n");
+  const h = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: output }, "rev-list": { ok: true, stdout: "1\n" } } });
+  const rows = await h.worktrees.inventory({
+    ...place,
+    tasks: [{ id: "T-3", state: "queued", columnId: "col-ready" }],
+    columns: [{ id: "col-ready", name: "Ready" }],
+  });
+  assert.deepEqual(rows.map(({ taskId }) => taskId), ["T-2", "T-3", "T-4"]);
+  assert.deepEqual(rows.map(({ state, column }) => [state, column]), [["not on board", "not on board"], ["queued", "Ready"], ["not on board", "not on board"]]);
+  assert.equal(rows.every(({ clean, uniqueCommits, sizeMB, atLeast }) => typeof clean === "boolean" && typeof uniqueCommits === "boolean" && typeof sizeMB === "number" && typeof atLeast === "boolean"), true);
+  assert.equal(rows.some((row) => JSON.stringify(row).includes("/work/repo")), false);
+});
+
+test("inventory derives IDs from listed folder names, sorts numerically, and caps rows at 30", async () => {
+  const entries = Array.from({ length: 35 }, (_, index) => {
+    const id = `T-${index + 1}`;
+    const at = path.join(repositoryRoot, ".pomegr", "worktrees", id).replaceAll("\\", "/");
+    return `worktree ${at}\nHEAD abc\nbranch refs/heads/tasks/${id}`;
+  });
+  const h = harness({ answers: { "worktree list": { ok: true, stdout: entries.join("\n\n") } } });
+  const rows = await h.worktrees.inventory({ ...place, tasks: [{ id: "T-999", state: "done", columnId: "x" }] });
+  assert.equal(rows.length, 30);
+  assert.deepEqual(rows.map(({ taskId }) => taskId), Array.from({ length: 30 }, (_, index) => `T-${index + 1}`));
+});
+
+test("inventory reads clean and unique-commit facts independently for each worktree", async () => {
+  const other = path.join(repositoryRoot, ".pomegr", "worktrees", "T-2");
+  const blocks = listing().split("\n\n").slice(0, 2);
+  blocks.push(`worktree ${other.replaceAll("\\", "/")}\nHEAD def\nbranch refs/heads/tasks/T-2`);
+  const h = harness({ answers: {
+    "worktree list": { ok: true, stdout: blocks.join("\n\n") },
+    status: (args) => ({ ok: true, stdout: path.basename(args[1]) === "T-3" ? " M draft.txt\n" : "" }),
+    "rev-list": (args) => ({ ok: true, stdout: path.basename(args[1]) === "T-3" ? "0\n" : "2\n" }),
+  } });
+  const rows = await h.worktrees.inventory({ ...place });
+  assert.deepEqual(rows.map(({ taskId, clean, uniqueCommits }) => [taskId, clean, uniqueCommits]), [["T-2", true, true], ["T-3", false, false]]);
+});
+
+test("inventory bounds directory iteration and size walks skip symlinks", async () => {
+  let read = 0;
+  const entries = async function* () {
+    for (let index = 0; index < 20_001; index++) {
+      read++;
+      yield { name: `f-${index}`, isSymbolicLink: () => index === 0 };
+    }
+  };
+  let statCalls = 0;
+  const h = harness({
+    answers: { "worktree list": { ok: true, stdout: listing() } },
+    managerOptions: {
+      openDirectory: async () => entries(),
+      lstat: async () => { statCalls++; return { isSymbolicLink: () => false, isDirectory: () => false, isFile: () => true, size: 1024 }; },
+      now: () => 0,
+    },
+  });
+  const [row] = await h.worktrees.inventory({ ...place });
+  assert.equal(row.atLeast, true);
+  assert.equal(row.sizeMB, 19.5);
+  assert.equal(read, 20_000, "the iterator stops without reading an entry beyond its bound");
+  assert.equal(statCalls, 19_999, "the first entry was a symlink and was never statted");
+});
+
+test("inventory stops a size walk at two seconds", async () => {
+  let clock = 0;
+  const h = harness({
+    answers: { "worktree list": { ok: true, stdout: listing() } },
+    managerOptions: {
+      openDirectory: async () => (async function* () { yield { name: "one", isSymbolicLink: () => false }; })(),
+      lstat: async () => ({ isSymbolicLink: () => false, isDirectory: () => false, isFile: () => true, size: 1024 }),
+      now: () => { clock += 1_000; return clock; },
+    },
+  });
+  const [row] = await h.worktrees.inventory({ ...place });
+  assert.equal(row.atLeast, true);
+  assert.equal(row.sizeMB, 0);
+});
+
+test("detailed remove reports safety distinctions while the default contract stays unchanged", async () => {
+  const listed = { "worktree list": { ok: true, stdout: listing() } };
+  let h = harness({ exists: true, answers: { ...listed, status: { ok: true, stdout: " M draft.txt\n" } } });
+  assert.equal(await h.worktrees.remove({ ...place, detailed: true }), "dirty");
+  assert.equal(await h.worktrees.remove(place), "kept");
+  h = harness({ exists: true, answers: { ...listed, status: { ok: false } } });
+  assert.equal(await h.worktrees.remove({ ...place, detailed: true }), "failed");
+  h = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: "" } } });
+  assert.equal(await h.worktrees.remove({ ...place, detailed: true }), "failed");
+  h = harness({ exists: true, answers: { ...listed, "rev-list": { ok: true, stdout: "2\n" } } });
+  assert.equal(await h.worktrees.remove({ ...place, detailed: true }), "unique_commits");
+  h = harness({ exists: true, answers: { ...listed, "rev-list": { ok: false } } });
+  assert.equal(await h.worktrees.remove({ ...place, detailed: true }), "failed");
+  h = harness();
+  assert.equal(await h.worktrees.remove({ ...place, detailed: true }), "not_found");
 });
 
 test("a new worktree is added inside the repository on a new task branch at HEAD, with argument arrays and no shell", async () => {
@@ -258,6 +363,50 @@ test("with real Git: parallel worktrees are made, reused, and never removed with
   assert.equal(await worktrees.locate({ repositoryId, taskId: "T-4" }), old);
   assert.equal(await worktrees.remove({ ...at("T-4"), deleteBranch: true }), "removed");
   assert.equal(existsSync(old), false);
+});
+
+test("with real Git: the inventory lists only Pomegr task worktrees with their facts, and a detailed removal says why one stays", { skip: !gitAvailable() }, async (context) => {
+  const base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "pomegr-task-worktree-")));
+  context.after(() => { rmSync(base, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 }); });
+  const repository = path.join(base, "repo");
+  const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+  execFileSync("git", ["init", "--quiet", repository], { windowsHide: true, stdio: "ignore" });
+  for (const [key, value] of [["user.name", "Test"], ["user.email", "test@example.invalid"], ["commit.gpgsign", "false"], ["core.autocrlf", "false"]]) git(repository, "config", key, value);
+  writeFileSync(path.join(repository, "file.txt"), "one\n");
+  git(repository, "add", ".");
+  git(repository, "commit", "--quiet", "-m", "first");
+
+  const worktrees = createTaskWorktrees({ root: path.join(base, TASK_WORKTREE_DIRECTORY) });
+  const at = (taskId) => ({ repositoryRoot: repository, repositoryId, taskId });
+  const [one, two, three] = [await worktrees.ensure(at("T-1")), await worktrees.ensure(at("T-2")), await worktrees.ensure(at("T-3"))];
+  const old = path.join(base, TASK_WORKTREE_DIRECTORY, repositoryId, "T-4");
+  git(repository, "worktree", "add", "--quiet", "-b", "tasks/T-4", old, "HEAD");
+  // A worktree of the repository outside both Pomegr locations is never listed, whatever its folder is called.
+  git(repository, "worktree", "add", "--quiet", "-b", "tasks/T-9", path.join(base, "elsewhere", "T-9"), "HEAD");
+  writeFileSync(path.join(one.directory, "big.bin"), Buffer.alloc(2 * 1024 * 1024));
+  writeFileSync(path.join(two.directory, "work.txt"), "work\n");
+  git(two.directory, "add", ".");
+  git(two.directory, "commit", "--quiet", "-m", "task work");
+
+  const rows = await worktrees.inventory({ ...at("T-1"), tasks: [{ id: "T-2", state: "done", columnId: "col-done" }], columns: [{ id: "col-done", name: "Done" }] });
+  assert.deepEqual(rows.map(({ taskId, state, column, clean, uniqueCommits }) => [taskId, state, column, clean, uniqueCommits]), [
+    ["T-1", "not on board", "not on board", false, false], ["T-2", "done", "Done", true, true],
+    ["T-3", "not on board", "not on board", true, false], ["T-4", "not on board", "not on board", true, false],
+  ]);
+  assert.equal(rows[0].sizeMB >= 2 && rows[0].sizeMB < 3, true);
+  assert.equal(rows.every((row) => row.atLeast === false && Object.keys(row).sort().join() === "atLeast,clean,column,sizeMB,state,taskId,uniqueCommits"), true);
+  assert.equal(JSON.stringify(rows).includes("pomegr-task-worktree"), false, "no row holds a path");
+
+  assert.equal(await worktrees.remove({ ...at("T-1"), detailed: true }), "dirty");
+  assert.equal(await worktrees.remove({ ...at("T-2"), detailed: true }), "unique_commits");
+  assert.equal(await worktrees.remove({ ...at("T-7"), detailed: true }), "not_found");
+  assert.equal(existsSync(one.directory) && existsSync(two.directory), true);
+  assert.equal(await worktrees.remove({ ...at("T-3"), deleteBranch: true, detailed: true }), "removed");
+  assert.equal(git(repository, "branch", "--list", "tasks/T-3").trim(), "");
+  assert.equal(await worktrees.remove({ ...at("T-4"), deleteBranch: false, detailed: true }), "removed");
+  assert.match(git(repository, "branch", "--list", "tasks/T-4"), /tasks\/T-4/u);
+  assert.equal(existsSync(three.directory) || existsSync(old), false);
+  assert.deepEqual((await worktrees.inventory(at("T-1"))).map(({ taskId }) => taskId), ["T-1", "T-2"]);
 });
 
 test("only a listed, uncommitted-changes worktree is dirty; a failed status and other refusals are the plain failure", async () => {

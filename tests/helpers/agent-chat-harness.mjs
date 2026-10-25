@@ -121,7 +121,7 @@ export async function chatHarness(context, overrides = {}) {
   const spawn = () => { throw new Error("A test must never start a process."); };
   const chat = createAgentChat({
     fetch: fetchImpl, monitorOrigin: origin, authorizationToken: token, environment: { ...sourceEnvironment }, platform: "win32",
-    fileExists: (file) => files.includes(file), now, runTurn, spawn,
+    fileExists: (file) => files.includes(file), now, runTurn, spawn, worktrees: { inventory: async () => [] },
     executable: desktopExecutable, unpackedRoot,
     ...(viaDataRoot ? { dataRoot } : { store, images }),
     ...rest,

@@ -21,7 +21,7 @@ export type AgentChatOperationName = "list" | "read" | "send" | "stop" | "apply"
 export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "send", "stop", "apply", "dismiss", "delete"];
 
 // Why an operation was refused.
-// `desktop_only` refuses a non-desktop session start or paired settings/memory Apply without pairedDevices enabled.
+// `desktop_only` refuses a non-desktop session start or worktree removal, or a paired settings/memory Apply without pairedDevices enabled.
 export type AgentChatError = "invalid" | "not_found" | "busy" | "limit" | "cli_missing" | "conflict" | "unavailable" | "desktop_only";
 export const AGENT_CHAT_ERRORS: readonly AgentChatError[] = ["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"];
 
@@ -60,6 +60,7 @@ export type AgentChatBoardOperation =
   | { op: "set_after"; id: string; after: string[] }
   | { op: "attach_images"; id: string; images: string[] }
   | { op: "start_session"; id: string }
+  | { op: "remove_worktree"; id: string; branch: boolean }
   | { op: "set_queue"; on: boolean }
   | { op: "set_aril_settings"; settings: Partial<Omit<ArilSettings, "pairedDevices">> }
   | { op: "add_memory"; text: string }
@@ -68,7 +69,7 @@ export type AgentChatBoardOperation =
 
 export type AgentChatBoardOperationName = AgentChatBoardOperation["op"];
 export const AGENT_CHAT_BOARD_OPERATIONS: readonly AgentChatBoardOperationName[] = [
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree",
 ];
 
 // What an approved queue change left: on, on and held by a stalled or blocked task, or off.
@@ -83,15 +84,22 @@ export const AGENT_CHAT_START_FAILURES: readonly AgentChatStartFailure[] = [
   "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty",
 ];
 
+// What became of one approved worktree removal: removed, or the fixed reason the worktree is still on disk.
+export type AgentChatWorktreeResult = "removed" | "not_found" | "dirty" | "unique_commits" | "in_use" | "failed";
+export const AGENT_CHAT_WORKTREE_RESULTS: readonly AgentChatWorktreeResult[] = ["removed", "not_found", "dirty", "unique_commits", "in_use", "failed"];
+
 // The outcome of one approved operation. `skipped` is an operation after the first one that failed. A failure with a
 // task ID is a task that was created and then could not be placed (`part: "placement"`) or queued. A result with `start` is the outcome of a session
-// start: the launch, or `not_started` with the status that held or failed it. A result with `queue` is a queue change
+// start: the launch, or `not_started` with the status that held or failed it. A result with `worktree` is a worktree removal. A result with `queue` is a queue change
 // the monitor accepted; one it refused is an ordinary failure. A failure with `part: "images"` stopped at an image:
 // the task is there, created or not, and an image was not put on it.
+export type AgentChatActionFailure = "invalid" | "not_found" | "limit" | "conflict" | "unsupported" | "unavailable" | "skipped";
 export type AgentChatOperationResult =
+  | { ok: true; worktree: "removed" }
+  | { ok: false; worktree: Exclude<AgentChatWorktreeResult, "removed">; error: Exclude<AgentChatWorktreeResult, "removed"> }
   | { ok: true; queue: AgentChatQueueResult }
   | { ok: true; taskId?: string }
-  | { ok: false; error: "invalid" | "not_found" | "limit" | "conflict" | "unsupported" | "unavailable" | "skipped"; taskId?: string; part?: "images" | "placement" }
+  | { ok: false; error: AgentChatActionFailure; taskId?: string; part?: "images" | "placement" }
   | { ok: true; start: "started" }
   | { ok: false; error: "not_started"; start: AgentChatStartFailure };
 

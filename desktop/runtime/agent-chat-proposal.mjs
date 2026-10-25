@@ -4,9 +4,10 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree",
 ]);
 export const ARIL_OPERATIONS = Object.freeze(["set_aril_settings", "add_memory", "update_memory", "remove_memory"]);
+export const WORKTREE_RESULTS = Object.freeze(["removed", "not_found", "dirty", "unique_commits", "in_use", "failed"]);
 // The one operation that puts images the owner sent in the chat on a task that is already on the board.
 export const IMAGE_OPERATION = "attach_images";
 // The one operation that is not a board change: it asks the desktop to start a session for a task, and stands alone in its proposal.
@@ -240,6 +241,7 @@ export function normalizeOperation(source, { grantWrite = false } = {}) {
   }
   const id = taskId(source.id);
   if (!id) return null;
+  if (op === "remove_worktree") return only(source, ["op", "id", "branch"]) && typeof source.branch === "boolean" ? { op, id, branch: source.branch } : null;
   if (op === "set_after") {
     // An empty list clears what the task runs after.
     const after = Array.isArray(source.after) && source.after.length === 0 ? [] : taskIds(source.after, 1);
@@ -294,6 +296,7 @@ export function normalizeProposal(source, options = {}) {
   // change is too: turning the queue on lets Pomegr start tasks by itself, so it is never approved beside a board change.
   if (operations.length > 1 && operations.some((operation) => [START_OPERATION, QUEUE_OPERATION, "set_aril_settings"].includes(operation.op))) return null;
   if (operations.some((operation) => ARIL_OPERATIONS.includes(operation.op)) && !operations.every((operation) => ARIL_OPERATIONS.includes(operation.op))) return null;
+  if (operations.some(({ op }) => op === "remove_worktree") && (operations.length > 30 || !operations.every(({ op }) => op === "remove_worktree"))) return null;
   return { summary, operations };
 }
 
@@ -431,7 +434,7 @@ export async function applyOperations(operations, { post, board, attach }) {
     if (results.some((result) => result.ok !== true)) { results.push(failure("skipped")); continue; }
     const { op } = operation;
     // A start is never a task action, and a queue change has its own one request. The chat never sends either here.
-    if (op === START_OPERATION || op === QUEUE_OPERATION) { results.push(failure("unsupported")); continue; }
+    if (op === START_OPERATION || op === QUEUE_OPERATION || op === "remove_worktree") { results.push(failure("unsupported")); continue; }
     if (ARIL_OPERATIONS.includes(op)) {
       const action = { set_aril_settings: "aril_settings_set", add_memory: "aril_memory_add", update_memory: "aril_memory_update", remove_memory: "aril_memory_remove" }[op];
       const payload = op === "set_aril_settings" ? { settings: operation.settings }

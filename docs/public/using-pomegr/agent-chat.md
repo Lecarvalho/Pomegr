@@ -131,8 +131,8 @@ outcome, it may offer one board-change proposal that continues your earlier
 request. Read it, then select **Apply changes** or **Dismiss** yourself. Each choice runs
 one more read-only follow-up; Pomegr never applies a proposal or continues the chain by
 itself. After a dismissed, refused, or failed proposal, the follow-up has no proposal. A
-follow-up cannot propose a session start or queue change; send Aril a new message to ask
-for either. Select **Stop** to end a follow-up early.
+follow-up cannot propose a session start, a queue change, or a worktree removal; send Aril
+a new message to ask for one. Select **Stop** to end a follow-up early.
 
 The result beside each line of the proposal is Pomegr's own record. Trust it over the
 follow-up when they differ.
@@ -142,7 +142,8 @@ move a task, add a task to the queue or remove it, put queued tasks in a paralle
 or take them out of one, and put an image that you sent on a task. It cannot mark a task done,
 requeue a task, or change the queue's threshold or schedule. Those stay with you, as
 described in [Tasks](tasks.md). Starting a session and turning the queue on or off are
-proposals of their own, described below.
+proposals of their own, described below. So is removing task worktrees to free disk space,
+which you can apply only in the desktop app: see [Worktrees](tasks-order.md#worktrees).
 
 ## Start a session from the chat
 

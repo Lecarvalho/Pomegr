@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_PROPOSAL_ID_PATTERN,
-  AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES,
-  type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatConversation, type AgentChatConversationSummary,
+  AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES, AGENT_CHAT_WORKTREE_RESULTS,
+  type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatConversation, type AgentChatConversationSummary,
   type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
   type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSendResult, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
@@ -67,6 +67,11 @@ function failure(answer: Json | null): { ok: false; error: AgentChatError } {
 function parseResult(value: unknown): AgentChatOperationResult | null {
   const result = record(value);
   if (!result || typeof result.ok !== "boolean") return null;
+  if (result.worktree !== undefined) {
+    const worktree = AGENT_CHAT_WORKTREE_RESULTS.find((state) => state === result.worktree);
+    if (!worktree || result.ok !== (worktree === "removed")) return null;
+    return worktree === "removed" ? { ok: true, worktree } : { ok: false, worktree, error: worktree };
+  }
   if (result.start !== undefined) {
     if (result.ok) return result.start === "started" ? { ok: true, start: "started" } : null;
     const start = AGENT_CHAT_START_FAILURES.find((status) => status === result.start);
@@ -79,7 +84,7 @@ function parseResult(value: unknown): AgentChatOperationResult | null {
   const taskId = text(result.taskId) ? { taskId: result.taskId } : {};
   if (result.ok) return { ok: true, ...taskId };
   const part = result.part === "images" || result.part === "placement" ? { part: result.part as "images" | "placement" } : {};
-  return text(result.error) && result.error !== "not_started" ? { ok: false, error: result.error as Exclude<Extract<AgentChatOperationResult, { ok: false }>["error"], "not_started">, ...taskId, ...part } : null;
+  return text(result.error) && result.error !== "not_started" ? { ok: false, error: result.error as AgentChatActionFailure, ...taskId, ...part } : null;
 }
 
 const imageIds = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0 && value.length <= AGENT_CHAT_BOUNDS.imagesPerMessage
@@ -101,6 +106,7 @@ function parseProposal(value: unknown): AgentChatProposal | null {
     const operation = record(entry);
     return Boolean(operation) && (AGENT_CHAT_BOARD_OPERATIONS as readonly string[]).includes(operation!.op as string)
       && (operation!.op !== "set_queue" || typeof operation!.on === "boolean")
+      && (operation!.op !== "remove_worktree" || (text(operation!.id) && typeof operation!.branch === "boolean"))
       && (operation!.images === undefined ? operation!.op !== "attach_images" : imageIds(operation!.images));
   });
   if (operations.length !== proposal.operations.length) return null;

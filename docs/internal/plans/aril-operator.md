@@ -159,7 +159,7 @@ Each phase ships on its own and is useful without the next.
 - [ ] **9. Owner refinements.** The owner's decisions of 2026-10-25 after phase 7, each its own slice:
   - [x] 9a. Limits by tasks and usage: the tasks limit and tasks at a time replace starts and concurrent sessions; the usage limit holds every grant start while the provider that would run is at or above it, or its usage is unknown.
   - [ ] 9b. Merge settings: merge or auto-merge, and branch deletion, each settled or the repository's own; Aril sees the repository's GitHub merge settings.
-  - [ ] 9c. Worktree cleanup: Aril sees the task worktrees that remain and proposes removing them; the owner applies each removal.
+  - [x] 9c. Worktree cleanup: Aril sees the task worktrees that remain and proposes removing them; the owner applies each removal.
   - [x] 9d. Settled rules: Aril does not ask again what memory or settings settled, and sees when the repository's workflow sources changed since a rule was settled.
   - [x] 9e. Review terminals: the terminal view lists a review session, so the owner can watch it.
   - [ ] 9f. Docs and pages: the Home dashboard, the landing page, and the public guides describe what Aril does under a grant.
@@ -186,3 +186,4 @@ Phases 1 to 3 add no authority.
 2026-10-25: phase 6 shipped in #331 (merge on green) and #332 (a passing review meets an order dependency under a grant); phase 7 in #333 (plan rules and grant-written tasks) and this change (the grant run that writes tasks). Next action: phase 8, the acceptance run of experiment 2 under a grant, which needs the owner; and the owner's wording for the Home and landing claims that Aril never acts.
 2026-10-25: phase 7 shipped in #333 and #334. The owner refined limits, merge, worktree cleanup, settled rules, and the docs (phase 9). Next action: phase 9 slices; phase 8 still needs the owner.
 2026-10-25: phase 9d built: Aril treats its settings and memory as settled, and the desktop lists the workflow sources that changed after the oldest settled time. Next action: the other phase 9 slices.
+2026-10-25: phase 9c built: Aril sees the task worktrees that remain and proposes removing them, and the owner applies each removal in the desktop app. Next action: the other phase 9 slices; phase 8 still needs the owner.

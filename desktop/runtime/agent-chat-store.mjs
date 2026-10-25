@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 
 import { normalizeChatImages } from "./agent-chat-images.mjs";
-import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION, startProposalTask } from "./agent-chat-proposal.mjs";
+import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 
 export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
 export const CONVERSATION_LIMIT = 50;
@@ -62,6 +62,8 @@ function storedOperation(operation, grantWrite) {
 
 function storedResult(result) {
   if (!isPlainObject(result) || typeof result.ok !== "boolean") return null;
+  if (result.worktree !== undefined) return WORKTREE_RESULTS.includes(result.worktree) && result.ok === (result.worktree === "removed")
+    ? { ok: result.ok, worktree: result.worktree, ...(result.ok ? {} : { error: result.worktree }) } : null;
   // The outcome of a start: launched, or the fixed status that held or failed it.
   if (result.start !== undefined) {
     if (result.ok) return result.start === "started" ? { ok: true, start: "started" } : null;
@@ -86,6 +88,8 @@ function storedProposal(proposal) {
   if (grantWrite && (proposal.state !== "applied" || proposal.operations.length > 5)) return null;
   const operations = proposal.operations.map((operation) => storedOperation(operation, grantWrite));
   if (operations.some((operation) => operation === null)) return null;
+  const worktrees = operations.some(({ op }) => op === "remove_worktree");
+  if (worktrees && (operations.length > 30 || !operations.every(({ op }) => op === "remove_worktree"))) return null;
   const start = operations.some((operation) => operation.op === START_OPERATION);
   // A start stands alone, and it either launched (`applied`) or waits for the owner's next answer.
   if (start && (operations.length !== 1 || proposal.state === "partial")) return null;
@@ -98,6 +102,9 @@ function storedProposal(proposal) {
     if (!Array.isArray(proposal.results) || proposal.results.length !== operations.length) return null;
     const results = proposal.results.map(storedResult);
     if (results.some((result) => result === null)) return null;
+    // Worktree removals run independently: the proposal is `applied` only when every worktree was removed, else `partial`.
+    if (results.some((result) => (result.worktree !== undefined) !== worktrees)) return null;
+    if (worktrees && (proposal.state === "applied" ? !results.every(({ ok }) => ok) : proposal.state !== "partial" || results.every(({ ok }) => ok))) return null;
     if (results.some((result) => result.start !== undefined) !== start) return null;
     if (start && results[0].ok !== (proposal.state === "applied")) return null;
     if (results.some((result) => result.queue !== undefined) && queueOn === null) return null;
@@ -132,7 +139,7 @@ function storedMessage(message) {
   // A follow-up may offer another board proposal, but never a session start or queue-state change.
   if (message.followUp !== undefined) {
     if (typeof message.followUp !== "string" || !PROPOSAL_ID.test(message.followUp)) return null;
-    if (stored.proposal && (startProposalTask(stored.proposal) || queueProposalState(stored.proposal) !== null)) return null;
+    if (stored.proposal && (startProposalTask(stored.proposal) || queueProposalState(stored.proposal) !== null || stored.proposal.operations.some(({ op }) => op === "remove_worktree"))) return null;
     stored.followUp = message.followUp;
   }
   return stored;

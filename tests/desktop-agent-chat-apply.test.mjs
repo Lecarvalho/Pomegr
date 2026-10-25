@@ -481,7 +481,7 @@ test("the chat's runtime files are a closed surface: no console, no shell, no ex
     assert.doesNotMatch(source, /\bprocess\.(?:exit|kill)|child\.kill\(\)\s*;\s*process/u, `${file} ends processes`);
     for (const specifier of [...source.matchAll(/(?:from\s+|import\s*\()\s*["']([^"']+)["']/gu)].map((match) => match[1])) {
       const allowed = specifier.startsWith("node:") || RUNTIME_FILES.some((name) => specifier === `./${name}`)
-        || ["./claude-auth.mjs", "./environment-policy.mjs", "./plugin-cli.mjs", "../../shared/local-auth.mjs", "../../shared/task-run-models.mjs"].includes(specifier);
+        || ["./claude-auth.mjs", "./environment-policy.mjs", "./plugin-cli.mjs", "./task-worktree.mjs", "../../shared/local-auth.mjs", "../../shared/task-run-models.mjs"].includes(specifier);
       assert.ok(allowed, `${file} imports ${specifier}`);
     }
   }

@@ -130,7 +130,9 @@ These rules always apply:
   session starts only through the manual start, after the owner confirms a start proposal
   in the desktop app, or under an active grant. The queue changes only through the Tasks page's queue action, with
   the state the proposal names, after the owner applies a queue proposal in the desktop
-  app or on a paired device.
+  app or on a paired device. Aril may propose removing task worktrees; a worktree is
+  removed only through the desktop's safe removal, after the owner applies that proposal
+  in the desktop app, or when its task is marked done.
 - Start processes with `execFile` or `spawn` and an argument array. Never put
   session-derived text into a command line or a path.
 - Never commit `.env`, transcripts, credentials, build output, or Wrangler state.

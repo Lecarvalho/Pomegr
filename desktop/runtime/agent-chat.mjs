@@ -12,13 +12,14 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
-import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer } from "./agent-chat-proposal.mjs";
+import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 import { runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
+import { createTaskWorktrees, TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 export { isWorkflowSourcePath, readWorkflowChanges, workflowSources } from "./agent-chat-workflow.mjs";
 
 export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat";
@@ -94,6 +95,8 @@ export function createAgentChat(options = {}) {
   const runTurn = options.runTurn || runChatTurn;
   // The desktop's manual start for a start the owner approved in the chat: `(event, repositoryId, taskId)` answers `{ status }`.
   const startTask = typeof options.startTask === "function" ? options.startTask : null;
+  // The same Git worktrees as the dispatcher, found where it makes them. Their paths stay in this file's calls and never leave desktop main.
+  const worktrees = options.worktrees || createTaskWorktrees({ root: options.dataRoot ? path.join(options.dataRoot, TASK_WORKTREE_DIRECTORY) : undefined, environment: sourceEnvironment, platform });
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
   const store = options.store || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
     ? createAgentChatStore({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
@@ -200,6 +203,14 @@ export function createAgentChat(options = {}) {
         POMEGR_CHAT_TASK_KEY: key,
       } };
     } catch { close(); return mcpServer; }
+  }
+
+  // The Pomegr task worktrees still on disk, as facts only (never a path). A turn goes on without them when they cannot be read.
+  async function readWorktrees(repositoryId, root, board) {
+    try {
+      const rows = await worktrees.inventory({ repositoryRoot: root, repositoryId, tasks: board.tasks, columns: board.columns });
+      return Array.isArray(rows) ? rows : [];
+    } catch { return []; }
   }
 
   // The observed runs the task form's Claude model list reads, cut to the source and the model of each. A committed GET;
@@ -380,7 +391,7 @@ export function createAgentChat(options = {}) {
       if (turn.followUp) {
         message.followUp = turn.followUp;
         if (read.proposal && (!["applied", "partial"].includes(turn.followUpOutcome)
-          || startProposalTask(read.proposal) || queueProposalState(read.proposal) !== null || read.proposal.operations.some(({ op }) => ARIL_OPERATIONS.includes(op)))) {
+          || startProposalTask(read.proposal) || queueProposalState(read.proposal) !== null || read.proposal.operations.some(({ op }) => op === "remove_worktree" || ARIL_OPERATIONS.includes(op)))) {
           read = { text: read.text, proposal: null, unreadable: true };
         }
       }
@@ -446,7 +457,8 @@ export function createAgentChat(options = {}) {
       if (!attached) return abandoned(INVALID);
       const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
+      const inventory = await readWorktrees(repositoryId, root, board);
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
@@ -501,7 +513,8 @@ export function createAgentChat(options = {}) {
       const command = PROVIDERS.has(provider) ? executable(provider) : null;
       if (!command) return refused("cli_missing");
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, grantPlans: plans, now: now() });
+      const inventory = await readWorktrees(repositoryId, root, board);
+      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, grantPlans: plans, now: now() });
       if (!prompt) return INVALID;
       const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
       if (!conversation) return refused("limit");
@@ -608,6 +621,29 @@ export function createAgentChat(options = {}) {
     return { ...proposal, state: "pending", results: [{ ok: false, error: "not_started", start: START_FAILURES.includes(status) ? status : "unavailable" }] };
   }
 
+  async function removeWorktree(repositoryId, operation) {
+    try {
+      const board = await readBoard(repositoryId);
+      if (!board) return "failed";
+      const task = board.tasks.find(({ id }) => id === operation.id);
+      if (task?.review?.state === "running") return "in_use";
+      // A task with no outcome yet may have a session or a live dispatch.
+      if (task && !["needs_review", "stalled", "blocked", "done"].includes(task.state)) {
+        if (task.session) return "in_use";
+        // The board omits dispatch tokens. Its existing private task read also checks an unbound live dispatch.
+        const read = await monitor(`/internal/agent-chat/task?${new URLSearchParams({ repositoryId, taskId: task.id })}`, { method: "GET" });
+        if (read?.ok !== true || typeof read.task?.editable !== "boolean") return "failed";
+        if (!read.task.editable) return "in_use";
+      }
+      const root = await repositoryRoot(repositoryId);
+      if (!root) return "failed";
+      const request = { repositoryRoot: root, repositoryId, taskId: operation.id };
+      if (!await worktrees.locate(request)) return "not_found";
+      const result = await worktrees.remove({ ...request, deleteBranch: operation.branch, detailed: true });
+      return WORKTREE_RESULTS.includes(result) ? result : "failed";
+    } catch { return "failed"; }
+  }
+
   // Apply and Dismiss are the owner's answer to one proposal; each proposal takes one answer.
   async function resolve(payload, approve, origin) {
     const found = await located(payload, ["repositoryId", "conversationId", "proposalId"]);
@@ -617,8 +653,9 @@ export function createAgentChat(options = {}) {
     if (!message) return refused("not_found");
     if (message.proposal.state !== "pending") return refused("conflict");
     const startTaskId = approve ? startProposalTask(message.proposal) : null;
+    const removeWorktrees = approve && message.proposal.operations.every(({ op }) => op === "remove_worktree");
     // Only the desktop window starts a session from the chat: the start needs its trusted event, and a paired device has none.
-    if (startTaskId && !origin?.event) return refused("desktop_only");
+    if ((startTaskId || removeWorktrees) && !origin?.event) return refused("desktop_only");
     if (startTaskId && !startTask) return UNAVAILABLE;
     const queueOn = approve ? queueProposalState(message.proposal) : null;
     const key = `${repositoryId}/${proposalId}`;
@@ -634,6 +671,13 @@ export function createAgentChat(options = {}) {
         // proposal pending with the fixed error, so the owner may apply the same desired state again.
         const result = await setQueue(repositoryId, queueOn);
         proposal = { ...message.proposal, state: result.ok ? "applied" : "pending", results: [{ ...result }] };
+      } else if (removeWorktrees) {
+        const results = [];
+        for (const operation of message.proposal.operations) {
+          const worktree = await removeWorktree(repositoryId, operation);
+          results.push({ ok: worktree === "removed", worktree, ...(worktree === "removed" ? {} : { error: worktree }) });
+        }
+        proposal = { ...message.proposal, state: results.every(({ ok }) => ok) ? "applied" : "partial", results };
       } else if (approve) {
         const board = await readBoard(repositoryId);
         if (!board) return UNAVAILABLE;
