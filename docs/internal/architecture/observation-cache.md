@@ -1050,8 +1050,8 @@ preferences or trigger native dispatch.
 
 ### Usage transitions and source comparability
 
-The existing usage coordinator owns acquisition, its five-minute cooldown,
-Retry-After, and last-good retention. Background usage commits invoke the registered
+The existing usage coordinator owns acquisition, its successful-read cooldown,
+[jittered failure backoff](metrics.md#plan-usage), Retry-After, and last-good retention. Background usage commits invoke the registered
 usage rule; GETs and reset deadlines never acquire data. The existing one-minute
 observation cadence checks overdue windows through that coordinator, so sleep/resume
 does not add a timer or bypass cooldown. A clock crossing alone emits nothing.
@@ -2471,7 +2471,7 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Routine checkpoint | Backend bounded owner / P | Coalesces committed L1 evidence and atomically replaces L2 JSON | Eligible five seconds after quiet or after 60 seconds of continuous activity; queue service and failures can delay durability |
 | Resource history | Monitor store contributor / P | Aggregates the private sampler's in-memory raw samples (30-minute window) into `resource_minutes`, bounded peaks, and peak sample windows in one transaction per session; never read or written by a GET | On the coalesced post-checkpoint store cycle, which the resource observation also schedules at most once per 60 seconds while sessions are sampled |
 | Graceful shutdown | Backend writer / P | Drains the newest accepted checkpoint revisions with bounded attempts, then closes history and contributor storage | Cancel maintenance and scheduled candidates, stop producers, drain accepted persistence, then close storage |
-| Usage observation coordinator | Backend / U1 through D | Refreshes the centralized usage response cache | Check for due work every 60 seconds; each provider's authenticated request cache permits at most one request per five minutes and honors longer `Retry-After` cooldowns |
+| Usage observation coordinator | Backend / U1 through D | Refreshes the centralized usage response cache | Check for due work every 60 seconds; authenticated requests use the [successful-read cooldown and jittered failure backoff](metrics.md#plan-usage), with five-minute and `Retry-After` floors |
 
 Checkpoint files use temporary-file creation followed by atomic replacement. A missing,
 corrupt, oversized, unknown-version, invalid, or source-incompatible checkpoint is ignored
@@ -2749,7 +2749,7 @@ The existing U1 background usage job reads this file on its normal sixty-second 
 A valid local observation within five minutes, whose windows have not expired, can
 satisfy the usage read immediately while the existing coordinated API check runs in the
 background. API checks continue to update model-specific windows absent from the local
-feed; their five-minute minimum and longer `Retry-After` cooldowns remain authoritative.
+feed; their [jittered failure backoff](metrics.md#plan-usage), five-minute minimum, and `Retry-After` floor remain authoritative.
 Fresh local usage remains available through an API failure. The adapter selects a complete successful
 observation, never a synthetic mixture of local and remote windows. Failures retain the
 last good data and original observation time. Future-dated or malformed observations
@@ -2776,6 +2776,9 @@ its fixed ID, numeric percentage, normalized reset timestamp or null, and active
 Labels, window names, severity, availability, retry state, and fixed error messages are
 reconstructed from the allowlist. Raw responses, headers, credentials, account identifiers,
 credential paths, and error text are never persisted.
+
+The saved next-attempt timestamp includes the sampled jitter and any `Retry-After` floor, in whole milliseconds.
+Restart preserves that deadline without resampling. The exponential window remains in memory and starts at five minutes after restart.
 
 U1 lazily restores this cache during background usage acquisition. The source fingerprint
 uses only the selected credential file's path and filesystem metadata through a one-way hash;
