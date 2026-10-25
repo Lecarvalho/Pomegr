@@ -11,6 +11,10 @@ the repository's files, and what Pomegr observed, then answers. Aril never chang
 board by itself: it proposes changes, and you apply them. Aril starts no session and
 turns no queue on or off by itself either: it proposes that, and you apply it.
 
+Grant controls are not available in the app yet. When they ship, an active grant will
+let the desktop runner start selected Ready tasks and their reviews while you are away.
+See [Tasks](tasks.md#aril-settings) for the current status.
+
 ## Before you start
 
 - **Use the desktop app or a paired device.** The **Aril** button shows in the Pomegr

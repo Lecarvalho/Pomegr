@@ -38,6 +38,56 @@ function harness({ plan = basePlan(), answer, locate = async () => null, overrid
 const go = (h) => h.starter.startReview(trusted, repositoryId, taskId);
 const aborted = (h) => h.calls.filter(({ route }) => route === "review-abort");
 
+test("granted reviews never confirm and check authority before and after the plan and host", async () => {
+  for (let revokedAt = 1; revokedAt <= 5; revokedAt++) {
+    const order = [];
+    const h = harness({ overrides: {
+      confirm: () => assert.fail("no builder confirmation"), confirmReview: () => assert.fail("a grant already confirms"),
+      fetch: async (url) => { order.push(url.split("/").pop()); return json({ ok: true, plan: basePlan() }); },
+      worktrees: { locate: async () => { order.push("locate"); return worktree; } },
+      terminal: { ensureHost: async () => order.push("host"), create: async () => order.push("create") },
+    } });
+    let checks = 0;
+    assert.deepEqual(await h.starter.startGrantedReview(repositoryId, taskId, async () => { order.push("check"); return ++checks !== revokedAt; }),
+      { status: revokedAt === 5 ? "started" : "cancelled" });
+    const success = ["check", "review-plan", "check", "locate", "check", "host", "check", "create"];
+    const index = success.map((value, i) => value === "check" ? i : -1).filter((i) => i >= 0)[revokedAt - 1];
+    assert.deepEqual(order, revokedAt === 5 ? success : [...success.slice(0, index + 1), ...(revokedAt > 1 ? ["review-abort"] : [])]);
+  }
+});
+
+test("granted reviews fail closed and all granted entries share the manual and queue busy slot", async () => {
+  const h = harness();
+  assert.deepEqual(await h.starter.startGrantedReview(repositoryId, taskId), { status: "invalid" });
+  assert.deepEqual(await h.starter.startGrantedReview(repositoryId, taskId, async () => { throw Error("offline"); }), { status: "cancelled" });
+  for (const entry of ["startGranted", "startGrantedReview"]) {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const pending = h.starter[entry](repositoryId, taskId, () => gate);
+    for (const name of ["startGranted", "startGrantedReview", "startQueued"]) {
+      assert.deepEqual(await h.starter[name](repositoryId, taskId, async () => true), { status: "busy" });
+    }
+    assert.deepEqual(await go(h), { status: "busy" });
+    assert.deepEqual(await h.starter.start(trusted, repositoryId, taskId), { status: "busy" });
+    release(false); await pending;
+  }
+});
+
+test("granted entries have no renderer IPC or preload exposure", async () => {
+  const handlers = new Map(), calls = [];
+  const remove = dispatch.installTaskStartIpc({ queueRunner: false,
+    ipcMain: { handle: (name, handler) => handlers.set(name, handler), removeHandler: (name) => handlers.delete(name) },
+    starter: { start: async () => { calls.push("manual"); }, startReview: async () => { calls.push("review"); }, openWorktree: async () => {},
+      startGranted: () => assert.fail("renderer reached a grant"), startGrantedReview: () => assert.fail("renderer reached a grant") },
+  });
+  assert.deepEqual([...handlers.keys()].sort(), ["pomegr:task-review-start", "pomegr:task-start", "pomegr:task-worktree-open"]);
+  await handlers.get(dispatch.TASK_START_CHANNEL)(trusted, repositoryId, taskId);
+  await handlers.get(dispatch.TASK_REVIEW_START_CHANNEL)(trusted, repositoryId, taskId);
+  assert.deepEqual(calls, ["manual", "review"]);
+  assert.doesNotMatch(await readFile(new URL("../desktop/runtime/preload.cjs", import.meta.url), "utf8"), /startGranted|task-grant/iu);
+  remove();
+});
+
 test("review refuses untrusted events, invalid IDs, unavailable runtime and non-Windows before posting", async () => {
   const h = harness();
   for (const args of [[{}, repositoryId, taskId], [trusted, "repo-bad", taskId], [trusted, repositoryId, "T-03"]]) {

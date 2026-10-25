@@ -127,9 +127,23 @@ function endGrant({ database, transaction, repositoryId, payload, now }) {
     return { ok: true };
   });
 }
+function endAllGrants({ database, transaction, payload, now }) {
+  if (!exact(payload, ["reason"]) || payload.reason !== "app_restart") return invalid();
+  return transaction(() => {
+    const at = now();
+    let ended = 0;
+    for (const { repository_id: repositoryId } of preparedStatement(database, "SELECT repository_id FROM aril_grants WHERE ended_at IS NULL").all()) {
+      if (!readGrant(database, repositoryId, at)?.active) continue;
+      end(database, repositoryId, at, payload.reason);
+      ended += 1;
+    }
+    return { ok: true, ended };
+  });
+}
 export const grantOperations = (dispatch, loadRows, now) => ({
   nextGrantSteps: ({ resolveGateFacts = null } = {}) => dispatch(nextGrantSteps, { loadRows, resolveGateFacts, now }),
   checkGrant: (repositoryId) => dispatch(checkGrant, { repositoryId, now }),
   recordGrant: (repositoryId, payload) => dispatch(recordGrant, { repositoryId, payload, now }),
   endGrant: (repositoryId, payload) => dispatch(endGrant, { repositoryId, payload, now }),
+  endAllGrants: (payload) => dispatch(endAllGrants, { payload, now }),
 });

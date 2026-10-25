@@ -27,6 +27,38 @@ function setup(t) {
 const step = (taskId, kind = "start", repositoryId = REPO) => ({ repositoryId, taskId, kind });
 const error = (answer, code) => assert.deepEqual(answer, { ok: false, error: code });
 
+test("restart ends all active grants atomically, including grants with no eligible work", (t) => {
+  const { store, configure, start, clock, directory, next } = setup(t);
+  const other = repositoryNumber(2);
+  for (const repo of [REPO, other]) { configure({}, repo); start(repo); }
+  assert.deepEqual(next().steps, []);
+  for (const payload of [null, {}, { reason: "start_failed" }, { reason: "app_restart", extra: true }]) {
+    error(store.endAllGrants(payload), "invalid");
+  }
+  withDatabase(directory, (db) => db.exec(`CREATE TRIGGER refuse_grant_end BEFORE UPDATE ON aril_grants
+    WHEN EXISTS (SELECT 1 FROM aril_grants WHERE ended_at IS NOT NULL)
+    BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;`));
+  error(store.endAllGrants({ reason: "app_restart" }), "unavailable");
+  for (const repo of [REPO, other]) assert.equal(store.checkGrant(repo).active, true);
+  withDatabase(directory, (db) => db.exec("DROP TRIGGER refuse_grant_end"));
+  assert.deepEqual(store.endAllGrants({ reason: "app_restart" }), { ok: true, ended: 2 });
+  for (const repo of [REPO, other]) {
+    const grant = store.readBoard(repo).aril.grant;
+    assert.equal(grant.active, false);
+    assert.equal(grant.endReason, "app_restart");
+    assert.equal(grant.endedAt, clock.now);
+  }
+  assert.deepEqual(store.endAllGrants({ reason: "app_restart" }), { ok: true, ended: 0 });
+});
+
+test("restart preserves already ended grants and settles expired grants by their existing rule", (t) => {
+  const { store, configure, start, clock } = setup(t);
+  configure(); start();
+  clock.now += 3600000;
+  assert.deepEqual(store.endAllGrants({ reason: "app_restart" }), { ok: true, ended: 0 });
+  assert.equal(store.readBoard(REPO).aril.grant.endReason, "expired");
+});
+
 test("grant preconditions, exact actions, conflict, stop, and board history", (t) => {
   const { store, configure, start, clock } = setup(t);
   assert.equal(store.readBoard(REPO).aril.grant, null);

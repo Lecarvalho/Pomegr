@@ -315,6 +315,128 @@ const rootA = "C:\\Work\\a";
 const cleanup = (repositoryId, taskId, repositoryRoot = rootA) => ({ repositoryId, taskId, repositoryRoot });
 const routes = (h) => h.calls.map((call) => call.route);
 
+function grantHarness({ steps = [], next = [], start, responses = {} } = {}) {
+  const timers = scheduler(), calls = [], launches = [];
+  const granted = (kind) => async (repositoryId, taskId, authorized) => {
+    launches.push({ repositoryId, taskId, kind });
+    return start ? start({ repositoryId, taskId, kind }, authorized) : { status: await authorized() ? "started" : "cancelled" };
+  };
+  const runner = createTaskQueueRunner({
+    monitorOrigin: origin, authorizationToken: "secret", setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+    starter: { startQueued: granted("queue"), startGranted: granted("start"), startGrantedReview: granted("review") },
+    fetch: async (url, options) => {
+      const route = url.split("/").pop(), body = JSON.parse(options.body);
+      calls.push({ route, body, options });
+      if (responses[route]) return responses[route](body);
+      return json(route === "queue-next" ? { ok: true, starts: next }
+        : route === "grant-next" ? { ok: true, steps }
+          : route === "grant-check" ? { ok: true, active: true }
+            : route === "grant-end-all" ? { ok: true, ended: 1 } : { ok: true });
+    },
+  });
+  return { runner, timers, calls, launches };
+}
+const grantStep = (taskId, kind = "start", repositoryId = repoA) => ({ repositoryId, taskId, kind });
+
+test("grant restart cleanup runs once on the first tick before any queue or grant work", async () => {
+  const h = grantHarness(); h.runner.start();
+  assert.deepEqual(h.calls, []);
+  await h.timers.fire(); await h.timers.fire();
+  assert.deepEqual(routes(h), ["grant-end-all", "queue-next", "grant-next", "queue-next", "grant-next"]);
+  assert.deepEqual(h.calls[0].body, { reason: "app_restart" });
+  assert.equal(h.calls[0].options.headers[DESKTOP_AUTH_HEADER], "secret");
+  assert.equal(h.calls[0].options.redirect, "error");
+});
+
+test("queue starts finish first and grant start and review steps run serially and record success", async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const steps = [grantStep("T-2"), grantStep("T-3", "review")];
+  const checks = [];
+  const h = grantHarness({ next: entries([repoA, "T-1"]), steps, start: async (step, authorized) => {
+    if (step.kind === "queue") await gate;
+    else { checks.push(await authorized()); checks.push(await authorized()); }
+    return { status: "started" };
+  } });
+  h.runner.start(); const tick = h.timers.fire();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(h.launches, [grantStep("T-1", "queue")]);
+  assert.equal(routes(h).includes("grant-next"), false);
+  release(); await tick;
+  assert.deepEqual(h.launches, [grantStep("T-1", "queue"), ...steps]);
+  assert.deepEqual(checks, [true, true, true, true]);
+  assert.deepEqual(h.calls.filter(({ route }) => route === "grant-check").map(({ body }) => body), Array(4).fill({ repositoryId: repoA }));
+  assert.deepEqual(h.calls.filter(({ route }) => route === "grant-record").map(({ body }) => body), steps);
+  assert.deepEqual(routes(h).slice(2), ["grant-next", "grant-check", "grant-check", "grant-record", "grant-check", "grant-check", "grant-record"]);
+});
+
+test("grant settled statuses post nothing and failures end only that repository and skip its remaining steps", async () => {
+  for (const status of ["busy", "not_startable", "gate_held", "tree_dirty", "cancelled", "not_found", "failed", "cli_missing", "worktree_dirty", "unknown", undefined]) {
+    const settled = ["busy", "not_startable", "gate_held", "tree_dirty", "cancelled", "not_found"].includes(status);
+    const h = grantHarness({ steps: [grantStep("T-1"), grantStep("T-2", "review"), grantStep("T-3", "start", repoB)], start: async () => ({ status }) });
+    h.runner.start(); await h.timers.fire();
+    assert.equal(h.launches.length, settled ? 3 : 2, String(status));
+    assert.equal(routes(h).includes("grant-record"), false);
+    assert.deepEqual(h.calls.filter(({ route }) => route === "grant-end").map(({ body }) => body), settled ? [] : [
+      { repositoryId: repoA, reason: "start_failed" }, { repositoryId: repoB, reason: "start_failed" },
+    ]);
+  }
+});
+
+test("grant request failures and not_active records are swallowed and ticks continue", async () => {
+  for (const route of ["grant-next", "grant-check", "grant-record", "grant-end"]) {
+    for (const response of [() => { throw Error("offline"); }, () => new Response("invalid json"), () => json({ ok: false, error: "not_active" })]) {
+      const h = grantHarness({ steps: [grantStep("T-1")], responses: { [route]: response },
+        ...(route === "grant-end" ? { start: async () => { throw Error("launch"); } } : {}) });
+      h.runner.start(); await h.timers.fire(); await h.timers.fire();
+      assert.equal(h.timers.pending().length, 1);
+      assert.equal(routes(h).filter((name) => name === route).length, 2);
+      if (route !== "grant-end") assert.equal(routes(h).includes("grant-end"), false);
+    }
+  }
+});
+
+test("failed restart cleanup disables grant execution for this runner but leaves the queue timer alive", async () => {
+  for (const response of [() => { throw Error("offline"); }, () => new Response("invalid json"),
+    () => json({ ok: false }), () => json({ ok: true }), () => json({ ok: true, ended: -1 })]) {
+    const h = grantHarness({ steps: [grantStep("T-1")], responses: { "grant-end-all": response } });
+    h.runner.start(); await h.timers.fire(); await h.timers.fire();
+    assert.deepEqual(h.launches, []);
+    assert.deepEqual(routes(h), ["grant-end-all", "queue-next", "queue-next"]);
+    assert.equal(h.timers.pending().length, 1);
+  }
+});
+
+test("grant step validation ignores malformed steps and caps each tick at sixteen", async () => {
+  const valid = Array.from({ length: 20 }, (_, index) => grantStep(`T-${index + 1}`, index % 2 ? "review" : "start"));
+  const h = grantHarness({ steps: [null, [], grantStep("T-0"), grantStep("T-1", "merge"), grantStep("T-1", "start", "invalid"), ...valid] });
+  h.runner.start(); await h.timers.fire();
+  assert.deepEqual(h.launches, valid.slice(0, 16));
+});
+
+test("a queue request failure does not suppress grant work", async () => {
+  const h = grantHarness({ steps: [grantStep("T-1")], responses: { "queue-next": () => { throw Error("offline"); } } });
+  h.runner.start(); await h.timers.fire();
+  assert.deepEqual(h.launches, [grantStep("T-1")]);
+});
+
+test("dispose stops grants in flight, revokes their callback and never records or ends a session", async () => {
+  let release, authorized;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const h = grantHarness({ steps: [grantStep("T-1"), grantStep("T-2", "review")], start: async (_step, check) => {
+    authorized = check; await gate; return { status: "started" };
+  } });
+  h.runner.start(); const tick = h.timers.fire();
+  await new Promise((resolve) => setImmediate(resolve));
+  h.runner.dispose();
+  assert.equal(await authorized(), false);
+  release(); await tick;
+  assert.deepEqual(h.launches, [grantStep("T-1")]);
+  assert.equal(routes(h).includes("grant-record"), false);
+  assert.equal(routes(h).includes("grant-end"), false);
+  assert.equal(h.timers.pending().length, 0);
+});
+
 test("a starter that cannot remove worktrees is never asked which wait", async () => {
   const h = harness();
   h.runner.start();

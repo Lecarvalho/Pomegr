@@ -293,10 +293,10 @@ export function createTaskStart(options = {}) {
   async function exclusive(mode, repositoryId, taskId) {
     if (active) return result("busy");
     active = true;
-    try { return await (mode.review ? runReview(repositoryId, taskId) : run(repositoryId, taskId, mode)); } catch { return result("failed"); } finally { active = false; }
+    try { return await (mode.review ? runReview(repositoryId, taskId, mode) : run(repositoryId, taskId, mode)); } catch { return result("failed"); } finally { active = false; }
   }
 
-  async function runReview(repositoryId, taskId) {
+  async function runReview(repositoryId, taskId, { confirmRequired, isAuthorized }) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
@@ -306,13 +306,23 @@ export function createTaskStart(options = {}) {
       try { executables[name] = resolveSessionExecutable(name, sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
     }
     if (!Object.values(executables).some(Boolean)) return result("cli_missing");
-    if (await options.confirmReview?.({ taskId }) !== true || disposed) return result("cancelled");
+    if (confirmRequired && await options.confirmReview?.({ taskId }) !== true) return result("cancelled");
+    const authorized = async () => {
+      if (disposed) return false;
+      if (typeof isAuthorized !== "function") return true;
+      try { return await isAuthorized() === true && !disposed; } catch { return false; }
+    };
+    if (!await authorized()) return result("cancelled");
     let answer;
     try { answer = await post("review-plan", repositoryId, { id: taskId }); } catch { return result("unavailable"); }
     if (!isPlainObject(answer)) return result("unavailable");
     if (answer.ok !== true) return result(typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
     const raw = isPlainObject(answer.plan) ? answer.plan : {};
     const token = typeof raw.token === "string" && TOKEN.test(raw.token) ? raw.token : null;
+    if (!await authorized()) {
+      if (token) { try { await post("review-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ } }
+      return result("cancelled");
+    }
     let status = "failed";
     try {
       const { provider, model, effort, prompt, repositoryRoot } = raw;
@@ -325,15 +335,18 @@ export function createTaskStart(options = {}) {
           const located = await worktrees?.locate({ repositoryRoot: plan.root, repositoryId, taskId });
           const cwd = typeof located === "string" && path.isAbsolute(located) && !/[\u0000\r\n"]/u.test(located)
             && directoryExists(located) ? located : plan.root;
-          await terminal.ensureHost();
-          if (disposed) status = "cancelled";
+          if (!await authorized()) status = "cancelled";
           else {
-            await terminal.create({
-              key: `${repositoryId}/${taskId}/review-${randomBytes(16).toString("hex")}`,
-              executable, args: [...PROVIDERS[plan.provider].flags(plan), plan.prompt], cwd,
-              env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
-            });
-            return result("started");
+            await terminal.ensureHost();
+            if (!await authorized()) status = "cancelled";
+            else {
+              await terminal.create({
+                key: `${repositoryId}/${taskId}/review-${randomBytes(16).toString("hex")}`,
+                executable, args: [...PROVIDERS[plan.provider].flags(plan), plan.prompt], cwd,
+                env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
+              });
+              return result("started");
+            }
           }
         }
       }
@@ -346,7 +359,7 @@ export function createTaskStart(options = {}) {
 
   async function startReview(event, repositoryId, taskId) {
     if (!isTrustedEvent(event)) return result("invalid");
-    return exclusive({ review: true }, repositoryId, taskId);
+    return exclusive({ review: true, confirmRequired: true }, repositoryId, taskId);
   }
 
   async function start(event, repositoryId, taskId, separateWorktree) {
@@ -362,6 +375,16 @@ export function createTaskStart(options = {}) {
 
   function startQueued(repositoryId, taskId) {
     return exclusive({ confirmRequired: false }, repositoryId, taskId);
+  }
+
+  function startGranted(repositoryId, taskId, isAuthorized) {
+    if (typeof isAuthorized !== "function") return Promise.resolve(result("invalid"));
+    return exclusive({ confirmRequired: false, isAuthorized }, repositoryId, taskId);
+  }
+
+  function startGrantedReview(repositoryId, taskId, isAuthorized) {
+    if (typeof isAuthorized !== "function") return Promise.resolve(result("invalid"));
+    return exclusive({ review: true, confirmRequired: false, isAuthorized }, repositoryId, taskId);
   }
 
   function startPaired(repositoryId, taskId, separateWorktree, isAuthorized) {
@@ -385,7 +408,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startReview, startApproved, startQueued, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; terminal.dispose?.(); } });
+  return Object.freeze({ start, startReview, startApproved, startQueued, startGranted, startGrantedReview, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; terminal.dispose?.(); } });
 }
 
 export function installTaskStartIpc(options = {}) {

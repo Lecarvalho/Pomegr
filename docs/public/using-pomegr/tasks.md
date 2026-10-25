@@ -48,7 +48,9 @@ the divider shows how far it has read. Opening the log does not move that marker
 
 Select **Aril settings** above the board to edit action preferences, limits, work rules, and reviewer preferences.
 An unset limit means “Not settled: Aril will ask”. Select **Save** to save your changes.
-These settings grant no actions. Grants are not available yet.
+These settings grant no actions, and you cannot start a grant from the app yet. When
+grant controls ship, an active grant will let the desktop runner start the Ready tasks
+its work rules select and their reviews while you are away.
 
 The **Memory** section lists repository preferences, oldest first. You can add, edit, or delete entries independently of settings.
 Each entry holds at most 300 characters; a repository holds at most 100 entries. Confirm deletion inside the panel.
