@@ -2152,9 +2152,8 @@ How it is built:
 
 ## Review sessions
 
-The monitor supports owner-started reviews of tasks in `needs_review` with a linked builder session.
-Desktop launching and board display arrive in later slices.
-The reviewer uses `report_review` in Claude Code or Codex, never `complete_task` or `block_task`.
+The desktop app supports owner-started reviews of tasks in `needs_review` with a linked builder session.
+The reviewer uses `report_review` in Claude Code or Codex, never `complete_task` or `block_task`. Board verdict display arrives in a later slice; verdicts appear in the task log for now.
 Aril gains no authority, and no review starts automatically.
 
 - `review-plan` accepts `{ id }` or `{ id, provider, model, effort }` inside the existing repository envelope.
@@ -2162,7 +2161,12 @@ Aril gains no authority, and no review starts automatically.
 - Planning requires the same repository root and plugin readiness as a builder start, but applies no start gates.
 - A live review dispatch refuses another plan with `not_startable`; its SHA-256 digest and mint time expire after the builder dispatch TTL.
 - The plan carries task ID, provider, model, effort, repository root, prompt, and token; it carries no worktree flag, images, or remote control.
-- The later desktop slice locates the task's `tasks/T-n` worktree under `.pomegr/worktrees`, falling back to the repository root.
+- The desktop-only **Start review** action requires native confirmation: **Start a review session?**, with the message "Pomegr starts a separate session that reviews T-n's work in its folder and reports a verdict. It changes no code and does not move the task."; T-n is the task ID, the buttons are **Start review** and **Cancel**, and Cancel is the default.
+- After confirmation, desktop main requests `review-plan`, validates its private fields, and starts the provider in the terminal host with the task token and only the model, effort, and prompt arguments.
+- Desktop main uses the task's worktree when Git lists it on `tasks/T-n`, looking under `.pomegr/worktrees` and the legacy task-worktree directory; otherwise it uses the repository root, and never creates a worktree.
+- Review starts share the busy slot with builder starts and return only the same fixed start statuses; a failure after planning aborts the matching review dispatch.
+- Review terminal keys end in `review-` plus 16 random bytes in hex and never participate in the task's builder terminal binding.
+- Review starts are Windows-only and have no paired-device, Aril, or queue start path.
 - `review-abort` clears only the dispatch whose token matches.
 - Binding compares every review candidate after no builder dispatch matches; it refuses any builder session or another task's reviewer.
 - A successful bind stores the reviewer session ID separately, clears the review dispatch, and appends `review_started`.
@@ -2630,6 +2634,7 @@ serves no other client.
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `POST /internal/tasks/review-plan` | Desktop main, desktop token; no browser or paired route | Existing `{ repositoryId, payload }` envelope; payload `{ id }` or `{ id, provider, model, effort }`; answers the private review plan |
+| `pomegr:task-review-start` IPC | Trusted desktop main frame only, behind native confirmation | Repository ID and task ID only; answers one fixed start status, never the private review plan |
 | `POST /internal/tasks/review-abort` | Desktop main, desktop token | Existing repository envelope with `{ id, token }`; clears only the matching review dispatch |
 | `POST /api/agent/v1/tasks/review` | Local agent-query capability, same gate as complete/block | `{ sessionRef, verdict, taskId?, reasons? }`; existing `schemaVersion: 1` envelope with `ok`, or fixed `reason`: `invalid`, `not_found`, `not_reviewable`, `unavailable`; no reasons or identity returned |
 | `POST /internal/tasks/scorecard-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { appVersion } }`; upserts the version's snapshot and answers `{ ok: true, scorecard }` with formula, current snapshot, and nullable baseline; counts, shares, medians, snapshot times, and app versions only |

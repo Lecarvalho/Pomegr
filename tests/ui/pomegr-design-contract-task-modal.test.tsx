@@ -152,13 +152,16 @@ describe("the footer", () => {
     const edit = read(tasks, "TaskModalEdit.tsx");
     expect(edit).not.toMatch(/taskModalResolve/);
     expect(edit).toMatch(/<div className="taskModalNotes">/);
-    const order = ["Open folder", "Start in separate worktree", "Add to queue", "Start session", "Requeue task", "{resolveName}", ">Mark done<", ">Save<"];
+    const order = ["Open folder", "Start in separate worktree", "Add to queue", "Start session", "Start review", "Requeue task", "{resolveName}", ">Mark done<", ">Save<"];
     const positions = order.map((word) => edit.indexOf(word, edit.indexOf("footer={<>")));
     expect(positions.every((position) => position > 0)).toBe(true);
     expect([...positions].sort((left, right) => left - right)).toEqual(positions);
     expect(rule(tasksStyles, ".taskModalNotes")).toMatch(/flex: 1 1 160px; min-width: 0/);
-    expect(modalPage).toMatch(/Then the actions, in this order: \*\*Open folder\*\*, \*\*Start in separate worktree\*\*, \*\*Add to queue\*\* or \*\*Remove from queue\*\*, \*\*Start session\*\*, \*\*Requeue task\*\*, \*\*Mark done\*\*, and \*\*Save\*\*\./);
-    expect(modalPage).toMatch(/\| Needs review \| \*\*Delete task\*\*, \*\*Requeue task\*\*, primary \*\*Mark done\*\* \|/);
+    expect(modalPage).toMatch(/Then the actions, in this order: \*\*Open folder\*\*, \*\*Start in separate worktree\*\*, \*\*Add to queue\*\* or \*\*Remove from queue\*\*, \*\*Start session\*\*, \*\*Start review\*\*, \*\*Requeue task\*\*, \*\*Mark done\*\*, and \*\*Save\*\*\./);
+    expect(modalPage).toMatch(/\| Needs review \| \*\*Delete task\*\*, \*\*Start review\*\* \(desktop, linked session only\), \*\*Requeue task\*\*, primary \*\*Mark done\*\* \|/);
+    const sample = read("app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx");
+    expect(sample).toMatch(/label="Task modal, edit, needs review" note="[^"]*Start review before Requeue task/);
+    expect(sample).toMatch(/className="commandSecondaryAction" onClick=\{noop\}>Start review<\/button>\s*<button type="button" className="commandSecondaryAction" onClick=\{noop\}>Requeue task/);
   });
 });
 

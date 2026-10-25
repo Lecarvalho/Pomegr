@@ -14,6 +14,7 @@ export const TASK_WORKTREE_OPEN_CHANNEL = "pomegr:task-worktree-open";
 export const TASK_WORKTREE_OPEN_STATUSES = Object.freeze(["opened", "not_found", "invalid", "unavailable"]);
 
 export const TASK_START_CHANNEL = "pomegr:task-start";
+export const TASK_REVIEW_START_CHANNEL = "pomegr:task-review-start";
 export const TASK_START_STATUSES = Object.freeze([
   "started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held",
   "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty",
@@ -57,6 +58,21 @@ export async function confirmTaskStart(dialog, getWindow, request) {
 }
 
 const result = (status) => Object.freeze({ status });
+
+export async function confirmTaskReviewStart(dialog, getWindow, { taskId }) {
+  const window = getWindow();
+  if (!window || window.isDestroyed()) return false;
+  const answer = await dialog.showMessageBox(window, {
+    type: "question",
+    title: "Start a review session?",
+    message: `Pomegr starts a separate session that reviews ${taskId}'s work in its folder and reports a verdict. It changes no code and does not move the task.`,
+    buttons: ["Start review", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  return answer.response === 0;
+}
 
 // One entry per startable provider; a flag is passed only when the task sets it.
 const PROVIDERS = Object.freeze({
@@ -277,7 +293,60 @@ export function createTaskStart(options = {}) {
   async function exclusive(mode, repositoryId, taskId) {
     if (active) return result("busy");
     active = true;
-    try { return await run(repositoryId, taskId, mode); } catch { return result("failed"); } finally { active = false; }
+    try { return await (mode.review ? runReview(repositoryId, taskId) : run(repositoryId, taskId, mode)); } catch { return result("failed"); } finally { active = false; }
+  }
+
+  async function runReview(repositoryId, taskId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
+    if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
+    if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
+    if (platform !== "win32") return result("unsupported_platform");
+    const executables = {};
+    for (const name of Object.keys(PROVIDERS)) {
+      try { executables[name] = resolveSessionExecutable(name, sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
+    }
+    if (!Object.values(executables).some(Boolean)) return result("cli_missing");
+    if (await options.confirmReview?.({ taskId }) !== true || disposed) return result("cancelled");
+    let answer;
+    try { answer = await post("review-plan", repositoryId, { id: taskId }); } catch { return result("unavailable"); }
+    if (!isPlainObject(answer)) return result("unavailable");
+    if (answer.ok !== true) return result(typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
+    const raw = isPlainObject(answer.plan) ? answer.plan : {};
+    const token = typeof raw.token === "string" && TOKEN.test(raw.token) ? raw.token : null;
+    let status = "failed";
+    try {
+      const { provider, model, effort, prompt, repositoryRoot } = raw;
+      const plan = validatePlan({ taskId: raw.taskId, provider, model, effort, prompt, repositoryRoot, token }, taskId, directoryExists, fileExists);
+      if (disposed) status = "cancelled";
+      else if (plan) {
+        const executable = executables[plan.provider];
+        if (!executable) status = "cli_missing";
+        else {
+          const located = await worktrees?.locate({ repositoryRoot: plan.root, repositoryId, taskId });
+          const cwd = typeof located === "string" && path.isAbsolute(located) && !/[\u0000\r\n"]/u.test(located)
+            && directoryExists(located) ? located : plan.root;
+          await terminal.ensureHost();
+          if (disposed) status = "cancelled";
+          else {
+            await terminal.create({
+              key: `${repositoryId}/${taskId}/review-${randomBytes(16).toString("hex")}`,
+              executable, args: [...PROVIDERS[plan.provider].flags(plan), plan.prompt], cwd,
+              env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
+            });
+            return result("started");
+          }
+        }
+      }
+    } catch { status = "failed"; }
+    if (token) {
+      try { await post("review-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ }
+    }
+    return result(status);
+  }
+
+  async function startReview(event, repositoryId, taskId) {
+    if (!isTrustedEvent(event)) return result("invalid");
+    return exclusive({ review: true }, repositoryId, taskId);
   }
 
   async function start(event, repositoryId, taskId, separateWorktree) {
@@ -316,7 +385,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startApproved, startQueued, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; terminal.dispose?.(); } });
+  return Object.freeze({ start, startReview, startApproved, startQueued, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; terminal.dispose?.(); } });
 }
 
 export function installTaskStartIpc(options = {}) {
@@ -330,11 +399,15 @@ export function installTaskStartIpc(options = {}) {
   ipcMain.handle(TASK_START_CHANNEL, async (event, repositoryId, taskId, separateWorktree) => {
     try { return await starter.start(event, repositoryId, taskId, separateWorktree); } catch { return result("failed"); }
   });
+  ipcMain.removeHandler(TASK_REVIEW_START_CHANNEL);
+  ipcMain.handle(TASK_REVIEW_START_CHANNEL, async (event, repositoryId, taskId) => {
+    try { return await starter.startReview(event, repositoryId, taskId); } catch { return result("failed"); }
+  });
   ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL);
   ipcMain.handle(TASK_WORKTREE_OPEN_CHANNEL, async (event, repositoryId, taskId) => {
     try { return await starter.openWorktree(event, repositoryId, taskId); } catch { return result("unavailable"); }
   });
   const removeTerminal = starter.terminal ? installTerminalIpc({ ipcMain, controller: starter.terminal }) : () => {};
   runner?.start();
-  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); runner?.dispose(); removeTerminal(); starter.dispose?.(); };
+  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_REVIEW_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); runner?.dispose(); removeTerminal(); starter.dispose?.(); };
 }

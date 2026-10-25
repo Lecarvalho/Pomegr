@@ -233,6 +233,11 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
       ? ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId, true)
       : ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId);
   },
+  taskReviewStart(repositoryId, taskId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
+      || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-review-start", repositoryId, taskId);
+  },
   taskWorktreeOpen(repositoryId, taskId) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
       || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });

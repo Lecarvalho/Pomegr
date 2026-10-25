@@ -247,7 +247,7 @@ function TaskModalEditSamples() {
         </TaskModalChrome>
       </div>
     </Sample>
-    <Sample label="Task modal, edit, needs review" note="A started task that needs the user. The Review panel comes first, then the read-only Task with its lock line, then the Run settings as values. The footer is one row: Quiet Delete task, then Requeue task, and Mark done as the one primary. A started task has no Save, Add to queue or Start session.">
+    <Sample label="Task modal, edit, needs review" note="A started task that needs the user. The Review panel comes first, then the read-only Task with its lock line, then the Run settings as values. The footer is one row: Quiet Delete task, Secondary Start review before Requeue task, then Mark done as the one primary. A started task has no Save, Add to queue or Start session.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={reviewId} title="Task" subtitle="pomegr" onClose={noop}
           titleExtra={<>
@@ -257,6 +257,7 @@ function TaskModalEditSamples() {
           footer={<>
             <button type="button" className="commandQuietAction" onClick={noop}>Delete task</button>
             <span className="taskModalSpacer" aria-hidden="true" />
+            <button type="button" className="commandSecondaryAction" onClick={noop}>Start review</button>
             <button type="button" className="commandSecondaryAction" onClick={noop}>Requeue task</button>
             <button type="button" className="commandPrimaryAction" onClick={noop}>Mark done</button>
           </>}>

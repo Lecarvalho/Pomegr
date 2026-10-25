@@ -34,7 +34,7 @@ import { SAVE_FIRST_LINE, taskDraftPatch, useTaskDraft } from "./use-task-draft"
 import { useFeatureCreation } from "./use-feature-creation";
 import { shownTaskText, useStoredImages } from "./use-task-images";
 import { SESSION_CANDIDATES_SHOWN, useTaskSessionCandidates } from "./use-task-session-candidates";
-import { useTaskStart } from "./use-task-start";
+import { useTaskReviewStart, useTaskStart } from "./use-task-start";
 import { waitDetail } from "./task-wait-model";
 
 export function TaskModalEdit({ repositoryId, repositoryName, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose, focus }: {
@@ -86,6 +86,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const chip = taskChip(task, task.id === board.queue?.order[0]);
   const unresolved = taskNeedsUser(task);
   const start = useTaskStart(repositoryId, task, board, dirty, refresh, onClose, followUp && "start" in followUp ? followUp.start : null);
+  const reviewStart = useTaskReviewStart(repositoryId, task, refresh);
   const images = useStoredImages(repositoryId, task);
   const imagesOffered = taskImagesAvailable();
   // A task that needs the user offers its resolutions instead of Start session.
@@ -118,7 +119,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   // A started task never starts again, and a queued one whose session started has left the queue: those two actions are not offered for it.
   const startOffered = showStart && !locked;
   const queueOffered = waiting && !(locked && inProgress);
-  const notes = !confirming && Boolean(startLine || saveLine || folderLine || awaitingReport || droppedNote);
+  const notes = !confirming && Boolean(startLine || reviewStart.line || saveLine || folderLine || awaitingReport || droppedNote);
 
   const save = async () => {
     if (!canSave || saveInFlight.current) return;
@@ -247,6 +248,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
       {notes
         ? <div className="taskModalNotes">
           {startLine && <span className="taskModalNote" role="status" aria-live="polite">{startLine}</span>}
+          {reviewStart.line && <span className="taskModalNote" role="status" aria-live="polite">{reviewStart.line}</span>}
           {saveLine && <span className="taskModalNote" role="status" aria-live="polite">{SAVE_FIRST_LINE}</span>}
           {folderLine && <span className="taskModalNote" role="status" aria-live="polite">{folderLine}</span>}
           {awaitingReport && <span className="taskModalNote">{AWAITING_REPORT_NOTE}</span>}
@@ -261,6 +263,9 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         </button>}
         {startOffered && <button type="button" className="commandSecondaryAction" disabled={start.disabled || afterHold !== null} onClick={() => void start.run()}>
           {start.pending ? "Starting…" : "Start session"}
+        </button>}
+        {reviewStart.available && task.state === "needs_review" && task.session !== null && <button type="button" className="commandSecondaryAction" disabled={reviewStart.disabled} onClick={() => void reviewStart.run()}>
+          {reviewStart.pending ? "Starting…" : "Start review"}
         </button>}
         {(unresolved || awaitingReport) && <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>}
         {unresolved && <button type="button" className="commandPrimaryAction" disabled={resolving} onClick={() => void resolve(true)}>{resolveName}</button>}

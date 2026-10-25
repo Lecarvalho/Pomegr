@@ -93,6 +93,16 @@ test('managed keys preserve repository, task and nonce while rejecting arbitrary
   }
 });
 
+test('review host keys accept only a task identity and a bounded review nonce', async (t) => {
+  const f = await fixture(t);
+  const client = await f.connect();
+  const prefix = `repo-${'a'.repeat(24)}/T-3/review-`;
+  assert.equal((await client.request('create', { plan: f.plan(`${prefix}${'b'.repeat(32)}`) })).ok, true);
+  for (const nonce of ['b'.repeat(31), 'b'.repeat(33), 'g'.repeat(32), '../bad']) {
+    assert.equal((await client.request('create', { plan: f.plan(`${prefix}${nonce}`) })).error, 'TERMINAL_INVALID');
+  }
+});
+
 test('continue host keys accept only supported providers and UUID session identity', async (t) => {
   const f = await fixture(t);
   const client = await f.connect();
