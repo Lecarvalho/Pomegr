@@ -4,6 +4,8 @@ import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState 
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { CapacityStrip } from "./CapacityStrip";
+import { TaskLogDialog } from "./TaskLogPanel";
+import type { TaskLogAnswer } from "./task-desktop";
 import { ScorecardDialog } from "./ScorecardPanel";
 import type { ScorecardAnswer } from "./scorecard-model";
 import { QueueSettingsPanel } from "./QueueSettingsPanel";
@@ -43,9 +45,9 @@ export type TaskReveal = { id: string; turn: number };
 /** A feature the board was asked to show, such as by a session's feature link: the filter chooses it. */
 export type FeatureSelection = { id: string };
 
-type BoardProps = { board: TaskBoard; /** Desktop app only: reads the repository's scorecard when its panel opens. */ readScorecard?: () => Promise<ScorecardAnswer>; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null; featureSelection?: FeatureSelection | null };
+type BoardProps = { board: TaskBoard; readTaskLog?: () => Promise<TaskLogAnswer>; /** Desktop app only: reads the repository's scorecard when its panel opens. */ readScorecard?: () => Promise<ScorecardAnswer>; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; features?: FeatureEntry; reveal?: TaskReveal | null; featureSelection?: FeatureSelection | null };
 
-function ReadyBoard({ board, readScorecard, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
+function ReadyBoard({ board, readTaskLog, readScorecard, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
   const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
   const [revealed, setRevealed] = useState(reveal ?? null);
   const [selection, setSelection] = useState<FeatureSelection | null>(null);
@@ -67,6 +69,8 @@ function ReadyBoard({ board, readScorecard, onOpenTask, edits, newTask, features
   const [announcement, setAnnouncement] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  const logTrigger = useRef<HTMLButtonElement>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
   const scorecardTrigger = useRef<HTMLButtonElement>(null);
   // A group change is its own action: the board reads the new groups from the monitor.
@@ -168,7 +172,9 @@ function ReadyBoard({ board, readScorecard, onOpenTask, edits, newTask, features
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
     <CapacityStrip queue={board.queue} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)}
+      {...(readTaskLog ? { logRef: logTrigger, onOpenLog: () => setLogOpen(true) } : {})}
       {...(readScorecard ? { scorecardRef: scorecardTrigger, onOpenScorecard: () => setScorecardOpen(true) } : {})} />
+    {readTaskLog && logOpen && <TaskLogDialog readTaskLog={readTaskLog} returnFocus={logTrigger} onClose={() => setLogOpen(false)} />}
     {readScorecard && scorecardOpen && <ScorecardDialog readScorecard={readScorecard} returnFocus={scorecardTrigger} onClose={() => setScorecardOpen(false)} />}
     {settingsOpen && <QueueSettingsPanel queue={board.queue} edits={edits} returnFocus={settingsTrigger} onClose={() => setSettingsOpen(false)} />}
     {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} entry={features} />}
@@ -244,7 +250,7 @@ export function TaskColumn({ column, lines, afterLines, nextId, onOpen, dropTarg
   </section>;
 }
 
-export function TaskBoardView({ board, readScorecard, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
+export function TaskBoardView({ board, readTaskLog, readScorecard, onOpenTask, edits, newTask, features, reveal, featureSelection }: BoardProps) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -253,6 +259,6 @@ export function TaskBoardView({ board, readScorecard, onOpenTask, edits, newTask
   </section>;
   return <>
     <QueueBanner board={board} onOpenTask={onOpenTask} edits={edits} />
-    <ReadyBoard board={board} readScorecard={readScorecard} onOpenTask={onOpenTask} edits={edits} newTask={newTask} features={features} reveal={reveal} featureSelection={featureSelection} />
+    <ReadyBoard board={board} readTaskLog={readTaskLog} readScorecard={readScorecard} onOpenTask={onOpenTask} edits={edits} newTask={newTask} features={features} reveal={reveal} featureSelection={featureSelection} />
   </>;
 }
