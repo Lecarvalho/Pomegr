@@ -1,12 +1,57 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { SafeMarkdown as AgentChatMarkdown, parseBlocks } from "../../app/components/markdown/SafeMarkdown";
 
 const html = (text: string) => render(<AgentChatMarkdown text={text} />).container.firstElementChild as HTMLElement;
 
 describe("AgentChatMarkdown", () => {
+  it("opts into HTTPS links, preserves label formatting, and prevents navigation", () => {
+    const onOpenLink = vi.fn();
+    const url = "https://github.com/o/r/pull/927";
+    const { container } = render(<AgentChatMarkdown text={`[PR #927](${url})`} onOpenLink={onOpenLink} />);
+    const links = container.querySelectorAll("a");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute("href", url);
+    expect(links[0]).toHaveAttribute("title", url);
+    expect(links[0]).toHaveClass("safeMarkdownLink");
+    expect(links[0]).toHaveTextContent("PR #927");
+    expect(links[0]).not.toHaveAttribute("target");
+    const location = window.location.href;
+    expect(fireEvent.click(links[0])).toBe(false);
+    expect(window.location.href).toBe(location);
+    expect(onOpenLink).toHaveBeenCalledExactlyOnceWith(url);
+    const formatted = render(<AgentChatMarkdown text="[**Review** the `diff`](https://a.test)" onOpenLink={onOpenLink} />).container;
+    expect(formatted.querySelector("a strong")).toHaveTextContent("Review");
+    expect(formatted.querySelector("a code")).toHaveTextContent("diff");
+    expect(formatted.querySelector("a")).toHaveAttribute("href", "https://a.test/");
+  });
+
+  it.each([
+    "[x](javascript:alert(1))", "[x](http://a.test)", "[x](file:///c:/x)", "[x](data:text/plain,x)",
+    "[x](/relative)", "[x](https://user:password@a.test/)", "[x](https://a.test:bad/)",
+    "![p](https://a.test/p.png)", "https://a.test/", '<a href="https://a.test/">x</a>',
+    "[](https://a.test/)", "[two\nlines](https://a.test/)", `[x](https://a.test/${"x".repeat(2048)})`,
+  ])("keeps unsupported input literal even with link opt-in: %s", (text) => {
+    const { container } = render(<AgentChatMarkdown text={text} onOpenLink={vi.fn()} />);
+    expect(container.querySelector("a, img")).toBeNull();
+    expect(container.textContent).toBe(text);
+  });
+
+  it("keeps links literal by default and inside code", () => {
+    const text = "[PR #927](https://github.com/o/r/pull/927)";
+    expect(html(text).querySelector("a")).toBeNull();
+    const { container } = render(<AgentChatMarkdown text={`\`${text}\`\n\n\`\`\`\n${text}\n\`\`\``} onOpenLink={vi.fn()} />);
+    expect(container.querySelector("a")).toBeNull();
+  });
+
+  it("uses the existing text-link color and focus tokens", () => {
+    const styles = readFileSync(join(process.cwd(), "app/styles/agent-chat.css"), "utf8");
+    expect(styles).toMatch(/\.safeMarkdownLink\s*\{[^}]*color:\s*var\(--command-brand-text\)/);
+    expect(styles).toMatch(/\.safeMarkdownLink:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--focus-ring\)/);
+  });
+
   it("renders paragraphs separated by blank lines, and keeps a line break inside one", () => {
     const root = html("First line\nsecond line\n\nNext paragraph");
     const paragraphs = root.querySelectorAll("p");

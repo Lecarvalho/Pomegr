@@ -11,7 +11,7 @@ type Message = { kind: "owner" | "agent"; at: number | null; text: string }
 export type HistoryPage = { messages: Message[]; cursor: Position | null; older: Position | null; reset: boolean; status: "ok" | "missing" | "unsupported" };
 type Request = { cursor?: Position; before?: Position; limit?: number };
 type ContinueStatus = "started" | "cancelled" | "live" | "unknown" | "folder_missing" | "history_missing" | "cli_missing" | "busy" | "invalid" | "not_found" | "unavailable" | "failed";
-type Bridge = { sessionHistory: (sessionId: string, request: Request) => Promise<{ ok: true; page: HistoryPage } | { ok: false }>; sessionContinue?: (sessionId: string) => Promise<{ status: ContinueStatus }> };
+type Bridge = { sessionHistory: (sessionId: string, request: Request) => Promise<{ ok: true; page: HistoryPage } | { ok: false }>; sessionContinue?: (sessionId: string) => Promise<{ status: ContinueStatus }>; openSessionLink?: (url: string) => Promise<{ ok: true } | { ok: false; error: "invalid" }> };
 function bridge() {
   if (typeof window === "undefined") return undefined;
   const value = (window as Window & { pomegrDesktop?: Bridge }).pomegrDesktop;
@@ -25,22 +25,23 @@ export function useSessionHistoryAvailability() {
 // Owner prompts read as a distinct block; a long one, such as a task prompt, folds after about eight lines.
 const OWNER_FOLD_LINES = 8;
 const OWNER_FOLD_CHARACTERS = 600;
-function OwnerMessage({ text }: { text: string }) {
+function OwnerMessage({ text, onOpenLink }: { text: string; onOpenLink?: (url: string) => void }) {
   const [open, setOpen] = useState(false);
   const long = text.split("\n").length > OWNER_FOLD_LINES || text.length > OWNER_FOLD_CHARACTERS;
   return <div className="sessionTerminalMessage sessionTerminalOwner">
     <span className="sessionTerminalOwnerLabel">You</span>
-    <div className="sessionTerminalOwnerBody" data-folded={long && !open ? "true" : undefined}><SafeMarkdown text={text} /></div>
+    <div className="sessionTerminalOwnerBody" data-folded={long && !open ? "true" : undefined}><SafeMarkdown text={text} onOpenLink={onOpenLink} /></div>
     {long && <button type="button" className="commandQuietAction sessionTerminalOwnerToggle" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Show less" : "Show more"}</button>}
   </div>;
 }
 
 // Fetch-free rendering also supplies the synthetic design-system states.
-export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, onEarlier, outputRef, onScroll, onContinue, continuing, continueMessage }: {
+export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, onEarlier, outputRef, onScroll, onContinue, continuing, continueMessage, onOpenLink }: {
   page: HistoryPage | null; busy: boolean; failed: boolean; live: boolean;
   onRefresh: () => void; onEarlier: () => void;
   outputRef?: RefObject<HTMLDivElement | null>; onScroll?: () => void;
   onContinue?: () => void; continuing?: boolean; continueMessage?: string | null;
+  onOpenLink?: (url: string) => void;
 }) {
   return <section className="sessionTerminal" aria-label="Read-only session terminal">
     <div className="sessionTerminalOutput" aria-label="Saved session history" tabIndex={0} ref={outputRef} onScroll={onScroll} aria-busy={busy}>
@@ -51,8 +52,8 @@ export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, on
       {page?.status === "ok" && (page.messages.length ? page.messages.map((message, index) => message.kind === "tool"
         ? <p key={index} className="sessionTerminalTool">{`Tool · ${message.name} · ${message.outcome}`}</p>
         : message.kind === "owner"
-          ? <OwnerMessage key={index} text={message.text} />
-          : <div key={index} className="sessionTerminalMessage"><SafeMarkdown text={message.text} /></div>) : <p>No messages yet</p>)}
+          ? <OwnerMessage key={index} text={message.text} onOpenLink={onOpenLink} />
+          : <div key={index} className="sessionTerminalMessage"><SafeMarkdown text={message.text} onOpenLink={onOpenLink} /></div>) : <p>No messages yet</p>)}
       {failed && <p role="alert">Session history could not be read.</p>}
     </div>
     <div className="sessionTerminalBar">
@@ -147,8 +148,10 @@ function HistoryPanel({ sessionId, live, onContinued, allowContinue = true }: { 
     finally { setContinuing(false); }
   };
 
+  const openSessionLink = bridge()?.openSessionLink;
   return <>
   <SessionTerminalSurface page={page} busy={busy} failed={failed} live={live} outputRef={output}
+    onOpenLink={typeof openSessionLink === "function" ? (url) => { void openSessionLink(url).catch(() => {}); } : undefined}
     onRefresh={() => read.current()} onEarlier={() => read.current(true)} onScroll={() => {
       const node = output.current;
       if (node) pinned.current = node.scrollHeight - node.clientHeight - node.scrollTop <= 24;

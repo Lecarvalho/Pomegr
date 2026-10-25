@@ -169,7 +169,10 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - An owner message longer than 8 lines or 600 characters folds to about 8 lines, with **Show more** and **Show less**.
 - Agent replies stay unboxed text, and tool lines stay one muted line.
 - Each tool appears as one muted line: `Tool · <name> · <outcome>`.
-- Owner and agent text renders through the shared safe Markdown renderer; no HTML is set; links and images stay literal; tool lines stay plain.
+- Owner and agent text renders through the shared safe Markdown renderer; no HTML is set; tool lines stay plain.
+- In desktop saved history, HTTPS Markdown links without userinfo, at most 2048 characters, with non-empty single-line labels open in the system browser only when the owner clicks them; other links and images stay literal.
+- Without the desktop `openSessionLink` bridge, all links stay literal, as they do by default in agent chat and task report notes.
+- Saved-history links use `.safeMarkdownLink`, the brand-text token, the Text link hover underline, and the shared focus ring; their label keeps the surrounding type scale and their title shows the full URL.
 - Markdown keeps the data font and compact type scale; fenced code preserves line breaks and scrolls horizontally inside the message.
 - The docked bar reads **Read-only · Running outside Pomegr · Updates automatically** for a live session.
 - The live bar includes a quiet **Refresh** action.

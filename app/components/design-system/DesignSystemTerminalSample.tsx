@@ -9,6 +9,7 @@ const history: HistoryPage = {
   messages: [
     { kind: "owner", at: null, text: "Keep the last good session state visible while a refresh is incomplete." },
     { kind: "agent", at: null, text: "I will check when the cached revision is replaced and add a regression test." },
+    { kind: "agent", at: null, text: "[PR #927](https://github.com/o/r/pull/927) ready, [CI passed](https://github.com/o/r/actions/runs/4013)." },
     { kind: "tool", at: null, name: "Read", outcome: "completed" },
     { kind: "tool", at: null, name: "Edit", outcome: "failed" },
     { kind: "tool", at: null, name: "Test", outcome: "pending" },
@@ -42,7 +43,7 @@ export function SessionTerminalSection() {
       <Sample label="Queued start" note="A queue start opens no view and takes no focus."><p className="sessionTerminalMuted">T-125 · Waiting in terminal</p><p>Open the task to see its starting terminal. A bound task keeps its existing Open session action.</p></Sample>
     </div>
     <div className="designSystemGrid">{samples.map(({ label, page, live = false, failed = false, busy = false, canContinue = false, continueMessage }) => <Sample key={label} label={label} note="Synthetic messages; sample controls do not read history.">
-      <SessionTerminalSurface page={page} live={live} failed={failed} busy={busy} onRefresh={ignore} onEarlier={ignore} onContinue={canContinue ? ignore : undefined} continueMessage={continueMessage} />
+      <SessionTerminalSurface page={page} live={live} failed={failed} busy={busy} onRefresh={ignore} onEarlier={ignore} onContinue={canContinue ? ignore : undefined} continueMessage={continueMessage} onOpenLink={ignore} />
     </Sample>)}</div>
   </Section>;
 }
