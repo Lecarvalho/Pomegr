@@ -63,16 +63,15 @@ afterEach(() => { if (originalFonts) Object.defineProperty(document, "fonts", or
 
 describe("managed terminal", () => {
   it.each([
-    '"Geist Mono", "Geist Mono Fallback", Consolas, monospace',
-    "'Geist Mono', 'Generated Fallback', UnquotedFallback",
+    '"Cascadia Mono Variable", "Generated Fallback", Consolas, monospace',
+    '"Cascadia Mono Variable", sans-serif, Consolas, monospace',
+    '"Cascadia Mono Variable", serif, system-ui, ui-monospace, "Generated Fallback", UnquotedFallback',
   ])("excludes fallback faces and ends the xterm family with monospace fallbacks: %s", async (family) => {
     render(<ManagedTerminalPanel terminal={entry} />);
     screen.getByLabelText("Live session terminal").style.fontFamily = family;
     await waitFor(() => expect(fake.construct).toHaveBeenCalled());
     const { fontFamily } = fake.construct.mock.calls[0][0];
-    expect(fontFamily).toContain("Geist Mono");
-    expect(fontFamily).not.toMatch(/Fallback/i);
-    expect(fontFamily).toMatch(/Consolas, monospace$/);
+    expect(fontFamily).toBe('"Cascadia Mono Variable", Consolas, monospace');
   });
   it("waits for the computed data font and font readiness before measuring xterm", async () => {
     let loaded!: () => void, ready!: () => void;
@@ -80,14 +79,14 @@ describe("managed terminal", () => {
     Object.defineProperty(document, "fonts", { configurable: true, value: Object.assign(new EventTarget(), { load, ready: new Promise<void>((resolve) => { ready = resolve; }) }) });
     render(<ManagedTerminalPanel terminal={entry} />);
     const node = screen.getByLabelText("Live session terminal");
-    node.style.fontFamily = '"Geist Mono", Consolas, monospace'; node.style.fontSize = "12px";
+    node.style.fontFamily = '"Cascadia Mono Variable", Consolas, monospace'; node.style.fontSize = "14px";
     const computed = getComputedStyle(node);
     await waitFor(() => expect(load).toHaveBeenCalledWith(`${computed.fontSize} ${computed.fontFamily}`));
     expect(fake.construct).not.toHaveBeenCalled();
     await act(async () => loaded());
     expect(fake.construct).not.toHaveBeenCalled();
     await act(async () => ready());
-    expect(fake.construct).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.4, fontFamily: computed.fontFamily, fontSize: 12 }));
+    expect(fake.construct).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.4, fontFamily: computed.fontFamily, fontSize: 14 }));
     expect(fake.fontFamily).toHaveBeenLastCalledWith(computed.fontFamily);
   });
   it("opens after a bounded font wait and remeasures before resizing the host when the font arrives later", async () => {

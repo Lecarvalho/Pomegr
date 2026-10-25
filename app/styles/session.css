@@ -68,7 +68,7 @@
 .commandSessionView .dashboardDisclosureTitle { color: var(--command-ink); font-size: var(--text-heading); font-weight: 600; }
 .commandSessionView .dashboardDisclosureIcon { width: 20px; height: 20px; color: var(--command-muted); }
 .commandSessionView .resourceStat { min-height: 92px; padding: 14px 15px; }
-.commandSessionView .resourceStat > strong { font: 500 20px/1 var(--font-geist-mono), Consolas, monospace; }
+.commandSessionView .resourceStat > strong { font: 500 20px/1 var(--font-data); }
 
 .commandSessionView .sessionEyebrow { color: var(--command-faint); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
 .commandSessionView .sessionKpiStrip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 4px 0 8px; }

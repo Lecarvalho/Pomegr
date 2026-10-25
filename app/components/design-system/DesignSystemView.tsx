@@ -708,13 +708,13 @@ function PanelsSection() {
 }
 
 const TYPE_SCALE = [
-  { name: "Title", tokens: "--text-title · 600 · --font-ui", style: { font: "600 var(--text-title)/1.25 var(--font-ui)", letterSpacing: "-.025em" } },
-  { name: "Section heading", tokens: "--text-heading · 600 · --font-ui", style: { font: "600 var(--text-heading)/1.35 var(--font-ui)" } },
-  { name: "Body", tokens: "--text-base · 400 · --font-ui", style: { font: "400 var(--text-base)/1.5 var(--font-ui)" } },
-  { name: "Control", tokens: "--text-sm · 500 · --font-ui", style: { font: "500 var(--text-sm)/1.4 var(--font-ui)" } },
-  { name: "Metadata", tokens: "--text-xs · 400 · --font-ui · --command-muted", style: { font: "400 var(--text-xs)/1.4 var(--font-ui)", color: "var(--command-muted)" } },
-  { name: "Caption", tokens: "--text-caption · 500 · --font-ui · --command-faint · uppercase", style: { font: "500 var(--text-caption)/1.4 var(--font-ui)", color: "var(--command-faint)", letterSpacing: ".06em", textTransform: "uppercase" } },
-  { name: "Data", tokens: "--text-xs · 400 · --font-data · tabular-nums", style: { font: "400 var(--text-xs)/1.4 var(--font-data)", fontVariantNumeric: "tabular-nums" } },
+  { name: "Title", tokens: "--text-title · 28px · 600 · --font-ui", style: { font: "600 var(--text-title)/1.25 var(--font-ui)", letterSpacing: "-.025em" } },
+  { name: "Section heading", tokens: "--text-heading · 18px · 600 · --font-ui", style: { font: "600 var(--text-heading)/1.35 var(--font-ui)" } },
+  { name: "Body", tokens: "--text-base · 16px · 400 · --font-ui", style: { font: "400 var(--text-base)/1.5 var(--font-ui)" } },
+  { name: "Control", tokens: "--text-sm · 15px · 500 · --font-ui", style: { font: "500 var(--text-sm)/1.4 var(--font-ui)" } },
+  { name: "Metadata", tokens: "--text-xs · 14px · 400 · --font-ui · --command-muted", style: { font: "400 var(--text-xs)/1.4 var(--font-ui)", color: "var(--command-muted)" } },
+  { name: "Caption", tokens: "--text-caption · 12px · 500 · --font-ui · --command-faint · uppercase", style: { font: "500 var(--text-caption)/1.4 var(--font-ui)", color: "var(--command-faint)", letterSpacing: ".06em", textTransform: "uppercase" } },
+  { name: "Data", tokens: "--text-xs · 14px · 400 · --font-data · tabular-nums", style: { font: "400 var(--text-xs)/1.4 var(--font-data)", fontVariantNumeric: "tabular-nums" } },
 ] as const;
 
 const COLOR_TOKENS = [
@@ -733,7 +733,7 @@ const SPACING_TOKENS = ["--space-1", "--space-2", "--space-3", "--space-4", "--s
 const SHAPE_TOKENS = ["--control-radius", "--panel-radius", "--control-height", "--control-compact", "--command-brand-mark-size", "--divider-content-gap", "--shadow-overlay"];
 
 function TypographySection() {
-  return <Section id="typography" title="Typography and tokens" lede="Inter carries the interface (--font-ui); Geist Mono is reserved for data (--font-data). Every value below resolves through app/styles/tokens.css, so this page follows the active theme.">
+  return <Section id="typography" title="Typography and tokens" lede="Segoe UI with bundled Inter fallback carries the interface (--font-ui); bundled Cascadia Mono carries data (--font-data). Reading text starts at 14px. Fonts load from same-origin assets. Dark primary ink is #cbcfd5 and muted ink is #8f96a0 to reduce glare.">
     <div className="designSystemType">
       {TYPE_SCALE.map((entry) => <div key={entry.name}>
         <span style={entry.style}>{entry.name} · Follow actual context levels</span>

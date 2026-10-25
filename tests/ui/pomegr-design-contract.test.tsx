@@ -102,10 +102,9 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.requestsActionsBar:focus-visible \.requestsActionsHit\s*\{[^}]*stroke:\s*var\(--focus-ring\)/);
     expect(styles).toMatch(/\.requestsActionsLargest\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap/);
     expect(styles).toMatch(/\.requestsActionsLargestName\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
-    expect(layoutSource).toMatch(/<html[^>]*className=\{`\$\{inter.variable\} \$\{geistMono.variable\}`\}/);
     expect(styles).toMatch(/--control-radius:\s*4px/);
     expect(styles).toMatch(/--panel-radius:\s*6px/);
-    expect(styles).toMatch(/--text-caption:\s*11px/);
+    expect(styles).toMatch(/--text-caption:\s*12px/);
     expect(styles).toMatch(/\.panelHeader h2[^}]*font-size:\s*var\(--text-sm\)/);
     expect(styles).toMatch(/\.commandNavItem\s*\{[^}]*display:\s*grid;[^}]*align-items:\s*center/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandSidebar\.isOpen\s*\{[^}]*transform:\s*translateX\(0\)/);

@@ -49,6 +49,21 @@ test("the loopback fixture drives real production web through authenticated LAN 
   const assets = [...markup.matchAll(/(?:src|href)="(\/assets\/[A-Za-z0-9._/-]+)"/g)].map((match) => match[1]);
   assert.ok(assets.length > 0, "production HTML references its built assets");
   assert.equal((await fetch(`${gatewayOrigin}${assets[0]}`, { headers: { Cookie: cookie } })).status, 200);
+  const styles = await Promise.all(assets.filter((asset) => asset.endsWith(".css")).map(async (asset) => {
+    const response = await fetch(`${gatewayOrigin}${asset}`, { headers: { Cookie: cookie } });
+    assert.equal(response.status, 200);
+    return response.text();
+  }));
+  const fontUrls = [...styles.join("\n").matchAll(/url\(["']?(\/assets\/[^)"']+\.woff2)["']?\)/g)].map((match) => match[1]);
+  for (const family of ["inter", "cascadia-mono"]) {
+    assert.ok(fontUrls.some((url) => url.includes(`/${family}-latin-wght-normal-`)), family);
+  }
+  for (const url of new Set(fontUrls)) {
+    const response = await fetch(`${gatewayOrigin}${url}`, { headers: { Cookie: cookie } });
+    assert.equal(response.status, 200, url);
+    assert.match(response.headers.get("content-type") || "", /font\/woff2/);
+    assert.equal(Buffer.from(await response.arrayBuffer()).toString("ascii", 0, 4), "wOF2");
+  }
   const brand = await fetch(`${gatewayOrigin}/favicon.png`, { headers: { Cookie: cookie } });
   assert.equal(brand.status, 200);
   assert.match(brand.headers.get("content-type") || "", /^image\//);

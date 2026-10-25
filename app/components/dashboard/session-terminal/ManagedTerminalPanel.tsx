@@ -91,7 +91,7 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
       const style = getComputedStyle(node);
       const fontFamily = [...style.fontFamily.split(",").map((family) => family.trim()).filter((family) => {
         const name = family.replace(/^["']|["']$/g, "");
-        return name && !/Fallback$/i.test(name) && !/^(Consolas|monospace)$/i.test(name);
+        return name && !/Fallback$/i.test(name) && !/^(Consolas|monospace|sans-serif|serif|system-ui|ui-serif|ui-sans-serif|ui-monospace|ui-rounded|cursive|fantasy|math|fangsong)$/i.test(name);
       }), "Consolas", "monospace"].join(", ");
       const fontsReady = Promise.resolve().then(() => document.fonts?.load(`${style.fontSize} ${fontFamily}`))
         .then(() => document.fonts?.ready).catch(() => {});

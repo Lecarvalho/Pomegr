@@ -157,3 +157,5 @@ checkout builds cannot mix server HTML with a different set of hashed client ass
 The lock is released after copying; tests serve their private build while other work
 continues. Use `npm run build` (or `scripts/run-vinext.mjs build`) so this coordination
 is preserved.
+
+Vinext 0.0.50 on Windows fails to rewrite cached Google font paths because of mismatched separators; Fontsource bypasses that cache.

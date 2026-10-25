@@ -49,6 +49,8 @@ const desktopFiles = [
   "runtime/utility-lifecycle.mjs",
 ];
 const runtimePackages = [
+  "@fontsource-variable/inter",
+  "@fontsource-variable/cascadia-mono",
   "@img/colour",
   "@img/sharp-win32-x64",
   "detect-libc",

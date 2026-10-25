@@ -27,7 +27,7 @@ Agent activity shows normalized roles and evidence with the existing privacy bou
 - The roster has a sticky primary row and sticky group headers.
 - On all screen sizes, vertical scrolling continues to the page at either roster edge.
 - This also holds when collapsed groups or filters leave no inner overflow.
-- The panel uses the existing Inter UI and Geist Mono data tokens.
+- The panel uses the [shared UI and data font tokens](../../../DESIGN.md#typography).
 
 ### Groups
 
@@ -101,7 +101,7 @@ Agent activity shows normalized roles and evidence with the existing privacy bou
 
 ### Cards
 
-- The tree uses compact 220×74 agent, workflow, and phase cards.
+- The tree uses compact 220×80 agent, workflow, and phase cards.
 - Collapsed groups are 58px.
 - Connectors are curved.
 - The tree has a combined header with scope and fit controls.
