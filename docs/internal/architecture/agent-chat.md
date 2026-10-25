@@ -27,11 +27,13 @@ shipped. The parts that are not proven on a device are listed under
 
 Aril is an agent that organizes one repository's task board. The owner asks in a chat
 panel; Aril reads the board, the repository's files, and Pomegr's observations, and
-answers. Aril never changes anything itself. It proposes board changes, and Pomegr applies a
-proposal after the owner presses **Apply changes**, except for the grant task writes below. While an owner-started grant is
-active, the desktop runner may start selected Ready tasks and their reviews, send
-failed work back within the grant's limit, merge on green CI after a passing review, and write tasks from the plans the grant names, through the
-fixed grant actions ([Aril grants](tasks.md#aril-grants)). When the owner asks for it, Aril
+answers. Aril changes and starts nothing itself, except through the fixed grant actions
+while a grant the owner started is active ([Aril grants](tasks.md#aril-grants)). Otherwise it
+proposes board changes, and Pomegr applies a proposal after the owner presses **Apply changes**.
+While an owner-started grant is active, the desktop runner may start selected Ready tasks and
+their reviews, send failed work back within the grant's limit, merge on green CI after a passing
+review, and write tasks from the plans the grant names, through those fixed grant actions.
+When the owner asks for it, Aril
 also proposes to start a session for one named task; Pomegr starts it through the manual
 start of the Tasks page, only after the owner selects **Start session** on that proposal
 in the desktop app
@@ -720,7 +722,8 @@ another message.
   tell Aril not to ask why, not to offer a variant, and not to propose it again unless
   the owner asks. The stored proposal is `dismissed`, and every later prompt says so in
   its conversation line.
-- **It changes nothing by itself.** A follow-up sends no task action, retries no
+- **It changes nothing by itself.** Even under a grant, a follow-up takes no
+  [grant action](tasks.md#aril-grants), sends no task action, retries no
   operation, starts no session, and changes no queue: it is a read-only run. Only a
   complete follow-up after any applied or partial outcome may carry one board-change
   proposal. It continues the owner's earlier request and uses the ordinary
@@ -1016,8 +1019,9 @@ never a session's.
 - Observation is unchanged for every session. No chat run is observed: a declared run's
   registry entry is dropped before any pipeline stage reads it (see
   [The declared run](#the-declared-run)), and no pipeline stage reads a conversation.
-- Aril never changes the board itself. Only `apply` does, on the owner's answer, through
-  the fixed task actions; an active grant permits fixed starts, reviews, send-backs,
+- Aril never changes the board itself, except through the fixed grant actions while a grant
+  the owner started is active. Otherwise only `apply` does, on the owner's answer, through
+  the fixed task actions. An active grant permits fixed starts, reviews, send-backs,
   eligible pull-request merges, and task writes from its named plans in
   [Aril grants](tasks.md#aril-grants).
 - A grant write turn uses the plan paths snapshotted at grant start and the fixed
@@ -1028,12 +1032,12 @@ never a session's.
   same conversation, through the monitor's own image route and under its bounds.
 - A proposal that names an image the conversation does not hold is never offered.
 - An image is served only when a message of its conversation names it.
-- Aril starts no session itself. Only `apply` of a start proposal does, from the desktop
-  window, through the manual start and behind every start gate, or the desktop grant
-  runner starts an offered task or review, sends failed work back, or merges an offered
-  pull request under an active
-  grant. The owner's **Start
-  session** on the card approves the proposal; the shared native dialog confirms the start. One Apply is at most one launch.
+- Aril starts no session itself, except through the fixed grant actions while a grant the
+  owner started is active: the desktop grant runner then starts an offered task or review,
+  sends failed work back, or merges an offered pull request, behind every start gate.
+  Otherwise only `apply` of a start proposal starts one, from the desktop window, through the
+  manual start. The owner's **Start session** on the card approves the proposal; the shared
+  native dialog confirms the start. One Apply is at most one launch.
 - Aril never turns the queue on or off. Only `apply` of a queue proposal does, on the
   owner's answer, through `queue_settings` with the one setting `on`. The state is the
   one the proposal names, so no Apply reverses the queue.

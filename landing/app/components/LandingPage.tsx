@@ -71,7 +71,7 @@ export function LandingPage() {
             <QueueDiagram />
             <Notes items={[
               ["Your board, per repository", "Backlog, Ready, In progress, Review, Done. Ready is the queue."],
-              ["Starts only what you queue", "Dispatch is opt-in and lives in the desktop app. Observation never needs it."],
+              ["Starts what you queue or grant", "Dispatch is opt-in and lives in the desktop app. Observation never needs it."],
               ["Review before Done", "Each card links to its session, so the evidence is one click away."],
             ]} />
           </Figure>
@@ -82,9 +82,9 @@ export function LandingPage() {
           <Figure caption="[ fig. 4 — a proposal ]" note={SAMPLE_NOTE}>
             <div className={styles.figureBody}><ArilChat /></div>
             <Notes items={[
-              ["Reads, never acts", "Aril runs read-only. A board change is always a proposal."],
+              ["Proposes; acts only under your grant", "Aril runs read-only. A change is a proposal you apply, unless a grant you started allows it."],
               ["Knows your board", "It answers from your tasks and what Pomegr observed."],
-              ["Starts only on your say", "A start or a queue change needs your confirmation in the desktop app."],
+              ["Starts only on your say", "A start or a queue change needs your confirmation in the desktop app, or a time-bound grant you started."],
             ]} />
           </Figure>
         </section>

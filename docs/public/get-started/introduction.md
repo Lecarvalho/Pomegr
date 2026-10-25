@@ -97,8 +97,9 @@ start together, each in a Git worktree of its own. See [Tasks](../using-pomegr/t
 **Aril** is the chat panel at the bottom right of the window. It reads the board, the
 repository's files, and what Pomegr observed, then proposes changes, such as tasks
 cut from a feature. Nothing changes until you select **Apply changes**, and Aril
-starts a session or turns the queue on or off only through a proposal you apply. See
-[Agent chat](../using-pomegr/agent-chat.md).
+starts a session or turns the queue on or off only through a proposal you apply. The
+exception is a time-bound [grant](../using-pomegr/tasks.md#aril-grants) that only you
+start. See [Agent chat](../using-pomegr/agent-chat.md).
 
 ![The Pomegr repository's task board in dark theme, with the queue on, cards in Backlog, In progress, and Done, and the Aril panel proposing one new task with Apply changes and Dismiss.](../images/introduction/tasks-board.jpg)
 

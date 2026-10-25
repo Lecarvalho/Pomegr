@@ -8,16 +8,14 @@ description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, ord
 **Aril** is the agent built into Pomegr that helps you organize a repository's task
 board. You ask in a chat panel at the bottom right of the window. Aril reads the board,
 the repository's files, and what Pomegr observed, then answers. Aril proposes board
-changes, and you apply them. In **Tasks → Aril settings**, save the actions, limits, and work
-rules, then select **Start grant** and confirm in the panel. The desktop starts allowed
-Ready tasks and their reviews, sends failed work back within its limit, and merges eligible
-pull requests on green CI after a passing review using the selected merge method, directly or through the repository's
-auto-merge, and deletes a task's branch after the merge when you chose that. If you
-enable **Write tasks from plans**, Aril can also create tasks from the grant's named plans
-when the chat is free; they appear in Ready without **Apply changes**. Select **Stop grant** in the same
-panel to end it; running sessions continue. Paired devices can always stop a grant and
-can start one when you allow them. Aril cannot start or extend a grant.
-See [Tasks](tasks.md#aril-grants) for its actions and limits.
+changes, and you apply them.
+
+Aril can also work under a grant that only you start. A grant is time-bound and scoped by
+your Aril settings. The desktop app then starts tasks and reviews, sends failed work back,
+and merges on green CI, within limits you set. Aril cannot start or extend a grant. Under a
+grant that allows **Write tasks from plans**, Aril also creates tasks in **Ready** from the
+plans you named, when the chat is free, without **Apply changes**. See
+[Aril grants](tasks.md#aril-grants) for the actions, the limits, and **Stop grant**.
 
 ## Before you start
 
@@ -142,9 +140,8 @@ A proposal can create a feature, create a task in a place you name, update, dele
 move a task, add a task to the queue or remove it, put queued tasks in a parallel group
 or take them out of one, and put an image that you sent on a task. It cannot mark a task done,
 requeue a task, or change the queue's threshold or schedule. Those stay with you, as
-described in [Tasks](tasks.md). Starting a session and turning the queue on or off are
-proposals of their own, described below. So is removing task worktrees to free disk space,
-which you can apply only in the desktop app: see [Worktrees](tasks-order.md#worktrees).
+described in [Tasks](tasks.md). Starting a session, turning the queue on or off, and removing
+task worktrees are proposals of their own, described below.
 
 ## Start a session from the chat
 
@@ -211,13 +208,39 @@ always a proposal of its own.
 > **Caution:** Aril can be wrong. Its advice on models is a reading of the tasks
 > recorded on your board, not a measurement. Check a proposal before you apply it.
 
+## Free disk space from the chat
+
+Task worktrees take disk space; see [Worktrees](tasks-order.md#worktrees). Ask Aril which
+worktrees remain, or to clean up. Aril sees each worktree's task, whether it has uncommitted
+changes or a commit that exists nowhere else, and about how large it is. It sees no path.
+
+Aril proposes a removal when you ask about disk space or cleanup, or when a done or deleted
+task still has a worktree. It only tells you about a worktree that holds uncommitted changes
+or a commit that exists nowhere else. It proposes none for a task in progress.
+
+1. In the Pomegr desktop app, select **Remove worktree** or **Remove worktrees** on the
+   proposal, or **Dismiss** to drop it. A paired phone cannot apply it.
+2. Read the result beside each row. “Worktree removed” means Pomegr removed it.
+   “Worktree kept: uncommitted changes”, “Worktree kept: commits exist nowhere else”, and
+   “Worktree kept: task or review is running” mean Pomegr kept it.
+
+A kept worktree does not stop the next row. Pomegr never forces a removal.
+
 ## Aril's settings and memory
 
-Ask Aril to settle this repository's actions, limits, work rules, or reviewer choice, or
-to remember a working preference. Aril proposes each change; select **Apply changes**
-to save it. Only you can allow paired devices to manage these settings, in the desktop
-app. Settings and repository memory are sent with each chat prompt to your chosen
-provider.
+Ask Aril to settle this repository's actions, limits, work rules, merge settings, or
+reviewer choice, or to remember a working preference. Aril proposes each change, and you
+select **Apply changes** to save it. Aril never changes settings or memory by itself. Only
+you can allow paired devices to manage these settings, in the desktop app. The panel is in
+[Aril settings](tasks.md#aril-settings), where you can also edit or delete memory entries.
+
+Aril does not ask again what a setting or memory entry already answers. It asks again when
+you say that a rule changed, or when a workflow file of the repository changed after you
+settled the rule. These files are `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, a pull request
+template, `.pomegr/signals.md`, and the files in `.github/workflows/`. Aril reads the changed
+file, then proposes an update or asks only about what the change left unclear.
+
+Settings and repository memory are sent with each chat prompt to your chosen provider.
 
 ## Understand what is kept and sent
 
@@ -234,7 +257,9 @@ provider.
   where Pomegr keeps them. The board snapshot also sends a grant's active state, end
   time, tasks used, and fixed limits and actions; an ended grant includes its end reason.
   Repository settings include the selected merge method, merge mode, and branch deletion choice. Aril also gets the repository's GitHub merge
-  settings (whether squash, merge commit, rebase, auto-merge, and delete-branch-on-merge are on) and its default branch name. Merge and branch results appear as fixed task-log labels.
+  settings (whether squash, merge commit, rebase, auto-merge, and delete-branch-on-merge are on) and its default branch name.
+  It gets the names and dates of the changed workflow files, but not their content, and the facts of the task worktrees that remain, but not their paths.
+  Merge and branch results appear as fixed task-log labels.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without

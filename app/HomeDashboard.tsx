@@ -93,13 +93,13 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="Plan and start work from Tasks"
-          summary="Each repository has a Tasks board, and Aril helps you fill it."
-          description="Each repository now has a Tasks board. Order the cards in Ready, put the ones that start together in a parallel group, and start a session yourself or let the queue start them. Aril, the agent chat, reads the board and proposes changes that you apply."
+          title="Let Aril run work under a grant"
+          summary="Under a grant, Aril starts, reviews, and merges tasks within limits you set."
+          description="A grant lets Aril start the Ready tasks your work rules select and their reviews, send failed work back, merge on green CI after a passing review, and write tasks from plans you name. It stays within the hours, tasks, and usage limit you set."
           highlights={[
-            "Ask Aril to cut a feature into tasks, or send it an image, then select Apply changes. Aril follows up on what changed.",
-            "Tasks and Aril work in the desktop app and on a paired phone. Starting sessions works on Windows only.",
-            "Aril changes nothing by itself, and after a session starts Pomegr only observes it.",
+            "Set the limits in Aril settings, add a work rule, and select Start grant.",
+            "Only you start a grant, in the desktop app or on a paired phone you allow. Stop grant ends it at once and ends no running session.",
+            "The Log lists each grant action, each usage pause, and each refused merge. Starting sessions works on Windows only.",
           ]}
           illustration={<HomeUpdateIllustration />}
           autoOpen={!updateSeen}
