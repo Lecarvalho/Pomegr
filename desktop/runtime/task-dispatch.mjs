@@ -132,6 +132,7 @@ function validatePlan(plan, taskId, directoryExists, fileExists) {
   if (!(plan.effort === null || (typeof plan.effort === "string" && EFFORTS.has(plan.effort)))) return null;
   if (typeof plan.token !== "string" || !TOKEN.test(plan.token)) return null;
   if (!(plan.worktree === undefined || typeof plan.worktree === "boolean")) return null;
+  if (!(plan.sendBack === undefined || typeof plan.sendBack === "boolean")) return null;
   if (!(plan.remoteControl === undefined || typeof plan.remoteControl === "boolean")) return null;
   if (plan.remoteControl === true && typeof PROVIDERS[plan.provider].remoteControlFlags !== "function") return null;
   const { prompt, repositoryRoot: root } = plan;
@@ -142,7 +143,7 @@ function validatePlan(plan, taskId, directoryExists, fileExists) {
   if (!exists) return null;
   const images = planImages(plan.images, prompt, fileExists);
   if (images === null) return null;
-  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true, remoteControl: plan.remoteControl === true, images };
+  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true, sendBack: plan.sendBack === true, remoteControl: plan.remoteControl === true, images };
 }
 
 /** Native-only start of one session for one task. Manual and queued starts share one in-flight slot; only a fixed status reaches the renderer. */
@@ -226,8 +227,17 @@ export function createTaskStart(options = {}) {
     }
     let directory = plan.root;
     let made = null;
-    if (plan.worktree) {
-      const place = { repositoryRoot: plan.root, repositoryId, taskId };
+    const place = { repositoryRoot: plan.root, repositoryId, taskId };
+    let located = null;
+    if (plan.sendBack && worktrees?.locate) {
+      try { located = await worktrees.locate(place); } catch { located = undefined; }
+      if (located === undefined || (located !== null && (typeof located !== "string" || !path.isAbsolute(located) || /[\u0000\r\n"]/u.test(located)))) {
+        await abort(repositoryId, taskId, plan.token);
+        return result("failed");
+      }
+      if (located !== null) directory = located;
+    }
+    if (plan.worktree && located === null) {
       try { made = worktrees ? await worktrees.ensure(place) : null; } catch { made = null; }
       if (made?.ok !== true || typeof made.directory !== "string" || !path.isAbsolute(made.directory) || /[\u0000\r\n"]/u.test(made.directory)) {
         await abort(repositoryId, taskId, plan.token);

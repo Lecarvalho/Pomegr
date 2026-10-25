@@ -44,13 +44,14 @@ function promptText(text, images) {
 
 
 // The fixed session prompt.
-export function buildTaskPrompt(task, images = [], feature = null) {
+export function buildTaskPrompt(task, images = [], feature = null, reasons = []) {
   const conditions = task.completeWhen.checks.map((check) => `- ${CHECK_LABELS[check]}`);
   if (task.completeWhen.own) conditions.push(`- ${task.completeWhen.own}`);
   return [
     TASK_PROMPT_OPENING,
     `Task ${task.id}:`,
     promptText(task.text, images),
+    ...(reasons.length ? ["A reviewer session found problems in the previous attempt. Fix them, then report again:", ...reasons.map((reason) => `- ${reason}`)] : []),
     ...imageLines(images),
     ...featureLine(feature),
     "Complete when:",
@@ -110,11 +111,13 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   try { images = (typeof imagePaths === "function" ? imagePaths(task.id) : []).filter((image) => typeof image?.id === "string" && typeof image.file === "string"); } catch { images = []; }
   let feature = null;
   try { feature = task.featureId !== null && typeof featureOf === "function" ? featureOf(task.featureId) : null; } catch { feature = null; }
+  const sendBack = preparedStatement(database, "SELECT value FROM meta WHERE key = ?").get(`task_send_back:${repositoryId}:${task.id}`)?.value;
   return {
     ok: true,
     plan: {
       taskId: task.id, provider, model: task.run.model, effort: task.run.effort, remoteControl: provider === "claude" && task.run.remoteControl,
-      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images, feature), images: images.map((image) => image.file), token,
+      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images, feature, sendBack ? JSON.parse(sendBack).reasons : []), images: images.map((image) => image.file), token,
+      ...(sendBack ? { sendBack: true } : {}),
     },
   };
 }

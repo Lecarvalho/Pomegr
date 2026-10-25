@@ -61,7 +61,8 @@ Settings alone grant no actions. To start a grant, allow **Start tasks**, **Star
 or both, set **Hours**, **Starts**, and **Concurrent sessions**, and add a work rule.
 Save your changes, then select **Start grant** in the panel's **Grant** section and confirm.
 The desktop app starts the selected Ready tasks and reviews within the grant's limits,
-without asking for each start. It does not send work back, merge, or write tasks.
+without asking for each start. When **Send work back** is enabled and **Send-backs per task**
+is set, it sends matching tasks with failed reviews to a new builder session in the same worktree.
 The strip above the board shows the active grant's end time; the panel also shows starts used.
 Select **Stop grant** to stop further starts at once. Running sessions continue.
 The panel shows when the last grant ended and why; a grant never renews itself.

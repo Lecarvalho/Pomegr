@@ -60,11 +60,12 @@ function cleanupsFrom(answer) {
 function stepsFrom(answer) {
   if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.steps)) return [];
   return answer.steps.filter((step) => isPlainObject(step) && typeof step.repositoryId === "string" && REPOSITORY_ID.test(step.repositoryId)
-    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review"].includes(step.kind)
-    && (!Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
-      && ["claude", "codex"].includes(step.run.provider)
-      && (step.run.model === null || (typeof step.run.model === "string" && MODEL.test(step.run.model)))
-      && (step.run.effort === null || EFFORTS.has(step.run.effort))))).slice(0, MAX_STARTS);
+    && typeof step.taskId === "string" && TASK_ID.test(step.taskId) && ["start", "review", "send_back"].includes(step.kind)
+    && (step.kind === "send_back" ? !Object.hasOwn(step, "run")
+      : !Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
+        && ["claude", "codex"].includes(step.run.provider)
+        && (step.run.model === null || (typeof step.run.model === "string" && MODEL.test(step.run.model)))
+        && (step.run.effort === null || EFFORTS.has(step.run.effort))))).slice(0, MAX_STARTS);
 }
 
 function pauseReason(status) {
@@ -139,7 +140,12 @@ export function createTaskQueueRunner(options = {}) {
     let answer;
     try { answer = await post("grant-next", {}); } catch { return; }
     const ended = new Set();
+    for (const { repositoryId, taskId } of stepsFrom(answer).filter((step) => step.kind === "send_back")) {
+      if (disposed) return;
+      try { await post("grant-send-back", { repositoryId, taskId }); } catch { /* a send-back request is settled and never retried here */ }
+    }
     for (const { repositoryId, taskId, kind, run } of stepsFrom(answer)) {
+      if (kind === "send_back") continue;
       if (disposed) return;
       if (ended.has(repositoryId)) continue;
       const isAuthorized = async () => {

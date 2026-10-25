@@ -191,6 +191,7 @@ export function markTaskDone({ database, repositoryId, now, resolveOutcomeFacts 
   moveTaskToRole(database, repositoryId, number, "done");
   deleteTaskBlockHold(database, repositoryId, number);
   clearTaskReviewer(database, repositoryId, number);
+  preparedStatement(database, "DELETE FROM meta WHERE key = ?").run(`task_send_back:${repositoryId}:T-${number}`);
   requestWorktreeCleanup(database, repositoryId, number);
   releaseQueue(database, repositoryId);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(number));

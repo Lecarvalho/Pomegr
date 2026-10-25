@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import * as grants from "../../../server/tasks/task-aril-grant.mjs";
+import { buildTaskPrompt } from "../../../server/tasks/task-dispatch.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { REPOSITORY as REPO, passingGates, GATE_FACTS, createTask, queueTask, updateTask, setMeta, withDatabase, dispatchMintedAt, repositoryNumber } from "./queue-test-support.mjs";
 
@@ -28,6 +29,158 @@ function setup(t) {
 const step = (taskId, kind = "start", repositoryId = REPO) => ({ repositoryId, taskId, kind,
   ...(kind === "review" ? { run: { provider: "claude", model: null, effort: null } } : {}) });
 const error = (answer, code) => assert.deepEqual(answer, { ok: false, error: code });
+
+const sendBackKey = (id = "T-1") => `task_send_back:${REPO}:${id}`;
+const readMeta = (directory, key) => withDatabase(directory, (db) => {
+  const value = db.prepare("SELECT value FROM meta WHERE key = ?").get(key)?.value;
+  return value ? JSON.parse(value) : null;
+});
+function failedReview({ directory, clock }, number = 1, verdict = "fail", at = clock.now) {
+  updateTask(directory, number, { state: "needs_review", session_id: `codex:builder-${number}`, report_at: clock.now, report_results: "[]" });
+  withDatabase(directory, (db) => {
+    db.prepare("UPDATE tasks SET column_id = (SELECT id FROM columns WHERE repository_id = ? AND name = 'Review') WHERE repository_id = ? AND number = ?").run(REPO, REPO, number);
+    db.prepare("INSERT INTO task_events(repository_id, number, kind, at, session_id) VALUES (?, ?, 'review', ?, ?)").run(REPO, number, clock.now, `codex:builder-${number}`);
+    db.prepare("INSERT INTO task_reviews(repository_id, number, session_id, at, verdict, reasons) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(REPO, number, `codex:reviewer-${number}`, at, verdict, verdict === "fail" ? JSON.stringify(["Missing proof", "Fix the regression"]) : null);
+  });
+}
+const sendBackSettings = { actions: { ...actions, sendBack: true }, limits: { ...limits, sendBacks: 2 } };
+
+test("send-back requires a settled limit at grant start", (t) => {
+  const f = setup(t);
+  f.configure({ actions: sendBackSettings.actions });
+  error(f.start(), "not_ready");
+  f.configure(sendBackSettings);
+  assert.equal(f.start().ok, true);
+});
+
+test("send-back selects only current failed reviews within work rules and limits, before capacity consumers", (t) => {
+  const f = setup(t);
+  for (const text of ["task failed", "task passed", "task stale", "excluded", "task review", "task start"]) f.ready(text);
+  failedReview(f, 1); failedReview(f, 2); failedReview(f, 2, "pass"); failedReview(f, 3, "fail", f.clock.now - 1); failedReview(f, 4);
+  updateTask(f.directory, 5, { state: "needs_review", session_id: "codex:builder-5" });
+  f.configure({ ...sendBackSettings, limits: { ...limits, sendBacks: 2, concurrent: 1 } }); f.start();
+  assert.deepEqual(f.next().steps, [step("T-1", "send_back"), step("T-5", "review")]);
+  setMeta(f.directory, `task_reviewer:${REPO}:T-5`, "codex:running");
+  assert.deepEqual(f.next().steps, [step("T-1", "send_back")], "send-backs consume no session capacity");
+  withDatabase(f.directory, (db) => {
+    const grantId = db.prepare("SELECT id FROM aril_grants").get().id;
+    setMeta(f.directory, sendBackKey(), JSON.stringify({ grantId, count: 2, reasons: ["old"] }));
+  });
+  assert.deepEqual(f.next().steps, []);
+  for (const patch of [{ limits: { ...limits, concurrent: 1, sendBacks: null } }, { limits: { ...limits, concurrent: 1, sendBacks: 2 }, actions }]) {
+    withDatabase(f.directory, (db) => {
+      for (const [key, value] of Object.entries(patch)) db.prepare(`UPDATE aril_grants SET ${key} = ?`).run(JSON.stringify(value));
+    });
+    assert.deepEqual(f.next().steps, []);
+  }
+});
+
+test("send-back rechecks eligibility, shares requeue cleanup, counts per grant and clears meta at Done or deletion", (t) => {
+  const f = setup(t);
+  f.ready(); f.ready(); failedReview(f);
+  const send = () => f.store.sendBackGrant(REPO, { taskId: "T-1" });
+  error(send(), "not_active");
+  f.configure(sendBackSettings); f.start();
+  f.set({ workRules: [] }); error(send(), "not_eligible");
+  f.set({ workRules: [{ kind: "tasks", value: ["T-1"] }] });
+  failedReview(f, 1, "pass"); error(send(), "not_eligible"); failedReview(f);
+  setMeta(f.directory, `task_reviewer:${REPO}:T-1`, "codex:reviewer-1");
+  setMeta(f.directory, `task_attention:${REPO}:T-1`, "Prior attention");
+  assert.deepEqual(send(), { ok: true });
+  let task = f.store.readBoard(REPO).tasks.find((entry) => entry.id === "T-1");
+  assert.equal(task.state, "queued");
+  assert.equal(task.columnId, f.store.readBoard(REPO).columns.find((column) => column.name === "Ready").id);
+  assert.equal(task.report, null);
+  withDatabase(f.directory, (db) => {
+    const row = db.prepare("SELECT * FROM tasks WHERE number = 1").get();
+    for (const key of ["session_id", "dispatch_token", "scheduled_at", "report_at", "report_results", "report_block_reason"]) assert.equal(row[key], null);
+    assert.equal(db.prepare("SELECT 1 FROM meta WHERE key = ?").get(`task_reviewer:${REPO}:T-1`), undefined);
+    assert.equal(db.prepare("SELECT 1 FROM meta WHERE key = ?").get(`task_attention:${REPO}:T-1`), undefined);
+    assert.deepEqual(db.prepare("SELECT kind FROM task_log WHERE number = 1 ORDER BY id DESC LIMIT 2").all().map((row) => row.kind), ["sent_back", "requeued"]);
+  });
+  const first = readMeta(f.directory, sendBackKey());
+  assert.deepEqual(first.reasons, ["Missing proof", "Fix the regression"]);
+  assert.equal(first.count, 1);
+  error(send(), "not_eligible");
+  f.clock.now++; failedReview(f); assert.deepEqual(send(), { ok: true });
+  f.clock.now++; failedReview(f); error(send(), "not_eligible");
+  assert.equal(f.store.readBoard(REPO).tasks.find((entry) => entry.id === "T-1").state, "needs_review");
+  f.store.apply(REPO, "grant_stop", {}); f.start();
+  assert.deepEqual(send(), { ok: true });
+  assert.equal(readMeta(f.directory, sendBackKey()).count, 1);
+  assert.notEqual(readMeta(f.directory, sendBackKey()).grantId, first.grantId);
+  f.clock.now++; failedReview(f);
+  assert.equal(f.store.apply(REPO, "resolve_done", { id: "T-1" }).ok, true);
+  assert.equal(readMeta(f.directory, sendBackKey()), null);
+  setMeta(f.directory, sendBackKey("T-2"), JSON.stringify(first));
+  assert.equal(f.store.apply(REPO, "delete", { id: "T-2" }).ok, true);
+  assert.equal(readMeta(f.directory, sendBackKey("T-2")), null);
+});
+
+test("send-backs take priority across repositories even when starts fill the step limit", (t) => {
+  const f = setup(t);
+  for (let n = 1; n <= 16; n++) {
+    const repo = repositoryNumber(n);
+    f.ready("task", repo); f.configure({}, repo); f.start(repo);
+  }
+  f.ready(); failedReview(f); f.configure(sendBackSettings); f.start();
+  const steps = f.next().steps;
+  assert.equal(steps.length, 16);
+  assert.deepEqual(steps[0], step("T-1", "send_back"));
+});
+
+test("send-back rolls requeue and metadata back if its log cannot commit", (t) => {
+  const f = setup(t); f.ready(); failedReview(f); f.configure(sendBackSettings); f.start();
+  withDatabase(f.directory, (db) => db.exec("CREATE TRIGGER refuse_send_back BEFORE INSERT ON task_log WHEN NEW.kind = 'sent_back' BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;"));
+  error(f.store.sendBackGrant(REPO, { taskId: "T-1" }), "unavailable");
+  assert.equal(f.store.readBoard(REPO).tasks[0].state, "needs_review");
+  assert.equal(readMeta(f.directory, sendBackKey()), null);
+});
+
+test("send-back rechecks each condition at mutation time", async (t) => {
+  for (const condition of ["expired", "stopped", "off", "unset", "limit", "stale", "missing", "wrong_state"]) await t.test(condition, (t) => {
+    const f = setup(t); f.ready(); failedReview(f); f.configure(sendBackSettings); f.start();
+    assert.equal(f.next().steps[0].kind, "send_back");
+    withDatabase(f.directory, (db) => {
+      if (condition === "expired") f.clock.now += 3600000;
+      if (condition === "stopped") f.store.apply(REPO, "grant_stop", {});
+      if (condition === "off") db.prepare("UPDATE aril_grants SET actions = ?").run(JSON.stringify(actions));
+      if (condition === "unset") db.prepare("UPDATE aril_grants SET limits = ?").run(JSON.stringify(limits));
+      if (condition === "limit") {
+        const grantId = db.prepare("SELECT id FROM aril_grants").get().id;
+        setMeta(f.directory, sendBackKey(), JSON.stringify({ grantId, count: 2, reasons: ["prior"] }));
+      }
+      if (condition === "stale") db.prepare("UPDATE task_reviews SET at = at - 1").run();
+      if (condition === "missing") f.store.apply(REPO, "delete", { id: "T-1" });
+      if (condition === "wrong_state") updateTask(f.directory, 1, { state: "blocked" });
+    });
+    error(f.store.sendBackGrant(REPO, { taskId: "T-1" }), ["expired", "stopped"].includes(condition) ? "not_active" : "not_eligible");
+  });
+});
+
+test("a new builder prompt contains retained failed-review reasons after task text and stays bounded", (t) => {
+  const f = setup(t); f.ready("task " + "x".repeat(3995)); failedReview(f); f.configure(sendBackSettings); f.start();
+  assert.equal(f.store.sendBackGrant(REPO, { taskId: "T-1" }).ok, true);
+  const meta = readMeta(f.directory, sendBackKey());
+  meta.reasons = Array.from({ length: 10 }, () => "r".repeat(200));
+  setMeta(f.directory, sendBackKey(), JSON.stringify(meta));
+  const answer = f.store.planStart(REPO, { id: "T-1" }, () => ({ root: "C:/synthetic", pluginReady: true }), passingGates);
+  assert.equal(answer.ok, true);
+  assert.equal(answer.plan.sendBack, true);
+  const prompt = answer.plan.prompt;
+  assert.match(prompt, /A reviewer session found problems in the previous attempt\. Fix them, then report again:\n- /);
+  assert.ok(prompt.indexOf("A reviewer session") > prompt.indexOf("task xxx"));
+  assert.equal(prompt.split("- " + "r".repeat(200)).length, 11);
+  assert.ok(prompt.length <= 8000);
+  assert.ok(readMeta(f.directory, sendBackKey()));
+  const task = f.store.readBoard(REPO).tasks[0];
+  const bounded = buildTaskPrompt(task, Array.from({ length: 4 }, (_, i) => ({ id: String(i), file: "p".repeat(500) })), null, meta.reasons);
+  // An oversized prompt is never cut, so the report instruction is never lost; the desktop refuses it instead.
+  assert.ok(bounded.length > 8000);
+  assert.match(bounded, /block_task with a short reason/u);
+  assert.equal(bounded.split("- " + "r".repeat(200)).length, 11);
+});
 
 test("grant reviewer rule covers providers, model precedence, effort and identical runs", () => {
   for (const model of [null, "builder-model"]) for (const effort of [null, "low", "medium", "high", "xhigh"]) {

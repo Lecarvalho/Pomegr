@@ -49,7 +49,8 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
     .filter((key) => (desktop || key !== "pairedDevices") && JSON.stringify(draft[key]) !== JSON.stringify(original[key]))
     .map((key) => [key, draft[key]]));
   const unsaved = allowed && Object.keys(changed).length > 0;
-  const notReady = saved.limits.hours === null || saved.limits.starts === null || saved.limits.concurrent === null ? "Set Hours, Starts, and Concurrent sessions first."
+  const notReady = saved.actions.sendBack && saved.limits.sendBacks === null ? "Set Send-backs per task first."
+    : saved.limits.hours === null || saved.limits.starts === null || saved.limits.concurrent === null ? "Set Hours, Starts, and Concurrent sessions first."
     : !saved.actions.start && !saved.actions.review ? "Allow starting tasks or reviews first."
       : saved.workRules.length === 0 ? "Add a work rule first: a grant starts nothing without one." : null;
   const confirming = confirm && !unsaved && !notReady && confirm.settings === JSON.stringify(saved);
