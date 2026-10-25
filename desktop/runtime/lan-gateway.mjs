@@ -11,6 +11,8 @@ const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/session-domain",
 const TASK_ACTION_PATH = "/api/tasks/action";
 // Paired manual starts stay in desktop main; the private start plan never reaches the web host.
 const TASK_START_PATH = "/api/tasks/start";
+const TASK_LOG_PATH = "/api/tasks/log-read";
+const MAX_TASK_LOG_BODY_BYTES = 256;
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MAX_TASK_START_BODY_BYTES = 512;
@@ -493,17 +495,19 @@ export async function startLanGateway(options = {}) {
     const agentChat = method === "POST" && pathname === AGENT_CHAT_PATH;
     const taskAction = method === "POST" && pathname === TASK_ACTION_PATH;
     const taskStart = method === "POST" && pathname === TASK_START_PATH;
+    const taskLog = method === "POST" && pathname === TASK_LOG_PATH;
     const imageAdd = method === "POST" && pathname === TASK_IMAGE_ADD_PATH;
     const imageRemove = method === "POST" && pathname === TASK_IMAGE_REMOVE_PATH;
     const imageRead = method === "GET" && pathname === TASK_IMAGE_READ_PATH;
     const chatImageAdd = method === "POST" && pathname === AGENT_CHAT_IMAGE_ADD_PATH;
     const chatImageRead = method === "GET" && pathname === AGENT_CHAT_IMAGE_READ_PATH;
-    if (method !== "GET" && method !== "HEAD" && !taskAction && !taskStart && !agentChat && !imageAdd && !imageRemove && !chatImageAdd) { fixed(response, 405); return; }
+    if (method !== "GET" && method !== "HEAD" && !taskAction && !taskStart && !taskLog && !agentChat && !imageAdd && !imageRemove && !chatImageAdd) { fixed(response, 405); return; }
     if (!authenticated(request)) {
       if (pathname.startsWith("/api/")) { fixed(response, 401, "Unauthorized"); return; }
       if (acceptsHtml(request)) { noStore(response); response.writeHead(302, { Location: "/__pomegr/pair" }); response.end(); return; }
       fixed(response, 401, "Unauthorized"); return;
     }
+    if (pathname === TASK_LOG_PATH && !taskLog) { fixed(response, 405); return; }
     if (pathname === "/api/client-access") {
       noStore(response); response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       if (method === "GET") response.end('{"mode":"lan","canCopyTranscriptPath":false}'); else response.end();
@@ -525,12 +529,12 @@ export async function startLanGateway(options = {}) {
       return;
     }
     let actionBody = null;
-    if (taskAction || taskStart || agentChat) {
+    if (taskAction || taskStart || taskLog || agentChat) {
       // A paired device's own page only: the gateway's origin, a JSON body within the bound, and no query.
       const declared = request.headers["content-length"];
-      const bodyLimit = taskStart ? MAX_TASK_START_BODY_BYTES : MAX_TASK_ACTION_BODY_BYTES;
+      const bodyLimit = taskLog ? MAX_TASK_LOG_BODY_BYTES : taskStart ? MAX_TASK_START_BODY_BYTES : MAX_TASK_ACTION_BODY_BYTES;
       const contentType = String(request.headers["content-type"] || "");
-      if (url.search || request.headers.origin !== origin || !(taskStart
+      if (url.search || request.headers.origin !== origin || !(taskStart || taskLog
         ? /^application\/json(?:\s*;\s*charset=utf-8)?$/iu.test(contentType)
         : contentType.startsWith("application/json"))
         || request.headers["transfer-encoding"] !== undefined || !/^\d+$/.test(String(declared ?? "")) || Number(declared) > bodyLimit) { fixed(response, 403); return; }
@@ -538,6 +542,20 @@ export async function startLanGateway(options = {}) {
       if (actionBody === null) { fixed(response, 400); return; }
       if (!active || suspended || !authenticated(request)) { fixed(response, 403); return; }
     } else if (!routeIsAllowed(pathname)) { fixed(response, 404); return; }
+    if (taskLog) {
+      let body = null;
+      try { body = JSON.parse(actionBody.toString("utf8")); } catch { /* invalid JSON */ }
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== 1
+        || typeof body.repositoryId !== "string" || !REPOSITORY_ID.test(body.repositoryId)) { fixed(response, 400); return; }
+      let answer;
+      try { answer = typeof options.taskLog === "function" ? await options.taskLog(body.repositoryId) : { ok: false, error: "unavailable" }; }
+      catch { answer = { ok: false, error: "unavailable" }; }
+      if (!active || suspended || !authenticated(request) || response.destroyed) { if (!response.destroyed) fixed(response, 403); return; }
+      noStore(response);
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify(answer));
+      return;
+    }
     if (taskStart) {
       let body = null;
       try { body = pairedStartRequest(JSON.parse(actionBody.toString("utf8"))); } catch { /* invalid JSON */ }
