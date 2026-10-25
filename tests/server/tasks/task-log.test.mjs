@@ -30,7 +30,8 @@ test("task transitions append only the fixed log fields in order", async (t) => 
   assert.deepEqual(log.entries.map(({ kind }) => kind), ["started", "assigned", "review", "blocked", "requeued", "started", "done"]);
   assert.deepEqual(log.entries.map(({ id }) => id), [1, 2, 3, 4, 5, 6, 7]);
   assert.ok(log.entries.every((entry) => entry.task === "T-1" && Number.isInteger(entry.at)));
-  assert.deepEqual(log.entries.map((entry) => Object.keys(entry).sort()), Array(7).fill(["at", "id", "kind", "task"]));
+  assert.deepEqual(log.entries.map((entry) => Object.keys(entry).sort()), Array(7).fill(["at", "id", "kind", "pullRequest", "task"]));
+  assert.ok(log.entries.every((entry) => entry.pullRequest === null));
   assert.equal(log.entries[2].at, 1_000_010);
   assert.equal(log.entries[3].at, clock.now);
   assert.deepEqual({ more: log.more, latestId: log.latestId, cursors: log.cursors }, { more: false, latestId: 7, cursors: { aril: 0 } });
@@ -74,7 +75,7 @@ test("pruning keeps 1000 per repository and IDs never repeat after deletion", as
   const { store, directory } = await openTemporaryStore(t);
   const { appendTaskLog, TASK_LOG_KEEP, TASK_LOG_KINDS, TASK_LOG_CONSUMERS } = await import("../../../server/tasks/task-log.mjs");
   assert.equal(TASK_LOG_KEEP, 1000);
-  assert.deepEqual(TASK_LOG_KINDS, ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered"]);
+  assert.deepEqual(TASK_LOG_KINDS, ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged"]);
   assert.deepEqual(TASK_LOG_CONSUMERS, ["aril"]);
   assert.ok(Object.isFrozen(TASK_LOG_KINDS) && Object.isFrozen(TASK_LOG_CONSUMERS));
   withDatabase(directory, (db) => {
