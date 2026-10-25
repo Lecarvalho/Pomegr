@@ -9,11 +9,17 @@ const fake = vi.hoisted(() => ({
   data: null as ((value: string) => void) | null,
   output: null as ((value: unknown) => void) | null,
   revision: null as ((value: LiveEvent) => void) | null,
-  terminal: vi.fn(), replace: vi.fn(), construct: vi.fn(),
+  terminal: vi.fn(), replace: vi.fn(), construct: vi.fn(), fontFamily: vi.fn(),
 }));
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
-  constructor(options: unknown) { fake.construct(options); }
-  cols = 80; rows = 24; options = {};
+  constructor(options: Record<string, unknown>) {
+    fake.construct(options);
+    this.options = new Proxy({ ...options }, { set(target, key, value) {
+      if (key === "fontFamily" && target[key] !== value) fake.fontFamily(value);
+      target[key as string] = value; return true;
+    } });
+  }
+  cols = 80; rows = 24; options: Record<string, unknown>;
   open = vi.fn(); loadAddon = vi.fn(); write = fake.write; dispose = fake.dispose; focus = fake.focus;
   onData(callback: (value: string) => void) { fake.data = callback; return { dispose: vi.fn() }; }
 } }));
@@ -56,10 +62,22 @@ afterEach(() => { Object.defineProperty(window, "pomegrDesktop", { configurable:
 afterEach(() => { if (originalFonts) Object.defineProperty(document, "fonts", originalFonts); else Reflect.deleteProperty(document, "fonts"); });
 
 describe("managed terminal", () => {
+  it.each([
+    '"Geist Mono", "Geist Mono Fallback", Consolas, monospace',
+    "'Geist Mono', 'Generated Fallback', UnquotedFallback",
+  ])("excludes fallback faces and ends the xterm family with monospace fallbacks: %s", async (family) => {
+    render(<ManagedTerminalPanel terminal={entry} />);
+    screen.getByLabelText("Live session terminal").style.fontFamily = family;
+    await waitFor(() => expect(fake.construct).toHaveBeenCalled());
+    const { fontFamily } = fake.construct.mock.calls[0][0];
+    expect(fontFamily).toContain("Geist Mono");
+    expect(fontFamily).not.toMatch(/Fallback/i);
+    expect(fontFamily).toMatch(/Consolas, monospace$/);
+  });
   it("waits for the computed data font and font readiness before measuring xterm", async () => {
     let loaded!: () => void, ready!: () => void;
     const load = vi.fn(() => new Promise<void>((resolve) => { loaded = resolve; }));
-    Object.defineProperty(document, "fonts", { configurable: true, value: { load, ready: new Promise<void>((resolve) => { ready = resolve; }) } });
+    Object.defineProperty(document, "fonts", { configurable: true, value: Object.assign(new EventTarget(), { load, ready: new Promise<void>((resolve) => { ready = resolve; }) }) });
     render(<ManagedTerminalPanel terminal={entry} />);
     const node = screen.getByLabelText("Live session terminal");
     node.style.fontFamily = '"Geist Mono", Consolas, monospace'; node.style.fontSize = "12px";
@@ -70,11 +88,12 @@ describe("managed terminal", () => {
     expect(fake.construct).not.toHaveBeenCalled();
     await act(async () => ready());
     expect(fake.construct).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.4, fontFamily: computed.fontFamily, fontSize: 12 }));
+    expect(fake.fontFamily).toHaveBeenLastCalledWith(computed.fontFamily);
   });
-  it("opens after a bounded font wait and refits the host when the font arrives later", async () => {
+  it("opens after a bounded font wait and remeasures before resizing the host when the font arrives later", async () => {
     let loaded!: () => void;
     const load = vi.fn(() => new Promise<void>((resolve) => { loaded = resolve; }));
-    Object.defineProperty(document, "fonts", { configurable: true, value: { load, ready: Promise.resolve() } });
+    Object.defineProperty(document, "fonts", { configurable: true, value: Object.assign(new EventTarget(), { load, ready: Promise.resolve() }) });
     render(<ManagedTerminalPanel terminal={entry} />);
     await waitFor(() => expect(load).toHaveBeenCalled());
     expect(fake.construct).not.toHaveBeenCalled();
@@ -83,9 +102,29 @@ describe("managed terminal", () => {
     const fits = fake.fit.mock.calls.length;
     const resizes = fake.terminal.mock.calls.filter(([op]) => op === "resize").length;
     await act(async () => loaded());
+    expect(fake.fontFamily).toHaveBeenLastCalledWith(fake.construct.mock.calls[0][0].fontFamily);
+    expect(fake.fontFamily.mock.invocationCallOrder.at(-1)).toBeLessThan(fake.fit.mock.invocationCallOrder.at(-1)!);
     expect(fake.fit).toHaveBeenCalledTimes(fits + 1);
     expect(fake.terminal.mock.calls.filter(([op]) => op === "resize")).toHaveLength(resizes + 1);
     expect(fake.construct).toHaveBeenCalledTimes(1);
+  });
+  it("remeasures once on a later font loading event and removes the listener on unmount", async () => {
+    const fonts = Object.assign(new EventTarget(), { load: vi.fn(async () => []), ready: Promise.resolve() });
+    const remove = vi.spyOn(fonts, "removeEventListener");
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    const view = render(<ManagedTerminalPanel terminal={entry} />);
+    await waitFor(() => expect(fake.terminal).toHaveBeenCalledWith("resize", expect.anything()));
+    fake.fontFamily.mockClear(); fake.fit.mockClear(); fake.terminal.mockClear();
+    act(() => fonts.dispatchEvent(new Event("loadingdone")));
+    expect(fake.fontFamily).toHaveBeenLastCalledWith(fake.construct.mock.calls[0][0].fontFamily);
+    expect(fake.fit).toHaveBeenCalledTimes(1);
+    expect(fake.terminal).toHaveBeenCalledWith("resize", expect.objectContaining({ cols: 80, rows: 24 }));
+    act(() => fonts.dispatchEvent(new Event("loadingdone")));
+    expect(fake.fit).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(remove).toHaveBeenCalledWith("loadingdone", expect.any(Function));
+    act(() => fonts.dispatchEvent(new Event("loadingdone")));
+    expect(fake.fit).toHaveBeenCalledTimes(1);
   });
   it("does not construct a terminal when its view closes during the font wait", async () => {
     let loaded!: () => void;
