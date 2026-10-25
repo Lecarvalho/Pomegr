@@ -89,7 +89,11 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
       const [{ Terminal }, { FitAddon }] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
       if (disposed) return;
       const style = getComputedStyle(node);
-      const fontsReady = Promise.resolve().then(() => document.fonts?.load(`${style.fontSize} ${style.fontFamily}`))
+      const fontFamily = [...style.fontFamily.split(",").map((family) => family.trim()).filter((family) => {
+        const name = family.replace(/^["']|["']$/g, "");
+        return name && !/Fallback$/i.test(name) && !/^(Consolas|monospace)$/i.test(name);
+      }), "Consolas", "monospace"].join(", ");
+      const fontsReady = Promise.resolve().then(() => document.fonts?.load(`${style.fontSize} ${fontFamily}`))
         .then(() => document.fonts?.ready).catch(() => {});
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(resolve, 500);
@@ -103,7 +107,7 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
         brightBlack: token("--command-muted"), brightRed: token("--command-error"), brightGreen: token("--command-green"), brightYellow: token("--command-amber"),
         brightBlue: token("--command-blue"), brightMagenta: token("--command-brand-text"), brightCyan: token("--command-blue"), brightWhite: token("--command-ink") });
       const emulator = new Terminal({ allowProposedApi: false, disableStdin: true, cursorBlink: true, scrollback: 4000,
-        fontFamily: style.fontFamily, fontSize: parseFloat(style.fontSize), lineHeight: 1.4, theme: theme() });
+        fontFamily, fontSize: parseFloat(style.fontSize), lineHeight: 1.4, theme: theme() });
       const fit = new FitAddon(); emulator.loadAddon(fit); emulator.open(node);
       focus.current = () => emulator.focus();
       const send = (operation: string, payload: Record<string, unknown>): Promise<Answer> => bridge.terminal(operation, payload).catch(() => ({ ok: false, status: "host_unavailable" }));
@@ -122,7 +126,15 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
         fit.fit();
         if (attached) void send("resize", { attachId, cols: emulator.cols, rows: emulator.rows });
       };
-      void fontsReady.then(() => { if (!disposed && !disconnected) resize(); });
+      const remeasure = () => {
+        if (disposed || disconnected) return;
+        // xterm 6 ignores unchanged options; a family change also clears its DOM width cache.
+        emulator.options.fontFamily = "monospace";
+        emulator.options.fontFamily = fontFamily;
+        resize();
+      };
+      void fontsReady.then(remeasure);
+      document.fonts?.addEventListener("loadingdone", remeasure, { once: true });
       let input = Promise.resolve();
       const data = emulator.onData((value) => {
         if (!writable || replayWrites > 0) return;
@@ -161,7 +173,7 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
       const observer = new ResizeObserver(resize); observer.observe(node);
       const colors = new MutationObserver(() => { emulator.options.theme = theme(); });
       colors.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-      cleanup = () => { writable = false; focus.current = () => {}; observer.disconnect(); colors.disconnect(); unsubscribe(); data.dispose(); emulator.dispose(); void send("detach", { attachId }); };
+      cleanup = () => { writable = false; focus.current = () => {}; document.fonts?.removeEventListener("loadingdone", remeasure); observer.disconnect(); colors.disconnect(); unsubscribe(); data.dispose(); emulator.dispose(); void send("detach", { attachId }); };
       fit.fit();
       const answer = await send("attach", { key: terminal.key, attachId });
       if (disposed) { void send("detach", { attachId }); return; }

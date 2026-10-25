@@ -158,7 +158,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - A session Pomegr started in the terminal host shows its live output in one data-font terminal surface.
 - The live terminal uses line height 1.4 to preserve joined box-drawing characters.
 - The live terminal inset matches history: `--space-6` above 760px and `--space-4` at 760px or below.
-- The live terminal waits up to 500 ms for its computed data font before measuring; a later font load refits the terminal.
+- The live terminal waits up to 500 ms, measures with a monospace-only family, and re-measures before fitting after the data font loads.
 - The CLI draws the only input surface and its caret, which shows focus. Pomegr adds no focus ring.
 - The owner types or pastes into the CLI input surface.
 - The Terminal tab sends input, paste, resize, and detach only through fixed trusted desktop IPC.
