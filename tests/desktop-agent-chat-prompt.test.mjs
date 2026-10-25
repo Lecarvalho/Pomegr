@@ -64,6 +64,34 @@ test("snapshot and prompt carry the review verdict without reviewer identity", (
     assert.equal(Object.hasOwn(boardSnapshot(fullBoard({ tasks: [task] })).tasks[0], "review"), false);
   }
 });
+
+test("the board snapshot carries a fixed grant summary with ISO times", () => {
+  const grant = {
+    startedAt: 1790856000000, endsAt: 1790863200000, startsUsed: 2,
+    actions: { start: true, review: true },
+    limits: { hours: 2, starts: 5, concurrent: 1, sendBacks: 0, allowancePercent: 10 },
+    active: true,
+  };
+  assert.deepEqual(boardSnapshot(fullBoard({ aril: { grant } }), { now }).grant, {
+    active: true, ends_at: "2026-10-01T14:00:00.000Z", starts_used: 2,
+    limits: grant.limits, actions: grant.actions,
+  });
+  const ended = boardSnapshot(fullBoard({ aril: { grant: { ...grant, active: false, endedAt: 1790859600000, endReason: "stopped" } } }), { now });
+  assert.deepEqual(ended.grant, {
+    active: false, ends_at: "2026-10-01T14:00:00.000Z", starts_used: 2,
+    limits: grant.limits, actions: grant.actions, end_reason: "stopped",
+  });
+  assert.equal(boardSnapshot(fullBoard(), { now }).grant, null);
+});
+
+test("Aril instructions describe the active grant and where it comes from", () => {
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /active grant means the desktop starts allowed tasks and reviews itself/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /you do not start them or need to propose starts/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /grant_start and grant_review/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /cannot start or extend a grant/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Aril settings.*owner presses Start grant/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /When the owner asks for a grant, explain.*hours, starts, concurrent sessions.*work rule/u);
+});
 const PRIVATE_ROOT = "C:\\Users\\tester\\private-repo";
 
 function fullTask(overrides = {}) {

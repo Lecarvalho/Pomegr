@@ -174,7 +174,7 @@ function ReadyBoard({ board, readTaskLog, readScorecard, onOpenTask, edits, newT
   return <>
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
-    <CapacityStrip queue={board.queue} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)}
+    <CapacityStrip queue={board.queue} grant={board.aril?.grant} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)}
       arilRef={arilTrigger} onOpenAril={() => setArilOpen(true)}
       {...(readTaskLog ? { logRef: logTrigger, onOpenLog: () => setLogOpen(true) } : {})}
       {...(readScorecard ? { scorecardRef: scorecardTrigger, onOpenScorecard: () => setScorecardOpen(true) } : {})} />

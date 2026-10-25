@@ -1,19 +1,19 @@
 ---
 title: "Agent chat"
-description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, order the board, advise on models, start a task's session, and turn the queue on or off. You approve every change and every start."
+description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, order the board, advise on models, propose starts, and turn the queue on or off. You apply its proposals and control grants."
 ---
 
 # Agent chat
 
 **Aril** is the agent built into Pomegr that helps you organize a repository's task
 board. You ask in a chat panel at the bottom right of the window. Aril reads the board,
-the repository's files, and what Pomegr observed, then answers. Aril never changes the
-board by itself: it proposes changes, and you apply them. Aril starts no session and
-turns no queue on or off by itself either: it proposes that, and you apply it.
-
-Grant controls are not available in the app yet. When they ship, an active grant will
-let the desktop runner start selected Ready tasks and their reviews while you are away.
-See [Tasks](tasks.md#aril-settings) for the current status.
+the repository's files, and what Pomegr observed, then answers. Aril proposes board
+changes, and you apply them. In **Tasks → Aril settings**, save the actions, limits, and work
+rules, then select **Start grant** and confirm in the panel. The desktop starts allowed
+Ready tasks and their reviews while the grant is active. Select **Stop grant** in the same
+panel to end it; running sessions continue. Paired devices can always stop a grant and
+can start one when you allow them. Aril cannot start or extend a grant.
+See [Tasks](tasks.md#aril-grants) for its actions and limits.
 
 ## Before you start
 
@@ -226,7 +226,8 @@ provider.
   uses the provider and model of the conversation's last message. The board includes the text of your
   tasks. Aril may also send file content and session evidence that it reads. The images
   you sent in the conversation go to the provider too, and the prompt names the folder
-  where Pomegr keeps them.
+  where Pomegr keeps them. The board snapshot also sends a grant's active state, end
+  time, starts used, and fixed limits and actions; an ended grant includes its end reason.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without

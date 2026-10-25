@@ -1,15 +1,16 @@
 "use client";
 
 import type { RefObject } from "react";
-import type { TaskBoard, TaskProvider } from "../../../shared/task-contract";
+import type { ArilGrant, TaskBoard, TaskProvider } from "../../../shared/task-contract";
 import { PROVIDER_NAMES, usageReading } from "./task-gates-model";
 import { timeOfDay } from "./task-schedule";
 
 const PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 
 /** `onOpenSettings` adds the Board's end of the strip: the threshold, the stop time and the action that opens Queue settings. `onOpenScorecard` adds Scorecard before it (desktop app only). */
-export function CapacityStrip({ queue, settingsRef, onOpenSettings, scorecardRef, onOpenScorecard, logRef, onOpenLog, arilRef, onOpenAril }: {
+export function CapacityStrip({ queue, grant, settingsRef, onOpenSettings, scorecardRef, onOpenScorecard, logRef, onOpenLog, arilRef, onOpenAril }: {
   queue: TaskBoard["queue"];
+  grant?: ArilGrant | null;
   settingsRef?: RefObject<HTMLButtonElement | null>;
   onOpenSettings?(): void;
   scorecardRef?: RefObject<HTMLButtonElement | null>;
@@ -36,6 +37,7 @@ export function CapacityStrip({ queue, settingsRef, onOpenSettings, scorecardRef
         Do not start above <span className="taskCapacityValue">{gates.threshold}%</span>
         {stop !== "" && <> · stops starting after <span className="taskCapacityValue">{stop}</span></>}
       </span>}
+      {grant?.active && <span className="taskGrantActive">Aril grant until {timeOfDay(new Date(grant.endsAt).toISOString())}</span>}
       {onOpenAril && <button ref={arilRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenAril}>Aril settings</button>}
       {onOpenLog && <button ref={logRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenLog}>Log</button>}
       {onOpenScorecard && <button ref={scorecardRef} type="button" className="commandQuietAction taskQueueSettingsAction" aria-haspopup="dialog" onClick={onOpenScorecard}>Scorecard</button>}

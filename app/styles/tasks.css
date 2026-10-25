@@ -527,6 +527,7 @@ ul.taskDocBlock { list-style-type: disc; }
 .taskQueueSettings .taskGateThreshold .taskGateFieldLabel { color: var(--command-muted); font-weight: 400; }
 .taskQueueSettings .taskGateThreshold .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
 .taskLogList { list-style: none; padding: 0; }
+.taskGrantActive { color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); }
 .taskQueueSettings .taskLogRow { justify-content: flex-start; flex-wrap: wrap; gap: var(--space-1) var(--space-2); font: 400 var(--text-xs)/1.4 var(--font-ui); overflow-wrap: anywhere; }
 /* Scorecard: the panel reuses Queue settings' frame and rows. */
 .taskScorecardSample { color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-data); }

@@ -10,6 +10,7 @@ import { postPairedTaskAction, postPairedTaskLog, postPairedTaskStart } from "./
 // The two ways a client changes a task.
 
 export type TaskActionResult = { ok: true; /** Only a create answers it: the new task's ID. */ taskId?: string } | { ok: false; error: TaskActionError | "unavailable" };
+export type GrantActionResult = TaskActionResult | { ok: false; error: "not_ready" };
 
 export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
@@ -68,10 +69,13 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign" | "after_set";
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign" | "after_set"
+  | "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
-export async function sendTaskAction(repositoryId: string, action: TaskActionName | "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove", payload: unknown): Promise<TaskActionResult> {
+export function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult>;
+export function sendTaskAction(repositoryId: string, action: TaskActionName | "grant_start" | "grant_stop", payload: unknown): Promise<GrantActionResult>;
+export async function sendTaskAction(repositoryId: string, action: TaskActionName | "grant_start" | "grant_stop", payload: unknown): Promise<GrantActionResult> {
   const bridge = taskDesktopBridge();
   // A paired device may create a feature from a name but never edits or deletes one: neither has a paired route.
   if (!bridge && (action === "feature_update" || action === "feature_delete" || clientAccessMode() !== "lan")) return { ok: false, error: "unavailable" };
@@ -83,6 +87,7 @@ export async function sendTaskAction(repositoryId: string, action: TaskActionNam
         return typeof taskId === "string" && TASK_ID.test(taskId) ? { ok: true, taskId } : { ok: true };
       }
       const error = (result as { error?: unknown }).error;
+      if (action === "grant_start" && error === "not_ready") return { ok: false, error };
       if (typeof error === "string" && FAILURES.has(error)) return { ok: false, error: error as TaskActionError | "unavailable" };
     }
   } catch {

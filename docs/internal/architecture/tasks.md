@@ -178,6 +178,9 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews. It permits no task writes, send-backs, or merges.
 
+- The Aril settings panel's first section, Grant, summarizes saved settings and requires hours, starts, concurrent sessions, a start or review action, and at least one work rule before offering **Start grant**; unsaved changes block starting.
+- **Start grant** first shows an in-panel confirmation with the end time; confirming sends `grant_start` with `{}`. **Stop grant** sends `grant_stop` with `{}` immediately, including on a paired device without edit permission.
+- The panel shows the active grant's end time and snapshotted starts allowance, or the latest ended grant's time and fixed reason; the capacity strip shows “Aril grant until HH:MM” before **Aril settings** only while active.
 - `grant_start` accepts exactly `{}` through the task action envelope and answers `{ ok: true, grant }`; `not_ready` refuses unset `hours`, `starts`, or `concurrent` limits, or both `actions.start` and `actions.review` false, and `conflict` refuses an already active grant.
 - Starting snapshots `settings.actions` and `settings.limits`, records the start time, and sets the end time to that time plus `limits.hours`; later settings edits do not change either snapshot.
 - A grant is active exactly while `ended_at IS NULL`, the current time is before `ends_at`, and `starts_used` is below its snapshotted `limits.starts`.
