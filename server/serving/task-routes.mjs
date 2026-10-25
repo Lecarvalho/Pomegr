@@ -20,7 +20,7 @@ const START_STATUS = Object.freeze({
 const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
 const QUEUE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const QUEUE_START_LIMIT = 16;
-const GRANT_ACTIONS = Object.freeze(["grant-next", "grant-record", "grant-check", "grant-end", "grant-end-all", "grant-send-back", "grant-merge-attempt", "grant-merge-result"]);
+const GRANT_ACTIONS = Object.freeze(["grant-next", "grant-record", "grant-check", "grant-end", "grant-end-all", "grant-send-back", "grant-merge-attempt", "grant-merge-result", "grant-write-tasks"]);
 // The removal of a done task's worktree: the desktop asks which wait, where a repository is, and reports one gone.
 const WORKTREE_ACTIONS = Object.freeze(["worktree-cleanups", "worktree-root", "worktree-cleaned"]);
 const WORKTREE_CLEANUP_LIMIT = 64;

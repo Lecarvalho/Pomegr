@@ -1,12 +1,13 @@
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { setTaskAfter } from "./task-after.mjs";
 import { readAril } from "./task-aril-settings.mjs";
-import { readyColumnId, settleReadyColumn } from "./task-columns.mjs";
+import { readColumnRoles, readyColumnId, settleReadyColumn } from "./task-columns.mjs";
 import { readTaskGroups } from "./task-groups.mjs";
 import { startable } from "./task-dispatch.mjs";
 import { appendTaskLog } from "./task-log.mjs";
 import { readQueueSchedule, startGates } from "./task-queue-advance.mjs";
 import { queueWindowHold } from "./task-queue.mjs";
-import { isRepositoryId, isTaskId, projectBoard, rowInFlight } from "./task-record.mjs";
+import { isRepositoryId, isTaskId, projectBoard, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 import { fillTaskReviews } from "./task-review.mjs";
 import { resolveRequeue } from "./task-report.mjs";
 import { splitTaskTags } from "./task-tags.mjs";
@@ -18,6 +19,9 @@ export function ensureArilGrants(database) {
     starts_used INTEGER NOT NULL DEFAULT 0, ended_at INTEGER, end_reason TEXT
   );
   CREATE UNIQUE INDEX IF NOT EXISTS aril_grants_open ON aril_grants(repository_id) WHERE ended_at IS NULL;`);
+  if (!database.prepare("PRAGMA table_info(aril_grants)").all().some((column) => column.name === "tasks_written")) {
+    database.exec("ALTER TABLE aril_grants ADD COLUMN tasks_written INTEGER NOT NULL DEFAULT 0");
+  }
 }
 const exact = (value, keys) => value !== null && typeof value === "object" && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
@@ -30,6 +34,7 @@ export function readGrant(database, repositoryId, at) {
   const row = preparedStatement(database, "SELECT * FROM aril_grants WHERE repository_id = ? ORDER BY id DESC LIMIT 1").get(repositoryId);
   if (!row) return null;
   const actions = JSON.parse(row.actions), limits = JSON.parse(row.limits);
+  delete limits.plans;
   if (row.ended_at === null && (at >= row.ends_at || row.starts_used >= limits.starts)) {
     row.end_reason = at >= row.ends_at ? "expired" : "starts_used";
     row.ended_at = at;
@@ -43,12 +48,13 @@ export function grantStart({ database, repositoryId, ensureRepository, now }, pa
   if (!exact(payload, [])) return invalid();
   const at = now();
   if (readGrant(database, repositoryId, at)?.active) return { ok: false, error: "conflict" };
-  const { actions, limits } = readAril(database, repositoryId).settings;
+  const { actions, limits, workRules } = readAril(database, repositoryId).settings;
+  const plans = workRules.filter((rule) => rule.kind === "plan").map((rule) => rule.value);
   if ([limits.hours, limits.starts, limits.concurrent].some((limit) => limit === null) || (!actions.start && !actions.review && !actions.merge)
-    || (actions.sendBack && limits.sendBacks === null)) return { ok: false, error: "not_ready" };
+    || (actions.sendBack && limits.sendBacks === null) || (actions.writeTasks && (!actions.start || plans.length === 0))) return { ok: false, error: "not_ready" };
   ensureRepository(database, repositoryId);
   preparedStatement(database, "INSERT INTO aril_grants(repository_id, started_at, ends_at, actions, limits) VALUES (?, ?, ?, ?, ?)")
-    .run(repositoryId, at, at + limits.hours * 3600000, JSON.stringify(actions), JSON.stringify(limits));
+    .run(repositoryId, at, at + limits.hours * 3600000, JSON.stringify(actions), JSON.stringify({ ...limits, plans }));
   return { ok: true, grant: readGrant(database, repositoryId, at) };
 }
 export function grantStop({ database, repositoryId, now }, payload) {
@@ -58,20 +64,22 @@ export function grantStop({ database, repositoryId, now }, payload) {
   return { ok: true };
 }
 
-function selected(task, rules) {
+function selected(task, rules, database, repositoryId) {
   return rules.some(({ kind, value }) => kind === "tag" ? splitTaskTags(task.text, 40).tags.includes(value)
     : kind === "text" ? task.text.toLowerCase().includes(value.toLowerCase())
-      : kind === "feature" ? task.featureId === value : kind === "tasks" && value.includes(task.id));
+      : kind === "feature" ? task.featureId === value : kind === "tasks" && value.includes(task.id))
+    || Boolean(preparedStatement(database, `SELECT 1 FROM meta JOIN aril_grants ON meta.value = CAST(aril_grants.id AS TEXT)
+      WHERE meta.key = ? AND aril_grants.repository_id = ? AND ended_at IS NULL`).get(`task_grant_written:${repositoryId}:${task.id}`, repositoryId));
 }
 
 export function grantStartAllowed(database, repositoryId, task, at) {
   const grant = readGrant(database, repositoryId, at);
-  return grant?.active === true && grant.actions.start && selected(task, readAril(database, repositoryId).settings.workRules);
+  return grant?.active === true && grant.actions.start && selected(task, readAril(database, repositoryId).settings.workRules, database, repositoryId);
 }
 
 function sendBackFor(database, repositoryId, grant, task, rules) {
   if (!grant.actions.sendBack || grant.limits.sendBacks === null || task?.state !== "needs_review"
-    || task.review?.state !== "failed" || !selected(task, rules)) return null;
+    || task.review?.state !== "failed" || !selected(task, rules, database, repositoryId)) return null;
   const grantId = preparedStatement(database, "SELECT id FROM aril_grants WHERE repository_id = ? AND ended_at IS NULL").get(repositoryId).id;
   const value = preparedStatement(database, "SELECT value FROM meta WHERE key = ?").get(`task_send_back:${repositoryId}:${task.id}`)?.value;
   const previous = value ? JSON.parse(value) : null;
@@ -109,7 +117,7 @@ export function grantReviewRun(run, reviewer) {
 const mergeKey = (repositoryId, taskId) => `task_merge_attempt:${repositoryId}:${taskId}`;
 const headKnown = (head) => typeof head === "string" && /^[a-f0-9]{40}$/u.test(head);
 function mergeFor(database, repositoryId, grant, task, settings, resolvePullRequestFacts) {
-  if (!grant.actions.merge || task?.state !== "needs_review" || task.review?.state !== "passed" || !selected(task, settings.workRules)) return null;
+  if (!grant.actions.merge || task?.state !== "needs_review" || task.review?.state !== "passed" || !selected(task, settings.workRules, database, repositoryId)) return null;
   let facts;
   try { facts = resolvePullRequestFacts?.(task.session?.id, task.id); } catch { return null; }
   if (facts?.state !== "open" || facts.checks !== "passed" || !headKnown(facts.headOid)
@@ -144,6 +152,36 @@ function recordGrantMerge({ database, transaction, repositoryId, payload, now })
   });
 }
 
+function writeGrantTasks({ database, transaction, repositoryId, payload, now, createTask }) {
+  if (!isRepositoryId(repositoryId) || !exact(payload, ["plan", "tasks"])
+    || typeof payload.plan !== "string" || !Array.isArray(payload.tasks) || payload.tasks.length < 1 || payload.tasks.length > 5) return { ok: false, error: "invalid" };
+  try {
+    return transaction(() => {
+      const at = now(), grant = readGrant(database, repositoryId, at);
+      if (!grant?.active) return { ok: false, error: "not_active" };
+      const stored = preparedStatement(database, "SELECT id, limits, tasks_written FROM aril_grants WHERE repository_id = ? AND ended_at IS NULL").get(repositoryId);
+      if (!grant.actions.writeTasks || !(JSON.parse(stored.limits).plans ?? []).includes(payload.plan)) return { ok: false, error: "not_allowed" };
+      if (stored.tasks_written + payload.tasks.length > grant.limits.starts) return { ok: false, error: "limit" };
+      const columnId = readyColumnId(database, repositoryId), taskIds = [];
+      if (columnId === null) return { ok: false, error: "invalid" };
+      for (const task of payload.tasks) {
+        if ((task === null || typeof task !== "object" || Array.isArray(task)) || Object.keys(task).some((key) => !["text", "completeWhen", "after"].includes(key))
+          || (task.after !== undefined && !Array.isArray(task.after))) throw new Error("invalid");
+        const after = (task.after ?? []).map((id) => typeof id === "string" && /^#[1-5]$/u.test(id) ? taskIds[Number(id.slice(1)) - 1] : id);
+        const created = createTask({ database, repositoryId, columnId }, { text: task.text, completeWhen: task.completeWhen });
+        if (!created.ok) throw new Error(created.error === "limit" ? "limit" : "invalid");
+        const taskId = taskIdFromNumber(created.number);
+        if (!setTaskAfter({ database, repositoryId, now }, { id: taskId, after }).ok) throw new Error("invalid");
+        preparedStatement(database, "INSERT INTO meta(key, value) VALUES (?, ?)").run(`task_grant_written:${repositoryId}:${taskId}`, String(stored.id));
+        appendTaskLog(database, repositoryId, created.number, "grant_task_written", at);
+        taskIds.push(taskId);
+      }
+      preparedStatement(database, "UPDATE aril_grants SET tasks_written = tasks_written + ? WHERE id = ?").run(taskIds.length, stored.id);
+      return { ok: true, taskIds };
+    });
+  } catch (error) { return { ok: false, error: error.message === "limit" ? "limit" : "invalid" }; }
+}
+
 function grantAfterMet(database, repositoryId, task, board) {
   return (task.after ?? []).every((id) => {
     const parent = board.tasks.find((other) => other.id === id);
@@ -174,7 +212,7 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, res
       const board = fillTaskReviews(database, projected);
       const settings = readAril(database, repositoryId).settings;
       const { workRules: rules, reviewer } = settings;
-      const candidates = board.tasks.filter((task) => selected(task, rules));
+      const candidates = board.tasks.filter((task) => selected(task, rules, database, repositoryId));
       for (const task of candidates) {
         if (sendBacks.length >= 16) break;
         if (sendBackFor(database, repositoryId, grant, task, rules)) sendBacks.push({ repositoryId, taskId: task.id, kind: "send_back" });
@@ -184,6 +222,18 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, res
       const flying = rows.tasks.filter((row) => row.session_id !== null && row.report_at === null && rowInFlight(row, at)).length;
       const reviews = board.tasks.filter((task) => task.review?.state === "running").length;
       let available = grant.limits.concurrent - flying - reviews;
+      const ready = readyColumnId(database, repositoryId);
+      const roles = readColumnRoles(database, repositoryId);
+      if (grant.actions.writeTasks && !candidates.some((task) => task.columnId === ready || task.inFlight || task.state === "needs_review" || roles.get(task.columnId) === "review")) {
+        const stored = preparedStatement(database, "SELECT id, limits, tasks_written FROM aril_grants WHERE repository_id = ? AND ended_at IS NULL").get(repositoryId);
+        const key = `grant_write_offered:${repositoryId}`;
+        const offered = JSON.parse(preparedStatement(database, "SELECT value FROM meta WHERE key = ?").get(key)?.value ?? "null");
+        const plans = JSON.parse(stored.limits).plans ?? [];
+        if (steps.length + sendBacks.length < 16 && plans.length > 0 && stored.tasks_written < grant.limits.starts
+          && (offered?.grantId !== stored.id || at - offered.at > 600000)) {
+          steps.push({ repositoryId, kind: "write_tasks", plans });
+        }
+      }
       const reviewMeta = (task, prefix) => preparedStatement(database, "SELECT 1 FROM meta WHERE key = ?").get(`${prefix}:${repositoryId}:${task.id}`);
       if (grant.actions.review) for (const task of candidates) {
         if (steps.length >= 16 || available <= 0) break;
@@ -198,7 +248,6 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, res
       available = Math.min(available, grant.limits.starts - grant.startsUsed);
       const schedule = readQueueSchedule(database, repositoryId);
       if (!grant.actions.start || (schedule.stopAfter !== null && queueWindowHold(schedule, at))) continue;
-      const ready = readyColumnId(database, repositoryId);
       for (const task of candidates.filter((task) => task.columnId === ready).sort((a, b) => a.position - b.position || Number(a.id.slice(2)) - Number(b.id.slice(2)))) {
         if (steps.length >= 16 || available <= 0) break;
         const row = rows.tasks.find((row) => `T-${row.number}` === task.id);
@@ -207,7 +256,13 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, res
         available -= 1;
       }
     }
-    return { ok: true, steps: [...sendBacks, ...steps].slice(0, 16) };
+    const offeredSteps = [...sendBacks, ...steps].slice(0, 16);
+    for (const step of offeredSteps.filter((step) => step.kind === "write_tasks")) {
+      const { id: grantId } = preparedStatement(database, "SELECT id FROM aril_grants WHERE repository_id = ? AND ended_at IS NULL").get(step.repositoryId);
+      preparedStatement(database, "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(`grant_write_offered:${step.repositoryId}`, JSON.stringify({ grantId, at }));
+    }
+    return { ok: true, steps: offeredSteps };
   });
 }
 
@@ -249,7 +304,8 @@ function endAllGrants({ database, transaction, payload, now }) {
     return { ok: true, ended };
   });
 }
-export const grantOperations = (dispatch, loadRows, now) => ({
+export const grantOperations = (dispatch, loadRows, now, createTask) => ({
+  writeGrantTasks: (repositoryId, payload) => dispatch(writeGrantTasks, { repositoryId, payload, now, createTask }),
   attemptGrantMerge: (repositoryId, payload, resolvePullRequestFacts = null) => dispatch(attemptGrantMerge, { loadRows, repositoryId, payload, resolvePullRequestFacts, now }),
   recordGrantMerge: (repositoryId, payload) => dispatch(recordGrantMerge, { repositoryId, payload, now }),
   sendBackGrant: (repositoryId, payload) => dispatch(sendBackGrant, { loadRows, repositoryId, payload, now }),

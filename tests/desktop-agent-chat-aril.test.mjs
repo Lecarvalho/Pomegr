@@ -38,6 +38,9 @@ test("Aril settings mirror phase 3a fields, nested shapes, numeric and text boun
   const rule = (kind, value) => validSettings({ workRules: [{ kind, value }] });
   for (const [kind, value] of [["tag", "é".repeat(40)], ["text", "x".repeat(80)], ["feature", "feat-1"], ["tasks", Array(50).fill("T-1")]]) assert.ok(rule(kind, value));
   for (const [kind, value] of [["tag", "x".repeat(41)], ["tag", "a b"], ["tag", "IMAGE"], ["tag", "a/b"], ["text", "x".repeat(81)], ["text", "  "], ["text", "x\n"], ["text", "\u0085x"], ["tasks", []], ["tasks", Array(51).fill("T-1")], ["tasks", ["T-0"]], ["feature", 1], ["other", "x"]]) assert.equal(rule(kind, value), null);
+  for (const path of ["plan.md", "docs/plan.md", "a_b/c-1.v2.md"]) assert.deepEqual(rule("plan", path).settings.workRules, [{ kind: "plan", value: path }]);
+  for (const path of ["", "a", "plan.MD", "/plan.md", "./plan.md", "../plan.md", "docs/../plan.md", "docs//plan.md", "docs\\plan.md", "C:/plan.md", "a".repeat(198) + ".md", "docs/plan.md ", "next.md\n", "next.md\r"]) assert.equal(rule("plan", path), null, path);
+  assert.ok(rule("plan", `${"a".repeat(197)}.md`));
   assert.ok(validSettings({ workRules: Array(20).fill({ kind: "text", value: "x" }) }));
   assert.equal(validSettings({ workRules: Array(21).fill({ kind: "text", value: "x" }) }), null);
   assert.equal(validSettings({ workRules: [{ kind: "text", value: "x", pairedDevices: true }] }), null);
@@ -127,6 +130,8 @@ test("snapshot includes served settings and bounded oldest-first memory within t
   const prompt = composePrompt({ board, repositoryName: "Repo", message: "Advice" });
   assert.ok(prompt && prompt.length <= PROMPT_LIMIT);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Your settings and memory/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /grant_task_written/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /plan \(a repository-relative Markdown path/u);
   for (const { op } of operations) assert.ok(AGENT_CHAT_INSTRUCTIONS.includes(`"op":"${op}"`));
   assert.match(AGENT_CHAT_INSTRUCTIONS, /null means not settled/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Never store secrets, credentials, or personal data/u);

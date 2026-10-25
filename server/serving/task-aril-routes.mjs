@@ -47,7 +47,7 @@ export function serveArilActionRoute({ request, response, taskStore, repositoryI
   }
 }
 
-const GRANT_STATUS = Object.freeze({ invalid: 400, not_found: 404, not_active: 409, not_eligible: 409, unavailable: 503 });
+const GRANT_STATUS = Object.freeze({ invalid: 400, not_found: 404, not_active: 409, not_eligible: 409, not_allowed: 409, limit: 409, unavailable: 503 });
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -59,6 +59,7 @@ const methodKnown = (method) => [null, "squash", "merge", "rebase"].includes(met
 export function serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolvePullRequestFacts, action, body }) {
   if (request.headers["x-pomegr-lan-gateway"] === "1") { json(response, 403, rejected("unavailable")); return; }
   const fields = action === "grant-next" ? [] : action === "grant-record" ? ["repositoryId", "taskId", "kind"]
+    : action === "grant-write-tasks" ? ["repositoryId", "plan", "tasks"]
     : action === "grant-send-back" ? ["repositoryId", "taskId"]
     : action === "grant-merge-attempt" ? ["repositoryId", "taskId", "headOid"]
     : action === "grant-merge-result" ? ["repositoryId", "taskId", "headOid", "outcome"]
@@ -76,23 +77,29 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
   try {
     const result = action === "grant-end-all" ? taskStore?.endAllGrants?.({ reason: body.reason })
       : action === "grant-next" ? taskStore?.nextGrantSteps?.({ resolveGateFacts, resolvePullRequestFacts })
+      : action === "grant-write-tasks" ? taskStore?.writeGrantTasks?.(body.repositoryId, { plan: body.plan, tasks: body.tasks })
       : action === "grant-merge-attempt" ? taskStore?.attemptGrantMerge?.(body.repositoryId, { taskId: body.taskId, headOid: body.headOid }, resolvePullRequestFacts)
       : action === "grant-merge-result" ? taskStore?.recordGrantMerge?.(body.repositoryId, { taskId: body.taskId, headOid: body.headOid, outcome: body.outcome })
       : action === "grant-send-back" ? taskStore?.sendBackGrant?.(body.repositoryId, { taskId: body.taskId })
       : action === "grant-record" ? taskStore?.recordGrant?.(body.repositoryId, { taskId: body.taskId, kind: body.kind })
         : action === "grant-check" ? taskStore?.checkGrant?.(body.repositoryId) : taskStore?.endGrant?.(body.repositoryId, { reason: body.reason });
     if (result?.ok !== true) {
-      const error = Object.hasOwn(GRANT_STATUS, result?.error) ? result.error : "unavailable";
+      const error = action === "grant-write-tasks" ? (["not_active", "not_allowed", "limit", "invalid"].includes(result?.error) ? result.error : "invalid")
+        : Object.hasOwn(GRANT_STATUS, result?.error) ? result.error : "unavailable";
       json(response, GRANT_STATUS[error], rejected(error)); return;
     }
     if (action === "grant-next") {
       if (!Array.isArray(result.steps)) throw new TypeError("Grant steps unavailable");
       const steps = result.steps.filter((entry) => isPlainObject(entry) && typeof entry.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(entry.repositoryId)
-        && typeof entry.taskId === "string" && TASK_ID_PATTERN.test(entry.taskId) && ["start", "review", "send_back", "merge"].includes(entry.kind)
+        && (entry.kind === "write_tasks" ? Array.isArray(entry.plans) && entry.plans.length > 0 && entry.plans.every((plan) => typeof plan === "string")
+          : typeof entry.taskId === "string" && TASK_ID_PATTERN.test(entry.taskId) && ["start", "review", "send_back", "merge"].includes(entry.kind))
         && (entry.kind !== "merge" || pullKnown(entry.pullRequest) && headKnown(entry.headOid) && methodKnown(entry.mergeMethod)))
-        .slice(0, 16).map(({ repositoryId, taskId, kind, pullRequest, headOid, mergeMethod }) => ({ repositoryId, taskId, kind,
-          ...(kind === "merge" ? { pullRequest, headOid, mergeMethod } : {}) }));
+        .slice(0, 16).map(({ repositoryId, taskId, kind, plans, pullRequest, headOid, mergeMethod }) => kind === "write_tasks" ? { repositoryId, kind, plans }
+          : { repositoryId, taskId, kind, ...(kind === "merge" ? { pullRequest, headOid, mergeMethod } : {}) });
       json(response, 200, { ok: true, steps });
+    } else if (action === "grant-write-tasks") {
+      if (!Array.isArray(result.taskIds) || !result.taskIds.every((id) => typeof id === "string" && TASK_ID_PATTERN.test(id))) throw new TypeError("Written tasks unavailable");
+      json(response, 200, { ok: true, taskIds: result.taskIds });
     } else if (action === "grant-merge-attempt") {
       if (!pullKnown(result.pullRequest)) throw new TypeError("Merge unavailable");
       json(response, 200, { ok: true, pullRequest: result.pullRequest });
@@ -103,6 +110,6 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
       if (!Number.isSafeInteger(result.ended) || result.ended < 0) throw new TypeError("Grant count unavailable");
       json(response, 200, { ok: true, ended: result.ended });
     } else json(response, 200, { ok: true });
-  } catch { json(response, 503, rejected("unavailable")); }
+  } catch { json(response, action === "grant-write-tasks" ? 400 : 503, rejected(action === "grant-write-tasks" ? "invalid" : "unavailable")); }
 }
 

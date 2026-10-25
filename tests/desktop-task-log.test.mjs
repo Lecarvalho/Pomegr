@@ -32,6 +32,7 @@ test("fixed channel, kinds, export, registration and packaging", async () => {
   const shell = await readFile(new URL("../desktop/runtime/shell-main.mjs", import.meta.url), "utf8");
   assert.match(shell, /installTaskLogIpc\(\{ \.\.\.taskBridge, action: taskLog \}\)/u);
   assert.match(shell, /taskLog: taskLog\.readLog/u);
+  assert.ok(TASK_LOG_KINDS.includes("grant_task_written"));
 });
 
 test("untrusted events and bad repositories send nothing", async () => {

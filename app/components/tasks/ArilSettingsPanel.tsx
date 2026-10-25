@@ -11,10 +11,12 @@ import { timeOfDay } from "./task-schedule";
 
 const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send work back", merge: "Merge on green", writeTasks: "Write tasks from plans" };
 const LIMITS = { hours: ["Hours", 1, 72], starts: ["Starts", 1, 100], concurrent: ["Concurrent sessions", 1, 10], sendBacks: ["Send-backs per task", 0, 10], allowancePercent: ["Provider allowance %", 1, 100] } as const;
-const KINDS = { tag: "Tag", text: "Text", feature: "Feature", tasks: "Tasks" };
+const KINDS = { tag: "Tag", text: "Text", feature: "Feature", tasks: "Tasks", plan: "Plan" };
 const UNSET = "Not settled: Aril will ask";
 const MODEL = /^(?![A-Za-z]:)[A-Za-z0-9][A-Za-z0-9._:@+\[\]-]{0,119}$/;
+const PLAN_PATH = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*\.md$/;
 const line = (value: string, max: number) => value.trim().length > 0 && value.length <= max && !/[\p{Cc}\u2028\u2029]/u.test(value);
+const validPlanPath = (value: string) => line(value, 200) && PLAN_PATH.test(value) && !value.split("/").some((part) => part === "." || part === "..");
 const END_REASONS = { stopped: "you stopped it", expired: "its time ran out", starts_used: "it used all its starts", start_failed: "a start failed", app_restart: "the app restarted" };
 const FAILURES = { settings: "Aril settings could not be saved. Try again.", memory: "Memory could not be saved. Try again.",
   not_ready: "The grant is not ready. Check the saved limits, actions, and work rules.", conflict: "A grant is already active. Refresh the board.", grant: "The grant could not be changed. Try again." };
@@ -51,7 +53,9 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const unsaved = allowed && Object.keys(changed).length > 0;
   const notReady = saved.actions.sendBack && saved.limits.sendBacks === null ? "Set Send-backs per task first."
     : saved.limits.hours === null || saved.limits.starts === null || saved.limits.concurrent === null ? "Set Hours, Starts, and Concurrent sessions first."
-    : !saved.actions.start && !saved.actions.review && !saved.actions.merge ? "Allow starting tasks, reviews, or merges first."
+    : saved.actions.writeTasks && !saved.workRules.some((rule) => rule.kind === "plan") ? "Add a plan rule first: a grant writes tasks only from named plans."
+      : saved.actions.writeTasks && !saved.actions.start ? "Allow starting tasks to use Write tasks from plans."
+        : !saved.actions.start && !saved.actions.review && !saved.actions.merge ? "Allow starting tasks, reviews, or merges first."
       : saved.workRules.length === 0 ? "Add a work rule first: a grant starts nothing without one." : null;
   const confirming = confirm && !unsaved && !notReady && confirm.settings === JSON.stringify(saved);
   const model = draft.reviewer.model?.trim() ?? "";
@@ -59,7 +63,8 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const ids = value.split(",").map((id) => id.trim());
   const ruleValid = kind === "feature" ? board.features.some((feature) => feature.id === value)
     : kind === "tasks" ? ids.length <= 50 && ids.every((id) => board.tasks.some((task) => task.id === id))
-      : kind === "tag" ? line(value, 40) && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}._-]*$/u.test(value) && value.toLowerCase() !== "image" : line(value, 80);
+      : kind === "tag" ? line(value, 40) && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}._-]*$/u.test(value) && value.toLowerCase() !== "image"
+        : kind === "plan" ? validPlanPath(value) : line(value, 80);
   const memory = board.aril.memory;
   const send = async (action: Action, payload: unknown, done: () => void) => {
     if (!(action === "grant_stop" ? editable : allowed) || busy) return;
@@ -134,9 +139,10 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
           options={(Object.keys(KINDS) as (keyof typeof KINDS)[]).map((key) => ({ value: key, label: KINDS[key] }))} onChange={(next) => { setKind(next); setValue(""); }} /></label>
         {kind === "feature" ? <CommandSelect aria-label="Feature" value={value} placeholder="Choose a feature" disabled={busy || draft.workRules.length >= 20}
           options={board.features.map((feature) => ({ value: feature.id, label: feature.name }))} onChange={setValue} />
-          : <label className="taskGateField"><span className="taskGateFieldLabel">Rule value</span><input className="taskOwnInput" value={value} disabled={busy || draft.workRules.length >= 20} maxLength={kind === "tag" ? 40 : kind === "text" ? 80 : undefined}
+          : <label className="taskGateField"><span className="taskGateFieldLabel">{kind === "plan" ? "Plan path" : "Rule value"}</span><input className="taskOwnInput" value={value} disabled={busy || draft.workRules.length >= 20} maxLength={kind === "tag" ? 40 : kind === "text" ? 80 : kind === "plan" ? 200 : undefined}
             placeholder={kind === "tasks" ? "T-1, T-2" : undefined} onChange={(event) => setValue(event.currentTarget.value)} /></label>}
         {kind === "tasks" && <p className="taskGatesCaption">Use comma-separated IDs of tasks on this board.</p>}
+        {kind === "plan" && <p className="taskGatesCaption">A Markdown file in this repository, such as docs/plans/next.md</p>}
         <button type="button" className="commandSecondaryAction" disabled={busy || !ruleValid || draft.workRules.length >= 20} onClick={() => {
           change("workRules", [...draft.workRules, kind === "tasks" ? { kind, value: ids } : { kind, value }]); setValue("");
         }}>Add rule</button>

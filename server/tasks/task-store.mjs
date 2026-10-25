@@ -215,7 +215,7 @@ const featureIsDone = readFeatureDone;
 // The schema requires a step for a task of a feature. Nothing reads it since steps went, so it is always 1.
 const storedStep = (featureId) => (featureId === null ? null : 1);
 
-function createTask({ database, repositoryId }, payload) {
+function createTask({ database, repositoryId, columnId = null }, payload) {
   const input = normalizeCreatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   ensureRepository(database, repositoryId);
@@ -225,7 +225,7 @@ function createTask({ database, repositoryId }, payload) {
     if (!featureExists(database, repositoryId, input.featureId)) return { ok: false, error: "not_found" };
     if (featureIsDone(database, repositoryId, input.featureId)) return { ok: false, error: "conflict" };
   }
-  const first = preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id LIMIT 1").get(repositoryId);
+  const first = columnId === null ? preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id LIMIT 1").get(repositoryId) : { id: columnId };
   if (!first) return { ok: false, error: "conflict" };
   const last = preparedStatement(database, "SELECT MAX(position) AS last FROM tasks WHERE repository_id = ? AND column_id = ?").get(repositoryId, first.id);
   const position = last?.last === null || last?.last === undefined ? 0 : Number(last.last) + 1;
@@ -795,6 +795,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const readScorecard = (repositoryId, appVersion) => link(() => runTransaction(database, () => readScorecardSnapshot(database, repositoryId, appVersion, now())));
   const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
-  return Object.freeze({ ...grantOperations(dispatch, loadRows, now), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, readScorecard, readLog, ackLog, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
