@@ -41,6 +41,16 @@ test("owner turns show only valid unseen log entries and acknowledge the highest
   assert.deepEqual(logCalls(h, "ack").map((call) => call.body), [{ repositoryId, payload: { consumer: "aril", through: 5 } }]);
 });
 
+test("review transitions reach Aril and advance its cursor", async (context) => {
+  const h = await chatHarness(context);
+  const kinds = ["review_started", "review_passed", "review_failed"];
+  h.state.actions = (action) => action === "log-read" ? logAnswer(kinds.map((kind, i) => logEntry(i + 1, { kind }))) : { ok: true };
+  const sent = await send(h);
+  for (const [i, kind] of kinds.entries()) assert.ok(h.runs[0].options.prompt.includes(`T-${i + 1} ${kind}\n`));
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Done." }, sent.conversationId);
+  assert.deepEqual(logCalls(h, "ack").map((call) => call.body.payload.through), [3]);
+});
+
 test("log omission requires both older entries and a gap beyond the cursor", async (context) => {
   for (const [cursor, more, omitted] of [[0, true, true], [3, true, false], [0, false, false], [5, true, false]]) {
     const h = await chatHarness(context);

@@ -14,7 +14,7 @@
 > Related code and checks: the owners and focused commands are routed in the
 > [agent workflow](../development/agent-workflow.md).
 
-**Status: built.** Every capability on this page has shipped: the board, features,
+**Status: built, except the later slices named under [Review sessions](#review-sessions).** Shipped capabilities include the board, features,
 parallel groups, the queue with its start gates and schedule, session start for Claude Code and
 Codex on Windows, session binding, assigned sessions, the thirteen agent tools, verified
 conditions, and the task reference on the Sessions list and in the session view. The user guide is
@@ -61,7 +61,8 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
 - `task_outcomes` stores one outcome per task at Done, from its events in the same transaction, without backfilling older tasks.
 - `task_scorecard_snapshots` stores one row per repository, app version, and formula; snapshots are kept when a task is deleted.
-- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, and `task_log_cursors` tables. These additive tables keep schema version 1.
+- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, `task_log_cursors`, and `task_reviews` tables. These additive tables keep schema version 1.
+- Opening a store adds nullable `reviews INTEGER` and `first_review_passed INTEGER` columns to `task_outcomes` when absent, preserving existing rows.
 - Opening a store adds the nullable `pull_request INTEGER` column to `task_log` when absent, preserving existing rows.
 - `task_log` appends `started`, `assigned`, `review`, `blocked`, `requeued`, `done`, `stalled`, and `recovered` in each transition's transaction. It keeps the newest 1000 entries per repository and survives task deletion. Entry IDs never repeat, and each consumer's durable cursor only moves forward.
 - `logPullRequests(resolveFacts)` appends `checks_passed`, `checks_failed`, and `merged` in one transaction per sweep.
@@ -2149,6 +2150,33 @@ How it is built:
   the other. Binding, unknown-session, and unresolved-repository refusals keep their
   separate fixed feedback. No response includes transport or runtime evidence.
 
+## Review sessions
+
+The monitor supports owner-started reviews of tasks in `needs_review` with a linked builder session.
+Desktop launching, the `report_review` MCP tool, and board display arrive in later slices.
+Aril gains no authority, and no review starts automatically.
+
+- `review-plan` accepts `{ id }` or `{ id, provider, model, effort }` inside the existing repository envelope.
+- An override uses a supported start provider and the task run's model and effort validation; otherwise the task's own run applies.
+- Planning requires the same repository root and plugin readiness as a builder start, but applies no start gates.
+- A live review dispatch refuses another plan with `not_startable`; its SHA-256 digest and mint time expire after the builder dispatch TTL.
+- The plan carries task ID, provider, model, effort, repository root, prompt, and token; it carries no worktree flag, images, or remote control.
+- The later desktop slice locates the task's `tasks/T-n` worktree under `.pomegr/worktrees`, falling back to the repository root.
+- `review-abort` clears only the dispatch whose token matches.
+- Binding compares every review candidate after no builder dispatch matches; it refuses any builder session or another task's reviewer.
+- A successful bind stores the reviewer session ID separately, clears the review dispatch, and appends `review_started`.
+- The fixed English prompt includes task text, Complete when, and the feature title and ID, within 8000 characters.
+- The prompt requires repository rules, focused and full checks, the default-branch merge base, and any open `tasks/T-n` pull request.
+- The prompt forbids edits, commits, and pushes; a reviewer that edits files fails its own review.
+- Only the stored reviewer may report, and only while the task remains `needs_review`; an omitted task ID requires exactly one reviewed task.
+- A verdict is `pass` without reasons, or `fail` with 1–10 nonempty single-line reasons of at most 200 characters each.
+- Verdicts append to `task_reviews`; the latest verdict wins, while an identical retry from the same reviewer appends nothing.
+- Reports append `review_passed` or `review_failed` to the task log and return only the existing fixed agent outcome envelope.
+- Reviews never move the task, edit the board, or change the builder session, builder dispatch, or column.
+- Leaving Review clears both review meta keys; deleting the task also deletes its review rows.
+- Done records the verdict count as `reviews` and the earliest verdict as `first_review_passed` (1 for pass, 0 for fail).
+- Without verdicts, Done records zero reviews and a null first verdict; older outcomes keep both new fields null.
+
 ## Starting a session
 
 Starting is explicit and runs on the desktop computer.
@@ -2600,6 +2628,9 @@ serves no other client.
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
+| `POST /internal/tasks/review-plan` | Desktop main, desktop token; no browser or paired route | Existing `{ repositoryId, payload }` envelope; payload `{ id }` or `{ id, provider, model, effort }`; answers the private review plan |
+| `POST /internal/tasks/review-abort` | Desktop main, desktop token | Existing repository envelope with `{ id, token }`; clears only the matching review dispatch |
+| `POST /api/agent/v1/tasks/review` | Local agent-query capability, same gate as complete/block | `{ sessionRef, verdict, taskId?, reasons? }`; existing `schemaVersion: 1` envelope with `ok`, or fixed `reason`: `invalid`, `not_found`, `not_reviewable`, `unavailable`; no reasons or identity returned |
 | `POST /internal/tasks/scorecard-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { appVersion } }`; upserts the version's snapshot and answers `{ ok: true, scorecard }` with formula, current snapshot, and nullable baseline; counts, shares, medians, snapshot times, and app versions only |
 | `POST /internal/tasks/log-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { limit, after? } }`; answers `{ ok: true, log }` with entries carrying nullable `pullRequest`, pagination, cursors, and latest ID |
 | `POST /internal/tasks/log-ack` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { consumer: "aril", through } }`; answers `{ ok: true, cursor }` with the stored entry ID |
@@ -3171,3 +3202,8 @@ surface to the task data class updates the [Privacy](#privacy) section of this p
 layer rule (`server-tasks-layer`) in `.dependency-cruiser.cjs`. Run
 `npm run check:boundaries` for import direction and `npm run check:docs` for this
 page.
+- `task_reviews` stores verdict, time, reviewer session ID, and nullable JSON reasons under repository and task identifiers.
+- Reasons are bounded agent-written text, like report results; no current store read, route, board, observation surface, or log exposes them.
+- A later board slice may expose review reasons; this slice adds no such read.
+- `task_review_dispatch:<repositoryId>:<T-n>` stores only a SHA-256 digest and mint time; `task_reviewer:<repositoryId>:<T-n>` stores only the reviewer session ID.
+- The review plan sends task text, Complete when, and feature title and ID only through the private desktop launch path.

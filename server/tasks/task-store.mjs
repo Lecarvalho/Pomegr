@@ -8,6 +8,7 @@ import { fillTaskSessions } from "./task-board.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
+import { deleteTaskReviews, ensureTaskReviews, reviewOperations } from "./task-review.mjs";
 import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { deleteTaskReportHistory } from "./task-report-history.mjs";
@@ -39,13 +40,10 @@ import {
   composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeFeatureUpdatePayload,  normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
-
 export const TASK_STORE_SCHEMA_VERSION = 1;
 const DATABASE_FILENAME = "tasks.sqlite";
 const TABLES = ["meta", "repositories", "columns", "features", "tasks"];
-
 let sqliteModule = null;
-
 function loadSqlite() {
   if (!sqliteModule) {
     installSqliteExperimentalWarningFilter();
@@ -53,7 +51,6 @@ function loadSqlite() {
   }
   return sqliteModule;
 }
-
 function createSchema(database) {
   database.exec(`
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -128,6 +125,7 @@ function createFreshStore(database) {
     ensureTaskOutcomes(database);
     ensureScorecardSnapshots(database);
     ensureTaskLog(database);
+    ensureTaskReviews(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
@@ -165,6 +163,7 @@ function openDatabase(directory) {
       ensureTaskOutcomes(database);
       ensureScorecardSnapshots(database);
       ensureTaskLog(database);
+      ensureTaskReviews(database);
     }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
@@ -304,6 +303,7 @@ function deleteTask({ database, repositoryId, now }, payload) {
   deleteTaskReportHistory(database, repositoryId, input.number);
   deleteTaskEvents(database, repositoryId, input.number);
   deleteTaskOutcome(database, repositoryId, input.number);
+  deleteTaskReviews(database, repositoryId, input.number);
   deleteTaskPullRequestSeen(database, repositoryId, input.number);
   deleteTaskBlockHold(database, repositoryId, input.number);
   deleteTaskImageList(database, repositoryId, input.number);
@@ -795,6 +795,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const readScorecard = (repositoryId, appVersion) => link(() => runTransaction(database, () => readScorecardSnapshot(database, repositoryId, appVersion, now())));
   const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
-  return Object.freeze({ readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, readScorecard, readLog, ackLog, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

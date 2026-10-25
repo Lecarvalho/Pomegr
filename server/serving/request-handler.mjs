@@ -14,7 +14,7 @@ import {
   serveAgentFeatureRoute, serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskRemoveRoute, serveAgentTaskUpdateRoute, serveTaskActionRoute, serveTaskRoute,
 } from "./task-routes.mjs";
 import {
-  AGENT_TASK_ASSIGN_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_UNASSIGN_PATH, serveAgentTaskAssignRoute, serveAgentTaskReportRoute,
+  AGENT_TASK_ASSIGN_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_REVIEW_PATH, AGENT_TASK_UNASSIGN_PATH, serveAgentTaskAssignRoute, serveAgentTaskReportRoute,
 } from "./task-session-routes.mjs";
 import { isTaskHomeRequest, serveTaskHomeRoute } from "./task-home-route.mjs";
 import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
@@ -128,7 +128,7 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      // The agent POST paths (add, update, remove, assign, unassign, bind, complete, block, the four feature paths, and the
+      // The agent POST paths (add, update, remove, assign, unassign, bind, complete, block, review, the four feature paths, and the
       // task reads get and list); every other agent route stays GET-only.
       const agentTaskWrite = requestUrl.pathname === AGENT_TASK_ADD_PATH ? serveAgentTaskAddRoute
         : AGENT_TASK_READ_PATHS.includes(requestUrl.pathname) ? serveAgentTaskReadRoute
@@ -137,7 +137,7 @@ export function createRequestHandler({
         : requestUrl.pathname === AGENT_TASK_ASSIGN_PATH || requestUrl.pathname === AGENT_TASK_UNASSIGN_PATH ? serveAgentTaskAssignRoute
         : requestUrl.pathname === AGENT_TASK_UPDATE_PATH ? serveAgentTaskUpdateRoute
         : requestUrl.pathname === AGENT_TASK_BIND_PATH ? serveAgentTaskBindRoute
-          : requestUrl.pathname === AGENT_TASK_COMPLETE_PATH || requestUrl.pathname === AGENT_TASK_BLOCK_PATH ? serveAgentTaskReportRoute : null;
+          : requestUrl.pathname === AGENT_TASK_COMPLETE_PATH || requestUrl.pathname === AGENT_TASK_BLOCK_PATH || requestUrl.pathname === AGENT_TASK_REVIEW_PATH ? serveAgentTaskReportRoute : null;
       if (agentTaskWrite) {
         if (request.method !== "POST") {
           response.writeHead(405, { Allow: "POST" });

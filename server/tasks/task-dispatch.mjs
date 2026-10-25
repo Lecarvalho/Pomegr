@@ -1,5 +1,7 @@
 
 import crypto from "node:crypto";
+import { bindReview } from "./task-review.mjs";
+import { CHECK_LABELS, digestOf, featureLine, TASK_START_PROVIDERS, TOKEN_PATTERN } from "./task-dispatch-parts.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { recordTaskEvent } from "./task-events.mjs";
@@ -15,19 +17,9 @@ export { TASK_DISPATCH_UNBOUND_TTL_MS };
 export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "tree_dirty", "unavailable"]);
 
 const STARTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
-export const TASK_START_PROVIDERS = Object.freeze(["claude", "codex"]);
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
-const CHECK_LABELS = Object.freeze({
-  pr_open: "Pull request open",
-  tree_clean: "Working tree clean",
-  commit_on_branch: "Commit on task branch",
-  pr_merged: "Pull request merged",
-  ci_passed: "CI passed",
-  user_validated: "Validated with the user",
-});
+export { TASK_START_PROVIDERS };
 export const TASK_PROMPT_OPENING = "You are working on one task from the Pomegr task board.";
 
-const digestOf = (token) => crypto.createHash("sha256").update(token, "utf8").digest("hex");
 
 function issueLine(task) {
   const source = taskSourceOf(task.source?.kind === "github_issue" ? task.source.number : undefined);
@@ -50,11 +42,6 @@ function promptText(text, images) {
   return text.replace(TASK_IMAGE_MARKER, (_marker, id) => (numbers.has(id) ? `[Image #${numbers.get(id)}]` : "[image]"));
 }
 
-// The feature's title and ID only: the session reads the rest with `get_feature` when it needs it.
-function featureLine(feature) {
-  if (typeof feature?.id !== "string" || typeof feature.title !== "string") return [];
-  return [`This task is part of the feature "${feature.title}" (${feature.id}). When you need the feature's description or app version, call the Pomegr MCP tool get_feature.`];
-}
 
 // The fixed session prompt.
 export function buildTaskPrompt(task, images = [], feature = null) {
@@ -171,7 +158,7 @@ export function bindDispatch({ database, transaction, payload, now }) {
       const matches = stored !== null && crypto.timingSafeEqual(supplied, Buffer.from(stored.digest, "hex"));
       if (matches && isLive(stored, at)) match = row;
     }
-    if (match === null) return BIND_REFUSED;
+    if (match === null) return bindReview(database, supplied, payload.sessionId, at);
     if (preparedStatement(database, "SELECT 1 FROM tasks WHERE session_id = ?").get(payload.sessionId) !== undefined) return BIND_REFUSED;
     try {
       const linked = preparedStatement(database, "UPDATE tasks SET session_id = ?, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ? AND session_id IS NULL AND dispatch_token = ?")

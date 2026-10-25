@@ -1,6 +1,7 @@
 // The agent's report on a task of its session (the one it was started for, or one it is assigned to), and the user's two resolutions.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { clearTaskReviewer, taskReviewOutcome } from "./task-review.mjs";
 import { sessionAssignedTasks } from "./task-assignments.mjs";
 import { deleteTaskAttention, readTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { verifyChecks } from "./task-checks.mjs";
@@ -87,6 +88,7 @@ function storeReport(database, row, { state, at, results, blockReason, attention
     WHERE repository_id = ? AND number = ?`)
     .run(state, at, JSON.stringify(results), blockReason, at, row.repository_id, row.number);
   if (Number(written.changes) !== 1) return false;
+  if (state !== "needs_review") clearTaskReviewer(database, row.repository_id, Number(row.number));
   recordTaskEvent(database, row.repository_id, Number(row.number), state === "needs_review" ? "review" : "blocked", at, row.session_id);
   if (attention === null) deleteTaskAttention(database, row.repository_id, Number(row.number));
   else writeTaskAttention(database, row.repository_id, Number(row.number), attention);
@@ -184,10 +186,11 @@ export function markTaskDone({ database, repositoryId, now, resolveOutcomeFacts 
     try {
       if (reviewAt !== null) facts = resolveOutcomeFacts?.(sessionIds, reviewAt, taskIdFromNumber(number)) ?? null;
     } catch { /* Missing observation facts stay unknown. */ }
-    writeTaskOutcome(database, repositoryId, number, taskOutcome(events, facts, at));
+    writeTaskOutcome(database, repositoryId, number, { ...taskOutcome(events, facts, at), ...taskReviewOutcome(database, repositoryId, number) });
   } catch { /* An outcome must never prevent the owner's acceptance. */ }
   moveTaskToRole(database, repositoryId, number, "done");
   deleteTaskBlockHold(database, repositoryId, number);
+  clearTaskReviewer(database, repositoryId, number);
   requestWorktreeCleanup(database, repositoryId, number);
   releaseQueue(database, repositoryId);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(number));
@@ -209,6 +212,7 @@ export function resolveRequeue({ database, repositoryId, now }, payload) {
     .run(at, repositoryId, target.number);
   recordTaskEvent(database, repositoryId, target.number, "requeued", at, previous.session_id);
   deleteTaskAttention(database, repositoryId, target.number);
+  clearTaskReviewer(database, repositoryId, target.number);
   deleteTaskBlockHold(database, repositoryId, target.number);
   // A requeued task is an ordinary card again: it left its parallel group when it started over.
   writeTaskGroup(database, repositoryId, target.number, null);

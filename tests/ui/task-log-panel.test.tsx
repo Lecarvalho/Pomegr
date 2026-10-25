@@ -20,8 +20,8 @@ import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 const repositoryId = "repo-0123456789abcdef01234567";
 const taskAction = vi.fn(async () => ({ ok: true }));
 const taskLog = vi.fn<(repositoryId: string) => Promise<unknown>>();
-const labels = ["Started", "Assigned to a session", "Reported complete", "Blocked", "Requeued", "Marked done", "Session ended without a report", "Session working again", "CI passed", "CI failed", "Merged"];
-const kinds: TaskLog["entries"][number]["kind"][] = ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged"];
+const labels = ["Started", "Assigned to a session", "Reported complete", "Blocked", "Requeued", "Marked done", "Session ended without a report", "Session working again", "CI passed", "CI failed", "Merged", "Review started", "Review passed", "Review failed"];
+const kinds: TaskLog["entries"][number]["kind"][] = ["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed"];
 const log = (): TaskLog => ({ entries: kinds.map((kind, i) => ({ id: i + 1, task: `T-${i + 1}`, kind, at: new Date(2026, 9, 23, 8, i).getTime(), pullRequest: i === 10 ? 42 : null })), more: false, arilCursor: 6 });
 const setBridge = (bridge: unknown) => { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge; };
 beforeEach(() => {
@@ -37,14 +37,14 @@ it("shows newest entries first with every fixed label, PR suffix, local times an
   show(value);
   const list = screen.getByRole("list", { name: "Task log entries" });
   expect(within(list).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
-    ...value.entries.toReversed().slice(0, 6).map((entry) => `${entry.id === 11 ? timeOfDay(new Date(entry.at).toISOString()) : scheduleLabel(new Date(entry.at).toISOString())}${entry.task}${labels[entry.id - 1]}${entry.pullRequest ? `PR #${entry.pullRequest}` : ""}`),
+    ...value.entries.toReversed().slice(0, kinds.length - 5).map((entry) => `${entry.id === 11 ? timeOfDay(new Date(entry.at).toISOString()) : scheduleLabel(new Date(entry.at).toISOString())}${entry.task}${labels[entry.id - 1]}${entry.pullRequest ? `PR #${entry.pullRequest}` : ""}`),
     "Aril has read up to here",
-    ...value.entries.toReversed().slice(6).map((entry) => `${scheduleLabel(new Date(entry.at).toISOString())}${entry.task}${labels[entry.id - 1]}`),
+    ...value.entries.toReversed().slice(kinds.length - 5).map((entry) => `${scheduleLabel(new Date(entry.at).toISOString())}${entry.task}${labels[entry.id - 1]}`),
   ]);
   expect(screen.getByText("The task log stays on this computer.")).toBeInTheDocument();
 });
 
-it.each([0, 11])("omits the divider when cursor %s leaves no mixed read state", (arilCursor) => {
+it.each([0, kinds.length])("omits the divider when cursor %s leaves no mixed read state", (arilCursor) => {
   show({ ...log(), arilCursor }); expect(screen.queryByText("Aril has read up to here")).toBeNull();
 });
 it("shows empty and more captions", () => {

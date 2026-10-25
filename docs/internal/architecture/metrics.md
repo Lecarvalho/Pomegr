@@ -26,6 +26,8 @@ These rules apply to every metric and to every surface that shows one.
 
 Formula 1 uses only `task_outcomes` rows whose `pull_request_state` is `merged`, within one repository. S1 and S2 are heuristic proxies for owner effort and first-pass acceptance, not authoritative quality or productivity measurements.
 
+Review verdicts now populate `reviews` and `first_review_passed` at Done for a later first-pass measure. Formula 1 remains unchanged. These are agent-reported verdicts, not authoritative quality measurements; the [review contract](tasks.md#review-sessions) defines their storage.
+
 - S1 `ownerTurns` is the median non-null `owner_turns`; its sample is the number of those rows, including zero counts.
 - S1 `reviewToDoneMs` is the median wall time `done_at - review_at` in milliseconds; its sample includes only non-null `review_at` with `done_at >= review_at`.
 - S2 `firstPass` is the share with `commits_after_review === 0` among rows with non-null `commits_after_review`; its sample is that denominator.
