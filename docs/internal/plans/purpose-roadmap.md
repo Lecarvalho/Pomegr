@@ -5,7 +5,7 @@
 > Scope: the small versions that move Pomegr toward its purpose, the scorecard that measures each step, the 0.8.1 release without the pilot, how the other plans fit, and the readiness for a second autonomous experiment.
 > Continuation owner: the product owner decides; the agent that picks up a version records its evidence here, without scorecard values.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [Agent chat](../architecture/agent-chat.md), [Metrics](../architecture/metrics.md), and [Observation cache](../architecture/observation-cache.md) govern shipped behavior. Each other plan keeps its own scope until the owner accepts its placement here.
-> Next task or decision: the owner holds the closeout debrief (G17); 0.9.0 starts.
+> Next task or decision: the owner gives the go to tag and release 0.9.0, which is built on main, and holds the closeout debrief (G17); 0.9.1 work that needs no decision continues.
 > Completion criteria: 0.8.1 ships without the pilot; each version ships with its scorecard values in the desktop; each gap is shipped, moved to its own plan, or dropped; the [readiness criteria](#readiness-for-experiment-2) pass; experiment 2 runs, and whether each target passed is recorded here.
 > Permanent destinations: Tasks, Agent chat, Metrics, Observation cache, [session evidence privacy](../architecture/privacy/session-evidence.md), [desktop releases](../operations/desktop-releases.md) for the release-branch procedure, and [PRODUCT.md](../../../PRODUCT.md) for purpose wording.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -316,9 +316,9 @@ The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#own
 - [ ] Hold the closeout debrief (G17).
 - [x] Ship 0.8.1 with the steps above and record the procedure (2026-10-21).
 - [ ] Verify the cause of finding 9 (worktree cleanup).
-- [ ] Verify whether #263 stops quota waits from consuming decision rounds.
-- [ ] Fix `list_session_agents` "malformed observation".
-- [ ] Ship 0.9.0 with the outcome record and the scorecard, with the first measured values in the desktop.
+- [x] Verify whether #263 stops quota waits from consuming decision rounds: moot, #263 was reverted with the pilot (d66d9806); G11 keeps the requirement.
+- [x] Fix `list_session_agents` "malformed observation" (0495d04f).
+- [ ] Ship 0.9.0 with the outcome record and the scorecard, with the first measured values in the desktop. Built on main: `task_events` and `task_outcomes`, the Scorecard panel, the pilot's removal, and the server snapshot (T-173); the desktop bridge (T-174) and the release remain.
 - [ ] Apply each accepted plan placement in that plan's own change.
 - [ ] Create a board task for each gap when its version starts.
 - [ ] Pass the readiness criteria.
@@ -331,3 +331,5 @@ The owner answered the other decisions on 2026-10-21 (see [Owner decisions](#own
 2026-10-21: the owner accepted the five-minute plan, the experiment 2 targets, the version order, and the plan placements, and kept T-128 and T-132 out of 0.8.1. Closeout reconciliation became G17. A dry run put #269 on the 0.8.1 cut with one resolved conflict. The owner also decided that scorecard values stay in the desktop, that G1 is stored locally in SQLite, that #269 enters 0.8.1 and #270 waits for 0.9.0, and that the dependency proposal is a starting point that adapts to each user. Next action: build `release/0.8.1`; the owner gives the go for its push, tag, and release, and schedules the closeout debrief.
 
 2026-10-21, later: 0.8.1 shipped from `release/0.8.1`. Both checks passed on the branch, the release workflow passed, and the release description lists the included pull requests. The baseline values were removed from this roadmap at the owner's request; the desktop will show them. Next action: the owner holds the closeout debrief, and 0.9.0 starts.
+
+2026-10-25: a read-only triage of every plan found 0.9.0 built on main but not released, and these checkboxes stale; they now match the code. The [Aril operator](aril-operator.md) plan was proposed for the coordinator of experiment 2. Next action: the owner gives the go for the 0.9.0 release and holds the closeout debrief.
