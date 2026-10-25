@@ -76,6 +76,11 @@ HTTP on your network, so pair only on a network you trust.
   **Retry phone access**.
 - **The panel reads "Pomegr could not find a private network to share on."**
   Connect to a private network, then select **Refresh networks**.
+- **The panel reads "Network verification timed out; retrying."** Pomegr retries
+  automatically and keeps existing browser pairings. Create a new code after sharing
+  returns if your previous code no longer works.
+- **The panel reads "Network verification timed out. Retry phone access."**
+  Select **Retry phone access** when the computer is less busy.
 - **The phone still cannot reach the address.** **Sharing started** confirms only
   the computer's listener. Check that guest Wi-Fi or access-point isolation is off,
   and that Windows Firewall allows Pomegr on **Private** networks only. Pomegr does

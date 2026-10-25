@@ -44,6 +44,12 @@ This page states how each Settings section looks and how the user operates it.
 - This view replaces the temporary synthetic web preview.
 - The access rule for the paths is in [Desktop and diagnostics](../architecture/privacy/desktop-and-diagnostics.md#provider-folder-read).
 
+## Phone access
+
+- During recovery after a probe timeout, the panel says **Network verification timed out; retrying. Paired phones will reconnect automatically.**
+- A timeout while starting sharing says **Network verification timed out. Retry phone access.**
+- Recovery keeps **Stop sharing** available and hides pairing-code creation until verification succeeds.
+
 ## Storage
 
 ### Layout

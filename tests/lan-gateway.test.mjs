@@ -459,6 +459,27 @@ test("LAN sharing passes the desktop starter's paired entrypoint to its gateway"
   } finally { await controller.dispose(); }
 });
 
+test("gateway waits for network verification that takes longer than four seconds", async () => {
+  let reads = 0;
+  const upstream = http.createServer((_request, response) => { reads++; response.end("safe state"); });
+  const upstreamOrigin = await listen(upstream);
+  let slow = false;
+  const gateway = await startLanGateway({
+    host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin,
+    authorizationToken: AUTHORIZATION,
+    isNetworkAllowed: () => slow ? new Promise((resolve) => setTimeout(() => resolve(true), 5_000)) : true,
+    networkPolicy: loopbackTestNetwork,
+  });
+  try {
+    const cookie = await pair(gateway);
+    slow = true;
+    const response = await fetch(`${gateway.origin}/api/state`, { headers: { Cookie: cookie } });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "safe state");
+    assert.equal(reads, 1);
+  } finally { await gateway.close(); await close(upstream); }
+});
+
 test("gateway timeout and rejected verification preserve pairing without serving upstream data", async () => {
   let reads = 0;
   const upstream = http.createServer((_request, response) => { reads++; response.end("safe state"); });

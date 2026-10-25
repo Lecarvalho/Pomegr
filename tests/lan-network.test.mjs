@@ -53,12 +53,33 @@ test("Windows probe uses an absolute system PowerShell command with fixed bounde
   assert.match(call.args.at(-1), /ProfileIdentity/);
   assert.match(call.args.at(-1), /ProfileIdentity/);
   assert.equal(call.options.windowsHide, true);
-  assert.equal(call.options.timeout, 3_000);
+  assert.equal(call.options.timeout, 10_000);
   assert.equal(call.options.maxBuffer, 64 * 1024);
   assert.equal(call.options.shell, false);
   assert.equal(call.options.env.SystemRoot, "C:\\Windows");
   assert.equal(call.options.env.PRIVATE_TOKEN, undefined);
   assert.equal(JSON.stringify(call), JSON.stringify(call).replace(/MUST_NOT_PASS/g, ""));
+});
+
+test("a slow successful probe completes within its deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const lanReader = createLanNetworkReader({
+    platform: "win32", environment: { SystemRoot: "C:\\Windows" },
+    execFileFn(_command, _args, options, callback) {
+      const timeout = setTimeout(() => callback({ killed: true, signal: "SIGTERM", code: null }, "", ""), options.timeout);
+      setTimeout(() => { clearTimeout(timeout); callback(null, probe(privateWifi()), ""); }, 5_000);
+    },
+  });
+  const reading = lanReader.read();
+  t.mock.timers.tick(5_000);
+  assert.equal((await reading).status, "available");
+});
+
+test("probe timeouts have a bounded reason distinct from other process failures", async () => {
+  assert.deepEqual(await reader({ error: { killed: true, signal: "SIGTERM", code: null } }).reader.read(), {
+    status: "unavailable", candidates: [], reason: "probe_timed_out",
+  });
+  assert.equal((await reader({ error: { killed: true, signal: "SIGTERM", code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" } }).reader.read()).reason, "probe_failed");
 });
 
 test("reader accepts active private physical Wi-Fi or Ethernet IPv4 networks only", async () => {
