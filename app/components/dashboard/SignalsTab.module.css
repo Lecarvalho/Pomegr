@@ -10,6 +10,7 @@
 :global(.signalsInsightList) { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
 :global(.signalsInsight) { display: flex; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 :global(.signalsInsight:first-child) { padding-top: 0; border-top: 0; }
+:global(.signalsInsight) > :global(.commandQuietAction) { flex: 0 0 auto; align-self: center; }
 :global(.signalsInsight-warning strong) { color: var(--command-amber); }
 :global(.signalsLifetimeSection header h2), :global(.signalsReportedSection header h2) { margin: 0; font-size: var(--text-heading); line-height: 1.35; }
 :global(.signalsLifetimeSection header p), :global(.signalsReportedSection header p), :global(.signalsSectionNote), :global(.signalsEmptyState) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
@@ -18,6 +19,9 @@
 :global(.signalsLifetimeList li:first-child), :global(.signalsReportedRow:first-child) { padding-top: 0; border-top: 0; }
 :global(.signalsLifetimeList strong) { font-family: var(--font-data); font-weight: 500; }
 :global(.signalsReportedRow p) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
+@media (max-width: 760px) {
+  :global(.signalsInsight) > :global(.commandQuietAction) { width: auto; }
+}
 @media (max-width: 640px) {
   .tab {
     --signals-phone-sticky-offset: 56px;
