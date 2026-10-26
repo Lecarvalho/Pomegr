@@ -145,7 +145,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     let enqueue = null;
     const readInput = () => ({ generation: entry.generation, root: binding?.root || null, exactRoot: Boolean(binding?.exactRoot), repositoryId: binding?.repositoryId || null, branch: binding?.branch || null, anyBranch: binding?.anyBranch === true, sessionCreations: entry.sessionCreations, startedAt: evidence.session.startedAt,
       // Only commits made while one of this session's own Git commands ran list their paths.
-      gitCommandIntervals: sessionGitCommandIntervals(evidence.executionTasks) });
+      gitCommandIntervals: sessionGitCommandIntervals(evidence) });
     entry.readInput = readInput;
     if (expired && !entry.refreshing) {
       entry.refreshing = true;
