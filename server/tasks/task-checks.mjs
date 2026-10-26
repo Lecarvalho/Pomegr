@@ -6,18 +6,19 @@ export const TASK_PULL_REQUEST_STATES = Object.freeze(["open", "merged", "closed
 
 const known = (value) => (typeof value === "boolean" ? value : null);
 
-// A listed pull request in the wanted state holds; one of unknown state leaves the answer unknown.
-function pullRequestIn(facts, wanted) {
+// A listed pull request in a wanted state holds; one of unknown state leaves the answer unknown.
+function pullRequestIn(facts, ...wanted) {
   const states = facts.pullRequestStates;
   if (!Array.isArray(states) || !states.every((state) => TASK_PULL_REQUEST_STATES.includes(state))) return null;
-  if (states.includes(wanted)) return true;
+  if (states.some((state) => wanted.includes(state))) return true;
   return states.includes("unknown") ? null : false;
 }
 
 // Each rule returns true for a known passing value, false for a known failing one, and null for an unknown one.
 // A pull request's state has no `work`: it is the state the Repository tab lists, as of its dated read.
 const RULES = Object.freeze({
-  pr_open: { read: "pullRequests", work: null, value: (facts) => pullRequestIn(facts, "open") },
+  // A merged pull request was opened, so it still meets the condition; one closed without merging does not (task T-179).
+  pr_open: { read: "pullRequests", work: null, value: (facts) => pullRequestIn(facts, "open", "merged") },
   tree_clean: { read: "tree", work: "tree", value: (facts) => known(facts.treeClean) },
   // The task branch is not the main branch and holds a commit of its own, merged since or not.
   commit_on_branch: { read: "branch", work: "repository", value: (facts) => known(facts.branchCommits) },

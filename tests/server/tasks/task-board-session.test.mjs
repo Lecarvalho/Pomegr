@@ -262,6 +262,14 @@ test("a waiting task carries the reading the report's rule gives for its checked
   assert.deepEqual(stale.tasks[0].session.checks.map((entry) => entry.passed), [true, false]);
 });
 
+test("a waiting task in Review keeps Pull request open passing once its pull request merges (task T-179)", () => {
+  const review = waiting({ state: "not_queued", columnId: "col-review", completeWhen: { checks: ["pr_open"], own: null } });
+  const reading = (pullRequestStates) => fillTaskSessions({ tasks: [review] }, () => null, () => ({ ...OPEN_PULL, pullRequestStates })).tasks[0].session.checks;
+  assert.deepEqual(reading(["open"]), [{ check: "pr_open", passed: true }]);
+  assert.deepEqual(reading(["merged"]), [{ check: "pr_open", passed: true }]);
+  assert.deepEqual(reading(["closed"]), [{ check: "pr_open", passed: false }]);
+});
+
 test("a task with a report, an outcome, or no checked condition carries no reading and reads no fact", () => {
   const report = { at: "2026-10-09T10:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null };
   const never = () => { throw new Error("check facts read"); };

@@ -41,8 +41,19 @@ test("each fact decides only its own check", () => {
   assert.deepEqual(passed(verifyChecks(TASK_CHECKS, { ...PASSING, pullRequestStates: ["open"] })),
     { pr_open: true, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: true });
   assert.deepEqual(passed(verifyChecks(TASK_CHECKS, { ...PASSING, pullRequestStates: ["merged", "closed"] })),
-    { pr_open: false, tree_clean: true, commit_on_branch: true, pr_merged: true, ci_passed: true });
+    { pr_open: true, tree_clean: true, commit_on_branch: true, pr_merged: true, ci_passed: true });
   assert.deepEqual(passed(verifyChecks(TASK_CHECKS, { ...PASSING, pullRequestStates: [] })).pr_open, false);
+});
+
+test("Pull request open passes for an open or a merged pull request, not one closed without merging (task T-179)", () => {
+  const judged = (pullRequestStates) => verifyChecks(["pr_open"], { ...PASSING, pullRequestStates });
+  assert.deepEqual(judged(["merged"]), [{ check: "pr_open", passed: true }]);
+  assert.deepEqual(judged(["merged", "closed"]), [{ check: "pr_open", passed: true }]);
+  assert.deepEqual(judged(["unknown", "merged"]), [{ check: "pr_open", passed: true }]);
+  assert.deepEqual(judged(["closed"]), [{ check: "pr_open", passed: false }]);
+  assert.deepEqual(judged([]), [{ check: "pr_open", passed: false }]);
+  assert.deepEqual(judged(["unknown"]), [{ check: "pr_open", passed: false, unavailable: true }]);
+  assert.deepEqual(judged(["unknown", "closed"]), [{ check: "pr_open", passed: false, unavailable: true }]);
 });
 
 test("an unknown, missing, or malformed fact is never a pass", () => {
