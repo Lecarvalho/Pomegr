@@ -1,4 +1,5 @@
 // The agent routes of a session and its tasks: assign and unassign, and the complete and block reports.
+import { reportReworkResults, validReportReworks } from "../../shared/task-rework-report.mjs";
 
 import {
   AGENT_REMOVE_BODY_LIMIT_BYTES, AGENT_SESSION_REF_PATTERN, AGENT_TASK_ID_PATTERN, JSON_HEADERS, agentBoardRepository, isPlainObject, readAgentJson, writeAgentOutcome,
@@ -111,12 +112,14 @@ export async function serveAgentTaskReportRoute({ request, response, requestUrl,
   }
   const noted = !blocking && isPlainObject(body) && Object.hasOwn(body, "attention");
   const named = isPlainObject(body) && Object.hasOwn(body, "taskId");
-  const keys = [...(blocking ? ["sessionRef", "reason"] : noted ? ["sessionRef", "attention"] : ["sessionRef"]), ...(named ? ["taskId"] : [])];
+  const reworked = isPlainObject(body) && Object.hasOwn(body, "reworks");
+  const keys = [...(blocking ? ["sessionRef", "reason"] : noted ? ["sessionRef", "attention"] : ["sessionRef"]), ...(named ? ["taskId"] : []), ...(reworked ? ["reworks"] : [])];
   const boundedLine = (value) => typeof value === "string" && value.trim().length > 0 && value.length <= AGENT_BLOCK_REASON_LIMIT;
   const valid = isPlainObject(body) && Object.keys(body).length === keys.length && keys.every((key) => Object.hasOwn(body, key))
     && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
     && (!named || (typeof body.taskId === "string" && AGENT_TASK_ID_PATTERN.test(body.taskId)))
-    && (!blocking || boundedLine(body.reason)) && (!noted || boundedLine(body.attention));
+    && (!blocking || boundedLine(body.reason)) && (!noted || boundedLine(body.attention))
+    && (!reworked || validReportReworks(body.reworks));
   if (!valid) {
     writeAgentReportResult(response, "invalid");
     return;
@@ -132,13 +135,14 @@ export async function serveAgentTaskReportRoute({ request, response, requestUrl,
       && (taskStore.reportChecks(body.sessionRef, body.taskId) ?? []).length > 0) {
       try { read = await readCheckFacts(body.sessionRef); } catch { read = null; }
     }
-    const task = named ? { taskId: body.taskId } : {};
+    const task = { ...(named ? { taskId: body.taskId } : {}), ...(reworked ? { reworks: body.reworks } : {}) };
     const result = blocking
       ? call({ sessionId: body.sessionRef, ...task, reason: body.reason })
       : call({ sessionId: body.sessionRef, ...task, ...(noted ? { attention: body.attention } : {}) }, () => read ?? (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
-    if (result?.ok === true && blocking) writeAgentReportResult(response, null, { state: "blocked" });
+    const reworks = reworked ? { reworks: reportReworkResults(result?.reworks) } : {};
+    if (result?.ok === true && blocking) writeAgentReportResult(response, null, { state: "blocked", ...reworks });
     else if (result?.ok === true && ["needs_review", "blocked"].includes(result.state)) {
-      writeAgentReportResult(response, null, { state: result.state, results: reportResults(result.results), ...(result.ownerHold === true ? { ownerHold: true } : {}) });
+      writeAgentReportResult(response, null, { state: result.state, results: reportResults(result.results), ...(result.ownerHold === true ? { ownerHold: true } : {}), ...reworks });
     } else writeAgentReportResult(response, Object.hasOwn(AGENT_REPORT_STATUS, result?.error) ? result.error : "unavailable");
   } catch {
     writeAgentReportResult(response, "unavailable");

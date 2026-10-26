@@ -19,7 +19,7 @@ test("Claude hook tells each deny cause apart with a fixed sentence that echoes 
     assert.doesNotMatch(JSON.stringify(out), new RegExp(`${TOKEN}|value-sentinel|error-sentinel|private-path-sentinel|claude:`, "u"));
     return out.permissionDecisionReason;
   };
-  const field = "complete_task takes only these fields: attention, task_id. This call held another field, so nothing was reported. "
+  const field = "complete_task takes only these fields: attention, task_id, reworks. This call held another field, so nothing was reported. "
     + "A plain completion takes no field. Retry once with only those fields.";
   assert.equal(await reason({ ...call, tool_input: { summary: "value-sentinel" } }), field);
   assert.equal(await reason({ ...call, tool_input: { attention: "value-sentinel", result: "value-sentinel" } }), field);
@@ -39,7 +39,7 @@ test("Claude hook tells each deny cause apart with a fixed sentence that echoes 
   assert.equal(await reason(review, { readToken: async () => null }),
     "Pomegr could not sign this call for the current session, so no verdict was recorded. Pomegr may not be running; do not retry, tell the user.");
   assert.equal(await reason(block),
-    "block_task takes only these fields: reason, task_id. This call held another field, so nothing was reported. Retry once with only those fields.");
+    "block_task takes only these fields: reason, task_id, reworks. This call held another field, so nothing was reported. Retry once with only those fields.");
   assert.match(await reason({ ...call, tool_name: "mcp__pomegr__add_task", tool_input: { title: "value-sentinel" } }),
     /^add_task takes only these fields: text, .*so no task was added\. Retry once/u);
 });

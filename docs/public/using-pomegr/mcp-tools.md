@@ -59,9 +59,9 @@ it; they are the only tools that change something you made or that Pomegr manage
 | `remove_task` | Deletes a task that the same session added, if the task has not started. |
 | `assign_task` | Assigns the session to a task of the board that is not done, so the session can report it. It changes no state and starts nothing. |
 | `unassign_task` | Removes the session's own assignment from a task. |
-| `complete_task` | Reports that a task of the session is complete. The task goes to **Review**. An earlier block still holds the queue until you resolve it. A plain completion takes no input. The optional `attention` field gives the owner one line to look at. |
+| `complete_task` | Reports that a task of the session is complete. The task goes to **Review**. An earlier block still holds the queue until you resolve it. A plain completion takes no input. The optional `attention` field gives the owner one line to look at. Optional `reworks` names earlier work this task fixes, with causes. |
 | `report_review` | Reports pass, or fail with one-line reasons, without changing task state. Only you decide what happens next. |
-| `block_task` | Reports that the agent cannot continue a task, with a short reason. |
+| `block_task` | Reports that the agent cannot continue a task, with a short reason. Optional `reworks` names earlier work this task fixes, with causes. |
 | `get_feature` | Reads the title, description, and app version of one feature. |
 | `create_feature` | Creates a feature with a title, and optionally a description and an app version. |
 | `update_feature` | Changes the title, description, or app version of a feature. |
@@ -73,6 +73,13 @@ it; they are the only tools that change something you made or that Pomegr manage
 in a session that is assigned to a task. A session with more than one task names the
 task with `task_id`. The latest report wins until you mark the task done. A later completion keeps an existing block until you resolve it. `assign_task` and `unassign_task`
 need plugin 0.9.8 or later. `get_task` and `list_tasks` need plugin 0.9.13 or later.
+
+`reworks` takes 1-5 `{ ref, cause }` entries, only when the session knows which earlier work this task fixes or redoes.
+References are board tasks (`T-n`) or repository pull requests (`#n`).
+Causes are `missed_wiring`, `spec_gap`, `wrong_behavior`, `stale_instructions`, `latent`, or `other`.
+Each answer identifies recorded, existing, or refused links by reference; a refused link does not undo the report.
+This field needs plugin 0.9.16 or later; older plugin versions reject it.
+Update both and start a new session to load the new tool schema.
 
 Completion checks CI for the checkout's exact commit and matching pull request.
 Pending, missing, or mismatched evidence stays unavailable; it does not mean CI failed.

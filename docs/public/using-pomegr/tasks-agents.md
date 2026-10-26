@@ -54,6 +54,7 @@ call is refused. Nothing is then added, removed, reported, read, or changed.
 `complete_task` and `block_task` act only on the task linked to the calling session
 and on the tasks that session is assigned to.
 
+- Both report tools accept optional `reworks` references and causes for known earlier work this task fixes; see [MCP tools](mcp-tools.md#task-tools).
 - The latest report wins until you mark the task done. Agents may report blocked, complete, then blocked again.
 - Each completion verifies the checked conditions again. Failed or unavailable checks remain identified.
 - CI needs a finished check result for the current checkout commit and its pull request.

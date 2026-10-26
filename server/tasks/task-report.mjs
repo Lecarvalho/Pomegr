@@ -1,6 +1,8 @@
 // The agent's report on a task of its session (the one it was started for, or one it is assigned to), and the user's two resolutions.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { validReportReworks } from "../../shared/task-rework-report.mjs";
+import { recordTaskRework } from "./task-rework.mjs";
 import { clearTaskReviewer, taskReviewOutcome } from "./task-review.mjs";
 import { sessionAssignedTasks } from "./task-assignments.mjs";
 import { deleteTaskAttention, readTaskAttention, writeTaskAttention } from "./task-attention.mjs";
@@ -24,7 +26,8 @@ const QUEUE_HOLDING_STATES = Object.freeze(["stalled", "blocked"]);
 const reportInput = (payload, required, optional = []) => payload !== null && typeof payload === "object" && !Array.isArray(payload)
   && ["sessionId", ...required].every((key) => Object.hasOwn(payload, key))
   && Object.keys(payload).every((key) => key === "sessionId" || key === "taskId" || required.includes(key) || optional.includes(key))
-  && isTaskSessionId(payload.sessionId) && (payload.taskId === undefined || isTaskId(payload.taskId));
+  && isTaskSessionId(payload.sessionId) && (payload.taskId === undefined || isTaskId(payload.taskId))
+  && (!Object.hasOwn(payload, "reworks") || validReportReworks(payload.reworks));
 
 const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT * FROM tasks WHERE session_id = ?").get(sessionId);
 const taskRow = (database, repositoryId, number) => preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number);
@@ -111,19 +114,25 @@ function storeFresh({ database, transaction, payload, row }, report) {
   let fresh = null;
   const state = report.state;
   let ownerHold = false;
+  let reworks;
   const stored = transaction(() => {
     fresh = sessionRows(database, payload.sessionId).find((entry) => sameTask(entry, row)) ?? null;
     if (fresh === null || !reportable(fresh)) return false;
     const written = storeReport(database, fresh, report);
+    if (written && payload.reworks) reworks = payload.reworks.map(({ ref, cause }) => {
+      const result = recordTaskRework({ database, repositoryId: fresh.repository_id, now: () => report.at },
+        { fix: taskIdFromNumber(Number(fresh.number)), reworks: ref, cause, declaredBy: "session" });
+      return result.ok ? { ref, status: result.status } : { ref, status: "refused", reason: result.error };
+    });
     ownerHold = readTaskBlockHolds(database, fresh.repository_id).has(taskIdFromNumber(Number(fresh.number)));
     return written;
   });
-  return stored ? { state, ownerHold } : { error: fresh === null ? "not_found" : REFUSED };
+  return stored ? { state, ownerHold, ...(reworks ? { reworks } : {}) } : { error: fresh === null ? "not_found" : REFUSED };
 }
 
 // `complete`: the bound session reports one of its tasks complete.
 export function reportComplete({ database, transaction, payload, resolveFacts, now }) {
-  if (!reportInput(payload, [], ["attention"])) return { ok: false, error: "invalid" };
+  if (!reportInput(payload, [], ["attention", "reworks"])) return { ok: false, error: "invalid" };
   const noted = Object.hasOwn(payload, "attention");
   const attention = noted ? normalizeBlockReason(payload.attention) : null;
   if (attention === undefined || (noted && attention === null)) return { ok: false, error: "invalid" };
@@ -137,12 +146,12 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   const results = verifyChecks(task.completeWhen.checks, facts);
   const state = "needs_review";
   const stored = storeFresh({ database, transaction, payload, row }, { state, at: now(), results, blockReason: null, attention });
-  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state, results, ...(stored.ownerHold ? { ownerHold: true } : {}) };
+  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state, results, ...(stored.ownerHold ? { ownerHold: true } : {}), ...(stored.reworks ? { reworks: stored.reworks } : {}) };
 }
 
 // `block`: the bound session reports it cannot continue one of its tasks, with a one-line reason of at most 200 characters.
 export function reportBlock({ database, transaction, payload, now }) {
-  if (!reportInput(payload, ["reason"])) return { ok: false, error: "invalid" };
+  if (!reportInput(payload, ["reason"], ["reworks"])) return { ok: false, error: "invalid" };
   const reason = normalizeBlockReason(payload.reason);
   if (reason === undefined || reason === null) return { ok: false, error: "invalid" };
   const { row, error } = reportTarget(database, payload.sessionId, payload.taskId);
@@ -150,7 +159,7 @@ export function reportBlock({ database, transaction, payload, now }) {
   if (!normalizeStoredTask(row)) return { ok: false, error: "unavailable" };
   if (!reportable(row)) return { ok: false, error: REFUSED };
   const stored = storeFresh({ database, transaction, payload, row }, { state: "blocked", at: now(), results: [], blockReason: reason });
-  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state };
+  return stored.error ? { ok: false, error: stored.error } : { ok: true, state: stored.state, ...(stored.reworks ? { reworks: stored.reworks } : {}) };
 }
 
 const awaitingReport = (row) => rowInFlight(row) && unreported(row);
