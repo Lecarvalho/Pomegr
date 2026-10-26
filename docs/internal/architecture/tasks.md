@@ -1976,6 +1976,23 @@ supplies.
   ID always comes from the hook input. Codex replays its launch environment into hook
   commands but starts a stdio MCP server with an allowlisted environment, so the token
   reaches the hook and never the Codex MCP server.
+- Codex runs a plugin hook only while its approval matches the hash of the whole installed
+  plugin bundle, so every plugin update leaves the Pomegr hooks unapproved until the owner
+  reviews them in Codex, and the session-start hook may never report (task T-181). For a
+  Codex session it started, desktop main therefore also links the task itself. After the
+  launch it asks the monitor every 5 seconds for the session that owns the process it
+  launched (`sessionForTerminalProcess`, the same lookup the Continue terminals use), while
+  the terminal host still runs that process under the same process ID. A Codex process
+  that runs subagents owns only its root session, so the lookup answers the root session
+  ID. Once the lookup answers a `codex:` session, desktop main sends the token and that
+  session ID to `POST /internal/tasks/start-bind`. The watch ends with the first link or
+  refusal, when the process exits, after ten minutes, or when the desktop quits. A Claude
+  Code start is not watched; its hook is the only link.
+- `start-bind` takes `{ repositoryId, payload: { id, token, sessionId } }` from desktop main
+  only, with the desktop token. It links only the named task, only with its own live
+  dispatch token, and only a `codex:` session, through the same single-assignment write as
+  the hook's bind. Whichever of the two reports first links the task; the other answers
+  `not_found`.
 - The monitor serves the link as `POST /api/agent/v1/tasks/bind`, under the same gate and
   with the same content-type and size checks as `add`. The body is a JSON object of at
   most 1 KiB with exactly `token` (the dispatch token) and `sessionRef` (the normalized
@@ -2848,6 +2865,7 @@ Aril may record a rework link (references and a cause from a fixed list) without
 | `POST /internal/sessions/continue-plan` | Desktop main through the private-action gate | The fields in [Continue plan](privacy/session-evidence.md#continue-plan); no browser, paired-device, agent, or tool access |
 | Terminal host pipe | Desktop main, authenticated with its private token | Fixed host commands and their bounded replies. The pipe, token, and terminal output stay out of HTTP and monitor routes |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
+| `POST /internal/tasks/start-bind` | Desktop main, with the desktop token, for a Codex session it started; not reachable through `pomegr:task-action` | A task ID, its dispatch token, and the `codex:` session ID the monitor observed in the launched process in; `{ ok: true }` or one fixed error out, with no task data. Desktop main keeps the token in memory only, at most ten minutes |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `POST /internal/tasks/worktree-cleanups`, `worktree-root`, and `worktree-cleaned` | Desktop main and its queue runner, with the desktop token; not reachable through `pomegr:task-action` | `worktree-cleanups`: at most 64 `{ repositoryId, taskId, repositoryRoot }` done tasks whose worktree waits for removal. `worktree-root`: the root of one repository, or `not_found`. `worktree-cleaned`: a task ID in. The root reaches desktop main only, as in the start plan; no task content either way |
 | `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. The payload cap is the 16 KiB cap of `pomegr:task-action`. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |

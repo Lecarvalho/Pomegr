@@ -163,17 +163,42 @@ export function bindDispatch({ database, transaction, payload, now }) {
       if (matches && isLive(stored, at)) match = row;
     }
     if (match === null) return bindReview(database, supplied, payload.sessionId, at);
-    if (preparedStatement(database, "SELECT 1 FROM tasks WHERE session_id = ?").get(payload.sessionId) !== undefined) return BIND_REFUSED;
-    try {
-      const linked = preparedStatement(database, "UPDATE tasks SET session_id = ?, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ? AND session_id IS NULL AND dispatch_token = ?")
-        .run(payload.sessionId, Date.now(), match.repository_id, match.number, match.dispatch_token);
-      if (Number(linked.changes) !== 1) return BIND_REFUSED;
-      recordTaskEvent(database, match.repository_id, Number(match.number), "started", at, payload.sessionId);
-      moveTaskToRole(database, match.repository_id, Number(match.number), "in_progress");
-      return { ok: true };
-    } catch (error) {
-      if (/constraint/iu.test(String(error?.message))) return BIND_REFUSED;
-      throw error;
-    }
+    return linkDispatch(database, match, payload.sessionId, at);
+  });
+}
+
+// Links one matched, live dispatch to its session inside the caller's transaction.
+function linkDispatch(database, match, sessionId, at) {
+  if (preparedStatement(database, "SELECT 1 FROM tasks WHERE session_id = ?").get(sessionId) !== undefined) return BIND_REFUSED;
+  try {
+    const linked = preparedStatement(database, "UPDATE tasks SET session_id = ?, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ? AND session_id IS NULL AND dispatch_token = ?")
+      .run(sessionId, Date.now(), match.repository_id, match.number, match.dispatch_token);
+    if (Number(linked.changes) !== 1) return BIND_REFUSED;
+    recordTaskEvent(database, match.repository_id, Number(match.number), "started", at, sessionId);
+    moveTaskToRole(database, match.repository_id, Number(match.number), "in_progress");
+    return { ok: true };
+  } catch (error) {
+    if (/constraint/iu.test(String(error?.message))) return BIND_REFUSED;
+    throw error;
+  }
+}
+
+const CODEX_SESSION = /^codex:/u;
+
+// `start-bind`: desktop main links the Codex session it started for the named task when the
+// session's start hook did not report (Codex skips plugin hooks it has not trusted). The token
+// stays the authority, under the same single use and ten-minute window as `bindDispatch`.
+export function startBind({ database, transaction, repositoryId, payload, now }) {
+  const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id", "token", "sessionId"]) : undefined;
+  if (number === undefined || typeof payload.token !== "string" || !TOKEN_PATTERN.test(payload.token)
+    || !isTaskSessionId(payload.sessionId) || !CODEX_SESSION.test(payload.sessionId)) return { ok: false, error: "invalid" };
+  const supplied = Buffer.from(digestOf(payload.token), "hex");
+  const at = now();
+  return transaction(() => {
+    const row = preparedStatement(database, "SELECT repository_id, number, dispatch_token FROM tasks WHERE repository_id = ? AND number = ? AND session_id IS NULL")
+      .get(repositoryId, number);
+    const stored = parseStoredDispatch(row?.dispatch_token);
+    const matches = stored !== null && crypto.timingSafeEqual(supplied, Buffer.from(stored.digest, "hex"));
+    return matches && isLive(stored, at) ? linkDispatch(database, row, payload.sessionId, at) : BIND_REFUSED;
   });
 }

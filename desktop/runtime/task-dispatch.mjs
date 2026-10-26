@@ -24,6 +24,7 @@ const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const TOKEN = /^[A-Za-z0-9_-]{32,128}$/u;
+const CODEX_SESSION = /^codex:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "tree_dirty", "unavailable"]);
 const PROMPT_MAX = 8000;
@@ -163,6 +164,10 @@ export function createTaskStart(options = {}) {
     || (options.worktreeRoot ? createTaskWorktrees({ root: options.worktreeRoot, environment: sourceEnvironment, platform }) : null);
   let disposed = false;
   let active = false;
+  // The monitor refuses the token ten minutes after its mint, which came before the launch.
+  const bindWatchMs = options.bindWatchMs ?? 10 * 60 * 1000;
+  const bindIntervalMs = options.bindIntervalMs ?? 5_000;
+  const bindTimers = new Set();
 
   async function post(route, repositoryId, payload) {
     const response = await fetchImpl(`${monitorOrigin}/internal/tasks/${route}`, {
@@ -178,6 +183,33 @@ export function createTaskStart(options = {}) {
 
   async function abort(repositoryId, taskId, token) {
     try { await post("start-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ }
+  }
+
+  // Codex skips a plugin hook it has not trusted, and every plugin update untrusts them, so its
+  // session-start hook may never report the token. Desktop main then links the session the monitor
+  // observes in the process it launched, with the same single-use token, while the dispatch is live.
+  function watchCodexBind(repositoryId, taskId, token, key, pid) {
+    if (typeof options.sessionForProcess !== "function" || !Number.isInteger(pid) || pid <= 0) return;
+    const deadline = Date.now() + bindWatchMs;
+    const attempt = async () => {
+      bindTimers.delete(timer);
+      if (disposed || Date.now() >= deadline || await terminal.processOf?.(key) !== pid) return;
+      let sessionId = null;
+      try { sessionId = await options.sessionForProcess(pid); } catch { sessionId = null; }
+      if (typeof sessionId === "string" && CODEX_SESSION.test(sessionId) && !disposed) {
+        let answer = null;
+        try { answer = await post("start-bind", repositoryId, { id: taskId, token, sessionId }); } catch { answer = null; }
+        // Linked here, or refused for good: the hook linked it first, or the dispatch expired.
+        if (isPlainObject(answer) && (answer.ok === true || answer.error === "not_found" || answer.error === "invalid")) return;
+      }
+      if (disposed) return;
+      timer = setTimeout(attempt, bindIntervalMs);
+      timer.unref?.();
+      bindTimers.add(timer);
+    };
+    let timer = setTimeout(attempt, bindIntervalMs);
+    timer.unref?.();
+    bindTimers.add(timer);
   }
 
   async function run(repositoryId, taskId, { confirmRequired, separateWorktree = false, isAuthorized, grant = false }) {
@@ -268,11 +300,12 @@ export function createTaskStart(options = {}) {
         }
         return result("cancelled");
       }
-      await terminal.create({
-        key: `${repositoryId}/${taskId}/${randomBytes(16).toString("hex")}`,
-        executable, args, cwd: directory, env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
+      const key = `${repositoryId}/${taskId}/${randomBytes(16).toString("hex")}`;
+      const created = await terminal.create({
+        key, executable, args, cwd: directory, env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
       });
       started = true;
+      if (plan.provider === "codex") watchCodexBind(repositoryId, taskId, plan.token, key, created?.pid);
     } catch { started = false; }
     if (!started) {
       await abort(repositoryId, taskId, plan.token);
@@ -418,7 +451,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startReview, startApproved, startQueued, startGranted, startGrantedReview, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; terminal.dispose?.(); } });
+  return Object.freeze({ start, startReview, startApproved, startQueued, startGranted, startGrantedReview, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; for (const timer of bindTimers) clearTimeout(timer); bindTimers.clear(); terminal.dispose?.(); } });
 }
 
 export function installTaskStartIpc(options = {}) {
