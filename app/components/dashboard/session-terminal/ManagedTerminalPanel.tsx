@@ -136,7 +136,7 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
       void fontsReady.then(remeasure);
       document.fonts?.addEventListener("loadingdone", remeasure, { once: true });
       let input = Promise.resolve();
-      const data = emulator.onData((value) => {
+      const forward = (value: string) => {
         if (!writable || replayWrites > 0) return;
         // JSON escaping and UTF-8 expansion still fit the host's 16 KiB input frame.
         let chunk = "";
@@ -152,6 +152,13 @@ export function ManagedTerminalPanel({ terminal, onExit }: { terminal: ManagedTe
           chunk += character;
         }
         if (chunk) append(chunk);
+      };
+      const data = emulator.onData(forward);
+      // xterm sends a bare CR for Ctrl+Enter and Shift+Enter; Claude Code and Codex read ESC CR (Alt+Enter) as a new line.
+      emulator.attachCustomKeyEventHandler((event) => {
+        if (event.key !== "Enter" || !(event.ctrlKey || event.shiftKey) || event.altKey || event.metaKey) return true;
+        if (event.type === "keydown") { event.preventDefault(); forward("\x1b\r"); }
+        return false;
       });
       let pendingReplayOutput = 0, pendingLiveOutput = 0;
       const unsubscribe = bridge.onTerminalOutput((event) => {
