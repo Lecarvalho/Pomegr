@@ -118,7 +118,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
         : <div className="sessionRepositoryLine">
           <p className="sessionRepositoryLineMain">
             <span className="sessionRepositoryLineBranch" title={summary.repository.branch || undefined}>{summary.repository.branch || "Branch unavailable"}</span>
-            {repositoryComparisonText && <span className={`commandChip${repositoryComparisonTone ? ` ${repositoryComparisonTone}` : ""}`}>{repositoryComparisonText}</span>}
+            {repositoryComparisonText && <span className={`commandChip${repositoryComparisonTone ? ` ${repositoryComparisonTone}` : ""}`} title={repositoryComparisonText}><span className="sessionRepositoryLineComparison">{repositoryComparisonText}</span></span>}
           </p>
           <p className="sessionRepositoryLineMeta">{repositoryChangesLabel}<span className="sessionRepositoryPullRequests"> · {repositoryPullRequestsLabel}</span></p>
         </div>}

@@ -277,6 +277,8 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - The tile starts with its heading link.
 - The heading link is an eyebrow on desktop and the 16px heading on phone.
 - The branch follows, beside a comparison chip.
+- The chip wraps under the branch when both do not fit on one line.
+- A chip wider than the tile ends in an ellipsis, and its title holds the full comparison.
 - The chip is toned green only for Up to date or integrated comparisons.
 - A muted changes/pull-request line ends the tile.
 
