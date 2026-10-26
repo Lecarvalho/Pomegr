@@ -12,7 +12,7 @@ const TASK_PAYLOAD_LIMIT_BYTES = 16 * 1024;
 export const TASK_BODY_LIMIT_BYTES = TASK_PAYLOAD_LIMIT_BYTES + 1024;
 const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, conflict: 409, unsupported: 501 });
 // Desktop plan actions answer through their own handler, not the renderer's `pomegr:task-action` list above.
-const START_ACTIONS = Object.freeze(["start-plan", "start-abort", "review-plan", "review-abort", "review-session"]);
+const START_ACTIONS = Object.freeze(["start-plan", "start-abort", "start-bind", "review-plan", "review-abort", "review-session"]);
 const START_STATUS = Object.freeze({
   invalid: 400, not_found: 404, not_startable: 409, not_reviewable: 409, plugin_missing: 409, gate_held: 409, tree_dirty: 409, unsupported_provider: 422, unavailable: 503,
 });
@@ -221,9 +221,7 @@ export function isPlainObject(value) {
 function serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId, payload }) {
   try {
     const planning = action === "start-plan" || action === "review-plan";
-    const call = action === "start-plan" ? taskStore?.planStart
-      : action === "start-abort" ? taskStore?.abortStart
-        : action === "review-plan" ? taskStore?.planReview : action === "review-session" ? taskStore?.reviewSession : taskStore?.abortReview;
+    const call = taskStore?.[{ "start-plan": "planStart", "start-abort": "abortStart", "start-bind": "bindStart", "review-plan": "planReview", "review-session": "reviewSession", "review-abort": "abortReview" }[action]];
     if (typeof call !== "function") {
       writeActionResult(response, 503, rejected("unavailable"));
       return;

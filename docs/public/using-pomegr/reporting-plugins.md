@@ -30,8 +30,9 @@ codex plugin add pomegr@pomegr
 ```
 
 Open `/hooks`, review the Pomegr hooks, and trust them. Codex does not trust
-plugin hooks automatically and asks again when one changes. Replace `main` with a
-published release tag to pin a version.
+plugin hooks automatically. Its approval covers the whole installed plugin, so it
+asks again after every plugin update. Replace `main` with a published release tag
+to pin a version.
 
 ### Claude Code
 
@@ -162,7 +163,8 @@ changes it; use `init` as above.
 Start with `/pomegr:doctor` or `$pomegr:doctor`, then match the symptom:
 
 - **No policy loaded in Codex.** Trust the Pomegr hooks in `/hooks`, then start
-  or resume a task. Trust them again after an update changes a hook.
+  or resume a task. Trust them again after every plugin update. In the desktop
+  app, a task session that Pomegr starts in Codex links to its task either way.
 - **No policy loaded in Claude Code.** Run `/reload-plugins`, then start or
   resume a session.
 - **Policy invalid or old.** Run `init` and review the proposed update.

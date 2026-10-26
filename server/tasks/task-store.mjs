@@ -9,7 +9,7 @@ import { arilMemoryAdd, arilMemoryRemove, arilMemoryUpdate, arilSettingsSet, ens
 import { ensureArilGrants, grantOperations, grantStart, grantStartAllowed, grantStartGates, grantStop, readGrant } from "./task-aril-grant.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
-import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
+import { bindDispatch, startAbort, startBind, startPlan } from "./task-dispatch.mjs";
 import { deleteTaskReviews, ensureTaskReviews, fillTaskReviews, reviewOperations } from "./task-review.mjs";
 import { fillQueueGates, fillQueueWaits, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
@@ -760,6 +760,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
   const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
+  const bindStart = (repositoryId, payload) => dispatch(startBind, { repositoryId, payload, now });
   const completeTask = (payload, resolveFacts) => dispatch(reportComplete, { payload, resolveFacts, now });
   const blockTask = (payload) => dispatch(reportBlock, { payload, now });
   const stallEnded = (resolveFacts, confirmation = null, recovery = null) => dispatch(stallEndedTasks, { resolveFacts, confirmation, recovery, now });
@@ -793,6 +794,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
   const declareArilRework = (repositoryId, payload) => dispatch(({ database, transaction }) => transaction(() => declareArilTaskRework({ database, repositoryId, now }, payload)), {});
-  return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, bindStart, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

@@ -226,6 +226,14 @@ export function createTerminalController(options = {}) {
       }
     },
     async create(plan) { if (!client || disposed) throw new Error("TERMINAL_UNAVAILABLE"); return client.create(plan); },
+    // The process ID of a running terminal of this host; null once it exited or when unknown.
+    async processOf(key) {
+      if (!client || disposed) return null;
+      try {
+        const row = (await client.list()).find((item) => item.key === key);
+        return row && row.exited !== true && Number.isInteger(row.pid) && row.pid > 0 ? row.pid : null;
+      } catch { return null; }
+    },
     dispose() {
       disposed = true;
       for (const attachment of attachments.values()) void detach(attachment);
