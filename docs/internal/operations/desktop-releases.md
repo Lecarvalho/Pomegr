@@ -159,6 +159,8 @@ The `release` environment defines these non-secret variables:
 
 The workflow fails if a variable is absent, the endpoint is malformed, Azure authentication or signing fails, or any executable has an invalid signature, a different Subject, or no trusted timestamp. Rotate a compromised federation or Entra application authorization immediately.
 
+The external `terminal-runtime/node.exe` and its ConPTY `OpenConsole.exe` retain their upstream bytes and signatures. Release signing excludes only those two resource paths so the terminal manifest and pinned Node distribution checksum remain valid; Pomegr, its installers, and executables under `app.asar.unpacked` still use release signing.
+
 ## Beta update acceptance
 
 Run this optional clean-VM exercise for the first beta produced by a new signing or updater configuration. It needs two consecutive beta versions and is not part of a routine release.

@@ -93,7 +93,7 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="Let Aril run work under a grant"
+          title="Let Aril run your backlog"
           summary="Under a grant, Aril starts, reviews, and merges tasks within limits you set."
           description="A grant lets Aril start the Ready tasks your work rules select and their reviews, send failed work back, merge on green CI after a passing review, and write tasks from plans you name. It stays within the hours, tasks, and usage limit you set."
           highlights={[
