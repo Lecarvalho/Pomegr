@@ -81,6 +81,10 @@ function validTask(value: unknown): value is Task {
   if (task.assigned !== undefined && listOf(task.assigned, LIMITS.assignedSessions, validAssigned) === null) return false;
   // What the task runs after: absent, or one to eight task IDs of the same board.
   if (task.after !== undefined && !(listOf(task.after, LIMITS.after, taskId)?.length)) return false;
+  for (const field of ["reworks", "reworkedBy"]) {
+    if (task[field] !== undefined && (!Array.isArray(task[field]) || !(task[field] as unknown[]).every(validRework))) return false;
+  }
+  if (Array.isArray(task.reworks) && task.reworks.length > 5) return false;
   return typeof task.id === "string" && /^T-[1-9]\d*$/u.test(task.id)
     && text(task.text, LIMITS.text) && text(task.columnId, LIMITS.label) && count(task.position, 0)
     && (task.featureId === null || text(task.featureId, LIMITS.label)) && (task.group === null || (typeof task.group === "string" && TASK_GROUP_ID.test(task.group)))
@@ -94,6 +98,14 @@ function validTask(value: unknown): value is Task {
     && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)
       && (report.attention === undefined || nullableText(report.attention, LIMITS.blockReason))))
     && timestamp(task.createdAt) && timestamp(task.updatedAt);
+}
+
+function validRework(value: unknown): value is NonNullable<Task["reworks"]>[number] {
+  const link = record(value);
+  return !!link && typeof link.ref === "string" && /^(?:T-|#)[1-9]\d*$/u.test(link.ref)
+    && Number.isSafeInteger(Number(link.ref.replace(/^(?:T-|#)/u, "")))
+    && ["missed_wiring", "spec_gap", "wrong_behavior", "stale_instructions", "latent", "other"].includes(link.cause as string)
+    && ["session", "aril", "owner"].includes(link.declaredBy as string);
 }
 
 function parseReview(value: unknown): Task["review"] {
@@ -190,7 +202,10 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   const columns = listOf(body.columns, LIMITS.columns, validColumn);
   const features = listOf(body.features, LIMITS.features, validFeature);
   const validated = listOf(body.tasks, LIMITS.tasks, validTask);
-  const tasks = validated && validated.map((task) => ({ ...task, source: task.source ?? null, review: parseReview(task.review) }));
+  const links = (value: Task["reworks"]) => value?.map(({ ref, cause, declaredBy }) => ({ ref, cause, declaredBy }));
+  const tasks = validated && validated.map((task) => ({ ...task, source: task.source ?? null, review: parseReview(task.review),
+    ...(task.reworks ? { reworks: links(task.reworks) } : {}), ...(task.reworkedBy ? { reworkedBy: links(task.reworkedBy) } : {}),
+  }));
   const queue = record(body.queue);
   if (!columns || !features || !tasks || !queue || !QUEUE_STATUSES.has(queue.status as string) || !nullableText(queue.blockedBy, LIMITS.label)) return null;
   const order = listOf(queue.order, LIMITS.tasks, (entry): entry is string => typeof entry === "string" && TASK_ID_PATTERN.test(entry));

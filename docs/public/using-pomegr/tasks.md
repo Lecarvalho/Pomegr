@@ -44,6 +44,12 @@ board. It lists task starts, reports, stalls, CI results, and merges, newest
 first. The task log stays on the computer that runs Pomegr. Aril reads entries after its last answer;
 the divider shows how far it has read. Opening the log does not move that marker.
 
+In a task window, **Reworks** records earlier work that this task fixes. On the desktop
+or a paired device, enter a task reference such as `T-12` or a pull request such as
+`#336`, choose a cause, and select **Add**. You can remove a link beside its chip.
+Each task can name up to five earlier items; adding a link leaves its state unchanged
+and adds **Rework** to the log. Causes are declarations, not automatic detections.
+
 ### Aril settings
 
 Select **Aril settings** above the board to edit action preferences, limits, work rules, and reviewer preferences.

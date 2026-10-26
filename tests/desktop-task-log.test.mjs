@@ -78,6 +78,19 @@ test("usage entries pass only fixed provider reasons and have no task ID", async
   }
 });
 
+test("rework logs accept task and PR fixes without a reason", async () => {
+  const value = log(); value.entries = [
+    { id: 1, task: "T-1", kind: "rework", at: 123, pullRequest: 336 },
+    { id: 2, task: "#337", kind: "rework", at: 124, pullRequest: null },
+  ];
+  assert.deepEqual((await harness(response({ ok: true, log: value })).action.readLog(repositoryId)).log.entries, value.entries);
+  const prFix = value.entries[1];
+  for (const bad of [{ reason: "codex" }, { task: null }, { kind: "started" }, { task: "#0" }]) {
+    value.entries = [{ ...prFix, ...bad }];
+    assert.deepEqual(await harness(response({ ok: true, log: value })).action.readLog(repositoryId), unavailable);
+  }
+});
+
 test("the shared reader re-bounds without a window event while IPC still requires trust", async () => {
   const value = log(); value.entries[0].private = "hidden"; value.cursors.private = "hidden";
   const { action, calls } = harness(response({ ok: true, log: value }));

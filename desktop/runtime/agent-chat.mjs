@@ -38,7 +38,7 @@ const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
 const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"]);
-const TASK_LOG_KINDS = new Set(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
+const TASK_LOG_KINDS = new Set(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "rework", "grant_usage_hold", "grant_usage_resume"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -163,6 +163,8 @@ export function createAgentChat(options = {}) {
         const usageTransition = entry.kind === "grant_usage_hold" || entry.kind === "grant_usage_resume";
         if (usageTransition) return entry.task === null && entry.pullRequest === null && (entry.reason === "claude" || entry.reason === "codex")
           ? [{ id: entry.id, task: null, kind: entry.kind, at: entry.at, pullRequest: null, reason: entry.reason }] : [];
+        if (entry.kind === "rework" && typeof entry.task === "string" && /^#[1-9]\d*$/u.test(entry.task) && Number.isSafeInteger(Number(entry.task.slice(1))) && !Object.hasOwn(entry, "reason"))
+          return [{ id: entry.id, task: entry.task, kind: entry.kind, at: entry.at, pullRequest: entry.pullRequest }];
         return typeof entry.task === "string" && /^T-\d+$/u.test(entry.task) && !Object.hasOwn(entry, "reason")
           ? [{ id: entry.id, task: entry.task, kind: entry.kind, at: entry.at, pullRequest: entry.pullRequest }] : [];
       });

@@ -61,7 +61,14 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `task_events` appends each start, assignment, review, block, requeue, and acceptance in the transition's transaction, without backfilling older tasks.
 - `task_outcomes` stores one outcome per task at Done, from its events in the same transaction, without backfilling older tasks.
 - `task_scorecard_snapshots` stores one row per repository, app version, and formula; snapshots are kept when a task is deleted.
-- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, `task_log_cursors`, `task_reviews`, `aril_settings`, `aril_memory`, and `aril_grants` tables. These additive tables keep schema version 1.
+- Opening a store creates missing `task_events`, `task_outcomes`, `task_scorecard_snapshots`, `task_log`, `task_log_cursors`, `task_reviews`, `task_rework`, `aril_settings`, `aril_memory`, and `aril_grants` tables. These additive tables keep schema version 1.
+- `task_rework` stores one row per repository, `fix`, and `reworks` pair, with `cause`, `declared_by`, and integer `at`; the first declaration stands and a repeated pair answers `exists`.
+- Each reference is canonical `T-n` or `#n` with a positive safe integer; the references must differ, a new task reference must exist on that board, and each fix holds at most five links.
+- Causes are `missed_wiring`, `spec_gap`, `wrong_behavior`, `stale_instructions`, `latent`, or `other`; declarers are `session`, `aril`, or `owner`, with owner actions setting `owner` themselves.
+- Links survive task deletion; deleted tasks are not retained, so new declarations naming them are refused.
+- Recording or removing a link changes no task column, state, or outcome; removal deletes the pair but keeps its log entry.
+- `rework_declare` accepts `{ fix: "T-n", reworks, cause }` and answers the board plus `status: "recorded"` or `"exists"`; `rework_remove` accepts `{ fix, reworks }` and answers the board.
+- Each served task carries optional `reworks` and `reworkedBy` arrays of `{ ref, cause, declaredBy }`; empty arrays are omitted and agent-task reads do not gain them.
 - `aril_grants` holds an autoincrement `id`, `repository_id`, integer `started_at`, `ends_at`, and `starts_used` (default zero), JSON `actions` and `limits` snapshots, and nullable `ended_at` and `end_reason`; a unique partial index permits at most one row per repository with `ended_at IS NULL`.
 - `aril_settings` holds one normalized JSON value and integer update time per repository, keyed by `repository_id`, without a rowid.
 - `aril_memory` holds at most 100 entries per repository, with an autoincrement integer ID, one-line text, and integer creation and update times.
@@ -69,6 +76,8 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - Opening a store adds the nullable `pull_request INTEGER` column to `task_log` when absent, preserving existing rows.
 - Opening a store adds the nullable `reason TEXT` column to `task_log` when absent; only `grant_usage_hold` and `grant_usage_resume` rows set it, to the fixed provider ID, with task number 0.
 - `task_log` appends `started`, `assigned`, `review`, `blocked`, `requeued`, `done`, `stalled`, and `recovered` in each transition's transaction. It keeps the newest 1000 entries per repository and survives task deletion. Entry IDs never repeat, and each consumer's durable cursor only moves forward.
+- A new link appends `rework` in its transaction; a task fix uses its task number and the reworked PR number in `pull_request`, or null for a task target.
+- A PR fix stores its negative PR number in `number`; readers expose `task: "#n"` only for `rework`, with the reworked PR number in `pullRequest` or null for a task target, without `reason`, leaving number 0 and provider reasons to usage rows.
 - `logPullRequests(resolveFacts)` appends `checks_passed`, `checks_failed`, and `merged` in one transaction per sweep.
 - Revision sweeps watch linked task sessions in every state except `done`, using committed observation facts in memory only, with no new GitHub read.
 - PR selection matches outcome facts: `tasks/T-n` wins, otherwise the highest-numbered session-associated PR wins.
@@ -2781,6 +2790,8 @@ serves no other client.
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
+| `POST /internal/tasks/rework_declare`, `rework_remove` | Owner through desktop-token actions; no agent tool or Aril action | Declaration `{ fix: "T-n", reworks, cause }` or removal `{ fix, reworks }`; board and fixed status or error, as in [Store](#store) |
+| `pomegr:task-action` and paired `POST /api/tasks/action` with `rework_declare` or `rework_remove` | Trusted desktop frame or authenticated paired gateway | Same payloads; `{ ok: true, status: "recorded" \| "exists" }` for declaration, `{ ok: true }` for removal, or fixed error; never the board |
 | `POST /internal/tasks/aril_settings_set`, `aril_memory_add`, `aril_memory_update`, `aril_memory_remove` | Desktop token; paired proxy additionally gated by stored `pairedDevices` | Fixed payloads and settings or memory entry answers in [Aril settings and memory](#aril-settings-and-memory); no board in these action answers |
 | `POST /api/tasks/action` with an Aril action | Authenticated paired gateway; opt-in checked by the monitor using the proxy's fixed paired marker | Same fixed payloads and answers; `settings.pairedDevices` is refused even after opt-in |
 | `GET /api/tasks?repositoryId=repo-<24 hex>` field `aril` | Existing board read gate, including paired devices regardless of the edit switch | Normalized settings, ordered memory entries, and the nullable latest grant |
@@ -2978,6 +2989,9 @@ serves no other client.
 - `task_events` stores only event kind, time, and nullable session ID under its repository and task identifiers, never text.
 - Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
 - `task_log` stores only repository ID, task number, fixed kind, time, and a nullable pull-request number under its entry ID. `task_log_cursors` stores only a consumer name and entry ID under its repository ID. Neither stores text, title, session ID, URL, head commit, CLI output, or branch.
+- Rework records keep only references, fixed cause, fixed declarer, and time under the repository ID; no explanation, prompt, title, or transcript is stored.
+- Rework log entries cross only the existing task-log boundaries to desktop main, the trusted renderer, paired devices, and Aril's log reader; the record's cause and declarer do not enter the log.
+- The board's rework arrays cross the existing `GET /api/tasks` read gate; they do not enter agent tools, Aril's board snapshot, `/api/state`, observation caches, reports, notifications, or diagnostics.
 - `task_pull_request_seen:<repositoryId>:<T-n>` stores only a PR number, head commit OID, fixed check status, and merged flag; task deletion removes it.
 - Only `POST /internal/tasks/log-read` and `log-ack` expose log entries or cursors to desktop main. Desktop main reads them for [Aril's owner-message prompts](agent-chat.md#privacy) and sends the bounded log to the trusted desktop renderer through `pomegr:task-log` or a paired device through the LAN gateway's `POST /api/tasks/log-read`; no unpaired browser, agent tool, or `/api/state` reads them.
 - The paired log read uses the same bounded reader as the IPC, never forwards upstream, and never acknowledges entries or moves Aril's cursor.

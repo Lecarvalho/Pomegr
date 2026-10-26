@@ -16,7 +16,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -81,6 +81,19 @@ const action = (name, repositoryId, payload, extra = {}) => send(extra.port, {
   path: `/internal/tasks/${name}`,
   headers: { ...withToken, ...JSON_BODY, ...(extra.headers || {}) },
   body: JSON.stringify({ repositoryId, payload }),
+});
+
+test("rework declaration status and links survive the real owner route", async (context) => {
+  const store = await realStore(context);
+  store.apply(REPOSITORY_ID, "create", { text: "Fix" });
+  const { port } = await startRoute(context, { taskStore: store });
+  const payload = { fix: "T-1", reworks: "#336", cause: "missed_wiring" };
+  for (const status of ["recorded", "exists"]) {
+    const result = await action("rework_declare", REPOSITORY_ID, payload, { port });
+    assert.equal(result.json.status, status);
+    assert.deepEqual(result.json.board.tasks[0].reworks, [{ ref: "#336", cause: "missed_wiring", declaredBy: "owner" }]);
+  }
+  assert.equal((await action("rework_remove", REPOSITORY_ID, { fix: "T-1", reworks: "#336" }, { port })).json.ok, true);
 });
 
 function assertFixedError(response, status, error) {

@@ -9,7 +9,7 @@ import { postPairedTaskAction, postPairedTaskLog, postPairedTaskStart } from "./
 
 // The two ways a client changes a task.
 
-export type TaskActionResult = { ok: true; /** Only a create answers it: the new task's ID. */ taskId?: string } | { ok: false; error: TaskActionError | "unavailable" };
+export type TaskActionResult = { ok: true; status?: "recorded" | "exists"; /** Only a create answers it: the new task's ID. */ taskId?: string } | { ok: false; error: TaskActionError | "unavailable" };
 export type GrantActionResult = TaskActionResult | { ok: false; error: "not_ready" };
 
 export type TaskDesktopBridge = {
@@ -69,7 +69,7 @@ export function useTaskEditAvailability(): TaskEditAvailability {
   return mode === "lan" ? "paired" : "absent";
 }
 
-type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign" | "after_set"
+type TaskActionName = "create" | "update" | "delete" | "move" | "feature_create" | "feature_update" | "feature_delete" | "queue_add" | "queue_remove" | "queue_group" | "queue_ungroup" | "queue_settings" | "resolve_done" | "resolve_requeue" | "session_assign" | "session_unassign" | "after_set" | "rework_declare" | "rework_remove"
   | "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove";
 
 /** Sends one fixed task action through the bridge, or from a paired device through its route. */
@@ -83,6 +83,8 @@ export async function sendTaskAction(repositoryId: string, action: TaskActionNam
     const result: unknown = bridge ? await bridge.taskAction(repositoryId, action, payload) : await postPairedTaskAction(repositoryId, action, payload);
     if (typeof result === "object" && result !== null) {
       if ((result as { ok?: unknown }).ok === true) {
+        const status = (result as { status?: unknown }).status;
+        if (action === "rework_declare" && (status === "recorded" || status === "exists")) return { ok: true, status };
         const taskId = (result as { taskId?: unknown }).taskId;
         return typeof taskId === "string" && TASK_ID.test(taskId) ? { ok: true, taskId } : { ok: true };
       }
@@ -224,6 +226,7 @@ export const TASK_LOG_LABELS = {
   grant_merge: "Merged by Aril under a grant", grant_merge_refused: "Merge refused",
   grant_merge_auto: "Auto-merge enabled by Aril", grant_branch_deleted: "Branch deleted by Aril", grant_branch_delete_refused: "Branch delete refused",
   grant_task_written: "Written by Aril from a plan",
+  rework: "Rework",
   grant_usage_hold: "Paused for provider usage", grant_usage_resume: "Resumed after provider usage",
 } as const;
 export type TaskLog = { entries: { id: number; task: string | null; kind: keyof typeof TASK_LOG_LABELS; at: number; pullRequest: number | null; reason?: "claude" | "codex" }[]; more: boolean; arilCursor: number };
@@ -246,8 +249,9 @@ export async function readDesktopTaskLog(repositoryId: string): Promise<TaskLogA
         || typeof entry.kind !== "string" || !Object.hasOwn(TASK_LOG_LABELS, entry.kind)
         || !Number.isSafeInteger(entry.at) || (entry.pullRequest !== null && (!Number.isSafeInteger(entry.pullRequest) || entry.pullRequest <= 0))) return { ok: false };
       const usageTransition = entry.kind === "grant_usage_hold" || entry.kind === "grant_usage_resume";
+      const prFix = entry.kind === "rework" && typeof entry.task === "string" && /^#[1-9]\d*$/u.test(entry.task) && Number.isSafeInteger(Number(entry.task.slice(1)));
       if (usageTransition ? entry.task !== null || (entry.reason !== "claude" && entry.reason !== "codex") || entry.pullRequest !== null
-        : typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task) || Object.hasOwn(entry, "reason")) return { ok: false };
+        : (!prFix && (typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task))) || Object.hasOwn(entry, "reason")) return { ok: false };
       const { id, task, kind, at, pullRequest } = entry;
       entries.push(usageTransition ? { id, task, kind, at, pullRequest, reason: entry.reason } : { id, task, kind, at, pullRequest });
     }
@@ -364,4 +368,12 @@ export function takeCreateFollowUp(repositoryId: string, taskId: string): Create
   const followUp = createFollowUps.get(key) ?? null;
   createFollowUps.delete(key);
   return followUp;
+}
+
+export function declareTaskRework(repositoryId: string, fix: string, reworks: string, cause: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "rework_declare", { fix, reworks, cause });
+}
+
+export function removeTaskRework(repositoryId: string, fix: string, reworks: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "rework_remove", { fix, reworks });
 }

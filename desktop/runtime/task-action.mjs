@@ -15,7 +15,7 @@ export const TASK_ACTION_NAMES = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings",
-  "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set",
+  "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove",
   "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
 ]);
 export const TASK_ACTION_ERRORS = Object.freeze([
@@ -57,6 +57,7 @@ function boundedResult(response, body, action) {
   if (!isPlainObject(body)) return UNAVAILABLE;
   if (body.ok === true) {
     if (!response.ok) return UNAVAILABLE;
+    if (action === "rework_declare" && (body.status === "recorded" || body.status === "exists")) return Object.freeze({ ok: true, status: body.status });
     // Only `create` carries the one validated field it may answer: the new task's ID.
     return action === "create" && typeof body.taskId === "string" && TASK_ID.test(body.taskId)
       ? Object.freeze({ ok: true, taskId: body.taskId })

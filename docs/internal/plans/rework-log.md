@@ -5,7 +5,7 @@
 > Scope: a recorded link that says one piece of work reworks an earlier one, with its cause; where it is declared, how the task log, Aril's snapshot, and the model record show it, and one scorecard measure. Pre-merge rework that Pomegr already records (send-backs, failed reviews, owner requeues) is counted, not redeclared.
 > Continuation owner: the product owner decides; the agent that builds a slice records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [Agent chat](../architecture/agent-chat.md), and [MCP tools](../../public/using-pomegr/mcp-tools.md) govern shipped behavior until each slice changes them.
-> Next task or decision: build R1.
+> Next task or decision: build R2.
 > Completion criteria: a rework declared by a session, Aril, or the owner appears in the task log and in Aril's snapshot, counts in the model record, and moves the rework measure on the scorecard; every rule below has a test.
 > Permanent destinations: [Tasks](../architecture/tasks.md) for the record, the log kind, and the privacy row; [Agent chat](../architecture/agent-chat.md) for the snapshot and the proposal operation; [MCP tools](../../public/using-pomegr/mcp-tools.md) for the tool field; [Metrics](../architecture/metrics.md) for the measure; the task board design page for the panel and the task window.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -78,3 +78,4 @@ A link holds only references, a cause from the fixed list, the declarer, and a t
 
 - 2026-10-25: plan written from the code map of the task log, the pull-request facts, the MCP task tools, the proposal operations, the snapshot, and the scorecard. Next action: the owner reviews it.
 - 2026-10-25: the owner accepted the plan and chose the direct record for Aril. Next action: build R1.
+- 2026-10-25: R1 shipped: the `task_rework` record (first declaration stands, at most five per fix, no task state change), the `rework` log kind (a pull-request fix logs with its number and no task), the owner's `rework_declare` and `rework_remove` actions on the desktop and a paired device, and the **Reworks** row in the task window. Next action: build R2.

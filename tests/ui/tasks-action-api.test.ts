@@ -19,6 +19,15 @@ beforeEach(() => { vi.stubEnv("POMEGR_MONITOR_TOKEN", TOKEN); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("POST /api/tasks/action", () => {
+  it.each(["rework_declare", "rework_remove"])("forwards owner %s with the paired gate and bounded answer", async (action) => {
+    const payload = { fix: "T-1", reworks: "#336", ...(action === "rework_declare" ? { cause: "other" } : {}) };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(monitorAnswer({ ok: true, status: "exists", board: { private: true } }));
+    expect(await (await post({ repositoryId, action, payload }, {})).json()).toEqual({ ok: false, error: "unavailable" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await (await post({ repositoryId, action, payload })).json()).toEqual(action === "rework_declare" ? { ok: true, status: "exists" } : { ok: true });
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({ repositoryId, payload });
+    expect(fetchMock.mock.calls[0][0]).toContain(`/internal/tasks/${action}`);
+  });
   it("sends a paired device's fixed action to the monitor's desktop-token route and answers only ok and the new task's ID", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(monitorAnswer({ ok: true, taskId: "T-7", board: { tasks: [{ text: "PRIVATE" }] } }));
     const response = await post(create);

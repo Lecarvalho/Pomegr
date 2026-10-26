@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Task } from "../../../shared/task-contract";
+import { CommandSelect } from "../command-center/CommandSelect";
 import { FeatureFields } from "./FeatureFields";
 import { TaskIssueRow } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
@@ -9,7 +10,7 @@ import { TaskQueueWait } from "./TaskQueueWait";
 import { CompleteWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskReadView } from "./TaskReadView";
 import { TaskReviewPanel, reviewListsConditions, taskHasReview, taskNeedsUser } from "./TaskReviewPanel";
-import { RunSettings } from "./TaskRows";
+import { RunSettings, TaskRow } from "./TaskRows";
 import { ModelDiffersNotice, TaskRunSettingsRead } from "./TaskRunSettingsRead";
 import { TaskSessionLine } from "./TaskSessionLine";
 import { TaskSessionsField } from "./TaskSessionsField";
@@ -20,6 +21,7 @@ import {
   ASSIGN_FAILURE_MESSAGE, ASSIGN_LIMIT_MESSAGE, DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE,
   RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask, setDesktopTaskAfter,
   UNASSIGN_FAILURE_MESSAGE, assignDesktopTaskSession, resolveDesktopTaskDone, takeCreateFollowUp, unassignDesktopTaskSession, updateDesktopTask,
+  declareTaskRework, removeTaskRework, useTaskEditAvailability,
 } from "./task-desktop";
 import { observedModelDiffers } from "./task-fields";
 import { taskImagesAvailable } from "./task-images-desktop";
@@ -227,6 +229,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     editable={!locked} busy={afterBusy || blocked} error={afterError} focusSelect={focus === "after"} onChange={(after) => void changeAfter(after)} />;
   const sessionsRow = <TaskSessionsField started={task.session} assigned={assigned} candidates={candidates} busy={assigning || blocked} error={assignError}
     onAssign={(sessionId) => void changeAssignment(sessionId, true)} onUnassign={(sessionId) => void changeAssignment(sessionId, false)} />;
+  const reworksRow = <TaskReworksRow repositoryId={repositoryId} task={task} disabled={blocked} onChanged={onChanged} />;
   const modelNotice = observedModelDiffers(draft.run.model, task.session?.observedModel)
     ? <ModelDiffersNotice planned={draft.run.model} observed={task.session?.observedModel} />
     : undefined;
@@ -283,7 +286,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
             {failure && <p className="newTaskError" role="alert">{failure}</p>}
           </>} />
         <TaskRunSettingsRead task={task} board={board} models={models} conditionsListed={reviewListsConditions(task)} notice={modelNotice} issue={issueRow}
-          extra={<>{afterRow}{sessionsRow}</>} onOpenTask={onOpenTask} />
+          extra={<>{reworksRow}{afterRow}{sessionsRow}</>} onOpenTask={onOpenTask} />
       </>
       : <>
         <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure}
@@ -293,10 +296,56 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
           <RunFields run={draft.run} models={models} notice={modelNotice} onChange={setRun} />
           <CompleteWhenField draft={draft.completeWhen} onDraftChange={setCompleteWhen} />
           {issueRow}
+          {reworksRow}
           {afterRow}
           {sessionsRow}
           {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}
         </RunSettings>
       </>}
   </TaskModalFrame>;
+}
+
+const REWORK_CAUSES = ["missed_wiring", "spec_gap", "wrong_behavior", "stale_instructions", "latent", "other"] as const;
+
+function TaskReworksRow({ repositoryId, task, disabled, onChanged }: {
+  repositoryId: string; task: Task; disabled: boolean; onChanged(): void;
+}) {
+  const access = useTaskEditAvailability();
+  const editable = access === "desktop" || access === "paired";
+  const [reference, setReference] = useState("");
+  const [cause, setCause] = useState<(typeof REWORK_CAUSES)[number]>("missed_wiring");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const reworks = task.reworks ?? [];
+  const change = async (ref: string, remove = false) => {
+    if (busy || disabled) return;
+    setBusy(true);
+    setError(false);
+    const result = await (remove ? removeTaskRework(repositoryId, task.id, ref) : declareTaskRework(repositoryId, task.id, ref, cause));
+    setBusy(false);
+    if (!result.ok) { setError(true); return; }
+    if (!remove) setReference("");
+    onChanged();
+  };
+  if (!editable && reworks.length === 0) return null;
+  return <TaskRow label="Reworks" top="control">
+    <div className="taskSessions featureField">
+      {reworks.map((entry) => <div key={entry.ref} className="taskRowInline">
+        <span className="commandChip">Reworks {entry.ref} · {entry.cause.replaceAll("_", " ")}</span>
+        {editable && <button type="button" className="commandQuietAction" disabled={busy || disabled}
+          aria-label={`Remove rework ${entry.ref}`} onClick={() => void change(entry.ref, true)}>Remove</button>}
+      </div>)}
+      {editable && <>
+        <input className="taskOwnInput" aria-label="Reworked task or pull request" placeholder="T-12 or #336"
+          value={reference} disabled={busy || disabled} onChange={(event) => setReference(event.currentTarget.value)} />
+        <div className="taskSessionsAssign">
+          <CommandSelect className="taskValueSelect" aria-label="Rework cause" options={REWORK_CAUSES.map((value) => ({ value, label: value.replaceAll("_", " ") }))}
+            value={cause} disabled={busy || disabled} onChange={(value) => setCause(value as typeof cause)} />
+          <button type="button" className="commandSecondaryAction" disabled={busy || disabled || !reference.trim()}
+            onClick={() => void change(reference.trim())}>Add</button>
+        </div>
+      </>}
+      {error && <p className="newTaskError" role="alert">Could not save the rework. Check the reference and try again.</p>}
+    </div>
+  </TaskRow>;
 }

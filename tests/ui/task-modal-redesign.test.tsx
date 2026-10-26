@@ -5,6 +5,8 @@ import type { Task, TaskBoard } from "../../shared/task-contract";
 import { chooseCommandOption } from "./command-select-helpers";
 
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [{ source: "Claude Code", model: "model-a" }] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
+const access = vi.hoisted(() => ({ mode: "local" }));
+vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => access, clientAccessMode: () => access.mode }));
 
 import { TaskModal } from "../../app/components/tasks/TaskModal";
 
@@ -56,6 +58,47 @@ describe("the task's review verdict", () => {
   });
 });
 
+describe("the task's declared reworks", () => {
+  const reworks = [{ ref: "#336", cause: "missed_wiring" as const, declaredBy: "owner" as const }];
+  it("shows the declared chip and sends owner changes with this task as the fix", async () => {
+    open(task({ state: "needs_review", session, reworks }));
+    expect(within(row("Reworks")).getByText("Reworks #336 · missed wiring")).toHaveClass("commandChip");
+    fireEvent.change(screen.getByRole("textbox", { name: "Reworked task or pull request" }), { target: { value: "#337" } });
+    chooseCommandOption(screen.getByRole("combobox", { name: "Rework cause" }), "spec_gap");
+    fireEvent.click(within(row("Reworks")).getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "rework_declare", { fix: "T-20", reworks: "#337", cause: "spec_gap" }));
+    await waitFor(() => expect(within(row("Reworks")).getByRole("button", { name: "Remove rework #336" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Remove rework #336" }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "rework_remove", { fix: "T-20", reworks: "#336" }));
+  });
+  it("keeps same-computer browser declarations read-only", () => {
+    delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
+    open(task({ state: "needs_review", session, reworks }));
+    expect(within(row("Reworks")).getByText("Reworks #336 · missed wiring")).toBeInTheDocument();
+    expect(within(row("Reworks")).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(row("Reworks")).queryByRole("textbox")).not.toBeInTheDocument();
+  });
+  it("sends paired-owner changes through the existing paired action route", async () => {
+    delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
+    access.mode = "lan";
+    const request = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
+    vi.stubGlobal("fetch", request);
+    open(task({ state: "needs_review", session, reworks }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove rework #336" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/api/tasks/action", expect.objectContaining({
+      method: "POST", body: JSON.stringify({ repositoryId, action: "rework_remove", payload: { fix: "T-20", reworks: "#336" } }),
+    })));
+  });
+  it("retains the reference and shows a fixed failure when the declaration fails", async () => {
+    taskAction.mockResolvedValueOnce({ ok: false, error: "invalid" } as never);
+    open(task());
+    fireEvent.change(screen.getByRole("textbox", { name: "Reworked task or pull request" }), { target: { value: "unknown" } });
+    fireEvent.click(within(row("Reworks")).getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save the rework. Check the reference and try again.");
+    expect(screen.getByRole("textbox", { name: "Reworked task or pull request" })).toHaveValue("unknown");
+  });
+});
+
 function boardOf(...tasks: Task[]): Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue: TaskBoard["queue"] } {
   return { columns, features, tasks, queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] } };
 }
@@ -76,6 +119,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
+  access.mode = "local";
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -94,7 +139,7 @@ describe("a task that has not started", () => {
   it("draws the Run settings as rows with controls in place, in order, and Runs after and Start at as its last rows", () => {
     open(task({ featureId: "feature-a" }));
     expect(screen.getByRole("heading", { level: 3, name: "Run settings" })).toBeInTheDocument();
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue", "Runs after", "Start at"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue", "Reworks", "Runs after", "Start at"]);
     expect(row("Feature").querySelector(".commandSelect")).toHaveClass("taskValueSelect");
     expect(row("Run on").querySelector(".commandSelect")).toHaveClass("taskValueSelect");
     expect(within(row("Feature")).getByRole("combobox", { name: "Feature" })).toHaveTextContent("Upload reliability");
@@ -124,7 +169,7 @@ describe("a task that has not started", () => {
     await user.click(within(row("Remote Control")).getByRole("checkbox"));
     expect(within(row("Remote Control")).getByRole("checkbox")).toBeChecked();
     chooseCommandOption(within(row("Run on")).getByRole("combobox", { name: "Run on" }), "codex:default");
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue", "Runs after", "Start at"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue", "Reworks", "Runs after", "Start at"]);
     expect(document.querySelector(".taskRemoteControl")).toBeNull();
     chooseCommandOption(within(row("Run on")).getByRole("combobox", { name: "Run on" }), "claude:default");
     expect(within(row("Remote Control")).getByRole("checkbox")).not.toBeChecked();
@@ -179,7 +224,7 @@ describe("a task that needs review", () => {
     // The session title closes the panel.
     expect(panel.querySelector(".taskModalSession")).toHaveTextContent("Retry the uploadsTitle from the session · Open session");
     // The settings are values, and the conditions are not listed twice.
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "GitHub issue", "Sessions"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "GitHub issue", "Reworks", "Sessions"]);
     expect(within(row("Run on")).getByText("Claude Code · model-a")).toBeInTheDocument();
     expect(within(row("GitHub issue")).getByText("None")).toBeInTheDocument();
   });
@@ -245,7 +290,7 @@ describe("a started task with no report", () => {
     const line = document.querySelector(".taskModalSession") as HTMLElement;
     expect(before(line, document.querySelector(".taskRead") as HTMLElement)).toBe(true);
     // Codex has no Remote Control row, and the unset effort reads muted.
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue", "Sessions"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "When done", "Complete when", "GitHub issue", "Reworks", "Sessions"]);
     expect(within(row("Effort")).getByText("Not set")).toHaveClass("taskRowNone");
     expect(within(row("Feature")).getByText("No feature")).toHaveClass("taskRowNone");
     expect(within(row("Complete when")).getByText("PR open")).toBeInTheDocument();

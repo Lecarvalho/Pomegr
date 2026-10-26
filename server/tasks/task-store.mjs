@@ -18,6 +18,7 @@ import { deleteTaskEvents, ensureTaskEvents } from "./task-events.mjs";
 import { deleteTaskOutcome, ensureTaskOutcomes } from "./task-outcomes.mjs";
 import { ensureScorecardSnapshots, readScorecardSnapshot } from "./task-scorecard.mjs";
 import { ackTaskLog, ensureTaskLog, readTaskLog } from "./task-log.mjs";
+import { declareTaskRework, ensureTaskRework, fillTaskRework, removeTaskRework } from "./task-rework.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -119,16 +120,16 @@ function runTransaction(database, work) {
     throw error;
   }
 }
+function ensureAdditionalTables(database) {
+  for (const ensure of [
+    ensureTaskEvents, ensureTaskOutcomes, ensureScorecardSnapshots, ensureTaskLog,
+    ensureTaskRework, ensureTaskReviews, ensureArilSettings, ensureArilGrants,
+  ]) ensure(database);
+}
 function createFreshStore(database) {
   runTransaction(database, () => {
     createSchema(database);
-    ensureTaskEvents(database);
-    ensureTaskOutcomes(database);
-    ensureScorecardSnapshots(database);
-    ensureTaskLog(database);
-    ensureTaskReviews(database);
-    ensureArilSettings(database);
-    ensureArilGrants(database);
+    ensureAdditionalTables(database);
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(TASK_STORE_SCHEMA_VERSION));
     preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?)").run("created_at", String(Date.now()));
   });
@@ -160,13 +161,7 @@ function openDatabase(directory) {
     if (size === 0) createFreshStore(database);
     else {
       verifyExistingStore(database);
-      ensureTaskEvents(database);
-      ensureTaskOutcomes(database);
-      ensureScorecardSnapshots(database);
-      ensureTaskLog(database);
-      ensureTaskReviews(database);
-      ensureArilSettings(database);
-      ensureArilGrants(database);
+      ensureAdditionalTables(database);
     }
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA busy_timeout = 2000");
@@ -521,6 +516,7 @@ const ACTIONS = Object.freeze({
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_group: groupTasks, queue_ungroup: ungroupTasks, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   session_assign: assignSession, session_unassign: unassignSession, after_set: setTaskAfter,
+  rework_declare: declareTaskRework, rework_remove: removeTaskRework,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
   promote_issue: promoteIssue, record_issue: recordIssue,
   agent_create: agentCreateTask, agent_remove: agentRemoveTask, agent_update: agentUpdateTask,
@@ -624,7 +620,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const gateFacts = typeof resolveGateFacts === "function" ? (id) => (asked ??= { facts: resolveGateFacts(id) }).facts : null;
     const gated = fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), rows, resolveGateFacts: gateFacts, at });
     const aril = { ...readAril(database, board.repositoryId), grant: runTransaction(database, () => readGrant(database, board.repositoryId, at)) };
-    return { ...fillTaskReviews(database, fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at })), aril };
+    return { ...fillTaskRework(database, fillTaskReviews(database, fillQueueWaits({ database, board: gated, rows, resolveGateFacts: gateFacts, at }))), aril };
   };
   function readBoard(repositoryId, resolvers = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
@@ -677,6 +673,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     let featureId = null;
     let added = null;
     let arilResult = null;
+    const rework = action === "rework_declare" || action === "rework_remove";
     const handler = typeof action === "string" && Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
     if (!handler) return { ok: false, error: "unsupported" };
     // A store that cannot be used refuses the write before any handler can touch it.
@@ -684,7 +681,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     try {
       if (action === "grant_start" || action === "grant_stop") return runTransaction(database, () => handler({ database, repositoryId, ensureRepository, now }, payload));
       const board = runTransaction(database, () => {
-        if (repositoryExists(repositoryId)) {
+        if (!rework && repositoryExists(repositoryId)) {
           reconcileColumns(repositoryId);
           migrateStepGroups(database, repositoryId, newGroupId);
         }
@@ -693,20 +690,20 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (action.startsWith("aril_")) arilResult = result;
         added = typeof result.addKey === "string" ? { key: result.addKey, number: result.number } : null;
         featureId = typeof result.featureId === "string" ? result.featureId : null;
-        settleGroupsAndReady(repositoryId);
+        if (!rework) settleGroupsAndReady(repositoryId);
         // Only `create`, `agent_create`, and `promote_issue` answer the task they made.
         taskId = action === "promote_issue" || action === "create" || action === "agent_create" ? taskIdFromNumber(result.number) ?? null : null;
         // The write stands only if the whole board, the new row included, still projects.
         const rows = loadRows(repositoryId);
         const projected = projectBoard(repositoryId, rows, { at: now() });
         if (!projected) throw new ActionRejected("conflict");
-        return { projected, rows };
+        return { projected, rows, status: result.status };
       });
       // An agent's add is remembered only once it has committed, so a rolled-back add is never answered as made.
       if (added) recentAdds.remember(added.key, added.number);
       if (arilResult) return arilResult;
       if (action === "delete" || action === "agent_remove") removeTaskImageFiles(directory, repositoryId, payload?.id);
-      return { ok: true, board: served(board.projected, board.rows, resolvers), ...(taskId === null ? {} : { taskId }), ...(featureId === null ? {} : { featureId }) };
+      return { ok: true, board: served(board.projected, board.rows, resolvers), ...(rework && board.status ? { status: board.status } : {}), ...(taskId === null ? {} : { taskId }), ...(featureId === null ? {} : { featureId }) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }

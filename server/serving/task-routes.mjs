@@ -4,7 +4,7 @@ import { serveArilActionRoute, serveGrantRunner } from "./task-aril-routes.mjs";
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
-  "session_assign", "session_unassign", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
+  "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 // The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
@@ -427,7 +427,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts, resolveOutcomeFacts });
     if (result?.ok === true) {
       const taskId = action === "create" && typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId) ? result.taskId : null;
-      writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board), ...(taskId === null ? {} : { taskId }) });
+      writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board), ...(action === "rework_declare" && ["recorded", "exists"].includes(result.status) ? { status: result.status } : {}), ...(taskId === null ? {} : { taskId }) });
       return;
     }
     const error = Object.hasOwn(ACTION_STATUS, result?.error) ? result.error : "conflict";
