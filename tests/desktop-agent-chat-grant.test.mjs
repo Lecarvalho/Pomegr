@@ -116,6 +116,7 @@ test("a grant outcome that cannot be saved reports unavailable and releases its 
   let saves = 0;
   const conversation = { id: "chat-0123456789ab", messages: [] };
   const h = await chatHarness(context, { store: {
+    list: async () => [],
     create: async () => conversation,
     read: async () => conversation,
     save: async () => ++saves === 1,

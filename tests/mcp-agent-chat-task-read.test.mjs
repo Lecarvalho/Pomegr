@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http, { Server } from "node:http";
 import test from "node:test";
-import { buildAgentChatMcpServer, CHAT_TASK_UNAVAILABLE, createChatTaskReader } from "../mcp/agent-chat-server.mjs";
+import { buildAgentChatMcpServer, CHAT_TASK_UNAVAILABLE, createChatTaskLister, createChatTaskReader } from "../mcp/agent-chat-server.mjs";
 import { servedAgentTask } from "../shared/task-agent-read.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import { createRequestHandler } from "../server/serving/request-handler.mjs";
@@ -14,6 +14,7 @@ const entry = (overrides = {}) => ({ id: "T-1", text: "Full task 🥑 ".repeat(1
   report: { attention: "Check the result", block_reason: "Waiting for review" }, ...overrides });
 const unavailable = { content: [{ type: "text", text: CHAT_TASK_UNAVAILABLE }], isError: true };
 const tool = (readTask) => buildAgentChatMcpServer({ query: async () => null, readTask })._registeredTools.get_task;
+const listTool = (listTasks) => buildAgentChatMcpServer({ query: async () => null, listTasks })._registeredTools.list_tasks;
 
 test("chat get_task reuses the complete T118 shape and adds only snapshot-shaped attention and block reason", async () => {
   const task = entry({ repositoryId: "REPOSITORY-SENTINEL", columnId: "COLUMN-SENTINEL", featureId: "FEATURE-SENTINEL",
@@ -43,6 +44,27 @@ test("unknown, malformed, unavailable, mismatched and cut task answers all use t
   }
 });
 
+test("chat list_tasks uses the bounded coding-session projection and filters, with fixed unavailable failures", async () => {
+  const tasks = [entry({ text: "Needle ".repeat(60) }), entry({ id: "T-2", text: "Second task", state: "queued" })];
+  let filters;
+  const answer = await listTool(async (input) => { filters = input; return { tasks: tasks.map((task) => servedAgentTask(task, { cut: true })), matched: 2, truncated: false }; })
+    .handler({ query: "Needle", state: "done", editable: false });
+  assert.deepEqual(filters, { query: "Needle", state: "done", editable: false });
+  assert.equal(answer.isError, undefined);
+  assert.deepEqual(answer.structuredContent, { tasks: [
+    servedAgentTask(tasks[0], { cut: true }),
+    servedAgentTask(tasks[1], { cut: true }),
+  ], matched: 2, truncated: false });
+  assert.match(answer.content[0].text, /^2 tasks match, in board order\./u);
+  assert.equal(answer.structuredContent.tasks[0].text.length, 300);
+  assert.deepEqual(await listTool(async () => { throw new Error("PRIVATE"); }).handler({}), unavailable);
+  const read = listTool(async () => { assert.fail("invalid input must not read"); });
+  for (const input of [{ query: "x".repeat(81) }, { query: "two\nlines" }, { state: "unknown" }, { feature: "x".repeat(81) }, { editable: "yes" }, { repositoryId: "private" }]) {
+    assert.deepEqual(await read.handler(input), unavailable);
+    assert.equal(read.inputSchema.safeParse(input).success, false);
+  }
+});
+
 test("the desktop-only monitor read keeps T118's exact projection and binding, and never calls the mutating board read", async (context) => {
   const { store, directory } = await openTemporaryStore(context, "pomegr-chat-task-");
   createTask(store, REPOSITORY, { text: "Full task ".repeat(300), completeWhen: { checks: ["user_validated"], own: "Check the screen" } });
@@ -66,6 +88,15 @@ test("the desktop-only monitor read keeps T118's exact projection and binding, a
   const unknown = await (await read(`repositoryId=${REPOSITORY}&taskId=T-99`)).json();
   assert.deepEqual(await (await read(`repositoryId=${REPOSITORY}&taskId=T-2`)).json(), unknown);
   assert.equal(unknown.reason, "not_found");
+  const listed = await read(`repositoryId=${REPOSITORY}`);
+  assert.equal(listed.status, 200);
+  const listAnswer = await listed.json();
+  assert.deepEqual(listAnswer.tasks.map((task) => task.id), ["T-1"]);
+  assert.equal(listAnswer.tasks[0].text.length, 300);
+  assert.equal(listAnswer.tasks[0].textCut, true);
+  assert.doesNotMatch(JSON.stringify(listAnswer), /Look at this|codex:synthetic|report/u);
+  const filtered = await read(`repositoryId=${REPOSITORY}&query=missing`);
+  assert.deepEqual((await filtered.json()).tasks, []);
   for (const headers of [{}, { "x-pomegr-agent-authorization": agentToken }, { [DESKTOP_AUTH_HEADER]: token, origin: "http://localhost" }]) {
     assert.equal((await read(`repositoryId=${REPOSITORY}&taskId=T-1`, { headers })).status, 401);
   }
@@ -81,20 +112,23 @@ test("a turn capability reads only its repository, cannot proxy other operations
   h.state.actions = (_action, _payload, _body, call) => {
     assert.equal(call.pathname, "/internal/agent-chat/task");
     assert.equal(call.init.method, "GET");
-    assert.deepEqual(call.query, { repositoryId, taskId: "T-1" });
-    return { ok: true, task: entry() };
+    assert.equal(call.query.repositoryId, repositoryId);
+    return call.query.taskId ? { ok: true, task: entry() } : { ok: true, tasks: [], matched: 0, truncated: false };
   };
   const first = await send(h, { provider: "codex" });
   const env = h.runs[0].options.mcpServer.env;
   const read = createChatTaskReader(env);
   assert.deepEqual(await read("T-1"), entry());
+  const list = createChatTaskLister(env);
+  assert.deepEqual(await list({ query: "needle", editable: false }), { ok: true, tasks: [], matched: 0, truncated: false });
   assert.equal(h.runs[0].options.env.POMEGR_CHAT_TASK_KEY, undefined);
   assert.equal(h.runs[0].options.prompt.includes(env.POMEGR_CHAT_TASK_KEY), false);
   const before = h.calls.length;
   const headers = { "x-pomegr-chat-task-key": env.POMEGR_CHAT_TASK_KEY };
   for (const [suffix, init] of [["/task?task_id=T-1&repositoryId=other", {}], ["/task?task_id=T-1", { method: "POST" }],
     ["/task?task_id=T-1", { headers: { "x-pomegr-chat-task-key": "wrong" } }], ["/other?task_id=T-1", {}],
-    ["/task?task_id=T-1", { headers: { ...headers, origin: "http://localhost" } }]]) {
+    ["/task?task_id=T-1", { headers: { ...headers, origin: "http://localhost" } }], ["/tasks?repositoryId=other", {}],
+    ["/tasks?query=x&query=y", {}], ["/tasks?task_id=T-1", {}]]) {
     assert.equal((await fetch(`${env.POMEGR_CHAT_TASK_ORIGIN}${suffix}`, { headers, ...init })).status, 403);
   }
   assert.equal(h.calls.length, before);
@@ -118,6 +152,13 @@ test("task transport refuses missing capabilities and bounds streamed answers wi
   } })));
   assert.deepEqual(await read("T-1"), entry());
   assert.equal(await createChatTaskReader(env, async () => new Response("x".repeat(32769)))("T-1"), null);
+  let requested;
+  const listed = Buffer.from(JSON.stringify({ ok: true, tasks: [], matched: 0, truncated: false }));
+  assert.deepEqual(await createChatTaskLister(env, async (url) => {
+    requested = url;
+    return new Response(new ReadableStream({ start(controller) { controller.enqueue(listed); controller.close(); } }));
+  })({ query: "needle", editable: false }), { ok: true, tasks: [], matched: 0, truncated: false });
+  assert.match(requested, /\/tasks\?query=needle&editable=false$/u);
 });
 
 test("Stop during bridge startup prevents the provider run and releases the turn", async (context) => {

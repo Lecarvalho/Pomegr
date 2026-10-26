@@ -35,14 +35,14 @@ function serverWithQuery() {
   return { server, calls, tools: server._registeredTools };
 }
 
-test("the server registers exactly the seven observation tools and get_task the chat's run is allowed to call, each read-only", () => {
+test("the server registers exactly the seven observation tools and two chat-bound task reads, each read-only", () => {
   const { tools } = serverWithQuery();
   assert.deepEqual(Object.keys(tools).sort(), [...POMEGR_READ_TOOLS].sort());
-  assert.deepEqual(Object.keys(tools).sort(), [...Object.keys(AGENT_QUERY_TOOLS), "get_task"].sort());
-  assert.equal(Object.keys(tools).length, 8);
+  assert.deepEqual(Object.keys(tools).sort(), [...Object.keys(AGENT_QUERY_TOOLS), "get_task", "list_tasks"].sort());
+  assert.equal(Object.keys(tools).length, 9);
   for (const name of POMEGR_READ_TOOLS) {
     assert.deepEqual(tools[name].annotations, readOnly, name);
-    if (name !== "get_task") assert.ok(tools[name].outputSchema, `${name} has an output schema`);
+    if (name !== "get_task" && name !== "list_tasks") assert.ok(tools[name].outputSchema, `${name} has an output schema`);
     assert.equal(typeof tools[name].handler, "function");
   }
 });
@@ -158,7 +158,7 @@ test("the server and its entry import no task, feature, signal, or session-bindi
     assert.doesNotMatch(source, /registerTaskTools|plugin-src|claude-query-session|task-binding|createAgentTaskWriter/u);
     assert.doesNotMatch(source, /console\./u);
   }
-  assert.deepEqual([...server.matchAll(/from "([^"]+)"/gu)].map((match) => match[1]), ["@modelcontextprotocol/server", "zod", "./agent-query-tools.mjs", "../shared/agent-query-transport.mjs", "../shared/task-agent-read.mjs"]);
+  assert.deepEqual([...server.matchAll(/from "([^"]+)"/gu)].map((match) => match[1]), ["@modelcontextprotocol/server", "zod", "./task-tools.mjs", "./agent-query-tools.mjs", "../shared/agent-query-transport.mjs", "../shared/task-agent-read.mjs"]);
   assert.match(server, /registerAgentQueryTools\(server, \{ query, currentSessionRef: null \}\)/u);
   assert.match(entry, /serveStdio\(\(\) => buildAgentChatMcpServer\(\)\)/u);
   assert.deepEqual([...entry.matchAll(/from "([^"]+)"/gu)].map((match) => match[1]), ["@modelcontextprotocol/server/stdio", "./agent-chat-server.mjs"]);

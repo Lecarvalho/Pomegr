@@ -194,7 +194,7 @@ test("groups read as short labels in the order of their lowest task number, and 
 });
 
 test("a task with no run, session, report, or source gets plain defaults and no optional keys", () => {
-  const snapshot = boardSnapshot({ tasks: [{ id: "T-2", text: "Bare" }] }, { now });
+  const snapshot = boardSnapshot({ tasks: [{ id: "T-2", text: "Bare" }] }, { now, lastCompletedAt: -1 });
   assert.deepEqual(snapshot.tasks, [{
     id: "T-2", column: null, position: null, state: "", feature: null, provider: null, model: null, effort: null,
     complete_when: [], own_condition: null, updated_at: "", text: "Bare",
@@ -307,6 +307,7 @@ const budgetColumns = [
   { id: "done", name: "Done", role: "done" },
 ];
 
+
 function largeBoard(done, backlog, active = 3) {
   return { columns: budgetColumns, tasks: Array.from({ length: done + backlog + active }, (_, index) => fullTask({
     id: `T-${index + 1}`, columnId: index < done ? "done" : index < done + backlog ? "backlog" : ["ready", "progress", "review"][index % 3],
@@ -407,7 +408,7 @@ test("body priority is In progress, Review, Ready, Done, Backlog, with moved Bac
     ...[13, 14].map((id) => budgetTask(id, "review", 4000, { state: "needs_review" })),
     ...[15, 16].map((id) => budgetTask(id, "progress", 4000, { report: { attention: "Check migration", blockReason: "Waiting", results: [{ check: "pr_open", passed: false }] } })),
   ];
-  const snapshot = boardSnapshot({ columns: [...budgetColumns, { id: "custom", name: "Later" }], tasks: tasks.toReversed(), queue: { order: ["T-12", "T-11", "T-10", "T-9"] } }, { now });
+  const snapshot = boardSnapshot({ columns: [...budgetColumns, { id: "custom", name: "Later" }], tasks: tasks.toReversed(), queue: { order: ["T-12", "T-11", "T-10", "T-9"] } }, { now, lastCompletedAt: -1 });
   assert.deepEqual(snapshot.tasks.map((task) => task.id), tasks.map((task) => task.id));
   assert.deepEqual(snapshot.tasks.filter((task) => !task.text_cut).map((task) => task.id), ["T-6", "T-7", "T-8", "T-9", "T-10", "T-11", "T-12", "T-13", "T-14", "T-15", "T-16"]);
   assert.deepEqual(snapshotById(snapshot).get("T-16").report, { attention: "Check migration", block_reason: "Waiting", results: [{ check: "pr_open", passed: false }] });
@@ -447,7 +448,7 @@ test("Done bodies use newest updated time with deterministic task ID ties", () =
 
 test("an oversized priority body takes a bounded preview and leaves later bodies and every first line visible", () => {
   const tasks = [budgetTask(1, "progress", 100_000), budgetTask(2, "review"), budgetTask(3, "backlog")];
-  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now, lastCompletedAt: -1 });
   assert.equal(snapshot.tasks[0].text, tasks[0].text.slice(0, "Task 1".length + BOARD_TEXT_PREVIEW));
   assert.equal(snapshot.tasks[1].text, tasks[1].text);
   assert.equal(snapshot.tasks[2].text, tasks[2].text);
@@ -464,16 +465,16 @@ test("aggregate body overflow reserves every source first line and truthfully cu
 
 test("titles alone overflow into fair nonempty prefixes, deterministically inside the same budget", () => {
   const tasks = Array.from({ length: 500 }, (_, index) => ({ id: `T-${index + 1}`, text: "t".repeat(120) + "\nbody" }));
-  const snapshot = boardSnapshot({ tasks }, { now });
+  const snapshot = boardSnapshot({ tasks }, { now, lastCompletedAt: -1 });
   assert.equal(snapshot.tasks.every((task) => task.text.length === 96 && task.text_cut), true);
-  assert.deepEqual(boardSnapshot({ tasks: tasks.toReversed() }, { now }), snapshot);
+  assert.deepEqual(boardSnapshot({ tasks: tasks.toReversed() }, { now, lastCompletedAt: -1 }), snapshot);
   assertTextBudget(snapshot, tasks);
 });
 
 test("Unicode cuts preserve code points, source first lines, empty tasks, and nonempty overflow prefixes", () => {
   const titleTasks = Array.from({ length: 498 }, (_, index) => ({ id: `T-${index + 1}`, text: "🥑".repeat(101) + "\nbody" }));
   const tasks = [...titleTasks, { id: "T-499", text: "\nleading newline" }, { id: "T-500", text: "" }];
-  const snapshot = boardSnapshot({ tasks }, { now });
+  const snapshot = boardSnapshot({ tasks }, { now, lastCompletedAt: -1 });
   assert.ok(snapshot.tasks.slice(0, 499).every((task) => task.text.length > 0));
   assert.equal(snapshotById(snapshot).get("T-499").text, "\n");
   assert.equal(snapshotById(snapshot).get("T-500").text, "");
@@ -481,7 +482,7 @@ test("Unicode cuts preserve code points, source first lines, empty tasks, and no
   for (const task of snapshot.tasks) assert.equal(task.text.isWellFormed(), true);
   assertTextBudget(snapshot, tasks);
   const bodyTasks = [{ id: "T-1", text: "A\r\n" + "🥑".repeat(50_000) }, { id: "T-2", text: "Second\nbody" }];
-  const bodySnapshot = boardSnapshot({ tasks: bodyTasks }, { now });
+  const bodySnapshot = boardSnapshot({ tasks: bodyTasks }, { now, lastCompletedAt: -1 });
   assert.equal(bodySnapshot.tasks[0].text.startsWith("A\r\n"), true);
   assert.equal(bodySnapshot.tasks[0].text.isWellFormed(), true);
   assert.equal(bodySnapshot.tasks[1].text, bodyTasks[1].text);
@@ -495,7 +496,7 @@ test("a board within the budget keeps every text whole", () => {
 
 test("a malformed board never throws and a bad value never reaches the snapshot", () => {
   for (const board of [null, undefined, "board", 5, [], {}, { tasks: "none", columns: 3, features: {}, queue: [] }, { tasks: [null, 5, "T-1", { id: "T-1" }, { id: 7, text: "x" }] }]) {
-    const snapshot = boardSnapshot(board, { now });
+    const snapshot = boardSnapshot(board, { now, lastCompletedAt: -1 });
     assert.deepEqual(snapshot.tasks, []);
     assert.deepEqual(snapshot.task_text, { cut: 0, total: 0 });
     assert.deepEqual(snapshot.columns, []);
@@ -513,7 +514,7 @@ test("a malformed board never throws and a bad value never reaches the snapshot"
       source: { number: "42" }, scheduledAt: 20260101, updatedAt: null,
     }, { id: "T-2", text: "second", run: "bad", completeWhen: 5, session: "s", report: [], source: 3 }],
   };
-  const snapshot = boardSnapshot(hostile, { now });
+  const snapshot = boardSnapshot(hostile, { now, lastCompletedAt: -1 });
   const serialized = JSON.stringify(snapshot);
   assert.equal(serialized.includes("--evil"), false);
   assert.equal(serialized.includes("private model"), false);
@@ -608,7 +609,7 @@ test("a prompt past the limit is refused, and one at the limit is kept", () => {
 });
 
 test("the instructions name every board operation, the proposal fence, and the seven observation tools and task read of the chat server", () => {
-  assert.equal(POMEGR_READ_TOOLS.length, 8);
+  assert.equal(POMEGR_READ_TOOLS.length, 9);
   for (const operation of BOARD_OPERATIONS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`{"op":"${operation}"`), true, operation);
   assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`\`\`\`${PROPOSAL_FENCE}\n{"summary"`), true);
   for (const tool of POMEGR_READ_TOOLS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(tool), true, tool);
@@ -777,4 +778,15 @@ test("the board snapshot carries the session's observed effort", () => {
   task.session.observedEffort = "high";
   const snapshot = boardSnapshot(fullBoard({ tasks: [task] }), { now });
   assert.equal(snapshot.tasks[0].session.observed_effort, "high");
+});
+
+test("index lines show a task's leading tags as #tags before its title line", () => {
+  const board = {
+    columns: [{ id: "backlog", name: "Backlog" }, { id: "done", name: "Done", role: "done" }],
+    features: [],
+    tasks: [{ id: "T-7", columnId: "backlog", position: 0, text: ["[ frontend ] [ bug ]", "Fix the cold-load gate", "More detail"].join(String.fromCharCode(10)), updatedAt: 0 }],
+  };
+  const snapshot = boardSnapshot(board, { now: new Date("2026-10-25T00:00:00Z"), lastCompletedAt: Date.parse("2026-10-24T00:00:00Z") });
+  assert.equal(snapshot.index.length, 1);
+  assert.match(snapshot.index[0], /^T-7 Backlog#0 [^ ]* ?#frontend #bug Fix the cold-load gate$/u);
 });

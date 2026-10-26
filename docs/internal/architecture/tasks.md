@@ -2276,7 +2276,7 @@ How it is built:
   (404), `repository_unavailable` (409), `not_found` (404), or `unavailable` (503).
 - `servedAgentTask` in `shared/task-agent-read.mjs`, re-exported by the route module, is the one served-task shape. It bounds each
   field again on the way out, as `servedFeature` does, and an entry outside the shape
-  answers `unavailable`. The agent chat's `get_task` (task T-104) uses that shape through its desktop-only bridge, without changing the plugin server.
+  answers `unavailable`. The agent chat's `get_task` and `list_tasks` use that shape through their repository-bound desktop-only bridge, without changing the plugin server. Lists use the same four filters, 100-row limit, 300-character text previews, and matched/truncated counts.
 - The MCP tools are in `mcp/task-tools.mjs`. The Claude Code hook binds and signs
   each as its own tool name, and approves both (`permissionDecision: "allow"`) as it
   approves `get_feature`: they read the session's own board and change nothing. Codex
@@ -3100,7 +3100,7 @@ fixed values.
   `ok` or one fixed reason (see [Agent task update](#agent-task-update)). The fields it
   writes are the ones the desktop `update` action writes, kept and served as that
   action's are.
-- The chat's repository-bound `get_task` reuses the served-task projection through `shared/task-agent-read.mjs` (task T-104). Its desktop-only `GET /internal/agent-chat/task` uses the existing desktop authorization gate and the non-writing task reader. Only this chat read adds the snapshot-shaped attention and block lines; plugin reads remain unchanged. [Agent chat: Privacy](agent-chat.md#privacy) owns that provider boundary.
+- The chat's repository-bound `get_task` reuses the served-task projection through `shared/task-agent-read.mjs` (task T-104). Its `list_tasks` uses the same endpoint without `taskId`, accepting only `query`, `state`, `feature`, and `editable` alongside the desktop-bound repository ID, and returns the existing bounded list projection without report lines. Its desktop-only `GET /internal/agent-chat/task` uses the existing desktop authorization gate and the non-writing task reader. Only this chat read adds the snapshot-shaped attention and block lines; plugin reads remain unchanged. [Agent chat: Privacy](agent-chat.md#privacy) owns that provider boundary.
 - A task's text, own condition, checks, Run on, effort, feature title, column name,
   state, and the task IDs it runs after (added by task T-111) are served to a coding session only by `POST /api/agent/v1/tasks/get` and `list`, to an
   agent whose session is bound to that board (task T-118, 2026-10-15). This is a
@@ -3166,7 +3166,7 @@ fixed values.
   `Task.after` on `GET /api/tasks`, under that route's gate, to a same-computer client or a
   paired device, and in the `runs_after` reason of `queue.waits`. The `after_set` payload
   carries task IDs only, from the desktop app or a paired device, and its answer is the
-  board. The agent chat reads it in its board snapshot as `runs_after` and proposes it as
+  board. The agent chat reads it in full snapshot entries as `runs_after` or in index lines as `after` and proposes it as
   `set_after` (see [Agent chat](agent-chat.md#privacy)). An agent sets it with the
   `runs_after` input of `add_task` and `update_task` (task T-111, 2026-10-15): task IDs
   only, sent from the bound session to the local monitor for a task of that session's

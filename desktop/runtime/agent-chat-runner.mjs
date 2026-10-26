@@ -12,7 +12,7 @@ export const CHAT_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9
 
 // The read tools of the chat's own MCP server (`mcp/agent-chat-server.mjs`); it has no tool that writes.
 export const POMEGR_READ_TOOLS = Object.freeze([
-  "list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health", "get_task",
+  "list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health", "get_task", "list_tasks",
 ]);
 export const CLAUDE_FILE_TOOLS = Object.freeze(["Read", "Grep", "Glob"]);
 const MCP_SERVER_NAME = "pomegr";

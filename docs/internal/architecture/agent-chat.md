@@ -67,7 +67,7 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
 | `desktop/runtime/agent-chat-workflow.mjs` | The [workflow changes](#workflow-changes) read: which workflow source files changed after the owner settled Aril's settings and memory | Run anything but read-only `git log` and `git status` with an argument array, in the repository root, within 5 seconds; read file content; list a name outside the fixed list and the workflows folder |
 | `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
-| `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and one read-only task tool | Register a signal, write, or feature tool |
+| `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and two read-only task tools | Register a signal, write, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device | Forward a chat request to the web host |
 | `shared/agent-chat-contract.ts` | Browser-visible types and bounds | Import `server/` or `desktop/` |
 | `app/agent-chat-client.ts`, `app/components/agent-chat/` | The transport, the chat state, and the panel | Keep conversation content in browser storage, or change the board except through the chat's `apply` |
@@ -144,7 +144,7 @@ session ID desktop main made for the run vary.
   `--strict-mcp-config` loads only the given `--mcp-config`.
   `--permission-mode dontAsk` refuses tools outside the allow list without asking.
   `--tools Read,Grep,Glob` exposes three native tools.
-  The allow list contains those tools, the seven Pomegr observation tools, and `get_task`.
+  The allow list contains those tools, the seven Pomegr observation tools, `get_task`, and `list_tasks`.
   A conversation with images adds `--add-dir` with its image folder.
   Native Read can reach files outside the working directory, subject to provider permissions.
 - **Codex:** `exec --json --ephemeral --sandbox read-only --skip-git-repo-check
@@ -162,7 +162,7 @@ What the configured run permits, subject to the installed provider's permission 
 
 - It reads the repository's files. Claude Code has Read, Grep, and Glob. Codex has its
   shell inside the read-only sandbox.
-- It has the seven Pomegr observation tools and `get_task` (see [Tools](#tools)).
+- It has the seven Pomegr observation tools, `get_task`, and `list_tasks` (see [Tools](#tools)).
 - It sees the images the owner sent in this conversation. Claude Code reads their files
   in the one added folder. Codex gets the files of the newest message attached, and can
   read the folder inside its sandbox. The folder holds image files and nothing else.
@@ -231,7 +231,7 @@ The chat's MCP server is `mcp/agent-chat-server.mjs`, bundled as
 command is the desktop executable with `ELECTRON_RUN_AS_NODE=1`, so it needs no Node on
 the computer and no Pomegr plugin in the repository.
 
-It registers `get_task` and the seven observation tools of
+It registers `get_task`, `list_tasks`, and the seven observation tools of
 [MCP observation queries](mcp-queries.md): `list_sessions`,
 `get_session_report`, `list_session_agents`, `get_agent_context`,
 `get_recent_failures`, `get_usage_limits`, and `get_provider_health`. They use the same
@@ -239,9 +239,11 @@ loopback routes, the same local descriptor, and the same answers as the plugin's
 No host session is bound, so a session tool needs an explicit session reference. The
 board snapshot gives the reference of each task's session.
 
-`get_task` takes only `task_id` (`T-n`) and reads that task of the chat's repository. It reuses the [served-task shape](tasks.md#agent-task-read) from T-118 through `shared/task-agent-read.mjs`, with uncut text (at most 4,000 characters) and own condition, and adds only `report: { attention, block_reason }` as the snapshot shapes those lines. Aril calls it when a task it needs has `text_cut`, instead of guessing from the preview. Unknown and cross-repository IDs, malformed answers, and unavailable reads all answer the fixed line `Pomegr task unavailable on this chat's board.`
+`get_task` takes only `task_id` (`T-n`) and reads that task of the chat's repository. It reuses the [served-task shape](tasks.md#agent-task-read) from T-118 through `shared/task-agent-read.mjs`, with uncut text (at most 4,000 characters) and own condition, and adds only `report: { attention, block_reason }` as the snapshot shapes those lines. Aril calls it when a task it needs has `text_cut`, appears only in the index or Done summary, or needs detail for a comparison. Unknown and cross-repository IDs, malformed answers, and unavailable reads all answer the fixed line `Pomegr task unavailable on this chat's board.`
 
-Desktop main gives each message and follow-up a temporary loopback bridge, bound in a closure to the same repository as the snapshot. The MCP worker inherits its loopback origin and random read capability (`POMEGR_CHAT_TASK_ORIGIN` and `POMEGR_CHAT_TASK_KEY`) through the provider process environment; the runner removes their values from inline MCP configuration and passes only the variable names to Codex through `env_vars`. Neither value enters provider command-line arguments, the prompt, or a file. This temporary capability permits only the same repository task read offered by the tool, and grants no monitor or write access. The bridge accepts only `GET /task?task_id=T-n`, with its capability header, the exact loopback Host, and no Origin or body. It forwards the read to `GET /internal/agent-chat/task?repositoryId=…&taskId=…` under the existing desktop authorization gate. The monitor uses the non-writing task reader, including its exact editability rule; it neither seeds a board nor reads providers. No session is fabricated. The bridge closes on stop, dispose, or turn settlement; nothing is persisted. The observation credential and plugin task endpoints are unchanged.
+`list_tasks` takes the coding-session filters (`query`, `state`, `feature`, `editable`) and returns the same JSON result: at most 100 tasks, text cut at 300 characters, plus `matched` and `truncated`. It searches this chat's repository only; it adds no report fields.
+
+Desktop main gives each message and follow-up a temporary loopback bridge, bound in a closure to the same repository as the snapshot. The MCP worker inherits its loopback origin and random read capability (`POMEGR_CHAT_TASK_ORIGIN` and `POMEGR_CHAT_TASK_KEY`) through the provider process environment; the runner removes their values from inline MCP configuration and passes only the variable names to Codex through `env_vars`. Neither value enters provider command-line arguments, the prompt, or a file. This temporary capability permits only the same repository task read offered by the tool, and grants no monitor or write access. The bridge accepts `GET /task?task_id=T-n` and `GET /tasks` with only the four list filters, with its capability header, the exact loopback Host, and no Origin or body. It forwards the read to `GET /internal/agent-chat/task?repositoryId=…&taskId=…` under the existing desktop authorization gate. Lists use the same internal endpoint without `taskId`, with the validated filters. The monitor uses the non-writing task reader, including its exact editability rule; it neither seeds a board nor reads providers. No session is fabricated. The bridge closes on stop, dispose, or turn settlement; nothing is persisted. The observation credential and plugin task endpoints are unchanged.
 
 When the bundle is missing, the run starts without an MCP server and Aril works from the
 board snapshot and the files.
@@ -299,14 +301,22 @@ characters, in this order:
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
-A task in the snapshot holds its ID, column, position in that column (`position`, counted
+Full entries in `tasks` include Ready, In progress, and Review cards, plus cards in any column updated after the latest saved complete Aril answer in this repository; without one, the cutoff is 24 hours before the turn. Owner messages, follow-ups, and grant write turns use the same rule. Failed or interrupted answers never advance it. Deleting all completed answers restores the 24-hour fallback. Dependencies and group neighbors are expanded transitively, including Done cards.
+
+`index` holds every other non-Done card as one string, in column then position order: `T-12 Backlog#3 not_queued [Feature title] group A after T-4,T-5 first line`. Feature titles stop at 40 characters and the text's first line at 80; absent feature, group, and dependency tokens are omitted. Positions remain zero-based and may be used in proposals.
+
+`done` holds the total Done count, `by_run` counts grouped by provider, observed model and effort (falling back to planned values), and the ten most recently updated Done cards as index lines. Each group counts tasks with all reported checks passed (at least one), a known failed check, stalled state, blocked state or block reason, and a failed review. Unavailable checks count as neither passed nor failed. These counts describe current served evidence, not lifetime outcomes. `sent_back` is null because the board serves no send-back history. Aril fetches named tasks when comparing the record.
+
+Stable snapshot fields precede the volatile `now`, `queue` (including usage percentages), and `grant` fields.
+
+A full task in the snapshot holds its ID, column, position in that column (`position`, counted
 from 0 in the order the Board shows, null when the stored value is not a whole number of 0 or more), state, feature title, parallel-group label, the IDs
 of the tasks it runs after (`runs_after`, absent when none), planned
 provider, model and effort, complete-when checks and own condition, the linked session's
 reference, state, observed model and observed effort, the report's results (each one passed, failed, or
 unavailable), block reason and attention
 line, the GitHub issue number, the scheduled time, the update time, and the task text.
-Task text shares a budget of 48,000 UTF-16 code units.
+Full task text shares a budget of 48,000 UTF-16 code units.
 Pomegr reserves each source first line, excluding its LF or CRLF separator, before allocating bodies.
 Bodies follow In progress, Review, Ready in actual queue order, Done by newest update, then Backlog.
 Ready cards outside `queue.order` follow queued cards by position and numeric task ID.
@@ -317,7 +327,7 @@ That prefix includes any line separator after the title. A cut never splits a Un
 If titles alone exceed the budget, Pomegr allocates one code point per nonempty task per round, in numeric ID order.
 It stops when no next code point fits. A source starting with a newline retains that character; empty source stays empty.
 The owner approved this bounded title-overflow rule for T-141 on 2026-10-17.
-Each shortened source prefix carries `text_cut`. The snapshot always includes `task_text: { cut, total }`, counting shortened and total shown tasks.
+Each shortened source prefix carries `text_cut`. The snapshot always includes `task_text: { cut, total }`, counting shortened and total full entries only.
 Allocation changes neither snapshot card order nor report fields. Aril retrieves needed omitted text with `get_task` instead of guessing.
 
 `BOARD_SNAPSHOT_BUDGET` budgets the complete serialized snapshot, including JSON escaping and every task field.
@@ -327,14 +337,14 @@ Workflow changes reserve 12,000 characters. Owner turns reserve 10,000 each for 
 Follow-ups instead reserve 32,000 for the outcome and request. Grant requests reserve 6,000. Image rows reserve 8,000 in either conversation turn.
 History includes the separators between messages in its budget.
 
-Pomegr omits whole Done tasks by oldest update, then Backlog tasks by highest position, until the snapshot fits.
+The budget backstop omits full Done entries by oldest update, then full Backlog entries by highest position, and then index lines from the bottom of Backlog until the snapshot fits. Summary counts remain complete.
 Numeric task ID breaks ties. Dependency and group membership do not exempt Done or Backlog tasks from omission.
 Ready, In progress, and Review tasks stay. Remaining texts use progressively smaller shared budgets if the snapshot still exceeds its budget.
 If retained metadata alone exceeds the snapshot budget, shortening text cannot satisfy it; the whole-prompt limit remains enforced.
-Task fields retain their shape. When tasks are omitted, `tasks_omitted: { done, backlog }` counts them by column.
+Task fields retain their shape. When tasks are omitted, `tasks_omitted: { done, backlog }` counts omitted full entries and index lines by column; cards represented only in the index or Done summary do not count as omitted.
 The field is absent when no task is omitted. Omitted tasks still exist on the board.
 Aril uses `get_task` with a known ID and states when an answer may depend on tasks not shown.
-Its model advice weighs the shown task records.
+Its model advice weighs the Done summary and fetches named task records when their details matter.
 
 `models` holds one list for `claude` and one for `codex`. Each list starts with the
 models the Run on list of the task form offers for that provider, from the same code
@@ -968,7 +978,7 @@ never a session's.
   catalog (task T-110). A model name carries no session, path, or repository. This is a deliberate
   widening: before the chat, a task's text reached a provider only in the prompt of its
   own session. The run can also read the repository's files and call the seven observation
-  tools and the repository-bound `get_task`, so file content and normalized session evidence can reach the provider in the
+  tools and the repository-bound `get_task` and `list_tasks`, so file content and normalized session evidence can reach the provider in the
   same run, as they can in any session the owner starts in that folder. The images the
   owner sent in the conversation reach the provider too: the run reads their files. This
   is the widening of 2026-10-13 (task T-86). The prompt names the absolute file of each
@@ -984,7 +994,8 @@ never a session's.
   Pomegr does not filter source filenames or inspect source contents before the provider reads them.
   Instructions prohibit reading credentials and private session transcripts; this instruction is not a filesystem enforcement boundary.
   Native tool results can reach the chosen provider. Pomegr drops tool results and keeps only the conversation answer under the existing rules.
-- **What the task read exposes.** `get_task` can send the full text omitted by the snapshot's shared budget to the same chat provider, with the T-118 task fields and only the snapshot's attention and block lines added. It exposes no path, credential, capability, repository ID, column ID, feature ID, session, image, dispatch fact, feature description, or app version. Both monitor and MCP worker apply the shared allowlist. It writes nothing. The snapshot retains its 48,000-unit text bound under the allocation rule above.
+- **Compact snapshot boundary.** Full task fields cross only for active, recent, and connected cards under the selection rule above. Other non-Done cards send only index lines; Done cards contribute aggregate counts and ten recent index lines. The saved completion time is used locally, with no new persistent marker or provider field.
+- **What the task read exposes.** `get_task` can send the full text omitted by the snapshot's shared budget to the same chat provider, with the T-118 task fields and only the snapshot's attention and block lines added. It exposes no path, credential, capability, repository ID, column ID, feature ID, session, image, dispatch fact, feature description, or app version. `list_tasks` sends the existing coding-session list projection (at most 100 rows and 300 characters of text each, with matched/truncated counts) to the same provider; it adds no attention or block lines. Both monitor and MCP worker apply the shared allowlist. It writes nothing. The snapshot retains its 48,000-unit text bound under the allocation rule above.
 - **What never enters a prompt.** Credentials, tokens, the desktop token, a path other
   than the grant's named plan paths, the working directory the process starts in, and the files of the conversation's
   images, the images of a task, an image of another conversation, and the description or

@@ -25,7 +25,7 @@ test("the runner's fixed names and bounds", () => {
   assert.equal(TURN_TIMEOUT_MS, 10 * 60_000);
   assert.equal(STDOUT_LINE_LIMIT, 4 * 1024 * 1024);
   assert.equal(ANSWER_LIMIT, 32_000);
-  assert.deepEqual([...POMEGR_READ_TOOLS], ["list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health", "get_task"]);
+  assert.deepEqual([...POMEGR_READ_TOOLS], ["list_sessions", "get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures", "get_usage_limits", "get_provider_health", "get_task", "list_tasks"]);
   assert.deepEqual([...CLAUDE_FILE_TOOLS], ["Read", "Grep", "Glob"]);
   assert.equal(Object.isFrozen(POMEGR_READ_TOOLS), true);
   assert.equal(Object.isFrozen(CLAUDE_FILE_TOOLS), true);
