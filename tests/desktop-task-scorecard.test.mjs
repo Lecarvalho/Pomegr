@@ -13,9 +13,9 @@ const appVersion = "1.2.0-beta+1";
 const invalid = { ok: false, error: "invalid" };
 const unavailable = { ok: false, error: "unavailable" };
 const snapshot = () => ({ version: "1.2.0", takenAt: 123, measures: {
-  ownerTurns: { value: 2, sample: 3 }, reviewToDoneMs: { value: null, sample: 0 }, firstPass: { value: 0.5, sample: 2 },
+  ownerTurns: { value: 2, sample: 3 }, reviewToDoneMs: { value: null, sample: 0 }, firstPass: { value: 0.5, sample: 2 }, reworkRate: { value: 0.25, sample: 4 },
 } });
-const scorecard = () => ({ formula: 1, current: snapshot(), baseline: null });
+const scorecard = () => ({ formula: 2, current: snapshot(), baseline: null });
 const response = (value, ok = true) => ({ ok, json: async () => value });
 
 function harness(answer = response({ ok: true, scorecard: scorecard() }), overrides = {}) {
@@ -84,8 +84,10 @@ test("malformed scorecards are unavailable, including non-JSON numbers", async (
     for (const version of ["", "v".repeat(41), 7]) mutations.push((s) => { s[key].version = version; });
     mutations.push((s) => { s[key].takenAt = 1.5; });
     mutations.push((s) => { delete s[key].measures.firstPass; });
+    mutations.push((s) => { delete s[key].measures.reworkRate; });
+    mutations.push((s) => { s[key].measures.reworkRate.value = 1.01; });
     mutations.push((s) => { s[key].measures.firstPass.value = 1.01; });
-    for (const measure of ["ownerTurns", "reviewToDoneMs", "firstPass"]) {
+    for (const measure of ["ownerTurns", "reviewToDoneMs", "firstPass", "reworkRate"]) {
       for (const value of [NaN, Infinity, -1, "1", undefined]) mutations.push((s) => { s[key].measures[measure].value = value; });
       for (const sample of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, null]) mutations.push((s) => { s[key].measures[measure].sample = sample; });
     }

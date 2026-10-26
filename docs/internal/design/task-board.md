@@ -628,6 +628,8 @@ Each row below the tags shows only when it is set, in this order:
 
 ### Scorecard panel
 
+- **Rework rate** (S8) follows First-pass acceptance with the same current percentage, sample, and baseline row pattern; the pending rows stay unchanged.
+- Its caption reads “Merged tasks sent back, failed a review, requeued, or named by a rework link. Lower is better.”
 - Only the desktop app draws **Scorecard**. Like the other desktop-only actions, it is decided at first render.
 - The panel is the Queue settings side panel: the same frame, width, head, close button, and focus rules. Focus returns to **Scorecard**.
 - It reads the scorecard once, when it opens, through the desktop bridge. Reopening it reads again.

@@ -19,13 +19,13 @@ const HOUR = 3_600_000;
 const taskAction = vi.fn(async () => ({ ok: true }));
 const taskScorecard = vi.fn<(repositoryId: string) => Promise<unknown>>();
 
-const measures = (turns: number | null, sample: number) => ({ ownerTurns: { value: turns, sample }, reviewToDoneMs: { value: turns === null ? null : 2 * HOUR, sample }, firstPass: { value: turns === null ? null : 0.75, sample } });
+const measures = (turns: number | null, sample: number) => ({ ownerTurns: { value: turns, sample }, reviewToDoneMs: { value: turns === null ? null : 2 * HOUR, sample }, firstPass: { value: turns === null ? null : 0.75, sample }, reworkRate: { value: turns === null ? null : turns / 6, sample } });
 const LATER: Scorecard = {
-  formula: 1,
+  formula: 2,
   current: { version: "0.9.1", takenAt: Date.UTC(2026, 10, 2), measures: measures(1.5, 8) },
   baseline: { version: "0.9.0", takenAt: Date.UTC(2026, 9, 24), measures: measures(3, 4) },
 };
-const FIRST: Scorecard = { formula: 1, current: { version: "0.9.0", takenAt: Date.UTC(2026, 9, 24), measures: measures(null, 0) }, baseline: null };
+const FIRST: Scorecard = { formula: 2, current: { version: "0.9.0", takenAt: Date.UTC(2026, 9, 24), measures: measures(null, 0) }, baseline: null };
 
 function setBoard() {
   const board: TaskBoard = {
@@ -66,8 +66,12 @@ describe("Scorecard on the Tasks page", () => {
     expect(taskScorecard).toHaveBeenCalledWith(repositoryId);
     expect(within(dialog).getByText("3 turns")).toBeInTheDocument();
     expect(within(dialog).getAllByText("2 h")).toHaveLength(2);
+    const rework = within(dialog).getByText(/Rework rate/).closest(".taskScorecardRow") as HTMLElement;
+    expect(within(rework).getByText("25%")).toBeInTheDocument();
+    expect(within(rework).getByText("50%")).toBeInTheDocument();
+    expect(within(rework).getByText(/Lower is better/)).toBeInTheDocument();
     expect(within(dialog).getAllByText("75%")).toHaveLength(2);
-    expect(within(dialog).getAllByText("n 8")).toHaveLength(3);
+    expect(within(dialog).getAllByText("n 8")).toHaveLength(4);
     expect(within(dialog).getByText(/The baseline is the first snapshot, saved .* in 0\.9\.0\. Scorecard values stay on this computer\./)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog", { name: "Scorecard" })).toBeNull();
@@ -80,7 +84,7 @@ describe("Scorecard on the Tasks page", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(within(strip()).getByRole("button", { name: "Scorecard" }));
     const dialog = screen.getByRole("dialog", { name: "Scorecard" });
-    await waitFor(() => expect(within(dialog).getAllByText("No data")).toHaveLength(3));
+    await waitFor(() => expect(within(dialog).getAllByText("No data")).toHaveLength(4));
     expect(within(dialog).queryByText(/^0/)).toBeNull();
     expect(within(dialog).getByText(/This version's values become the baseline/)).toBeInTheDocument();
   });
@@ -111,14 +115,15 @@ describe("parseScorecard", () => {
     expect(broken((card) => { card.current.version = ""; return card; })).toBeNull();
     expect(broken((card) => { card.current.version = "x".repeat(41); return card; })).toBeNull();
     expect(broken((card) => { card.current.measures.firstPass.value = 1.2; return card; })).toBeNull();
+    expect(broken((card) => { card.current.measures.reworkRate.value = 1.2; return card; })).toBeNull();
     expect(broken((card) => { card.current.measures.ownerTurns.sample = -1; return card; })).toBeNull();
     expect(broken((card) => { card.current.measures.ownerTurns.value = Number.NaN; return card; })).toBeNull();
     expect(broken((card) => { (card.baseline as Scorecard["current"]).takenAt = 1.5; return card; })).toBeNull();
   });
 
-  it("lists S1 twice, then S2, then S3 to S7 with no value", () => {
+  it("lists measured rows before unchanged pending rows", () => {
     const rows = scorecardRows(LATER);
-    expect(rows.map((row) => row.id)).toEqual(["S1", "S1", "S2", "S3", "S4", "S5", "S6", "S7"]);
-    expect(rows.slice(3).every((row) => row.now === null && row.baseline === null && row.pending)).toBe(true);
+    expect(rows.map((row) => row.id)).toEqual(["S1", "S1", "S2", "S8", "S3", "S4", "S5", "S6", "S7"]);
+    expect(rows.slice(4).every((row) => row.now === null && row.baseline === null && row.pending)).toBe(true);
   });
 });

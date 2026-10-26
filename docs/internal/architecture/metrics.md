@@ -24,15 +24,26 @@ These rules apply to every metric and to every surface that shows one.
 
 ## G1 scorecard
 
-Formula 1 uses only `task_outcomes` rows whose `pull_request_state` is `merged`, within one repository. S1 and S2 are heuristic proxies for owner effort and first-pass acceptance, not authoritative quality or productivity measurements.
+Formula 2 uses only `task_outcomes` rows whose `pull_request_state` is `merged`, within one repository. The window is all retained outcomes, with no rolling date cutoff. S1 and S2 are heuristic proxies for owner effort and first-pass acceptance, not authoritative quality or productivity measurements.
 
-Review verdicts now populate `reviews` and `first_review_passed` at Done for a later first-pass measure. Formula 1 remains unchanged. These are agent-reported verdicts, not authoritative quality measurements; the [review contract](tasks.md#review-sessions) defines their storage.
+Review verdicts populate `reviews` and `first_review_passed` at Done for a later first-pass measure. Formula 2 leaves S1 and S2 unchanged. These are agent-reported verdicts, not authoritative quality measurements; the [review contract](tasks.md#review-sessions) defines their storage.
 
 - S1 `ownerTurns` is the median non-null `owner_turns`; its sample is the number of those rows, including zero counts.
 - S1 `reviewToDoneMs` is the median wall time `done_at - review_at` in milliseconds; its sample includes only non-null `review_at` with `done_at >= review_at`.
 - S2 `firstPass` is the share with `commits_after_review === 0` among rows with non-null `commits_after_review`; its sample is that denominator.
+- S8 `reworkRate` is the share of merged tasks sent back, failed in review, requeued after a report, or named as `reworks`. Its sample is all merged outcomes; each task counts at most once, regardless of signal count. Lower is better.
+- Rework rate is a heuristic: it counts declared and recorded events, not an AI judgment or automatic detection of defects.
+- Rework signals use the durable sources below, never the bounded `task_log`; log pruning cannot remove their evidence.
 - Each measure is `{ value, sample }`; an empty sample gives null and 0, and an even median is the mean of the middle two sorted values.
 - The [task store](tasks.md#store) owns version snapshots and baseline selection; a version comparison does not establish that an app version caused a change.
+- Formula 1 snapshots remain stored; formula 2 compares only with formula 2 snapshots.
+
+| Rework signal | Source within the same repository |
+| --- | --- |
+| Sent back | The `task_send_back:<repositoryId>:T-n` meta marker; its `task_events` requeue remains after Done clears the marker. |
+| Failed review | Any `task_reviews` row with `verdict = 'fail'`, including failures followed by passes. |
+| Requeued after a report | A `task_events` row with `kind = 'requeued'`, or its count saved in `task_outcomes.requeues`. |
+| Declared rework | A `task_rework.reworks` reference equal to `T-n`, or `#n` matching the outcome's merged `pull_request` number. The fixing task alone does not count. |
 
 ## Session closure
 
