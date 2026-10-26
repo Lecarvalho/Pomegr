@@ -45,14 +45,21 @@ function validImages(images) {
   return files.every(inFolder) ? { folder, files: [...files] } : null;
 }
 
+export function validInstructionsFile(instructions) {
+  const folder = instructions?.folder;
+  const file = instructions?.file;
+  return validImages({ folder, files: [] }) !== null && typeof file === "string" && file.startsWith(folder)
+    && /[\\/]/u.test(file[folder.length]) && /^instructions-[0-9a-f]{64}\.md$/u.test(file.slice(folder.length + 1));
+}
+
 /**
  * The fixed arguments of one turn. Only a validated model identifier, the desktop's own MCP server, and the
- * desktop's own image folder and files vary.
+ * desktop's own image folder, files, instructions file, and session ID vary.
  * The run uses provider-native read access, the conversation images, and Pomegr's read tools. Native permissions
  * can permit reads outside the repository. User settings and hooks are excluded; managed provider policy still
  * applies. No write access or interactive approval is enabled.
  */
-export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null) {
+export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null) {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
   const identity = typeof sessionId === "string" && CHAT_SESSION_ID.test(sessionId) ? sessionId : null;
   const server = validServer(mcpServer) ? { command: mcpServer.command, args: [...mcpServer.args], env: { ...mcpServer.env } } : null;
@@ -75,6 +82,7 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
       ...(chosen ? ["--model", chosen] : []),
       // The conversation image folder remains a desktop-owned working directory.
       ...(shown ? ["--add-dir", shown.folder] : []),
+      ...(validInstructionsFile(instructionsFile) ? ["--append-system-prompt-file", instructionsFile.file, "--exclude-dynamic-system-prompt-sections"] : []),
     ];
   }
   if (provider === "codex") {
@@ -191,8 +199,8 @@ export function createTurnReader(provider, { onText = () => {}, onActivity = () 
  * Starts one turn and answers `{ status, text }` when the run ends: `complete`, `failed`, `timed_out`, or `stopped`.
  * `stop()` ends Pomegr's own headless run; it is never a session the owner started.
  */
-export function runChatTurn({ spawn, executable, provider, model = null, mcpServer = null, images = null, sessionId = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
-  const args = chatArguments(provider, model, mcpServer, images, sessionId);
+export function runChatTurn({ spawn, executable, provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
+  const args = chatArguments(provider, model, mcpServer, images, sessionId, instructionsFile);
   let child = null;
   let stopped = false;
   let timedOut = false;

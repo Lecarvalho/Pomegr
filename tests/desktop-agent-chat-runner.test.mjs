@@ -1,6 +1,70 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import * as fs from "node:fs/promises";
+import path from "node:path";
+import { prepareInstructionsFile } from "../desktop/runtime/agent-chat.mjs";
+import { AGENT_CHAT_INSTRUCTIONS, composePrompt, PROMPT_LIMIT } from "../desktop/runtime/agent-chat-prompt.mjs";
+import { chatHarness, finishTurn, readyBoard, send } from "./helpers/agent-chat-harness.mjs";
+
+test("omitting the system instructions keeps the same board and total prompt budget", () => {
+  const options = { board: readyBoard(), message: "", now: new Date("2026-10-25T12:00:00Z") }, full = composePrompt(options);
+  assert.ok(full.startsWith(`${AGENT_CHAT_INSTRUCTIONS}\n\n`));
+  assert.equal(composePrompt({ ...options, includeInstructions: false }), full.slice(AGENT_CHAT_INSTRUCTIONS.length + 2));
+  for (const includeInstructions of [true, false]) {
+    assert.ok(composePrompt({ ...options, includeInstructions, message: "x".repeat(PROMPT_LIMIT - full.length) }));
+    assert.equal(composePrompt({ ...options, includeInstructions, message: "x".repeat(PROMPT_LIMIT - full.length + 1) }), null);
+  }
+});
+
+test("Claude accepts only a fixed instructions file inside the desktop folder; Codex is unchanged", () => {
+  const folder = "C:\\Pomegr\\agent-chat-v1";
+  const file = `${folder}\\instructions-${"a".repeat(64)}.md`;
+  const args = (provider, instructions) => chatArguments(provider, null, null, null, null, instructions);
+  assert.deepEqual(args("claude", { folder, file }), [...chatArguments("claude"), "--append-system-prompt-file", file, "--exclude-dynamic-system-prompt-sections"]);
+  assert.deepEqual(args("codex", { folder, file }), chatArguments("codex"));
+  for (const bad of [{ folder, file: "instructions.md" }, { folder, file: file.replace("Pomegr", "Elsewhere") },
+    { folder: "relative", file }, { folder, file: `${folder}\\..\\${file.split("\\").at(-1)}` }]) {
+    assert.deepEqual(args("claude", bad), chatArguments("claude"));
+  }
+});
+
+test("instructions are reused unchanged, repaired atomically, and named by content", async (context) => {
+  const directory = await fs.mkdtemp(path.join(process.cwd(), ".instructions-test-"));
+  context.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const first = await prepareInstructionsFile(directory);
+  assert.equal(await fs.readFile(first.file, "utf8"), AGENT_CHAT_INSTRUCTIONS);
+  await fs.utimes(first.file, 1, 1);
+  assert.deepEqual(await prepareInstructionsFile(directory), first);
+  assert.equal((await fs.stat(first.file)).mtimeMs, 1000);
+  await fs.writeFile(first.file, "incomplete");
+  assert.deepEqual(await prepareInstructionsFile(directory), first);
+  assert.equal(await fs.readFile(first.file, "utf8"), AGENT_CHAT_INSTRUCTIONS);
+  const changed = await prepareInstructionsFile(directory, "new fixed instructions");
+  assert.notEqual(changed.file, first.file);
+  assert.equal(await fs.readFile(changed.file, "utf8"), "new fixed instructions");
+  assert.equal((await fs.readdir(first.folder)).length, 2);
+  assert.equal(await prepareInstructionsFile("relative"), null);
+  assert.equal(await prepareInstructionsFile(first.file), null);
+});
+
+test("Claude turns use the file and fall back to stdin when it cannot be written or validated", async (context) => {
+  const directory = await fs.mkdtemp(path.join(process.cwd(), ".instructions-test-"));
+  context.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const blocked = path.join(directory, "not-a-folder");
+  await fs.writeFile(blocked, "blocked");
+  for (const mode of ["file", "write-failure", "invalid", "codex"]) {
+    const h = await chatHarness(context, { viaDataRoot: mode === "file" || mode === "codex",
+      ...(mode === "invalid" ? { dataRoot: "relative" } : mode === "write-failure" ? { dataRoot: blocked } : {}) });
+    const sent = await send(h, { provider: mode === "codex" ? "codex" : "claude" });
+    assert.equal(sent.ok, true);
+    const { instructionsFile, prompt } = h.runs[0].options;
+    assert.equal(Boolean(instructionsFile), mode === "file");
+    assert.equal(prompt.startsWith(AGENT_CHAT_INSTRUCTIONS), mode !== "file");
+    if (instructionsFile) assert.equal(await fs.readFile(instructionsFile.file, "utf8"), AGENT_CHAT_INSTRUCTIONS);
+    await finishTurn(h, h.runs[0], { status: "complete", text: "Done." }, sent.conversationId);
+  }
+});
 
 import {
   ANSWER_LIMIT,

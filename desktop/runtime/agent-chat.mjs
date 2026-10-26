@@ -3,17 +3,18 @@
 // and changes the board through approved proposals or the fixed grant task-writing action.
 
 import { execFile as execFileChild, spawn as spawnChild } from "node:child_process";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
+import * as fs from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
-import { composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
+import { AGENT_CHAT_INSTRUCTIONS, composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
-import { runChatTurn } from "./agent-chat-runner.mjs";
+import { runChatTurn, validInstructionsFile } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
@@ -47,6 +48,25 @@ const IMAGE_TIMEOUT_MS = 20_000;
 const DECLARATION_TIMEOUT_MS = 2_000;
 
 const MCP_WORKER = ["desktop", "workers", "agent-chat-mcp.cjs"];
+
+// Only fixed instructions enter this file; an unavailable file leaves the turn's stdin form intact.
+export async function prepareInstructionsFile(dataRoot, content = AGENT_CHAT_INSTRUCTIONS) {
+  let temporary;
+  try {
+    if (typeof dataRoot !== "string" || !path.isAbsolute(dataRoot)) return null;
+    const folder = path.join(dataRoot, AGENT_CHAT_DIRECTORY);
+    const file = path.join(folder, `instructions-${createHash("sha256").update(content).digest("hex")}.md`);
+    const instructions = { folder, file };
+    if (!validInstructionsFile(instructions)) return null;
+    if (await fs.readFile(file, "utf8").catch(() => null) === content) return instructions;
+    await fs.mkdir(folder, { recursive: true });
+    temporary = `${file}.${randomUUID()}.tmp`;
+    await fs.writeFile(temporary, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    await fs.rename(temporary, file);
+    return instructions;
+  } catch { return null; }
+  finally { if (temporary) await fs.rm(temporary, { force: true }).catch(() => {}); }
+}
 
 /** The chat's own MCP server: the desktop executable running the bundled read-only server as Node. Null when it is not built. */
 export function agentChatMcpServer({ executable, unpackedRoot, fileExists = existsSync } = {}) {
@@ -349,7 +369,8 @@ export function createAgentChat(options = {}) {
       const shown = images && held.length > 0 ? await images.files(turn.repositoryId, conversation.id, held) : [];
       turn.followUpOutcome = proposalOutcome(proposal)?.outcome;
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
-      const prompt = composePrompt({ board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
+      const instructionsFile = turn.provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
@@ -363,7 +384,7 @@ export function createAgentChat(options = {}) {
         withdrawRun(sessionId);
         return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
       }
-      const run = runTurn({
+      const run = runTurn({ instructionsFile,
         spawn, executable: command, provider: turn.provider, model: turn.model, mcpServer: taskServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null, sessionId,
         cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
@@ -480,7 +501,8 @@ export function createAgentChat(options = {}) {
       const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const inventory = await readWorktrees(repositoryId, root, board);
-      const prompt = composePrompt({ board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, repositoryGithub: github, now: now() });
+      const instructionsFile = provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, repositoryGithub: github, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
@@ -502,7 +524,7 @@ export function createAgentChat(options = {}) {
         await finishTurn(turn, { status: "stopped", text: "" });
         return UNAVAILABLE;
       }
-      const run = runTurn({
+      const run = runTurn({ instructionsFile,
         spawn, executable: command, provider, model, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
@@ -536,7 +558,8 @@ export function createAgentChat(options = {}) {
       if (!command) return refused("cli_missing");
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const inventory = await readWorktrees(repositoryId, root, board);
-      const prompt = composePrompt({ board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, grantPlans: plans, now: now() });
+      const instructionsFile = provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, grantPlans: plans, now: now() });
       if (!prompt) return INVALID;
       const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
       if (!conversation) return refused("limit");
@@ -549,7 +572,7 @@ export function createAgentChat(options = {}) {
       sessionId = await declareRun(provider);
       const taskServer = await taskReadServer(turn);
       if (disposed || turn.stopped) { await finishTurn(turn, { status: "stopped", text: "" }); return UNAVAILABLE; }
-      const run = runTurn({ spawn, executable: command, provider, model: null, mcpServer: taskServer, images: null, sessionId,
+      const run = runTurn({ instructionsFile, spawn, executable: command, provider, model: null, mcpServer: taskServer, images: null, sessionId,
         cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; }, onActivity: (value) => { turn.activity = value; } });
       turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };

@@ -136,9 +136,13 @@ The run is the owner's own provider CLI, signed in as the owner. Pomegr reads an
 no credential, and offers no sign-in of its own. The arguments are fixed
 (`chatArguments` in `agent-chat-runner.mjs`); only a validated model identifier, the
 desktop's own MCP server, the desktop's own image folder and image files, and the
-session ID desktop main made for the run vary.
+session ID desktop main made for the run, and the desktop's fixed-instructions file vary.
 
 - **Claude Code:** print mode with JSON lines, `--no-session-persistence`, and `--session-id` with the run's own ID.
+  `--append-system-prompt-file` supplies the fixed instructions, with `--exclude-dynamic-system-prompt-sections` so nearby turns can reuse the system prefix.
+  Desktop main atomically writes `AGENT_CHAT_INSTRUCTIONS` to `<desktop data root>/agent-chat-v1/instructions-<sha256>.md`, reusing the file while its content matches.
+  The absolute path comes only from the desktop data root and the content hash, and the runner validates that it sits directly inside that folder.
+  If writing or validation fails, the turn keeps the instructions in stdin and omits both flags.
   Empty `--setting-sources` excludes user, project, and local settings.
   Inline `--settings` disables hooks and auto memory.
   `--strict-mcp-config` loads only the given `--mcp-config`.
@@ -183,7 +187,7 @@ A shell command is not an available Claude tool. A denied command does not prove
 Aril must report unavailable evidence and must not bypass permissions.
 
 The process starts with `spawn`, an argument array, and `shell: false`. The prompt
-travels on stdin. Nothing the owner typed and nothing from the board is in an argument,
+travels on stdin, except Claude's fixed instructions when its system-prompt file is available. Nothing the owner typed and nothing from the board is in an argument,
 a path, or the environment. An image folder or file is in an argument only in the form
 desktop main builds: the chat's directory, a validated repository ID and conversation
 ID, and a file named by an image ID that desktop main made. The runner refuses any other
@@ -251,7 +255,7 @@ board snapshot and the files.
 ### Prompt
 
 `composePrompt` in `agent-chat-prompt.mjs` builds one text of at most 200,000
-characters, in this order:
+characters, including the fixed instructions even when Claude receives them through its system-prompt file instead of stdin, in this order:
 
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
    read, that it proposes changes for owner Apply except for the fixed actions the desktop
@@ -894,7 +898,7 @@ Desktop main keeps one JSON file per conversation:
 | `POST /internal/tasks/log-read` and `log-ack` on the monitor | Desktop main, with the desktop token | The newest 100 log entries for owner-message prompts; acknowledgement through the highest shown ID after a complete turn |
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, `queue_ungroup`, and `after_set`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
-| The provider run | Desktop main | The prompt on stdin; JSON lines on stdout |
+| The provider run | Desktop main | The prompt on stdin, with Claude's fixed instructions optionally in its desktop-owned system-prompt file; JSON lines on stdout |
 | Read-only `git log -1` and `git status --porcelain` in the repository root | Desktop main | One call per workflow source and one for the set, started with an argument array and no shell, within 5 seconds in total ([Workflow changes](#workflow-changes)); only repository-relative names and dates are kept |
 
 The operations and their payloads, each with `repositoryId`:
@@ -943,6 +947,7 @@ never a session's.
 - **Where it lives.** In the conversation files and the image files under the desktop
   data root, and in desktop main's memory. Not in the monitor, the task store, the observation store, a
   checkpoint, a report, a log, a notification, or diagnostics.
+- **Fixed instructions file.** Desktop main also writes `<desktop data root>/agent-chat-v1/instructions-<sha256>.md` for Claude; it contains only the fixed `AGENT_CHAT_INSTRUCTIONS`, with no owner, conversation, board, image, or credential data. Codex keeps the instructions first in stdin.
 - **Who gets it.** The trusted renderer through `pomegr:agent-chat`, and a paired device
   through `POST /api/agent-chat`. No GET serves it, except the one GET that answers a
   paired device the bytes of an image of a conversation. A same-computer browser gets nothing.
