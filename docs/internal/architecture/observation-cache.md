@@ -3073,7 +3073,7 @@ A `204` retains that query's body and restores connectivity after a transient fa
 | Consumer | Refresh and recovery |
 | --- | --- |
 | Catalog/sidebar | Revision events; 30 seconds connected, 5 seconds reconnecting, 30 seconds hidden; 1 second while initially loading |
-| Sessions directory | Catalog revision events and a 30-second visible / 60-second hidden fallback; **Pause live refresh** stops refresh; query and grouping changes reset the bounded cursor trail; the grouping choice is a browser-local preference |
+| Sessions directory | Catalog revision events and a 30-second visible / 60-second hidden fallback; a refresh while the same page is in flight never aborts it and coalesces into one follow-up, so live sessions cannot starve the first page; **Pause live refresh** stops refresh; query and grouping changes reset the bounded cursor trail; the grouping choice is a browser-local preference |
 | Selected live session (`/api/state` compatibility) | Matching session-domain or catalog events; the same 30/5/30-second fallback; 1 second while unresolved |
 | Mounted session domain (`/api/session-domain`) | One exact-query browser entry per session/domain/agent; current plus two recent session IDs retained; matching domain events and the 30/5/30-second live fallback; 1 second while unresolved |
 | Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |
