@@ -129,14 +129,15 @@ describe("Task modal, mode edit", () => {
     expect(header().queryByText(/in Backlog/)).not.toBeInTheDocument();
     expect(document.querySelector(".taskModalSubtitle")).toHaveTextContent(/^$/);
     expect(dialog.getByRole("link", { name: "Open session" })).toHaveAttribute("href", expect.stringMatching(/^\/sessions\//));
-    // A task that has started is read, not edited: the text, then the settings as values, and no control.
+    // Started task content and run settings stay read-only; only the separate Reworks declaration has controls.
     expect(dialog.getByRole("region", { name: "Task" })).toHaveTextContent("Add a private task store.");
     expect(dialog.getByText("Add a private task store.", { selector: ".taskReadTitle" })).toBeInTheDocument();
-    expect(dialog.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(within(dialog.getByRole("region", { name: "Task" })).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(dialog.getAllByRole("textbox")).toEqual([dialog.getByRole("textbox", { name: "Reworked task or pull request" })]);
     expect(rowValue(dialog, "Run on")).toHaveTextContent("Claude Code · model-a");
     expect(rowValue(dialog, "Effort")).toHaveTextContent("High");
     expect(rowValue(dialog, "Feature")).toHaveTextContent("No feature");
-    expect(dialog.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(dialog.getAllByRole("combobox")).toEqual([dialog.getByRole("combobox", { name: "Rework cause" })]);
     expect(dialog.queryByRole("checkbox")).not.toBeInTheDocument();
     // The conditions are listed with their results in the Review panel, so the Run settings do not list them again.
     const conditions = within(dialog.getByRole("list", { name: "Complete when" }));
@@ -300,8 +301,11 @@ describe("Task modal, mode edit", () => {
       expect(dialog.getByText(note, { exact: true }), text).toHaveClass("taskReadNote");
       expect(document.querySelector(".taskReadLock > svg"), text).toHaveAttribute("aria-hidden", "true");
       expect(dialog.getByRole("region", { name: "Task" }), text).toHaveTextContent(text);
-      // Nothing is a control: no text field, no select, no segment, no checkbox, and no Save.
-      for (const role of ["textbox", "combobox", "checkbox"] as const) expect(dialog.queryByRole(role), `${text} ${role}`).not.toBeInTheDocument();
+      // Only Reworks has a text field and select; task content and run settings remain read-only.
+      expect(within(dialog.getByRole("region", { name: "Task" })).queryByRole("textbox"), text).not.toBeInTheDocument();
+      expect(dialog.getAllByRole("textbox"), text).toEqual([dialog.getByRole("textbox", { name: "Reworked task or pull request" })]);
+      expect(dialog.getAllByRole("combobox"), text).toEqual([dialog.getByRole("combobox", { name: "Rework cause" })]);
+      expect(dialog.queryByRole("checkbox"), text).not.toBeInTheDocument();
       for (const name of ["Low", "High"]) expect(dialog.queryByRole("button", { name }), `${text} ${name}`).not.toBeInTheDocument();
       expect(dialog.queryByRole("button", { name: "Save" }), text).not.toBeInTheDocument();
       // The stored values still show, and the task can still be deleted.

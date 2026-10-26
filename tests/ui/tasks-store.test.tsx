@@ -6,6 +6,15 @@ import { parseTaskBoard, resetTasksStoreForTests, useTasks } from "../../app/tas
 import type { Task, TaskBoard } from "../../shared/task-contract";
 
 const repositoryId = "repo-0123456789abcdef01234567";
+it("keeps bounded rework links in both directions and strips extra fields", () => {
+  const link = { ref: "#336", cause: "missed_wiring", declaredBy: "owner", private: "hidden" };
+  const parsed = parseTaskBoard(board({ tasks: [{ ...task(), reworks: [link], reworkedBy: [{ ...link, ref: "T-2" }] } as unknown as Task] }), repositoryId);
+  expect(parsed?.tasks[0].reworks).toEqual([{ ref: "#336", cause: "missed_wiring", declaredBy: "owner" }]);
+  expect(parsed?.tasks[0].reworkedBy).toEqual([{ ref: "T-2", cause: "missed_wiring", declaredBy: "owner" }]);
+  for (const ref of ["#0", "T-01", "#9007199254740992"]) {
+    expect(parseTaskBoard(board({ tasks: [{ ...task(), reworks: [{ ...link, ref }] } as unknown as Task] }), repositoryId)).toBeNull();
+  }
+});
 describe("review projection parsing", () => {
   const at = "2026-10-25T12:00:00.000Z";
   it.each([null, { state: "running" }, { state: "passed", at, reasons: [] }, { state: "failed", at, reasons: Array(10).fill("x".repeat(200)) }])("accepts %j", (review) => {

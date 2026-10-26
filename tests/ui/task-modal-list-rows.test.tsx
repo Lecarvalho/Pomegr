@@ -58,7 +58,7 @@ describe("a task that has not started", () => {
   it("closes the Run settings list with Runs after, Sessions, and Start at, and draws no fieldset or legend", async () => {
     open(task("T-20", { after: ["T-13", "T-14"] }));
     await waitFor(() => expect(rowLabels()).toContain("Sessions"));
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue", "Runs after", "Sessions", "Start at"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue", "Reworks", "Runs after", "Sessions", "Start at"]);
     expect(document.querySelector(".taskModalBody fieldset, .taskModalBody legend")).toBeNull();
     // All the rows are one list: one heading and one dl.
     expect(document.querySelectorAll(".taskRunSettings")).toHaveLength(1);
@@ -132,7 +132,7 @@ describe("a task that has started", () => {
   it("ends its read-only list with Runs after and Sessions, in the same rows", async () => {
     open(started());
     await waitFor(() => expect(rowLabels()).toContain("Sessions"));
-    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue", "Runs after", "Sessions"]);
+    expect(rowLabels()).toEqual(["Feature", "Run on", "Effort", "Remote Control", "When done", "Complete when", "GitHub issue", "Reworks", "Runs after", "Sessions"]);
     expect(document.querySelectorAll(".taskModalBody dl")).toHaveLength(1);
     expect(document.querySelector(".taskModalBody fieldset, .taskModalBody legend")).toBeNull();
   });

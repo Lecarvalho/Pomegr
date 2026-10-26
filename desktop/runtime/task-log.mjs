@@ -22,7 +22,7 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
+export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "rework", "grant_usage_hold", "grant_usage_resume"]);
 
 function boundedLog(value) {
   if (!isPlainObject(value) || !Array.isArray(value.entries) || value.entries.length > 200
@@ -34,8 +34,9 @@ function boundedLog(value) {
       || !TASK_LOG_KINDS.includes(entry.kind)
       || !Number.isSafeInteger(entry.at) || (entry.pullRequest !== null && (!Number.isSafeInteger(entry.pullRequest) || entry.pullRequest <= 0))) return null;
     const usageTransition = entry.kind === "grant_usage_hold" || entry.kind === "grant_usage_resume";
+    const prFix = entry.kind === "rework" && typeof entry.task === "string" && /^#[1-9]\d*$/u.test(entry.task) && Number.isSafeInteger(Number(entry.task.slice(1)));
     if (usageTransition ? entry.task !== null || !["claude", "codex"].includes(entry.reason) || entry.pullRequest !== null
-      : typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task) || Object.hasOwn(entry, "reason")) return null;
+      : (!prFix && (typeof entry.task !== "string" || !/^T-[1-9]\d*$/u.test(entry.task))) || Object.hasOwn(entry, "reason")) return null;
     const { id, task, kind, at, pullRequest } = entry;
     entries.push(usageTransition ? { id, task, kind, at, pullRequest, reason: entry.reason } : { id, task, kind, at, pullRequest });
   }

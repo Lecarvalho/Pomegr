@@ -9,7 +9,7 @@ const ACTIONS = new Set([
   "create", "update", "delete", "move",
   "feature_create",
   "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings",
-  "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set",
+  "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove",
   "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove",
 ]);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -18,7 +18,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const PAYLOAD_MAX_BYTES = 16 * 1024;
 const BODY_MAX_BYTES = PAYLOAD_MAX_BYTES + 1024;
 
-type Answer = { ok: true; taskId?: string; settings?: Record<string, unknown>; entry?: Record<string, unknown> } | { ok: false; error: string };
+type Answer = { ok: true; taskId?: string; status?: "recorded" | "exists"; settings?: Record<string, unknown>; entry?: Record<string, unknown> } | { ok: false; error: string };
 
 function answer(body: Answer, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -60,6 +60,7 @@ export async function POST(request: Request) {
     if (!plainObject(parsed)) return answer({ ok: false, error: "unavailable" });
     if (parsed.ok === true) {
       if (!response.ok) return answer({ ok: false, error: "unavailable" });
+      if (action === "rework_declare" && (parsed.status === "recorded" || parsed.status === "exists")) return answer({ ok: true, status: parsed.status });
       if (action === "aril_settings_set" && plainObject(parsed.settings)) return answer({ ok: true, settings: parsed.settings });
       if ((action === "aril_memory_add" || action === "aril_memory_update") && plainObject(parsed.entry)) return answer({ ok: true, entry: parsed.entry });
       if (action === "aril_memory_remove") return answer({ ok: true });

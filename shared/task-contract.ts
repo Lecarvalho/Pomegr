@@ -75,6 +75,8 @@ export type Task = {
   featureId: string | null;
   group: string | null; // "grp-<12 hex>": the parallel group of a task that has not finished its turn, while two or more members count
   after?: string[]; // the tasks of the same board this task runs after; absent means none
+  reworks?: { ref: string; cause: "missed_wiring" | "spec_gap" | "wrong_behavior" | "stale_instructions" | "latent" | "other"; declaredBy: "session" | "aril" | "owner" }[];
+  reworkedBy?: Task["reworks"];
   run: TaskRun;
   completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;

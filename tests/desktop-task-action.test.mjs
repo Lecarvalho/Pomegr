@@ -35,11 +35,18 @@ function harness(answer, overrides = {}) {
 const invalid = { ok: false, error: "invalid" };
 const unavailable = { ok: false, error: "unavailable" };
 
+test("rework declarations preserve only the fixed result status", async () => {
+  for (const status of ["recorded", "exists"]) {
+    const { action } = harness(json({ ok: true, status, private: "hidden" }));
+    assert.deepEqual(await action.run(trusted, repositoryId, "rework_declare", { fix: "T-1", reworks: "#336", cause: "other" }), { ok: true, status });
+  }
+});
+
 test("task action channel and list are fixed", () => {
   assert.equal(TASK_ACTION_CHANNEL, "pomegr:task-action");
   assert.deepEqual([...TASK_ACTION_NAMES], [
     "create", "update", "delete", "move",
-    "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set",
+    "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue", "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove",
     "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
   ]);
 });

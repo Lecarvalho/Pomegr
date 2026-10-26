@@ -41,7 +41,7 @@ export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "queue_settings", "resolve_done", "resolve_requeue",
-  "session_assign", "session_unassign", "after_set",
+  "session_assign", "session_unassign", "after_set", "rework_declare", "rework_remove",
   "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
 ]);
 

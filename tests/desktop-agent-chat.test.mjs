@@ -26,6 +26,20 @@ const logEntry = (id, extra = {}) => ({ id, task: `T-${id}`, kind: "started", at
 const logAnswer = (entries, cursor = 0, more = false) => ({ ok: true, log: { entries, cursors: { aril: cursor }, more, latestId: 100 } });
 const logCalls = (h, action) => h.calls.filter((call) => call.pathname === `/internal/tasks/log-${action}`);
 
+test("Aril reads task and PR rework entries without a reason", async (context) => {
+  const h = await chatHarness(context);
+  h.state.actions = (action) => action === "log-read" ? logAnswer([
+    logEntry(1, { kind: "rework", pullRequest: 336 }), logEntry(2, { kind: "rework", task: "#337", pullRequest: null }),
+    logEntry(3, { kind: "rework", task: "#338", pullRequest: null, reason: "codex" }),
+  ]) : { ok: true };
+  const sent = await send(h);
+  assert.match(h.runs[0].options.prompt, /T-1 rework PR #336/u);
+  assert.match(h.runs[0].options.prompt, /#337 rework/u);
+  assert.doesNotMatch(h.runs[0].options.prompt, /#338|provider:undefined/u);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Done." }, sent.conversationId);
+  assert.deepEqual(logCalls(h, "ack").map((call) => call.body.payload.through), [2]);
+});
+
 test("owner turns show only valid unseen log entries and acknowledge the highest shown ID", async (context) => {
   const h = await chatHarness(context);
   const malformed = [null, {}, logEntry(6, { id: 6.5 }), logEntry(6, { task: "T-6\ninjected" }), logEntry(6, { kind: "injected" }),

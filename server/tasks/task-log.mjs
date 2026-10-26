@@ -1,6 +1,6 @@
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 
-export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "grant_usage_hold", "grant_usage_resume"]);
+export const TASK_LOG_KINDS = Object.freeze(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "rework", "grant_usage_hold", "grant_usage_resume"]);
 export const TASK_LOG_CONSUMERS = Object.freeze(["aril"]);
 export const TASK_LOG_KEEP = 1000;
 
@@ -33,7 +33,8 @@ export function ensureTaskLog(database) {
 export function appendTaskLog(database, repositoryId, number, kind, at, pullRequest = null, reason = null) {
   if (!TASK_LOG_KINDS.includes(kind)) throw new Error("TASK_LOG_KIND");
   const usageTransition = kind === "grant_usage_hold" || kind === "grant_usage_resume";
-  if (usageTransition ? number !== 0 || !["claude", "codex"].includes(reason) || pullRequest !== null : reason !== null || number < 1) throw new Error("TASK_LOG_ENTRY");
+  const prFix = kind === "rework" && Number.isSafeInteger(number) && number < 0;
+  if (usageTransition ? number !== 0 || !["claude", "codex"].includes(reason) || pullRequest !== null : reason !== null || (!prFix && number < 1)) throw new Error("TASK_LOG_ENTRY");
   preparedStatement(database, "INSERT INTO task_log (repository_id, number, kind, at, pull_request, reason) VALUES (?, ?, ?, ?, ?, ?)").run(repositoryId, number, kind, at, pullRequest, reason);
   preparedStatement(database, `DELETE FROM task_log WHERE repository_id = ? AND id <= (
     SELECT id FROM task_log WHERE repository_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?
@@ -54,7 +55,7 @@ export function readTaskLog(database, repositoryId, { after = null, limit }) {
   return {
     entries: page.map(({ id, number, kind, at, pull_request, reason }) => number === 0
       ? { id, task: null, kind, at, pullRequest: pull_request, reason }
-      : { id, task: `T-${number}`, kind, at, pullRequest: pull_request }),
+      : { id, task: number < 0 ? `#${-number}` : `T-${number}`, kind, at, pullRequest: pull_request }),
     more: rows.length > limit, cursors: { aril: cursor?.last_id ?? 0 }, latestId: latestId(database, repositoryId),
   };
 }

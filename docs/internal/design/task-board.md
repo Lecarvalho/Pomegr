@@ -8,6 +8,16 @@
 
 The Tasks page draws committed board facts. The task modal and the task fields are in [task-modal.md](task-modal.md). The data, queue, and gate rules are in [Tasks](../architecture/tasks.md).
 
+## Declared reworks
+
+- Existing task windows show a quiet **Reworks** row in the settings list.
+- Each declaration uses the neutral shared chip, such as **Reworks #336 · missed wiring**.
+- Desktop and paired owners add a reference and select its cause with the existing field, select, and Secondary action.
+- The current task is always the fix.
+- Each declaration has a Quiet **Remove** action for desktop and paired owners.
+- Same-computer browsers show declarations without mutation controls.
+- A failed mutation keeps the reference and shows a fixed error below the controls.
+
 ## Tasks home
 
 ### Layout
