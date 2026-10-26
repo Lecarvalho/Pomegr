@@ -7,12 +7,45 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { copyFiles, getFileMatchers, getNodeModuleFileMatcher } from "app-builder-lib/out/fileMatcher.js";
+import { WinPackager } from "app-builder-lib";
 import {
   NODE_EXE_SHA256, NODE_LICENSE_SHA256, NODE_VERSION, TERMINAL_HOST_FILES, TERMINAL_MODULE_FILES,
   assertTerminalRuntime, ensureTerminalNode, stageTerminalModules, writeTerminalManifest,
 } from "../desktop/packaging/terminal-runtime.mjs";
 import { NODE_PTY_UNPACKED_FILES } from "../desktop/packaging/asar-policy.mjs";
 import { DESKTOP_RUNTIME_FILES } from "../desktop/packaging/artifact-policy.mjs";
+
+test("release signing preserves manifested terminal executables and still signs the application and installers", async (t) => {
+  const variables = {
+    WINDOWS_PUBLISHER_SUBJECT: "CN=Fixture, O=Fixture, C=CA",
+    ARTIFACT_SIGNING_ENDPOINT: "https://example.invalid/",
+    ARTIFACT_SIGNING_ACCOUNT_NAME: "fixture",
+    ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME: "fixture",
+  };
+  for (const [name, value] of Object.entries(variables)) {
+    const previous = process.env[name];
+    process.env[name] = value;
+    t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+  }
+  const require = createRequire(import.meta.url);
+  const config = require("../desktop/packaging/electron-builder.release.cjs");
+  const packager = { platformSpecificBuildOptions: config.win };
+  packager.shouldSignFile = (file, fallback) => WinPackager.prototype.shouldSignFile.call(packager, file, fallback);
+  assert.equal(config.forceCodeSigning, true);
+  for (const base of ["outputs", path.join("release", "win-unpacked", "resources")]) {
+    for (const file of ["node.exe", ...TERMINAL_MODULE_FILES.filter((name) => name.endsWith(".exe"))]) {
+      const executable = path.resolve(base, "terminal-runtime", file);
+      assert.equal(packager.shouldSignFile(executable, true), false, executable);
+      const transformer = WinPackager.prototype.createTransformerForExtraFiles.call(packager, { appOutDir: path.resolve("release", "win-unpacked") });
+      assert.equal(transformer(executable), null, "the resource copier must preserve manifested bytes");
+    }
+  }
+  for (const file of ["Pomegr.exe", "Pomegr-Setup-0.9.0-x64.exe", "Pomegr-Portable-0.9.0-x64.exe",
+    "resources/app.asar.unpacked/node_modules/node-pty/prebuilds/win32-x64/conpty/OpenConsole.exe",
+    "resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe"]) {
+    assert.equal(packager.shouldSignFile(path.resolve("release", "win-unpacked", file)), true, file);
+  }
+});
 
 test("terminal packaging pins the tested official Node distribution and fails closed on download or cache corruption", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-node-pin-"));

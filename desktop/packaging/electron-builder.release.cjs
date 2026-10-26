@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- electron-builder v26 loads release config through CommonJS. */
 const packageJson = require("../../package.json");
+const path = require("node:path");
 
 function requiredEnvironment(name) {
   const value = process.env[name];
@@ -14,6 +15,11 @@ module.exports = {
   forceCodeSigning: true,
   win: {
     ...packageJson.build.win,
+    // These files are pinned by the terminal runtime's byte-for-byte manifest.
+    signExts: [
+      `!${path.join("terminal-runtime", "node.exe")}`,
+      `!${path.join("terminal-runtime", "node_modules", "node-pty", "prebuilds", "win32-x64", "conpty", "OpenConsole.exe")}`,
+    ],
     signtoolOptions: null,
     azureSignOptions: {
       publisherName: requiredEnvironment("WINDOWS_PUBLISHER_SUBJECT"),
