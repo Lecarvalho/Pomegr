@@ -37,7 +37,7 @@ const managed: { label: string; state: TerminalViewState }[] = [
 export function SessionTerminalSection() {
   return <Section id="session-terminal" title="Session Terminal" lede="Desktop-only managed terminals and saved history. These synthetic samples read no session data and start no process.">
     <div className="designSystemGrid">{managed.map(({ label, state }) => <Sample key={state} label={label} note="Synthetic CLI output; the provider draws its own input inside this surface.">
-      <ManagedTerminalSurface state={state} onRetry={state === "failed" ? ignore : undefined}>
+      <ManagedTerminalSurface state={state} fill={false} onRetry={state === "failed" ? ignore : undefined}>
         {(state === "live" || state === "starting") && <pre className="sessionTerminalOutput">{state === "starting" ? "Starting in the task worktree…\nInitializing session…" : "Provider CLI / Pomegr · T-123\n\n> Keep the last good revision during refresh.\n\nI will check the refresh coordinator and add regression coverage.\n\nRunning focused tests…"}</pre>}
       </ManagedTerminalSurface>
     </Sample>)}
