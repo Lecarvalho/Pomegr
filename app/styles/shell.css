@@ -65,7 +65,8 @@ html[data-theme="dark"] body { background: var(--paper); }
 }
 .commandHeader > .commandPaletteTrigger { grid-column: 3; }
 .commandPaletteTrigger.commandQuietAction:hover, .commandPaletteTrigger.commandQuietAction[aria-expanded="true"] { background: var(--command-panel-2); color: var(--command-ink); }
-.commandPaletteTrigger span { min-width: 0; flex: 1; }
+.commandPaletteTrigger span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commandPaletteTrigger kbd { flex: 0 0 auto; white-space: nowrap; }
 .commandPaletteTrigger kbd, .commandPalette kbd { padding: 3px 5px; border: 1px solid var(--command-line); border-bottom-color: var(--command-line-strong); border-radius: var(--control-radius); color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); }
 .commandIcon { width: 17px; height: 17px; flex: 0 0 auto; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .commandEnvironment { grid-column: 4; justify-self: start; min-height: 28px; padding: 0 9px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 6px; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); white-space: nowrap; }
@@ -322,9 +323,9 @@ html[data-theme="dark"] body { background: var(--paper); }
 
 @media (max-width: 1080px) {
   .commandShell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); }
-  .commandHeader { grid-template-columns: max-content minmax(0, 1fr) 200px auto; padding-inline: 9px; gap: 9px; }
-  .commandPaletteTrigger { width: 200px; }
-  .commandHeader > .commandPaletteTrigger { grid-column: 3; }
+  .commandHeader { grid-template-columns: max-content minmax(0, 1fr) minmax(0, 200px) auto; padding-inline: 9px; gap: 9px; }
+  /* Fill the 200px column; the base 280px rule outranks a bare class selector. */
+  .commandHeader > .commandPaletteTrigger { grid-column: 3; width: 100%; min-width: 0; }
   .commandEnvironment { display: none; }
   .commandHeaderTools { grid-column: 4; }
   .commandSidebar { top: 56px; height: calc(100vh - 56px); padding-inline: 6px; }

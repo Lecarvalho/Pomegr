@@ -254,6 +254,8 @@ Role tint is the one exception that colors agent roles. [Agents design](docs/int
 - The header never carries breadcrumbs.
 - The header holds the compact pomegranate product mark, the search trigger, the monitor state, notifications, and the local profile control.
 - The search trigger is 280px wide on desktop and 200px wide on tablet. On phone it is icon-only.
+- On tablet the search trigger fills its header column and never overlaps notifications, the profile control, or the brand.
+- A search label that does not fit ends in an ellipsis; the shortcut hint keeps its width.
 - The search trigger opens the Ctrl K palette.
 
 ### Page header
