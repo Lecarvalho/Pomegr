@@ -651,7 +651,7 @@ function githubSettings(facts) {
  * `workflowChanges` is the desktop's read of the repository's workflow sources: undefined when nothing is settled (no
  * section), null when Git could not tell, else the changed sources `{ path, changedAt, uncommitted }`.
  */
-export function composePrompt({ board, lastCompletedAt = null, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], repositoryGithub = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
+export function composePrompt({ includeInstructions = true, board, lastCompletedAt = null, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], repositoryGithub = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
   const history = conversationHistory(messages);
   const outcome = followUp ? proposalOutcome(followUp) : null;
   if (followUp && !outcome) return null;
@@ -664,8 +664,7 @@ export function composePrompt({ board, lastCompletedAt = null, repositoryName, r
     imageLength += row.length + 1;
   }
   const prompt = [
-    AGENT_CHAT_INSTRUCTIONS,
-    "",
+    ...(includeInstructions ? [AGENT_CHAT_INSTRUCTIONS, ""] : []),
     "<board_snapshot>",
     JSON.stringify(boardSnapshot(board, { repositoryName, now, runs, lastCompletedAt })),
     "</board_snapshot>",
@@ -698,5 +697,5 @@ export function composePrompt({ board, lastCompletedAt = null, repositoryName, r
       ? ["<proposal_outcome>", JSON.stringify(outcome), "</proposal_outcome>", `${FOLLOW_UP_COMMON} ${["applied", "partial"].includes(outcome.outcome) ? FOLLOW_UP_PROPOSAL : "Write no proposal block."} ${followUpRequest(outcome)}`]
       : ["<owner_message>", message, "</owner_message>", ...(attached.length > 0 ? [`Images attached to this message, in order: ${imageList(attached)}.`] : [])]),
   ].join("\n");
-  return prompt.length <= PROMPT_LIMIT ? prompt : null;
+  return prompt.length + (includeInstructions ? 0 : AGENT_CHAT_INSTRUCTIONS.length + 2) <= PROMPT_LIMIT ? prompt : null;
 }

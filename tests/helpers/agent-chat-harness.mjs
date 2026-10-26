@@ -49,7 +49,7 @@ export function readyBoard() {
 export function storedFiles(directory) {
   const found = {};
   if (!existsSync(directory)) return found;
-  for (const repository of readdirSync(directory)) {
+  for (const repository of readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)) {
     // The images folder holds image files, not conversations.
     for (const name of readdirSync(path.join(directory, repository)).filter((entry) => entry !== "images")) found[`${repository}/${name}`] = JSON.parse(readFileSync(path.join(directory, repository, name), "utf8"));
   }
