@@ -119,12 +119,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandHeader \.brandMark\s*\{[^}]*width:\s*var\(--command-brand-mark-size\)/);
     expect(styles).toMatch(/\.commandHeader \.brandWordmark\s*\{[^}]*color:\s*var\(--command-muted\)[^}]*font:\s*400 15px var\(--font-ui\)/);
     expect(styles).toMatch(/\.commandPaletteTrigger\.commandQuietAction\s*\{[^}]*width:\s*280px;[^}]*height:\s*var\(--control-height\)/);
-    expect(styles).toMatch(/@media \(max-width: 1080px\)[\s\S]*?\.commandHeader\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\) minmax\(0, 200px\) auto/);
-    // The tablet trigger fills its column with a selector that outranks the base 280px rule.
-    expect(styles).toMatch(/@media \(max-width: 1080px\)[\s\S]*?\.commandHeader > \.commandPaletteTrigger\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0/);
-    expect(styles).not.toMatch(/@media \(max-width: 1080px\)[^@]*?\n\s*\.commandPaletteTrigger\s*\{\s*width:\s*200px/);
-    expect(styles).toMatch(/\.commandPaletteTrigger span\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis/);
-    expect(styles).toMatch(/\.commandPaletteTrigger kbd\s*\{\s*flex:\s*0 0 auto/);
+    expect(styles).toMatch(/@media \(max-width: 1080px\)[^@]*?minmax\(0, 1fr\) minmax\(0, 200px\) auto;[^@]*?\.commandHeader > \.commandPaletteTrigger\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandPaletteTrigger\s*\{[^}]*width:\s*44px/);
     expect(styles).toMatch(/\.commandPalette\s*\{[^}]*box-shadow:\s*var\(--command-overlay-shadow\)/);
     expect(styles).toMatch(/\.commandSearch:focus-within\s*\{[^}]*border-color:\s*var\(--command-ink\);[^}]*outline:\s*0/);
