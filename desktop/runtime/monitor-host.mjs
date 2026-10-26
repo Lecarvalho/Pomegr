@@ -34,6 +34,11 @@ onParentMessage((message) => {
     send({ type: "session-window-owner-result", requestId: message.requestId,
       owner: owner ? { pid: owner.pid, processStartIdentity: owner.processStartIdentity, windowTitles: owner.windowTitles || [] } : null });
   }
+  if (message?.type === "terminal-session" && typeof message.requestId === "number") {
+    let sessionId = null;
+    try { sessionId = handle?.sessionForTerminalProcess?.(message.pid) || null; } catch { /* Unknown remains unbound. */ }
+    send({ type: "terminal-session-result", requestId: message.requestId, sessionId });
+  }
   if (message?.type === "claude-sign-in-completed") {
     void Promise.resolve(handle?.refreshUsageAfterClaudeSignIn?.())
       .catch(() => {}).finally(() => send({ type: "claude-usage-rechecked" }));
@@ -50,11 +55,6 @@ const shutdown = installShutdown(async () => {
         descriptorPath: agentQueryDescriptorPath,
         token: agentAuthorizationToken,
       });
-    }
-    if (message?.type === "terminal-session" && typeof message.requestId === "number") {
-      let sessionId = null;
-      try { sessionId = handle?.sessionForTerminalProcess?.(message.pid) || null; } catch { /* Unknown remains unbound. */ }
-      send({ type: "terminal-session-result", requestId: message.requestId, sessionId });
     }
   }
 });
