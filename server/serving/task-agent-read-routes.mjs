@@ -40,8 +40,11 @@ function validBody(body, operation) {
   if (operation === AGENT_TASK_GET_PATH) {
     return Object.keys(body).length === 2 && typeof body.taskId === "string" && AGENT_TASK_ID_PATTERN.test(body.taskId);
   }
-  return Object.keys(body).every((key) => key === "sessionRef" || LIST_KEYS.includes(key))
-    && (body.query === undefined || oneLine(body.query, AGENT_TASK_READ_BOUNDS.queryLength))
+  return Object.keys(body).every((key) => key === "sessionRef" || LIST_KEYS.includes(key)) && validFilters(body);
+}
+
+function validFilters(body) {
+  return (body.query === undefined || oneLine(body.query, AGENT_TASK_READ_BOUNDS.queryLength))
     && (body.state === undefined || STATES.includes(body.state))
     && (body.feature === undefined || oneLine(body.feature, FEATURE_TITLE_LIMIT))
     && (body.editable === undefined || typeof body.editable === "boolean");
@@ -102,15 +105,27 @@ export function serveChatTaskReadRoute({ request, response, requestUrl, taskStor
   if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
   const repositoryId = requestUrl.searchParams.get("repositoryId");
   const taskId = requestUrl.searchParams.get("taskId");
-  if (!/^repo-[a-f0-9]{24}$/u.test(repositoryId ?? "") || !AGENT_TASK_ID_PATTERN.test(taskId ?? "")
-    || [...requestUrl.searchParams.keys()].length !== 2
-    || ![...requestUrl.searchParams.keys()].every((key) => ["repositoryId", "taskId"].includes(key))
+  const keys = [...requestUrl.searchParams.keys()];
+  const listing = taskId === null;
+  const filters = Object.fromEntries(LIST_KEYS.filter((key) => requestUrl.searchParams.has(key)).map((key) => [key,
+    key === "editable" && ["true", "false"].includes(requestUrl.searchParams.get(key))
+      ? requestUrl.searchParams.get(key) === "true" : requestUrl.searchParams.get(key)]));
+  if (!/^repo-[a-f0-9]{24}$/u.test(repositoryId ?? "") || keys.length !== new Set(keys).size
+    || (listing ? !keys.every((key) => key === "repositoryId" || LIST_KEYS.includes(key)) || !validFilters(filters)
+      : !AGENT_TASK_ID_PATTERN.test(taskId) || keys.length !== 2)
     || Number(request.headers["content-length"] || 0) > 0 || request.headers["transfer-encoding"] !== undefined) {
     writeAgentReadResult(response, "invalid"); return;
   }
   try {
-    const entries = taskStore?.readAgentTasks(repositoryId, { includeChatReport: true });
+    const entries = taskStore?.readAgentTasks(repositoryId, { includeChatReport: !listing });
     if (!Array.isArray(entries)) return unavailable();
+    if (listing) {
+      const matched = matchAgentTasks(entries.filter(isPlainObject), filters);
+      const tasks = matched.slice(0, AGENT_TASK_READ_BOUNDS.listTasks).map((entry) => servedAgentTask(entry, { cut: true }));
+      if (tasks.includes(null)) return unavailable();
+      writeAgentReadResult(response, null, { tasks, matched: matched.length, truncated: matched.length > tasks.length });
+      return;
+    }
     const entry = entries.find((candidate) => candidate?.id === taskId);
     if (!entry) { writeAgentReadResult(response, "not_found"); return; }
     const task = servedChatTask(entry);

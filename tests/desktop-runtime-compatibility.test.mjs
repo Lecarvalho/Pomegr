@@ -222,8 +222,10 @@ test("desktop service bundling emits self-contained monitor, status-line, and ag
     assert.doesNotMatch(chat, /require\(["'](?:\.\/|\.\.\/)/);
     assert.match(chat, /list_sessions/);
     for (const tool of POMEGR_READ_TOOLS) assert.ok(chat.includes(tool), `the chat bundle serves ${tool}`);
-    for (const writing of ["add_task", "update_task", "remove_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature", "registerTaskTools"]) {
-      assert.equal(chat.includes(writing), false, `the chat bundle has no ${writing}`);
+    assert.ok(chat.includes("Editable with update_task: "), "the list formatter's update_task label is read-only");
+    const chatWithoutReadOnlyLabel = chat.replaceAll("Editable with update_task: ", "");
+    for (const writing of ["add_task", "remove_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature", "registerTaskTools", "update_task"]) {
+      assert.equal(chatWithoutReadOnlyLabel.includes(writing), false, `the chat bundle has no ${writing}`);
     }
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });

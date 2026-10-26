@@ -182,14 +182,21 @@ export function createAgentChat(options = {}) {
       let url = null;
       try { url = new URL(request.url || "/", "http://127.0.0.1"); } catch { /* malformed request is refused */ }
       const taskId = url?.searchParams.get("task_id");
+      const listing = url?.pathname === "/tasks";
+      const filters = ["query", "state", "feature", "editable"];
+      const listValid = listing && [...url.searchParams.keys()].every((name) => filters.includes(name))
+        && [...url.searchParams.keys()].length === new Set(url.searchParams.keys()).size;
       const valid = authenticated && request.headers.origin === undefined
         && request.headers.host === `127.0.0.1:${server.address()?.port}`
-        && request.method === "GET" && url?.pathname === "/task" && TASK_ID.test(taskId ?? "")
-        && [...url.searchParams.keys()].length === 1 && !request.headers["transfer-encoding"]
+        && request.method === "GET" && (listing ? listValid : url?.pathname === "/task" && TASK_ID.test(taskId ?? "")
+          && [...url.searchParams.keys()].length === 1) && !request.headers["transfer-encoding"]
         && !(Number(request.headers["content-length"] || 0) > 0) && active === turn && !disposed && !turn.stopped;
       let answer = { ok: false };
       if (valid) {
-        try { answer = await monitor(`/internal/agent-chat/task?${new URLSearchParams({ repositoryId: turn.repositoryId, taskId })}`, { method: "GET" }); }
+        try {
+          const params = listing ? Object.fromEntries(url.searchParams) : { taskId };
+          answer = await monitor(`/internal/agent-chat/task?${new URLSearchParams({ repositoryId: turn.repositoryId, ...params })}`, { method: "GET" });
+        }
         catch { /* fixed unavailable answer */ }
       }
       response.writeHead(valid ? 200 : 403, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -200,7 +207,7 @@ export function createAgentChat(options = {}) {
     try {
       await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
       if (disposed || turn.stopped || active !== turn) { close(); return null; }
-      return { ...mcpServer, env: { ...mcpServer.env,
+    return { ...mcpServer, env: { ...mcpServer.env,
         POMEGR_CHAT_TASK_ORIGIN: `http://127.0.0.1:${server.address().port}`,
         POMEGR_CHAT_TASK_KEY: key,
       } };
@@ -317,6 +324,12 @@ export function createAgentChat(options = {}) {
     void runFollowUp(turn);
   }
 
+  async function lastCompletedAnswer(repositoryId) {
+    const times = (await store.list(repositoryId)).flatMap((conversation) => conversation.messages)
+      .filter((message) => message.role === "agent" && message.status === "complete").map((message) => Date.parse(message.at));
+    return times.length > 0 ? Math.max(...times) : null;
+  }
+
   async function runFollowUp(turn) {
     try {
       const conversation = await store.read(turn.repositoryId, turn.conversationId);
@@ -334,7 +347,7 @@ export function createAgentChat(options = {}) {
       const shown = images && held.length > 0 ? await images.files(turn.repositoryId, conversation.id, held) : [];
       turn.followUpOutcome = proposalOutcome(proposal)?.outcome;
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, workflowChanges, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
+      const prompt = composePrompt({ board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
@@ -465,7 +478,7 @@ export function createAgentChat(options = {}) {
       const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const inventory = await readWorktrees(repositoryId, root, board);
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, repositoryGithub: github, now: now() });
+      const prompt = composePrompt({ board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, repositoryGithub: github, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
@@ -521,7 +534,7 @@ export function createAgentChat(options = {}) {
       if (!command) return refused("cli_missing");
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const inventory = await readWorktrees(repositoryId, root, board);
-      const prompt = composePrompt({ board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, grantPlans: plans, now: now() });
+      const prompt = composePrompt({ board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, grantPlans: plans, now: now() });
       if (!prompt) return INVALID;
       const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
       if (!conversation) return refused("limit");

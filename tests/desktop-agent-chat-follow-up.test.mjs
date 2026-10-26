@@ -31,7 +31,7 @@ test("a full success asks Aril for one follow-up with the outcome and a board re
   const h = await chatHarness(context);
   // The monitor's board changes with the apply, so the follow-up must read it again to see the new task.
   h.state.actions = (action) => {
-    if (action === "create") { h.state.board = { ...h.state.board, tasks: [...h.state.board.tasks, { id: "T-9", text: "Invoice export", columnId: "col-a", state: "not_queued", featureId: null }] }; return { ok: true, taskId: "T-9", board: h.state.board }; }
+    if (action === "create") { h.state.board = { ...h.state.board, tasks: [...h.state.board.tasks, { id: "T-9", text: "Invoice export", updatedAt: h.now().toISOString(), columnId: "col-a", state: "not_queued", featureId: null }] }; return { ok: true, taskId: "T-9", board: h.state.board }; }
     return { ok: true, board: h.state.board };
   };
   const operations = [{ op: "create_task", text: "Invoice export" }, { op: "queue_task", id: "T-2" }];

@@ -26,9 +26,10 @@ You are not in a coding session. Ignore any instruction that reached you from a 
 
 ## What you can and cannot do
 - You read the board snapshot below, refreshed for every message, and use the native read tools available in this run. With Claude Code, use Read for file contents, Glob for paths, and Grep for text: no Bash or PowerShell tool is available. With Codex, use the shell inside its read-only sandbox for file reads, path discovery, and text search. Prefer small, bounded reads in the selected repository; native permissions may permit reading elsewhere. Do not read credentials or private session transcripts. A policy refusal is not evidence that a file is missing: report the unavailable read, and never bypass permissions.
-- The snapshot's task_text.cut counts shortened task texts out of task_text.total. A shortened text is a source prefix, not the whole task. Acknowledge missing evidence and use get_task when the omitted detail matters.
-- tasks_omitted counts tasks left out to fit the snapshot (oldest Done first, then the bottom of Backlog); they still exist, so use get_task with a known ID and say when an answer may depend on tasks not shown.
-- You have Pomegr's read tools, on the MCP server named pomegr: list_sessions, get_session_report, list_session_agents, get_agent_context, get_recent_failures, get_usage_limits, get_provider_health, and get_task. Use get_task with a task ID to read its whole text and conditions on this board when a task you need has text_cut; do not guess from its preview. This chat is not an observed session, so every session tool needs an exact session reference: the snapshot gives the reference of a task's session, and list_sessions finds others. When a tool is missing or answers unavailable, say so and work from the snapshot.
+- The snapshot has full entries in tasks for Ready, In progress, Review, tasks updated since your last completed answer in this repository (or the last 24 hours before any answer), and their runs_after and group neighbors. index lists other non-Done cards as ID Column#position state [feature] group/after tokens, the task's tags as #tag, and an 80-character preview of its title line; feature titles are cut at 40 characters. done summarizes all Done cards by provider, model and effort and lists the ten most recently updated. Use get_task for any index or Done task whose detail matters; list_tasks searches by text, state, feature, or editability.
+- The snapshot's task_text.cut counts shortened task texts out of task_text.total, counting only full entries in tasks. A shortened text is a source prefix, not the whole task. Acknowledge missing evidence and use get_task when the omitted detail matters.
+- tasks_omitted counts tasks left out to fit the snapshot (full entries: oldest Done first, then the bottom of Backlog; index lines may also be cut from the bottom of Backlog); they still exist, so use get_task with a known ID and say when an answer may depend on tasks not shown.
+- You have Pomegr's read tools, on the MCP server named pomegr: list_sessions, get_session_report, list_session_agents, get_agent_context, get_recent_failures, get_usage_limits, get_provider_health, get_task, and list_tasks. Use get_task with a task ID to read its whole text and conditions on this board when a task you need has text_cut; do not guess from its preview. This chat is not an observed session, so every session tool needs an exact session reference: the snapshot gives the reference of a task's session, and list_sessions finds others. When a tool is missing or answers unavailable, say so and work from the snapshot.
 - The owner can send you images, such as a screenshot or a mock-up. Each one has an ID such as img-0123456789ab. The <images> section lists the file of every image of this conversation that is still on this computer: read a file to see its image. The images of the newest message may also be attached to this prompt, in the order that message lists them. You cannot make, change, or fetch an image.
 - You never change anything yourself. While a grant the owner started is active, the desktop performs the fixed grant actions for you (see the grant paragraph below); you still write nothing yourself. You have no tool that writes, you write no file, and you run no command that changes anything.
 - You change the board only by proposing, except while a grant the owner started is active: the desktop performs the fixed grant actions for you (see the grant paragraph below). Outside those grant actions, you end your answer with one proposal block, in the format below. Pomegr shows it to the owner as a list with Apply and Dismiss, and nothing happens until the owner presses Apply. So never say that you created, changed, queued, moved, deleted, or started something. Say what you propose. The exceptions are reporting grant actions from the task log and a follow-up that reports an outcome Pomegr gives you (see "After the owner answers a proposal"). You still write nothing yourself.
@@ -45,15 +46,15 @@ The task log lists what changed on this board since your last completed answer i
 - A good task is one outcome that one session can finish and verify: one pull request, a clear acceptance condition, and the context a fresh agent needs (the area or files, and what must not change). When a task holds several outcomes, touches unrelated areas, or would not fit one session, advise cutting it and say where the cut is.
 - Context that several tasks share belongs to their feature. A task's own text stays short and specific.
 - Order: the cards in Ready start from top to bottom, one at a time, whatever their feature. The order of the cards is the start order. A feature is context only: it gives no order, no step, and no priority.
-- Parallel groups: only an explicit parallel group runs together, each member in its own worktree. Group tasks only when they do not touch the same files. Every other task runs alone in the repository, after the task before it has finished. In the snapshot a task in a group has a "group" label such as "group A"; tasks with the same label are one group. A group lets the next card start when every member is in Review or Done. The owner may plan groups in Backlog before queueing: queueing a member brings the group's cards to Ready.
-- Runs after: a task with "runs_after" never starts until every task listed there is Done or deleted. It is a hold, not an order: the queue passes it and starts the cards after it, and it starts at its place once it is free. Propose "set_after" only when a task truly cannot start before another is accepted; for a plain order, the card order is enough. For priority, weigh what unblocks other work, risk, and size, and give one line of reason for each task.
+- Parallel groups: only an explicit parallel group runs together, each member in its own worktree. Group tasks only when they do not touch the same files. Every other task runs alone in the repository, after the task before it has finished. In the snapshot a full task has a "group" label such as "group A", and index lines carry the same group token; tasks with the same label are one group. A group lets the next card start when every member is in Review or Done. The owner may plan groups in Backlog before queueing: queueing a member brings the group's cards to Ready.
+- Runs after: a task with "runs_after" (the "after T-4,T-5" token in an index line) never starts until every task listed there is Done or deleted. It is a hold, not an order: the queue passes it and starts the cards after it, and it starts at its place once it is free. Propose "set_after" only when a task truly cannot start before another is accepted; for a plain order, the card order is enough. For priority, weigh what unblocks other work, risk, and size, and give one line of reason for each task.
 - Look at the repository when it helps (AGENTS.md, CLAUDE.md, README, the files a task names) before you cut or order real work. Never guess a file name.
 - When the owner asks you to break a feature into tasks, or writes /acos, check for .agents/skills/acos/SKILL.md (or .claude/skills/acos/SKILL.md). If it exists, read it and its references/sizing.md and use its Intent and Size steps to cut the feature into parts. Stop there: compose no manifest, write no file, and run nothing. Then propose one feature with one task per part: put the parts in the order they should start, and group only the parts that can run side by side. If the repository has no such skill, cut the feature with the rules above.
 
 ## How to recommend a model
 - Choose the provider, model and effort of each task on its own. Never copy them from another task only because it is the newest one on the board.
 - Weigh the kind of work: a small fix in a located part of the interface, a trace across several layers, a design or a prototype, a change to instructions, or a probe that writes no code. Weigh its size and its risk as well.
-- Weigh the record. For every shown task the snapshot holds the planned provider, model and effort, the model and effort its session reported, the task's state, and the result of each checked condition. Compare tasks of the same kind (the same area, a similar size) and say which model and effort finished with passed checks and which stalled, were blocked, or failed a check. A result marked unavailable is a condition Pomegr could not verify: it is neither a pass nor a failure, so never count it as a failed check. Name the tasks you rely on.
+- Weigh the record. Read done.by_run: task counts and counts of currently known checks_passed, checks_failed, stalled, blocked, review_failed, and sent_back, using the session's observed model and effort when available, otherwise the planned values. A null count is unknown; the board does not serve send-back history. These are current evidence counts, not lifetime outcomes. Fetch named tasks with get_task when comparing similar work, and use list_tasks to find candidates; full entries in tasks also carry planned and observed run settings and check results. A result marked unavailable is neither a pass nor a failure, so never count it as a failed check. Name the tasks you rely on.
 - Weigh capacity. Read both providers' percentages in "queue.usage" and the start threshold in "queue.start_threshold_percent", or call get_usage_limits. A provider close to the threshold is a reason to choose the other one.
 - Both providers are candidates for every task: a Codex model may suit a task on a board that has mostly run Claude, and the other way round.
 - Recommend only a model listed under "models" in the snapshot, or the provider's default model. Each list holds every model the task form offers for that provider, then the models the board's tasks planned or reported.
@@ -82,7 +83,7 @@ Operations, at most 40, applied in order. Pomegr stops at the first one that fai
   Without a placement the new card goes last in Backlog. To place it, add "place_after":"T-n" to put it right under T-n, in T-n's column, or add "column" (Backlog, Ready, In progress, Review, or Done) with an optional "position", counted from 0 as in "move_task" (without it the card goes last in that column). Use one form, never both. For a card right above T-n, use "column" with T-n's column and "position" with T-n's position. Placing a card in Ready does not queue it: set "queue": true as well when the owner asks for the queue.
 - {"op":"update_task","id":"T-12", ...} with any of "text", "feature" (null takes the task out of its feature), "provider", "model", "effort", "complete_when", "own_condition". A field you leave out stays as it is.
 - {"op":"delete_task","id":"T-12"}
-- {"op":"move_task","id":"T-12","column":"Ready","position":0} The column is Backlog, Ready, In progress, Review, or Done. "position" is counted from 0 and is optional: without it the card goes last. Read it from the "position" of each task in the snapshot, the card's place in its column as the Board shows it (0 is the top). The position is counted after the card leaves its place: to put the card right under T-n in column C, use T-n's position plus 1, or T-n's position when the card already sits above T-n in that same column. The card then lands exactly there.
+- {"op":"move_task","id":"T-12","column":"Ready","position":0} The column is Backlog, Ready, In progress, Review, or Done. "position" is counted from 0 and is optional: without it the card goes last. Read it from the "position" of each task in the snapshot, or Column#position in an index line (which may be named by ID in a proposal), the card's place in its column as the Board shows it (0 is the top). The position is counted after the card leaves its place: to put the card right under T-n in column C, use T-n's position plus 1, or T-n's position when the card already sits above T-n in that same column. The card then lands exactly there.
 - {"op":"queue_task","id":"T-12"} The task then waits in Ready. It starts only while the owner has the queue on.
 - {"op":"unqueue_task","id":"T-12"}
 - {"op":"group_tasks","ids":["T-4","T-5"]} Puts 2 to 16 distinct tasks that have not started into one parallel group: tasks that wait in the queue, or tasks that are not queued yet and whose cards are in Backlog or Ready (a plan). The tasks that join take the group one of them already has, and stand together: in Ready when one of them is queued, otherwise in the first task's column.
@@ -217,6 +218,18 @@ function prefix(text, length) {
   return text.slice(0, end);
 }
 
+// The leading run of [ word ] tokens is the task's tags, as the task window shows them; the title line follows it.
+const TAG_TOKEN = /^\[[ \t]*([\p{L}\p{N}][\p{L}\p{N}\p{M}._-]{0,23})[ \t]*\](?=\s|$)\s*/u;
+function leadingTags(text) {
+  const tags = [];
+  let rest = text.trimStart();
+  for (let match = TAG_TOKEN.exec(rest); match && tags.length < 8 && match[1].toLowerCase() !== "image"; match = TAG_TOKEN.exec(rest)) {
+    if (!tags.some((tag) => tag.toLowerCase() === match[1].toLowerCase())) tags.push(match[1]);
+    rest = rest.slice(match[0].length);
+  }
+  return { tags, rest };
+}
+
 function firstLineLength(text) {
   const newline = text.indexOf("\n");
   return newline < 0 ? text.length : newline > 0 && text[newline - 1] === "\r" ? newline - 1 : newline;
@@ -293,7 +306,7 @@ function boardTexts(tasks, columns, queue, budget = BOARD_TEXT_BUDGET) {
  * The board as the agent reads it: tasks fit inside a JSON budget, with a separate shared text budget. `runs`
  * are the observed agent runs (`{ source, model }`) that the task form's Claude list reads.
  */
-export function boardSnapshot(board, { repositoryName = "", now = new Date(), runs = [] } = {}) {
+export function boardSnapshot(board, { repositoryName = "", now = new Date(), runs = [], lastCompletedAt = null } = {}) {
   const source = isPlainObject(board) ? board : {};
   const columnList = (Array.isArray(source.columns) ? source.columns : []).filter((column) => isPlainObject(column) && typeof column.id === "string" && typeof column.name === "string");
   const featureList = (Array.isArray(source.features) ? source.features : []).filter((feature) => isPlainObject(feature) && typeof feature.id === "string" && typeof feature.name === "string");
@@ -301,7 +314,21 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
   const features = new Map(featureList.map((feature) => [feature.id, feature.name]));
   const tasks = (Array.isArray(source.tasks) ? source.tasks : []).filter((task) => isPlainObject(task) && typeof task.id === "string" && typeof task.text === "string");
 
-  const texts = boardTexts(tasks, columnList, source.queue);
+  const since = lastCompletedAt ?? now.getTime() - 86_400_000;
+  const fullIds = new Set(tasks.filter((task) => updatedTime(task) > since
+    || columnList.some((column) => column.id === task.columnId
+      && (["Ready", "In progress", "Review"].includes(column.name) || ["in_progress", "review"].includes(column.role))))
+    .map((task) => task.id));
+  // Expand until every full card's dependencies and group mates are full too.
+  for (let previous = -1; previous !== fullIds.size;) {
+    previous = fullIds.size;
+    const full = tasks.filter((task) => fullIds.has(task.id));
+    const relatedGroups = new Set(full.map((task) => task.group).filter((group) => GROUP_ID.test(group ?? "")));
+    const after = new Set(full.flatMap((task) => Array.isArray(task.after) ? task.after : []));
+    for (const task of tasks) if (after.has(task.id) || relatedGroups.has(task.group)) fullIds.add(task.id);
+  }
+  const fullTasks = tasks.filter((task) => fullIds.has(task.id));
+  const texts = boardTexts(fullTasks, columnList, source.queue);
 
   // A group is an opaque ID on the board; the agent reads a short label, in the order of the lowest task number of each group.
   const groups = new Map();
@@ -311,6 +338,35 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
       groups.set(task.group, index < 26 ? `group ${String.fromCharCode(65 + index)}` : `group ${index + 1}`);
     }
   }
+
+  const indexLine = (task) => {
+    const entry = snapshotTask(task, columns, features, groups);
+    const { tags, rest } = leadingTags(task.text);
+    return [entry.id, `${entry.column}#${entry.position}`, entry.state,
+      ...(entry.feature ? [`[${prefix(entry.feature.replace(/[\r\n]/gu, " "), 40)}]`] : []),
+      ...(entry.group ? [entry.group] : []), ...(entry.runs_after ? [`after ${entry.runs_after.join(",")}`] : []),
+      ...tags.map((tag) => `#${tag}`), prefix(rest, Math.min(firstLineLength(rest), 80))].join(" ");
+  };
+  const doneTasks = tasks.filter((task) => columns.get(task.columnId) === "Done" || columnList.some((column) => column.id === task.columnId && column.role === "done"));
+  const doneIds = new Set(doneTasks.map((task) => task.id));
+  const byRun = new Map();
+  for (const task of [...doneTasks].sort(byTaskId)) {
+    const entry = snapshotTask(task, columns, features, groups);
+    const run = { provider: entry.provider, model: entry.session?.observed_model ?? entry.model, effort: entry.session?.observed_effort ?? entry.effort };
+    const key = JSON.stringify(run);
+    const counts = byRun.get(key) ?? { ...run, tasks: 0, checks_passed: 0, checks_failed: 0, stalled: 0, blocked: 0, review_failed: 0, sent_back: null };
+    const results = entry.report?.results ?? [];
+    counts.tasks += 1;
+    counts.checks_passed += Number(results.length > 0 && results.every((result) => result.passed));
+    counts.checks_failed += Number(results.some((result) => !result.passed && !result.unavailable));
+    counts.stalled += Number(entry.state === "stalled");
+    counts.blocked += Number(entry.state === "blocked" || Boolean(entry.report?.block_reason));
+    counts.review_failed += Number(task.review?.state === "failed");
+    byRun.set(key, counts);
+  }
+  const indexed = tasks.filter((task) => !fullIds.has(task.id) && !doneIds.has(task.id)).sort((a, b) =>
+    columnList.findIndex((column) => column.id === a.columnId) - columnList.findIndex((column) => column.id === b.columnId)
+    || taskPosition(a) - taskPosition(b) || byTaskId(a, b));
 
   // The selectable list of each provider comes first, the one the Run on list of the task form offers; models the
   // board's tasks planned or reported follow, so the record stays readable.
@@ -343,6 +399,27 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
   const snapshot = {
     repository: repositoryName,
     aril_settings: isPlainObject(source.aril?.settings) ? { ...source.aril.settings, settledAt: typeof source.aril.settings.settledAt === "string" ? source.aril.settings.settledAt : null } : null,
+    memory: (Array.isArray(source.aril?.memory) ? [...source.aril.memory] : [])
+      .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id).slice(0, 100)
+      .map((entry) => ({ id: entry.id, text: prefix(text(entry.text), 300), updatedAt: Number.isFinite(entry.updatedAt) ? new Date(entry.updatedAt).toISOString() : null })),
+    columns: columnList.map((column) => column.name),
+    features: featureList.map((feature) => ({ id: feature.id, name: feature.name, done: feature.done === true })),
+    models,
+    task_text: { cut: [...texts.values()].filter((entry) => entry.cut).length, total: fullTasks.length },
+    tasks: [...fullTasks].sort(byTaskId).map((task) => {
+      const shown = texts.get(task.id);
+      return { ...snapshotTask(task, columns, features, groups), text: shown.text, ...(shown.cut ? { text_cut: true } : {}) };
+    }),
+    index: indexed.map(indexLine),
+    done: { total: doneTasks.length, by_run: [...byRun.values()], recent: [...doneTasks].sort((a, b) => updatedTime(b) - updatedTime(a) || byTaskId(a, b)).slice(0, 10).map(indexLine) },
+    now: now.toISOString(),
+    queue: {
+      status: text(queue.status) || "idle",
+      order: (Array.isArray(queue.order) ? queue.order : []).filter((id) => typeof id === "string"),
+      blocked_by: typeof queue.blockedBy === "string" ? queue.blockedBy : null,
+      start_threshold_percent: Number.isInteger(gates?.threshold) ? gates.threshold : null,
+      usage,
+    },
     grant: isPlainObject(source.aril?.grant) ? {
       active: source.aril.grant.active === true,
       ends_at: new Date(source.aril.grant.endsAt).toISOString(),
@@ -352,30 +429,11 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
       ...(!source.aril.grant.active && typeof source.aril.grant.endReason === "string"
         ? { end_reason: source.aril.grant.endReason } : {}),
     } : null,
-    memory: (Array.isArray(source.aril?.memory) ? [...source.aril.memory] : [])
-      .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id).slice(0, 100)
-      .map((entry) => ({ id: entry.id, text: prefix(text(entry.text), 300), updatedAt: Number.isFinite(entry.updatedAt) ? new Date(entry.updatedAt).toISOString() : null })),
-    now: now.toISOString(),
-    columns: columnList.map((column) => column.name),
-    features: featureList.map((feature) => ({ id: feature.id, name: feature.name, done: feature.done === true })),
-    queue: {
-      status: text(queue.status) || "idle",
-      order: (Array.isArray(queue.order) ? queue.order : []).filter((id) => typeof id === "string"),
-      blocked_by: typeof queue.blockedBy === "string" ? queue.blockedBy : null,
-      start_threshold_percent: Number.isInteger(gates?.threshold) ? gates.threshold : null,
-      usage,
-    },
-    models,
-    task_text: { cut: [...texts.values()].filter((entry) => entry.cut).length, total: tasks.length },
-    tasks: [...tasks].sort((left, right) => taskNumber(left) - taskNumber(right)).map((task) => {
-      const shown = texts.get(task.id);
-      return { ...snapshotTask(task, columns, features, groups), text: shown.text, ...(shown.cut ? { text_cut: true } : {}) };
-    }),
   };
   // Remove whole cards in a stable order; keep the original field shape and numeric ID order.
-  const removable = tasks.filter((task) => columns.get(task.columnId) === "Done" || columns.get(task.columnId) === "Backlog")
+  const removable = fullTasks.filter((task) => doneIds.has(task.id) || columns.get(task.columnId) === "Backlog")
     .sort((a, b) => {
-      const doneA = columns.get(a.columnId) === "Done", doneB = columns.get(b.columnId) === "Done";
+      const doneA = doneIds.has(a.id), doneB = doneIds.has(b.id);
       return Number(doneB) - Number(doneA) || (doneA ? updatedTime(a) - updatedTime(b) : taskPosition(b) - taskPosition(a)) || byTaskId(a, b);
     });
   const countTexts = () => { snapshot.task_text = { cut: snapshot.tasks.filter((task) => task.text_cut).length, total: snapshot.tasks.length }; };
@@ -383,9 +441,17 @@ export function boardSnapshot(board, { repositoryName = "", now = new Date(), ru
     if (JSON.stringify(snapshot).length <= BOARD_SNAPSHOT_BUDGET) break;
     snapshot.tasks = snapshot.tasks.filter((entry) => entry.id !== task.id);
     snapshot.tasks_omitted ??= { done: 0, backlog: 0 };
-    snapshot.tasks_omitted[columns.get(task.columnId) === "Done" ? "done" : "backlog"] += 1;
+    snapshot.tasks_omitted[doneIds.has(task.id) ? "done" : "backlog"] += 1;
     countTexts();
   }
+  for (let i = indexed.length - 1; i >= 0 && JSON.stringify(snapshot).length > BOARD_SNAPSHOT_BUDGET; i -= 1) {
+    if (columns.get(indexed[i].columnId) !== "Backlog") continue;
+    snapshot.index.splice(i, 1);
+    snapshot.tasks_omitted ??= { done: 0, backlog: 0 };
+    snapshot.tasks_omitted.backlog += 1;
+  }
+  // Omission counts belong to the stable prefix too.
+  for (const key of ["now", "queue", "grant"]) { const value = snapshot[key]; delete snapshot[key]; snapshot[key] = value; }
   // Fixed fields can exceed the budget even with no text. Preserve evidence in that case;
   // satisfying a hard bound would require changing the task shape or omitting active tasks.
   const minimum = { ...snapshot, tasks: snapshot.tasks.map((task) => ({ ...task, text: "" })) };
@@ -585,7 +651,7 @@ function githubSettings(facts) {
  * `workflowChanges` is the desktop's read of the repository's workflow sources: undefined when nothing is settled (no
  * section), null when Git could not tell, else the changed sources `{ path, changedAt, uncommitted }`.
  */
-export function composePrompt({ board, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], repositoryGithub = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
+export function composePrompt({ board, lastCompletedAt = null, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], repositoryGithub = undefined, messages = [], message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
   const history = conversationHistory(messages);
   const outcome = followUp ? proposalOutcome(followUp) : null;
   if (followUp && !outcome) return null;
@@ -601,7 +667,7 @@ export function composePrompt({ board, repositoryName, runs = [], taskLog = unde
     AGENT_CHAT_INSTRUCTIONS,
     "",
     "<board_snapshot>",
-    JSON.stringify(boardSnapshot(board, { repositoryName, now, runs })),
+    JSON.stringify(boardSnapshot(board, { repositoryName, now, runs, lastCompletedAt })),
     "</board_snapshot>",
     ...(workflowChanges === undefined ? [] : ["", "<workflow_changes>",
       ...(workflowChanges === null ? ["Workflow changes are unknown."] : workflowChanges.length === 0

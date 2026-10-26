@@ -23,6 +23,20 @@ const proposalId = "p-0123456789ab";
 const CHAT_ID = /^chat-[0-9a-f]{12}$/u;
 
 const logEntry = (id, extra = {}) => ({ id, task: `T-${id}`, kind: "started", at: id * 1000, pullRequest: null, ...extra });
+
+test("new conversations select recent tasks since the repository's last completed answer", async (context) => {
+  const h = await chatHarness(context, { now: () => new Date("2026-10-25T12:00:00Z") });
+  await seed(h, { messages: [agentMessage(1, { at: "2026-10-20T12:00:00Z" })] });
+  await seed(h, { messages: [agentMessage(1, { at: "2026-10-24T12:00:00Z", status: "failed" })] });
+  await seed(h, { repository: otherRepositoryId, messages: [agentMessage(1, { at: "2026-10-24T12:00:00Z" })] });
+  h.state.board.tasks = [19, 21].map((day, i) => ({ id: `T-${i + 1}`, columnId: "col-a", position: i,
+    state: "not_queued", text: "Backlog task", updatedAt: `2026-10-${day}T12:00:00Z` }));
+  const sent = await send(h);
+  const snapshot = JSON.parse(h.runs[0].options.prompt.split("<board_snapshot>\n")[1].split("\n</board_snapshot>")[0]);
+  assert.deepEqual(snapshot.tasks.map(({ id }) => id), ["T-2"]);
+  assert.match(snapshot.index[0], /^T-1 Backlog#0/u);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Read." }, sent.conversationId);
+});
 const logAnswer = (entries, cursor = 0, more = false) => ({ ok: true, log: { entries, cursors: { aril: cursor }, more, latestId: 100 } });
 const logCalls = (h, action) => h.calls.filter((call) => call.pathname === `/internal/tasks/log-${action}`);
 
@@ -643,3 +657,63 @@ test("list answers the summaries newest first and the conversation that is runni
   await finishTurn(h, h.runs[0], { status: "complete", text: "Done" }, older.id);
   assert.equal((await h.handle("list", { repositoryId })).running, null);
 });
+
+// Synthetic snapshot boards for the compact-index contract.
+import { boardSnapshot } from "../desktop/runtime/agent-chat-prompt.mjs";
+const now = new Date("2026-10-01T12:00:00Z");
+const budgetColumns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name, i) => ({ id: ["backlog", "ready", "progress", "review", "done"][i], name }));
+const budgetTask = (id, columnId, length, overrides = {}) => ({ id: `T-${id}`, columnId, position: id, text: `Task ${id}\n`.padEnd(length, "x"), ...overrides });
+test("compact board selects active, recent, and connected tasks and orders its index", () => {
+  const tasks = [
+    budgetTask(1, "ready", 100, { after: ["T-4"] }), budgetTask(2, "progress", 100),
+    budgetTask(3, "review", 100, { group: "grp-aaaaaaaaaaaa" }),
+    budgetTask(4, "done", 100, { after: ["T-5"] }), budgetTask(5, "backlog", 100),
+    budgetTask(6, "backlog", 100, { group: "grp-aaaaaaaaaaaa" }),
+    budgetTask(7, "backlog", 100, { updatedAt: now.toISOString() }),
+    budgetTask(8, "backlog", 100, { position: 2, state: "not_queued", featureId: "f", after: ["T-9"] }),
+    budgetTask(9, "backlog", 100, { position: 0, state: "not_queued", group: "grp-bbbbbbbbbbbb" }),
+  ];
+  const board = { columns: budgetColumns, features: [{ id: "f", name: "Feature" }], tasks: tasks.toReversed() };
+  const snapshot = boardSnapshot(board, { now });
+  assert.deepEqual(snapshot.tasks.map(({ id }) => id), tasks.slice(0, 7).map(({ id }) => id));
+  assert.deepEqual(snapshot.index, ["T-9 Backlog#0 not_queued group B Task 9", "T-8 Backlog#2 not_queued [Feature] after T-9 Task 8"]);
+  assert.deepEqual(Object.keys(snapshot).slice(-3), ["now", "queue", "grant"]);
+  assert.ok(!boardSnapshot(board, { now, lastCompletedAt: now.getTime() }).tasks.some(({ id }) => id === "T-7"));
+});
+
+test("Done summarizes only served evidence and keeps the ten most recent lines", () => {
+  const tasks = Array.from({ length: 12 }, (_, i) => budgetTask(i + 1, "done", 4000, {
+    updatedAt: new Date(now.getTime() - (i + 2) * 86400000).toISOString(), state: i === 0 ? "stalled" : "done",
+    run: { provider: "codex", model: "planned", effort: "low" },
+    session: { observedModel: "observed", observedEffort: "high" },
+    report: { results: [{ check: "ci_passed", passed: i > 1, ...(i === 1 ? { unavailable: true } : {}) }], blockReason: i === 2 ? "Blocked" : null },
+    review: { state: i === 3 ? "failed" : "passed" },
+  }));
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  assert.equal(snapshot.tasks.length, 0);
+  assert.equal(snapshot.done.total, 12);
+  assert.deepEqual(snapshot.done.by_run, [{ provider: "codex", model: "observed", effort: "high", tasks: 12,
+    checks_passed: 10, checks_failed: 1, stalled: 1, blocked: 1, review_failed: 1, sent_back: null }]);
+  assert.deepEqual(snapshot.done.recent.map((line) => line.split(" ")[0]), tasks.slice(0, 10).map(({ id }) => id));
+});
+
+test("400 long-text tasks fit a compact snapshot below 30000 characters", () => {
+  const tasks = Array.from({ length: 400 }, (_, i) => budgetTask(i + 1, i < 200 ? "done" : i < 395 ? "backlog" : "ready", 4000,
+    { updatedAt: "2026-01-01T00:00:00Z", state: i < 200 ? "done" : "not_queued" }));
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  assert.ok(JSON.stringify(snapshot).length < 30000);
+  assert.equal(snapshot.tasks.length, 5);
+  assert.equal(snapshot.index.length, 195);
+  assert.equal(snapshot.done.total, 200);
+});
+
+test("index previews are bounded and overflow removes bottom Backlog lines with a count", () => {
+  const tasks = Array.from({ length: 1000 }, (_, i) => budgetTask(i + 1, "backlog", 4000, { featureId: "f", text: "x".repeat(100) + "\nbody", state: "not_queued" }));
+  const snapshot = boardSnapshot({ columns: budgetColumns, features: [{ id: "f", name: "f".repeat(80) }], tasks }, { now });
+  assert.equal(snapshot.index[0], `T-1 Backlog#1 not_queued [${"f".repeat(40)}] ${"x".repeat(80)}`);
+  assert.ok(snapshot.tasks_omitted.backlog > 0);
+  assert.equal(snapshot.index.length + snapshot.tasks_omitted.backlog, 1000);
+  assert.ok(snapshot.index.at(-1).startsWith(`T-${snapshot.index.length} `));
+  assert.deepEqual(Object.keys(snapshot).slice(-3), ["now", "queue", "grant"]);
+});
+
