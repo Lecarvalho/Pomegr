@@ -9,13 +9,16 @@ export async function readSessionContinuePlan(sessionId, observation, registry) 
   const identity = observation.coordinator.catalogIdentity(sessionId);
   if (!committed) return identity ? { ok: false, reason: "unknown" } : null;
   const primary = committed.evidence?.agents?.find((agent) => agent.id === "primary");
+  // A closed catalog identity means the provider's own process record is gone, so a turn the
+  // process left unfinished (for example when its terminal was ended) no longer blocks Continue.
+  const closed = identity?.isLive === false && identity.activityStatus === "closed";
   if (identity?.isLive === true || committed.publicState?.session?.isLive === true
-    || ["active", "waiting", "needs_input", "warm"].includes(primary?.status)) {
+    || (!closed && ["active", "waiting", "needs_input", "warm"].includes(primary?.status))) {
     return { ok: false, reason: "live" };
   }
   const historicalClaude = parsed.providerId === "claude" && committed.evidence?.historical === true && !primary?.liveness;
-  if (identity?.activityStatus === "unknown" || !["idle", "finished", "stopped"].includes(primary?.status)
-    || (!historicalClaude && primary?.liveness?.freshness !== "current")) {
+  if (!closed && (identity?.activityStatus === "unknown" || !["idle", "finished", "stopped"].includes(primary?.status)
+    || (!historicalClaude && primary?.liveness?.freshness !== "current"))) {
     return { ok: false, reason: "unknown" };
   }
   const recordedCwd = committed.evidence?.session?.cwd;

@@ -30,6 +30,7 @@
 - `title` is the recorded display title, trimmed to 160 characters with control characters replaced by spaces.
 - The optional private `peekSessionSource(localId)` operation returns only an already held primary transcript path, without discovery or file reads.
 - The monitor checks that this transcript still exists as a file; its path never enters the plan.
+- A session is eligible when its primary agent is idle, finished, or stopped with current liveness, or when its catalog identity is closed and not live: the provider's own process record is gone, so a turn left unfinished no longer blocks it.
 - Refusals contain only `live`, `unknown`, `folder_missing`, or `history_missing`; request failures contain only `invalid`, `not_found`, or `unavailable`.
 - The plan is never stored, cached, logged, or included in renderer IPC, browser GETs, session domains, catalogs, checkpoints, Aril, or MCP.
 - Private terminal process lookup returns a qualified session identity only when committed ownership identifies exactly one session.
