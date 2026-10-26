@@ -1754,10 +1754,16 @@ installed plugin from before the rename sends; a body with both names is `invali
   Each entry retains the report time, check results, block reason, and attention line.
   The newest 100 superseded reports survive reopening, Mark done, and Requeue; deleting the task removes them.
   The current report remains in the existing fields. Provider transcripts and their observed events remain unchanged.
+- **Session rework declarations.** Both report tools accept optional `reworks`: 1-5 exact `{ ref, cause }` objects, only for known earlier work.
+  References are canonical `T-n` or `#n` with positive safe integers; causes use the six fixed [Store](#store) values.
+  The transaction applies the report first, then calls `recordTaskRework` for each entry with the reporting task as `fix` and `declaredBy: "session"`.
+  Refused links leave the report applied; a refused report records no links.
+  The optional answer `reworks` lists `{ ref, status: "recorded" | "exists" }` or `{ ref, status: "refused", reason }`.
+  Refusal reasons are only `not_found`, `limit`, or `invalid` (including the same reference); no free text returns.
 - The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
   `/block`, under the gate of `add`. The body is `{ sessionRef }`, plus a one-line
   `reason` of at most 200 characters for a block, or an optional one-line `attention`
-  of at most 200 characters for a completion, and optionally `taskId`; any other key is
+  of at most 200 characters for a completion, and optionally `taskId` and `reworks`; any other key is
   `invalid`. The session names the task: the one it was started for, or the one it is
   assigned to. A session with more than one task names the one it reports with
   `taskId`, which must be one of its own tasks. The answer is
@@ -1771,7 +1777,7 @@ installed plugin from before the rename sends; a body with both names is `invali
   `task_required` from version 0.9.8. From version 0.9.9 the `complete_task` tool names the
   conditions that failed apart from those Pomegr could not verify; an older plugin words both as
   not confirmed. The plugins know `stalled` from version 0.9.5; an older
-  plugin reads it as an unknown reason and says that Pomegr is unavailable. It never
+  plugin reads it as an unknown reason and says that Pomegr is unavailable. An error never
   carries a task ID, task
   content, or a repository fact. A completion with a checked condition answers after
   its read, within the read's deadline.
@@ -2837,7 +2843,7 @@ serves no other client.
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
 | `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
 | `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
-| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | `complete` and `block` carry the bound session, optionally one task ID of that session, and, for a block, the reason; they answer the resulting state and each condition's result: passed, failed, or unavailable |
+| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | `complete` and `block` carry the bound session, optional task ID and `reworks`, and a block reason or completion attention line; they answer state, condition results, and optional rework outcomes as in [Completion](#completion) |
 | `POST /api/agent/v1/tasks/assign\|unassign` | An agent through the MCP tools `assign_task` and `unassign_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out. Never task content, a state, or another session |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
 | `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when, and the task IDs it runs after); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content, a state, or a list |
@@ -2990,6 +2996,8 @@ serves no other client.
 - Events stay private to the task store and are deleted with the task; no API, agent tool, or observation surface exposes them.
 - `task_log` stores only repository ID, task number, fixed kind, time, and a nullable pull-request number under its entry ID. `task_log_cursors` stores only a consumer name and entry ID under its repository ID. Neither stores text, title, session ID, URL, head commit, CLI output, or branch.
 - Rework records keep only references, fixed cause, fixed declarer, and time under the repository ID; no explanation, prompt, title, or transcript is stored.
+- Session reports accept only rework references and fixed causes; the monitor supplies `declaredBy: "session"` and time.
+- Report answers return only the submitted rework references and fixed statuses or refusal reasons; they expose no other links or record fields.
 - Rework log entries cross only the existing task-log boundaries to desktop main, the trusted renderer, paired devices, and Aril's log reader; the record's cause and declarer do not enter the log.
 - The board's rework arrays cross the existing `GET /api/tasks` read gate; they do not enter agent tools, Aril's board snapshot, `/api/state`, observation caches, reports, notifications, or diagnostics.
 - `task_pull_request_seen:<repositoryId>:<T-n>` stores only a PR number, head commit OID, fixed check status, and merged flag; task deletion removes it.
