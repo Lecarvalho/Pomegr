@@ -36,7 +36,7 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     const view = home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "Let Aril run work under a grant" })).toBeInTheDocument();
+    expect(within(update).getByRole("heading", { name: "Let Aril run your backlog" })).toBeInTheDocument();
     expect(within(update).queryByRole("link")).not.toBeInTheDocument();
     const navigation = screen.getByRole("region", { name: "Sessions" });
     expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -66,7 +66,7 @@ describe("personal Home", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     const trigger = screen.getByRole("button", { name: "See what’s new" });
     await user.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Let Aril run work under a grant" });
+    const dialog = screen.getByRole("dialog", { name: "Let Aril run your backlog" });
     expect(within(dialog).getAllByRole("listitem")).toHaveLength(3);
     await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("personal Home", () => {
     renderHook(() => useHomePreferences()).unmount();
     const user = userEvent.setup();
     const view = home();
-    const dialog = await screen.findByRole("dialog", { name: "Let Aril run work under a grant" });
+    const dialog = await screen.findByRole("dialog", { name: "Let Aril run your backlog" });
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [], lastViewedSessionId: null, seenUpdateId: "aril-grants-v1" });
     await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
