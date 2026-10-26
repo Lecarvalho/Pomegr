@@ -1,5 +1,5 @@
 import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
-import { serveArilActionRoute, serveGrantRunner } from "./task-aril-routes.mjs";
+import { serveArilActionRoute, serveArilRework, serveGrantRunner } from "./task-aril-routes.mjs";
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete",
@@ -141,8 +141,8 @@ function projectBoard(repositoryId, board, runModels) {
     version: 1, readiness: board.readiness, repositoryId,
     columns: board.columns, features: board.features, tasks: board.tasks.map(projectTask),
     queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}), ...(waits ? { waits } : {}) },
-    ...(board.readiness === "ready" ? { aril: board.aril } : {}),
-    runModels: projectRunModels(runModels),
+    ...(board.readiness === "ready" ? { aril: board.aril } : {}), runModels: projectRunModels(runModels),
+    ...(Array.isArray(board.rework) ? { rework: board.rework.map(({ fix, reworks, cause, at }) => ({ fix, reworks, cause, at })) } : {}),
   };
 }
 export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
@@ -351,7 +351,7 @@ function sessionOfRepository(resolveSession, sessionId, repositoryId) {
 // `POST /internal/tasks/<action>`.
 export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveUsage = null, resolveCheckFacts = null, resolveOutcomeFacts = null, resolvePullRequestFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action)) {
+  if (action !== "aril-declare-rework" && !TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -382,7 +382,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     writeActionResult(response, 400, rejected("invalid"));
     return;
   }
-  if (GRANT_ACTIONS.includes(action)) return serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, action, body });
+  if (action === "aril-declare-rework" || GRANT_ACTIONS.includes(action)) return action === "aril-declare-rework" ? serveArilRework({ request, response, taskStore, body }) : serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, action, body });
   if (action === "queue-next") {
     serveQueueNext({ response, taskStore, resolveGateFacts, body });
     return;

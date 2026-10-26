@@ -101,7 +101,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `openTaskStore({ directory })` returns `readBoard(repositoryId)`,
   `apply(repositoryId, action, payload)`, and `close()`. `apply` returns the new board
   or a fixed error: `invalid`, `not_found`, `limit`, `conflict`, or `unsupported`. A new
-  capability adds an action, not a method.
+  capability adds an action, not a method, except desktop-main-only control paths such as `declareArilRework(repositoryId, { fix, reworks, cause })`.
 - The first read of a repository seeds the five columns: Backlog, Ready, In progress,
   Review, and Done. The last three carry the column roles `in_progress`, `review`, and
   `done` (see [Columns and card moves](#columns-and-card-moves)).
@@ -2794,9 +2794,12 @@ serves no other client.
 
 ## Boundaries
 
+Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task.
+
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `POST /internal/tasks/rework_declare`, `rework_remove` | Owner through desktop-token actions; no agent tool or Aril action | Declaration `{ fix: "T-n", reworks, cause }` or removal `{ fix, reworks }`; board and fixed status or error, as in [Store](#store) |
+| `POST /internal/tasks/aril-declare-rework` | Desktop main with desktop token; browser Origin, LAN-gateway marker, and MCP capability refused; no renderer or paired route | Exactly `{ repositoryId, fix, reworks, cause }`; records with `declaredBy: "aril"`; answers `{ ok: true, status: "recorded" \| "exists" }` or fixed error |
 | `pomegr:task-action` and paired `POST /api/tasks/action` with `rework_declare` or `rework_remove` | Trusted desktop frame or authenticated paired gateway | Same payloads; `{ ok: true, status: "recorded" \| "exists" }` for declaration, `{ ok: true }` for removal, or fixed error; never the board |
 | `POST /internal/tasks/aril_settings_set`, `aril_memory_add`, `aril_memory_update`, `aril_memory_remove` | Desktop token; paired proxy additionally gated by stored `pairedDevices` | Fixed payloads and settings or memory entry answers in [Aril settings and memory](#aril-settings-and-memory); no board in these action answers |
 | `POST /api/tasks/action` with an Aril action | Authenticated paired gateway; opt-in checked by the monitor using the proxy's fixed paired marker | Same fixed payloads and answers; `settings.pairedDevices` is refused even after opt-in |
@@ -2968,6 +2971,8 @@ serves no other client.
 
 ## Privacy
 
+Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task.
+
 - A grant holds times, counts, a fixed end reason, and fixed action and limit settings snapshots under repository and grant IDs; the board exposes only the latest grant's documented fields, never its internal ID.
 - Send-back metadata holds the grant-scoped count and verdict reasons until Done or deletion; the reasons reach the next builder prompt, and a `sendBack: true` hint reaches desktop main in the private start plan, never the renderer or board.
 - Grant snapshots reach the trusted desktop renderer and paired board reader; runner routes return only IDs, fixed kinds, active state, the count ended, and optional review provider, model, and effort overrides, never task text, prompts, paths, session IDs, or dispatch tokens.
@@ -2999,7 +3004,9 @@ serves no other client.
 - Session reports accept only rework references and fixed causes; the monitor supplies `declaredBy: "session"` and time.
 - Report answers return only the submitted rework references and fixed statuses or refusal reasons; they expose no other links or record fields.
 - Rework log entries cross only the existing task-log boundaries to desktop main, the trusted renderer, paired devices, and Aril's log reader; the record's cause and declarer do not enter the log.
-- The board's rework arrays cross the existing `GET /api/tasks` read gate; they do not enter agent tools, Aril's board snapshot, `/api/state`, observation caches, reports, notifications, or diagnostics.
+- The board's rework arrays cross the existing `GET /api/tasks` read gate; top-level `rework` adds `{ fix, reworks, cause, at }` links, including PR-only links, when present.
+- Aril's snapshot receives references with causes, target markers, Done counts, and a 30-day cause and run summary; it receives no declarer or individual link time.
+- Rework metadata never enters agent tools, `/api/state`, observation caches, reports, notifications, or diagnostics.
 - `task_pull_request_seen:<repositoryId>:<T-n>` stores only a PR number, head commit OID, fixed check status, and merged flag; task deletion removes it.
 - Only `POST /internal/tasks/log-read` and `log-ack` expose log entries or cursors to desktop main. Desktop main reads them for [Aril's owner-message prompts](agent-chat.md#privacy) and sends the bounded log to the trusted desktop renderer through `pomegr:task-log` or a paired device through the LAN gateway's `POST /api/tasks/log-read`; no unpaired browser, agent tool, or `/api/state` reads them.
 - The paired log read uses the same bounded reader as the IPC, never forwards upstream, and never acknowledges entries or moves Aril's cursor.
@@ -3194,7 +3201,7 @@ fixed values.
   feature titles, block reasons, and attention lines in the prompt of its provider run.
   That is a deliberate widening (task T-29, 2026-10-11), owned by
   [Agent chat: Privacy](agent-chat.md#privacy). The chat changes the board only through
-  the fixed task actions, after the owner applies a proposal. Of a session start it
+  the fixed task actions, after the owner applies a proposal, except the fixed grant actions and the rework recording path above. Of a session start it
   applied, the chat keeps the task ID and one fixed start status, and nothing of the
   start plan. Of a queue change it applied, the chat keeps the state asked for and one
   fixed result, and nothing of the board.

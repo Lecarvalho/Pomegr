@@ -27,7 +27,7 @@ shipped. The parts that are not proven on a device are listed under
 
 Aril is an agent that organizes one repository's task board. The owner asks in a chat
 panel; Aril reads the board, the repository's files, and Pomegr's observations, and
-answers. Aril changes and starts nothing itself, except through the fixed grant actions
+answers. Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task. Aril otherwise changes and starts nothing itself, except through the fixed grant actions
 while a grant the owner started is active ([Aril grants](tasks.md#aril-grants)). Otherwise it
 proposes board changes, and Pomegr applies a proposal after the owner presses **Apply changes**.
 While an owner-started grant is active, the desktop runner may start selected Ready tasks and
@@ -258,7 +258,7 @@ board snapshot and the files.
 characters, including the fixed instructions even when Claude receives them through its system-prompt file instead of stdin, in this order:
 
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
-   read, that it proposes changes for owner Apply except for the fixed actions the desktop
+   read, that it proposes changes for owner Apply except for rework recording and the fixed actions the desktop
    performs under an owner-started grant, how to advise on task size, Ready order, parallel groups, and models,
    the proposal format, when it proposes a session start or a queue change, how it
    names an image and puts it on a task, how it follows up an answered proposal, and
@@ -307,9 +307,13 @@ characters, including the fixed instructions even when Claude receives them thro
 
 Full entries in `tasks` include Ready, In progress, and Review cards, plus cards in any column updated after the latest saved complete Aril answer in this repository; without one, the cutoff is 24 hours before the turn. Owner messages, follow-ups, and grant write turns use the same rule. Failed or interrupted answers never advance it. Deleting all completed answers restores the 24-hour fallback. Dependencies and group neighbors are expanded transitively, including Done cards.
 
-`index` holds every other non-Done card as one string, in column then position order: `T-12 Backlog#3 not_queued [Feature title] group A after T-4,T-5 first line`. Feature titles stop at 40 characters and the text's first line at 80; absent feature, group, and dependency tokens are omitted. Positions remain zero-based and may be used in proposals.
+`index` holds every other non-Done card as one string, in column then position order: `T-12 Backlog#3 not_queued [Feature title] group A after T-4,T-5 first line`. Feature titles stop at 40 characters and the text's first line at 80; absent feature, group, and dependency tokens are omitted. Positions remain zero-based and may be used in proposals. A target of a rework link adds the `reworked` token.
 
 `done` holds the total Done count, `by_run` counts grouped by provider, observed model and effort (falling back to planned values), and the ten most recently updated Done cards as index lines. Each group counts tasks with all reported checks passed (at least one), a known failed check, stalled state, blocked state or block reason, and a failed review. Unavailable checks count as neither passed nor failed. These counts describe current served evidence, not lifetime outcomes. `sent_back` is null because the board serves no send-back history. Aril fetches named tasks when comparing the record.
+
+Full entries carry `reworks` and `reworked_by` as `{ ref, cause }` arrays when present. `done.by_run.reworked` counts each linked target or currently failed-review task once. The board exposes no send-back history, so this count cannot include historical send-backs without a surviving link or failed review.
+
+Top-level `rework` holds `days: 30`, `by_cause` counts, and `by_run` rows with provider, model, effort, and count. It counts links declared within the last 30 days, including the cutoff and excluding future times. Only task targets contribute run counts, using observed values before planned values; PR-only targets contribute cause counts. Each link counts once, even when several links name one task. The summary stays complete when task entries are omitted.
 
 Stable snapshot fields precede the volatile `now`, `queue` (including usage percentages), and `grant` fields.
 
@@ -336,7 +340,7 @@ Allocation changes neither snapshot card order nor report fields. Aril retrieves
 
 `BOARD_SNAPSHOT_BUDGET` budgets the complete serialized snapshot, including JSON escaping and every task field.
 It subtracts instruction length, `HISTORY_BUDGET`, 60,000 characters for other sections, and 5,000 characters of margin from `PROMPT_LIMIT`.
-The current snapshot budget is 79,872 characters.
+The snapshot budget is computed from the current instruction length, including rework instructions and metadata.
 Workflow changes reserve 12,000 characters. Owner turns reserve 10,000 each for task logs and worktrees, 500 for GitHub settings, and 4,000 for messages.
 Follow-ups instead reserve 32,000 for the outcome and request. Grant requests reserve 6,000. Image rows reserve 8,000 in either conversation turn.
 History includes the separators between messages in its budget.
@@ -348,7 +352,7 @@ If retained metadata alone exceeds the snapshot budget, shortening text cannot s
 Task fields retain their shape. When tasks are omitted, `tasks_omitted: { done, backlog }` counts omitted full entries and index lines by column; cards represented only in the index or Done summary do not count as omitted.
 The field is absent when no task is omitted. Omitted tasks still exist on the board.
 Aril uses `get_task` with a known ID and states when an answer may depend on tasks not shown.
-Its model advice weighs the Done summary and fetches named task records when their details matter.
+Its model advice weighs the Done summary and fetches named task records when their details matter. Reworked tasks weigh less for their model and effort than clean merges. When a cause repeats for the same kind of work, Aril proposes `add_memory` with one line naming the missing check.
 
 `models` holds one list for `claude` and one for `codex`. Each list starts with the
 models the Run on list of the task form offers for that provider, from the same code
@@ -412,7 +416,9 @@ Aril changes the board only by ending its answer with one fenced block tagged
 `pomegr-board`: `{ "summary", "operations" }`. `extractProposal` in
 `agent-chat-proposal.mjs` takes the block out of the shown text and validates it.
 
-The only proposal applied without owner Apply is a [grant task-writing answer](#tasks-from-a-grants-plans): one to five `create_task` operations from the named plans, within the grant's cap. No other operation in that answer applies, and owner-message proposals retain their approval boundary.
+A [grant task-writing answer](#tasks-from-a-grants-plans) applies one to five `create_task` operations from the named plans, within the grant's cap. No other operation is accepted in that answer. Outside grant writes, desktop main records `declare_rework` operations at answer time, without Apply; remaining operations retain their approval boundary.
+
+When the owner or task text, a fix PR, or the log establishes that work fixes or redoes earlier work, Aril declares the link. One answer may contain at most five declarations, alone or beside other operations, including in a follow-up after any outcome. Declarations are removed before the remaining proposal's isolation and follow-up rules apply. A declaration-only answer has no Apply. Each result becomes a fixed answer line: `Recorded: T-12 reworks #336 · missed wiring`, `Already recorded: T-12 reworks #336`, or `Not recorded: T-12 reworks #336 · missed wiring · not_found`. Refusals use only `invalid`, `not_found`, `limit`, or `unavailable`; no monitor text crosses. Duplicate declarations retain the first cause. Recording starts no follow-up.
 
 Aril ends its answer with a proposal when the owner asked for a change, agreed to one, or
 when its own reading recommends one concrete board change, with the reason in the answer;
@@ -452,6 +458,7 @@ message would lead to materially different proposals.
 | `add_memory` | `text` | `aril_memory_add` with `{ text }` |
 | `update_memory` | Numeric `id`, `text` | `aril_memory_update` with `{ id, text }` |
 | `remove_memory` | Numeric `id` | `aril_memory_remove` with `{ id }` |
+| `declare_rework` | `fix`, `reworks`: distinct `T-n` or `#n` references; `cause`: `missed_wiring`, `spec_gap`, `wrong_behavior`, `stale_instructions`, `latent`, or `other` | Desktop-main-only `aril-declare-rework` records with declarer `aril`, without Apply; never a grant task-write operation |
 
 Settings and memory proposals are available only on owner-message turns, never follow-ups. `set_aril_settings` cannot include `pairedDevices`; paired-device Apply answers `desktop_only` unless stored `pairedDevices` is true. Desktop Apply keeps the existing action behavior.
 Memory operations combine only with memory operations. Validation mirrors the [settings and memory bounds](tasks.md#aril-settings-and-memory); the monitor checks feature and task membership.
@@ -738,7 +745,7 @@ another message.
   outcome, Aril may return one proposal of board changes that continues the owner's
   earlier request. The ordinary parser and validator accept at most one
   proposal block, with 1 to 40 operations. A complete follow-up after a dismissed,
-  refused, or failed outcome cannot offer a proposal; any block is rejected and the
+  refused, or failed outcome cannot offer a pending proposal; after recording rework declarations, any remaining block is rejected and the
   message is marked `proposalUnreadable`. A follow-up never proposes
   `start_session`, `set_queue`, or `remove_worktree`. Applying or dismissing an eligible follow-up
   proposal starts one provider run for its follow-up; it does not start an automatic
@@ -762,7 +769,7 @@ another message.
   tell Aril not to ask why, not to offer a variant, and not to propose it again unless
   the owner asks. The stored proposal is `dismissed`, and every later prompt says so in
   its conversation line.
-- **It changes nothing by itself.** Even under a grant, a follow-up takes no
+- **Only rework recording happens without Apply.** Even under a grant, a follow-up takes no
   [grant action](tasks.md#aril-grants), sends no task action, retries no
   operation, starts no session, and changes no queue: it is a read-only run. Only a
   complete follow-up after any applied or partial outcome may carry one board-change
@@ -886,6 +893,8 @@ Desktop main keeps one JSON file per conversation:
 
 ## Boundaries
 
+Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task.
+
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session or remove a worktree |
@@ -896,6 +905,7 @@ Desktop main keeps one JSON file per conversation:
 | Git in desktop main (`createTaskWorktrees`) | Desktop main | `worktree list`, `status`, `rev-list`, `worktree remove`, and, under the branch rule, `branch -D`, as argument arrays with no shell, for the worktree listing of a turn and for an approved removal. The prompt gets facts and result words only; no output, path, or error text |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
 | `POST /internal/tasks/log-read` and `log-ack` on the monitor | Desktop main, with the desktop token | The newest 100 log entries for owner-message prompts; acknowledgement through the highest shown ID after a complete turn |
+| `POST /internal/tasks/aril-declare-rework` on the monitor | Desktop main with desktop token; no browser Origin, LAN-gateway marker, or MCP capability | Exactly `{ repositoryId, fix, reworks, cause }`; fixed status or error; no renderer, paired-device, or MCP route |
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, `queue_ungroup`, and `after_set`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
 | The provider run | Desktop main | The prompt on stdin, with Claude's fixed instructions optionally in its desktop-owned system-prompt file; JSON lines on stdout |
@@ -936,6 +946,12 @@ removal that did not come from the desktop window.
   name. No tool input, tool result, or provider error text is read into an answer.
 
 ## Privacy
+
+Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task.
+
+- The snapshot sends task rework references and fixed causes, target markers, Done counts, and a 30-day cause and run summary. Individual link times and declarers stay out of it.
+- Only validated references and a fixed cause leave an answer for the monitor; it supplies declarer `aril` and the time. No answer text is sent.
+- Fixed recording or refusal lines stay in the chat conversation and cross its existing desktop and paired-device read boundaries. The task log records kind `rework` through its existing paths.
 
 The conversation is a new data class: text the owner wrote and text the agent wrote. It
 is the one place where Pomegr shows a prompt and a response, and they are the chat's own,

@@ -17,7 +17,7 @@ copying it here.
 - In the desktop app and on a paired device, Pomegr also has an agent chat. The owner
   talks to Aril, an agent that reads the task board and Pomegr's observations and
   proposes board changes and, when the owner asks, the start of one task's session or
-  turning the repository's queue on or off. Aril changes and starts nothing, except
+  turning the repository's queue on or off. Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task. Aril otherwise changes and starts nothing, except
   through the fixed grant actions while a grant the owner started is active: it may then
   start the Ready tasks its work rules select, their reviews, send failed work back
   within the send-back limit, merge a task's pull request on green CI after a passing review,
@@ -119,7 +119,7 @@ These rules always apply:
   applies or dismisses a proposal. After any applied or partial outcome, a
   follow-up may offer one proposal of board changes that continues the owner's earlier request.
   The owner must Apply or Dismiss that proposal; no proposal applies itself or starts an
-  automatic chain. The one exception is a grant that allows writing tasks: the tasks Aril
+  automatic chain. Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task. Another exception is a grant that allows writing tasks: the tasks Aril
   writes from the grant's named plans are created in Ready without Apply, within the
   grant's cap, and nothing else in that answer applies.
   A follow-up after a dismissed, refused, or failed proposal carries no

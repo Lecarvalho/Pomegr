@@ -19,11 +19,32 @@ import {
 const fence = (body) => `\`\`\`${PROPOSAL_FENCE}\n${typeof body === "string" ? body : JSON.stringify(body)}\n\`\`\``;
 const goodProposal = { summary: "Add one task", operations: [{ op: "create_task", text: "Write the plan" }] };
 
+test("rework declarations are bounded, exact, separate from Apply, and forbidden in grant writes", async () => {
+  const link = { op: "declare_rework", fix: "T-12", reworks: "#336", cause: "missed_wiring" };
+  for (const cause of ["missed_wiring", "spec_gap", "wrong_behavior", "stale_instructions", "latent", "other"]) {
+    assert.deepEqual(normalizeOperation({ ...link, cause }), { ...link, cause });
+  }
+  for (const fields of [{ cause: "unknown" }, { reworks: "T-12" }, { fix: "#0" }, { fix: "#9007199254740992" }, { declaredBy: "aril" }]) {
+    assert.equal(normalizeOperation({ ...link, ...fields }), null);
+  }
+  const proposal = (operations) => ({ summary: "Record the fix", operations });
+  assert.deepEqual(normalizeProposal(proposal([link])), proposal([link]));
+  for (const other of [{ op: "create_task", text: "Check wiring" }, { op: "add_memory", text: "Check every layer." },
+    { op: "start_session", id: "T-1" }, { op: "set_queue", on: true }, { op: "set_aril_settings", settings: {} }, { op: "remove_worktree", id: "T-1", branch: false }]) {
+    assert.deepEqual(normalizeProposal(proposal([link, other])), proposal([link, other]));
+  }
+  assert.ok(normalizeProposal(proposal(Array(5).fill(link))));
+  assert.equal(normalizeProposal(proposal(Array(6).fill(link))), null);
+  assert.equal(normalizeProposal(proposal([link]), { grantWrite: true }), null);
+  assert.equal(normalizeProposal(proposal([{ op: "create_task", text: "Fix" }, link]), { grantWrite: true }), null);
+  assert.deepEqual(await applyOperations([link], { post: () => assert.fail("declarations never use Apply"), board: {} }), [{ ok: false, error: "unsupported" }]);
+});
+
 test("the proposal contract constants are fixed", () => {
   assert.equal(PROPOSAL_FENCE, "pomegr-board");
   assert.equal(PROPOSAL_OPERATION_LIMIT, 40);
   assert.equal(PROPOSAL_SUMMARY_LIMIT, 300);
-  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree"]);
+  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree", "declare_rework"]);
   assert.equal(IMAGES_PER_OPERATION, 4);
   assert.equal(IMAGE_OPERATION, "attach_images");
   assert.deepEqual([...BOARD_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
@@ -49,6 +70,7 @@ test("every operation is accepted in its minimal form and kept as written", () =
     [{ op: "update_memory", id: 1, text: "Use tests" }, { op: "update_memory", id: 1, text: "Use tests" }],
     [{ op: "remove_memory", id: 1 }, { op: "remove_memory", id: 1 }],
     [{ op: "remove_worktree", id: "T-1", branch: false }, { op: "remove_worktree", id: "T-1", branch: false }],
+    [{ op: "declare_rework", fix: "T-1", reworks: "#336", cause: "missed_wiring" }, { op: "declare_rework", fix: "T-1", reworks: "#336", cause: "missed_wiring" }],
   ];
   assert.equal(accepted.length, BOARD_OPERATIONS.length);
   for (const [source, expected] of accepted) assert.deepEqual(normalizeOperation(source), expected, source.op);

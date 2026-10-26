@@ -18,7 +18,7 @@ import { deleteTaskEvents, ensureTaskEvents } from "./task-events.mjs";
 import { deleteTaskOutcome, ensureTaskOutcomes } from "./task-outcomes.mjs";
 import { ensureScorecardSnapshots, readScorecardSnapshot } from "./task-scorecard.mjs";
 import { ackTaskLog, ensureTaskLog, readTaskLog } from "./task-log.mjs";
-import { declareTaskRework, ensureTaskRework, fillTaskRework, removeTaskRework } from "./task-rework.mjs";
+import { declareArilTaskRework, declareTaskRework, ensureTaskRework, fillTaskRework, removeTaskRework } from "./task-rework.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
 import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -792,6 +792,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const readScorecard = (repositoryId, appVersion) => link(() => runTransaction(database, () => readScorecardSnapshot(database, repositoryId, appVersion, now())));
   const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
+  const declareArilRework = (repositoryId, payload) => dispatch(({ database, transaction }) => transaction(() => declareArilTaskRework({ database, repositoryId, now }, payload)), {});
   return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
-    addImage, removeImage, readImage, readScorecard, readLog, ackLog, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
