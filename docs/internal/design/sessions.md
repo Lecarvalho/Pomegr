@@ -162,6 +162,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - The live terminal waits up to 500 ms, measures with a monospace-only family, and re-measures before fitting after the data font loads.
 - The CLI draws the only input surface and its caret, which shows focus. Pomegr adds no focus ring.
 - The owner types or pastes into the CLI input surface.
+- Ctrl+Enter and Shift+Enter send ESC CR, the Alt+Enter sequence that Claude Code and Codex read as a new line; Enter alone submits.
 - The Terminal tab sends input, paste, resize, and detach only through fixed trusted desktop IPC.
 - A task's Terminal start view says **Waiting for the session to report** before binding. Binding opens the session's Terminal tab.
 - A host reconnection keeps input disabled until the terminal attaches and received replay finishes parsing.

@@ -7,6 +7,7 @@ import { join } from "node:path";
 const fake = vi.hoisted(() => ({
   write: vi.fn(), dispose: vi.fn(), focus: vi.fn(), fit: vi.fn(), resize: null as (() => void) | null,
   data: null as ((value: string) => void) | null,
+  key: null as ((event: KeyboardEvent) => boolean) | null,
   output: null as ((value: unknown) => void) | null,
   revision: null as ((value: LiveEvent) => void) | null,
   terminal: vi.fn(), replace: vi.fn(), construct: vi.fn(), fontFamily: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   cols = 80; rows = 24; options: Record<string, unknown>;
   open = vi.fn(); loadAddon = vi.fn(); write = fake.write; dispose = fake.dispose; focus = fake.focus;
   onData(callback: (value: string) => void) { fake.data = callback; return { dispose: vi.fn() }; }
+  attachCustomKeyEventHandler(callback: (event: KeyboardEvent) => boolean) { fake.key = callback; }
 } }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit = fake.fit; } }));
 vi.mock("../../app/live-events", () => ({ subscribeLiveEvents: (callback: (value: LiveEvent) => void) => { fake.revision = callback; return () => {}; } }));
@@ -173,6 +175,17 @@ describe("managed terminal", () => {
     expect(fake.write.mock.calls.map(([data]) => data)).toEqual(["replay", "live"]);
     await act(async () => fake.data?.("hello\r\u0003"));
     expect(fake.terminal).toHaveBeenCalledWith("input", expect.objectContaining({ data: "hello\r\u0003" }));
+    const inputs = () => fake.terminal.mock.calls.filter(([op]) => op === "input").map(([, payload]) => payload.data);
+    const before = inputs().length;
+    for (const modifier of [{ ctrlKey: true }, { shiftKey: true }]) {
+      let handled: boolean | undefined;
+      await act(async () => { handled = fake.key?.(new KeyboardEvent("keydown", { key: "Enter", ...modifier })); });
+      expect(handled).toBe(false);
+      expect(fake.key?.(new KeyboardEvent("keypress", { key: "Enter", ...modifier }))).toBe(false);
+    }
+    expect(fake.key?.(new KeyboardEvent("keydown", { key: "Enter" }))).toBe(true);
+    expect(fake.key?.(new KeyboardEvent("keydown", { key: "Enter", altKey: true, ctrlKey: true }))).toBe(true);
+    await waitFor(() => expect(inputs().slice(before)).toEqual(["\u001b\r", "\u001b\r"]));
     expect(fake.terminal).toHaveBeenCalledWith("resize", expect.objectContaining({ cols: 80, rows: 24 }));
     const resized = fake.terminal.mock.calls.filter(([op]) => op === "resize").length;
     act(() => fake.resize?.());

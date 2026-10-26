@@ -29,6 +29,7 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   open() {}
   focus() {}
   onData() { return { dispose() {} }; }
+  attachCustomKeyEventHandler() {}
   write(_data: string, done?: () => void) { done?.(); }
   dispose() {}
 } }));
