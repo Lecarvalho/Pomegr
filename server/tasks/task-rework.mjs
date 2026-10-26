@@ -51,6 +51,11 @@ export function declareTaskRework(context, payload) {
   return recordTaskRework(context, { ...payload, declaredBy: "owner" });
 }
 
+export function declareArilTaskRework(context, payload) {
+  if (!payloadValid(payload, ["fix", "reworks", "cause"])) return { ok: false, error: "invalid" };
+  return recordTaskRework(context, { ...payload, declaredBy: "aril" });
+}
+
 export function removeTaskRework({ database, repositoryId }, payload) {
   if (!payloadValid(payload, ["fix", "reworks"]) || !reference(payload.fix) || !reference(payload.reworks) || payload.fix === payload.reworks) return { ok: false, error: "invalid" };
   const result = preparedStatement(database, "DELETE FROM task_rework WHERE repository_id = ? AND fix = ? AND reworks = ?").run(repositoryId, payload.fix, payload.reworks);
@@ -60,10 +65,11 @@ export function removeTaskRework({ database, repositoryId }, payload) {
 // Only the served board gains these fields; agent-task reads keep their existing projection.
 export function fillTaskRework(database, board) {
   const byId = new Map(board.tasks.map((task) => [task.id, { ...task }]));
-  for (const { fix, reworks, cause, declared_by: declaredBy } of preparedStatement(database, "SELECT fix, reworks, cause, declared_by FROM task_rework WHERE repository_id = ? ORDER BY at, fix, reworks").all(board.repositoryId)) {
+  const links = preparedStatement(database, "SELECT fix, reworks, cause, declared_by AS declaredBy, at FROM task_rework WHERE repository_id = ? ORDER BY at, fix, reworks").all(board.repositoryId);
+  for (const { fix, reworks, cause, declaredBy } of links) {
     const task = byId.get(fix), original = byId.get(reworks);
     if (task) (task.reworks ??= []).push({ ref: reworks, cause, declaredBy });
     if (original) (original.reworkedBy ??= []).push({ ref: fix, cause, declaredBy });
   }
-  return { ...board, tasks: [...byId.values()] };
+  return { ...board, tasks: [...byId.values()], ...(links.length ? { rework: links.map(({ fix, reworks, cause, at }) => ({ fix, reworks, cause, at })) } : {}) };
 }

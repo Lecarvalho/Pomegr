@@ -14,6 +14,60 @@ import {
 
 const invalid = { ok: false, error: "invalid" };
 const unavailable = { ok: false, error: "unavailable" };
+
+test("answer-time rework records each link and leaves only ordinary changes pending", async (context) => {
+  const link = { op: "declare_rework", fix: "T-12", reworks: "#336", cause: "missed_wiring" };
+  for (const mixed of [false, true]) {
+    const h = await chatHarness(context);
+    h.state.actions = () => ({ ok: true, status: "recorded", detail: "private monitor text" });
+    const { conversationId: id } = await send(h);
+    const operations = [link, ...(mixed ? [{ op: "queue_task", id: "T-2" }] : [])];
+    const text = `Evidence.\n\n\`\`\`pomegr-board\n${JSON.stringify({ summary: "Record", operations })}\n\`\`\``;
+    const conversation = await finishTurn(h, h.runs[0], { status: "complete", text }, id);
+    const message = conversation.messages.at(-1);
+    assert.equal(message.text, "Evidence.\n\nRecorded: T-12 reworks #336 · missed wiring");
+    assert.deepEqual(h.actionCalls().map(({ pathname, body }) => ({ pathname, body })), [{
+      pathname: "/internal/tasks/aril-declare-rework", body: { repositoryId, fix: "T-12", reworks: "#336", cause: "missed_wiring" },
+    }]);
+    if (mixed) {
+      assert.equal(message.proposal.state, "pending");
+      assert.deepEqual(message.proposal.operations, [{ op: "queue_task", id: "T-2" }]);
+    } else assert.equal(message.proposal, undefined, "rework-only answers offer no Apply");
+    assert.equal((await h.reload().read(repositoryId, id)).messages.at(-1).text, message.text);
+  }
+});
+
+test("rework follows a dismissal, gives fixed refusals, and never records incomplete answers", async (context) => {
+  const h = await chatHarness(context);
+  const conversation = await seed(h, { messages: withProposal() });
+  await h.handle("dismiss", { repositoryId, conversationId: conversation.id, proposalId: "p-0123456789ab" });
+  h.state.actions = () => ({ ok: false, error: "not_found", detail: "private monitor text" });
+  const operations = [{ op: "declare_rework", fix: "#342", reworks: "#336", cause: "missed_wiring" }];
+  const text = `\`\`\`pomegr-board\n${JSON.stringify({ summary: "Record", operations })}\n\`\`\``;
+  const saved = await h.finishFollowUp(conversation.id, { status: "complete", text });
+  assert.equal(saved.messages.at(-1).text, "Not recorded: #342 reworks #336 · missed wiring · not_found");
+  assert.equal(saved.messages.at(-1).proposal, undefined);
+  assert.equal(saved.messages.at(-1).proposalUnreadable, undefined);
+  assert.equal(h.actionCalls().length, 1);
+  const { conversationId: id } = await send(h);
+  await finishTurn(h, h.runs.at(-1), { status: "stopped", text }, id);
+  assert.equal(h.actionCalls().length, 1);
+});
+
+test("rework results are independent, bounded, and keep first declarations truthful", async (context) => {
+  const h = await chatHarness(context);
+  const replies = [{ ok: false, error: "private error" }, { ok: true, status: "exists" }, { ok: true, status: "recorded" }];
+  h.state.actions = (action) => action === "aril-declare-rework" ? replies.shift() : { ok: true };
+  const { conversationId: id } = await send(h);
+  const operations = [1, 2, 3].map((n) => ({ op: "declare_rework", fix: `#${n}`, reworks: "#336", cause: "other" }));
+  const text = `${"x".repeat(32_000)}\n\`\`\`pomegr-board\n${JSON.stringify({ summary: "Record", operations })}\n\`\`\``;
+  const saved = await finishTurn(h, h.runs[0], { status: "complete", text }, id);
+  const message = saved.messages.at(-1);
+  assert.equal(message.text.length, 32_000);
+  assert.ok(message.text.endsWith("Not recorded: #1 reworks #336 · other · unavailable\nAlready recorded: #2 reworks #336\nRecorded: #3 reworks #336 · other"));
+  assert.equal(h.actionCalls().length, 3);
+  assert.equal(message.proposal, undefined);
+});
 const conversationId = "chat-0123456789ab";
 
 const SET_OF_ACTIONS = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup"];

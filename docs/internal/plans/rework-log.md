@@ -1,11 +1,11 @@
 # Rework log: record when work is redone, and let Aril learn from it
 
-> Status: active; R1 and R2 are done; R3 is next.
+> Status: active; R1, R2, and R3 are done; R4 is next.
 > Created: 2026-10-25.
 > Scope: a recorded link that says one piece of work reworks an earlier one, with its cause; where it is declared, how the task log, Aril's snapshot, and the model record show it, and one scorecard measure. Pre-merge rework that Pomegr already records (send-backs, failed reviews, owner requeues) is counted, not redeclared.
 > Continuation owner: the product owner decides; the agent that builds a slice records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Tasks](../architecture/tasks.md), [Agent chat](../architecture/agent-chat.md), and [MCP tools](../../public/using-pomegr/mcp-tools.md) govern shipped behavior until each slice changes them.
-> Next task or decision: build R3.
+> Next task or decision: build R4.
 > Completion criteria: a rework declared by a session, Aril, or the owner appears in the task log and in Aril's snapshot, counts in the model record, and moves the rework measure on the scorecard; every rule below has a test.
 > Permanent destinations: [Tasks](../architecture/tasks.md) for the record, the log kind, and the privacy row; [Agent chat](../architecture/agent-chat.md) for the snapshot and the proposal operation; [MCP tools](../../public/using-pomegr/mcp-tools.md) for the tool field; [Metrics](../architecture/metrics.md) for the measure; the task board design page for the panel and the task window.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -80,3 +80,6 @@ A link holds only references, a cause from the fixed list, the declarer, and a t
 - 2026-10-25: the owner accepted the plan and chose the direct record for Aril. Next action: build R1.
 - 2026-10-25: R1 shipped: the `task_rework` record (first declaration stands, at most five per fix, no task state change), the `rework` log kind (a pull-request fix logs with its number and no task), the owner's `rework_declare` and `rework_remove` actions on the desktop and a paired device, and the **Reworks** row in the task window. Next action: build R2.
 - 2026-10-25: R2 done in source: both report tools accept bounded rework declarations; the report and session links share one transaction, with fixed per-reference outcomes. Proof: 84 focused Node tests, lint, docs, architecture, dependency boundaries, and `verify:fast` pass. Plugin bundles remain for reviewer regeneration; no build ran. Next action: build R3.
+- 2026-10-25: R3 complete: full and indexed snapshot evidence, Done rework counts, 30-day cause and run counts, model weighting, memory-check guidance, and direct answer-time declarations. Desktop-main-only recording fixes the declarer to `aril`, rejects browser, gateway, and MCP callers, preserves pending mixed proposals, and produces fixed answer lines and the existing log entry. Synthetic tests cover these boundaries, grant-write refusal, follow-ups, first-declaration retention, rollback, and prompt budgets. Next action: build R2 and R4.
+- R3 open questions resolved: served links lacked timestamps and PR-only records (`server/tasks/task-rework.mjs:66`, `fillTaskRework`); the board now adds reference/cause/time metadata for the summary. Historical send-backs are not served, so Done counts use links and current failed reviews. Existing exact Done-summary (`tests/desktop-agent-chat.test.mjs:709`) and store-method (`tests/server/tasks/task-store.test.mjs:394`) assertions now include the new count and private method. Recording helpers and snapshot tests use existing files to respect the 800-line architecture limit.
+- R3 proof: 506 selected desktop, server, and MCP tests pass; lint passes with 57 warnings; docs, architecture, dependency boundaries, and TypeScript checks pass. No UI tests changed. The slice uses 19 files, including private store/route wiring and existing contract assertions beyond the initial read list; no R4 scorecard or heuristic detection was added.

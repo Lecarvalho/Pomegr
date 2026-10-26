@@ -8,6 +8,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY_ID = `repo-${"a".repeat(24)}`;
 const TOKEN = "d".repeat(40);
+const AGENT_TOKEN = "a".repeat(40);
 const DESKTOP = { "x-pomegr-desktop-authorization": TOKEN, "content-type": "application/json" };
 const PAIRED = { "x-pomegr-desktop-authorization": TOKEN, "x-pomegr-lan-gateway": "1", "content-type": "application/json" };
 const GATEWAY = { "x-pomegr-lan-gateway": "1", "content-type": "application/json" };
@@ -15,7 +16,7 @@ const GATEWAY = { "x-pomegr-lan-gateway": "1", "content-type": "application/json
 async function setup(t, { taskStore, runtime = { resolveTaskUsage: () => 10 } } = {}) {
   const directory = await mkdtemp(path.join(process.cwd(), ".aril-grant-route-test-"));
   const store = taskStore ?? openTaskStore({ directory });
-  const server = http.createServer(createRequestHandler({ runtime, taskStore: store, authorizationToken: TOKEN }));
+  const server = http.createServer(createRequestHandler({ runtime, taskStore: store, authorizationToken: TOKEN, agentAuthorizationToken: AGENT_TOKEN }));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
@@ -79,6 +80,31 @@ test("grant writing routes keep exact payloads and fixed answers, and serve writ
 test("grant writing never returns an arbitrary store failure", async (t) => {
   const { port } = await setup(t, { taskStore: { writeGrantTasks: () => ({ ok: false, error: "unavailable", detail: "private" }) } });
   fixedError(await post(port, "grant-write-tasks", { repositoryId: REPOSITORY_ID, plan: "next.md", tasks: [{ text: "work" }] }), 400, "invalid");
+});
+
+test("Aril rework route is desktop-main-only, exact, and answers fixed recording results", async (t) => {
+  const { port, store } = await setup(t);
+  const body = { repositoryId: REPOSITORY_ID, fix: "#342", reworks: "#336", cause: "missed_wiring" };
+  for (const headers of [{ "content-type": "application/json" }, { ...DESKTOP, origin: "http://localhost" }, { "x-pomegr-agent-authorization": AGENT_TOKEN, "content-type": "application/json" }]) {
+    assert.equal((await post(port, "aril-declare-rework", body, headers)).status, 401);
+  }
+  for (const marker of ["1", "0", ""]) fixedError(await post(port, "aril-declare-rework", body, { ...DESKTOP, "x-pomegr-lan-gateway": marker }), 403, "unavailable");
+  for (const invalid of [{ ...body, declaredBy: "owner" }, { ...body, cause: "unknown" }, { ...body, fix: "#0342" }, { ...body, repositoryId: "bad" }, envelope(body)]) fixedError(await post(port, "aril-declare-rework", invalid), 400, "invalid");
+  fixedError(await send(port, { path: "/internal/tasks/aril-declare-rework?x=1", body: JSON.stringify(body) }), 400, "invalid");
+  assert.deepEqual((await post(port, "aril-declare-rework", body)).json, { ok: true, status: "recorded" });
+  assert.deepEqual((await post(port, "aril-declare-rework", body)).json, { ok: true, status: "exists" });
+  assert.equal(store.readBoard(REPOSITORY_ID).rework[0].cause, body.cause);
+  const board = await send(port, { method: "GET", path: `/api/tasks?repositoryId=${REPOSITORY_ID}`, headers: DESKTOP });
+  assert.deepEqual(board.json.rework, store.readBoard(REPOSITORY_ID).rework);
+});
+
+test("Aril rework route never exposes arbitrary store data", async (t) => {
+  const taskStore = { declareArilRework: () => ({ ok: true, status: "recorded", private: "secret" }) };
+  const { port } = await setup(t, { taskStore });
+  const body = { repositoryId: REPOSITORY_ID, fix: "#342", reworks: "#336", cause: "other" };
+  assert.deepEqual((await post(port, "aril-declare-rework", body)).json, { ok: true, status: "recorded" });
+  taskStore.declareArilRework = () => ({ ok: false, error: "secret", detail: "private" });
+  fixedError(await post(port, "aril-declare-rework", body), 503, "unavailable");
 });
 
 test("grant actions use fixed envelopes and the start grant is not ready by default", async (t) => {

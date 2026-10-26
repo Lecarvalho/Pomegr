@@ -10,6 +10,8 @@ board. You ask in a chat panel at the bottom right of the window. Aril reads the
 the repository's files, and what Pomegr observed, then answers. Aril proposes board
 changes, and you apply them.
 
+Aril records links when the evidence shows that one task or pull request fixes earlier work, without **Apply changes**. Each link names a fixed cause, appears in the answer and task log, and changes no task. Aril weighs reworked results when choosing models and proposes a memory check when a cause repeats. You still apply memory proposals.
+
 Aril can also work under a grant that only you start. A grant is time-bound and scoped by
 your Aril settings. The desktop app then starts tasks and reviews, sends failed work back,
 and merges on green CI, within limits you set. Aril cannot start or extend a grant. Under a

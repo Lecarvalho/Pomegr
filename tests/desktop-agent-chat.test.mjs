@@ -673,7 +673,7 @@ test("list answers the summaries newest first and the conversation that is runni
 });
 
 // Synthetic snapshot boards for the compact-index contract.
-import { boardSnapshot } from "../desktop/runtime/agent-chat-prompt.mjs";
+import { AGENT_CHAT_INSTRUCTIONS, BOARD_SNAPSHOT_BUDGET, boardSnapshot, composePrompt } from "../desktop/runtime/agent-chat-prompt.mjs";
 const now = new Date("2026-10-01T12:00:00Z");
 const budgetColumns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name, i) => ({ id: ["backlog", "ready", "progress", "review", "done"][i], name }));
 const budgetTask = (id, columnId, length, overrides = {}) => ({ id: `T-${id}`, columnId, position: id, text: `Task ${id}\n`.padEnd(length, "x"), ...overrides });
@@ -707,7 +707,7 @@ test("Done summarizes only served evidence and keeps the ten most recent lines",
   assert.equal(snapshot.tasks.length, 0);
   assert.equal(snapshot.done.total, 12);
   assert.deepEqual(snapshot.done.by_run, [{ provider: "codex", model: "observed", effort: "high", tasks: 12,
-    checks_passed: 10, checks_failed: 1, stalled: 1, blocked: 1, review_failed: 1, sent_back: null }]);
+    checks_passed: 10, checks_failed: 1, stalled: 1, blocked: 1, review_failed: 1, sent_back: null, reworked: 1 }]);
   assert.deepEqual(snapshot.done.recent.map((line) => line.split(" ")[0]), tasks.slice(0, 10).map(({ id }) => id));
 });
 
@@ -729,5 +729,64 @@ test("index previews are bounded and overflow removes bottom Backlog lines with 
   assert.equal(snapshot.index.length + snapshot.tasks_omitted.backlog, 1000);
   assert.ok(snapshot.index.at(-1).startsWith(`T-${snapshot.index.length} `));
   assert.deepEqual(Object.keys(snapshot).slice(-3), ["now", "queue", "grant"]);
+});
+
+test("rework references stay narrow in full tasks and mark indexed targets", () => {
+  const privatePath = "C:\\Users\\tester\\private-repo";
+  const link = { ref: "T-2", cause: "missed_wiring", declaredBy: "owner", path: privatePath };
+  const tasks = [budgetTask(1, "ready", 20, { reworks: [link, { ref: "#42", cause: "spec_gap" }, { ref: privatePath, cause: "other" }] }),
+    budgetTask(2, "backlog", 20, { updatedAt: "2026-01-01", reworkedBy: [{ ...link, ref: "T-1" }] })];
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  assert.deepEqual(snapshot.tasks[0].reworks, [{ ref: "T-2", cause: "missed_wiring" }, { ref: "#42", cause: "spec_gap" }]);
+  assert.match(snapshot.index[0], / reworked /u);
+  const full = boardSnapshot({ columns: budgetColumns, tasks }, { now, lastCompletedAt: 0 });
+  assert.deepEqual(full.tasks[1].reworked_by, [{ ref: "T-1", cause: "missed_wiring" }]);
+  assert.equal(JSON.stringify(full).includes('"declaredBy"'), false);
+});
+
+test("Done reworked counts target tasks once, including currently served failed reviews", () => {
+  const tasks = [budgetTask(1, "done", 20, { reworks: [{ ref: "T-2", cause: "other" }] }),
+    budgetTask(2, "done", 20, { reworkedBy: [{ ref: "T-1", cause: "other" }], review: { state: "failed" } }),
+    budgetTask(3, "done", 20, { review: { state: "failed" } }), budgetTask(4, "done", 20)];
+  const snapshot = boardSnapshot({ columns: budgetColumns, tasks }, { now });
+  assert.equal(snapshot.done.by_run[0].tasks, 4);
+  assert.equal(snapshot.done.by_run[0].reworked, 2);
+  assert.equal(snapshot.done.by_run[0].sent_back, null, "send-back history is not served");
+});
+
+test("30-day rework summary counts link causes and target observed runs, with PR targets cause-only", () => {
+  const at = now.getTime(), day = 86_400_000, privatePath = "C:\\Users\\tester\\private-repo";
+  const rework = [{ fix: "T-1", reworks: "T-2", cause: "missed_wiring", at },
+    { fix: "#40", reworks: "T-2", cause: "missed_wiring", at: at - 30 * day },
+    { fix: "T-1", reworks: "#42", cause: "spec_gap", at },
+    { fix: "#41", reworks: "T-2", cause: "latent", at: at - 30 * day - 1 },
+    { fix: "#43", reworks: "T-2", cause: "other", at: at + 1 },
+    { fix: "#44", reworks: privatePath, cause: "other", at },
+    { fix: "#45", reworks: "T-2", cause: privatePath, at }];
+  const tasks = [budgetTask(1, "ready", 20), budgetTask(2, "ready", 20, {
+    run: { provider: "claude" }, session: { observedModel: "observed", observedEffort: "low" } })];
+  assert.deepEqual(boardSnapshot({ columns: budgetColumns, tasks, rework }, { now }).rework, {
+    days: 30, by_cause: { missed_wiring: 2, spec_gap: 1 },
+    by_run: [{ provider: "claude", model: "observed", effort: "low", count: 2 }],
+  });
+});
+
+test("rework metadata participates in the snapshot and whole-prompt budgets", () => {
+  const tasks = Array.from({ length: 400 }, (_, i) => budgetTask(i + 1, i < 190 ? "done" : i < 380 ? "backlog" : "ready", 4000,
+    { updatedAt: now.toISOString(), completeWhen: { own: "c".repeat(500) }, reworkedBy: [{ ref: "#42", cause: "missed_wiring" }] }));
+  const board = { columns: budgetColumns, tasks }, snapshot = boardSnapshot(board, { now });
+  assert.ok(JSON.stringify(snapshot).length <= BOARD_SNAPSHOT_BUDGET);
+  assert.equal(snapshot.done.by_run[0].reworked, 190);
+  assert.ok(composePrompt({ board, now, message: "Compare the model record" }));
+});
+
+test("Aril instructions declare evidenced rework directly and learn concrete checks", () => {
+  for (const phrase of ['{"op":"declare_rework"', "at most 5", "without Apply", "never in a grant write turn",
+    "rework (a recorded link", "weaker model evidence than a clean merge", "same kind of work", "concrete check", "add_memory",
+    "A follow-up may declare rework", "task text, a fix PR, or the log", "the preload allow-list, and the client parser."]) assert.ok(AGENT_CHAT_INSTRUCTIONS.includes(phrase), phrase);
+  const prompt = composePrompt({ board: {}, now, followUp: {
+    summary: "Move", state: "dismissed", operations: [{ op: "move_task", id: "T-1", column: "Done" }],
+  } });
+  assert.match(prompt.split("</proposal_outcome>")[1], /You may declare evidenced rework after any outcome/u);
 });
 

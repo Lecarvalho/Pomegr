@@ -74,6 +74,26 @@ test("rework insertion and log append roll back together", async (t) => {
   assert.deepEqual(edges(directory), []);
 });
 
+test("Aril records safe board evidence including PR-only links, without task changes", async (t) => {
+  const { store, directory, clock } = await openTemporaryStore(t);
+  seed(store);
+  const before = withDatabase(directory, (db) => db.prepare("SELECT * FROM tasks ORDER BY number").all());
+  const payload = { fix: "T-1", reworks: "T-2", cause: "missed_wiring" };
+  assert.deepEqual(store.declareArilRework(REPOSITORY, payload), { ok: true, status: "recorded" });
+  assert.deepEqual(store.declareArilRework(REPOSITORY, { ...payload, cause: "other" }), { ok: true, status: "exists" });
+  assert.deepEqual(store.declareArilRework(REPOSITORY, { fix: "#342", reworks: "#336", cause: "spec_gap" }), { ok: true, status: "recorded" });
+  assert.deepEqual(store.readBoard(REPOSITORY).rework, [
+    { fix: "#342", reworks: "#336", cause: "spec_gap", at: clock.now },
+    { ...payload, at: clock.now },
+  ]);
+  assert.ok(edges(directory).every((edge) => edge.declared_by === "aril"));
+  assert.deepEqual(withDatabase(directory, (db) => db.prepare("SELECT * FROM tasks ORDER BY number").all()), before);
+  assert.deepEqual(store.readLog(REPOSITORY, { limit: 20 }).entries.map(({ task, kind }) => ({ task, kind })), [{ task: "T-1", kind: "rework" }, { task: "#342", kind: "rework" }]);
+  withDatabase(directory, (db) => db.exec("CREATE TRIGGER refuse_aril_rework_log AFTER INSERT ON task_log BEGIN SELECT RAISE(ABORT, 'refused'); END"));
+  assert.equal(store.declareArilRework(REPOSITORY, { fix: "#343", reworks: "#336", cause: "other" }).ok, false);
+  assert.equal(edges(directory).length, 2);
+});
+
 test("opening an existing v1 store adds rework table and retains tasks and version", async (t) => {
   const { store, directory } = await openTemporaryStore(t);
   seed(store); store.close();

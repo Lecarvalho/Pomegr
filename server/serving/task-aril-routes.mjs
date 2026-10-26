@@ -55,6 +55,23 @@ const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const rejected = (error) => ({ ok: false, error });
 
+export function serveArilRework({ request, response, taskStore, body }) {
+  if (request.headers["x-pomegr-lan-gateway"] !== undefined) { json(response, 403, rejected("unavailable")); return; }
+  const fields = ["repositoryId", "fix", "reworks", "cause"];
+  if (!isPlainObject(body) || Object.keys(body).length !== fields.length || !fields.every((key) => Object.hasOwn(body, key))
+    || typeof body.repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(body.repositoryId)) {
+    json(response, 400, rejected("invalid")); return;
+  }
+  try {
+    const result = taskStore?.declareArilRework?.(body.repositoryId, { fix: body.fix, reworks: body.reworks, cause: body.cause });
+    if (result?.ok === true && ["recorded", "exists"].includes(result.status)) {
+      json(response, 200, { ok: true, status: result.status }); return;
+    }
+    const error = ["invalid", "not_found", "limit"].includes(result?.error) ? result.error : "unavailable";
+    json(response, GRANT_STATUS[error], rejected(error));
+  } catch { json(response, 503, rejected("unavailable")); }
+}
+
 const headKnown = (head) => typeof head === "string" && /^[a-f0-9]{40}$/u.test(head);
 const pullKnown = (number) => Number.isSafeInteger(number) && number > 0;
 const methodKnown = (method) => [null, "squash", "merge", "rebase"].includes(method);

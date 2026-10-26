@@ -4,7 +4,7 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree",
+  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree", "declare_rework",
 ]);
 export const ARIL_OPERATIONS = Object.freeze(["set_aril_settings", "add_memory", "update_memory", "remove_memory"]);
 export const WORKTREE_RESULTS = Object.freeze(["removed", "not_found", "dirty", "unique_commits", "in_use", "failed"]);
@@ -194,6 +194,11 @@ export function normalizeOperation(source, { grantWrite = false } = {}) {
   if (!isPlainObject(source) || typeof source.op !== "string" || !BOARD_OPERATIONS.includes(source.op)) return null;
   const { op } = source;
   if (grantWrite && (op !== "create_task" || !only(source, ["op", "text", "complete_when", "own_condition", "runs_after"]))) return null;
+  if (op === "declare_rework") {
+    const ref = (value) => typeof value === "string" && /^(?:T-|#)[1-9][0-9]*$/u.test(value) && Number.isSafeInteger(Number(value.replace(/^(?:T-|#)/u, "")));
+    return exact(source, ["op", "fix", "reworks", "cause"]) && ref(source.fix) && ref(source.reworks) && source.fix !== source.reworks
+      && ["missed_wiring", "spec_gap", "wrong_behavior", "stale_instructions", "latent", "other"].includes(source.cause) ? { ...source } : null;
+  }
   if (op === "set_aril_settings") {
     const settings = arilSettings(source.settings);
     return only(source, ["op", "settings"]) && settings ? { op, settings } : null;
@@ -296,9 +301,11 @@ export function normalizeProposal(source, options = {}) {
   }
   // A start is answered on its own, so the owner approves one session for one named task and nothing else. A queue
   // change is too: turning the queue on lets Pomegr start tasks by itself, so it is never approved beside a board change.
-  if (operations.length > 1 && operations.some((operation) => [START_OPERATION, QUEUE_OPERATION, "set_aril_settings"].includes(operation.op))) return null;
-  if (operations.some((operation) => ARIL_OPERATIONS.includes(operation.op)) && !operations.every((operation) => ARIL_OPERATIONS.includes(operation.op))) return null;
-  if (operations.some(({ op }) => op === "remove_worktree") && (operations.length > 30 || !operations.every(({ op }) => op === "remove_worktree"))) return null;
+  const pending = operations.filter(({ op }) => op !== "declare_rework");
+  if (operations.length - pending.length > 5) return null;
+  if (pending.length > 1 && pending.some((operation) => [START_OPERATION, QUEUE_OPERATION, "set_aril_settings"].includes(operation.op))) return null;
+  if (pending.some((operation) => ARIL_OPERATIONS.includes(operation.op)) && !pending.every((operation) => ARIL_OPERATIONS.includes(operation.op))) return null;
+  if (pending.some(({ op }) => op === "remove_worktree") && (pending.length > 30 || !pending.every(({ op }) => op === "remove_worktree"))) return null;
   return { summary, operations };
 }
 
@@ -347,6 +354,24 @@ export function extractProposal(answer, options = {}) {
 export function visibleAnswer(partial) {
   if (typeof partial !== "string") return "";
   return partial.replace(FENCE, (_match, lead) => lead).replace(OPEN_FENCE, "").replace(/\n{3,}/gu, "\n\n").trimEnd();
+}
+
+// Record only the validated declarations at answer time; the remaining operations still wait for Apply.
+export async function recordRework(read, post, answerLimit) {
+  const declarations = read.proposal?.operations.filter(({ op }) => op === "declare_rework") ?? [];
+  if (!declarations.length) return read;
+  const lines = [];
+  for (const { fix, reworks, cause } of declarations) {
+    let result;
+    try { result = await post({ fix, reworks, cause }); } catch { /* Fixed refusal, without a retry or monitor text. */ }
+    const link = `${fix} reworks ${reworks}`, label = `${link} · ${cause.replaceAll("_", " ")}`;
+    const error = ["invalid", "not_found", "limit"].includes(result?.error) ? result.error : "unavailable";
+    lines.push(result?.ok === true && result.status === "recorded" ? `Recorded: ${label}`
+      : result?.ok === true && result.status === "exists" ? `Already recorded: ${link}` : `Not recorded: ${label} · ${error}`);
+  }
+  const recorded = lines.join("\n"), operations = read.proposal.operations.filter(({ op }) => op !== "declare_rework");
+  return { ...read, text: [read.text.slice(0, answerLimit - recorded.length - 2).trimEnd(), recorded].filter(Boolean).join("\n\n"),
+    proposal: operations.length ? { ...read.proposal, operations } : null };
 }
 
 // The parts of a monitor board the applier needs; anything malformed reads as absent.
@@ -436,7 +461,7 @@ export async function applyOperations(operations, { post, board, attach }) {
     if (results.some((result) => result.ok !== true)) { results.push(failure("skipped")); continue; }
     const { op } = operation;
     // A start is never a task action, and a queue change has its own one request. The chat never sends either here.
-    if (op === START_OPERATION || op === QUEUE_OPERATION || op === "remove_worktree") { results.push(failure("unsupported")); continue; }
+    if (op === START_OPERATION || op === QUEUE_OPERATION || op === "remove_worktree" || op === "declare_rework") { results.push(failure("unsupported")); continue; }
     if (ARIL_OPERATIONS.includes(op)) {
       const action = { set_aril_settings: "aril_settings_set", add_memory: "aril_memory_add", update_memory: "aril_memory_update", remove_memory: "aril_memory_remove" }[op];
       const payload = op === "set_aril_settings" ? { settings: operation.settings }

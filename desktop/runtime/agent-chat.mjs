@@ -1,6 +1,4 @@
-// The Pomegr agent chat: the owner talks to Aril, an agent that reads the task board and proposes changes to it.
-// Desktop main owns the whole of it. It starts one read-only provider run per message, keeps the conversations,
-// and changes the board through approved proposals or the fixed grant task-writing action.
+// Desktop main owns Aril's read-only runs, conversations, approved changes, grant writes, and direct rework records.
 
 import { execFile as execFileChild, spawn as spawnChild } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -13,9 +11,9 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { AGENT_CHAT_INSTRUCTIONS, composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
-import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, proposalImages, queueProposalState, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
+import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 import { runChatTurn, validInstructionsFile } from "./agent-chat-runner.mjs";
-import { AGENT_CHAT_DIRECTORY, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
+import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
@@ -423,8 +421,10 @@ export function createAgentChat(options = {}) {
         .every((id) => id.startsWith("#") ? Number(id.slice(1)) <= index : turn.taskIds.has(id)))) {
         read = { text: read.text, proposal: null, unreadable: true };
       }
-      const at = now().toISOString();
-      const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at, provider: turn.provider, model: turn.model, status };
+      read = await recordRework(read, (payload) => disposed || turn.stopped ? UNAVAILABLE : monitor("/internal/tasks/aril-declare-rework", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...payload }),
+      }), ANSWER_LENGTH);
+      const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, status };
       // Only a successful or partial outcome may offer another board proposal. It still waits for the owner.
       if (turn.followUp) {
         message.followUp = turn.followUp;
@@ -451,7 +451,7 @@ export function createAgentChat(options = {}) {
           results: read.proposal.operations.map((_, index) => taskIds ? { ok: true, taskId: taskIds[index] } : { ok: false, error }) };
       }
       if (read.unreadable) message.proposalUnreadable = true;
-      return await store.save(turn.repositoryId, { ...conversation, updatedAt: at, messages: [...conversation.messages, message] });
+      return await store.save(turn.repositoryId, { ...conversation, updatedAt: message.at, messages: [...conversation.messages, message] });
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
     finally { release(turn); }
   }
