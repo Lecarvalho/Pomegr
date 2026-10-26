@@ -75,7 +75,9 @@ export async function confirmTaskReviewStart(dialog, getWindow, { taskId }) {
   return answer.response === 0;
 }
 
-// One entry per startable provider; a flag is passed only when the task sets it.
+export const CODEX_INLINE_FLAG = "--no-alt-screen";
+
+// One entry per startable provider; a flag is passed only when the task sets it, except Codex's inline mode.
 const PROVIDERS = Object.freeze({
   claude: Object.freeze({
     executable: (environment, fileExists) => resolveClaudeExecutable(claudeDiscoveryEnvironment(environment), fileExists),
@@ -87,7 +89,8 @@ const PROVIDERS = Object.freeze({
   }),
   codex: Object.freeze({
     executable: (environment, fileExists, platform) => resolveCodexExecutable(environment, fileExists, { platform }),
-    flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["-c", `model_reasoning_effort=${plan.effort}`] : [])],
+    // Inline mode keeps the transcript in the terminal's scrollback; the alternate screen has none to scroll back.
+    flags: (plan) => [CODEX_INLINE_FLAG, ...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["-c", `model_reasoning_effort=${plan.effort}`] : [])],
     imageFlags: (plan) => ["--image", ...plan.images],
   }),
 });

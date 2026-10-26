@@ -44,7 +44,7 @@ test("granted reviews post exactly the supplied run override or only the task ID
     assert.deepEqual(await h.starter.startGrantedReview(repositoryId, taskId, async () => true, run), { status: "started" });
     assert.deepEqual(h.calls, [{ route: "review-plan", body: { repositoryId, payload: { id: taskId, ...run } } }]);
     assert.equal(h.order.includes("confirm"), false);
-    assert.deepEqual(h.launches[0].args, run?.model ? ["--model", "review-model", "-c", "model_reasoning_effort=high", "Review the work"] : ["Review the work"]);
+    assert.deepEqual(h.launches[0].args, run?.model ? ["--no-alt-screen", "--model", "review-model", "-c", "model_reasoning_effort=high", "Review the work"] : ["Review the work"]);
   }
 });
 
@@ -149,7 +149,7 @@ test("review provider arguments never include image or remote-control flags", as
   for (const provider of ["claude", "codex"]) {
     const h = harness({ plan: { ...basePlan(), provider, model: "model-1", effort: "high", images: ["private"], remoteControl: true } });
     assert.deepEqual(await go(h), { status: "started" });
-    assert.deepEqual(h.launches[0].args, ["--model", "model-1", ...(provider === "claude" ? ["--effort", "high"] : ["-c", "model_reasoning_effort=high"]), "Review the work"]);
+    assert.deepEqual(h.launches[0].args, provider === "claude" ? ["--model", "model-1", "--effort", "high", "Review the work"] : ["--no-alt-screen", "--model", "model-1", "-c", "model_reasoning_effort=high", "Review the work"]);
   }
 });
 

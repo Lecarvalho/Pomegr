@@ -3,7 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
-import { resolveSessionExecutable } from "./task-dispatch.mjs";
+import { CODEX_INLINE_FLAG, resolveSessionExecutable } from "./task-dispatch.mjs";
 
 export const SESSION_CONTINUE_CHANNEL = "pomegr:session-continue";
 const ID = /^(claude|codex):([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/iu;
@@ -79,7 +79,7 @@ export function createSessionContinue(options = {}) {
       uncertain.add(sessionId);
       try {
         await options.terminal.create({ key: `continue/${plan.provider}/${plan.localId}/${randomBytes(16).toString("hex")}`,
-          executable, args: [plan.provider === "claude" ? "--resume" : "resume", plan.localId], cwd: plan.cwd,
+          executable, args: plan.provider === "claude" ? ["--resume", plan.localId] : ["resume", CODEX_INLINE_FLAG, plan.localId], cwd: plan.cwd,
           env: userSessionEnvironment(environment), cols: 80, rows: 24 });
         uncertain.delete(sessionId);
       } catch (error) {

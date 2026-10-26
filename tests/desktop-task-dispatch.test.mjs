@@ -304,7 +304,8 @@ test("a Codex plan starts the Codex CLI with its own environment and the task to
   assert.deepEqual(await go(h), { status: "started" });
   const [command, args, options] = h.spawns[0];
   assert.equal(command, codexExe);
-  assert.deepEqual(args, ["Do the thing"]);
+  // Inline mode keeps Codex's transcript in the terminal panel's scrollback.
+  assert.deepEqual(args, ["--no-alt-screen", "Do the thing"]);
   assert.deepEqual(options.env, { ...sessionEnvironment, POMEGR_TASK_TOKEN: token });
   for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_MONITOR_ORIGIN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "POMEGR_START_EXECUTABLE", "pomegr_start_args"]) assert.equal(options.env[name], undefined, name);
   assert.equal(options.env.PATH.includes("nodejs"), true, "the user's Node stays on the session's PATH");
@@ -314,13 +315,13 @@ test("Codex model and effort flags are passed only when set, xhigh by name", asy
   const start = (plan) => harness({ plan: { ...basePlan(), provider: "codex", ...plan }, overrides: { fileExists: codexFiles } });
   let h = start({ model: "gpt-6-sol", effort: "xhigh" });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.deepEqual(h.spawns[0][1], ["--model", "gpt-6-sol", "-c", "model_reasoning_effort=xhigh", "Do the thing"]);
+  assert.deepEqual(h.spawns[0][1], ["--no-alt-screen", "--model", "gpt-6-sol", "-c", "model_reasoning_effort=xhigh", "Do the thing"]);
   h = start({ effort: "low" });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.deepEqual(h.spawns[0][1], ["-c", "model_reasoning_effort=low", "Do the thing"]);
+  assert.deepEqual(h.spawns[0][1], ["--no-alt-screen", "-c", "model_reasoning_effort=low", "Do the thing"]);
   h = start({ model: "gpt-6-sol" });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.deepEqual(h.spawns[0][1], ["--model", "gpt-6-sol", "Do the thing"]);
+  assert.deepEqual(h.spawns[0][1], ["--no-alt-screen", "--model", "gpt-6-sol", "Do the thing"]);
 });
 
 test("a plan whose provider CLI is missing aborts the dispatch and answers cli_missing", async () => {
@@ -727,7 +728,7 @@ test("Claude Code is given the image folder as a readable directory, after the p
 test("Codex gets the images attached, after the prompt", async () => {
   const h = harness({ plan: imagePlan({ provider: "codex" }), overrides: withImageFiles(codexFiles) });
   assert.deepEqual(await go(h), { status: "started" });
-  assert.deepEqual(h.spawns[0][1], [imagePlan().prompt, "--image", ...imageFiles]);
+  assert.deepEqual(h.spawns[0][1], ["--no-alt-screen", imagePlan().prompt, "--image", ...imageFiles]);
 });
 
 test("a plan with no images, or from an older monitor, adds no image flag", async () => {

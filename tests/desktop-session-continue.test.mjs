@@ -35,7 +35,8 @@ test("cancelled confirmation launches nothing; confirmed resume has only provide
     assert.deepEqual(await f.action.run(f.event, `${provider}:${localId}`), { status: "started" });
     assert.equal(f.creates.length, 1);
     assert.match(f.creates[0].executable, new RegExp(`${provider}\\.exe$`));
-    assert.deepEqual(f.creates[0].args, [provider === "claude" ? "--resume" : "resume", localId]);
+    // Codex resumes inline: its alternate screen keeps no scrollback for the terminal panel.
+    assert.deepEqual(f.creates[0].args, provider === "claude" ? ["--resume", localId] : ["resume", "--no-alt-screen", localId]);
     assert.equal(f.creates[0].cwd, cwd);
     assert.match(f.creates[0].key, new RegExp(`^continue/${provider}/${localId}/[a-f0-9]{32}$`));
     assert.equal(f.creates[0].env.OWNER_SETTING, "keep");
