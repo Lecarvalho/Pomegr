@@ -151,6 +151,7 @@ Adoption and polish alone do not fit. The owner accepted the placements below on
 | [Sessions inside Pomegr](embedded-terminal.md) | Accepted on 2026-10-24 | Inside G14 in 0.9.5 for the terminal; its read-only history and its spike start alongside 0.9.0. |
 | [Aril operator](aril-operator.md) | Proposed on 2026-10-24 | The coordinator of experiment 2: it builds on G6 to G10 and G13 and adds the standing grant, Aril settings, a repository memory, event wake-up, the reviewer session, and merge. The owner answered its open decisions on 2026-10-25; placement waits for the owner's review. |
 | Rework log | Shipped on 2026-10-25 (#346, #348, #350, #351, R4) | Links a fix to the work it reworks, with a cause; Aril weighs it and turns repeated causes into memory; the scorecard has a rework-rate row. The plan was retired; [Tasks](../architecture/tasks.md) and [Agent chat](../architecture/agent-chat.md) own the behavior. |
+| [Aril front door](aril-front-door.md) | Rough draft on 2026-10-26 | One Aril the owner talks to, routing each message to the right repository's Aril; the owner settles its open questions with the implementing session before placement. |
 
 Product expansion directions:
 
