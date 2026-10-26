@@ -294,6 +294,41 @@ test('attach preserves normal and alternate screens and terminal input modes', a
   assert.equal(normal.buffer.normal.getLine(1).translateToString(true), 'normal again');
 });
 
+test('attach restores the SGR mouse encoding so a fresh view reports the wheel in it', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  // A fullscreen TUI, such as Claude Code's, captures the wheel with SGR reports.
+  f.ptys[0].output('\x1b[?1049h\x1b[?1000h\x1b[?1006hfull screen');
+  await a.request('attach', { key: 'synthetic' });
+  const replay = () => a.frames.filter((frame) => frame.replay).map((frame) => frame.data).join('');
+  const sgr = await replayScreen(t, a);
+  assert.equal(sgr.modes.mouseTrackingMode, 'vt200');
+  assert.ok(replay().endsWith('\x1b[?1006h'), 'the encoding follows the restored tracking mode');
+  for (const [output, encoding] of [['\x1b[?1016h', '\x1b[?1016h'], ['\x1b[?1016l', ''], ['\x1b[?1006h\x1bc', ''], ['\x1b[?25;1006h', '\x1b[?1006h']]) {
+    await a.request('detach', { key: 'synthetic' }); a.frames.length = 0;
+    f.ptys[0].output(output);
+    await a.request('attach', { key: 'synthetic' });
+    await replayScreen(t, a);
+    assert.equal(replay().match(/\x1b\[\?10(?:06|16)h$/u)?.[0] ?? '', encoding, JSON.stringify(output));
+  }
+});
+
+test('inline TUI history inserted above its viewport through a scroll region replays as scrollback', async (t) => {
+  const f = await fixture(t); const a = await f.connect();
+  await a.request('create', { plan: f.plan() });
+  // Codex with --no-alt-screen keeps a bottom viewport and writes each history line in a scroll region above it.
+  const top = 18;
+  f.ptys[0].output(`\x1b[${top + 1};1Hcomposer`);
+  for (let i = 0; i < 100; i++) f.ptys[0].output(`\x1b[1;${top}r\x1b[${top};1H\r\nhistory ${i}\x1b[r\x1b[${top + 1};9H`);
+  await a.request('attach', { key: 'synthetic' });
+  const buffer = (await replayScreen(t, a)).buffer.active;
+  assert.equal(buffer.type, 'normal');
+  const lines = Array.from({ length: buffer.length }, (_, i) => buffer.getLine(i).translateToString(true));
+  assert.deepEqual(lines.filter((line) => line.startsWith('history ')), Array.from({ length: 100 }, (_, i) => `history ${i}`));
+  assert.ok(buffer.baseY >= 100 - top, 'earlier history is in scrollback, not only on screen');
+  assert.equal(lines[buffer.baseY + top], 'composer');
+});
+
 test('resize changes the retained screen before a fresh attach', async (t) => {
   const f = await fixture(t); const a = await f.connect();
   await a.request('create', { plan: f.plan() });

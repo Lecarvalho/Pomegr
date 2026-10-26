@@ -15,12 +15,23 @@ const MAX_REPLAY_BYTES = 4 * 1024 * 1024;
 function snapshot(session) {
   let scrollback = 5000;
   for (;;) {
-    const data = session.serializer.serialize({ scrollback });
+    const data = session.serializer.serialize({ scrollback }) + session.mouseEncoding;
     if (Buffer.byteLength(data) <= MAX_REPLAY_BYTES) return data;
     // Drop whole oldest lines, never slice serialized cursor or mode sequences.
     if (scrollback === 0) return null;
     scrollback = Math.floor(scrollback / 2);
   }
+}
+// The serializer restores mouse tracking but not its encoding; without SGR, a fresh view
+// reports the wheel in the default encoding and the session never receives it.
+function trackMouseEncoding(session) {
+  const modes = (set) => (params) => {
+    for (const mode of params) if (mode === 1006 || mode === 1016) session.mouseEncoding = set ? `\x1b[?${mode}h` : '';
+    return false;
+  };
+  session.screen.parser.registerCsiHandler({ prefix: '?', final: 'h' }, modes(true));
+  session.screen.parser.registerCsiHandler({ prefix: '?', final: 'l' }, modes(false));
+  session.screen.parser.registerEscHandler({ final: 'c' }, () => { session.mouseEncoding = ''; return false; });
 }
 function disposeScreen(session) {
   session.screen?.dispose(); session.screen = null; session.serializer = null;
@@ -127,7 +138,8 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
       catch { fail('TERMINAL_SPAWN_FAILED'); return; }
       const screen = new Terminal({ cols: plan.cols, rows: plan.rows, scrollback: 5000, allowProposedApi: true });
       const serializer = new SerializeAddon(); screen.loadAddon(serializer);
-      const session = { key: plan.key, pty, clients: new Set(), writer: null, screen, serializer, exited: false };
+      const session = { key: plan.key, pty, clients: new Set(), writer: null, screen, serializer, mouseEncoding: '', exited: false };
+      trackMouseEncoding(session);
       sessions.set(plan.key, session);
       pty.onData((data) => {
         if (session.exited || closing) return;

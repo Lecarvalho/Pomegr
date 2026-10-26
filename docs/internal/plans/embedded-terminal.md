@@ -86,7 +86,7 @@ The history read and its live updates reuse the observation pipeline instead of 
 
 ## Continue (phase 6)
 
-- An ended session shows **Continue** in its read-only terminal's bar. Continue asks for the native confirmation, then starts the provider's own resume in the host, in the session's working directory: `claude --resume <session id>` or `codex resume <session id>`.
+- An ended session shows **Continue** in its read-only terminal's bar. Continue asks for the native confirmation, then starts the provider's own resume in the host, in the session's working directory: `claude --resume <session id>` or `codex resume --no-alt-screen <session id>`.
 - It is its own validated operation in desktop main. It shares the launch helpers of the start path, but it mints no dispatch token, because the session keeps its identity and its task binding.
 - The session ID is validated against the provider's ID format and travels as an argument, never inside a command string.
 - Continue is refused, with a fixed reason, when:
@@ -174,6 +174,10 @@ Not part of this plan. Each needs the owner's decision and its own plan.
 The design review produced an interactive mockup with synthetic data that steps through every state of the Terminal tab and of Continue. Its states have synthetic `/design-system` samples; phase 6 implements the Continue states.
 
 ## Continuation checkpoint
+
+2026-10-26, T-186, Codex scrollback: a Codex session in the panel could not scroll back because the Codex TUI ran in the alternate screen, which has no scrollback; its wheel input reached Codex only while the panel accepted input, never in a read-only view. Every Codex start, review, and Continue now passes `--no-alt-screen` (verified in `codex --help` and `codex resume --help`, Codex CLI 0.164.0), so Codex draws inline and its history enters the normal buffer's scrollback, which xterm scrolls locally with or without input. A synthetic probe through real ConPTY kept all 200 lines that Codex's inline pattern (history written in a scroll region above a bottom viewport) produced; the same lines in the alternate screen left none. The host's serializer loses nothing for that pattern, and a host test now covers its replay. Claude Code's arguments and the panel are unchanged.
+
+2026-10-26, T-186, wheel after attach: a fullscreen TUI (Claude Code with `"tui": "fullscreen"`) captures the wheel with SGR mouse reports. The replay restored mouse tracking and focus reporting but not the SGR encoding, so a fresh view reported the wheel in the default encoding through xterm's binary channel, which the panel does not forward; the wheel did nothing until a click sent focus-in and Claude Code set its modes again. The host now tracks the SGR (`?1006`) and SGR-pixel (`?1016`) encodings through the headless parser and appends the active one to every replay. A host test covers the restore, reset, and full reset; a harness that rendered the real panel in Electron reported wheel input in SGR before any click.
 
 2026-10-25, terminal screen replay: the host keeps a headless screen and 5000 scrollback lines per running session, with normal and active alternate buffers and modes. A queued write callback serializes after prior output parses; subsequent write callbacks fan out after replay, without missing or duplicating chunks. Replay is capped at 4 MiB, and client and renderer replay budgets are separate from live-output limits. Exit still clears output and now disposes the screen. The immutable runtime includes both Xterm packages and MIT notices; protocol 1 is unchanged. Synthetic coverage includes a 10000-line fake CLI, inline cursor moves, alternate-screen transitions, resize, attach ordering, the cap, and slow consumers. Phase 7 acceptance remains open.
 

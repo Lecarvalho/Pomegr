@@ -2347,7 +2347,7 @@ Aril's provider run gains no authority and never starts a review; an active gran
 - A live review dispatch refuses another plan with `not_startable`; its SHA-256 digest and mint time expire after the builder dispatch TTL.
 - The plan carries task ID, provider, model, effort, repository root, prompt, and token; it carries no worktree flag, images, or remote control.
 - The desktop-only **Start review** action requires native confirmation: **Start a review session?**, with the message "Pomegr starts a separate session that reviews T-n's work in its folder and reports a verdict. It changes no code and does not move the task."; T-n is the task ID, the buttons are **Start review** and **Cancel**, and Cancel is the default.
-- After confirmation, desktop main requests `review-plan`, validates its private fields, and starts the provider in the terminal host with the task token and only the model, effort, and prompt arguments.
+- After confirmation, desktop main requests `review-plan`, validates its private fields, and starts the provider in the terminal host with the task token and only the model, effort, and prompt arguments, plus Codex's fixed `--no-alt-screen`.
 - Desktop main uses the task's worktree when Git lists it on `tasks/T-n`, looking under `.pomegr/worktrees` and the legacy task-worktree directory; otherwise it uses the repository root, and never creates a worktree.
 - Review starts share the busy slot with builder starts and return only the same fixed start statuses; a failure after planning aborts the matching review dispatch.
 - Review terminal keys end in `review-` plus 16 random bytes in hex and never participate in the task's builder terminal binding.
@@ -2441,7 +2441,9 @@ with the started session linked to its task and run in Pomegr's terminal host.
   which discards the digest and ends the expiry.
 - Desktop main validates the plan, then sends the same executable, argument array, and
   working directory to the host's create operation. The task prompt remains one argument.
-  Model and effort flags appear only when set. Claude Code images use `--add-dir` with
+  Model and effort flags appear only when set. Codex always gets the fixed `--no-alt-screen`
+  flag first, so its transcript stays in the terminal panel's scrollback; its alternate
+  screen keeps none. Claude Code images use `--add-dir` with
   their folder; Codex images use `--image` with their files. The plan is malformed unless
   every image path is absolute, normalized, store-named, present, in one folder, and named
   in the prompt. A Claude Code plan may add the fixed `--remote-control` flag after the
@@ -2518,7 +2520,7 @@ terminal text as session state.
 - Codex `unknown` with `writer_released` remains unknown and cannot resume.
 - Invalid input, absent observation, transport failure, and launch failure answer only fixed statuses.
 - Main shares dispatch's executable resolution and passes `userSessionEnvironment` without minting a dispatch token.
-- Claude Code receives only `["--resume", localId]`; Codex receives only `["resume", localId]`.
+- Claude Code receives only `["--resume", localId]`; Codex receives only `["resume", "--no-alt-screen", localId]`, so its transcript stays in the terminal's scrollback.
 - Local IDs must have the provider UUID format before entering arguments. No model, effort, or permission flags are replayed.
 - Continue never falls back to the repository root, requests a fork, or starts a replacement session.
 - Main serializes attempts per session. An ambiguous create result prevents another attempt in that app process.
