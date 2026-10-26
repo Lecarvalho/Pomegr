@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { EventEmitter } from "node:events";
 import { createSessionContinue, confirmSessionContinue, installSessionContinueIpc } from "../desktop/runtime/session-continue.mjs";
 import { requestTerminalSession } from "../desktop/runtime/monitor-worker.mjs";
@@ -130,4 +131,13 @@ test("terminal identity observation stays on private worker IPC and validates re
   assert.equal(await invalid, null);
   assert.equal(await requestTerminalSession(child, 0), null);
   assert.equal(child.listenerCount("message"), 0);
+});
+
+test("the monitor host answers terminal-session lookups from its parent message handler, not its shutdown", () => {
+  const source = readFileSync(new URL("../desktop/runtime/monitor-host.mjs", import.meta.url), "utf8");
+  const handler = source.slice(source.indexOf("onParentMessage("), source.indexOf("installShutdown("));
+  const shutdown = source.slice(source.indexOf("installShutdown("));
+  assert.ok(handler.includes(`message?.type === "terminal-session"`));
+  assert.ok(handler.includes(`type: "terminal-session-result"`));
+  assert.ok(!shutdown.includes("terminal-session") && !shutdown.includes("message?."));
 });
