@@ -104,6 +104,32 @@ test("review binding preserves builder fields and column, rejects linked session
   assert.deepEqual(env.store.bindSession({ token: second, sessionId: "codex:new" }), { ok: false, error: "not_found" });
 });
 
+// T-184: desktop main's start-bind links a Codex reviewer whose session-start hook never reported.
+test("start-bind links only the named task's live review dispatch, once, and only a Codex session", async (t) => {
+  const env = await setup(t);
+  const token = plan(env).plan.token;
+  const bind = (payload) => env.store.bindStart(REPOSITORY, { id: "T-1", token, sessionId: REVIEWER, ...payload });
+  createTask(env.store);
+  updateTask(env.directory, 2, { state: "needs_review", session_id: "codex:builder2" });
+  assert.deepEqual(bind({ id: "T-2" }), { ok: false, error: "not_found" });
+  assert.deepEqual(bind({ token: "x".repeat(43) }), { ok: false, error: "not_found" });
+  assert.deepEqual(bind({ sessionId: "claude:reviewer" }), { ok: false, error: "invalid" });
+  assert.deepEqual(bind({ sessionId: "codex:builder2" }), { ok: false, error: "not_found" }, "a builder session never reviews");
+  assert.equal(env.store.reviewSession(REPOSITORY, { id: "T-1" }).sessionId, null);
+  env.clock.now += TASK_DISPATCH_UNBOUND_TTL_MS;
+  assert.deepEqual(bind({}), { ok: false, error: "not_found" });
+  env.clock.now -= 1;
+  const before = env.store.readBoard(REPOSITORY).tasks[0];
+  assert.deepEqual(bind({}), { ok: true });
+  assert.deepEqual(env.store.readBoard(REPOSITORY).tasks[0], { ...before, review: { state: "running" } });
+  assert.equal(env.store.reviewSession(REPOSITORY, { id: "T-1" }).sessionId, REVIEWER);
+  assert.equal(metaValue(env.directory, key("review_dispatch")), null);
+  assert.deepEqual(rows(env, "task_log").map((r) => r.kind), ["review_started"]);
+  assert.deepEqual(bind({}), { ok: false, error: "not_found" });
+  assert.deepEqual(env.store.bindSession({ token, sessionId: REVIEWER }), { ok: false, error: "not_found" }, "the hook's late report is refused");
+  assert.equal(report(env).ok, true);
+});
+
 test("only the reviewer reports; changed verdicts append, identical retries do not", async (t) => {
   const env = await setup(t, true);
   assert.deepEqual(report(env, { sessionId: SESSION }), { ok: false, error: "not_found" });

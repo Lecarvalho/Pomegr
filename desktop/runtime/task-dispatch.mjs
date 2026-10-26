@@ -191,6 +191,7 @@ export function createTaskStart(options = {}) {
   // Codex skips a plugin hook it has not trusted, and every plugin update untrusts them, so its
   // session-start hook may never report the token. Desktop main then links the session the monitor
   // observes in the process it launched, with the same single-use token, while the dispatch is live.
+  // A review start is watched the same way; its token is the review dispatch's.
   function watchCodexBind(repositoryId, taskId, token, key, pid) {
     if (typeof options.sessionForProcess !== "function" || !Number.isInteger(pid) || pid <= 0) return;
     const deadline = Date.now() + bindWatchMs;
@@ -386,11 +387,12 @@ export function createTaskStart(options = {}) {
             await terminal.ensureHost();
             if (!await authorized()) status = "cancelled";
             else {
-              await terminal.create({
-                key: `${repositoryId}/${taskId}/review-${randomBytes(16).toString("hex")}`,
-                executable, args: [...PROVIDERS[plan.provider].flags(plan), plan.prompt], cwd,
+              const key = `${repositoryId}/${taskId}/review-${randomBytes(16).toString("hex")}`;
+              const created = await terminal.create({
+                key, executable, args: [...PROVIDERS[plan.provider].flags(plan), plan.prompt], cwd,
                 env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
               });
+              if (plan.provider === "codex") watchCodexBind(repositoryId, taskId, plan.token, key, created?.pid);
               return result("started");
             }
           }

@@ -11,15 +11,17 @@ import { createRequestHandler } from "../server/serving/request-handler.mjs";
 import { serveSessionDirectoryWithTasks } from "../server/serving/session-directory-tasks.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS } from "../server/tasks/task-dispatch.mjs";
 import { openTaskStore } from "../server/tasks/task-store.mjs";
-import { passingGates } from "./server/tasks/queue-test-support.mjs";
+import { passingGates, updateTask } from "./server/tasks/queue-test-support.mjs";
 
 // T-181: Codex skipped the Pomegr plugin's untrusted SessionStart hooks after a plugin update, so a
 // task-started Codex session never reported its token and its Sessions row showed no task.
+// T-184: a Codex review session Pomegr started had the same gap, so its review was never linked.
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const DESKTOP = "d".repeat(40);
 const AGENT = "a".repeat(40);
 const ROOT = "C:\\Work\\repo";
 const CODEX = "C:\\Users\\tester\\.local\\bin\\codex.exe";
+const CLAUDE = "C:\\Users\\tester\\.local\\bin\\claude.exe";
 const ROOT_SESSION = "codex:01a178f3-6bfa-7b61-9f4a-62b7cab4c626";
 const PID = 4242;
 const FACTS = { root: ROOT, pluginReady: true };
@@ -40,7 +42,7 @@ async function monitor(context, { provider = "codex" } = {}) {
     await rm(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 });
   });
   assert.equal(store.apply(REPOSITORY_ID, "create", { text: "Implement the renderer core", run: { provider } }).ok, true);
-  return { store, clock, origin: `http://127.0.0.1:${server.address().port}` };
+  return { store, clock, directory, origin: `http://127.0.0.1:${server.address().port}` };
 }
 
 async function until(check, label) {
@@ -66,8 +68,8 @@ function desktop(env, { lookup = async () => ROOT_SESSION, processOf } = {}) {
     isTrustedEvent: (event) => event?.trusted === true,
     monitorOrigin: env.origin, authorizationToken: DESKTOP, platform: "win32",
     environment: { USERPROFILE: "C:\\Users\\tester" },
-    fileExists: (file) => file === CODEX, directoryExists: (directory) => directory === ROOT,
-    confirm: async () => true, terminal, bindIntervalMs: 5,
+    fileExists: (file) => file === CODEX || file === CLAUDE, directoryExists: (directory) => directory === ROOT,
+    confirm: async () => true, confirmReview: async () => true, terminal, bindIntervalMs: 5,
     sessionForProcess: async (pid) => { lookups.push(pid); return lookup(lookups.length); },
     fetch: async (url, options) => {
       const route = url.split("/").pop();
@@ -78,7 +80,12 @@ function desktop(env, { lookup = async () => ROOT_SESSION, processOf } = {}) {
         token = planned.plan?.token ?? null;
         return new Response(JSON.stringify(planned.ok ? { ok: true, plan: planned.plan } : planned), { headers: { "content-type": "application/json" } });
       }
-      return fetch(url, options);
+      const response = await fetch(url, options);
+      if (route === "review-plan") {
+        const planned = await response.clone().json();
+        token = planned.plan?.token ?? null;
+      }
+      return response;
     },
   });
   return { starter, posts, lookups, token: () => token, binds: () => posts.filter((post) => post.route === "start-bind") };
@@ -116,6 +123,52 @@ test("a Codex task start whose session-start hook never reports links its observ
   const lookupsAfterLink = d.lookups.length;
   await new Promise((resolve) => setTimeout(resolve, 40));
   assert.equal(d.lookups.length, lookupsAfterLink, "the watch ends once the task is linked");
+});
+
+// The builder's session is linked and the task waits in Review, as before a review start.
+function inReview(env, provider = "codex") {
+  updateTask(env.directory, 1, { state: "needs_review", session_id: "codex:7d6a2f10-0c4e-4b7a-9d5e-2f8a1c3b4d5e" }, REPOSITORY_ID);
+  if (provider !== "codex") updateTask(env.directory, 1, { run_provider: provider }, REPOSITORY_ID);
+}
+
+const reviewer = (env) => env.store.reviewSession(REPOSITORY_ID, { id: "T-1" }).sessionId;
+
+test("a Codex review start whose session-start hook never reports links its observed reviewer", async (context) => {
+  const env = await monitor(context);
+  inReview(env);
+  const d = desktop(env, { lookup: async (count) => (count < 3 ? null : ROOT_SESSION) });
+  context.after(() => d.starter.dispose());
+  assert.deepEqual(await d.starter.startReview(trusted, REPOSITORY_ID, "T-1"), { status: "started" });
+  // The failing step: without a hook report the review has no reviewer, so it never shows as running
+  // and the reviewer's report_review is refused.
+  assert.equal(reviewer(env), null);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).tasks[0].review, null);
+
+  await until(() => reviewer(env) === ROOT_SESSION, "the desktop review link");
+  assert.deepEqual(env.store.readBoard(REPOSITORY_ID).tasks[0].review, { state: "running" });
+  assert.deepEqual(d.binds().map((post) => post.body), [{ repositoryId: REPOSITORY_ID, payload: { id: "T-1", token: d.token(), sessionId: ROOT_SESSION } }]);
+  assert.equal(linkedTask(env), null, "a reviewer never becomes the task's builder");
+
+  const agent = (route, body) => fetch(`${env.origin}/api/agent/v1/tasks/${route}`, {
+    method: "POST", headers: { "x-pomegr-agent-authorization": AGENT, "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  assert.equal((await agent("bind", { token: d.token(), sessionRef: ROOT_SESSION })).status, 404, "the token stays single use");
+  assert.equal((await agent("review", { sessionRef: ROOT_SESSION, verdict: "pass" })).status, 200);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).tasks[0].review.state, "passed");
+  const lookupsAfterLink = d.lookups.length;
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(d.lookups.length, lookupsAfterLink, "the watch ends once the review is linked");
+});
+
+test("a Claude review start is never watched", async (context) => {
+  const env = await monitor(context, { provider: "claude" });
+  inReview(env, "claude");
+  const d = desktop(env, {});
+  context.after(() => d.starter.dispose());
+  assert.deepEqual(await d.starter.startReview(trusted, REPOSITORY_ID, "T-1"), { status: "started" });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(d.lookups, []);
+  assert.deepEqual(d.binds(), []);
 });
 
 test("a hook that links first ends the desktop watch with the same refusal", async (context) => {
@@ -170,7 +223,7 @@ test("a Claude task start is never watched, and the watch stops for an exited pr
   const claude = await monitor(context, { provider: "claude" });
   const c = desktop(claude, {});
   context.after(() => c.starter.dispose());
-  await c.starter.start(trusted, REPOSITORY_ID, "T-1");
+  assert.deepEqual(await c.starter.start(trusted, REPOSITORY_ID, "T-1"), { status: "started" });
   await new Promise((resolve) => setTimeout(resolve, 40));
   assert.deepEqual(c.lookups, []);
   assert.deepEqual(c.binds(), []);

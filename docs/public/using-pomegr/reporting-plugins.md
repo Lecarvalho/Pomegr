@@ -164,7 +164,8 @@ Start with `/pomegr:doctor` or `$pomegr:doctor`, then match the symptom:
 
 - **No policy loaded in Codex.** Trust the Pomegr hooks in `/hooks`, then start
   or resume a task. Trust them again after every plugin update. In the desktop
-  app, a task session that Pomegr starts in Codex links to its task either way.
+  app, a task or review session that Pomegr starts in Codex links to its task
+  either way.
 - **No policy loaded in Claude Code.** Run `/reload-plugins`, then start or
   resume a session.
 - **Policy invalid or old.** Run `init` and review the proposed update.
