@@ -119,7 +119,7 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandHeader \.brandMark\s*\{[^}]*width:\s*var\(--command-brand-mark-size\)/);
     expect(styles).toMatch(/\.commandHeader \.brandWordmark\s*\{[^}]*color:\s*var\(--command-muted\)[^}]*font:\s*400 15px var\(--font-ui\)/);
     expect(styles).toMatch(/\.commandPaletteTrigger\.commandQuietAction\s*\{[^}]*width:\s*280px;[^}]*height:\s*var\(--control-height\)/);
-    expect(styles).toMatch(/@media \(max-width: 1080px\)[\s\S]*?\.commandPaletteTrigger\s*\{\s*width:\s*200px/);
+    expect(styles).toMatch(/@media \(max-width: 1080px\)[^@]*?minmax\(0, 1fr\) minmax\(0, 200px\) auto;[^@]*?\.commandHeader > \.commandPaletteTrigger\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0/);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.commandHeader > \.commandPaletteTrigger\s*\{[^}]*width:\s*44px/);
     expect(styles).toMatch(/\.commandPalette\s*\{[^}]*box-shadow:\s*var\(--command-overlay-shadow\)/);
     expect(styles).toMatch(/\.commandSearch:focus-within\s*\{[^}]*border-color:\s*var\(--command-ink\);[^}]*outline:\s*0/);
