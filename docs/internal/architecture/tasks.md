@@ -87,6 +87,9 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `readLog(repositoryId, { limit, after? })` returns `{ entries: [{ id, task, kind, at, pullRequest }], more, cursors: { aril }, latestId }`. Each task is `T-<number>`; `pullRequest` is a number or null. `limit` is an integer from 1 to 200. Without `after`, it returns the newest entries, ascending, and `more` indicates older entries. With a nonnegative integer `after`, it returns subsequent entries, ascending, and `more` indicates later entries. Missing cursors and an empty repository's `latestId` are zero.
 - `ackLog(repositoryId, "aril", through)` returns the stored cursor. It accepts a nonnegative integer, clamps it to the repository's latest entry ID, and never decreases the cursor.
 - `readScorecard(repositoryId, appVersion)` refreshes that version's measures in a transaction, keeping its first snapshot time; the baseline is the earliest other version for the same repository and formula, ordered by snapshot time then app version, or null (see [G1 scorecard](metrics.md#g1-scorecard)).
+- Formula 2 adds `reworkRate` and its sample to each snapshot; additive columns preserve formula 1 rows and keep their baselines separate.
+- Rework rate uses the durable sources in [G1 scorecard](metrics.md#g1-scorecard), with one count per merged task across all retained outcomes.
+- Rework rate follows the existing [scorecard privacy boundary](#privacy): desktop main and the trusted renderer only.
 - Outcome facts stay null without a review or a resolver; a resolver failure leaves them null and never prevents Done.
 - Version 0.8.x verifies only its listed tables, so it can still open the store.
 - The store is versioned. A malformed or newer store is never overwritten by a routine

@@ -8,6 +8,8 @@ export type ScorecardMeasures = {
   reviewToDoneMs: ScorecardValue;
   /** S2: share (0 to 1) of merged tasks with no commit after Review. */
   firstPass: ScorecardValue;
+  /** S8: share (0 to 1) of merged tasks with declared or recorded rework; lower is better. */
+  reworkRate: ScorecardValue;
 };
 
 export type ScorecardSnapshot = { version: string; takenAt: number; measures: ScorecardMeasures };
@@ -54,6 +56,7 @@ export function scorecardRows(card: Scorecard): ScorecardRow[] {
     { id: "S1", label: "Owner turns after Review", caption: "Median, per merged task.", now: turns(now.ownerTurns), baseline: base && turns(base.ownerTurns), sample: now.ownerTurns.sample },
     { id: "S1", label: "Review to Done", caption: "Median time, per merged task.", now: duration(now.reviewToDoneMs), baseline: base && duration(base.reviewToDoneMs), sample: now.reviewToDoneMs.sample },
     { id: "S2", label: "First-pass acceptance", caption: "Merged tasks with no commit after Review.", now: share(now.firstPass), baseline: base && share(base.firstPass), sample: now.firstPass.sample },
+    { id: "S8", label: "Rework rate", caption: "Merged tasks sent back, failed a review, requeued, or named by a rework link. Lower is better.", now: share(now.reworkRate), baseline: base && share(base.reworkRate), sample: now.reworkRate.sample },
     ...UNMEASURED.map((row) => ({ ...row, now: null, baseline: null, sample: null })),
   ];
 }
@@ -77,8 +80,10 @@ function snapshot(value: unknown): ScorecardSnapshot | null {
   const ownerTurns = measure(measures.ownerTurns);
   const reviewToDoneMs = measure(measures.reviewToDoneMs);
   const firstPass = measure(measures.firstPass);
-  if (!ownerTurns || !reviewToDoneMs || !firstPass || (firstPass.value !== null && firstPass.value > 1)) return null;
-  return { version: entry.version as string, takenAt: entry.takenAt as number, measures: { ownerTurns, reviewToDoneMs, firstPass } };
+  const reworkRate = measure(measures.reworkRate);
+  if (!ownerTurns || !reviewToDoneMs || !firstPass || !reworkRate
+    || (firstPass.value !== null && firstPass.value > 1) || (reworkRate.value !== null && reworkRate.value > 1)) return null;
+  return { version: entry.version as string, takenAt: entry.takenAt as number, measures: { ownerTurns, reviewToDoneMs, firstPass, reworkRate } };
 }
 
 /** The bridge's answer as a scorecard, or null when any part is malformed. */

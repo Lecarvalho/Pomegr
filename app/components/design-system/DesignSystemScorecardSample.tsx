@@ -30,18 +30,18 @@ const LOG_SAMPLES: [string, TaskLogRead][] = [
 
 // Synthetic values only.
 const FIRST: Scorecard = {
-  formula: 1,
-  current: { version: "0.9.0", takenAt: SAMPLE_TIME, measures: { ownerTurns: { value: 2, sample: 6 }, reviewToDoneMs: { value: 5.5 * HOUR, sample: 6 }, firstPass: { value: 0.5, sample: 6 } } },
+  formula: 2,
+  current: { version: "0.9.0", takenAt: SAMPLE_TIME, measures: { ownerTurns: { value: 2, sample: 6 }, reviewToDoneMs: { value: 5.5 * HOUR, sample: 6 }, firstPass: { value: 0.5, sample: 6 }, reworkRate: { value: 0.5, sample: 6 } } },
   baseline: null,
 };
 const LATER: Scorecard = {
-  formula: 1,
-  current: { version: "0.9.2", takenAt: SAMPLE_TIME, measures: { ownerTurns: { value: 1, sample: 14 }, reviewToDoneMs: { value: 2.25 * HOUR, sample: 14 }, firstPass: { value: 0.71, sample: 14 } } },
+  formula: 2,
+  current: { version: "0.9.2", takenAt: SAMPLE_TIME, measures: { ownerTurns: { value: 1, sample: 14 }, reviewToDoneMs: { value: 2.25 * HOUR, sample: 14 }, firstPass: { value: 0.71, sample: 14 }, reworkRate: { value: 0.29, sample: 14 } } },
   baseline: { version: "0.9.0", takenAt: SAMPLE_TIME - 21 * 24 * HOUR, measures: FIRST.current.measures },
 };
 const EMPTY: Scorecard = {
-  formula: 1,
-  current: { version: "0.9.0", takenAt: SAMPLE_TIME, measures: { ownerTurns: { value: null, sample: 0 }, reviewToDoneMs: { value: null, sample: 0 }, firstPass: { value: null, sample: 0 } } },
+  formula: 2,
+  current: { version: "0.9.0", takenAt: SAMPLE_TIME, measures: { ownerTurns: { value: null, sample: 0 }, reviewToDoneMs: { value: null, sample: 0 }, firstPass: { value: null, sample: 0 }, reworkRate: { value: null, sample: 0 } } },
   baseline: null,
 };
 

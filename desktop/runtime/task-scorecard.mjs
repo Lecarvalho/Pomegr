@@ -26,10 +26,10 @@ function boundedSnapshot(value) {
   if (!isPlainObject(value) || typeof value.version !== "string" || value.version.length < 1 || value.version.length > 40
     || !Number.isSafeInteger(value.takenAt) || !isPlainObject(value.measures)) return null;
   const measures = {};
-  for (const name of ["ownerTurns", "reviewToDoneMs", "firstPass"]) {
+  for (const name of ["ownerTurns", "reviewToDoneMs", "firstPass", "reworkRate"]) {
     const measure = value.measures[name];
     if (!isPlainObject(measure) || !Number.isSafeInteger(measure.sample) || measure.sample < 0
-      || (measure.value !== null && (!Number.isFinite(measure.value) || measure.value < 0 || (name === "firstPass" && measure.value > 1)))) return null;
+      || (measure.value !== null && (!Number.isFinite(measure.value) || measure.value < 0 || (["firstPass", "reworkRate"].includes(name) && measure.value > 1)))) return null;
     measures[name] = { value: measure.value, sample: measure.sample };
   }
   return { version: value.version, takenAt: value.takenAt, measures };

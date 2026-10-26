@@ -131,4 +131,3 @@ is no archive directory.
 | [Purpose roadmap](plans/purpose-roadmap.md) | Small versions toward less supervision and more personal time, with a scorecard, the first pilot retrospective, and the 0.8.1 cut |
 | [Sessions inside Pomegr](plans/embedded-terminal.md) | One Terminal tab for every session in the desktop app: live for sessions Pomegr runs, read-only history for the rest, and Continue for an ended session; proposed |
 | [Aril operator](plans/aril-operator.md) | A standing grant, Aril settings, and a repository memory that let Aril start, review, send back, and merge a repository's tasks while the owner is away; proposed |
-| [Rework log](plans/rework-log.md) | A recorded link from a fix to the work it reworks, with a cause, shown in the task log, Aril's snapshot and model record, and a scorecard measure; accepted |
