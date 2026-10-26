@@ -223,7 +223,7 @@ const TAG_TOKEN = /^\[[ \t]*([\p{L}\p{N}][\p{L}\p{N}\p{M}._-]{0,23})[ \t]*\](?=\
 function leadingTags(text) {
   const tags = [];
   let rest = text.trimStart();
-  for (let match = TAG_TOKEN.exec(rest); match && tags.length < 8 && match[1].toLowerCase() !== "image"; match = TAG_TOKEN.exec(rest)) {
+  for (let match = rest.match(TAG_TOKEN); match && tags.length < 8 && match[1].toLowerCase() !== "image"; match = rest.match(TAG_TOKEN)) {
     if (!tags.some((tag) => tag.toLowerCase() === match[1].toLowerCase())) tags.push(match[1]);
     rest = rest.slice(match[0].length);
   }
