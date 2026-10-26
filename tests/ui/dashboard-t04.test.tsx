@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -448,6 +450,14 @@ describe("T04 session workspace", () => {
     expect(tile.parentElement).toHaveClass("sessionOverviewBottom");
     expect(tile.querySelector(".sessionRepositoryLineMain")).toHaveTextContent("feature/session-tabs2 commits ahead relative to main");
     expect(tile.querySelector(".sessionRepositoryLineMain .commandChip")).not.toHaveClass("positive");
+    // T-178: the chip shrinks with an ellipsis and keeps the full comparison in its title; the line wraps instead of overflowing.
+    expect(tile.querySelector(".sessionRepositoryLineMain .commandChip")).toHaveAttribute("title", "2 commits ahead relative to main");
+    expect(tile.querySelector(".sessionRepositoryLineMain .commandChip > .sessionRepositoryLineComparison")).toHaveTextContent("2 commits ahead relative to main");
+    const styles = readFileSync(join(process.cwd(), "app", "styles", "session.css"), "utf8");
+    expect(styles).toMatch(/\.sessionRepositoryLineMain \{[^}]*flex-wrap: wrap;/);
+    expect(styles).toMatch(/\.sessionRepositoryLineMain \.commandChip \{[^}]*min-width: 0;[^}]*max-width: 100%;/);
+    expect(styles).not.toMatch(/\.sessionRepositoryLineMain \.commandChip \{[^}]*flex: 0 0 auto/);
+    expect(styles).toMatch(/\.sessionRepositoryLineComparison \{[^}]*text-overflow: ellipsis;/);
     expect(tile.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("4 changed files · 1 pull request");
     expect(container.querySelectorAll(".sessionRepositoryOneLine")).toHaveLength(1);
   });
