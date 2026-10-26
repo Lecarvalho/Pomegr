@@ -126,6 +126,23 @@ test("a newer unknown catalog lifecycle cannot authorize an older ended evidence
   }, { providerForSessionId: () => f.provider }), { ok: false, reason: "unknown" });
 });
 
+test("a closed catalog identity lets Continue resume a session its ended process left mid-turn", async (context) => {
+  const f = await fixture(context);
+  const plan = (identity) => readSessionContinuePlan(SESSION_ID, {
+    store: { getByQualifiedId: () => f.snapshot() },
+    coordinator: { catalogIdentity: () => identity },
+  }, { providerForSessionId: () => f.provider });
+  for (const status of ["active", "waiting", "unknown"]) {
+    f.snapshot().evidence.agents[0].status = status;
+    f.snapshot().evidence.agents[0].liveness.freshness = "stale";
+    assert.equal((await plan({ isLive: false, activityStatus: "closed" })).ok, true);
+    assert.equal((await plan({ isLive: false, activityStatus: "idle" })).ok, false);
+    assert.deepEqual(await plan({ isLive: true, activityStatus: "closed" }), { ok: false, reason: "live" });
+  }
+  f.snapshot().publicState = { session: { isLive: true } };
+  assert.deepEqual(await plan({ isLive: false, activityStatus: "closed" }), { ok: false, reason: "live" });
+});
+
 test("historical Claude ended evidence needs no optional live bridge metadata", async (context) => {
   const f = await fixture(context);
   delete f.snapshot().evidence.agents[0].liveness;
