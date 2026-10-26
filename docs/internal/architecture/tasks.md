@@ -1610,13 +1610,18 @@ installed plugin from before the rename sends; a body with both names is `invali
   - Working tree clean: the live repository block lists no uncommitted file.
   - Commit on task branch: the branch is not the main branch and its base comparison
     shows a commit of its own, merged since or not.
-  - Pull request open, Pull request merged: the ready pull-request block holds a pull
-    request in that state. The block is the one the session's Repository tab shows, so
+  - Pull request open: the ready pull-request block holds a pull request that is open or
+    merged (task T-179, 2026-10-26; it replaces the earlier rule that only an open pull
+    request counted, which failed a task whose session merged its pull request before it
+    reported, and a waiting task once its pull request merged). A pull request closed
+    without merging does not count.
+  - Pull request merged: the ready pull-request block holds a merged pull request.
+  - For both, the block is the one the session's Repository tab shows, so
     the two always name the same pull requests (task T-88, 2026-10-12; it replaces the
     earlier rule that only a pull request whose head is the recorded branch counted).
     Its items are the pull requests the session created and those whose head is the
     session's branch (`readPullRequests`). An item with no known state is listed as
-    `unknown`: it leaves the condition unavailable unless another item holds the state.
+    `unknown`: it leaves the condition unavailable unless another item holds a state that passes it.
     A ready block that lists no pull request is a known answer, so both conditions fail.
   - CI passed: the pull-request read asks gh for `headRefOid` and `statusCheckRollup` together.
     It normalizes checks to `passed`, `failed`, `pending`, `none`, or unknown.
