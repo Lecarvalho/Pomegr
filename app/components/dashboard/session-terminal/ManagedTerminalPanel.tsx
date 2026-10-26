@@ -57,8 +57,21 @@ const LINES: Record<TerminalViewState, string> = {
   failed: "The session could not be started.",
 };
 
-export function ManagedTerminalSurface({ state, children, onRetry }: { state: TerminalViewState; children?: ReactNode; onRetry?: () => void }) {
-  return <section className="sessionTerminal sessionManagedTerminal" aria-label="Session terminal">
+export function ManagedTerminalSurface({ state, children, onRetry, fill = true }: { state: TerminalViewState; children?: ReactNode; onRetry?: () => void; fill?: boolean }) {
+  const surface = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const node = surface.current;
+    if (!fill || !node) return;
+    // The terminal reaches the bottom of the window: its height follows its page offset, not its scroll position.
+    const measure = () => {
+      const scroller = node.closest(".commandMain");
+      node.style.setProperty("--terminal-top", `${Math.round(node.getBoundingClientRect().top + window.scrollY + (scroller?.scrollTop ?? 0))}px`);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [fill]);
+  return <section ref={surface} className={fill ? "sessionTerminal sessionManagedTerminal isFilled" : "sessionTerminal sessionManagedTerminal"} aria-label="Session terminal">
     <div className="sessionManagedScreen">{children}</div>
     <div className="sessionTerminalBar"><span role="status">{LINES[state]}</span>
       {state === "failed" && onRetry && <button type="button" className="commandQuietAction" onClick={onRetry}>Start session again</button>}

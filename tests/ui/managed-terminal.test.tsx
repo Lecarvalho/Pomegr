@@ -92,6 +92,18 @@ describe("managed terminal", () => {
     const { fontFamily } = fake.construct.mock.calls[0][0];
     expect(fontFamily).toBe('"Cascadia Mono Variable", Consolas, monospace');
   });
+  it("fills the window to its bottom from its page offset, except in the design-system sample", async () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 470 } as DOMRect);
+    const view = render(<ManagedTerminalPanel terminal={entry} />);
+    const surface = screen.getByLabelText("Session terminal");
+    expect(surface).toHaveClass("isFilled");
+    expect(surface.style.getPropertyValue("--terminal-top")).toBe("470px");
+    view.unmount();
+    render(<SessionTerminalSection />);
+    for (const sample of screen.getAllByLabelText("Session terminal")) expect(sample).not.toHaveClass("isFilled");
+    const styles = readFileSync(join(process.cwd(), "app", "styles", "session.css"), "utf8");
+    expect(styles).toContain(".sessionManagedTerminal.isFilled { height: max(360px, calc(100dvh - var(--terminal-top");
+  });
   it("waits for the computed data font and font readiness before measuring xterm", async () => {
     let loaded!: () => void, ready!: () => void;
     const load = vi.fn(() => new Promise<void>((resolve) => { loaded = resolve; }));

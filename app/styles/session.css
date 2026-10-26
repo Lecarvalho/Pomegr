@@ -23,6 +23,9 @@
 .sessionTerminalBar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); background: var(--command-panel); }
 .sessionTerminalBar .commandQuietAction { flex: 0 0 auto; width: auto; }
 .sessionManagedScreen { position: relative; height: clamp(300px, 55vh, 720px); min-width: 0; }
+/* A filled terminal ends above the floating Aril launcher: two launcher insets plus its height. */
+.sessionManagedTerminal.isFilled { height: max(360px, calc(100dvh - var(--terminal-top, 45dvh) - 2 * var(--space-4) - var(--control-height))); }
+.sessionManagedTerminal.isFilled .sessionManagedScreen { flex: 1 1 auto; height: auto; min-height: 0; }
 .sessionTerminalEmulator { position: absolute; inset: var(--space-6); font: var(--text-xs)/1.4 var(--font-data); }
 .sessionTerminalEmulator .xterm, .sessionTerminalEmulator .xterm:focus, .sessionTerminalEmulator .xterm-helper-textarea:focus { outline: none; }
 .taskTerminalStart { display: flex; flex-direction: column; gap: var(--space-4); }

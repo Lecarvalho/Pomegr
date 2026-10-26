@@ -158,6 +158,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - A session Pomegr started in the terminal host shows its live output in one data-font terminal surface.
 - A task's Terminal tab lists its build and review terminals in host order, with the task ID and a quiet **Build** or **Review** chip; selecting a row attaches that terminal under the same owner-only input and read-only attachment rules.
 - The live terminal uses line height 1.4 to preserve joined box-drawing characters.
+- The live terminal fills the window to its bottom, ending above the Aril launcher, with a 360px minimum; the design-system sample keeps a fixed height.
 - The live terminal inset matches history: `--space-6` above 760px and `--space-4` at 760px or below.
 - The live terminal waits up to 500 ms, measures with a monospace-only family, and re-measures before fitting after the data font loads.
 - The CLI draws the only input surface and its caret, which shows focus. Pomegr adds no focus ring.
