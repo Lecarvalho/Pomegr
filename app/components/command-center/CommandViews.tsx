@@ -230,6 +230,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const [cursorPageBase, setCursorPageBase] = useState(0);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const requestRef = useRef(0);
+  const inFlightRef = useRef<{ pageKey: string; controller: AbortController; refreshAgain: boolean } | null>(null);
   const directoryQuery = useMemo(() => {
     const params = new URLSearchParams({ mode: "directory", filter, pageSize: String(SESSION_PAGE_SIZE) });
     if (query.trim()) params.set("query", query.trim());
@@ -248,14 +249,28 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     try { window.localStorage.setItem(SESSION_GROUPING_KEY, value); } catch { /* The in-memory choice remains usable when preferences are unavailable. */ }
   };
 
+  useEffect(() => () => { inFlightRef.current?.controller.abort(); inFlightRef.current = null; }, []);
+
   useEffect(() => {
-    if (paused) return;
-    const controller = new AbortController();
-    const request = ++requestRef.current;
+    const pending = inFlightRef.current;
+    if (paused) { pending?.controller.abort(); inFlightRef.current = null; return; }
     const params = new URLSearchParams(directoryQuery);
     if (cursor) params.set("cursor", cursor);
     // Background refreshes keep the page key, so they never disable page navigation.
     const pageKey = `${directoryQuery}\u0000${cursor || ""}`;
+    // Live sessions publish catalog revisions faster than a busy monitor answers. A refresh for the page
+    // in flight waits for it and reads once more instead of aborting it, so the first page always lands.
+    if (pending && pending.pageKey === pageKey && !pending.controller.signal.aborted) { pending.refreshAgain = true; return; }
+    pending?.controller.abort();
+    const controller = new AbortController();
+    const entry = { pageKey, controller, refreshAgain: false };
+    inFlightRef.current = entry;
+    const request = ++requestRef.current;
+    const settle = () => {
+      if (inFlightRef.current !== entry) return;
+      inFlightRef.current = null;
+      if (entry.refreshAgain) setRefreshNonce((value) => value + 1);
+    };
     void fetch(`/api/sessions?${params}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Session directory unavailable");
@@ -270,8 +285,8 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
         setDirectoryUnavailable(false);
         if (next.cursorReset) { setCursor(null); setCursorTrail([]); setCursorPageBase(0); }
       })
-      .catch(() => { if (!controller.signal.aborted && request === requestRef.current) setDirectoryUnavailable(true); });
-    return () => controller.abort();
+      .catch(() => { if (!controller.signal.aborted && request === requestRef.current) setDirectoryUnavailable(true); })
+      .finally(settle);
   }, [cursor, directoryQuery, paused, refreshNonce]);
 
   useEffect(() => {

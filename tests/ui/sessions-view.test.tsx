@@ -217,6 +217,46 @@ describe("Sessions view", () => {
     vi.useRealTimers();
   });
 
+  it("renders the first page while catalog revisions arrive faster than the monitor answers", async () => {
+    class CatalogEvents {
+      static current: CatalogEvents | null = null;
+      private listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
+      constructor() { CatalogEvents.current = this; }
+      addEventListener(type: string, listener: (event: MessageEvent<string>) => void) {
+        this.listeners.set(type, (this.listeners.get(type) || new Set()).add(listener));
+      }
+      emit(type: string, data: string) { for (const listener of this.listeners.get(type) || []) listener(new MessageEvent(type, { data })); }
+      close() {}
+    }
+    vi.stubGlobal("EventSource", CatalogEvents);
+    const answers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (!String(url).includes("/api/sessions?mode=directory")) return Promise.resolve(new Response("{}", { status: 200 }));
+      return new Promise<Response>((resolve, reject) => {
+        answers.push(resolve);
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("status", { name: "Loading sessions" })).toBeInTheDocument();
+    const events = CatalogEvents.current;
+    expect(events).not.toBeNull();
+    act(() => { events?.emit("open", ""); });
+    for (let revision = 1; revision <= 5; revision += 1) act(() => { events?.emit("catalog", JSON.stringify({ domain: "sessions", revision })); });
+    // The burst of revisions neither aborts nor restarts the first read.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { answers[0](new Response(JSON.stringify(directorySnapshot([{ ...session(1), title: "First read" }])), { status: 200 })); });
+    expect(await screen.findByText("First read")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
+    // The coalesced revisions cause exactly one follow-up read of the same page.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(fetchMock.mock.calls[0]?.[0]);
+    await act(async () => { answers[1](new Response(JSON.stringify(directorySnapshot([{ ...session(2), title: "Follow-up read" }])), { status: 200 })); });
+    expect(await screen.findByText("Follow-up read")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("sections the recent list by creation day and collapses a section", async () => {
     const today = { ...session(2), title: "Fresh session", createdAt: new Date().toISOString() };
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(directorySnapshot([today, session(1)])), { status: 200 }))));
