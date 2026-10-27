@@ -199,6 +199,14 @@ describe("SessionTaskCell with assigned tasks", () => {
     expect(screen.getAllByText("Review")).toHaveLength(1);
   });
 
+  it("has a design-system sample of a reviewer session", () => {
+    render(<DesignSystemView />);
+    const section = screen.getByRole("heading", { level: 2, name: "Sessions list Task cell" }).closest("section") as HTMLElement;
+    const reviewer = [...section.querySelectorAll(".designSystemSample")].find((element) => element.querySelector(":scope > span")?.textContent === "Reviewer session") as HTMLElement;
+    expect(within(reviewer).getByRole("link", { name: "Open task T-12 on its board" })).toBeInTheDocument();
+    expect(within(reviewer).getByText("Review")).toHaveClass("commandSessionTaskFeature");
+  }, 20_000);
+
   it("titles the dash for a session that is neither started from a task nor assigned", () => {
     render(<SessionTaskCell task={null} assigned={[]} />);
     expect(screen.getByTitle("Not started from a task, reviewing one, or assigned to one")).toHaveTextContent("—");
