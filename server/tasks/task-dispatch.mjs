@@ -1,6 +1,6 @@
 
 import crypto from "node:crypto";
-import { bindReview } from "./task-review.mjs";
+import { bindNamedReview, bindReview } from "./task-review.mjs";
 import { CHECK_LABELS, digestOf, featureLine, TASK_START_PROVIDERS, TOKEN_PATTERN } from "./task-dispatch-parts.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
@@ -187,7 +187,8 @@ const CODEX_SESSION = /^codex:/u;
 
 // `start-bind`: desktop main links the Codex session it started for the named task when the
 // session's start hook did not report (Codex skips plugin hooks it has not trusted). The token
-// stays the authority, under the same single use and ten-minute window as `bindDispatch`.
+// stays the authority, under the same single use and ten-minute window as `bindDispatch`, and
+// like `bindDispatch` a token that is no build dispatch may be the task's review dispatch.
 export function startBind({ database, transaction, repositoryId, payload, now }) {
   const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id", "token", "sessionId"]) : undefined;
   if (number === undefined || typeof payload.token !== "string" || !TOKEN_PATTERN.test(payload.token)
@@ -199,6 +200,7 @@ export function startBind({ database, transaction, repositoryId, payload, now })
       .get(repositoryId, number);
     const stored = parseStoredDispatch(row?.dispatch_token);
     const matches = stored !== null && crypto.timingSafeEqual(supplied, Buffer.from(stored.digest, "hex"));
-    return matches && isLive(stored, at) ? linkDispatch(database, row, payload.sessionId, at) : BIND_REFUSED;
+    return matches && isLive(stored, at) ? linkDispatch(database, row, payload.sessionId, at)
+      : bindNamedReview(database, repositoryId, number, supplied, payload.sessionId, at);
   });
 }

@@ -95,6 +95,19 @@ export function bindReview(database, supplied, sessionId, at) {
     const matches = stored !== null && crypto.timingSafeEqual(supplied, Buffer.from(stored.digest, "hex"));
     if (matches && isLive(stored, at)) match = row;
   }
+  return linkReview(database, match, sessionId, at);
+}
+
+// `start-bind`'s review half: the named task's own live review dispatch, inside the caller's transaction.
+export function bindNamedReview(database, repositoryId, number, supplied, sessionId, at) {
+  const row = preparedStatement(database, `SELECT tasks.*, meta.value FROM tasks JOIN meta ON meta.key = ?
+    WHERE tasks.repository_id = ? AND tasks.number = ?`).get(dispatchKey(repositoryId, number), repositoryId, number);
+  const stored = parseStoredDispatch(row?.value);
+  const matches = stored !== null && crypto.timingSafeEqual(supplied, Buffer.from(stored.digest, "hex"));
+  return linkReview(database, matches && isLive(stored, at) ? row : null, sessionId, at);
+}
+
+function linkReview(database, match, sessionId, at) {
   if (!match || match.state !== "needs_review"
     || preparedStatement(database, "SELECT 1 FROM tasks WHERE session_id = ?").get(sessionId)
     || preparedStatement(database, "SELECT 1 FROM meta WHERE key GLOB 'task_reviewer:*' AND key != ? AND value = ?")
