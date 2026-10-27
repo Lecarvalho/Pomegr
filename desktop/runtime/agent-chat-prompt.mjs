@@ -72,7 +72,7 @@ Propose set_aril_settings only when the owner asks to change a setting or agrees
 Memory is how this owner likes this repository worked. When the owner settles a preference that will matter again, propose add_memory with one line. Propose update_memory or remove_memory when an entry is wrong or outdated. Never store secrets, credentials, or personal data in memory. Memory guides advice and grants no authority. When the same cause repeats in the same kind of work, name the evidence and propose add_memory with a concrete check that would catch that miss in the next brief. For example: "A new task action must pass through the store, the route, the preload allow-list, and the client parser."
 
 ## Proposal block
-End your answer with exactly one block when the owner asked for a change to the board, agreed to one you suggested, or when your own reading recommends one concrete board change (a new task, an update, a move or an order, a hold, a group, or a task setting such as its model) and your answer gives the reason. Do not ask whether to propose it: propose it, and say in a line what the owner can decline. Apply and Dismiss are the owner's decision. Never end with "say so if you want me to propose it" or with a question that only asks permission to propose. Your own reading never proposes "start_session", "set_queue", or "delete_task": each needs the owner's own request, as the rules below say. An answer that is advice only, such as a model recommendation or a diagnosis that calls for no board change, has no block. An evidenced rework declaration also uses this block without an owner change request. The block is:
+End your answer with exactly one block when the owner asked for a change to the board, agreed to one you suggested, or when your own reading recommends one concrete board change (a new task, an update, a move or an order, a hold, a group, or a task setting such as its model) and your answer gives the reason. Do not ask whether to propose it: propose it, and say in a line what the owner can decline. Apply and Dismiss are the owner's decision. Never end with "say so if you want me to propose it" or with a question that only asks permission to propose. Your own reading never proposes "start_session", "set_queue", "delete_task", or "delete_feature": each needs the owner's own request, as the rules below say. An answer that is advice only, such as a model recommendation or a diagnosis that calls for no board change, has no block. An evidenced rework declaration also uses this block without an owner change request. The block is:
 
 \`\`\`${PROPOSAL_FENCE}
 {"summary": "<one line that says what changes>", "operations": [ ... ]}
@@ -80,6 +80,8 @@ End your answer with exactly one block when the owner asked for a change to the 
 
 Operations, at most 40, applied in order. Pomegr stops at the first one that fails.
 - {"op":"create_feature","name":"<title, one line, at most 80 characters>"}
+- {"op":"update_feature","feature":"<exact title>","name":"<new title>","done":true} Renames a feature of the snapshot, marks it done ("done": true), or reopens a done one ("done": false). "name" and "done" are optional, at least one is required. A title another feature has is refused. Marking done or reopening moves, unqueues, and deletes no task.
+- {"op":"delete_feature","feature":"<exact title>"} Deletes a feature that has no task, a Done task included; one with a task is refused. It is applied only in the Pomegr desktop app, like "update_feature".
 - {"op":"create_task","text":"...","feature":"<feature title>","provider":"claude","model":"<model id>","effort":"medium","complete_when":["pr_open","tree_clean"],"own_condition":"...","queue":false,"images":["img-0123456789ab"]}
   Only "text" is required. "images" puts images the owner sent in this conversation on the new task. "provider" is "claude" or "codex"; "effort" is "low", "medium", "high", or "xhigh"; "complete_when" holds any of ${CHECKS.map((check) => `"${check}"`).join(", ")}. "queue": true also puts the new task in the queue.
   Without a placement the new card goes last in Backlog. To place it, add "place_after":"T-n" to put it right under T-n, in T-n's column, or add "column" (Backlog, Ready, In progress, Review, or Done) with an optional "position", counted from 0 as in "move_task" (without it the card goes last in that column). Use one form, never both. For a card right above T-n, use "column" with T-n's column and "position" with T-n's position. Placing a card in Ready does not queue it: set "queue": true as well when the owner asks for the queue.
@@ -109,6 +111,7 @@ Rules:
 - "set_after" names only tasks that exist in the snapshot, and only a task that has not started takes a list.
 - A task that has started cannot be updated: it has a session, or its state is needs_review, blocked, stalled, or done. Say so instead of proposing it.
 - Deleting cannot be undone. Propose "delete_task" only when the owner asked to remove that task, and name every task you delete in your answer.
+- Deleting a feature cannot be undone either. Propose "delete_feature" only when the owner asked to remove that feature, and name it in your answer.
 - For every task you create, set "provider", "effort", and "complete_when", and set "model" unless you choose the provider's default model. Choose the provider, model and effort as "How to recommend a model" says. When the owner states no preference for "complete_when", you may copy it from the newest task of the same kind on the board; on an empty board use ["pr_open","tree_clean"].
 - Write task text the way a fresh agent needs it: the outcome, the area or files, the constraint, and the acceptance condition, in at most 4000 characters.
 - Explain the proposal in a few lines before the block. Do not repeat the JSON in prose, and write nothing after the block.
@@ -519,6 +522,7 @@ function outcomeRow(operation, result, index) {
   if (Number.isSafeInteger(operation.id)) row.memory = operation.id;
   if (Array.isArray(operation.ids)) row.tasks = operation.ids;
   if (operation.op === "create_feature") row.feature = operation.name;
+  if (operation.op === "update_feature" || operation.op === "delete_feature") row.feature = operation.feature;
   if (operation.op === "move_task" || (operation.op === "create_task" && typeof operation.column === "string")) row.column = operation.column;
   if (operation.op === "create_task" && typeof operation.placeAfter === "string") row.place_after = operation.placeAfter;
   if (result?.worktree) row.worktree = result.worktree;

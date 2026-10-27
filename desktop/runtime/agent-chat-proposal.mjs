@@ -4,8 +4,10 @@ export const PROPOSAL_FENCE = "pomegr-board";
 export const PROPOSAL_OPERATION_LIMIT = 40;
 export const PROPOSAL_SUMMARY_LIMIT = 300;
 export const BOARD_OPERATIONS = Object.freeze([
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree", "declare_rework",
+  "create_feature", "update_feature", "delete_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree", "declare_rework",
 ]);
+// The operations that edit a feature already on the board. Only the desktop window applies them, as only it edits features.
+export const FEATURE_EDIT_OPERATIONS = Object.freeze(["update_feature", "delete_feature"]);
 export const ARIL_OPERATIONS = Object.freeze(["set_aril_settings", "add_memory", "update_memory", "remove_memory"]);
 export const WORKTREE_RESULTS = Object.freeze(["removed", "not_found", "dirty", "unique_commits", "in_use", "failed"]);
 // The one operation that puts images the owner sent in the chat on a task that is already on the board.
@@ -213,6 +215,26 @@ export function normalizeOperation(source, { grantWrite = false } = {}) {
   if (op === "create_feature") {
     const name = boundedLine(source.name, FEATURE_LIMIT);
     return only(source, ["op", "name"]) && name ? { op, name } : null;
+  }
+  if (op === "update_feature") {
+    // A new title, done or reopened, or both; at least one of them.
+    const feature = boundedLine(source.feature, FEATURE_LIMIT);
+    if (!only(source, ["op", "feature", "name", "done"]) || !feature) return null;
+    const operation = { op, feature };
+    if (source.name !== undefined) {
+      const name = boundedLine(source.name, FEATURE_LIMIT);
+      if (!name) return null;
+      operation.name = name;
+    }
+    if (source.done !== undefined) {
+      if (typeof source.done !== "boolean") return null;
+      operation.done = source.done;
+    }
+    return Object.keys(operation).length > 2 ? operation : null;
+  }
+  if (op === "delete_feature") {
+    const feature = boundedLine(source.feature, FEATURE_LIMIT);
+    return only(source, ["op", "feature"]) && feature ? { op, feature } : null;
   }
   if (op === "create_task") {
     if (!only(source, ["op", "text", "feature", "queue", "images", "column", "position", "place_after", ...TASK_FIELDS, ...(grantWrite ? ["runs_after"] : [])])) return null;
@@ -446,6 +468,8 @@ export async function applyOperations(operations, { post, board, attach }) {
     return { columnId: anchor.columnId, position: order.findIndex((task) => task.id === anchor.id) + 1 };
   };
   const openFeature = (name) => facts.features.find((feature) => feature.name === name && !feature.done) ?? null;
+  // A feature edit names a feature of that title whether it is done or not, so a done feature can be reopened.
+  const namedFeature = (name) => facts.features.find((feature) => feature.name === name) ?? null;
   // Each image in order, stopping at the first one the task did not take. An image the task already holds is the outcome asked for.
   const attachAll = async (id, images, held = []) => {
     for (const imageId of images) {
@@ -472,6 +496,25 @@ export async function applyOperations(operations, { post, board, attach }) {
     if (op === "create_feature") {
       // A feature that is already there is the outcome the operation asked for.
       results.push(openFeature(operation.name) ? { ok: true } : (await act("feature_create", { name: operation.name })).answer);
+      continue;
+    }
+    if (op === "update_feature") {
+      // The desktop's own feature edit: a title another feature has answers `conflict`, and marking done or reopening
+      // moves, unqueues, and deletes no task.
+      const feature = namedFeature(operation.feature);
+      if (!feature) { results.push(failure("not_found")); continue; }
+      const payload = { id: feature.id };
+      if (operation.name !== undefined) payload.name = operation.name;
+      if (operation.done !== undefined) payload.done = operation.done;
+      results.push((await act("feature_update", payload)).answer);
+      continue;
+    }
+    if (op === "delete_feature") {
+      // Only a feature with no task, a done task included: the desktop's delete would otherwise take the feature off its tasks.
+      const feature = namedFeature(operation.feature);
+      if (!feature) { results.push(failure("not_found")); continue; }
+      if ([...facts.tasks.values()].some((task) => task.featureId === feature.id)) { results.push(failure("conflict")); continue; }
+      results.push((await act("feature_delete", { id: feature.id })).answer);
       continue;
     }
     if (op === "create_task") {

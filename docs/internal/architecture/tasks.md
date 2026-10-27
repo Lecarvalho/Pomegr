@@ -967,7 +967,9 @@ which a feature was done when it had tasks and every one of them was done.
   tasks again.
 - **Desktop only.** Only the desktop `feature_update` takes `done`. The agent's
   `update_feature` (`agent_feature_update`), the paired-device route, and every other
-  agent tool never mark a feature done or reopen one. Marking done changes no name,
+  agent tool never mark a feature done or reopen one. Aril's `update_feature` proposal
+  reaches it only when the owner applies it in the desktop window (see
+  [Agent chat](agent-chat.md#proposals)). Marking done changes no name,
   description, or app version, and editing those keeps the flag.
 - **Served.** The board serves the flag as `features[].done`, so the board, the task
   forms' Feature field, Tasks home's open-feature count, and Aril's board snapshot read

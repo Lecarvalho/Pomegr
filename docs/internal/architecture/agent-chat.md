@@ -441,6 +441,8 @@ message would lead to materially different proposals.
 | Operation | Fields | Task action when approved |
 | --- | --- | --- |
 | `create_feature` | `name` | `feature_create`; a feature of that title that is already open is the outcome asked for, so nothing is sent |
+| `update_feature` | `feature` (the exact title, done or not); at least one of `name` (a new title) and `done` (a boolean) | `feature_update` with `{ id, name?, done? }`; a title another feature has answers `conflict`, and marking done or reopening moves, unqueues, and deletes no task. Desktop window only |
+| `delete_feature` | `feature` (the exact title, done or not) | `feature_delete` with `{ id }`, sent only when no task of the board, a Done one included, has the feature; otherwise `conflict` without a request. Desktop window only |
 | `create_task` | `text`; optional `feature`, `provider`, `model`, `effort`, `complete_when`, `own_condition`, `queue`, `images`, and a placement: `column` with an optional `position`, or `place_after` | `create`, then the image request for each image, then `move` when it has a placement, then `queue_add` when `queue` is true |
 | `update_task` | `id`; any of `text`, `feature` (null takes the task out of its feature), `provider`, `model`, `effort`, `complete_when`, `own_condition` | `update` |
 | `delete_task` | `id` | `delete` |
@@ -466,7 +468,14 @@ Aril proposes settings only when the owner requests a change or agrees to a sugg
 
 - A feature is named by its exact title. Desktop main resolves it against the board when
   the proposal runs, so a `create_task` may name a feature that an earlier
-  `create_feature` of the same proposal makes.
+  `create_feature` of the same proposal makes. `create_task` and `update_task` match only
+  a feature that is not done; `update_feature` and `delete_feature` match a done one too,
+  so a done feature can be reopened.
+- A feature edit (`update_feature` or `delete_feature`) uses the desktop's own feature
+  actions, which the paired-device route does not have. A proposal that holds one answers
+  `desktop_only` on a paired device before any action, and stays pending. Aril proposes
+  `delete_feature` only when the owner asks, and says that it cannot be undone. The
+  coding-session MCP feature tools are unchanged.
 - An update sets only the parts it names. The applier fills the rest of `run` and
   `completeWhen` from the stored task, and keeps the task's Remote Control and
   keep-worktree flags.
@@ -900,7 +909,7 @@ Aril may record a rework link (references and a cause from a fixed list) without
 | `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session or remove a worktree |
 | `pomegr:agent-chat-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add` and `read`. `add`: a repository ID and the image bytes (a `Uint8Array` of at most 5 MiB); answers the image's ID, type, and size. `read`: a repository ID, a conversation ID, and an image ID; answers the type and the bytes. No answer carries a path |
 | `POST /api/agent-chat/image-add` and `GET /api/agent-chat/image-read` on the LAN gateway | A paired device only | The same two operations, answered in desktop main and never forwarded. `image-add` takes the bytes as an `application/octet-stream` body of at most 5 MiB with the repository ID as its only query key. `image-read` takes the repository ID, the conversation ID, and the image ID as its only query keys, and answers the bytes with one of the four media types, `no-store` |
-| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start or a worktree removal answers `desktop_only`. Its `apply` of a queue change is accepted |
+| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start, a worktree removal, or a feature edit answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | Git in desktop main (`createTaskWorktrees`) | Desktop main | `worktree list`, `status`, `rev-list`, `worktree remove`, and, under the branch rule, `branch -D`, as argument arrays with no shell, for the worktree listing of a turn and for an approved removal. The prompt gets facts and result words only; no output, path, or error text |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
@@ -924,8 +933,9 @@ The operations and their payloads, each with `repositoryId`:
 
 A refusal is `{ ok: false, error }` with one of `invalid`, `not_found`, `busy`, `limit`,
 `cli_missing`, `conflict`, `unavailable`, and `desktop_only`. A payload with another key
-is `invalid`. `desktop_only` answers only the `apply` of a session start or a worktree
-removal that did not come from the desktop window.
+is `invalid`. `desktop_only` answers only the `apply` of a session start, a worktree
+removal, or a feature edit that did not come from the desktop window, and of settings or
+memory while `pairedDevices` is not true.
 
 - An image operation refuses with `{ ok: false, error }` and one of `invalid`,
   `not_found`, and `unavailable`. The two paired-device image routes take a request

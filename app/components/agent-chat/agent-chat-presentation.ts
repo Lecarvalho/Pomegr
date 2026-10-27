@@ -173,6 +173,12 @@ export function describeOperation(operation: AgentChatBoardOperation, tasks: rea
   switch (operation.op) {
     case "create_feature":
       return { title: ["Create feature"], text: { value: operation.name, whole: operation.name, muted: false }, details: [] };
+    case "update_feature": {
+      const details = [operation.name !== undefined ? `New title: ${operation.name}` : null, operation.done === true ? "Mark done" : operation.done === false ? "Reopen" : null].filter(Boolean) as string[];
+      return { title: ["Update feature"], text: { value: operation.feature, whole: operation.feature, muted: true }, details };
+    }
+    case "delete_feature":
+      return { title: ["Delete feature"], text: { value: operation.feature, whole: operation.feature, muted: true }, details: [], warning: "Cannot be undone" };
     case "create_task": {
       const place = operation.feature ? `in ${operation.feature}` : "";
       const details = [place, operation.position !== undefined ? `position ${operation.position + 1}` : null, runParts(operation.run, true).join(" · "), checkParts(operation.completeWhen), operation.images ? `with ${imageCount(operation.images.length)}` : null, operation.queue === true ? "then add to queue" : null].filter(Boolean) as string[];
@@ -350,5 +356,5 @@ export function proposalNote(proposal: AgentChatProposal, startHere = false): st
   if (worktreeProposal(proposal)) return startHere ? WORKTREE_PENDING_NOTE : WORKTREE_ELSEWHERE_NOTE;
   const queueOn = queueProposalState(proposal);
   if (queueOn !== null) return queueOn ? QUEUE_ON_NOTE : QUEUE_OFF_NOTE;
-  return proposal.operations.some((operation) => operation.op === "delete_task") ? PROPOSAL_DELETE_NOTE : PROPOSAL_PENDING_NOTE;
+  return proposal.operations.some((operation) => operation.op === "delete_task" || operation.op === "delete_feature") ? PROPOSAL_DELETE_NOTE : PROPOSAL_PENDING_NOTE;
 }

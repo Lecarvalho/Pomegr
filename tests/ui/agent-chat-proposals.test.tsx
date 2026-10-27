@@ -115,6 +115,25 @@ describe("proposals", () => {
     expect(within(card()).getByText("Nothing changes until you apply. Deleting cannot be undone.")).toBeInTheDocument();
   });
 
+  it("names a feature edit by its title: a new title, done or reopened, and a delete that cannot be undone", () => {
+    const proposal = { id: PROPOSAL_ID, summary: "Tidy the features.", state: "pending", operations: [
+      { op: "update_feature", feature: "Upload reliability", name: "Uploads" },
+      { op: "update_feature", feature: "Uploads", done: true },
+      { op: "update_feature", feature: "Shipped", done: false },
+      { op: "delete_feature", feature: "Legacy" },
+    ] } as never;
+    render(<AgentChatProposalCard proposal={proposal} tasks={[]} busy={false} onApply={() => {}} onDismiss={() => {}} />);
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("Update featureUpload reliability");
+    expect(rows[0]).toHaveTextContent("New title: Uploads");
+    expect(rows[1]).toHaveTextContent("Mark done");
+    expect(rows[2]).toHaveTextContent("Shipped");
+    expect(rows[2]).toHaveTextContent("Reopen");
+    expect(rows[3]).toHaveTextContent("Delete featureLegacy");
+    expect(rows[3].querySelector(".agentChatOpWarning")).toHaveTextContent("Cannot be undone");
+    expect(screen.getByText("Nothing changes until you apply. Deleting cannot be undone.")).toBeInTheDocument();
+  });
+
   it("omits the board's line for a task it does not hold, and the delete sentence for a proposal without a delete", async () => {
     withProposal([{ op: "update_task", id: "T-99", effort: undefined, run: { provider: "codex", model: null } }, { op: "queue_task", id: "T-12" }]);
     render(<AgentChatDock />);

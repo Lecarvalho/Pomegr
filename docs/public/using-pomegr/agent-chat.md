@@ -140,7 +140,10 @@ follow-up when they differ.
 
 A proposal can create a feature, create a task in a place you name, update, delete, or
 move a task, add a task to the queue or remove it, put queued tasks in a parallel group
-or take them out of one, and put an image that you sent on a task. It cannot mark a task done,
+or take them out of one, and put an image that you sent on a task. It can also rename a
+feature, mark it done, reopen it, or delete a feature that has no task. You apply a feature
+edit in the desktop app only. Marking a feature done or reopening it changes none of its
+tasks, and deleting a feature cannot be undone. It cannot mark a task done,
 requeue a task, or change the queue's threshold or schedule. Those stay with you, as
 described in [Tasks](tasks.md). Starting a session, turning the queue on or off, and removing
 task worktrees are proposals of their own, described below.

@@ -44,7 +44,7 @@ test("the proposal contract constants are fixed", () => {
   assert.equal(PROPOSAL_FENCE, "pomegr-board");
   assert.equal(PROPOSAL_OPERATION_LIMIT, 40);
   assert.equal(PROPOSAL_SUMMARY_LIMIT, 300);
-  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree", "declare_rework"]);
+  assert.deepEqual([...BOARD_OPERATIONS], ["create_feature", "update_feature", "delete_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree", "declare_rework"]);
   assert.equal(IMAGES_PER_OPERATION, 4);
   assert.equal(IMAGE_OPERATION, "attach_images");
   assert.deepEqual([...BOARD_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
@@ -53,6 +53,8 @@ test("the proposal contract constants are fixed", () => {
 test("every operation is accepted in its minimal form and kept as written", () => {
   const accepted = [
     [{ op: "create_feature", name: "Auth" }, { op: "create_feature", name: "Auth" }],
+    [{ op: "update_feature", feature: "Auth", done: true }, { op: "update_feature", feature: "Auth", done: true }],
+    [{ op: "delete_feature", feature: "Auth" }, { op: "delete_feature", feature: "Auth" }],
     [{ op: "create_task", text: "Do it" }, { op: "create_task", text: "Do it" }],
     [{ op: "update_task", id: "T-1", text: "New" }, { op: "update_task", id: "T-1", text: "New" }],
     [{ op: "delete_task", id: "T-12" }, { op: "delete_task", id: "T-12" }],
@@ -570,4 +572,74 @@ test("set_after takes 0 to 8 distinct task IDs, never the task itself", () => {
     assert.equal(normalizeOperation({ op: "set_after", id: "T-3", after }), null, JSON.stringify(after));
   }
   assert.equal(normalizeOperation({ op: "set_after", id: "T-3", after: ["T-1"], extra: true }), null);
+});
+
+test("update_feature and delete_feature name a feature by its exact title; update_feature needs a new title or done", () => {
+  assert.deepEqual(normalizeOperation({ op: "update_feature", feature: " Auth ", name: " Sign-in " }), { op: "update_feature", feature: "Auth", name: "Sign-in" });
+  assert.deepEqual(normalizeOperation({ op: "update_feature", feature: "Auth", done: true }), { op: "update_feature", feature: "Auth", done: true });
+  assert.deepEqual(normalizeOperation({ op: "update_feature", feature: "Auth", done: false }), { op: "update_feature", feature: "Auth", done: false });
+  assert.deepEqual(normalizeOperation({ op: "update_feature", feature: "Auth", name: "Sign-in", done: true }), { op: "update_feature", feature: "Auth", name: "Sign-in", done: true });
+  assert.deepEqual(normalizeOperation({ op: "delete_feature", feature: "Auth" }), { op: "delete_feature", feature: "Auth" });
+  for (const [label, operation] of [
+    ["update with no change", { op: "update_feature", feature: "Auth" }],
+    ["update without a feature", { op: "update_feature", name: "Sign-in" }],
+    ["update with a blank feature", { op: "update_feature", feature: "  ", done: true }],
+    ["update with a feature ID instead of a title", { op: "update_feature", id: "feat-1", done: true }],
+    ["update with a blank title", { op: "update_feature", feature: "Auth", name: " " }],
+    ["update with a title over 80", { op: "update_feature", feature: "Auth", name: "a".repeat(81) }],
+    ["update with a title on two lines", { op: "update_feature", feature: "Auth", name: "A\nB" }],
+    ["update with a non-boolean done", { op: "update_feature", feature: "Auth", done: "true" }],
+    ["update with a null done", { op: "update_feature", feature: "Auth", done: null }],
+    ["update with a description", { op: "update_feature", feature: "Auth", description: "x" }],
+    ["update with an app version", { op: "update_feature", feature: "Auth", appVersion: "1.0" }],
+    ["delete without a feature", { op: "delete_feature" }],
+    ["delete with a feature on two lines", { op: "delete_feature", feature: "A\nB" }],
+    ["delete with an extra key", { op: "delete_feature", feature: "Auth", force: true }],
+  ]) assert.equal(normalizeOperation(operation), null, label);
+  assert.equal(normalizeOperation({ op: "delete_feature", feature: "Auth" }, { grantWrite: true }), null, "a grant write creates tasks only");
+  const proposal = { summary: "Tidy features", operations: [{ op: "update_feature", feature: "Auth", done: true }, { op: "delete_feature", feature: "Old" }] };
+  assert.deepEqual(extractProposal(`Tidy.\n${fence(proposal)}`).proposal, proposal);
+});
+
+test("update_feature posts the desktop feature_update by ID, for an open or a done feature", async () => {
+  const done = { id: "feat-2", name: "Shipped", done: true };
+  const fake = monitor();
+  const results = await apply([
+    { op: "update_feature", feature: "Auth", name: "Sign-in" },
+    { op: "update_feature", feature: "Auth", done: true },
+    { op: "update_feature", feature: "Shipped", done: false },
+  ], fake, boardOf({ features: [auth, done] }));
+  assert.deepEqual(results, Array(3).fill({ ok: true }));
+  // Marking done or reopening sends the feature action alone: no task is moved, unqueued, or deleted.
+  assert.deepEqual(fake.calls, [
+    { action: "feature_update", payload: { id: "feat-1", name: "Sign-in" } },
+    { action: "feature_update", payload: { id: "feat-1", done: true } },
+    { action: "feature_update", payload: { id: "feat-2", done: false } },
+  ]);
+});
+
+test("update_feature answers the monitor's conflict for a taken title, and not_found for an unknown feature without a request", async () => {
+  const taken = monitor(() => ({ ok: false, error: "conflict" }));
+  const billing = { id: "feat-2", name: "Billing", done: false };
+  assert.deepEqual(await apply([{ op: "update_feature", feature: "Auth", name: "Billing" }, { op: "delete_task", id: "T-4" }], taken, boardOf({ features: [auth, billing] })),
+    [{ ok: false, error: "conflict" }, { ok: false, error: "skipped" }]);
+  assert.deepEqual(taken.calls, [{ action: "feature_update", payload: { id: "feat-1", name: "Billing" } }]);
+  const missing = monitor();
+  assert.deepEqual(await apply([{ op: "update_feature", feature: "auth", done: true }], missing), [{ ok: false, error: "not_found" }]);
+  assert.equal(missing.calls.length, 0);
+});
+
+test("delete_feature deletes a feature with no task and refuses one that still has a task, a done one included", async () => {
+  const empty = { id: "feat-2", name: "Empty", done: false };
+  const fake = monitor();
+  assert.deepEqual(await apply([{ op: "delete_feature", feature: "Empty" }], fake, boardOf({ features: [auth, empty] })), [{ ok: true }]);
+  assert.deepEqual(fake.calls, [{ action: "feature_delete", payload: { id: "feat-2" } }]);
+  const held = monitor();
+  assert.deepEqual(await apply([{ op: "delete_feature", feature: "Auth" }], held), [{ ok: false, error: "conflict" }]);
+  const doneTask = boardOf({ features: [{ ...auth, done: true }], tasks: [{ id: "T-7", featureId: "feat-1", state: "done" }] });
+  assert.deepEqual(await apply([{ op: "delete_feature", feature: "Auth" }], held, doneTask), [{ ok: false, error: "conflict" }]);
+  assert.equal(held.calls.length, 0, "the desktop delete, which detaches tasks, is never sent for a feature with a task");
+  const missing = monitor();
+  assert.deepEqual(await apply([{ op: "delete_feature", feature: "Gone" }], missing), [{ ok: false, error: "not_found" }]);
+  assert.equal(missing.calls.length, 0);
 });
