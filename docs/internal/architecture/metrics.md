@@ -981,9 +981,11 @@ limits wherever totals or empty states are presented.
 A session's Touched here list also shows Git-observed files, marked with a Git glyph.
 A file is Git-observed when a commit on the session's recorded branch changed it and that
 commit's committer time falls inside one of the session's own finished Git commands: an
-execution task with work kind `git`, `git_push`, or `pull_request`, from its start
-(floored to the second, because a committer time has one-second resolution) to its
-finish. A file that only changed or was committed while the session was open is never
+execution task or tool call of any of the session's agents, subagents included, with work
+kind `git`, `git_push`, or `pull_request`, from its start (floored to the second, because
+a committer time has one-second resolution) to its finish. A tool call's finish is its
+start plus its recorded duration; tool calls keep the Git commands that fell out of an
+agent's 30 newest execution tasks. A file that only changed or was committed while the session was open is never
 listed, and neither is a file that merely became uncommitted. Commits are read only while
 the live branch matches the recorded branch. Paths that already have a recorded
 file-change row are not repeated. A listed path stays listed: a later amend or rebase that

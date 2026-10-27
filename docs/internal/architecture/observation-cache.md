@@ -3672,9 +3672,11 @@ one of the session's own finished Git commands. `readCommitsInWindow` (`git log
 --format="%H %cI" --name-status --no-renames --since --until HEAD` with
 `core.quotepath=false` and an argument array, 3 seconds, 256 KiB) still counts every commit
 in the session window, but keeps paths only for a commit matching one of the intervals
-`sessionGitCommandIntervals` derives from the session's normalized execution tasks (work
-kind `git`, `git_push`, or `pull_request`; start floored to the second; a running task has
-none). It is read only when the live branch equals the recorded branch. The list only
+`sessionGitCommandIntervals` derives from the session's normalized evidence: every agent's
+execution tasks, subagents included, and the finished tool calls, because an agent keeps
+only its 30 newest execution tasks (work kind `git`, `git_push`, or `pull_request`; start
+floored to the second; a tool call ends at its start plus its duration; a running task or
+call has none; overlapping intervals merge, newest 256 kept). It is read only when the live branch equals the recorded branch. The list only
 accumulates within one bound repository identity: a failed read carries it forward and a
 read that no longer matches a commit does not remove its paths. `sessionCommitChanges` is
 null, or one fixed `added`/`modified`/`deleted` per path, aligned index for index: `deleted`

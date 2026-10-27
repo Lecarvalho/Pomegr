@@ -202,7 +202,7 @@ test("the live enrichment lists commit paths only for commits made during the se
       unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
     });
     enrichment.setOnRepositoryCheck((_sessionId, live) => checks.push(live));
-    const evidence = { session: { cwd: root, recordedGitBranch: "main", startedAt: "2026-09-09T00:00:00.000Z" }, pullRequestCreations: [], executionTasks };
+    const evidence = { session: { cwd: root, recordedGitBranch: "main", startedAt: "2026-09-09T00:00:00.000Z" }, pullRequestCreations: [], agents: [{ id: "primary", executionTasks }], toolCalls: [] };
     let work;
     enrichment.liveEnrichment(sessionId, evidence, null, (scheduled) => { work = scheduled(); }).enqueue();
     await work;
@@ -225,6 +225,44 @@ test("the live enrichment lists commit paths only for commits made during the se
     const check = await checkFor(`claude:${label}`, executionTasks);
     assert.deepEqual([check.sessionCommitPaths, check.sessionCommitChanges], [[], []], label);
   }
+});
+
+test("the live enrichment lists a subagent's commit and a commit whose task left the capped task list, never another session's", async (context) => {
+  const root = await temporaryDirectory(context, "pomegr-session-agent-commits-");
+  execFileSync("git", ["-C", root, "init", "--initial-branch=main", "--quiet"], { stdio: ["ignore", "pipe", "pipe"], env: GIT_ENV });
+  await commitFile(root, "app/by-primary.ts", "2026-09-10T00:00:01Z");
+  await commitFile(root, "app/by-another-session.ts", "2026-09-10T03:00:00Z");
+  await commitFile(root, "app/by-subagent.ts", "2026-09-10T06:00:01Z");
+  const task = (id, workKind, startedAt, finishedAt) => ({ id, label: "task", kind: "shell", workKind, status: "completed", startedAt, finishedAt });
+  // The primary agent's commit ran early; the 30 newest tasks it kept all came after it.
+  const laterTasks = Array.from({ length: 30 }, (_, index) => task(`test-${index}`, "test", new Date(Date.UTC(2026, 8, 10, 1, index)).toISOString(), new Date(Date.UTC(2026, 8, 10, 1, index, 30)).toISOString()));
+  const evidence = {
+    session: { cwd: root, recordedGitBranch: "main", startedAt: "2026-09-09T00:00:00.000Z" },
+    pullRequestCreations: [],
+    agents: [
+      { id: "primary", executionTasks: laterTasks },
+      { id: "subagent-1", executionTasks: [task("commit", "git", "2026-09-10T06:00:00.600Z", "2026-09-10T06:00:02.000Z")] },
+    ],
+    toolCalls: [{ id: "call-commit", timestamp: "2026-09-10T00:00:00.700Z", actor: { id: "primary", label: "Primary agent" }, tool: "Shell", detail: "Command execution", workKind: "git", status: "completed", durationMs: 1_500 }],
+  };
+  const checks = [];
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async () => ({ available: true, branch: "main", files: [], isMain: true, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root }),
+    pullRequestReader: async () => ({ status: "unavailable", checkedAt: null, items: [] }),
+    now: () => Date.UTC(2026, 8, 11), cacheMs: 60_000, providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], commits: [] }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  enrichment.setOnRepositoryCheck((_sessionId, live) => checks.push(live));
+  let work;
+  // A Codex session reads the checkout its repository attribution binds.
+  const attribution = { state: "single", root, recordedBranch: "main", repositoryId: "repo-0123456789abcdef01234567" };
+  enrichment.liveEnrichment("codex:orchestrated", evidence, attribution, (scheduled) => { work = scheduled(); }).enqueue();
+  await work;
+  assert.equal(checks.length, 1);
+  assert.equal(checks[0].commitsInSession, 3, "every commit in the window still counts");
+  assert.deepEqual([checks[0].sessionCommitPaths, checks[0].sessionCommitChanges], [["app/by-primary.ts", "app/by-subagent.ts"], ["added", "added"]],
+    "the session's own commits list their paths; the commit another session made in between stays out");
 });
 
 test("the sidecar persists only commit times, keeps them across a restart, and upgrades a version-4 file on the next live check", async (context) => {

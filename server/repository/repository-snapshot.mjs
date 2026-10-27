@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { normalizedWorkKind, toolWorkKind } from "../normalize/work-kind.mjs";
 
 const CONTROL = /[\u0000-\u001f\u007f]/u;
 const RECORDED_PATH_DRIVE = /^[A-Za-z]:/u;
@@ -298,16 +299,41 @@ export function gitObservedFilesFromSnapshot(snapshot) {
   };
 }
 
-export function sessionGitCommandIntervals(executionTasks) {
+function gitCommandInterval(startedAt, finishedAt) {
+  if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) return null;
+  return [Math.floor(startedAt / 1_000) * 1_000, finishedAt];
+}
+
+/** The session's finished Git commands from normalized provider evidence, oldest to newest. */
+export function sessionGitCommandIntervals(evidence) {
   const intervals = [];
-  for (const task of Array.isArray(executionTasks) ? executionTasks : []) {
-    if (!GIT_COMMAND_WORK_KINDS.has(task?.workKind)) continue;
-    const startedAt = typeof task.startedAt === "string" ? Date.parse(task.startedAt) : Number.NaN;
-    const finishedAt = typeof task.finishedAt === "string" ? Date.parse(task.finishedAt) : Number.NaN;
-    if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) continue;
-    intervals.push([Math.floor(startedAt / 1_000) * 1_000, finishedAt]);
+  // Every agent's commands count: a subagent's commit is the session's.
+  for (const agent of Array.isArray(evidence?.agents) ? evidence.agents : []) {
+    for (const task of Array.isArray(agent?.executionTasks) ? agent.executionTasks : []) {
+      if (!GIT_COMMAND_WORK_KINDS.has(task?.workKind)) continue;
+      const startedAt = typeof task.startedAt === "string" ? Date.parse(task.startedAt) : Number.NaN;
+      const finishedAt = typeof task.finishedAt === "string" ? Date.parse(task.finishedAt) : Number.NaN;
+      const interval = gitCommandInterval(startedAt, finishedAt);
+      if (interval) intervals.push(interval);
+    }
   }
-  return intervals.slice(-MAX_GIT_COMMAND_INTERVALS);
+  // An agent keeps only its newest execution tasks; the longer tool-call feed still holds the earlier Git commands.
+  for (const call of Array.isArray(evidence?.toolCalls) ? evidence.toolCalls : []) {
+    if (!call || call.status === "running" || !Number.isSafeInteger(call.durationMs) || call.durationMs < 0) continue;
+    if (!GIT_COMMAND_WORK_KINDS.has(normalizedWorkKind(call.workKind, toolWorkKind(call.tool, { detail: call.detail })))) continue;
+    const startedAt = typeof call.timestamp === "string" ? Date.parse(call.timestamp) : Number.NaN;
+    const interval = gitCommandInterval(startedAt, startedAt + call.durationMs);
+    if (interval) intervals.push(interval);
+  }
+  // The same command can appear as a task and as a tool call: overlapping intervals merge.
+  intervals.sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  const merged = [];
+  for (const interval of intervals) {
+    const last = merged.at(-1);
+    if (last && interval[0] <= last[1]) last[1] = Math.max(last[1], interval[1]);
+    else merged.push(interval);
+  }
+  return merged.slice(-MAX_GIT_COMMAND_INTERVALS);
 }
 
 export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, sessionCommitPaths, sessionCommitChanges, commitTimes, checkedAt, repositoryId = null, previous = null, adoptsUnboundSidecar = false } = {}) {

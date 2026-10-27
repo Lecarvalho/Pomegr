@@ -115,25 +115,26 @@ test("nextSessionCommits bounds a maxed set of long paths so the record stays un
 
 test("sessionGitCommandIntervals keeps only finished git, git_push and pull_request tasks, with the start floored to its second", () => {
   const task = (workKind, startedAt, finishedAt) => ({ id: `${workKind}-${startedAt}`, label: "task", kind: "shell", workKind, status: "completed", startedAt, finishedAt });
-  assert.deepEqual(sessionGitCommandIntervals([
+  const tasks = (executionTasks) => ({ agents: [{ id: "primary", executionTasks }] });
+  assert.deepEqual(sessionGitCommandIntervals(tasks([
     task("git", "2026-09-20T11:00:01.750Z", "2026-09-20T11:00:05.250Z"),
     task("git_push", "2026-09-20T11:10:00.000Z", "2026-09-20T11:10:02.000Z"),
     task("pull_request", "2026-09-20T11:20:00.999Z", "2026-09-20T11:20:03.500Z"),
-  ]), [
+  ])), [
     [Date.parse("2026-09-20T11:00:01.000Z"), Date.parse("2026-09-20T11:00:05.250Z")],
     [Date.parse("2026-09-20T11:10:00.000Z"), Date.parse("2026-09-20T11:10:02.000Z")],
     [Date.parse("2026-09-20T11:20:00.000Z"), Date.parse("2026-09-20T11:20:03.500Z")],
   ], "[start floored to its second, finish], in epoch milliseconds");
 
-  assert.deepEqual(sessionGitCommandIntervals([
+  assert.deepEqual(sessionGitCommandIntervals(tasks([
     task("test", "2026-09-20T11:00:00.000Z", "2026-09-20T11:00:05.000Z"),
     task("shell", "2026-09-20T11:00:00.000Z", "2026-09-20T11:00:05.000Z"),
     task("write", "2026-09-20T11:00:00.000Z", "2026-09-20T11:00:05.000Z"),
     task(null, "2026-09-20T11:00:00.000Z", "2026-09-20T11:00:05.000Z"),
     task(undefined, "2026-09-20T11:00:00.000Z", "2026-09-20T11:00:05.000Z"),
-  ]), [], "any other work kind may not have created a commit");
+  ])), [], "any other work kind may not have created a commit");
 
-  assert.deepEqual(sessionGitCommandIntervals([
+  assert.deepEqual(sessionGitCommandIntervals(tasks([
     task("git", "2026-09-20T11:00:00.000Z", null),
     { workKind: "git", status: "running", startedAt: "2026-09-20T11:00:00.000Z" },
     task("git", "not a time", "2026-09-20T11:00:05.000Z"),
@@ -142,16 +143,48 @@ test("sessionGitCommandIntervals keeps only finished git, git_push and pull_requ
     task("git", "2026-09-20T11:00:05.000Z", "2026-09-20T11:00:00.000Z"),
     null,
     undefined,
-  ]), [], "a running task has no interval yet, and unusable or inverted times are skipped");
+  ])), [], "a running task has no interval yet, and unusable or inverted times are skipped");
 
   assert.deepEqual(sessionGitCommandIntervals(undefined), []);
   assert.deepEqual(sessionGitCommandIntervals(null), []);
   assert.deepEqual(sessionGitCommandIntervals("git"), []);
+  assert.deepEqual(sessionGitCommandIntervals({ agents: "git", toolCalls: "git" }), []);
+  assert.deepEqual(sessionGitCommandIntervals({ executionTasks: [task("git", "2026-09-20T11:00:00.000Z", "2026-09-20T11:00:05.000Z")] }), [], "provider evidence keeps execution tasks per agent only");
 
   const many = Array.from({ length: 300 }, (_, index) => task("git", new Date(Date.UTC(2026, 8, 20, 0, 0, index)).toISOString(), new Date(Date.UTC(2026, 8, 20, 0, 0, index, 500)).toISOString()));
-  const bounded = sessionGitCommandIntervals(many);
+  const bounded = sessionGitCommandIntervals(tasks(many));
   assert.equal(bounded.length, 256, "bounded");
   assert.deepEqual(bounded.at(-1), [Date.UTC(2026, 8, 20, 0, 0, 299), Date.UTC(2026, 8, 20, 0, 0, 299, 500)], "the newest commands are the ones kept");
+});
+
+test("sessionGitCommandIntervals reads every agent's tasks and the Git tool calls an agent's capped task list dropped", () => {
+  const task = (workKind, startedAt, finishedAt) => ({ id: `${workKind}-${startedAt}`, label: "task", kind: "shell", workKind, status: "completed", startedAt, finishedAt });
+  const call = (workKind, timestamp, durationMs, extra = {}) => ({ id: `call-${timestamp}`, timestamp, actor: { id: "primary", label: "Primary agent" }, tool: "Shell", detail: "Command execution", workKind, status: "completed", durationMs, ...extra });
+  const subagentCommit = [Date.parse("2026-09-20T12:00:00.000Z"), Date.parse("2026-09-20T12:00:04.000Z")];
+  assert.deepEqual(sessionGitCommandIntervals({ agents: [
+    { id: "primary", executionTasks: [task("test", "2026-09-20T11:00:00.000Z", "2026-09-20T11:00:05.000Z")] },
+    { id: "subagent-1", executionTasks: [task("git", "2026-09-20T12:00:00.250Z", "2026-09-20T12:00:04.000Z")] },
+  ] }), [subagentCommit], "a subagent's Git command is one of the session's");
+
+  assert.deepEqual(sessionGitCommandIntervals({ agents: [{ id: "primary", executionTasks: [] }], toolCalls: [
+    call("git", "2026-09-20T10:00:01.500Z", 2_000),
+    call("git_push", "2026-09-20T10:05:00.000Z", 6_000),
+    call("test", "2026-09-20T10:06:00.000Z", 6_000),
+    call("git", "2026-09-20T10:07:00.000Z", 6_000, { status: "running" }),
+    call("git", "2026-09-20T10:08:00.000Z", null),
+    call("git", "not a time", 1_000),
+  ] }), [
+    [Date.parse("2026-09-20T10:00:01.000Z"), Date.parse("2026-09-20T10:00:03.500Z")],
+    [Date.parse("2026-09-20T10:05:00.000Z"), Date.parse("2026-09-20T10:05:06.000Z")],
+  ], "a finished Git tool call spans its start, floored to the second, to its start plus its duration");
+
+  assert.deepEqual(sessionGitCommandIntervals({
+    agents: [{ id: "primary", executionTasks: [task("git", "2026-09-20T12:00:00.250Z", "2026-09-20T12:00:04.000Z")] }],
+    toolCalls: [call("git", "2026-09-20T12:00:00.600Z", 3_500), call("git", "2026-09-20T11:00:00.000Z", 1_000)],
+  }), [
+    [Date.parse("2026-09-20T11:00:00.000Z"), Date.parse("2026-09-20T11:00:01.000Z")],
+    [Date.parse("2026-09-20T12:00:00.000Z"), Date.parse("2026-09-20T12:00:04.100Z")],
+  ], "the same command as a task and a tool call is one interval, oldest to newest");
 });
 
 async function commitFixture(context) {
@@ -234,10 +267,10 @@ test("readCommitsInWindow lists paths only for commits made while one of the ses
 
   // A command's start is floored to its second by sessionGitCommandIntervals, because a committer time
   // has one-second resolution: a commit made in the second the command started still matches.
-  const intervals = sessionGitCommandIntervals([
+  const intervals = sessionGitCommandIntervals({ agents: [{ id: "primary", executionTasks: [
     { id: "commit", workKind: "git", status: "completed", startedAt: "2026-09-10T00:00:00.400Z", finishedAt: "2026-09-10T00:00:02.000Z" },
     { id: "test", workKind: "test", status: "completed", startedAt: "2026-09-14T23:59:00.000Z", finishedAt: "2026-09-15T00:01:00.000Z" },
-  ]);
+  ] }] });
   assert.deepEqual((await readCommitsInWindow(root, { ...window, commandIntervals: intervals })).paths, ["app/inside-one.ts"], "a non-Git task never attributes the commit made during it");
 });
 
