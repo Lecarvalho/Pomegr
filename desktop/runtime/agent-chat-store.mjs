@@ -136,6 +136,11 @@ function storedMessage(message) {
     stored.proposal = proposal;
   }
   if (message.proposalUnreadable === true) stored.proposalUnreadable = true;
+  // A grant follow-up is a fixed line Pomegr wrote from the task log, with no provider run: it never carries a proposal.
+  if (message.grantFollowUp !== undefined) {
+    if (message.grantFollowUp !== true || stored.proposal || stored.proposalUnreadable || message.followUp !== undefined || stored.status !== "complete") return null;
+    stored.grantFollowUp = true;
+  }
   // A follow-up may offer another board proposal, but never a session start or queue-state change.
   if (message.followUp !== undefined) {
     if (typeof message.followUp !== "string" || !PROPOSAL_ID.test(message.followUp)) return null;
@@ -152,7 +157,10 @@ export function normalizeConversation(value) {
     || !instant(value.createdAt) || !instant(value.updatedAt) || !Array.isArray(value.messages) || value.messages.length > MESSAGE_LIMIT) return null;
   const messages = value.messages.map(storedMessage);
   if (messages.some((message) => message === null) || new Set(messages.map((message) => message.id)).size !== messages.length) return null;
-  return { id: value.id, title: value.title, provider: value.provider, model: value.model, createdAt: value.createdAt, updatedAt: value.updatedAt, messages };
+  // `grant` names the grant whose follow-ups this conversation holds.
+  if (value.grant !== undefined && (!Number.isSafeInteger(value.grant) || value.grant < 1)) return null;
+  return { id: value.id, title: value.title, provider: value.provider, model: value.model, createdAt: value.createdAt, updatedAt: value.updatedAt, messages,
+    ...(value.grant === undefined ? {} : { grant: value.grant }) };
 }
 
 export function createAgentChatStore({ directory, filesystem = fs, now = () => new Date() } = {}) {
@@ -221,12 +229,12 @@ export function createAgentChatStore({ directory, filesystem = fs, now = () => n
       return (await load(repositoryId)).get(id) ?? null;
     },
     /** A new, empty conversation, kept in memory until its first save; `null` when the repository holds its limit. */
-    async create(repositoryId, { provider, model, title }) {
+    async create(repositoryId, { provider, model, title, grant }) {
       if (!valid(repositoryId)) return null;
       const conversations = await load(repositoryId);
       if (conversations.size >= CONVERSATION_LIMIT) return null;
       const at = now().toISOString();
-      const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, createdAt: at, updatedAt: at, messages: [] });
+      const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, createdAt: at, updatedAt: at, messages: [], ...(grant === undefined ? {} : { grant }) });
       if (conversation) conversations.set(conversation.id, conversation);
       return conversation;
     },

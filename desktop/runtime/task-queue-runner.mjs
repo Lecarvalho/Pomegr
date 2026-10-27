@@ -79,6 +79,15 @@ function stepsFrom(answer) {
   }).slice(0, MAX_STARTS);
 }
 
+const FOLLOW_UP_ENDS = new Set(["stopped", "expired", "tasks_used", "start_failed", "app_restart"]);
+function followUpsFrom(answer) {
+  if (!isPlainObject(answer) || answer.ok !== true || !Array.isArray(answer.batches)) return [];
+  return answer.batches.filter((batch) => isPlainObject(batch) && typeof batch.repositoryId === "string" && REPOSITORY_ID.test(batch.repositoryId)
+    && Number.isSafeInteger(batch.grant) && batch.grant > 0 && Number.isSafeInteger(batch.through) && batch.through >= 0
+    && typeof batch.followUps === "boolean" && Array.isArray(batch.items) && Number.isSafeInteger(batch.more)
+    && (batch.ended === null || FOLLOW_UP_ENDS.has(batch.ended))).slice(0, 16);
+}
+
 function pauseReason(status) {
   if (typeof status === "string" && SETTLED.has(status)) return null;
   return typeof status === "string" && PAUSE_REASONS.has(status) ? status : "start_failed";
@@ -200,6 +209,25 @@ export function createTaskQueueRunner(options = {}) {
     }
   }
 
+  // Each settled burst of grant entries becomes one chat follow-up, then the monitor moves its cursor past it. With
+  // follow-ups off, the burst is settled unwritten. A conversation that is answering asks again on the next tick.
+  async function followUpTick() {
+    if (disposed || typeof options.grantFollowUp !== "function") return;
+    let answer;
+    try { answer = await post("grant-follow-ups", {}); } catch { return; }
+    for (const { repositoryId, grant, through, followUps, items, more, ended } of followUpsFrom(answer)) {
+      if (disposed) return;
+      let message = null;
+      if (followUps) {
+        let written;
+        try { written = await options.grantFollowUp({ repositoryId, grant, items, more, ended }); } catch { written = null; }
+        if (disposed || written?.error === "busy") continue;
+        if (written?.ok === true) message = { conversationId: written.conversationId, messageId: written.messageId };
+      }
+      try { await post("grant-follow-up-ack", { repositoryId, grant, through, ended, message }); } catch { /* asked again on a later tick */ }
+    }
+  }
+
   // The worktrees of tasks marked done since the last pass. One the desktop could not remove stays listed.
   async function cleanup() {
     if (disposed || typeof starter.cleanWorktree !== "function") return;
@@ -221,6 +249,7 @@ export function createTaskQueueRunner(options = {}) {
       if (ticks === 0) await resetGrants();
       try { await tick(); } catch { /* a failed tick never ends the chain */ }
       try { await grantTick(); } catch { /* a failed tick never ends the chain */ }
+      try { await followUpTick(); } catch { /* a failed tick never ends the chain */ }
       ticks += 1;
       if (ticks % CLEANUP_EVERY_TICKS === 1) { try { await cleanup(); } catch { /* a failed pass never ends the chain */ } }
       arm();

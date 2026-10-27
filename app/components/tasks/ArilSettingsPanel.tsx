@@ -119,6 +119,8 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       {choice("Merge method", METHODS, draft.mergeMethod ?? "", (next) => change("mergeMethod", next as Settings["mergeMethod"] || null))}
       {choice("Merge mode", MODES, draft.mergeMode ?? "", (next) => change("mergeMode", next as Settings["mergeMode"] || null))}
       {choice("Delete branch after merge", BRANCHES, draft.deleteBranch === null ? "" : draft.deleteBranch ? "delete" : "keep", (next) => change("deleteBranch", next === "" ? null : next === "delete"))}
+      {toggle("Send follow-ups", draft.followUps, (next) => change("followUps", next))}
+      <p className="taskGatesCaption">After grant actions, Aril adds a short line to this chat and sends a notification.</p>
     </section>
     <section className="taskGatesPanel taskSchedulePanel">
       <h3 className="taskGatesHeading">Limits</h3>

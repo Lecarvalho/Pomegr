@@ -510,7 +510,7 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-images.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {
@@ -535,7 +535,7 @@ test("the chat's runtime files are a closed surface: no console, no shell, no ex
     assert.doesNotMatch(source, /\bprocess\.(?:exit|kill)|child\.kill\(\)\s*;\s*process/u, `${file} ends processes`);
     for (const specifier of [...source.matchAll(/(?:from\s+|import\s*\()\s*["']([^"']+)["']/gu)].map((match) => match[1])) {
       const allowed = specifier.startsWith("node:") || RUNTIME_FILES.some((name) => specifier === `./${name}`)
-        || ["./claude-auth.mjs", "./environment-policy.mjs", "./plugin-cli.mjs", "./task-worktree.mjs", "../../shared/local-auth.mjs", "../../shared/task-run-models.mjs", "../../shared/git-branch-name.mjs"].includes(specifier);
+        || ["./claude-auth.mjs", "./environment-policy.mjs", "./plugin-cli.mjs", "./task-worktree.mjs", "../../shared/local-auth.mjs", "../../shared/aril-follow-up.mjs", "../../shared/task-run-models.mjs", "../../shared/git-branch-name.mjs"].includes(specifier);
       assert.ok(allowed, `${file} imports ${specifier}`);
     }
   }

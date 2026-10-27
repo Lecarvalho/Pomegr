@@ -38,7 +38,7 @@ function AgentMessage({ message, tasks, imageUrls, resolving, startHere, heldSta
   onApply(proposalId: string): void;
   onDismiss(proposalId: string): void;
 }) {
-  return <article className="agentChatMessage isAgent" aria-label="Aril">
+  return <article className="agentChatMessage isAgent" aria-label="Aril" data-message-id={message.id}>
     <AgentHead caption={agentCaption(message)} />
     {message.text !== "" && <SafeMarkdown text={message.text} />}
     {message.status !== "complete" && <p className="agentChatMessageNote">{STATUS_NOTES[message.status]}</p>}
@@ -63,7 +63,7 @@ function Empty({ onSuggest }: { onSuggest(text: string): void }) {
  * it stays where they are and offers Jump to latest. The partial answer is not a live region of its own: the log
  * announces each stored message, and the activity line is a status.
  */
-export function AgentChatMessages({ state, conversation, turn, pendingMessage, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, startHere = false, heldStart, onSuggest, onApply, onDismiss }: {
+export function AgentChatMessages({ state, conversation, turn, pendingMessage, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, focusMessageId = null, startHere = false, heldStart, onSuggest, onApply, onDismiss }: {
   state: AgentChatLogState;
   conversation: AgentChatConversation | null;
   turn: AgentChatTurn | null;
@@ -76,6 +76,8 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, p
   resolving: string | null;
   /** Changing it brings the newest line back into view, as when the owner sends a message. */
   pinSignal?: number;
+  /** A follow-up that a notification opened: brought into view once it is drawn. */
+  focusMessageId?: string | null;
   /** True in the desktop window, where a proposed session start can be applied. */
   startHere?: boolean;
   /** The gates that hold a task's start now, as one line from the board's readings. */
@@ -103,6 +105,18 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, p
   useLayoutEffect(() => {
     if (pinned.current && log.current) log.current.scrollTop = log.current.scrollHeight;
   });
+
+  // A follow-up that a notification opened comes into view once, after the conversation starts at its newest line.
+  const focused = useRef<string | null>(null);
+  const focusShown = messages.some((message) => message.id === focusMessageId);
+  useLayoutEffect(() => {
+    if (focusMessageId === null) { focused.current = null; return; }
+    const element = log.current;
+    if (!focusShown || !element || focused.current === `${conversationId}/${focusMessageId}`) return;
+    focused.current = `${conversationId}/${focusMessageId}`;
+    element.querySelector<HTMLElement>(`[data-message-id="${focusMessageId}"]`)?.scrollIntoView?.({ block: "nearest" });
+    pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight <= PINNED_WITHIN;
+  }, [conversationId, focusMessageId, focusShown]);
 
   const onScroll = () => {
     const element = log.current;

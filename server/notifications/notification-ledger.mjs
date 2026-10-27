@@ -104,7 +104,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
       const baseline = !nextBaselines.has(group);
       for (const item of derived) {
         if (!item || typeof item.key !== "string" || !item.key || item.key.length > 160 || seen.has(item.key)
-          || typeof item.active !== "boolean" || !["claude", "codex", ...(rule.source === "releases" ? [null] : [])].includes(item.provider)
+          || typeof item.active !== "boolean" || !["claude", "codex", ...(rule.source === "releases" || rule.source === "arilFollowUps" ? [null] : [])].includes(item.provider)
           || !item.data || typeof item.data !== "object" || Array.isArray(item.data)) throw new TypeError("Invalid derived notification fact");
         seen.add(item.key);
         const key = `${group}\0${item.key}`;

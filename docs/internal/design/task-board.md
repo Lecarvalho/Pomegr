@@ -595,6 +595,7 @@ Each row below the tags shows only when it is set, in this order:
 - Five action switches carry the caption “Aril uses these only while a grant you start is active.”
 - The **Merge method** field is a `CommandSelect` with **Repository default**, **Squash**, **Merge commit**, and **Rebase**; paired read-only clients see its saved value as text.
 - **Merge mode** follows it: **Not set**, **Merge when green**, and **Auto-merge when green**. **Delete branch after merge** follows that: **Repository default**, **Delete**, and **Keep**. Both read as text on a read-only client.
+- **Send follow-ups** closes Actions: a switch, on by default, with the caption "After grant actions, Aril adds a short line to this chat and sends a notification." It reads On or Off on a read-only client.
 - The Grant section summarizes the saved start, review, and merge actions, hours, tasks, tasks at a time, and usage limit.
 - Missing limits, all allowed actions, or work rules show one muted readiness reason and no Start grant button.
 - A missing limit reads “Set Hours, Tasks, Tasks at a time, and Usage limit % first.”

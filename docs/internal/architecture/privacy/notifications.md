@@ -66,6 +66,8 @@ Behavior: [Observation cache](../observation-cache.md)
 - These settings live in private desktop settings.
 - One-hour quiet remains memory-only.
 - New news categories default off.
+- The `aril` category of grant follow-ups is on by default and is not stored; the Aril
+  `followUps` setting turns follow-ups off.
 - Only a trusted main-frame, fixed-key IPC handler can change these settings.
 - Browser/LAN clients cannot mutate these settings.
 - The desktop's committed-feed reader rejects HTTP redirects before it sends local
@@ -245,3 +247,14 @@ and account entitlement distinct.
   or control operation.
 
 Behavior: [Observation cache](../observation-cache.md)
+
+## Aril follow-ups
+
+Added on 2026-10-26 (task T-183).
+
+- `aril_follow_up` occurrences are committed only by `grant-follow-up-ack`, after desktop main wrote the follow-up into the chat or skipped it, and only while the repository's `followUps` setting is on.
+- Data is exactly `{ repositoryId, conversationId, messageId, items, more, ended }`. `items` holds at most eight `{ kind, task, provider }` task-log facts: a fixed follow-up kind, a task ID or null, and a provider ID only for a usage entry. `more` is a count of at most 1000, and `ended` is null or a fixed grant end reason.
+- The occurrence has provider null, category `aril`, severity `info`, priority 50, observed time, and the fixed `open_aril_chat` action. It never carries chat text, task text, a path, or a URL.
+- The native body and the tray description are rendered from those facts by the same fixed template as the chat line. The tray groups it as **Aril**.
+- The click opens only `/tasks?repository=<ID>&aril=<conversation ID>&message=<message ID>`, or `&aril=open`; the native allowlist accepts no other Tasks URL. The `aril` native category is on by default and has no switch of its own: the Aril `followUps` setting controls it.
+- The private evidence key is `<repository ID>:<grant ID>:<task-log position>`, with `:end` for an end with no entries.

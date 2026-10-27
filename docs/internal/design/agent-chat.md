@@ -127,6 +127,8 @@ The task board is in [Task board design](task-board.md).
 - Aril's message is full width with no fill.
 - Aril's message starts with a head line of the 12px/600 name and a muted data-font caption “provider · model”.
 - The caption reads “Claude Code · default model” when no model was chosen.
+- A grant follow-up is drawn as a message of Aril with the caption “Grant follow-up” instead of provider and model, and never draws a card (T-183).
+- A grant follow-up notification opens the panel in its repository, opens its conversation, and brings the follow-up into view.
 - The answer follows as Markdown.
 - An answer that did not complete ends with one muted line of fixed words.
 - Aril's follow-up after an applied or dismissed proposal is drawn as any message of Aril, with no message of the owner before it.

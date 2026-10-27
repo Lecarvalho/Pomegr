@@ -1,5 +1,5 @@
 import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
-import { serveArilActionRoute, serveArilRework, serveGrantRunner } from "./task-aril-routes.mjs";
+import { serveArilActionRoute, serveArilRework, serveGrantFollowUps, serveGrantRunner } from "./task-aril-routes.mjs";
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete",
@@ -20,6 +20,7 @@ const START_STATUS = Object.freeze({
 const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
 const QUEUE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const QUEUE_START_LIMIT = 16;
+const FOLLOW_UP_ACTIONS = Object.freeze(["grant-follow-ups", "grant-follow-up-ack"]);
 const GRANT_ACTIONS = Object.freeze(["grant-next", "grant-record", "grant-check", "grant-end", "grant-end-all", "grant-send-back", "grant-merge-attempt", "grant-merge-result", "grant-branch-result", "grant-write-tasks"]);
 // The removal of a done task's worktree: the desktop asks which wait, where a repository is, and reports one gone.
 const WORKTREE_ACTIONS = Object.freeze(["worktree-cleanups", "worktree-root", "worktree-cleaned"]);
@@ -347,9 +348,9 @@ function sessionOfRepository(resolveSession, sessionId, repositoryId) {
 }
 
 // `POST /internal/tasks/<action>`.
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveUsage = null, resolveCheckFacts = null, resolveOutcomeFacts = null, resolvePullRequestFacts = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSession = null, resolveSessionFacts = null, resolveGateFacts = null, resolveUsage = null, resolveCheckFacts = null, resolveOutcomeFacts = null, resolvePullRequestFacts = null, acceptArilFollowUp = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (action !== "aril-declare-rework" && !TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action)) {
+  if (action !== "aril-declare-rework" && !TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action) && !GRANT_ACTIONS.includes(action) && !FOLLOW_UP_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -380,6 +381,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     writeActionResult(response, 400, rejected("invalid"));
     return;
   }
+  if (FOLLOW_UP_ACTIONS.includes(action)) return serveGrantFollowUps({ request, response, taskStore, acceptArilFollowUp, action, body });
   if (action === "aril-declare-rework" || GRANT_ACTIONS.includes(action)) return action === "aril-declare-rework" ? serveArilRework({ request, response, taskStore, body }) : serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, action, body });
   if (action === "queue-next") {
     serveQueueNext({ response, taskStore, resolveGateFacts, body });

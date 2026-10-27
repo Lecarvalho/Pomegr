@@ -135,6 +135,18 @@ Every action writes one log entry. A refused action records its fixed reason.
 - **Log:** each Aril action, refusal, wake-up, and verdict, with time, task, and reason. Counts, states, task IDs, pull-request numbers, and fixed reasons only; no prompt, response, or code. Stored with the task board; shown in the desktop and on a paired device.
 - **Inbox (G13):** only what needs the owner: a task Aril refused to start and why, a task out of send-backs, a merge blocked by something only the owner can fix, a plan step that needs a decision.
 
+## Grant follow-ups (T-183)
+
+While a grant works, Aril sends the owner short follow-ups, so the owner need not ask what happened.
+
+- After grant task-log entries (`grant_start`, `grant_review`, `review_passed`, `review_failed`, `sent_back`, `grant_merge`, `grant_merge_auto`, `grant_merge_refused`, `grant_branch_deleted`, `grant_branch_delete_refused`, `grant_done` once it exists, `grant_usage_hold`, `grant_usage_resume`) and when the grant ends, Pomegr appends one Aril line to that repository's chat, in a `Grant follow-ups` conversation for each grant.
+- The line is a fixed template: one or two sentences with the task IDs, what happened, and what needs the owner or what is next. No provider runs: a turn that needs nothing ends without a provider call.
+- Entries that arrive close together are one follow-up: a merge, its branch delete, and the next start are one line.
+- The same line is one OS notification through the provider-notifications path, and a tray entry on a paired device. Its click opens that repository's chat at the follow-up; a session notification still opens its session.
+- The **Send follow-ups** switch (`followUps`, on by default) is in Aril settings.
+- A follow-up proposes, applies, and starts nothing, and is never an owner message.
+- Contracts: [Agent chat: Grant follow-ups](../architecture/agent-chat.md#grant-follow-ups), [Tasks: Grant follow-ups](../architecture/tasks.md#grant-follow-ups), and [Notification privacy](../architecture/privacy/notifications.md#aril-follow-ups).
+
 ## Boundary changes
 
 These change `AGENTS.md` and the owner pages, each in the phase that ships it:
@@ -188,3 +200,4 @@ Phases 1 to 3 add no authority.
 2026-10-25: phase 9d built: Aril treats its settings and memory as settled, and the desktop lists the workflow sources that changed after the oldest settled time. Next action: the other phase 9 slices.
 2026-10-25: phase 9c built: Aril sees the task worktrees that remain and proposes removing them, and the owner applies each removal in the desktop app. Next action: the other phase 9 slices; phase 8 still needs the owner.
 2026-10-25: phase 9 shipped (#336–#340 and this change). Next action: phase 8, the acceptance run, which needs the owner.
+2026-10-26: T-183 built grant follow-ups: a coalesced fixed line in the chat and one notification for each burst of grant entries and for the grant's end, behind the `followUps` setting. Next action: phase 8, the acceptance run, which needs the owner.

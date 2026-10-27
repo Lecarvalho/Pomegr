@@ -23,10 +23,13 @@ type Shared = {
 };
 
 type ChosenRun = { key: string; provider: AgentChatProvider; model: string | null };
+// A follow-up to open: its conversation and message. `nonce` changes for each opening, so the same link opens it again.
+type ChatFocus = { conversationId: string | null; messageId: string | null; nonce: number };
 
 /** One repository's chat. Mounted once for each repository (a `key`), so no conversation of one repository is shown under another. */
-function AgentChatBody({ repositoryId, availability, open, repositories, onRepositoryChange, onMinimize, onAnswering, onAnswered }: Shared & {
+function AgentChatBody({ repositoryId, availability, open, repositories, onRepositoryChange, onMinimize, onAnswering, onAnswered, focus }: Shared & {
   repositoryId: string;
+  focus: ChatFocus | null;
   availability: Exclude<AgentChatAvailability, "pending" | "absent">;
   onAnswering(answering: boolean): void;
   onAnswered(): void;
@@ -52,6 +55,16 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
   const { urls: imageUrls, remember } = useAgentChatImageUrls(repositoryId, view.conversation?.id ?? null, shownImages);
   const composer = useRef<AgentChatComposerHandle>(null);
   const wasAnswering = useRef(false);
+  const openConversation = view.open;
+
+  // A follow-up's link opens its conversation; the log then brings the follow-up into view.
+  const focusNonce = focus?.nonce ?? 0;
+  const focusConversation = focus?.conversationId ?? null;
+  const [shownNonce, setShownNonce] = useState(0);
+  if (shownNonce !== focusNonce) { setShownNonce(focusNonce); setHistoryOpen(false); }
+  useEffect(() => {
+    if (focusNonce !== 0 && focusConversation !== null) openConversation(focusConversation);
+  }, [focusNonce, focusConversation, openConversation]);
 
   useEffect(() => {
     onAnswering(answering);
@@ -118,7 +131,7 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
         ? <AgentChatHistory conversations={view.conversations} openId={view.openId} runningId={view.runningId}
           onOpen={(conversationId) => { view.open(conversationId); setHistoryOpen(false); }} onDelete={(conversationId) => { void view.remove(conversationId); }} />
         : <AgentChatMessages state={logState} conversation={view.conversation} turn={view.turn} pendingMessage={view.pendingMessage} pendingImages={view.pendingImages} imageUrls={imageUrls} tasks={board.tasks}
-          resolving={view.resolving} pinSignal={pin} startHere={availability === "desktop"} heldStart={heldStart} onSuggest={suggest} onApply={(proposalId) => { void apply(proposalId); }} onDismiss={(proposalId) => { void view.dismiss(proposalId); }} />}
+          resolving={view.resolving} pinSignal={pin} focusMessageId={focus !== null && focus.conversationId === view.openId ? focus.messageId : null} startHere={availability === "desktop"} heldStart={heldStart} onSuggest={suggest} onApply={(proposalId) => { void apply(proposalId); }} onDismiss={(proposalId) => { void view.dismiss(proposalId); }} />}
     </div>
     <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop}
       runOptions={runOptions} runValue={runSelectValue({ provider: run.provider, model: run.model, effort: null })}
@@ -145,7 +158,8 @@ function AgentChatWithoutRepository({ loading, onMinimize }: { loading: boolean;
   </>;
 }
 
-export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, onMinimize, onAnswering, onAnswered }: Shared & {
+export function AgentChatPanel({ id, panelRef, mounted, availability, repositoryId, repositoriesLoading, repositories, open, onRepositoryChange, onMinimize, onAnswering, onAnswered, focus = null }: Shared & {
+  focus?: ChatFocus | null;
   id: string;
   panelRef: Ref<HTMLElement>;
   /** The body is built on the first opening and kept, so a minimized panel keeps its draft and follows an answer. */
@@ -165,7 +179,7 @@ export function AgentChatPanel({ id, panelRef, mounted, availability, repository
   return <AgentChatPanelFrame id={id} panelRef={panelRef} open={open} onKeyDown={keyDown}>
     {mounted && (repositoryId !== null
       ? <AgentChatBody key={repositoryId} repositoryId={repositoryId} availability={availability} open={open} repositories={repositories}
-        onRepositoryChange={onRepositoryChange} onMinimize={onMinimize} onAnswering={onAnswering} onAnswered={onAnswered} />
+        onRepositoryChange={onRepositoryChange} onMinimize={onMinimize} onAnswering={onAnswering} onAnswered={onAnswered} focus={focus} />
       : <AgentChatWithoutRepository loading={repositoriesLoading} onMinimize={onMinimize} />)}
   </AgentChatPanelFrame>;
 }

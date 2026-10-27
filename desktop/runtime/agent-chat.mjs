@@ -1,4 +1,4 @@
-// Desktop main owns Aril's read-only runs, conversations, approved changes, grant writes, and direct rework records.
+// Desktop main owns Aril's read-only runs, conversations, approved changes, grant writes, grant follow-ups, and direct rework records.
 
 import { execFile as execFileChild, spawn as spawnChild } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -10,6 +10,8 @@ import path from "node:path";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
+import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
+import { chatTaskLog } from "./agent-chat-task-log.mjs";
 import { AGENT_CHAT_INSTRUCTIONS, composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 import { runChatTurn, validInstructionsFile } from "./agent-chat-runner.mjs";
@@ -37,7 +39,6 @@ const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
 const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"]);
-const TASK_LOG_KINDS = new Set(["started", "assigned", "review", "blocked", "requeued", "done", "stalled", "recovered", "checks_passed", "checks_failed", "merged", "review_started", "review_passed", "review_failed", "grant_start", "grant_review", "sent_back", "grant_merge", "grant_merge_refused", "grant_merge_auto", "grant_branch_deleted", "grant_branch_delete_refused", "grant_task_written", "rework", "grant_usage_hold", "grant_usage_resume"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
@@ -168,27 +169,7 @@ export function createAgentChat(options = {}) {
   }
 
   async function readTaskLog(repositoryId) {
-    try {
-      const answer = await postAction("log-read", repositoryId, { limit: 100 });
-      const log = answer?.log;
-      if (answer?.ok !== true || !isPlainObject(log) || !Array.isArray(log.entries)
-        || !isPlainObject(log.cursors) || !Number.isSafeInteger(log.cursors.aril) || log.cursors.aril < 0
-        || typeof log.more !== "boolean" || !Number.isSafeInteger(log.latestId) || log.latestId < 0) return null;
-      const entries = log.entries.flatMap((entry) => {
-        if (!isPlainObject(entry) || !Number.isSafeInteger(entry.id) || !TASK_LOG_KINDS.has(entry.kind)
-          || !Number.isSafeInteger(entry.at) || !Number.isFinite(new Date(entry.at).getTime())
-          || (entry.pullRequest !== null && !Number.isSafeInteger(entry.pullRequest))) return [];
-        const usageTransition = entry.kind === "grant_usage_hold" || entry.kind === "grant_usage_resume";
-        if (usageTransition) return entry.task === null && entry.pullRequest === null && (entry.reason === "claude" || entry.reason === "codex")
-          ? [{ id: entry.id, task: null, kind: entry.kind, at: entry.at, pullRequest: null, reason: entry.reason }] : [];
-        if (entry.kind === "rework" && typeof entry.task === "string" && /^#[1-9]\d*$/u.test(entry.task) && Number.isSafeInteger(Number(entry.task.slice(1))) && !Object.hasOwn(entry, "reason"))
-          return [{ id: entry.id, task: entry.task, kind: entry.kind, at: entry.at, pullRequest: entry.pullRequest }];
-        return typeof entry.task === "string" && /^T-\d+$/u.test(entry.task) && !Object.hasOwn(entry, "reason")
-          ? [{ id: entry.id, task: entry.task, kind: entry.kind, at: entry.at, pullRequest: entry.pullRequest }] : [];
-      });
-      const omitted = log.more && entries.length > 0 && Math.min(...entries.map((entry) => entry.id)) > log.cursors.aril + 1;
-      return { entries: entries.filter((entry) => entry.id > log.cursors.aril), omitted };
-    } catch { return null; }
+    try { return chatTaskLog(await postAction("log-read", repositoryId, { limit: 100 })); } catch { return null; }
   }
 
   // One memory-only capability per turn. Only this bridge knows the repository and desktop credential.
@@ -346,7 +327,7 @@ export function createAgentChat(options = {}) {
 
   async function lastCompletedAnswer(repositoryId) {
     const times = (await store.list(repositoryId)).flatMap((conversation) => conversation.messages)
-      .filter((message) => message.role === "agent" && message.status === "complete").map((message) => Date.parse(message.at));
+      .filter((message) => message.role === "agent" && message.status === "complete" && message.grantFollowUp !== true).map((message) => Date.parse(message.at));
     return times.length > 0 ? Math.max(...times) : null;
   }
 
@@ -586,6 +567,10 @@ export function createAgentChat(options = {}) {
     }
   }
 
+  // Internal grant action only: a fixed follow-up line in the grant's own conversation, asked again while it is answering.
+  const grantFollowUp = createGrantFollowUps({ store, now, provider: () => (executable("claude") || !executable("codex") ? "claude" : "codex"),
+    busy: (repositoryId, id) => Boolean(turnOf(repositoryId, id) || waitingOf(repositoryId, id) || (active?.reserved && active.repositoryId === repositoryId)) });
+
   async function list(payload) {
     if (!exactly(payload, ["repositoryId"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
     const conversations = await store.list(payload.repositoryId);
@@ -607,7 +592,7 @@ export function createAgentChat(options = {}) {
     const waiting = waitingOf(payload.repositoryId, conversation.id);
     const turn = turnOf(payload.repositoryId, conversation.id) ?? (waiting ? { conversationId: conversation.id, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, activity: "starting", text: "" } : null);
     return {
-      ok: true, conversation,
+      ok: true, conversation: Object.fromEntries(Object.entries(conversation).filter(([key]) => key !== "grant")),
       turn: turn ? { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, activity: turn.activity, text: visibleAnswer(turn.text) } : null,
     };
   }
@@ -776,6 +761,7 @@ export function createAgentChat(options = {}) {
     handle,
     image,
     grantWrite,
+    grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)),
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
     dispose() { disposed = true; followUps.clear(); try { active?.stop?.(); } catch { /* already gone */ } },
   });

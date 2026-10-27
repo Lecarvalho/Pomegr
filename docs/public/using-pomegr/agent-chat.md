@@ -19,6 +19,13 @@ grant that allows **Write tasks from plans**, Aril also creates tasks in **Ready
 plans you named, when the chat is free, without **Apply changes**. See
 [Aril grants](tasks.md#aril-grants) for the actions, the limits, and **Stop grant**.
 
+While a grant works, Aril writes short follow-ups into a **Grant follow-ups** conversation, so
+you need not ask what happened. Each one is one or two sentences: the task IDs, what the grant
+did, and what needs you, such as a refused merge. Actions close together are one follow-up. Each
+follow-up is also a notification; clicking it opens the chat at that follow-up. A follow-up is a
+fixed line that Pomegr writes from the task log: no model runs, and it proposes nothing. Turn
+them off with **Send follow-ups** in Aril settings.
+
 ## Before you start
 
 - **Use the desktop app or a paired device.** The **Aril** button shows in the Pomegr

@@ -27,6 +27,8 @@ test("Aril settings mirror phase 3a fields, nested shapes, numeric and text boun
   for (const mode of ["queue", "", "Direct", 1, false, undefined]) assert.equal(validSettings({ mergeMode: mode }), null, String(mode));
   for (const value of [null, true, false]) assert.deepEqual(validSettings({ deleteBranch: value }).settings, { deleteBranch: value });
   for (const value of ["true", 0, 1, "delete", undefined]) assert.equal(validSettings({ deleteBranch: value }), null, String(value));
+  for (const value of [true, false]) assert.deepEqual(validSettings({ followUps: value }).settings, { followUps: value });
+  for (const value of [null, "true", 0, undefined]) assert.equal(validSettings({ followUps: value }), null, String(value));
   assert.deepEqual(validSettings({ mergeMethod: "squash", mergeMode: "auto", deleteBranch: true }).settings, { mergeMethod: "squash", mergeMode: "auto", deleteBranch: true });
   for (const bad of [null, [], { pairedDevices: false }, { pairedDevices: true }, { other: 1 },
     { actions: { start: true } }, { actions: { ...actions, merge: 1 } }, { actions: { ...actions, pairedDevices: false } },

@@ -491,4 +491,9 @@ test("Aril actions use the real store; paired writes are denied by default and g
     assertFixedError(response, 400, "invalid");
   }
   assert.equal(store.readBoard(REPOSITORY_ID).aril.settings.pairedDevices, true);
+  // Follow-ups (T-183): on by default, switched off by the desktop, and on again by a paired device the owner allowed.
+  assert.equal((await setSettings({ followUps: false })).json.settings.followUps, false);
+  assert.equal((await action("aril_settings_set", REPOSITORY_ID, { settings: { followUps: true } }, { port, ...paired })).json.settings.followUps, true);
+  assertFixedError(await setSettings({ followUps: "off" }), 400, "invalid");
+  assert.equal(store.readBoard(REPOSITORY_ID).aril.settings.followUps, true);
 });

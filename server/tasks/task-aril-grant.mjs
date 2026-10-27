@@ -1,6 +1,7 @@
 import { isBranchName } from "../../shared/git-branch-name.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { setTaskAfter } from "./task-after.mjs";
+import { startGrantFollowUps } from "./task-aril-follow-ups.mjs";
 import { normalizeArilLimits, readAril } from "./task-aril-settings.mjs";
 import { readColumnRoles, readyColumnId, settleReadyColumn } from "./task-columns.mjs";
 import { readTaskGroups } from "./task-groups.mjs";
@@ -99,6 +100,7 @@ export function grantStart({ database, repositoryId, ensureRepository, now }, pa
     .run(repositoryId, at, at + limits.hours * 3600000, JSON.stringify(actions), JSON.stringify({ ...limits, plans }));
   const { id } = preparedStatement(database, "SELECT id FROM aril_grants WHERE repository_id = ? AND ended_at IS NULL").get(repositoryId);
   saveMeta(database, `grant_tasks:${repositoryId}`, JSON.stringify({ grantId: id, tasks: [], closed: [] }));
+  startGrantFollowUps(database, repositoryId);
   return { ok: true, grant: readGrant(database, repositoryId, at) };
 }
 export function grantStop({ database, repositoryId, now }, payload) {

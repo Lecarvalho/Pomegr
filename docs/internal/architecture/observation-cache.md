@@ -911,7 +911,7 @@ has only an opaque `id`, fixed `kind` (`needs_input`, `provider_incident`,
 `provider_recovery`, `usage_window_reset`, `usage_capacity_restored`,
   `usage_reset_available`, `usage_authentication_required`, `release_published`,
   `installation_update_available`, `model_announced`, `model_deprecated`,
-  `model_client_listed`), `category`, `severity`, `lifecycle`, bounded `priority`,
+  `model_client_listed`, `aril_follow_up`), `category`, `severity`, `lifecycle`, bounded `priority`,
 `occurredAt`, fixed `timeBasis`, `deliveryEligible`, fixed `action`, normalized
 `provider`, and narrow `data`. Needs input carries a validated normalized session ID
 and bounded catalog title; provider conditions carry a fixed health status only.
@@ -933,6 +933,9 @@ Their private comparison state holds only one version, channel, and original
 observation time per product, and the optional Claude Code excerpt. A baseline
 without an excerpt stays valid. The tray derives a **What's new** release page from
 the product and version; the occurrence never carries a URL.
+A grant follow-up (`aril_follow_up`) is committed only when desktop main acknowledges a
+grant's coalesced task-log entries; its facts and fixed chat route are listed in
+[Notification privacy](privacy/notifications.md#aril-follow-ups).
 [Release notifications](privacy/notifications.md#release-notifications) owns the
 excerpt and link rules. Initial observations establish baselines; only
 a newer version on the same channel emits. Equal versions, downgrades,

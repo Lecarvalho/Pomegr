@@ -13,7 +13,7 @@
 > 2026-10-13 (task T-86), and the follow-up after an answered proposal on the same day
 > (task T-95). Proposals of a change that Aril recommends by itself were added on
 > 2026-10-15 (task T-123). Follow-up proposals with owner approval were added on
-> 2026-10-17 (task T-120). A change that widens exposure changes the
+> 2026-10-17 (task T-120). Grant follow-ups were added on 2026-10-26 (task T-183). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -47,7 +47,8 @@ each only after the owner selects **Remove worktrees** on that proposal in the d
 send images with a message, and a proposal may put those images on a task (see
 [Images](#images)). After the owner applies or dismisses a proposal, Aril writes one
 follow-up about the outcome without another message of the owner (see
-[Follow-up](#follow-up)). The user guide is
+[Follow-up](#follow-up)). While a grant works, Pomegr also writes short grant follow-ups into
+the chat, with no provider run (see [Grant follow-ups](#grant-follow-ups)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -129,6 +130,21 @@ The prompt contains the normal instructions, board snapshot, settings, memory, w
 Only this run accepts a `create_task`-only proposal with `text`, optional `complete_when`, `own_condition`, and `runs_after`. Dependencies name existing board tasks or earlier tasks in the answer as `#1` through `#5`; no feature, column, queue, image, or provider run fields are accepted, even when empty. A malformed block, another operation, or an invalid dependency writes nothing and stores `proposalUnreadable`.
 
 Desktop sends `{ repositoryId, plan: plans[0], tasks }` to `grant-write-tasks`, mapping each operation to `{ text, completeWhen?, after? }`. The monitor rechecks grant authority and the cap and creates the batch in Ready. The conversation is titled `Grant: tasks from <first plan file name>`; its proposal is stored as `applied` with `appliedBy: "grant"`, summary `Applied by grant.`, and per-operation task IDs or a fixed refusal. This state records a settled grant attempt, even when refused; it offers no Apply and starts no follow-up. Owner chat turns keep their existing rules.
+
+### Grant follow-ups
+
+While a grant works, Pomegr tells the owner what it did without being asked. It writes one fixed line into the chat, with no provider run and no proposal.
+
+- The monitor answers `grant-follow-ups` with the latest grant's task-log entries of the kinds in `ARIL_FOLLOW_UP_LOG_KINDS` (`shared/aril-follow-up.mjs`): `grant_start`, `grant_review`, `review_passed`, `review_failed`, `sent_back`, `grant_merge`, `grant_merge_auto`, `grant_merge_refused`, `grant_branch_deleted`, `grant_branch_delete_refused`, `grant_done` once the task log records it, `grant_usage_hold`, and `grant_usage_resume` ([Tasks: Grant follow-ups](tasks.md#grant-follow-ups)).
+- Entries that arrive close together are one batch: a batch is ready 45 seconds after its newest entry, 3 minutes after its oldest, or at 50 entries. The grant's end is a batch of its own at once, or joins the entries still waiting.
+- The queue runner asks each tick. For each batch it calls the desktop-only `grantFollowUp({ repositoryId, grant, items, more, ended })`, then `grant-follow-up-ack` with the message it wrote, or `null`. A runner without a chat writer asks for nothing.
+- `grantFollowUp` builds the line with `arilFollowUpText`: one or two sentences with task IDs and fixed words, never task or provider text. The first sentence lists at most three entries and counts the rest. The second names the tasks that need the owner (a refused merge or branch delete, or a failed review that the burst did not send back), says the grant ended and why, says which provider's new starts wait for usage, or says `Nothing needs you yet.` The line is at most 200 characters.
+- The line goes to the grant's own conversation, titled `Grant follow-ups`, made at the first follow-up of each grant and found again by its stored `grant` ID. Its provider is Claude when Claude Code is installed, else Codex, so the owner can reply in it.
+- The message is `{ role: "agent", status: "complete", model: null, grantFollowUp: true }` with the line as `text`. It carries no proposal, `followUp`, or `proposalUnreadable`; the store refuses one that does. The panel captions it **Grant follow-up** instead of a provider and model.
+- A conversation that is answering, waits for a follow-up turn, or is being sent to answers `busy`, and the runner asks again on the next tick. A full conversation or repository answers `limit`; the runner then acknowledges the batch with no message, and the notification still goes out.
+- With `followUps` off, the runner writes nothing and acknowledges each batch with no message, and the monitor commits no notification.
+- After an acknowledged batch with `followUps` on, the monitor commits one `aril_follow_up` notification with the same facts, so its body is the same line ([Notification privacy](privacy/notifications.md#aril-follow-ups)). Clicking it opens `/tasks?repository=<ID>&aril=<conversation ID>&message=<message ID>`, or `&aril=open` when no message was written. The chat panel then opens in that repository, opens that conversation, and brings the message into view. A tray click inside the app does the same through the `pomegr:open-aril-chat` window event.
+- A grant follow-up is never a message of the owner and never an answer of Aril's provider run. It does not count as the last completed answer, so the task log since that answer still reaches the next turn. The next prompt shows it as a grant follow-up that Pomegr wrote from the task log.
 
 ### The provider run
 
@@ -890,6 +906,9 @@ Desktop main keeps one JSON file per conversation:
   holds image bytes or a path: the images are files of their own (see [Images](#images)).
 - An answer of Aril may hold `followUp`, the ID of the proposal it follows up (see
   [Follow-up](#follow-up)). Such an answer has no message of the owner before it.
+- A grant follow-up is an answer with `grantFollowUp: true` and no proposal (see
+  [Grant follow-ups](#grant-follow-ups)). Its conversation holds `grant`, the monitor's
+  grant ID, which a read never answers.
 - A write replaces the file whole, through a temporary file and a rename.
 - A file outside the contract, of another version, or over the size bound is never
   listed and never overwritten.
@@ -973,6 +992,10 @@ never a session's.
 - **Where it lives.** In the conversation files and the image files under the desktop
   data root, and in desktop main's memory. Not in the monitor, the task store, the observation store, a
   checkpoint, a report, a log, a notification, or diagnostics.
+- **Grant follow-ups.** A grant follow-up's line holds only task IDs, provider names, and
+  fixed words, built from task-log facts. Its notification carries those facts, the
+  repository ID, and the conversation and message IDs, never chat text
+  ([Notification privacy](privacy/notifications.md#aril-follow-ups)).
 - **Fixed instructions file.** Desktop main also writes `<desktop data root>/agent-chat-v1/instructions-<sha256>.md` for Claude; it contains only the fixed `AGENT_CHAT_INSTRUCTIONS`, with no owner, conversation, board, image, or credential data. Codex keeps the instructions first in stdin.
 - **Who gets it.** The trusted renderer through `pomegr:agent-chat`, and a paired device
   through `POST /api/agent-chat`. No GET serves it, except the one GET that answers a

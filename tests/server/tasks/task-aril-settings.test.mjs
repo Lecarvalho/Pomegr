@@ -11,7 +11,7 @@ const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
-  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
 });
 function setup(t) {
   const directory = mkdtempSync(path.join(process.cwd(), ".aril-test-"));
@@ -58,11 +58,24 @@ test("settings reject unknown keys and invalid whole fields without partial writ
   const { store, set } = setup(t);
   for (const settings of [null, [], 1, { unknown: true }, { actions: {} }, { actions: { ...defaults().actions, extra: false } },
     { limits: {} }, { limits: { hours: 1, starts: 1, concurrent: 1, sendBacks: 0, allowancePercent: 1 } },
-    { reviewer: {} }, { pairedDevices: 1 }, { pairedDevices: null }, { workRules: {} }]) invalid(set(settings));
+    { reviewer: {} }, { pairedDevices: 1 }, { pairedDevices: null }, { followUps: null }, { followUps: "false" }, { workRules: {} }]) invalid(set(settings));
   for (const key of Object.keys(defaults().actions)) for (const value of [null, 0, "true"]) invalid(set({ actions: { ...defaults().actions, [key]: value } }));
   for (const payload of [{}, { settings: {}, extra: 1 }, { settings: [], text: "no" }]) invalid(store.apply(REPO, "aril_settings_set", payload));
   invalid(set({ pairedDevices: true, workRules: [{ kind: "unknown", value: "bad" }] }));
   assert.deepEqual(store.readBoard(REPO).aril.settings, { ...defaults(), settledAt: null });
+});
+
+test("follow-ups default on, switch off, and old stored settings read as on (T-183)", (t) => {
+  const { store, directory, set } = setup(t);
+  assert.equal(store.readBoard(REPO).aril.settings.followUps, true);
+  assert.equal(set({ followUps: false }).settings.followUps, false);
+  assert.equal(store.readBoard(REPO).aril.settings.followUps, false);
+  const database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  try {
+    database.prepare("UPDATE aril_settings SET value = ? WHERE repository_id = ?")
+      .run(JSON.stringify(Object.fromEntries(Object.entries(defaults()).filter(([key]) => key !== "followUps"))), REPO);
+  } finally { database.close(); }
+  assert.equal(store.readBoard(REPO).aril.settings.followUps, true);
 });
 
 test("merge method accepts only the supported values and old stored settings read as repository default", (t) => {

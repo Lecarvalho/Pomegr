@@ -13,7 +13,7 @@ const defaults = (): ArilSettings => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
-  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
 });
 
 const ready = () => {
@@ -157,6 +157,21 @@ describe("Aril settings panel", () => {
       expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { mergeMethod: method } });
     }
   });
+  it("shows the follow-ups switch on by default and saves it off and on (T-183)", async () => {
+    await open();
+    const followUps = screen.getByRole("switch", { name: "Send follow-ups" });
+    expect(followUps).toBeChecked();
+    expect(screen.getByText("After grant actions, Aril adds a short line to this chat and sends a notification.")).toBeInTheDocument();
+    await userEvent.click(followUps);
+    await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { followUps: false } });
+    board.aril!.settings.followUps = false;
+    cleanup(); await open();
+    expect(screen.getByRole("switch", { name: "Send follow-ups" })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("switch", { name: "Send follow-ups" }));
+    await userEvent.click(save());
+    expect(taskAction).toHaveBeenLastCalledWith(board.repositoryId, "aril_settings_set", { settings: { followUps: true } });
+  });
   it("offers merge mode and branch deletion under Actions and saves each choice", async () => {
     await open();
     const dialog = screen.getByRole("dialog");
@@ -206,8 +221,8 @@ describe("Aril settings panel", () => {
     const dialog = screen.getByRole("dialog", { name: "Aril settings" });
     expect(dialog).toHaveClass("taskQueueSettingsScrim");
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
-    expect(within(dialog).getAllByRole("switch")).toHaveLength(7);
-    for (const control of within(dialog).getAllByRole("switch")) expect(control).not.toBeChecked();
+    expect(within(dialog).getAllByRole("switch")).toHaveLength(8);
+    for (const control of within(dialog).getAllByRole("switch")) expect((control as HTMLInputElement).checked).toBe(control === within(dialog).getByRole("switch", { name: "Send follow-ups" }));
     for (const label of ["Hours", "Tasks", "Tasks at a time", "Send-backs per task", "Usage limit %"]) {
       expect(screen.getByRole("combobox", { name: label })).toHaveTextContent("Not settled: Aril will ask");
     }

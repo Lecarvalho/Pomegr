@@ -57,7 +57,7 @@ const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: 80 },
-  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
 });
 
 test("grant writing routes keep exact payloads and fixed answers, and serve write steps", async (t) => {

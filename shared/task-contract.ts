@@ -100,6 +100,7 @@ export type ArilSettings = {
   workRules: ({ kind: "tag" | "text" | "feature" | "plan"; value: string } | { kind: "tasks"; value: string[] })[];
   reviewer: { provider: TaskProvider | null; model: string | null; differentFromBuilder: boolean };
   pairedDevices: boolean;
+  followUps: boolean; // while a grant works, a fixed follow-up line goes to the chat and a notification
 };
 export type ArilMemoryEntry = { id: number; text: string; createdAt: number; updatedAt: number };
 export type ArilGrant = {

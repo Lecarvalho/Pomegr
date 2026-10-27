@@ -7,7 +7,7 @@ import { useRepositoryInventory } from "../../repository-inventory-client";
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import { AgentChatLauncher } from "./AgentChatFrame";
 import { AgentChatPanel } from "./AgentChatPanel";
-import { chooseRepository, readStoredRepository, repositoryFromRoute, storeRepository } from "./agent-chat-presentation";
+import { AGENT_CHAT_OPEN_EVENT, agentChatLink, chooseRepository, readStoredRepository, repositoryFromRoute, storeRepository, type AgentChatLink } from "./agent-chat-presentation";
 
 /**
  * Aril, the Pomegr task-board agent: a launcher at the bottom right of the window and the chat panel it opens. It is
@@ -29,6 +29,9 @@ function AgentChatDockLive({ availability }: { availability: "desktop" | "paired
   const [answering, setAnswering] = useState(false);
   const [fresh, setFresh] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  // A follow-up's link waits here until its repository is listed, then opens the chat at it.
+  const [link, setLink] = useState<AgentChatLink | null>(() => (typeof window === "undefined" ? null : agentChatLink(window.location.pathname, window.location.search)));
+  const [focus, setFocus] = useState<(AgentChatLink & { nonce: number }) | null>(null);
   const launcher = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   const returnFocus = useRef(false);
@@ -56,6 +59,21 @@ function AgentChatDockLive({ availability }: { availability: "desktop" | "paired
 
   useEffect(() => { if (open && repositoryId !== null) storeRepository(repositoryId); }, [open, repositoryId]);
 
+  // A notification opens the chat at its follow-up: the link of the page that loaded, or one clicked inside the app.
+  useEffect(() => {
+    const onOpen = (event: Event) => { const detail = (event as CustomEvent<AgentChatLink>).detail; if (detail) setLink(detail); };
+    window.addEventListener(AGENT_CHAT_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(AGENT_CHAT_OPEN_EVENT, onOpen);
+  }, []);
+  if (link !== null && ids.includes(link.repositoryId)) {
+    setLink(null);
+    setSelected(link.repositoryId);
+    setEverOpened(true);
+    setOpen(true);
+    setFresh(false);
+    setFocus({ ...link, nonce: (focus?.nonce ?? 0) + 1 });
+  }
+
   // Opening moves focus to the message field, and minimizing returns it to the launcher. Nothing else moves focus, so an
   // answer that is being written never takes it.
   const hasRepository = repositoryId !== null;
@@ -81,6 +99,7 @@ function AgentChatDockLive({ availability }: { availability: "desktop" | "paired
     {!open && <AgentChatLauncher buttonRef={launcher} answering={answering} fresh={fresh} expanded={false} controls={panelId} onClick={openPanel} />}
     <AgentChatPanel id={panelId} panelRef={panel} open={open} mounted={everOpened} availability={availability} repositoryId={repositoryId}
       repositoriesLoading={loading && ids.length === 0} repositories={options} onRepositoryChange={chooseRepositoryByOwner} onMinimize={minimize}
+      focus={focus !== null && focus.repositoryId === repositoryId ? focus : null}
       onAnswering={setAnswering} onAnswered={onAnswered} />
   </div>;
 }
