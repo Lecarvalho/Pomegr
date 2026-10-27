@@ -239,6 +239,10 @@ test("preload exposes taskAction on the fixed channel and refuses bad calls loca
   // The follow-ups switch (T-183) crosses the preload allow-list as an ordinary Aril settings payload.
   assert.deepEqual(await exposed.taskAction(repositoryId, "aril_settings_set", { settings: { followUps: false } }), { ok: true });
   assert.deepEqual(invokes.at(-1), ["pomegr:task-action", repositoryId, "aril_settings_set", { settings: { followUps: false } }]);
+  // The Mark done switch crosses the bridge inside the settings payload, unchanged (T-182).
+  const settings = { actions: { start: false, review: true, sendBack: false, merge: true, writeTasks: false, markDone: true } };
+  assert.deepEqual(await exposed.taskAction(repositoryId, "aril_settings_set", { settings }), { ok: true });
+  assert.deepEqual(invokes.at(-1), ["pomegr:task-action", repositoryId, "aril_settings_set", { settings }]);
 });
 
 test("the follow-ups switch reaches the monitor unchanged and only ok comes back", async () => {
@@ -247,6 +251,14 @@ test("the follow-ups switch reaches the monitor unchanged and only ok comes back
   assert.deepEqual(await action.run(trusted, repositoryId, "aril_settings_set", { settings: { followUps: false } }), { ok: true });
   assert.equal(calls[0].url, `${origin}/internal/tasks/aril_settings_set`);
   assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload: { settings: { followUps: false } } });
+});
+
+test("aril_settings_set forwards the Mark done switch to the monitor unchanged (T-182)", async () => {
+  const { action, calls } = harness(() => json({ ok: true, settings: { private: "hidden" } }));
+  const payload = { settings: { actions: { start: true, review: true, sendBack: false, merge: true, writeTasks: false, markDone: true } } };
+  assert.deepEqual(await action.run(trusted, repositoryId, "aril_settings_set", payload), { ok: true });
+  assert.equal(calls[0].url, `${origin}/internal/tasks/aril_settings_set`);
+  assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload });
 });
 
 test("feature_update is a fixed action and its answer carries nothing from the monitor beyond ok", async () => {

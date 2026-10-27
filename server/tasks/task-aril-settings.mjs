@@ -16,7 +16,7 @@ export function ensureArilSettings(database) {
 }
 
 const defaults = () => ({
-  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
@@ -36,9 +36,11 @@ export function normalizeArilLimits(value) {
   for (const key of ["starts", "concurrent", "allowancePercent"]) delete limits[key];
   return { ...defaults().limits, ...limits };
 }
+// Actions saved before an action existed read it as off.
+export const normalizeArilActions = (value) => ({ ...defaults().actions, ...value });
 function currentSettings(value) {
   const saved = JSON.parse(value);
-  return { ...defaults(), ...saved, limits: normalizeArilLimits(saved.limits ?? {}) };
+  return { ...defaults(), ...saved, actions: normalizeArilActions(saved.actions ?? {}), limits: normalizeArilLimits(saved.limits ?? {}) };
 }
 
 function readSettings(database, repositoryId) {

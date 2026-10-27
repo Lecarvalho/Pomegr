@@ -9,7 +9,8 @@ import { TaskDialog } from "./TaskModalFrame";
 import { sendTaskAction, useTaskEditAvailability, type GrantActionResult } from "./task-desktop";
 import { timeOfDay } from "./task-schedule";
 
-const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send work back", merge: "Merge on green", writeTasks: "Write tasks from plans" };
+const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send work back", merge: "Merge on green", writeTasks: "Write tasks from plans",
+  markDone: "Mark done when acceptance passes" };
 const LIMITS = { hours: ["Hours", 1, 72], tasks: ["Tasks", 1, 100], tasksAtATime: ["Tasks at a time", 1, 10], sendBacks: ["Send-backs per task", 0, 10], usagePercent: ["Usage limit %", 1, 100] } as const;
 const KINDS = { tag: "Tag", text: "Text", feature: "Feature", tasks: "Tasks", plan: "Plan" };
 const UNSET = "Not settled: Aril will ask";

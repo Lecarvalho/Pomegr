@@ -172,9 +172,10 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - Settings and memory are stored and served in phase 3; they grant no action and have no automatic behavior.
 - Each ready repository board includes `aril: { settings, memory, grant }`; memory is oldest first, ordered by creation time then ID, and unavailable or denied boards omit owner content.
 - The served `aril.settings` also carries `settledAt`: the ISO time the settings row was last written (an applied settings change, or a task removed from a tasks rule), or null while no row exists. It is read-only, no action accepts it, and a settings answer omits it. Each memory entry already carries `createdAt` and `updatedAt`.
-- `actions` has boolean `start`, `review`, `sendBack`, `merge`, and `writeTasks`, all false by default.
+- `actions` has boolean `start`, `review`, `sendBack`, `merge`, `writeTasks`, and `markDone`, all false by default. Stored settings and grant snapshots without `markDone` read it as false (T-182).
 - `mergeMethod` is null by default (the repository default), or `squash`, `merge`, or `rebase`; old stored settings without this field read as null.
 - `mergeMode` is null (not settled), `direct`, or `auto`; `deleteBranch` is null (the repository's own GitHub setting decides, and Pomegr deletes nothing), `true`, or `false`. Old stored settings without either field read as null. The owner and Aril settle both after reading the repository's own rules and GitHub settings ([Agent chat: Prompt](agent-chat.md#prompt)).
+- The panel shows `markDone` as its own **Mark done when acceptance passes** switch under Actions; a paired device without permission reads it as On or Off.
 - The panel puts **Merge mode** (**Not set**, **Merge when green**, **Auto-merge when green**) and **Delete branch after merge** (**Repository default**, **Delete**, **Keep**) under Actions, next to **Merge method**. A paired device without permission reads them as text.
 - `followUps` is a boolean, true by default; old stored settings without it read as true. While it is on, Pomegr writes grant follow-ups into the chat and notifies ([Grant follow-ups](#grant-follow-ups)). Aril may propose it; a paired device with permission may change it. The panel shows it as **Send follow-ups** under Actions.
 - `limits` has nullable integers: `hours` 1–72, `tasks` 1–100, `tasksAtATime` 1–min(10, `TASK_GROUP_LIMIT`), `sendBacks` 0–10, and `usagePercent` 1–100; all default to null, meaning not settled yet, so Aril asks once and proposes the answer.
@@ -196,7 +197,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 ## Aril grants
 
-An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews, send failed work back within its send-back limit, merge eligible pull requests, and write tasks from the plans the grant names. Aril's read-only provider run may write those tasks through the fixed grant endpoint when the chat is free.
+An owner-started grant is scoped and time-bound authority for the desktop runner to start selected Ready tasks and their reviews, send failed work back within its send-back limit, merge eligible pull requests, write tasks from the plans the grant names, and mark merged tasks Done when their settled acceptance passes. Aril's read-only provider run may write those tasks through the fixed grant endpoint when the chat is free.
 
 - The Aril settings panel's first section, Grant, summarizes saved settings and requires hours, tasks, tasks at a time, usage percent, at least one of **Start tasks**, **Start reviews**, or **Merge on green**, and at least one work rule before offering **Start grant**; if **Send work back** is enabled, it also requires **Send-backs per task**, and if **Merge on green** is enabled, it also requires a **Merge mode** (“Choose how a grant merges first.”). Unsaved changes block starting.
 - **Start grant** first shows an in-panel confirmation with the end time; confirming sends `grant_start` with `{}`. **Stop grant** sends `grant_stop` with `{}` immediately, including on a paired device without edit permission.
@@ -223,7 +224,7 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - `grant_stop` accepts exactly `{}`, ends an active grant with `stopped`, and answers `{ ok: true }` even without an active grant; it never ends a session.
 - The desktop may start and stop grants; the monitor accepts a paired start only when stored `pairedDevices` is true, while a paired stop is always allowed.
 - The board's `aril.grant` is null before any grant, otherwise the latest grant's `{ startedAt, endsAt, startsUsed, actions, limits, active }`; ended grants also carry `endedAt` and `endReason`, with times in epoch milliseconds.
-- `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 task steps `{ repositoryId, taskId, kind: "send_back" | "review" | "start" | "merge" | "delete_branch" }` (the merge and delete steps add the fields below) or write steps described above across repositories, with send-backs first; it starts nothing and does not change queue behavior.
+- `grant-next` accepts `{}` and answers `{ ok: true, steps }`, at most 16 task steps `{ repositoryId, taskId, kind: "send_back" | "review" | "start" | "merge" | "delete_branch" | "mark_done" }` (the merge and delete steps add the fields below) or write steps described above across repositories, with send-backs first; it starts nothing and does not change queue behavior.
 - Review steps add exactly `run: { provider, model, effort }` only when the [reviewer rule](#review-sessions) changes the task's stored run.
 - Send-back selection runs before reviews and starts and requires `actions.sendBack`, a matching work rule, a task in `needs_review`, a latest verdict of `fail` since its latest entry into Review, and a send-back count below `limits.sendBacks`. It does not use a task slot.
 - A null `limits.sendBacks` offers no send-back; reaching the per-task limit leaves the task in Review for the owner.
@@ -251,7 +252,13 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - With `deleteBranch` `true`, `actions.merge`, and a task whose pull request was seen merged (`merged` or `grant_merge` since the grant started), `grant-next` offers one `delete_branch` step `{ repositoryId, taskId, pullRequest, branch }`. The pull-request facts must say the head branch is in the same repository (the monitor-private `isCrossRepository` check read) and name a valid branch that is not the pull request's base branch. `deleteBranch` false or null never offers it, and Pomegr never passes `--delete-branch`, because the local branch may be checked out in a task worktree.
 - Desktop main validates the branch name against Git ref rules, refuses the repository's default branch (or an unknown one), reads the owner and repository with `gh repo view --json nameWithOwner`, and runs `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>` with `execFile` and an argument array; `grant-check` runs before each command, and a stopped grant records nothing.
 - `POST /internal/tasks/grant-branch-result` accepts `{ repositoryId, taskId, outcome: "deleted" | "refused" }` with the desktop token once per task: it stores `meta` key `task_branch_delete:<repositoryId>:<taskId>` and appends `grant_branch_deleted` (“Branch deleted by Aril”) or `grant_branch_delete_refused` (“Branch delete refused”). It answers `not_eligible` before a merge was seen or after a result was recorded.
-- A merge leaves the task in Review; the owner uses **Mark done**.
+- A merge leaves the task in Review; the owner uses **Mark done**, unless the grant's Mark done rule below marks it Done.
+- **Mark done under a grant** (T-182, owner decision of 2026-10-26: acceptance settled with Aril is enough). With the grant's snapshotted `actions.markDone`, a task is marked Done only when all hold: a matching work rule (or the active grant's written-task marker) selects it; it is in `needs_review` with a linked builder session, so neither Blocked nor Stalled, and it has no owner block hold; the committed pull-request facts say its pull request is `merged`; with `actions.review` its latest verdict since entering Review passed, and without it no failing or running review stands; and Complete when holds at least one check and no `user_validated`, which stays the owner's. A task with no Complete when check has no acceptance Pomegr can verify, so it stays the owner's.
+- `grant-next` offers `{ repositoryId, taskId, kind: "mark_done" }` for such a task, at most once a minute per task (`meta` key `task_grant_done_offered:<repositoryId>:<taskId>` holds the last offer time); it uses no task slot, is never held for provider usage, and does not count as a new grant task.
+- `POST /internal/tasks/grant-done` accepts exactly `{ repositoryId, taskId }` with the desktop token and rejects paired requests. It checks the rule in one transaction, reads the builder session's checks fresh through the same read a session's own report uses (`readTaskCheckFacts`), then checks the rule again with that reading in a second transaction, where every Complete when check must pass: an unavailable check is no pass. A grant stopped or ended between the two answers `not_active`; any other failed condition answers `not_eligible`.
+- That transaction calls the owner's shared acceptance (`markTaskDone`: Done state and column, `done` event, outcome, worktree cleanup, queue release) and appends `grant_done`, which the desktop and app log readers label “Marked done by Aril under a grant”. The desktop runner posts each offered step once and records nothing itself.
+- With `actions.markDone`, a grant that used its tasks does not end for `tasks_used` while a task merged since the grant started is not Done and has at least one Complete when check and no `user_validated` check, until ten minutes after that merge. `expired` and a stop still end it at once.
+- The owner's **Mark done**, the merge rules, and the agent report tools are unchanged: a session's `complete_task` still sets Review, never Done.
 - Selection uses current settings work rules, with any matching rule sufficient: an exact tag from the leading tag run (the board parser with the settings' 40-character bound), a case-insensitive text substring, a matching feature ID, or a listed task ID; plan rules select no existing task, and no rules select only tasks written by the active grant.
 - Reviews require the grant's `review` switch, `needs_review`, a linked builder, no review dispatch (including an expired dispatch), no bound reviewer, and no verdict since the latest entry into Review; earlier verdicts do not exclude the task.
 - Starts require the grant's `start` switch, a Ready card in startable state with no linked session or live dispatch, and satisfied [order dependencies](#runs-after); selection follows Ready position then task number. Ready is the store's Ready column, as the queue reads it; a board without the fixed columns has none, so a grant starts nothing there.
@@ -478,7 +485,7 @@ task state.
 | Needs review | The agent reported complete; the report holds each checked condition's result and the optional attention line | Verification of a `complete_task` report |
 | Stalled | The bound session ended without a report | Observation of an established session end; it leaves when that session reports or is confirmed live again |
 | Blocked by agent | The agent called `block_task` with a reason | The agent |
-| Done | The owner accepted the task | The user's Mark done (`resolve_done`) or explicit card move to Done |
+| Done | The owner accepted the task | The user's Mark done (`resolve_done`) or explicit card move to Done, or an active grant's [Mark done rule](#aril-grants) |
 
 **No transient states.** Never show a state and then retract it. The state is decided
 at first observation of its evidence: Stalled is assigned only once the end of the
@@ -602,7 +609,7 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 | `POST /internal/tasks/feature-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action`, and no Next route proxies it | `{ repositoryId, payload: { id } }` in, exactly those keys; `{ ok: true, feature: { description, appVersion } }` out, each field re-bounded (2000 and 40 characters) or null; or one fixed error (`invalid` 400, `not_found` 404, `unavailable` 503). The only desktop path that answers a feature's description and app version |
 | `POST /api/agent/v1/tasks/bind` |
 | `review` | Its state becomes Needs review | Verification of a `complete_task` report |
-| `done` | Its state becomes Done | The user's Mark done (`resolve_done`) or explicit card move to Done |
+| `done` | Its state becomes Done | The user's Mark done (`resolve_done`) or explicit card move to Done, or an active grant's [Mark done rule](#aril-grants) |
 
 - **Roles are fixed.** In progress holds `in_progress`, Review holds `review`, and Done
   holds `done`, on every board. The `column_role` action is removed and is refused like
@@ -839,7 +846,7 @@ Queue and manual starts wait until each parent is Done or deleted; grants use th
   keeps its card place and holds nothing behind it: the queue starts the cards after it.
   Once every task it runs after is Done or deleted, it starts at its place by the
   [Queue](#queue) rule. The one ordering rule stays `orderQueue`.
-- **Done or deleted frees it.** Review is not enough. The owner's Mark done or explicit move to Done frees the task.
+- **Done or deleted frees it.** Review is not enough. The owner's Mark done or explicit move to Done frees the task, and so does an active grant's [Mark done rule](#aril-grants) (T-182); its dependents then start through the normal queue and grant rules.
 - **Under a grant only**, start selection and launch also accept a parent in Review whose latest verdict since entering Review passes. A recorded `task_log` event of `merged` or `grant_merge` for that parent also satisfies the dependency. Every parent must qualify; queue and manual starts still require Done or deletion.
 - A deleted task leaves every dependency list in the write that deletes it.
 - Dependency checks use the persisted task state, never its column name. Board order, wait reasons, and start eligibility use that state.
@@ -1534,7 +1541,7 @@ installed plugin from before the rename sends; a body with both names is `invali
 - **A completion sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
   rule that a report whose conditions all passed set Done). Whatever the results, with or
   without an attention line, the card goes to Review with each condition's result, and
-  only the owner sets Done, with Mark done (`resolve_done`) or an [explicit move to Done](#columns-and-card-moves). The agent can call
+  only the owner sets Done, with Mark done (`resolve_done`) or an [explicit move to Done](#columns-and-card-moves), or an active grant's [Mark done rule](#aril-grants) the owner allowed; a session never marks its own task Done. The agent can call
   `block_task` with a bounded reason; the state becomes Blocked by agent.
 - **Attention line** (GitHub issue #135, 2026-10-10). `complete_task` takes one optional
   input, `attention`: one line of at most 200 characters that names what in the finished

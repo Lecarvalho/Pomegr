@@ -5,7 +5,7 @@ import { normalizeOperation, normalizeProposal, applyOperations } from "../deskt
 import { AGENT_CHAT_INSTRUCTIONS, boardSnapshot, composePrompt, PROMPT_LIMIT, proposalOutcome } from "../desktop/runtime/agent-chat-prompt.mjs";
 import { chatHarness, seed, pendingProposal, withProposal, repositoryId, root, send } from "./helpers/agent-chat-harness.mjs";
 
-const actions = { start: false, review: true, sendBack: false, merge: false, writeTasks: false };
+const actions = { start: false, review: true, sendBack: false, merge: false, writeTasks: false, markDone: false };
 const limits = { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null };
 const reviewer = { provider: null, model: null, differentFromBuilder: false };
 const settings = { actions, mergeMethod: null, mergeMode: null, deleteBranch: null, limits, workRules: [], reviewer };
@@ -21,6 +21,7 @@ test("Aril settings mirror phase 3a fields, nested shapes, numeric and text boun
   for (const operation of operations) assert.deepEqual(normalizeOperation(operation), operation);
   for (const [key, value] of Object.entries(settings)) assert.deepEqual(validSettings({ [key]: value }), { op: "set_aril_settings", settings: { [key]: value } });
   assert.ok(validSettings({}));
+  assert.deepEqual(validSettings({ actions: { ...actions, markDone: true } }).settings, { actions: { ...actions, markDone: true } }, "Aril may propose the Mark done switch (T-182)");
   for (const method of [null, "squash", "merge", "rebase"]) assert.deepEqual(validSettings({ mergeMethod: method }).settings, { mergeMethod: method });
   for (const method of ["fast-forward", "", 1, false]) assert.equal(validSettings({ mergeMethod: method }), null);
   for (const mode of [null, "direct", "auto"]) assert.deepEqual(validSettings({ mergeMode: mode }).settings, { mergeMode: mode });
@@ -32,6 +33,7 @@ test("Aril settings mirror phase 3a fields, nested shapes, numeric and text boun
   assert.deepEqual(validSettings({ mergeMethod: "squash", mergeMode: "auto", deleteBranch: true }).settings, { mergeMethod: "squash", mergeMode: "auto", deleteBranch: true });
   for (const bad of [null, [], { pairedDevices: false }, { pairedDevices: true }, { other: 1 },
     { actions: { start: true } }, { actions: { ...actions, merge: 1 } }, { actions: { ...actions, pairedDevices: false } },
+    { actions: { ...actions, markDone: "yes" } }, { actions: Object.fromEntries(Object.entries(actions).filter(([key]) => key !== "markDone")) },
     { limits: { hours: 1 } }, { reviewer: { provider: null } }, { reviewer: { ...reviewer, provider: "other" } },
     { reviewer: { ...reviewer, differentFromBuilder: null } }, { reviewer: { ...reviewer, extra: 1 } },
     { reviewer: { ...reviewer, model: "x".repeat(121) } }, { reviewer: { ...reviewer, model: "bad/model" } }, { reviewer: { ...reviewer, model: "C:private" } },
@@ -180,4 +182,15 @@ test("a message reads the repository's GitHub settings once for its prompt, and 
 test("LAN composition marks chat calls paired without accepting a client origin flag", async () => {
   const shell = await readFile(new URL("../desktop/runtime/shell-main.mjs", import.meta.url), "utf8");
   assert.match(shell, /agentChat: \(operation, payload\) => agentChat.handle\(operation, payload, \{ paired: true \}\)/u);
+});
+
+test("a task becomes Done under a grant only through the Mark done rule (T-182)", () => {
+  assert.doesNotMatch(AGENT_CHAT_INSTRUCTIONS, /A merge never marks a task Done; the owner does that\./u);
+  assert.doesNotMatch(AGENT_CHAT_INSTRUCTIONS, /mark a task Done under a grant\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /A merge alone never marks a task Done\. Done happens under a grant only through the Mark done rule: with markDone on/u);
+  for (const condition of ["its pull request merged", "a fresh reading shows every Complete when check passed (an unavailable check is no pass)",
+    "its review passed when reviews are on", "Complete when does not hold user_validated (that stays the owner's)", "the task is not blocked or stalled"]) {
+    assert.ok(AGENT_CHAT_INSTRUCTIONS.includes(condition), condition);
+  }
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /grant_done \(Aril marked a task Done under a grant\)/u);
 });

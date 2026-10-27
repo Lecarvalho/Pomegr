@@ -5,7 +5,7 @@ import test from "node:test";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { REPOSITORY as REPO, passingGates, FACTS, createTask, queueTask, updateTask, withDatabase } from "./queue-test-support.mjs";
 
-const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false };
+const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false, markDone: false };
 const limits = { hours: 1, tasks: 4, tasksAtATime: 3, sendBacks: null, usagePercent: 80 };
 function setup(t) {
   const directory = mkdtempSync(path.join(process.cwd(), ".grant-test-"));
@@ -29,7 +29,7 @@ const step = (taskId, kind = "start", repositoryId = REPO) => ({ repositoryId, t
 const error = (answer, code) => assert.deepEqual(answer, { ok: false, error: code });
 
 const plan = "docs/plans/next.md";
-const writing = { actions: { ...actions, writeTasks: true }, workRules: [{ kind: "plan", value: plan }] };
+const writing = { actions: { ...actions, writeTasks: true, markDone: false }, workRules: [{ kind: "plan", value: plan }] };
 const write = (f, tasks = [{ text: "Written work" }], source = plan) => f.store.writeGrantTasks(REPO, { plan: source, tasks });
 const writeStep = { repositoryId: REPO, kind: "write_tasks", plans: [plan] };
 

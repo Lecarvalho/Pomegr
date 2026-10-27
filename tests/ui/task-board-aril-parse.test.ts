@@ -3,7 +3,7 @@ import { parseTaskBoard } from "../../app/tasks-store";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const settings = {
-  actions: { start: true, review: true, sendBack: false, merge: false, writeTasks: false },
+  actions: { start: true, review: true, sendBack: false, merge: false, writeTasks: false, markDone: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: 2, tasks: 2, tasksAtATime: 1, sendBacks: null, usagePercent: 80 },
   workRules: [{ kind: "tag", value: "pilot" }, { kind: "tasks", value: ["T-1", "T-2"] }],
@@ -27,5 +27,13 @@ describe("parseTaskBoard Aril settings", () => {
       expect(board).not.toBeNull();
       expect(board?.aril).toBeUndefined();
     }
+  });
+
+  it("keeps a Mark done switch in settings and the grant, and needs it as a boolean (T-182)", () => {
+    const actions = { ...settings.actions, markDone: true };
+    expect(parseTaskBoard(body({ settings: { ...settings, actions }, memory, grant: { ...grant, actions } }), repositoryId)?.aril?.grant?.actions.markDone).toBe(true);
+    const older = Object.fromEntries(Object.entries(settings.actions).filter(([key]) => key !== "markDone"));
+    for (const broken of [{ settings: { ...settings, actions: older }, memory }, { settings: { ...settings, actions: { ...settings.actions, markDone: "yes" } }, memory },
+      { settings, memory, grant: { ...grant, actions: older } }]) expect(parseTaskBoard(body(broken), repositoryId)?.aril).toBeUndefined();
   });
 });

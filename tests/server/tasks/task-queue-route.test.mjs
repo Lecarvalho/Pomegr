@@ -282,7 +282,7 @@ test("the route serves only the contract's four queue keys even when the store h
     version: 1, readiness: "ready", columns: [], features: [], tasks: [],
     aril: {
       settings: {
-        actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+        actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
         mergeMethod: null,
         limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
         workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,

@@ -285,7 +285,8 @@ characters, including the fixed instructions even when Claude receives them thro
    reviews, send-backs, merges, branch deletion, and tasks from named plans. They report
    current enabled actions and grant status from the snapshot, and outcomes from the task log.
    Aril cannot start, extend, or stop a grant, end or steer a session, or mark a task Done
-   under a grant.
+   itself: under a grant, a task becomes Done only through the
+   [Mark done rule](tasks.md#aril-grants), with the conditions listed there (T-182).
    The owner presses **Start grant** in the desktop app, or on a paired device when
    `pairedDevices` is true. Aril's own run remains read-only.
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the

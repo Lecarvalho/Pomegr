@@ -83,18 +83,18 @@ const runKnown = (run) => isPlainObject(run) && Object.keys(run).length === 3
   && ["claude", "codex"].includes(run.provider)
   && (run.model === null || modelKnown(run.model))
   && (run.effort === null || effortKnown(run.effort));
-export function serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, action, body }) {
+export async function serveGrantRunner({ request, response, taskStore, resolveGateFacts, resolveUsage, resolvePullRequestFacts, readCheckFacts = null, resolveOutcomeFacts = null, action, body }) {
   if (request.headers["x-pomegr-lan-gateway"] === "1") { json(response, 403, rejected("unavailable")); return; }
   const fields = action === "grant-next" ? [] : action === "grant-record" ? ["repositoryId", "taskId", "kind"]
     : action === "grant-write-tasks" ? ["repositoryId", "plan", "tasks"]
-    : action === "grant-send-back" ? ["repositoryId", "taskId"]
+    : action === "grant-send-back" || action === "grant-done" ? ["repositoryId", "taskId"]
     : action === "grant-merge-attempt" ? ["repositoryId", "taskId", "headOid"]
     : action === "grant-merge-result" ? ["repositoryId", "taskId", "headOid", "outcome"]
     : action === "grant-branch-result" ? ["repositoryId", "taskId", "outcome"]
     : action === "grant-end" ? ["repositoryId", "reason"] : action === "grant-end-all" ? ["reason"] : ["repositoryId"];
   if (!isPlainObject(body) || Object.keys(body).length !== fields.length || !fields.every((key) => Object.hasOwn(body, key))
     || (fields.includes("repositoryId") && (typeof body.repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(body.repositoryId)))
-    || (action === "grant-send-back" && (typeof body.taskId !== "string" || !TASK_ID_PATTERN.test(body.taskId)))
+    || ((action === "grant-send-back" || action === "grant-done") && (typeof body.taskId !== "string" || !TASK_ID_PATTERN.test(body.taskId)))
     || (fields.includes("headOid") && (typeof body.taskId !== "string" || !TASK_ID_PATTERN.test(body.taskId) || !headKnown(body.headOid)))
     || (action === "grant-branch-result" && (typeof body.taskId !== "string" || !TASK_ID_PATTERN.test(body.taskId) || !["deleted", "refused"].includes(body.outcome)))
     || (action === "grant-merge-result" && !["merged", "auto_enabled", "refused", "failed"].includes(body.outcome))
@@ -111,6 +111,7 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
       : action === "grant-merge-result" ? taskStore?.recordGrantMerge?.(body.repositoryId, { taskId: body.taskId, headOid: body.headOid, outcome: body.outcome })
       : action === "grant-branch-result" ? taskStore?.recordGrantBranchDelete?.(body.repositoryId, { taskId: body.taskId, outcome: body.outcome })
       : action === "grant-send-back" ? taskStore?.sendBackGrant?.(body.repositoryId, { taskId: body.taskId })
+      : action === "grant-done" ? await taskStore?.markGrantDone?.(body.repositoryId, { taskId: body.taskId }, { readCheckFacts, resolvePullRequestFacts, resolveOutcomeFacts })
       : action === "grant-record" ? taskStore?.recordGrant?.(body.repositoryId, { taskId: body.taskId, kind: body.kind })
         : action === "grant-check" ? taskStore?.checkGrant?.(body.repositoryId) : taskStore?.endGrant?.(body.repositoryId, { reason: body.reason });
     if (result?.ok !== true) {
@@ -123,7 +124,7 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
       const steps = result.steps.filter((entry) => isPlainObject(entry) && typeof entry.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(entry.repositoryId)
         && (!Object.hasOwn(entry, "run") || (entry.kind === "review" && runKnown(entry.run)))
         && (entry.kind === "write_tasks" ? Array.isArray(entry.plans) && entry.plans.length > 0 && entry.plans.every((plan) => typeof plan === "string")
-          : typeof entry.taskId === "string" && TASK_ID_PATTERN.test(entry.taskId) && ["start", "review", "send_back", "merge", "delete_branch"].includes(entry.kind))
+          : typeof entry.taskId === "string" && TASK_ID_PATTERN.test(entry.taskId) && ["start", "review", "send_back", "merge", "delete_branch", "mark_done"].includes(entry.kind))
         && (entry.kind !== "merge" || pullKnown(entry.pullRequest) && headKnown(entry.headOid) && methodKnown(entry.mergeMethod) && modeKnown(entry.mergeMode))
         && (entry.kind !== "delete_branch" || pullKnown(entry.pullRequest) && isBranchName(entry.branch)))
         .slice(0, 16).map(({ repositoryId, taskId, kind, plans, pullRequest, headOid, mergeMethod, mergeMode, branch, run }) => kind === "write_tasks" ? { repositoryId, kind, plans }

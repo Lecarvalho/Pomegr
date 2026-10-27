@@ -92,7 +92,7 @@ export type Task = {
 };
 
 export type ArilSettings = {
-  actions: { start: boolean; review: boolean; sendBack: boolean; merge: boolean; writeTasks: boolean };
+  actions: { start: boolean; review: boolean; sendBack: boolean; merge: boolean; writeTasks: boolean; markDone: boolean };
   mergeMethod: "squash" | "merge" | "rebase" | null;
   mergeMode: "direct" | "auto" | null; // null: not settled, a grant merges nothing
   deleteBranch: boolean | null; // null: the repository's own GitHub setting decides

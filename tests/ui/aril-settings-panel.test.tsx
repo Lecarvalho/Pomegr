@@ -10,7 +10,7 @@ const { refresh, access } = vi.hoisted(() => ({ refresh: vi.fn(async () => {}), 
 vi.mock("../../app/tasks-store", () => ({ useTasks: () => ({ refresh }) }));
 vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => access, clientAccessMode: () => access.mode }));
 const defaults = (): ArilSettings => ({
-  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
@@ -326,6 +326,14 @@ describe("Aril settings panel", () => {
     expect(screen.queryByRole("switch", { name: "Allow paired devices to change Aril settings and memory" })).toBeNull();
     await userEvent.click(screen.getByRole("switch", { name: "Merge on green" })); await userEvent.click(save());
     expect(fetcher).toHaveBeenCalledWith("/api/tasks/action", expect.objectContaining({ method: "POST", body: JSON.stringify({ repositoryId: board.repositoryId, action: "aril_settings_set", payload: { settings: { actions: { ...defaults().actions, merge: true } } } }) }));
+  });
+
+  it("shows Mark done as its own switch, off by default, and saves it with the other actions (T-182)", async () => {
+    await open();
+    const markDone = screen.getByRole("switch", { name: "Mark done when acceptance passes" });
+    expect(markDone).not.toBeChecked();
+    await userEvent.click(markDone); await userEvent.click(save());
+    expect(taskAction).toHaveBeenCalledWith(board.repositoryId, "aril_settings_set", { settings: { actions: { ...defaults().actions, markDone: true } } });
   });
 
   it("offers exactly the phase 3a limit bounds", async () => {

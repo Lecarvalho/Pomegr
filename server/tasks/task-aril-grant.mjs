@@ -2,16 +2,18 @@ import { isBranchName } from "../../shared/git-branch-name.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { setTaskAfter } from "./task-after.mjs";
 import { startGrantFollowUps } from "./task-aril-follow-ups.mjs";
-import { normalizeArilLimits, readAril } from "./task-aril-settings.mjs";
+import { normalizeArilActions, normalizeArilLimits, readAril } from "./task-aril-settings.mjs";
+import { readTaskBlockHolds } from "./task-block-holds.mjs";
+import { allChecksPassed, verifyChecks } from "./task-checks.mjs";
 import { readColumnRoles, readyColumnId, settleReadyColumn } from "./task-columns.mjs";
 import { readTaskGroups } from "./task-groups.mjs";
 import { startable } from "./task-dispatch.mjs";
 import { appendTaskLog } from "./task-log.mjs";
 import { readQueueSchedule, startGates } from "./task-queue-advance.mjs";
 import { queueWindowHold } from "./task-queue.mjs";
-import { isRepositoryId, isTaskId, projectBoard, taskIdFromNumber } from "./task-record.mjs";
+import { isRepositoryId, isTaskId, normalizeStoredTask, projectBoard, taskIdFromNumber } from "./task-record.mjs";
 import { fillTaskReviews } from "./task-review.mjs";
-import { resolveRequeue } from "./task-report.mjs";
+import { markTaskDone, resolveRequeue } from "./task-report.mjs";
 import { splitTaskTags } from "./task-tags.mjs";
 
 export function ensureArilGrants(database) {
@@ -72,13 +74,25 @@ function branchDeleteWaits(database, row, at) {
     .all(row.repository_id, row.started_at, at - 600000).some(({ number }) => metaValue(database, branchKey(row.repository_id, `T-${number}`)) === undefined);
 }
 
+// With Mark done allowed, a grant that used its tasks waits up to ten minutes after a merge for that task to be marked Done.
+function doneWaits(database, row, at) {
+  if (!normalizeArilActions(JSON.parse(row.actions)).markDone) return false;
+  return preparedStatement(database, `SELECT DISTINCT tasks.* FROM task_log JOIN tasks ON tasks.repository_id = task_log.repository_id AND tasks.number = task_log.number
+    WHERE task_log.repository_id = ? AND task_log.kind IN ('merged', 'grant_merge') AND task_log.at >= ? AND task_log.at > ? AND tasks.state <> 'done'`)
+    .all(row.repository_id, row.started_at, at - 600000).some((task) => {
+      const checks = normalizeStoredTask(task)?.completeWhen.checks ?? [];
+      return checks.length > 0 && !checks.includes("user_validated");
+    });
+}
+
 // Every caller owns a transaction: an observed limit and its terminal reason commit together.
 export function readGrant(database, repositoryId, at, resolvePullRequestFacts) {
   const row = preparedStatement(database, "SELECT * FROM aril_grants WHERE repository_id = ? ORDER BY id DESC LIMIT 1").get(repositoryId);
   if (!row) return null;
-  const actions = JSON.parse(row.actions), limits = normalizeArilLimits(JSON.parse(row.limits));
+  const actions = normalizeArilActions(JSON.parse(row.actions)), limits = normalizeArilLimits(JSON.parse(row.limits));
   delete limits.plans;
-  if (row.ended_at === null && (at >= row.ends_at || (row.starts_used >= limits.tasks && grantTasks(database, row, resolvePullRequestFacts).open.length === 0 && !branchDeleteWaits(database, row, at)))) {
+  if (row.ended_at === null && (at >= row.ends_at || (row.starts_used >= limits.tasks && grantTasks(database, row, resolvePullRequestFacts).open.length === 0
+    && !branchDeleteWaits(database, row, at) && !doneWaits(database, row, at)))) {
     row.end_reason = at >= row.ends_at ? "expired" : "tasks_used";
     row.ended_at = at;
     end(database, repositoryId, at, row.end_reason);
@@ -226,6 +240,51 @@ function recordGrantBranchDelete({ database, transaction, repositoryId, payload,
   });
 }
 
+// A task the owner's settled acceptance covers: merged, reviewed when reviews are on, at least one Complete when check and no
+// owner validation, no owner hold. A task with no check has no acceptance Pomegr can verify. The checks are read fresh when it is marked.
+const doneOfferedKey = (repositoryId, taskId) => `task_grant_done_offered:${repositoryId}:${taskId}`;
+function doneFor(database, repositoryId, grant, task, settings, resolvePullRequestFacts) {
+  if (!grant.actions.markDone || task?.state !== "needs_review" || !selected(task, settings.workRules, database, repositoryId)
+    || (grant.actions.review ? task.review?.state !== "passed" : task.review !== null && task.review?.state !== "passed")
+    || task.completeWhen.checks.length === 0 || task.completeWhen.checks.includes("user_validated") || task.session === null || readTaskBlockHolds(database, repositoryId).has(task.id)) return null;
+  let facts;
+  try { facts = resolvePullRequestFacts?.(task.session.id, task.id); } catch { return null; }
+  return facts?.state === "merged" ? { sessionId: task.session.id } : null;
+}
+
+function grantDoneTask({ database, loadRows, repositoryId, taskId, resolvePullRequestFacts, at }) {
+  const grant = readGrant(database, repositoryId, at);
+  if (!grant?.active) return { error: "not_active" };
+  const board = projectBoard(repositoryId, loadRows(repositoryId), { at });
+  const task = board && fillTaskReviews(database, board).tasks.find((task) => task.id === taskId);
+  const done = doneFor(database, repositoryId, grant, task, readAril(database, repositoryId).settings, resolvePullRequestFacts);
+  return done ? { task, sessionId: done.sessionId } : { error: "not_eligible" };
+}
+
+function grantDoneSession({ database, transaction, loadRows, repositoryId, payload, resolvePullRequestFacts, now }) {
+  if (!isRepositoryId(repositoryId) || !exact(payload, ["taskId"]) || !isTaskId(payload.taskId)) return invalid();
+  return transaction(() => {
+    const found = grantDoneTask({ database, loadRows, repositoryId, taskId: payload.taskId, resolvePullRequestFacts, at: now() });
+    return found.error ? { ok: false, error: found.error } : { ok: true, sessionId: found.sessionId };
+  });
+}
+
+// Every Complete when check must pass on the fresh reading; an unavailable one is no pass.
+function recordGrantDone({ database, transaction, loadRows, repositoryId, payload, sessionId, facts, resolvePullRequestFacts, resolveOutcomeFacts, now }) {
+  return transaction(() => {
+    const at = now();
+    const found = grantDoneTask({ database, loadRows, repositoryId, taskId: payload.taskId, resolvePullRequestFacts, at });
+    if (found.error) return { ok: false, error: found.error };
+    const results = verifyChecks(found.task.completeWhen.checks, facts);
+    if (found.sessionId !== sessionId || results.length === 0 || !allChecksPassed(results)) return { ok: false, error: "not_eligible" };
+    const number = Number(payload.taskId.slice(2));
+    markTaskDone({ database, repositoryId, now, resolveOutcomeFacts }, number);
+    preparedStatement(database, "DELETE FROM meta WHERE key = ?").run(doneOfferedKey(repositoryId, payload.taskId));
+    appendTaskLog(database, repositoryId, number, "grant_done", at);
+    return { ok: true };
+  });
+}
+
 function writeGrantTasks({ database, transaction, repositoryId, payload, now, createTask }) {
   if (!isRepositoryId(repositoryId) || !exact(payload, ["plan", "tasks"])
     || typeof payload.plan !== "string" || !Array.isArray(payload.tasks) || payload.tasks.length < 1 || payload.tasks.length > 5) return { ok: false, error: "invalid" };
@@ -306,6 +365,9 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, res
         if (merge) steps.push({ repositoryId, taskId: task.id, kind: "merge", ...merge });
         const remove = steps.length < 16 && branchDeleteFor(database, repositoryId, grant, task, settings, resolvePullRequestFacts);
         if (remove) steps.push({ repositoryId, taskId: task.id, kind: "delete_branch", ...remove });
+        // A mark-done reads the task's checks fresh, so a task still waiting on them is offered again after a minute.
+        if (steps.length < 16 && doneFor(database, repositoryId, grant, task, settings, resolvePullRequestFacts)
+          && at - Number(metaValue(database, doneOfferedKey(repositoryId, task.id)) ?? 0) >= 60000) steps.push({ repositoryId, taskId: task.id, kind: "mark_done" });
       }
       let available = Math.min(grant.limits.tasksAtATime - ledger.open.length, grant.limits.tasks - grant.startsUsed);
       const ready = readyColumnId(database, repositoryId);
@@ -354,6 +416,7 @@ function nextGrantSteps({ database, transaction, loadRows, resolveGateFacts, res
         }
       }
     }
+    for (const step of offeredSteps.filter((step) => step.kind === "mark_done")) saveMeta(database, doneOfferedKey(step.repositoryId, step.taskId), String(at));
     for (const step of offeredSteps.filter((step) => step.kind === "write_tasks")) {
       const { id: grantId } = preparedStatement(database, "SELECT id FROM aril_grants WHERE repository_id = ? AND ended_at IS NULL").get(step.repositoryId);
       preparedStatement(database, "INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
@@ -409,6 +472,14 @@ function endAllGrants({ database, transaction, payload, now }) {
   });
 }
 export const grantOperations = (dispatch, loadRows, now, createTask) => ({
+  // The fresh check reading runs between the two transactions; the second one checks every condition again.
+  markGrantDone: async (repositoryId, payload, { readCheckFacts = null, resolvePullRequestFacts = null, resolveOutcomeFacts = null } = {}) => {
+    const found = dispatch(grantDoneSession, { loadRows, repositoryId, payload, resolvePullRequestFacts, now });
+    if (found.ok !== true) return found;
+    let facts = null;
+    try { facts = typeof readCheckFacts === "function" ? await readCheckFacts(found.sessionId) : null; } catch { facts = null; }
+    return dispatch(recordGrantDone, { loadRows, repositoryId, payload, sessionId: found.sessionId, facts, resolvePullRequestFacts, resolveOutcomeFacts, now });
+  },
   writeGrantTasks: (repositoryId, payload) => dispatch(writeGrantTasks, { repositoryId, payload, now, createTask }),
   attemptGrantMerge: (repositoryId, payload, resolvePullRequestFacts = null) => dispatch(attemptGrantMerge, { loadRows, repositoryId, payload, resolvePullRequestFacts, now }),
   recordGrantMerge: (repositoryId, payload) => dispatch(recordGrantMerge, { repositoryId, payload, now }),
