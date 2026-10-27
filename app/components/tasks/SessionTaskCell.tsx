@@ -38,6 +38,7 @@ function TaskEntry({ task, omitFeature, assigned = false }: { task: SessionTaskR
         <span className="commandVisuallyHidden">GitHub issue #{issue}</span>
       </span>}
       {chip && <span className={`commandChip ${chip.tone}`}>{chip.label}</span>}
+      {task.role === "review" && <span className="commandSessionTaskFeature">Review</span>}
       {assigned && <span className="commandSessionTaskFeature">Assigned</span>}
     </span>
     {placed && <span className="commandSessionTaskFeature">{task.feature}</span>}
@@ -54,7 +55,7 @@ export function SessionTaskCell({ task, assigned: listed, omitFeature = false }:
 }) {
   // A directory row is not validated field by field, so only a well-formed reference is drawn.
   const assigned = (Array.isArray(listed) ? listed : []).filter((entry) => entry !== null && typeof entry === "object" && typeof entry.id === "string" && typeof entry.repositoryId === "string").slice(0, ASSIGNED_SHOWN);
-  if (!task && assigned.length === 0) return <span title="Not started from a task and not assigned to one">—</span>;
+  if (!task && assigned.length === 0) return <span title="Not started from a task, reviewing one, or assigned to one">—</span>;
   // One assigned task and no started one reads like a started task, marked Assigned; more read as one line of IDs.
   const sole = !task && assigned.length === 1 ? assigned[0] : null;
   return <div className="commandSessionTask">
@@ -68,5 +69,5 @@ export function SessionTaskCell({ task, assigned: listed, omitFeature = false }:
 }
 
 export function SessionTaskNote() {
-  return <p className="commandUnavailableNote commandSessionTaskNote">Task shows the task a session was started for, and the tasks it is assigned to. A dash means neither. While the session works on the task, State is the only status. A task chip appears only for an outcome the session cannot show: Needs review, Stalled, or Done.</p>;
+  return <p className="commandUnavailableNote commandSessionTaskNote">Task shows the task a session was started for or reviewed (marked Review), and the tasks it is assigned to. A dash means none. While the session works on the task, State is the only status. A task chip appears only for an outcome the session cannot show: Needs review, Stalled, or Done.</p>;
 }

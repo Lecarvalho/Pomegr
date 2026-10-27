@@ -189,9 +189,19 @@ describe("SessionTaskCell with assigned tasks", () => {
     expect(screen.queryByRole("link", { name: /T-9/ })).not.toBeInTheDocument();
   });
 
+  // T-188: a reviewer session shows the task it reviewed, marked Review, in the started task's form.
+  it("marks a reviewer session's task with the muted word Review", () => {
+    const { container } = render(<SessionTaskCell task={{ ...ref("T-12", "done"), role: "review" }} />);
+    expect(screen.getByRole("link", { name: "Open task T-12 on its board" })).toHaveAttribute("href", `/tasks?repository=${repositoryId}`);
+    expect(container.querySelector(".commandChip")).toHaveTextContent("Done");
+    expect(container.querySelector(".commandSessionTaskFeature")).toHaveTextContent(/^Review$/);
+    render(<SessionTaskCell task={ref("T-14")} />);
+    expect(screen.getAllByText("Review")).toHaveLength(1);
+  });
+
   it("titles the dash for a session that is neither started from a task nor assigned", () => {
     render(<SessionTaskCell task={null} assigned={[]} />);
-    expect(screen.getByTitle("Not started from a task and not assigned to one")).toHaveTextContent("—");
+    expect(screen.getByTitle("Not started from a task, reviewing one, or assigned to one")).toHaveTextContent("—");
     expect(document.querySelector(".commandSessionTask")).toBeNull();
   });
 });

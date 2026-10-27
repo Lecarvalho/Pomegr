@@ -36,7 +36,7 @@ test("dispatch creates exactly one host PTY with validated arguments and the own
   assert.equal(calls.length, 1);
 });
 
-function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, taskSession = sessionId, reviewSession = reviewerId, sessionForProcess } = {}) {
+function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, taskSession = sessionId, reviewSession = reviewerId, reviewSessions, sessionForProcess } = {}) {
   const calls = [];
   const client = {
     listHosts: async () => [], ensureHost: async () => {}, list: async () => sessions,
@@ -50,7 +50,7 @@ function fixture({ sessions = [{ key, exited: false }], clientOverrides = {}, ta
       if (url.endsWith("/internal/tasks/review-session")) {
         assert.equal(options.method, "POST");
         assert.deepEqual(JSON.parse(options.body), { repositoryId, payload: { id: "T-3" } });
-        return json({ ok: true, sessionId: reviewSession });
+        return json({ ok: true, sessionId: reviewSession, ...(reviewSessions ? { sessionIds: reviewSessions } : {}) });
       }
       return json({ readiness: "ready", repositoryId, tasks: [{ id: "T-3", session: taskSession ? { id: taskSession } : null, text: "private" }] });
     },
@@ -91,6 +91,29 @@ test("unbound roles never borrow the other role's identity and ambiguous reviews
   const f = fixture({ sessions: [{ key: reviewKey }, { key: reviewKey.replace(/b{32}$/, "c".repeat(32)) }] });
   assert.ok((await f.controller.run(f.event, "list")).sessions.every((row) => row.sessionId === null));
   f.controller.dispose();
+});
+
+// T-188: the monitor keeps every reviewer of a task, so ended review keys still resolve after the review leaves Review.
+test("ended review keys pair with the kept reviewers in creation order; live overlapping keys stay unbound", async () => {
+  const second = reviewKey.replace(/b{32}$/, "c".repeat(32));
+  const earlier = "codex:reviewer-earlier";
+  const rows = async (options) => {
+    const f = fixture(options);
+    const listed = (await f.controller.run(f.event, "list")).sessions.map((row) => row.sessionId);
+    f.controller.dispose();
+    return listed;
+  };
+  const ended = [{ key: reviewKey, exited: true }, { key: second, exited: true }];
+  assert.deepEqual(await rows({ sessions: ended, reviewSession: null, reviewSessions: [earlier, reviewerId] }), [earlier, reviewerId]);
+  assert.deepEqual(await rows({ sessions: ended, reviewSessions: [earlier, reviewerId] }), [earlier, reviewerId]);
+  // The live key takes the current reviewer; the ended key takes the one left.
+  assert.deepEqual(await rows({ sessions: [{ key: reviewKey, exited: true }, { key: second, exited: false }], reviewSessions: [earlier, reviewerId] }), [earlier, reviewerId]);
+  assert.deepEqual(await rows({ sessions: [{ key: reviewKey }, { key: second }], reviewSessions: [earlier, reviewerId] }), [null, null]);
+  // A count that does not match, or a value that is not a session ID, pairs nothing.
+  assert.deepEqual(await rows({ sessions: ended, reviewSession: null, reviewSessions: [reviewerId] }), [null, null]);
+  assert.deepEqual(await rows({ sessions: ended, reviewSession: null, reviewSessions: [earlier, "C:/private"] }), [null, null]);
+  // A builder identity is never claimed by a review key.
+  assert.deepEqual(await rows({ sessions: [{ key, exited: false }, { key: reviewKey, exited: true }], reviewSession: null, reviewSessions: [sessionId] }), [sessionId, null]);
 });
 
 test("review key validation rejects malformed task identities and nonces for listing and attach", async () => {

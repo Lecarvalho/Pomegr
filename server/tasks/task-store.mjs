@@ -21,7 +21,7 @@ import { ensureScorecardSnapshots, readScorecardSnapshot } from "./task-scorecar
 import { ackTaskLog, ensureTaskLog, readTaskLog } from "./task-log.mjs";
 import { declareArilTaskRework, declareTaskRework, ensureTaskRework, fillTaskRework, removeTaskRework } from "./task-rework.mjs";
 import { deleteTaskBlockHold } from "./task-block-holds.mjs";
-import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionTaskReferences } from "./task-session-link.mjs";
+import { featureSessionGroups, featureSessions, sessionAssignedReferences, sessionReviewReferences, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import { deleteTaskPullRequestSeen, logPullRequests } from "./task-pull-request-log.mjs";
 import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs";
@@ -778,6 +778,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const featureLinks = () => link(featureSessionGroups, {});
   const reportChecks = (sessionId, taskId) => link(reportableChecks, { sessionId, taskId });
   const sessionAssigned = (sessionIds) => link(sessionAssignedReferences, { sessionIds });
+  const sessionReviews = (sessionIds) => link(sessionReviewReferences, { sessionIds });
   const feature = (repositoryId, reference) => link(readFeature, { repositoryId, feature: reference });
   // A task's images (task-images.mjs): the bytes are files beside the database, the list is in `meta`.
   const image = (operation, repositoryId, payload) => {
@@ -796,5 +797,5 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
   const declareArilRework = (repositoryId, payload) => dispatch(({ database, transaction }) => transaction(() => declareArilTaskRework({ database, repositoryId, now }, payload)), {});
   return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...followUpOperations(dispatch, now), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, bindStart, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
-    addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, sessionReviews, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

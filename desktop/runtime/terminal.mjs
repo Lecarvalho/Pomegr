@@ -63,7 +63,10 @@ export function createTerminalController(options = {}) {
         body: JSON.stringify({ repositoryId, payload: { id: taskId } }),
       });
       const answer = await response.json();
-      return response.ok && answer?.ok === true ? answer.sessionId : null;
+      if (!response.ok || answer?.ok !== true) return null;
+      const valid = (value) => typeof value === "string" && SESSION.test(value);
+      return { sessionId: valid(answer.sessionId) ? answer.sessionId : null,
+        sessionIds: Array.isArray(answer.sessionIds) ? answer.sessionIds.filter(valid) : [] };
     } catch { return null; }
   }
 
@@ -118,9 +121,28 @@ export function createTerminalController(options = {}) {
         const taskRows = [...records.values()].filter((row) => row.repositoryId === id && row.taskId === task.id && row.role === role && (seen.has(row.key) || row.state === "exited"));
         const live = taskRows.filter((row) => row.state !== "exited");
         const candidates = live.length ? live : taskRows;
+        if (role === "review") {
+          const unresolved = taskRows.filter((row) => !row.sessionId);
+          const linked = unresolved.length ? await readReviewSession(id, task.id) : null;
+          if (!linked) continue;
+          const claimed = new Set([...records.values()].map((row) => row.sessionId).filter(Boolean));
+          // The current (or latest) reviewer belongs to the one candidate key.
+          if (candidates.length === 1 && !candidates[0].sessionId && linked.sessionId && !claimed.has(linked.sessionId)) {
+            candidates[0].sessionId = linked.sessionId;
+            claimed.add(linked.sessionId);
+          }
+          // The store keeps every reviewer in link order, and one host lists ended reviews in creation order,
+          // so the remaining keys pair with the unclaimed reviewers. Live keys that could overlap stay unbound.
+          const rest = unresolved.filter((row) => !row.sessionId);
+          const open = linked.sessionIds.filter((value) => !claimed.has(value));
+          if (rest.length > 0 && open.length === rest.length && (rest.length === 1
+            || rest.every((row) => row.state === "exited" && row.connection === rest[0].connection))) {
+            rest.forEach((row, index) => { row.sessionId = open[index]; });
+          }
+          continue;
+        }
         if (candidates.length !== 1 || candidates[0].sessionId) continue;
-        const linked = role === "review" ? await readReviewSession(id, task.id) : task.session?.id;
-        // More than one key cannot be reconstructed from a store that keeps only the current link.
+        const linked = task.session?.id;
         if (typeof linked === "string" && SESSION.test(linked)) candidates[0].sessionId = linked;
       }
     }

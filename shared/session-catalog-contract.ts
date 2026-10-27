@@ -32,12 +32,14 @@ export type SessionTaskReference = {
   featureId: string | null;
   feature: string | null;
   issue?: number | null;
+  // Present only on a reviewer session: the task it reviewed.
+  role?: "review";
 };
 
 // Whether directory rows carry `task`.
 export type SessionDirectoryTaskReadiness = "ready" | "desktop_only" | "unavailable";
 
-// `task` is the task the session was started for. `assignedTasks` lists the tasks it is assigned to, and is absent when none.
+// `task` is the task the session was started for, or reviewed (`role: "review"`). `assignedTasks` lists the tasks it is assigned to, and is absent when none.
 export type WithSessionTask<Row> = Row & { task?: SessionTaskReference | null; assignedTasks?: SessionTaskReference[] };
 
 export type SessionDirectoryTaskFields<Row> = {

@@ -24,6 +24,20 @@ export function ensureTaskReviews(database) {
     id INTEGER PRIMARY KEY AUTOINCREMENT, repository_id TEXT NOT NULL, number INTEGER NOT NULL,
     session_id TEXT NOT NULL, at INTEGER NOT NULL, verdict TEXT NOT NULL, reasons TEXT
   )`);
+  // Every reviewer session a task has had, kept until the task is deleted; `task_reviewer` stays the current review.
+  database.exec(`CREATE TABLE IF NOT EXISTS task_reviewers (
+    repository_id TEXT NOT NULL, number INTEGER NOT NULL, session_id TEXT NOT NULL, at INTEGER NOT NULL,
+    PRIMARY KEY (repository_id, number, session_id)
+  )`);
+  database.exec("CREATE INDEX IF NOT EXISTS task_reviewers_session ON task_reviewers (session_id)");
+  // Reviewers linked before this table existed: those that reported, then the current links.
+  const table = (name) => database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+  if (!table("tasks") || !table("meta")) return;
+  database.exec(`INSERT OR IGNORE INTO task_reviewers (repository_id, number, session_id, at)
+    SELECT repository_id, number, session_id, MIN(at) FROM task_reviews GROUP BY repository_id, number, session_id`);
+  preparedStatement(database, `INSERT OR IGNORE INTO task_reviewers (repository_id, number, session_id, at)
+    SELECT tasks.repository_id, tasks.number, meta.value, ? FROM tasks JOIN meta
+    ON meta.key = 'task_reviewer:' || tasks.repository_id || ':T-' || tasks.number`).run(Date.now());
 }
 
 const dispatchKey = (repositoryId, number) => `task_review_dispatch:${repositoryId}:T-${number}`;
@@ -40,8 +54,15 @@ function reviewSession({ database, repositoryId, payload }) {
   if (!shaped(payload, ["id"]) || !isRepositoryId(repositoryId) || !isTaskId(payload.id)) return { ok: false, error: "invalid" };
   const number = Number(payload.id.slice(2));
   if (!rowOf(database, repositoryId, number)) return { ok: false, error: "not_found" };
-  const sessionId = valueOf(database, reviewerKey(repositoryId, number));
-  return { ok: true, sessionId: isTaskSessionId(sessionId) ? sessionId : null };
+  const current = valueOf(database, reviewerKey(repositoryId, number));
+  // Every reviewer the task has had, in link order, so an ended review still resolves.
+  const sessionIds = taskReviewerSessions(database, repositoryId, number);
+  return { ok: true, sessionId: isTaskSessionId(current) ? current : sessionIds.at(-1) ?? null, sessionIds };
+}
+
+function taskReviewerSessions(database, repositoryId, number) {
+  return preparedStatement(database, "SELECT session_id FROM task_reviewers WHERE repository_id = ? AND number = ? ORDER BY at, rowid")
+    .all(repositoryId, number).map((row) => row.session_id).filter(isTaskSessionId);
 }
 
 function planReview({ database, transaction, repositoryId, payload, resolveFacts, now }) {
@@ -111,8 +132,12 @@ function linkReview(database, match, sessionId, at) {
   if (!match || match.state !== "needs_review"
     || preparedStatement(database, "SELECT 1 FROM tasks WHERE session_id = ?").get(sessionId)
     || preparedStatement(database, "SELECT 1 FROM meta WHERE key GLOB 'task_reviewer:*' AND key != ? AND value = ?")
-      .get(reviewerKey(match.repository_id, match.number), sessionId)) return { ok: false, error: "not_found" };
+      .get(reviewerKey(match.repository_id, match.number), sessionId)
+    || preparedStatement(database, "SELECT 1 FROM task_reviewers WHERE session_id = ? AND NOT (repository_id = ? AND number = ?)")
+      .get(sessionId, match.repository_id, match.number)) return { ok: false, error: "not_found" };
   writeMeta(database, reviewerKey(match.repository_id, match.number), sessionId);
+  preparedStatement(database, "INSERT OR IGNORE INTO task_reviewers (repository_id, number, session_id, at) VALUES (?, ?, ?, ?)")
+    .run(match.repository_id, match.number, sessionId, at);
   preparedStatement(database, "DELETE FROM meta WHERE key = ?").run(dispatchKey(match.repository_id, match.number));
   appendTaskLog(database, match.repository_id, match.number, "review_started", at);
   return { ok: true };
@@ -166,6 +191,7 @@ export function deleteTaskReviews(database, repositoryId, number) {
   clearTaskReviewer(database, repositoryId, number);
   preparedStatement(database, "DELETE FROM meta WHERE key = ?").run(`task_send_back:${repositoryId}:T-${number}`);
   preparedStatement(database, "DELETE FROM task_reviews WHERE repository_id = ? AND number = ?").run(repositoryId, number);
+  preparedStatement(database, "DELETE FROM task_reviewers WHERE repository_id = ? AND number = ?").run(repositoryId, number);
 }
 
 export function taskReviewOutcome(database, repositoryId, number) {

@@ -730,6 +730,7 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 - The ID stays the one prominent identifier.
 - Assistive technology reads “GitHub issue #128”.
 - The issue number sits before the outcome chip.
+- A review session Pomegr started shows the task it reviewed in the same form with the muted word “Review”, after the review ends too.
 - A session that is assigned to one task, and started for none, shows that task in the same form with the muted word “Assigned”.
 - Any other assigned tasks are one line: the muted word “Assigned”, then each task ID as a Text link to its board.
 - That line has no chip and no feature line, and it follows the started task.
@@ -740,6 +741,7 @@ A session started for a task gains four surfaces. See [Tasks](../architecture/ta
 ### Session header meta
 
 - The meta row adds **Task**, with the ID as a Text link to the Task tab. On that tab, the ID is plain ink text.
+- For a review session, the label is **Review** instead of **Task**.
 - It then adds **Feature**, with the name as a [feature link](#feature-link), and nothing after it.
 - The row uses muted 12px text.
 - The row stays on phone.

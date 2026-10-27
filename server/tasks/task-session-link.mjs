@@ -15,6 +15,10 @@ const REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t
 const ASSIGNED_REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t.state AS state,
   t.feature_id AS featureId, f.name AS featureName
   FROM tasks t LEFT JOIN features f ON f.id = t.feature_id WHERE t.repository_id = ? AND t.number = ?`;
+const REVIEW_REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t.state AS state,
+  t.feature_id AS featureId, f.name AS featureName
+  FROM task_reviewers r JOIN tasks t ON t.repository_id = r.repository_id AND t.number = r.number
+  LEFT JOIN features f ON f.id = t.feature_id WHERE r.session_id = ? ORDER BY r.at DESC, r.rowid DESC LIMIT 1`;
 
 const safeName = (value) => (typeof value === "string" ? normalizeFeatureName(value) ?? null : null);
 
@@ -42,6 +46,19 @@ export function sessionTaskReferences({ database, sessionIds }) {
     const row = statement.get(sessionId);
     const task = row ? reference(database, row) : null;
     if (task) references.set(sessionId, task);
+  }
+  return references;
+}
+
+// The task each session reviewed, from the durable reviewer record, marked with the review role.
+export function sessionReviewReferences({ database, sessionIds }) {
+  const references = new Map();
+  const statement = preparedStatement(database, REVIEW_REFERENCE);
+  for (const sessionId of sessionIds) {
+    if (typeof sessionId !== "string" || references.has(sessionId)) continue;
+    const row = statement.get(sessionId);
+    const task = row ? reference(database, row) : null;
+    if (task) references.set(sessionId, { ...task, role: "review" });
   }
   return references;
 }

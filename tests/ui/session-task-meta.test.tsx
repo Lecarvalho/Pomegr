@@ -65,6 +65,12 @@ describe("SessionTaskMeta", () => {
     expect(screen.getByText("Task board v1").parentElement).toHaveTextContent(/^·FeatureTask board v1$/);
   });
 
+  it("names a reviewer session's task as its Review", () => {
+    render(<SessionTaskMeta task={{ ...reference, role: "review" }} taskHref={taskHref} />);
+    expect(screen.getByRole("link", { name: "T-14" }).parentElement).toHaveTextContent(/^ReviewT-14$/);
+    expect(screen.queryByText("Task")).not.toBeInTheDocument();
+  });
+
   it("draws the ID as plain text on the Task tab itself", () => {
     render(<SessionTaskMeta task={reference} taskHref={null} />);
     expect(screen.queryByRole("link", { name: "T-14" })).not.toBeInTheDocument();
