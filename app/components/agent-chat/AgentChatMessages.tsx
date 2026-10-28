@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import type { AgentChatAgentMessage, AgentChatConversation, AgentChatImage, AgentChatTurn } from "../../../shared/agent-chat-contract";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { AgentChatAgentMessage, AgentChatImage, AgentChatThreadMessage, AgentChatTurn } from "../../../shared/agent-chat-contract";
 import type { Task } from "../../../shared/task-contract";
+import { threadMessageKey } from "../../agent-chat-client";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { AgentChatImageStrip } from "./AgentChatImages";
 import type { AgentChatImageUrls } from "./agent-chat-images";
@@ -13,8 +14,15 @@ import { ACTIVITY_LABELS, STATUS_NOTES, SUGGESTIONS, UNREADABLE_PROPOSAL, agentC
 type BoardTask = Pick<Task, "id" | "text">;
 
 const PINNED_WITHIN = 24;
+// Scrolling to within this many pixels of the first loaded message loads the page before it.
+const LOAD_OLDER_WITHIN = 80;
+// A message that was brought into view stays marked for this long.
+const MARKED_MS = 2_000;
 const NO_URLS: AgentChatImageUrls = new Map();
 const NO_IMAGES: readonly AgentChatImage[] = [];
+
+/** A message to bring into view: one a notification opened, or one the owner chose in the search. `nonce` changes for each request, so the same message can be asked for again. */
+export type MessageTarget = { conversationId: string; messageId: string; nonce: number };
 
 /** The time of a message in the owner's local time, with the whole date and time as its tooltip. Nothing is drawn for a message with no time. */
 function MessageTime({ at }: { at: string | null | undefined }) {
@@ -23,8 +31,8 @@ function MessageTime({ at }: { at: string | null | undefined }) {
   return <time className="agentChatMessageTime" dateTime={at} title={fullMessageTime(at) ?? undefined}>{short}</time>;
 }
 
-function OwnerMessage({ text, at, images, urls }: { text: string; at: string | null; images: readonly AgentChatImage[]; urls: AgentChatImageUrls }) {
-  return <article className="agentChatMessage isOwner" aria-label="You">
+function OwnerMessage({ message, text, at, images, urls, marked = false }: { message?: AgentChatThreadMessage; text: string; at: string | null; images: readonly AgentChatImage[]; urls: AgentChatImageUrls; marked?: boolean }) {
+  return <article className={`agentChatMessage isOwner${marked ? " isMarked" : ""}`} aria-label="You" data-conversation-id={message?.conversationId} data-message-id={message?.id}>
     <div className="agentChatBubble">
       <p>{text}</p>
       <AgentChatImageStrip imageIds={images.map((image) => image.id)} urls={urls} label="Images you sent" />
@@ -40,30 +48,32 @@ function AgentHead({ at, caption }: { at: string | null | undefined; caption: st
 }
 
 /** A grant follow-up: one fixed line Pomegr wrote from the task log, drawn as a quiet line (an icon, its text, and its time) and not as a message. */
-function QuietLine({ message }: { message: AgentChatAgentMessage }) {
-  return <article className="agentChatQuietLine" aria-label="Aril" data-message-id={message.id}>
+function QuietLine({ message, marked }: { message: AgentChatAgentMessage & { conversationId: string }; marked: boolean }) {
+  return <article className={`agentChatQuietLine${marked ? " isMarked" : ""}`} aria-label="Aril" data-conversation-id={message.conversationId} data-message-id={message.id}>
     <CommandIcon name="spark" size="small" />
     <span className="agentChatQuietText">{message.text}</span>
     <MessageTime at={message.at} />
   </article>;
 }
 
-function AgentMessage({ message, tasks, imageUrls, resolving, startHere, heldStart, onApply, onDismiss }: {
-  message: AgentChatAgentMessage;
+function AgentMessage({ message, marked, tasks, imageUrls, resolving, startHere, heldStart, onApply, onDismiss }: {
+  message: AgentChatAgentMessage & { conversationId: string };
+  marked: boolean;
   tasks: readonly BoardTask[];
   imageUrls: AgentChatImageUrls;
   resolving: string | null;
   startHere: boolean;
   heldStart?(taskId: string): string | null;
-  onApply(proposalId: string): void;
-  onDismiss(proposalId: string): void;
+  onApply(conversationId: string, proposalId: string): void;
+  onDismiss(conversationId: string, proposalId: string): void;
 }) {
-  if (message.grantFollowUp) return <QuietLine message={message} />;
-  return <article className="agentChatMessage isAgent" aria-label="Aril" data-message-id={message.id}>
+  if (message.grantFollowUp) return <QuietLine message={message} marked={marked} />;
+  return <article className={`agentChatMessage isAgent${marked ? " isMarked" : ""}`} aria-label="Aril" data-conversation-id={message.conversationId} data-message-id={message.id}>
     <AgentHead at={message.at} caption={agentCaption(message)} />
     {message.text !== "" && <SafeMarkdown text={message.text} />}
     {message.status !== "complete" && <p className="agentChatMessageNote">{STATUS_NOTES[message.status]}</p>}
-    {message.proposal && <AgentChatProposalCard proposal={message.proposal} tasks={tasks} imageUrls={imageUrls} busy={resolving === message.proposal.id} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />}
+    {message.proposal && <AgentChatProposalCard proposal={message.proposal} tasks={tasks} imageUrls={imageUrls} busy={resolving === message.proposal.id} startHere={startHere} heldStart={heldStart}
+      onApply={(proposalId) => onApply(message.conversationId, proposalId)} onDismiss={(proposalId) => onDismiss(message.conversationId, proposalId)} />}
     {message.proposalUnreadable && <p className="taskNotice warning agentChatNotice">{UNREADABLE_PROPOSAL}</p>}
   </article>;
 }
@@ -80,13 +90,14 @@ function Empty({ onSuggest }: { onSuggest(text: string): void }) {
 }
 
 /**
- * The conversation with Aril. It follows the newest line only while the owner is at the bottom; once they scroll up
- * it stays where they are and offers Jump to latest. The partial answer is not a live region of its own: the log
- * announces each stored message, and the activity line is a status.
+ * The thread with Aril. It follows the newest line only while the owner is at the bottom; once they scroll up it stays where
+ * they are and offers Jump to latest. Scrolling to the top loads the page before the first message, and the log stays where the
+ * owner was reading. The partial answer is not a live region of its own: the log announces each stored message, and the
+ * activity line is a status.
  */
-export function AgentChatMessages({ state, conversation, turn, pendingMessage, pendingAt = null, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, focusMessageId = null, startHere = false, heldStart, onSuggest, onApply, onDismiss }: {
+export function AgentChatMessages({ state, messages, turn, pendingMessage, pendingAt = null, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, target = null, hasOlder = false, loadingOlder = false, startHere = false, heldStart, onLoadOlder, onSuggest, onApply, onDismiss }: {
   state: AgentChatLogState;
-  conversation: AgentChatConversation | null;
+  messages: readonly AgentChatThreadMessage[];
   turn: AgentChatTurn | null;
   pendingMessage: string | null;
   /** When the message that is not stored yet was sent. */
@@ -99,23 +110,26 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, p
   resolving: string | null;
   /** Changing it brings the newest line back into view, as when the owner sends a message. */
   pinSignal?: number;
-  /** A follow-up that a notification opened: brought into view once it is drawn. */
-  focusMessageId?: string | null;
+  /** A message to bring into view once it is drawn: a follow-up that a notification opened, or a match the owner chose. */
+  target?: MessageTarget | null;
+  /** Messages exist before the first one drawn. */
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
   /** True in the desktop window, where a proposed session start can be applied. */
   startHere?: boolean;
   /** The gates that hold a task's start now, as one line from the board's readings. */
   heldStart?(taskId: string): string | null;
+  onLoadOlder?(): void;
   onSuggest(text: string): void;
-  onApply(proposalId: string): void;
-  onDismiss(proposalId: string): void;
+  onApply(conversationId: string, proposalId: string): void;
+  onDismiss(conversationId: string, proposalId: string): void;
 }) {
   const log = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [away, setAway] = useState(false);
-  const messages = conversation?.messages ?? [];
   const showPending = pendingMessage !== null && !pendingIsStored(messages, pendingMessage);
   const running = turn !== null || pendingMessage !== null;
-  const conversationId = conversation?.id ?? null;
+  const [marked, setMarked] = useState<{ key: string; nonce: number } | null>(null);
 
   const toBottom = useCallback(() => {
     const element = log.current;
@@ -123,30 +137,64 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, p
     pinned.current = true;
   }, []);
 
-  // A newly opened conversation, and a message the owner just sent, start at the newest line; the scroll event clears Jump to latest.
-  useLayoutEffect(() => { toBottom(); }, [conversationId, pinSignal, toBottom]);
+  // Older messages that were added above keep what the owner was reading where it was: the first message drawn changed, and the
+  // one that was first is still there. The height of the log before is the one recorded after the last draw.
+  const first = messages.length > 0 ? threadMessageKey(messages[0]) : null;
+  const drawn = useRef<{ first: string | null; height: number }>({ first: null, height: 0 });
+  useLayoutEffect(() => {
+    const element = log.current;
+    if (!element || drawn.current.first === null || first === drawn.current.first || !messages.some((message) => threadMessageKey(message) === drawn.current.first)) return;
+    element.scrollTop += element.scrollHeight - drawn.current.height;
+  });
+
+  // A message the owner just sent starts at the newest line; the scroll event clears Jump to latest.
+  useLayoutEffect(() => { toBottom(); }, [pinSignal, toBottom]);
   useLayoutEffect(() => {
     if (pinned.current && log.current) log.current.scrollTop = log.current.scrollHeight;
   });
 
-  // A follow-up that a notification opened comes into view once, after the conversation starts at its newest line.
-  const focused = useRef<string | null>(null);
-  const focusShown = messages.some((message) => message.id === focusMessageId);
+  // A message that was asked for comes into view once, when it is drawn, and stays marked for a moment.
+  const brought = useRef<string | null>(null);
+  const targetShown = target !== null && messages.some((message) => message.conversationId === target.conversationId && message.id === target.messageId);
   useLayoutEffect(() => {
-    if (focusMessageId === null) { focused.current = null; return; }
+    if (target === null) { brought.current = null; return; }
     const element = log.current;
-    if (!focusShown || !element || focused.current === `${conversationId}/${focusMessageId}`) return;
-    focused.current = `${conversationId}/${focusMessageId}`;
-    element.querySelector<HTMLElement>(`[data-message-id="${focusMessageId}"]`)?.scrollIntoView?.({ block: "nearest" });
+    const key = `${target.conversationId}/${target.messageId}`;
+    if (!targetShown || !element || brought.current === `${key}/${target.nonce}`) return;
+    brought.current = `${key}/${target.nonce}`;
+    element.querySelector<HTMLElement>(`[data-conversation-id="${target.conversationId}"][data-message-id="${target.messageId}"]`)?.scrollIntoView?.({ block: "center" });
     pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight <= PINNED_WITHIN;
-  }, [conversationId, focusMessageId, focusShown]);
+    setMarked({ key, nonce: target.nonce });
+  }, [target, targetShown]);
+  useEffect(() => {
+    if (marked === null) return;
+    const timer = window.setTimeout(() => setMarked(null), MARKED_MS);
+    return () => window.clearTimeout(timer);
+  }, [marked]);
+
+  // Records the log as drawn, for the next time older messages are added above, and asks for older messages when what is drawn
+  // does not fill the log. A log with no height yet asks nothing, and a first message is asked about once, so a page the desktop
+  // refused is not asked for again by every draw; the owner's next scroll to the top asks again.
+  const asked = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const element = log.current;
+    if (!element) return;
+    drawn.current = { first, height: element.scrollHeight };
+    if (hasOlder && !loadingOlder && element.clientHeight > 0 && element.scrollHeight <= element.clientHeight && asked.current !== first) {
+      asked.current = first;
+      onLoadOlder?.();
+    }
+  });
 
   const onScroll = () => {
     const element = log.current;
     if (!element) return;
     const atBottom = element.scrollHeight - element.scrollTop - element.clientHeight <= PINNED_WITHIN;
+    // The height as the owner leaves it, so the place is kept against it when a page arrives above.
+    drawn.current = { first: drawn.current.first, height: element.scrollHeight };
     pinned.current = atBottom;
     setAway((current) => (current === !atBottom ? current : !atBottom));
+    if (hasOlder && !loadingOlder && element.scrollTop <= LOAD_OLDER_WITHIN) onLoadOlder?.();
   };
 
   return <div className="agentChatLogFrame">
@@ -154,9 +202,12 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, p
       {state === "loading" && <p className="agentChatLoading">Loading…</p>}
       {state === "empty" && <Empty onSuggest={onSuggest} />}
       {state === "ready" && <>
-        {messages.map((message) => (message.role === "user"
-          ? <OwnerMessage key={message.id} text={message.text} at={message.at} images={message.images ?? NO_IMAGES} urls={imageUrls} />
-          : <AgentMessage key={message.id} message={message} tasks={tasks} imageUrls={imageUrls} resolving={resolving} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />))}
+        {messages.map((message) => {
+          const isMarked = marked !== null && marked.key === `${message.conversationId}/${message.id}`;
+          return message.role === "user"
+            ? <OwnerMessage key={threadMessageKey(message)} message={message} text={message.text} at={message.at} images={message.images ?? NO_IMAGES} urls={imageUrls} marked={isMarked} />
+            : <AgentMessage key={threadMessageKey(message)} message={message} marked={isMarked} tasks={tasks} imageUrls={imageUrls} resolving={resolving} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />;
+        })}
         {showPending && <OwnerMessage text={pendingMessage} at={pendingAt} images={pendingImages} urls={imageUrls} />}
         {running && <article className="agentChatMessage isAgent isWriting" aria-label="Aril">
           <AgentHead at={turn?.startedAt ?? pendingAt} caption={turn ? agentCaption(turn) : null} />
@@ -165,6 +216,7 @@ export function AgentChatMessages({ state, conversation, turn, pendingMessage, p
         </article>}
       </>}
     </div>
+    {loadingOlder && <p className="agentChatEarlier" role="status">Loading earlier messages…</p>}
     {away && <button type="button" className="commandQuietAction agentChatJump" onClick={() => { toBottom(); setAway(false); }}>Jump to latest</button>}
   </div>;
 }

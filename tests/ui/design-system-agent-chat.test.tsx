@@ -55,9 +55,9 @@ describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => 
     expect(writing.querySelector(".isWriting .agentChatMessageHead time")).toHaveAttribute("datetime", "2026-10-11T10:00:00.000Z");
     expect(within(writing).queryByRole("button", { name: "Send" })).toBeNull();
 
-    // The header: the glyph and name, the two conversation actions, Expand, and Close; no caption and no Minimize.
+    // The header: the glyph and name, Search, Expand, and Close; no conversation actions, no caption, and no Minimize.
     const header = empty.querySelector("header.agentChatHeader")!;
-    expect([...header.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"))).toEqual(["Conversations", "New conversation", "Expand", "Close Aril"]);
+    expect([...header.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"))).toEqual(["Search", "Expand", "Close Aril"]);
     expect(within(empty).getByRole("button", { name: "Expand" })).toHaveAttribute("aria-pressed", "false");
     expect(within(empty).queryByRole("button", { name: "Minimize" })).toBeNull();
     expect(within(empty).getByRole("combobox", { name: "Repository" }).closest("form")).toHaveClass("agentChatComposer");
@@ -78,11 +78,24 @@ describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => 
       expect(line.querySelector(".agentChatMessageHead")).toBeNull();
     }
 
-    const history = sample(chat, "Panel, conversations");
-    expect(within(history).getByRole("heading", { level: 3, name: "Conversations" })).toBeInTheDocument();
-    expect(history.querySelectorAll(".agentChatHistoryItem")).toHaveLength(3);
-    expect(history.querySelectorAll(".agentChatHistoryOpen[aria-current='true']")).toHaveLength(1);
-    expect(within(history).getByRole("button", { name: "Conversations", pressed: true })).toHaveClass("commandIconAction");
+    // The search under the header: a field with no frame, and the matches newest first, each with who wrote it, its time, and an excerpt with the searched text emphasized.
+    const searching = sample(chat, "Panel, search");
+    expect(within(searching).getByRole("button", { name: "Search", pressed: true })).toHaveClass("commandIconAction");
+    const region = within(searching).getByRole("search", { name: "Search the conversation" });
+    expect(within(region).getByRole("searchbox", { name: "Search messages" })).toHaveAttribute("maxlength", "100");
+    const matches = within(within(region).getByRole("list", { name: "Matching messages" })).getAllByRole("listitem");
+    expect(matches).toHaveLength(3);
+    expect(matches[0].querySelector(".agentChatSearchWho")).toHaveTextContent("Aril");
+    expect(matches[1].querySelector(".agentChatSearchWho")).toHaveTextContent("You");
+    expect(matches[1].querySelector("time")).toHaveAttribute("datetime", "2026-10-10T16:30:00.000Z");
+    expect([...matches[0].querySelectorAll("mark")].map((mark) => mark.textContent)).toEqual(["retry"]);
+    expect(within(matches[2]).getByRole("button")).toHaveClass("agentChatSearchResult");
+    expect(searching.querySelector(".agentChatHistory")).toBeNull();
+    const nothing = sample(chat, "Panel, search without a match");
+    expect(within(nothing).getByText("No messages match.")).toBeInTheDocument();
+    expect(nothing.querySelector(".agentChatSearchList")).toBeNull();
+    const earlier = sample(chat, "Panel, earlier messages loading");
+    expect(earlier.querySelector(".agentChatEarlier")).toHaveTextContent("Loading earlier messages…");
 
     const notes = sample(chat, "Panel, notes under an answer");
     expect(within(notes).getByText("This answer took too long and was stopped.")).toBeInTheDocument();
@@ -160,7 +173,7 @@ describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => 
     expect(within(sample(chat, "Composer, error")).getByRole("alert")).toHaveTextContent("Aril is already answering. Wait for it to finish.");
     expect(within(sample(chat, "Composer, over the limit")).getByText("4,012 / 4,000")).toHaveClass("isOver");
     expect(within(sample(chat, "Composer, over the limit")).getByRole("button", { name: "Send" })).toBeDisabled();
-    expect(within(sample(chat, "Composer, answering elsewhere")).getByText("Aril is answering in another conversation.")).toBeInTheDocument();
+    expect(chat.textContent).not.toMatch(/answering in another conversation/);
     const text = sample(chat, "Answer text");
     expect(text.querySelector("img, a, script")).toBeNull();
     expect(text).toHaveTextContent("<img src=x onerror=alert(1)> [a link](javascript:alert(1))");

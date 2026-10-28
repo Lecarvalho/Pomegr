@@ -67,7 +67,7 @@ test("grant creates exact payload, persists applied marker and task IDs, and nev
   assert.equal(message.proposal.summary, "Applied by grant.");
   assert.deepEqual(message.proposal.results, [{ ok: true, taskId: "T-4" }, { ok: true, taskId: "T-5" }]);
   assert.deepEqual(message.proposal.operations[1].after, ["#1", "T-1"]);
-  assert.equal((await h.store.list(repositoryId))[0].title, "Grant: tasks from next.md");
+  assert.equal((await h.store.index(repositoryId))[0].title, "Grant: tasks from next.md");
   assert.equal(h.runs.length, 1);
 });
 
@@ -116,7 +116,7 @@ test("a grant outcome that cannot be saved reports unavailable and releases its 
   let saves = 0;
   const conversation = { id: "chat-0123456789ab", messages: [] };
   const h = await chatHarness(context, { store: {
-    list: async () => [],
+    index: async () => [],
     create: async () => conversation,
     read: async () => conversation,
     save: async () => ++saves === 1,

@@ -4,11 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import * as storeModule from "../desktop/runtime/agent-chat-store.mjs";
 import {
   AGENT_CHAT_DIRECTORY,
   ANSWER_LENGTH,
   conversationTitle,
-  CONVERSATION_LIMIT,
   createAgentChatStore,
   MESSAGE_LENGTH,
   MESSAGE_LIMIT,
@@ -65,7 +65,7 @@ const fileOf = (directory, id, repository = repositoryId) => path.join(directory
 
 test("the store limits, directory name, and identifier formats are fixed", () => {
   assert.equal(AGENT_CHAT_DIRECTORY, "agent-chat-v1");
-  assert.equal(CONVERSATION_LIMIT, 50);
+  assert.equal("CONVERSATION_LIMIT" in storeModule, false, "a repository holds any number of conversations");
   assert.equal(MESSAGE_LIMIT, 200);
   assert.equal(MESSAGE_LENGTH, 4000);
   assert.equal(ANSWER_LENGTH, 32_000);
@@ -91,7 +91,7 @@ test("the title is the first non-empty line, trimmed and cut to 80 characters", 
 
 test("a conversation is created, saved, read, listed, and removed", async (context) => {
   const { store, directory } = await workspace(context);
-  assert.deepEqual(await store.list(repositoryId), []);
+  assert.deepEqual(await store.index(repositoryId), []);
   const created = await store.create(repositoryId, { provider: "claude", model: "claude-opus-4-1", title: "Plan" });
   assert.match(created.id, /^chat-[0-9a-f]{12}$/u);
   assert.deepEqual({ ...created, id: "x" }, { id: "x", title: "Plan", provider: "claude", model: "claude-opus-4-1", createdAt: created.createdAt, updatedAt: created.createdAt, messages: [] });
@@ -99,12 +99,12 @@ test("a conversation is created, saved, read, listed, and removed", async (conte
   const next = { ...created, updatedAt: "2026-10-01T13:00:00.000Z", messages: [userMessage(1), agentMessage(2)] };
   assert.equal(await store.save(repositoryId, next), true);
   assert.deepEqual(await store.read(repositoryId, created.id), next);
-  assert.deepEqual((await store.list(repositoryId)).map((conversation) => conversation.id), [created.id]);
+  assert.deepEqual((await store.index(repositoryId)).map((conversation) => conversation.id), [created.id]);
   assert.deepEqual(JSON.parse(await fs.readFile(fileOf(directory, created.id), "utf8")), { version: 1, repositoryId, conversation: next });
   assert.deepEqual(await fs.readdir(path.join(directory, repositoryId)), [`${created.id}.json`], "no temporary file is left");
   assert.equal(await store.remove(repositoryId, created.id), true);
   assert.equal(await store.read(repositoryId, created.id), null);
-  assert.deepEqual(await store.list(repositoryId), []);
+  assert.deepEqual(await store.index(repositoryId), []);
   await assert.rejects(fs.stat(fileOf(directory, created.id)));
   assert.equal(await store.remove(repositoryId, created.id), false, "a second remove finds nothing");
 });
@@ -119,16 +119,16 @@ test("each conversation is one file under its repository, and a new store reads 
   }
   const other = await store.create(otherRepositoryId, { provider: "claude", model: null, title: "Elsewhere" });
   assert.equal(await store.save(otherRepositoryId, { ...other, messages: [userMessage(1)] }), true);
-  assert.deepEqual((await store.list(repositoryId)).map((conversation) => conversation.id), [ids[1], ids[2], ids[0]]);
+  assert.deepEqual((await store.index(repositoryId)).map((conversation) => conversation.id), [ids[1], ids[2], ids[0]]);
   assert.deepEqual((await fs.readdir(path.join(directory, repositoryId))).sort(), ids.map((id) => `${id}.json`).sort());
   assert.deepEqual(await fs.readdir(path.join(directory, otherRepositoryId)), [`${other.id}.json`]);
   assert.equal(await store.read(repositoryId, other.id), null, "a conversation belongs to its own repository");
 
   const again = createAgentChatStore({ directory });
-  assert.deepEqual((await again.list(repositoryId)).map((conversation) => conversation.id), [ids[1], ids[2], ids[0]]);
+  assert.deepEqual((await again.index(repositoryId)).map((conversation) => conversation.id), [ids[1], ids[2], ids[0]]);
   assert.deepEqual(await again.read(repositoryId, ids[1]), await store.read(repositoryId, ids[1]));
   assert.equal((await again.read(repositoryId, ids[1])).provider, "codex");
-  assert.deepEqual((await again.list(otherRepositoryId)).map((conversation) => conversation.title), ["Elsewhere"]);
+  assert.deepEqual((await again.index(otherRepositoryId)).map((conversation) => conversation.title), ["Elsewhere"]);
 });
 
 test("a file that is malformed, of another repository, of another version, or too large is skipped and left untouched", async (context) => {
@@ -156,7 +156,7 @@ test("a file that is malformed, of another repository, of another version, or to
   const before = new Map(await Promise.all(Object.keys(planted).map(async (name) => [name, await fs.readFile(path.join(folder, name), "utf8")])));
 
   const fresh = createAgentChatStore({ directory });
-  assert.deepEqual((await fresh.list(repositoryId)).map((conversation) => conversation.id).sort(), [good.id, "chat-aaaaaaaaaaaa"].sort());
+  assert.deepEqual((await fresh.index(repositoryId)).map((conversation) => conversation.id).sort(), [good.id, "chat-aaaaaaaaaaaa"].sort());
   for (const id of ["chat-111111111111", "chat-222222222222", "chat-333333333333", "chat-444444444444", "chat-555555555555", "chat-666666666666", "chat-777777777777"]) {
     assert.equal(await fresh.read(repositoryId, id), null, id);
   }
@@ -170,15 +170,95 @@ test("a file that is malformed, of another repository, of another version, or to
   for (const [name, content] of before) assert.equal(await fs.readFile(path.join(folder, name), "utf8"), content, `${name} is untouched`);
 });
 
-test("create answers null once the repository holds fifty conversations, and each repository counts alone", async (context) => {
+test("a repository holds any number of conversations, and each repository keeps its own", async (context) => {
   const { store } = await workspace(context);
-  for (let index = 0; index < CONVERSATION_LIMIT; index += 1) assert.ok(await store.create(repositoryId, { provider: "claude", model: null, title: `Chat ${index}` }));
-  assert.equal(await store.create(repositoryId, { provider: "claude", model: null, title: "One too many" }), null);
-  assert.equal((await store.list(repositoryId)).length, CONVERSATION_LIMIT);
+  for (let index = 0; index < 60; index += 1) assert.ok(await store.create(repositoryId, { provider: "claude", model: null, title: `Chat ${index}` }));
+  assert.equal((await store.index(repositoryId)).length, 60);
   assert.ok(await store.create(otherRepositoryId, { provider: "codex", model: null, title: "Other repository" }));
-  const [first] = await store.list(repositoryId);
+  const [first] = await store.index(repositoryId);
   assert.equal(await store.remove(repositoryId, first.id), true);
-  assert.ok(await store.create(repositoryId, { provider: "claude", model: null, title: "Room again" }));
+  assert.equal((await store.index(repositoryId)).length, 59);
+  assert.equal((await store.index(otherRepositoryId)).length, 1);
+});
+
+test("the index holds an entry for each conversation without its messages, and follows every save", async (context) => {
+  const { store, directory } = await workspace(context);
+  const created = await store.create(repositoryId, { provider: "codex", model: "gpt-6-luna", effort: "high", title: "Plan" });
+  const followUps = await store.create(repositoryId, { provider: "claude", model: null, title: "Grant follow-ups", grantFollowUps: { grant: null, through: null, ended: null, messageId: null } });
+  const picture = { id: "img-0123456789ab", type: "png", bytes: 5 };
+  const messages = [
+    { ...userMessage(1), at: "2026-10-01T12:00:00.000Z", images: [picture, { ...picture, id: "img-0123456789ac" }] },
+    { ...agentMessage(2), at: "2026-10-01T12:05:00.000Z" },
+    { ...agentMessage(3, { status: "failed" }), at: "2026-10-01T12:09:00.000Z" },
+    { ...userMessage(4), at: "2026-10-01T12:07:00.000Z" },
+  ];
+  assert.equal(await store.save(repositoryId, { ...created, updatedAt: "2026-10-01T12:10:00.000Z", messages }), true);
+  const entry = (await store.index(repositoryId)).find(({ id }) => id === created.id);
+  assert.deepEqual(entry, {
+    id: created.id, title: "Plan", provider: "codex", model: "gpt-6-luna", effort: "high", createdAt: created.createdAt, updatedAt: "2026-10-01T12:10:00.000Z",
+    messages: 4, images: 2, lastRole: "user", answeredAt: Date.parse("2026-10-01T12:05:00.000Z"),
+    from: Date.parse("2026-10-01T12:00:00.000Z"), to: Date.parse("2026-10-01T12:09:00.000Z"),
+  });
+  assert.equal("messages" in entry && Array.isArray(entry.messages), false, "no message is in the index");
+  assert.deepEqual(JSON.parse(JSON.stringify((await store.index(repositoryId)).find(({ id }) => id === followUps.id).grantFollowUps)), { grant: null, through: null, ended: null, messageId: null });
+  assert.deepEqual(entry, (await createAgentChatStore({ directory }).index(repositoryId)).find(({ id }) => id === created.id), "a new store builds the same entry from the file");
+  assert.equal(Object.isFrozen(entry), true);
+  assert.deepEqual((await store.index(repositoryId)).find(({ id }) => id === followUps.id), { ...(await store.index(repositoryId)).find(({ id }) => id === followUps.id), messages: 0, from: null, to: null, lastRole: null, answeredAt: null });
+});
+
+test("only the conversations read lately keep their messages in memory, and every one is still read in full from its file", async (context) => {
+  const { store, directory } = await workspace(context);
+  const ids = [];
+  for (let index = 0; index < 40; index += 1) {
+    const created = await store.create(repositoryId, { provider: "claude", model: null, title: `Chat ${index}` });
+    assert.equal(await store.save(repositoryId, { ...created, messages: [userMessage(1, `Question ${index}`)] }), true);
+    ids.push(created.id);
+  }
+  const reads = [];
+  const counting = createAgentChatStore({ directory, filesystem: { ...fs, readFile: (target, ...rest) => { reads.push(path.basename(String(target))); return fs.readFile(target, ...rest); } } });
+  assert.equal((await counting.index(repositoryId)).length, 40);
+  assert.equal(reads.length, 40, "the index reads each file once");
+  reads.length = 0;
+  for (const id of ids) assert.equal((await counting.read(repositoryId, id)).messages[0].text, `Question ${ids.indexOf(id)}`);
+  assert.equal(reads.length, 40, "a conversation that is not in memory is read from its file");
+  reads.length = 0;
+  for (const id of ids.slice(-16)) await counting.read(repositoryId, id);
+  assert.equal(reads.length, 0, "the sixteen read last are in memory");
+  await counting.read(repositoryId, ids[0]);
+  assert.equal(reads.length, 1, "an older one is not");
+  assert.deepEqual(await counting.read(repositoryId, ids[0]), await store.read(repositoryId, ids[0]));
+});
+
+test("a conversation saved and then pushed out of memory is read with its last save, even while the file is being written", async (context) => {
+  const { store, directory } = await workspace(context);
+  const created = await store.create(repositoryId, { provider: "claude", model: null, title: "Plan" });
+  const saving = store.save(repositoryId, { ...created, messages: [userMessage(1, "Latest")] });
+  for (let index = 0; index < 20; index += 1) {
+    const other = await store.create(repositoryId, { provider: "claude", model: null, title: `Other ${index}` });
+    await store.save(repositoryId, { ...other, messages: [userMessage(1)] });
+    await store.read(repositoryId, other.id);
+  }
+  assert.equal((await store.read(repositoryId, created.id)).messages[0].text, "Latest");
+  await saving;
+  assert.equal(JSON.parse(await fs.readFile(fileOf(directory, created.id), "utf8")).conversation.messages[0].text, "Latest");
+});
+
+test("a write that fails leaves the index and the messages as they were, and a conversation never written stays", async (context) => {
+  const { store, directory } = await workspace(context);
+  const created = await store.create(repositoryId, { provider: "claude", model: null, title: "Plan" });
+  assert.equal(await store.save(repositoryId, { ...created, messages: [userMessage(1, "Kept")] }), true);
+  let failing = true;
+  const flaky = createAgentChatStore({ directory, filesystem: { ...fs, rename: (...args) => (failing ? Promise.reject(new Error("disk")) : fs.rename(...args)) } });
+  const [before] = await flaky.index(repositoryId);
+  assert.equal(await flaky.save(repositoryId, { ...created, updatedAt: "2026-10-02T10:00:00.000Z", messages: [userMessage(1, "Lost"), agentMessage(2)] }), false);
+  assert.deepEqual((await flaky.index(repositoryId))[0], before);
+  assert.equal((await flaky.read(repositoryId, created.id)).messages[0].text, "Kept");
+  const fresh = await flaky.create(repositoryId, { provider: "claude", model: null, title: "New" });
+  assert.equal(await flaky.save(repositoryId, { ...fresh, messages: [userMessage(1, "Unsaved")] }), false);
+  assert.equal((await flaky.read(repositoryId, fresh.id)).messages.length, 0, "the conversation made and not written is still there, empty");
+  failing = false;
+  assert.equal(await flaky.save(repositoryId, { ...fresh, messages: [userMessage(1, "Saved")] }), true);
+  assert.equal((await flaky.read(repositoryId, fresh.id)).messages[0].text, "Saved");
 });
 
 test("create refuses a title, provider, or model outside the contract", async (context) => {
@@ -187,7 +267,7 @@ test("create refuses a title, provider, or model outside the contract", async (c
     { provider: "claude", model: null, title: "" }, { provider: "claude", model: null, title: "t".repeat(81) }, { provider: "claude", model: null, title: 7 },
     { provider: "gemini", model: null, title: "t" }, { provider: "claude", model: "../x", title: "t" }, { provider: "claude", model: "--help", title: "t" },
   ]) assert.equal(await store.create(repositoryId, options), null, JSON.stringify(options));
-  assert.deepEqual(await store.list(repositoryId), []);
+  assert.deepEqual(await store.index(repositoryId), []);
 });
 
 test("save refuses an unknown conversation, too many messages, a message or answer over its length, and a bad proposal, and changes nothing", async (context) => {
@@ -275,7 +355,7 @@ test("a repository or conversation identifier outside its format answers empty, 
   const badRepositories = ["../x", "..\\x", "../../x", "repo-0123", "repo-0123456789ABCDEF01234567", `${repositoryId}/..`, "", undefined, null, 5, `C:\\${repositoryId}`];
   const badConversations = ["../x", "..\\x", "../../x", "x", "chat-short", "chat-0123456789AB", `${created.id}/..`, "", undefined, null];
   for (const bad of badRepositories) {
-    assert.deepEqual(await store.list(bad), [], String(bad));
+    assert.deepEqual(await store.index(bad), [], String(bad));
     assert.equal(await store.read(bad, created.id), null);
     assert.equal(await store.create(bad, { provider: "claude", model: null, title: "t" }), null);
     assert.equal(await store.save(bad, conversationOf(created.id)), false);
@@ -311,7 +391,7 @@ test("a remove that follows a save waits for it, so the file does not come back"
   assert.equal(await store.remove(repositoryId, created.id), true);
   await saving;
   await assert.rejects(fs.stat(fileOf(directory, created.id)));
-  assert.deepEqual(await createAgentChatStore({ directory }).list(repositoryId), []);
+  assert.deepEqual(await createAgentChatStore({ directory }).index(repositoryId), []);
 });
 
 test("removing a conversation that was created but never saved succeeds without a file", async (context) => {

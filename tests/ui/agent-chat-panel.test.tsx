@@ -97,14 +97,14 @@ describe("the docked panel", () => {
     expect(field()).toHaveValue("A draft");
   });
 
-  it("has the Aril glyph and name, four actions, and no caption, no Minimize, and no repository row", async () => {
+  it("has the Aril glyph and name, three actions, and no caption, no Minimize, and no repository row", async () => {
     setInventory([[REPO_A, "pomegr"], [REPO_B, "catalogus"]]);
     render(<AgentChatDock />);
     await openPanel();
     const header = panel().querySelector("header")!;
     expect(within(header).getByRole("heading", { level: 2, name: "Aril" })).toBeInTheDocument();
     expect(header.querySelector(".agentChatGlyph")).not.toBeNull();
-    expect([...header.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"))).toEqual(["Conversations", "New conversation", "Expand", "Close Aril"]);
+    expect([...header.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"))).toEqual(["Search", "Expand", "Close Aril"]);
     expect(header.textContent).not.toMatch(/Task-board agent/);
     expect(within(panel()).queryByRole("button", { name: "Minimize" })).toBeNull();
     expect(header.querySelector("[role='combobox']")).toBeNull();

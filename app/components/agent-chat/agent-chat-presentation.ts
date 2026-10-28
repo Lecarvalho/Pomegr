@@ -1,6 +1,6 @@
 import {
-  AGENT_CHAT_BOUNDS,
-  type AgentChatActivity, type AgentChatBoardOperation, type AgentChatConversationSummary, type AgentChatError, type AgentChatMessage,
+  AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN,
+  type AgentChatActivity, type AgentChatBoardOperation, type AgentChatError, type AgentChatMessage,
   type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
   type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
@@ -40,16 +40,15 @@ export const SUGGESTIONS: readonly string[] = [
 
 export const UNREADABLE_PROPOSAL = "Aril wrote a proposal that Pomegr could not read, so there is nothing to apply. Ask for it again.";
 
-export function errorCopy(error: AgentChatError, context: { provider: AgentChatProvider; conversationOpen: boolean }): string {
+export function errorCopy(error: AgentChatError, context: { provider: AgentChatProvider }): string {
   switch (error) {
     case "busy": return "Aril is already answering. Wait for it to finish.";
     case "cli_missing": return `${PROVIDER_LABELS[context.provider]} is not installed on this computer.`;
-    case "limit": return context.conversationOpen
-      ? "This conversation is full. Start a new one."
-      : `This repository holds ${AGENT_CHAT_BOUNDS.conversationsPerRepository} conversations. Delete one to start another.`;
-    case "not_found": return "That conversation is no longer there.";
+    case "not_found": return "That message is no longer there.";
     case "conflict": return "That proposal was already answered.";
-    case "invalid": return "That message could not be sent.";
+    // A thread is never full. Only a named conversation that is full answers `limit`, and the panel never names one.
+    case "invalid":
+    case "limit": return "That message could not be sent.";
     case "unavailable": return "Aril could not be reached. Try again.";
     case "desktop_only": return "This proposal can be applied only in the Pomegr desktop app.";
   }
@@ -70,12 +69,6 @@ const COUNT = new Intl.NumberFormat("en-US");
 export const formatCount = (value: number) => COUNT.format(value);
 
 const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-
-export function conversationMeta(summary: Pick<AgentChatConversationSummary, "messages" | "updatedAt">): string {
-  const time = Date.parse(summary.updatedAt);
-  const count = `${formatCount(summary.messages)} ${summary.messages === 1 ? "message" : "messages"}`;
-  return Number.isFinite(time) ? `${count} · ${DATE.format(time)}` : count;
-}
 
 const CLOCK = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const FULL_TIME = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
@@ -102,6 +95,25 @@ export function pendingIsStored(messages: readonly AgentChatMessage[], pending: 
   return pending !== null && last?.role === "user" && last.text === pending.trim();
 }
 
+// ---- Search ----
+
+export const SEARCH_LABEL = "Search messages";
+export const SEARCH_PLACEHOLDER = "Search messages…";
+export const SEARCH_HINT = "Search the messages of this repository.";
+export const SEARCH_NONE = "No messages match.";
+export const SEARCH_FAILED = "Search could not be reached. Try again.";
+export const SEARCH_ROLE_LABELS: Record<AgentChatMessage["role"], string> = { user: "You", agent: "Aril" };
+
+// Lower case without changing a length, as the desktop folds the text it searches, so an index in one is an index in the other.
+const foldCase = (value: string) => value.replace(/[\s\S]/gu, (character) => { const lower = character.toLowerCase(); return lower.length === character.length ? lower : character; });
+
+/** An excerpt split around the first place the query occurs in it, whatever its case, or null when it does not occur. */
+export function splitMatch(snippet: string, query: string): { before: string; match: string; after: string } | null {
+  const needle = foldCase(query.trim());
+  const index = needle === "" ? -1 : foldCase(snippet).indexOf(needle);
+  return index < 0 ? null : { before: snippet.slice(0, index), match: snippet.slice(index, index + needle.length), after: snippet.slice(index + needle.length) };
+}
+
 // ---- Repository ----
 
 /** The repository a route is about, when the inventory lists it. */
@@ -117,8 +129,6 @@ export function repositoryFromRoute(pathname: string, search: string, known: rea
 // A grant follow-up's link: the Tasks page of its repository, with the conversation and message to open in the chat.
 export type AgentChatLink = { repositoryId: string; conversationId: string | null; messageId: string | null };
 export const AGENT_CHAT_OPEN_EVENT = "pomegr:open-aril-chat";
-const LINK_CONVERSATION = /^chat-[0-9a-f]{12}$/u;
-const LINK_MESSAGE = /^m-[1-9][0-9]{0,5}$/u;
 
 export function agentChatLink(pathname: string, search: string): AgentChatLink | null {
   if (pathname !== "/tasks") return null;
@@ -128,7 +138,7 @@ export function agentChatLink(pathname: string, search: string): AgentChatLink |
   const message = params.get("message");
   if (!repositoryId || aril === null) return null;
   if (aril === "open") return message === null ? { repositoryId, conversationId: null, messageId: null } : null;
-  return LINK_CONVERSATION.test(aril) && message !== null && LINK_MESSAGE.test(message) ? { repositoryId, conversationId: aril, messageId: message } : null;
+  return AGENT_CHAT_CONVERSATION_ID_PATTERN.test(aril) && message !== null && AGENT_CHAT_MESSAGE_ID_PATTERN.test(message) ? { repositoryId, conversationId: aril, messageId: message } : null;
 }
 
 /** Opens the chat at a follow-up from inside the app, as the follow-up's link does when the page loads. */

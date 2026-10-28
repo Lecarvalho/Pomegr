@@ -1,5 +1,6 @@
 // The saved conversations of the Pomegr agent chat: one private JSON file per conversation, under the desktop data
-// root. Only desktop main reads or writes them; nothing here is observed, indexed, logged, or sent anywhere.
+// root. Only desktop main reads or writes them; nothing here is observed, indexed, logged, or sent anywhere. A repository holds
+// any number of conversations, so the store keeps an index of them in memory and the messages of only a few.
 
 import { randomBytes, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -10,7 +11,6 @@ import { normalizeChatImages } from "./agent-chat-images.mjs";
 import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 
 export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
-export const CONVERSATION_LIMIT = 50;
 export const MESSAGE_LIMIT = 200;
 export const MESSAGE_LENGTH = 4000;
 export const ANSWER_LENGTH = 32_000;
@@ -187,38 +187,81 @@ export function normalizeConversation(value) {
     ...(mark === undefined ? {} : { grantFollowUps: mark }) };
 }
 
+/**
+ * What the store keeps in memory of a conversation: its index entry, without its messages. The thread, the routing of a message, the
+ * list, and the grant follow-ups read this, and read a conversation only when they need its messages. `from` and `to` are the times
+ * of its oldest and newest message in milliseconds (both null when it holds none), which is what lets a page or a search of the
+ * thread stop once the next conversation cannot reach it. `answeredAt` is the time of its newest complete answer of Aril's own run.
+ */
+export function conversationMeta(conversation) {
+  const times = conversation.messages.map((message) => Date.parse(message.at));
+  const answered = conversation.messages.filter((message) => message.role === "agent" && message.status === "complete" && message.grantFollowUp !== true).map((message) => Date.parse(message.at));
+  return Object.freeze({
+    id: conversation.id, title: conversation.title, provider: conversation.provider, model: conversation.model, ...(conversation.effort ? { effort: conversation.effort } : {}),
+    createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messages: conversation.messages.length,
+    images: conversation.messages.reduce((count, message) => count + (message.role === "user" ? (message.images?.length ?? 0) : 0), 0),
+    lastRole: conversation.messages.at(-1)?.role ?? null,
+    answeredAt: answered.length > 0 ? Math.max(...answered) : null,
+    from: times.length > 0 ? Math.min(...times) : null, to: times.length > 0 ? Math.max(...times) : null,
+    ...(conversation.grantFollowUps ? { grantFollowUps: Object.freeze({ ...conversation.grantFollowUps }) } : {}),
+  });
+}
+
+// The conversations whose messages are held in memory at once, most recently used first. Every other message stays in its file until it is asked for.
+const BODIES_IN_MEMORY = 16;
+
 export function createAgentChatStore({ directory, filesystem = fs, now = () => new Date() } = {}) {
   if (typeof directory !== "string" || !path.isAbsolute(directory)) throw new TypeError("Invalid agent chat directory");
-  const loaded = new Map();
+  // For each repository, the index of its conversations; and the few conversations read lately, by `repositoryId/id`.
+  const indexes = new Map();
+  const recent = new Map();
+  // A conversation that was made and not yet written has no file: its messages stay here until its first save.
+  const unwritten = new Map();
   const writes = new Map();
 
   const folder = (repositoryId) => path.join(directory, repositoryId);
   const file = (repositoryId, id) => path.join(folder(repositoryId), `${id}.json`);
+  const keyOf = (repositoryId, id) => `${repositoryId}/${id}`;
 
-  async function load(repositoryId) {
-    if (loaded.has(repositoryId)) return loaded.get(repositoryId);
-    const conversations = new Map();
-    let names = [];
-    try { names = await filesystem.readdir(folder(repositoryId)); } catch { names = []; }
-    for (const name of names) {
-      const id = name.endsWith(".json") ? name.slice(0, -5) : "";
-      if (!CONVERSATION_ID.test(id)) continue;
-      try {
-        const target = file(repositoryId, id);
-        if ((await filesystem.stat(target)).size > FILE_LIMIT_BYTES) continue;
-        const parsed = JSON.parse(await filesystem.readFile(target, "utf8"));
-        const conversation = isPlainObject(parsed) && parsed.version === VERSION && parsed.repositoryId === repositoryId ? normalizeConversation(parsed.conversation) : null;
-        // A file outside the contract is left as it is: never listed, never overwritten.
-        if (conversation && conversation.id === id) conversations.set(id, conversation);
-      } catch { /* unreadable: skipped */ }
-    }
-    loaded.set(repositoryId, conversations);
-    return conversations;
+  function remember(key, conversation) {
+    recent.delete(key);
+    recent.set(key, conversation);
+    while (recent.size > BODIES_IN_MEMORY) recent.delete(recent.keys().next().value);
+  }
+
+  // The conversation in one file, inside the contract, or null. A file outside it is left as it is: never listed, never overwritten.
+  async function readConversation(repositoryId, id) {
+    try {
+      const target = file(repositoryId, id);
+      if ((await filesystem.stat(target)).size > FILE_LIMIT_BYTES) return null;
+      const parsed = JSON.parse(await filesystem.readFile(target, "utf8"));
+      const conversation = isPlainObject(parsed) && parsed.version === VERSION && parsed.repositoryId === repositoryId ? normalizeConversation(parsed.conversation) : null;
+      return conversation && conversation.id === id ? conversation : null;
+    } catch { return null; }
+  }
+
+  // Reads the files of a repository once, one at a time, and keeps only the index of each: a repository can hold any number of conversations.
+  function load(repositoryId) {
+    if (indexes.has(repositoryId)) return indexes.get(repositoryId);
+    const metas = (async () => {
+      const found = new Map();
+      let names = [];
+      try { names = await filesystem.readdir(folder(repositoryId)); } catch { names = []; }
+      for (const name of names) {
+        const id = name.endsWith(".json") ? name.slice(0, -5) : "";
+        if (!CONVERSATION_ID.test(id)) continue;
+        const conversation = await readConversation(repositoryId, id);
+        if (conversation) found.set(id, conversationMeta(conversation));
+      }
+      return found;
+    })();
+    indexes.set(repositoryId, metas);
+    return metas;
   }
 
   // One write per conversation at a time, each replacing the file whole.
   function write(repositoryId, conversation) {
-    const key = `${repositoryId}/${conversation.id}`;
+    const key = keyOf(repositoryId, conversation.id);
     const run = async () => {
       const serialized = `${JSON.stringify({ version: VERSION, repositoryId, conversation })}\n`;
       if (Buffer.byteLength(serialized, "utf8") > FILE_LIMIT_BYTES) return false;
@@ -243,43 +286,72 @@ export function createAgentChatStore({ directory, filesystem = fs, now = () => n
   const valid = (repositoryId, id) => typeof repositoryId === "string" && REPOSITORY_ID.test(repositoryId) && (id === undefined || (typeof id === "string" && CONVERSATION_ID.test(id)));
 
   return Object.freeze({
-    /** Newest first. */
-    async list(repositoryId) {
+    /** The index entry of every conversation of the repository, most recently updated first. It holds no message. */
+    async index(repositoryId) {
       if (!valid(repositoryId)) return [];
       return [...(await load(repositoryId)).values()].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
     },
+    /** One conversation with its messages, or null. */
     async read(repositoryId, id) {
-      if (!valid(repositoryId, id)) return null;
-      return (await load(repositoryId)).get(id) ?? null;
+      if (!valid(repositoryId, id) || id === undefined) return null;
+      const metas = await load(repositoryId);
+      if (!metas.has(id)) return null;
+      const key = keyOf(repositoryId, id);
+      if (unwritten.has(key)) return unwritten.get(key);
+      if (recent.has(key)) { const conversation = recent.get(key); remember(key, conversation); return conversation; }
+      // A save that is still being written is the newest content, so its file is read once it is there.
+      await (writes.get(key) ?? Promise.resolve()).catch(() => {});
+      const conversation = await readConversation(repositoryId, id);
+      // A save that came meanwhile holds newer content than this read.
+      if (unwritten.has(key)) return unwritten.get(key);
+      if (recent.has(key)) return recent.get(key);
+      // A conversation removed meanwhile is gone.
+      if (!metas.has(id)) return null;
+      if (conversation) remember(key, conversation);
+      return conversation;
     },
-    /** A new, empty conversation, kept in memory until its first save; `null` when the repository holds its limit. */
+    /** A new, empty conversation, kept in memory until its first save. */
     async create(repositoryId, { provider, model, effort, title, grantFollowUps }) {
       if (!valid(repositoryId)) return null;
-      const conversations = await load(repositoryId);
-      if (conversations.size >= CONVERSATION_LIMIT) return null;
+      const metas = await load(repositoryId);
       const at = now().toISOString();
       const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, effort, createdAt: at, updatedAt: at, messages: [], ...(grantFollowUps === undefined ? {} : { grantFollowUps }) });
-      if (conversation) conversations.set(conversation.id, conversation);
+      if (conversation) {
+        metas.set(conversation.id, conversationMeta(conversation));
+        unwritten.set(keyOf(repositoryId, conversation.id), conversation);
+      }
       return conversation;
     },
     /** Replaces the stored conversation; answers whether the file was written. A refused one changes nothing. */
     async save(repositoryId, conversation) {
       const next = valid(repositoryId) ? normalizeConversation(conversation) : null;
       if (!next) return false;
-      const conversations = await load(repositoryId);
-      const previous = conversations.get(next.id);
+      const metas = await load(repositoryId);
+      const previous = metas.get(next.id);
       if (!previous) return false;
-      conversations.set(next.id, next);
+      const key = keyOf(repositoryId, next.id);
+      const meta = conversationMeta(next);
+      const neverWritten = unwritten.get(key);
+      metas.set(next.id, meta);
+      unwritten.delete(key);
+      remember(key, next);
       const written = await write(repositoryId, next);
       // A write that failed leaves the conversation as it is on disk.
-      if (!written && conversations.get(next.id) === next) conversations.set(next.id, previous);
+      if (!written && metas.get(next.id) === meta) {
+        metas.set(next.id, previous);
+        recent.delete(key);
+        if (neverWritten) unwritten.set(key, neverWritten);
+      }
       return written;
     },
     async remove(repositoryId, id) {
-      if (!valid(repositoryId, id)) return false;
-      const conversations = await load(repositoryId);
-      if (!conversations.delete(id)) return false;
-      await (writes.get(`${repositoryId}/${id}`) ?? Promise.resolve()).catch(() => {});
+      if (!valid(repositoryId, id) || id === undefined) return false;
+      const metas = await load(repositoryId);
+      if (!metas.delete(id)) return false;
+      const key = keyOf(repositoryId, id);
+      recent.delete(key);
+      unwritten.delete(key);
+      await (writes.get(key) ?? Promise.resolve()).catch(() => {});
       try { await filesystem.unlink(file(repositoryId, id)); } catch { /* never written, or already gone */ }
       return true;
     },

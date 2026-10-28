@@ -1,9 +1,8 @@
 // Desktop main owns Aril's read-only runs, conversations, approved changes, grant writes, grant follow-ups, and direct rework records.
 
 import { execFile as execFileChild, spawn as spawnChild } from "node:child_process";
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import * as fs from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 
@@ -12,22 +11,25 @@ import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
 import { chatTaskLog } from "./agent-chat-task-log.mjs";
-import { AGENT_CHAT_INSTRUCTIONS, composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
+import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
+import { composePrompt, conversationHistory, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
-import { CHAT_EFFORTS, runChatTurn, validInstructionsFile } from "./agent-chat-runner.mjs";
+import { CHAT_EFFORTS, runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
+import { createAgentChatThread, currentConversation, LIST_LIMIT, lastAnswer, threadHistory, threadSource } from "./agent-chat-thread.mjs";
 import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
 import { createTaskWorktrees, TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
+export { agentChatMcpServer, prepareInstructionsFile };
 export { isWorkflowSourcePath, readWorkflowChanges, workflowSources } from "./agent-chat-workflow.mjs";
 
 export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat";
 // The images the owner sends to Aril travel on a channel of their own, because they are bytes and not a JSON payload.
 export const AGENT_CHAT_IMAGE_CHANNEL = "pomegr:agent-chat-image";
 export const AGENT_CHAT_IMAGE_OPERATIONS = Object.freeze(["add", "read"]);
-export const AGENT_CHAT_OPERATIONS = Object.freeze(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
+export const AGENT_CHAT_OPERATIONS = Object.freeze(["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"]);
 export const AGENT_CHAT_ERRORS = Object.freeze(["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"]);
 export const AGENT_CHAT_REQUEST_MAX_BYTES = 17 * 1024;
 
@@ -49,36 +51,6 @@ const MONITOR_TIMEOUT_MS = 10_000;
 const IMAGE_TIMEOUT_MS = 20_000;
 const DECLARATION_TIMEOUT_MS = 2_000;
 
-const MCP_WORKER = ["desktop", "workers", "agent-chat-mcp.cjs"];
-
-// Only fixed instructions enter this file; an unavailable file leaves the turn's stdin form intact.
-export async function prepareInstructionsFile(dataRoot, content = AGENT_CHAT_INSTRUCTIONS) {
-  let temporary;
-  try {
-    if (typeof dataRoot !== "string" || !path.isAbsolute(dataRoot)) return null;
-    const folder = path.join(dataRoot, AGENT_CHAT_DIRECTORY);
-    const file = path.join(folder, `instructions-${createHash("sha256").update(content).digest("hex")}.md`);
-    const instructions = { folder, file };
-    if (!validInstructionsFile(instructions)) return null;
-    if (await fs.readFile(file, "utf8").catch(() => null) === content) return instructions;
-    await fs.mkdir(folder, { recursive: true });
-    temporary = `${file}.${randomUUID()}.tmp`;
-    await fs.writeFile(temporary, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
-    await fs.rename(temporary, file);
-    return instructions;
-  } catch { return null; }
-  finally { if (temporary) await fs.rm(temporary, { force: true }).catch(() => {}); }
-}
-
-/** The chat's own MCP server: the desktop executable running the bundled read-only server as Node. Null when it is not built. */
-export function agentChatMcpServer({ executable, unpackedRoot, fileExists = existsSync } = {}) {
-  if (typeof executable !== "string" || !path.isAbsolute(executable) || typeof unpackedRoot !== "string" || !path.isAbsolute(unpackedRoot)) return null;
-  const script = path.join(unpackedRoot, ...MCP_WORKER);
-  let present = false;
-  try { present = fileExists(script) === true; } catch { present = false; }
-  return present ? Object.freeze({ command: executable, args: Object.freeze([script]), env: Object.freeze({ ELECTRON_RUN_AS_NODE: "1" }) }) : null;
-}
-
 const refused = (error) => Object.freeze({ ok: false, error });
 const INVALID = refused("invalid");
 const UNAVAILABLE = refused("unavailable");
@@ -99,8 +71,8 @@ function isPlainObject(value) {
 
 const exactly = (value, keys) => isPlainObject(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 
-function summary(conversation) {
-  return { id: conversation.id, title: conversation.title, updatedAt: conversation.updatedAt, messages: conversation.messages.length };
+function summary(meta) {
+  return { id: meta.id, title: meta.title, updatedAt: meta.updatedAt, messages: meta.messages };
 }
 
 /** Native-only owner of the chat. Every answer is built here from validated parts; no provider or monitor text passes through. */
@@ -295,6 +267,16 @@ export function createAgentChat(options = {}) {
 
   const turnOf = (repositoryId, conversationId) => (active && !active.reserved && active.repositoryId === repositoryId && active.conversationId === conversationId ? active : null);
   const waitingOf = (repositoryId, conversationId) => [...followUps.values()].find((entry) => entry.repositoryId === repositoryId && entry.conversationId === conversationId) ?? null;
+  const turnView = (turn) => ({ conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, ...effortField(turn.effort), activity: turn.activity, text: visibleAnswer(turn.text) });
+  // A follow-up that waits behind another turn reads as a turn that is starting, so a client keeps reading.
+  const waitingTurn = (waiting) => ({ conversationId: waiting.conversationId, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, effort: waiting.effort, activity: "starting", text: "" });
+  // The thread shows the turn of the repository wherever it runs: the one that answers, else the oldest follow-up that waits.
+  const threadTurn = (repositoryId) => {
+    const running = active && !active.reserved && active.repositoryId === repositoryId ? active : null;
+    const waiting = running ? null : [...followUps.values()].find((entry) => entry.repositoryId === repositoryId);
+    return running ? turnView(running) : waiting ? turnView(waitingTurn(waiting)) : null;
+  };
+  const chatThread = createAgentChatThread({ store, settle: (repositoryId, conversation) => settled(repositoryId, conversation), turn: threadTurn });
 
   // The one turn is free again: the oldest follow-up that waits takes it.
   function release(holder) {
@@ -328,10 +310,14 @@ export function createAgentChat(options = {}) {
     void runFollowUp(turn);
   }
 
+  // From the index of the conversations: no message is read.
   async function lastCompletedAnswer(repositoryId) {
-    const times = (await store.list(repositoryId)).flatMap((conversation) => conversation.messages)
-      .filter((message) => message.role === "agent" && message.status === "complete" && message.grantFollowUp !== true).map((message) => Date.parse(message.at));
-    return times.length > 0 ? Math.max(...times) : null;
+    return lastAnswer(await store.index(repositoryId));
+  }
+
+  // The newest earlier messages of the repository's thread that the prompt's history holds, read from the newest conversation back.
+  async function threadMessages(repositoryId) {
+    return threadHistory(threadSource(store, repositoryId, await store.index(repositoryId)), (messages) => conversationHistory(messages).omitted);
   }
 
   async function runFollowUp(turn) {
@@ -352,7 +338,7 @@ export function createAgentChat(options = {}) {
       turn.followUpOutcome = proposalOutcome(proposal)?.outcome;
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const instructionsFile = turn.provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
-      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, messages: conversation.messages, followUp: proposal, images: shown, now: now() });
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, messages: await threadMessages(turn.repositoryId), followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
@@ -378,9 +364,10 @@ export function createAgentChat(options = {}) {
   }
 
   // A conversation that ends on the owner's message with no run behind it lost its answer (the app closed mid-turn).
+  // While a send of this repository is reserved its message may be stored before its turn is, so nothing is repaired then.
   async function settled(repositoryId, conversation) {
     const last = conversation.messages.at(-1);
-    if (!last || last.role !== "user" || (active && active.repositoryId === repositoryId && active.conversationId === conversation.id)) return conversation;
+    if (!last || last.role !== "user" || (active && active.repositoryId === repositoryId && (active.reserved || active.conversationId === conversation.id))) return conversation;
     const at = now().toISOString();
     const repaired = { ...conversation, updatedAt: at, messages: [...conversation.messages, {
       id: `m-${conversation.messages.length + 1}`, role: "agent", text: "", at, provider: conversation.provider, model: conversation.model, ...effortField(conversation.effort), status: "interrupted",
@@ -463,7 +450,10 @@ export function createAgentChat(options = {}) {
     try {
       const command = executable(provider);
       if (!command) return refused("cli_missing");
-      const existing = conversationId === null ? null : await store.read(repositoryId, conversationId);
+      // A message without a conversation goes to the thread's current one: the most recently updated conversation, but a grant follow-up one, with room
+      // for the message, its answer, and its images; else a new one, whatever the number of conversations. The owner never picks a conversation.
+      const current = conversationId === null ? currentConversation(await store.index(repositoryId), (candidate) => candidate.images + imageIds.length <= CHAT_IMAGES_PER_CONVERSATION) : null;
+      const existing = conversationId === null ? (current ? await store.read(repositoryId, current.id) : null) : await store.read(repositoryId, conversationId);
       if (conversationId !== null && !existing) return refused("not_found");
       if (existing && existing.messages.length > MESSAGE_LIMIT - 2) return refused("limit");
       const held = conversationImages(existing?.messages);
@@ -477,7 +467,7 @@ export function createAgentChat(options = {}) {
         if (disposed) return UNAVAILABLE;
       }
       const conversation = existing ?? await store.create(repositoryId, { provider, model, effort, title: conversationTitle(text) });
-      if (!conversation) return refused("limit");
+      if (!conversation) return UNAVAILABLE;
       // A conversation that was made for this message is not kept when the message is refused.
       const abandoned = async (answer) => {
         if (!existing) { await store.remove(repositoryId, conversation.id); await images?.removeConversation(repositoryId, conversation.id); }
@@ -490,7 +480,7 @@ export function createAgentChat(options = {}) {
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const inventory = await readWorktrees(repositoryId, root, board);
       const instructionsFile = provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
-      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: existing?.messages ?? [], message: text, images: shown, attached, repositoryGithub: github, now: now() });
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: await threadMessages(repositoryId), message: text, images: shown, attached, repositoryGithub: github, now: now() });
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
@@ -550,7 +540,7 @@ export function createAgentChat(options = {}) {
       const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, grantPlans: plans, now: now() });
       if (!prompt) return INVALID;
       const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
-      if (!conversation) return refused("limit");
+      if (!conversation) return UNAVAILABLE;
       if (!await store.save(repositoryId, conversation)) { await store.remove(repositoryId, conversation.id); return UNAVAILABLE; }
       turn = { repositoryId, conversationId: conversation.id, provider, model: null, startedAt: now().toISOString(), activity: "starting", text: "", stopped: false,
         grantPlans: [...plans], taskIds: new Set(board.tasks.map(({ id }) => id)),
@@ -580,7 +570,7 @@ export function createAgentChat(options = {}) {
 
   async function list(payload) {
     if (!exactly(payload, ["repositoryId"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
-    const conversations = await store.list(payload.repositoryId);
+    const conversations = (await store.index(payload.repositoryId)).slice(0, LIST_LIMIT);
     const running = active && !active.reserved && active.repositoryId === payload.repositoryId ? active.conversationId : null;
     return { ok: true, conversations: conversations.map(summary), running };
   }
@@ -595,12 +585,11 @@ export function createAgentChat(options = {}) {
     if (!found) return INVALID;
     if (!found.conversation) return refused("not_found");
     const conversation = await settled(payload.repositoryId, found.conversation);
-    // A follow-up that waits behind another turn reads as a turn that is starting, so the client keeps reading.
     const waiting = waitingOf(payload.repositoryId, conversation.id);
-    const turn = turnOf(payload.repositoryId, conversation.id) ?? (waiting ? { conversationId: conversation.id, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, ...effortField(waiting.effort), activity: "starting", text: "" } : null);
+    const turn = turnOf(payload.repositoryId, conversation.id) ?? (waiting ? waitingTurn(waiting) : null);
     return {
       ok: true, conversation: Object.fromEntries(Object.entries(conversation).filter(([key]) => key !== "grantFollowUps")),
-      turn: turn ? { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, ...effortField(turn.effort), activity: turn.activity, text: visibleAnswer(turn.text) } : null,
+      turn: turn ? turnView(turn) : null,
     };
   }
 
@@ -740,7 +729,7 @@ export function createAgentChat(options = {}) {
     }
   }
 
-  const handlers = { list, read, send, stop, delete: remove, apply: (payload, origin) => resolve(payload, true, origin), dismiss: (payload) => resolve(payload, false) };
+  const handlers = { list, read, thread: chatThread.thread, search: chatThread.search, send, stop, delete: remove, apply: (payload, origin) => resolve(payload, true, origin), dismiss: (payload) => resolve(payload, false) };
 
   /**
    * One operation for the owner: from the desktop window, or from a paired device through the LAN gateway. `origin`

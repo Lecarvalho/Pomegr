@@ -20,10 +20,12 @@ export function AgentChatPanelFrame({ id, open = true, isStatic = false, expande
   return <section ref={panelRef} id={id} className={`agentChatPanel${isStatic ? " isStatic" : ""}${expanded ? " isExpanded" : ""}`} aria-label={PANEL_LABEL} hidden={!open} onKeyDown={onKeyDown}>{children}</section>;
 }
 
-export function AgentChatHeader({ historyOpen, onToggleHistory, onNew, expanded, onToggleExpanded, onClose, disabled = false }: {
-  historyOpen: boolean;
-  onToggleHistory(): void;
-  onNew(): void;
+export function AgentChatHeader({ searchOpen, onToggleSearch, searchRef, searchControls, expanded, onToggleExpanded, onClose, disabled = false }: {
+  searchOpen: boolean;
+  onToggleSearch(): void;
+  searchRef?: Ref<HTMLButtonElement>;
+  /** The ID of the search region the action opens. */
+  searchControls?: string;
   expanded: boolean;
   onToggleExpanded(): void;
   onClose(): void;
@@ -33,8 +35,7 @@ export function AgentChatHeader({ historyOpen, onToggleHistory, onNew, expanded,
     <span className="agentChatGlyph"><CommandIcon name="spark" /></span>
     <h2 className="agentChatTitle">Aril</h2>
     <span className="agentChatSpacer" />
-    <button type="button" className="commandIconAction" aria-label="Conversations" title="Conversations" aria-pressed={historyOpen} disabled={disabled} onClick={onToggleHistory}><CommandIcon name="history" /></button>
-    <button type="button" className="commandIconAction" aria-label="New conversation" title="New conversation" disabled={disabled} onClick={onNew}><CommandIcon name="plus" /></button>
+    <button ref={searchRef} type="button" className="commandIconAction" aria-label="Search" title="Search" aria-pressed={searchOpen} aria-controls={searchOpen ? searchControls : undefined} disabled={disabled} onClick={onToggleSearch}><CommandIcon name="search" /></button>
     <button type="button" className="commandIconAction agentChatExpand" aria-label={expanded ? "Dock" : "Expand"} title={expanded ? "Dock" : "Expand"} aria-pressed={expanded} onClick={onToggleExpanded}><CommandIcon name={expanded ? "dock" : "expand"} /></button>
     <button type="button" className="commandIconAction" aria-label="Close Aril" title="Close Aril" data-close="" onClick={onClose}><CommandIcon name="close" /></button>
   </header>;

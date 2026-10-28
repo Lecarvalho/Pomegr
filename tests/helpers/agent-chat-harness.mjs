@@ -160,6 +160,9 @@ export async function seed(h, { messages = [], title = "Seeded", provider = "cla
   return saved;
 }
 
+/** A conversation newer than the ones seeded so far, so the thread sends the next message there: an exchange that ends on an answer. */
+export const seedCurrent = (h, options = {}) => seed(h, { messages: [userMessage(1), agentMessage(2)], ...options });
+
 // Polls until the check holds. File writes take real time, so the wait is bounded by a deadline, not by a count.
 export async function until(check, { timeoutMs = 10_000 } = {}) {
   const deadline = Date.now() + timeoutMs;

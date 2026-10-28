@@ -13,7 +13,8 @@
 > 2026-10-13 (task T-86), and the follow-up after an answered proposal on the same day
 > (task T-95). Proposals of a change that Aril recommends by itself were added on
 > 2026-10-15 (task T-123). Follow-up proposals with owner approval were added on
-> 2026-10-17 (task T-120). Grant follow-ups were added on 2026-10-26 (task T-183). A change that widens exposure changes the
+> 2026-10-17 (task T-120). Grant follow-ups were added on 2026-10-26 (task T-183). One thread for each repository, with search, was
+> added on 2026-10-28 (Aril agent plan, phase 1). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -48,7 +49,8 @@ send images with a message, and a proposal may put those images on a task (see
 [Images](#images)). After the owner applies or dismisses a proposal, Aril writes one
 follow-up about the outcome without another message of the owner (see
 [Follow-up](#follow-up)). While a grant works, Pomegr also writes short grant follow-ups into
-the chat, with no provider run (see [Grant follow-ups](#grant-follow-ups)). The user guide is
+the chat, with no provider run (see [Grant follow-ups](#grant-follow-ups)). The owner sees each repository as one continuous
+conversation with search, not as a list of conversations (see [The thread](#the-thread)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -60,10 +62,12 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 | Owner | Responsibility | May not |
 | --- | --- | --- |
-| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, the one request of an approved queue change, and the removal of the worktrees the owner approved | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; remove a worktree for a call that is not the desktop window's, or by any path but the unforced removal of `task-worktree.mjs`; send `queue_settings` with any setting but `on` |
+| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the choice of the conversation a message goes to, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, the one request of an approved queue change, and the removal of the worktrees the owner approved | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; remove a worktree for a call that is not the desktop window's, or by any path but the unforced removal of `task-worktree.mjs`; send `queue_settings` with any setting but `on` |
 | `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds |
 | `desktop/runtime/agent-chat-images.mjs` | The image files the owner sends: the staged ones and the ones of each conversation | Write outside the chat's directory; build a path from anything but a validated repository ID, conversation ID, and image ID; serve a file by itself |
-| `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the conversation history of one turn | Read anything itself |
+| `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the history of the thread for one turn | Read anything itself |
+| `desktop/runtime/agent-chat-thread.mjs` | The thread: the order of a repository's messages across its conversations, a page of them, the cursor, the conversation the next message goes to, the last run, and the search of their text | Read or write a file; answer more than `read` of the same conversations answers; read a pattern from the owner's text |
+| `desktop/runtime/agent-chat-provider-files.mjs` | The fixed instructions file Claude reads and the entry of the chat's own MCP server | Hold owner, board, conversation, or credential text |
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
 | `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
 | `desktop/runtime/agent-chat-workflow.mjs` | The [workflow changes](#workflow-changes) read: which workflow source files changed after the owner settled Aril's settings and memory | Run anything but read-only `git log` and `git status` with an argument array, in the repository root, within 5 seconds; read file content; list a name outside the fixed list and the workflows folder |
@@ -71,7 +75,7 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and two read-only task tools | Register a signal, write, or feature tool |
 | `desktop/runtime/lan-gateway.mjs` | The chat route and the two chat image routes of a paired device | Forward a chat request to the web host |
 | `shared/agent-chat-contract.ts` | Browser-visible types and bounds | Import `server/` or `desktop/` |
-| `app/agent-chat-client.ts`, `app/components/agent-chat/` | The transport, the chat state, and the panel | Keep conversation content in browser storage, or change the board except through the chat's `apply` |
+| `app/agent-chat-client.ts`, `app/agent-chat-search.ts`, `app/components/agent-chat/` | The transport, the thread as far as it is loaded, the search, and the panel | Keep conversation content in browser storage, or change the board except through the chat's `apply` |
 
 ## One turn
 
@@ -88,7 +92,7 @@ stored Apply or Dismiss starts exactly one provider run for a follow-up (see
 any applied or partial outcome. The owner must Apply or Dismiss it, which starts its own
 single follow-up run; no proposal starts a run or applies itself. Follow-ups never propose a session start, a queue change, or a worktree removal.
 
-1. The client sends `send` with the repository, the conversation or none, the message,
+1. The client sends `send` with the repository, the conversation or none (the panel always sends none: see [The thread](#the-thread)), the message,
    the provider, the model or none, the effort or none, and the IDs of the images it added,
    when it added any (see [Images](#images)). The chat panel always names a model once one is
    known and an effort; a client that sends no `effort` key reads as none.
@@ -109,17 +113,16 @@ single follow-up run; no proposal starts a run or applies itself. Follow-ups nev
    [Prompt](#prompt)), stores the owner's message, declares a Claude Code run to the
    monitor (see [The declared run](#the-declared-run)), and starts the run in the
    repository root. The answer to `send` is the conversation ID only.
-6. While the run writes, `read` answers the stored conversation and a `turn`: the
+6. While the run writes, `thread` answers the newest page of the thread and a `turn`: the
    answer text so far and one fixed activity label. While a client's panel is open and reads
    no `turn`, the client sends `list` every five seconds. So it follows a turn that
-   another device started: `running` names the open conversation, or a newer `updatedAt`
-   of the open conversation makes the client `read` it again. The operations and their
-   fields are unchanged.
+   another device started: a `running` conversation, or an `updatedAt` newer than the
+   one the thread was read at, makes the client read the thread's newest page again.
 7. When the run ends, desktop main withdraws the declaration and stores Aril's message
    with one status: `complete`, `stopped`, `failed`, or `timed_out`. A run may take ten
    minutes.
 
-The run is a new provider conversation every time. Pomegr sends the earlier messages in
+The run is a new provider conversation every time. Pomegr sends the earlier messages of the thread in
 the prompt, so the owner may change the provider, the model, or the effort between two messages.
 
 ### Tasks from a grant's plans
@@ -140,13 +143,13 @@ While a grant works, Pomegr tells the owner what it did without being asked. It 
 - Entries that arrive close together are one batch: a batch is ready 45 seconds after its newest entry, 3 minutes after its oldest, or at 50 entries. The grant's end is a batch of its own at once, or joins the entries still waiting.
 - The queue runner asks each tick. For each batch it calls the desktop-only `grantFollowUp({ repositoryId, grant, through, items, more, ended })`, then `grant-follow-up-ack` with the message it wrote, or `null`. A runner without a chat writer asks for nothing.
 - `grantFollowUp` builds the line with `arilFollowUpText`: one or two sentences with task IDs and fixed words, never task or provider text. The first sentence lists at most three entries and counts the rest. The second names the tasks that need the owner (a refused merge or branch delete, or a failed review that the burst did not send back), says the grant ended and why, says which provider's new starts wait for usage, or says `Nothing needs you yet.` The line is at most 200 characters.
-- Every grant of a repository writes into one conversation, titled `Grant follow-ups`, so follow-ups take one of the repository's 50 conversations. It is made at the first follow-up, found again by its stored `grantFollowUps` mark, and replaced by a new one only when it holds 200 messages. Its provider is Claude when Claude Code is installed, else Codex, so the owner can reply in it.
+- Every grant of a repository writes into one conversation, titled `Grant follow-ups`. It is made at the first follow-up, found again by its stored `grantFollowUps` mark, and replaced by a new one only when it holds 200 messages. Its provider is Claude when Claude Code is installed, else Codex. The owner replies in the thread, never in this conversation: [a message does not go to it](#the-thread).
 - The mark names the last follow-up written: `{ grant, through, ended, messageId }`. A batch with the same `grant`, `through`, and `ended` answers that message again and writes nothing, so an ack the monitor never received does not add a second line.
 - The message is `{ role: "agent", status: "complete", model: null, grantFollowUp: true }` with the line as `text`. It carries no proposal, `followUp`, or `proposalUnreadable`; the store refuses one that does. It carries no effort. The panel draws it as a quiet line (an icon, its text, and its time), not as a message with a head.
-- A conversation that is answering, waits for a follow-up turn, or is being sent to answers `busy`, and the runner asks again on the next tick. A full conversation or repository answers `limit`; the runner then acknowledges the batch with no message, and the notification still goes out.
+- A conversation that is answering, waits for a follow-up turn, or is being sent to answers `busy`, and the runner asks again on the next tick. A conversation that is full is never written to: the follow-up goes to a new one, so a repository's follow-ups are never refused for being full.
 - With `followUps` off, the runner writes nothing and acknowledges each batch with no message, and the monitor commits no notification.
-- After an acknowledged batch with `followUps` on, the monitor commits one `aril_follow_up` notification with the same facts, so its body is the same line ([Notification privacy](privacy/notifications.md#aril-follow-ups)). Clicking it opens `/tasks?repository=<ID>&aril=<conversation ID>&message=<message ID>`, or `&aril=open` when no message was written. The chat panel then opens in that repository, opens that conversation, and brings the message into view. A tray click inside the app does the same through the `pomegr:open-aril-chat` window event.
-- A grant follow-up is never a message of the owner and never an answer of Aril's provider run. It does not count as the last completed answer, so the task log since that answer still reaches the next turn. The next prompt shows it as a grant follow-up that Pomegr wrote from the task log.
+- After an acknowledged batch with `followUps` on, the monitor commits one `aril_follow_up` notification with the same facts, so its body is the same line ([Notification privacy](privacy/notifications.md#aril-follow-ups)). Clicking it opens `/tasks?repository=<ID>&aril=<conversation ID>&message=<message ID>`, or `&aril=open` when no message was written. The chat panel then opens in that repository and brings the message into view: it loads older pages of the thread, at most ten, until the message is there. A tray click inside the app does the same through the `pomegr:open-aril-chat` window event.
+- A grant follow-up is never a message of the owner and never an answer of Aril's provider run. It does not count as the last completed answer, so the task log since that answer still reaches the next turn. It is in the thread like any message, so the next prompt shows it, in time order, as a grant follow-up that Pomegr wrote from the task log.
 
 ### The provider run
 
@@ -308,8 +311,8 @@ characters, including the fixed instructions even when Claude receives them thro
    from, and to ask the owner only what they leave open.
 6. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
    The section reports an empty log, unavailable log, or omitted older entries with fixed lines.
-7. **Conversation.** The newest earlier messages that fit 24,000 characters, oldest
-   first. A proposal is one line with its summary, its outcome, and the IDs it created.
+7. **Conversation.** The newest earlier messages of the repository's [thread](#the-thread) that fit 24,000 characters, oldest
+   first, whichever conversation stores them, so Aril keeps its context across the boundary of two conversations. A grant write turn passes no earlier message. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
    one line with the state it asked for and what happened: not answered, dismissed,
@@ -817,9 +820,9 @@ work before Apply.
   the prompt from the stored proposal and is not kept by itself.
 - **A turn that already runs.** The follow-up waits for the one turn, in memory, oldest
   first. The proposal's outcome is stored at once and the board is usable meanwhile.
-  `read` of its conversation answers a `turn` that is `starting` while it waits, so the
-  client keeps reading. **Stop** in that conversation takes a waiting follow-up back,
-  and deleting the conversation drops it.
+  The thread's `turn` is `starting` while it waits, so the
+  client keeps reading. **Stop** takes a waiting follow-up back,
+  and deleting its conversation drops it.
 - **A provider that cannot answer.** With no provider CLI, no board, or no repository
   root, and for a run that fails, the follow-up is stored as one message with the status
   `failed` and no text. The proposal keeps its outcome, and nothing is tried again.
@@ -894,6 +897,62 @@ image: every image is one the owner sent in the same conversation.
 - **The session sees it.** A session that starts for the task gets the image file, as
   for any task image ([Tasks: Starting a session](tasks.md#starting-a-session)).
 
+## The thread
+
+Each repository is one continuous conversation with Aril, with search. The owner sees no list of conversations and chooses none. The thread is a view over the
+repository's [saved conversations](#conversations), which are stored as before, with the same files, bounds, grant follow-up mark, and follow-up
+conversations. Compacting an outgrown thread into a summary is a later change and is not built.
+
+### Order
+
+- The thread orders every message of the repository's conversations by its time, then by the creation time of its conversation, then by the ID of its conversation, then by its place in the conversation.
+- So two messages with one time keep a fixed order, and a conversation's messages keep theirs.
+- A grant follow-up line is a message of its conversation, and it is in the thread like any other.
+- An answer, a follow-up, an Apply, and a Dismiss stay in the conversation of their message or proposal. A follow-up to an old proposal is in the thread at its own time, after later messages.
+
+### Where a message goes
+
+- `send` with a null conversation goes to the repository's current conversation: the most recently updated conversation that is not a grant follow-up conversation (one with no `grantFollowUps` mark), and that has room for the message and its answer (at most 198 messages) and, for a message with images, for them (a conversation holds 40).
+- When none qualifies, `send` makes a new conversation, titled by its first message: that is the first message of a repository, and a rollover when the current conversation is full.
+- A repository has no limit of conversations, and its thread never refuses a message for being full: a new conversation is always made.
+- `send` with a conversation ID continues that conversation, as before, and a full one answers `limit`. That is the one use of `limit` for a conversation's room, and the panel never sends a conversation ID.
+- A message never goes to a grant follow-up conversation. A reply to a follow-up line is written in the current conversation, and joins the thread after it.
+- A new conversation takes the provider, model, and effort of the message. The thread's last run is that of its newest conversation that is not a grant follow-up conversation.
+- The `runningElsewhere` rule is gone from the panel: the thread shows the turn of the repository wherever it runs, and a turn of another repository still answers `busy`.
+
+### Reading the thread
+
+A repository holds any number of conversations, so no read of the thread loads them all.
+
+- The store indexes each repository once, when it is first read after the app starts, by reading its files one at a time. The index holds, for each conversation, its ID, title, provider, model, effort, creation and update times, message count, image count, the role of its last message, the time of its newest complete answer of Aril's run, the times of its oldest and newest message, and its `grantFollowUps` mark. It holds no message.
+- The messages of the sixteen conversations read last stay in memory. A conversation that was saved and not yet written is read from memory; a conversation being written is read after its write.
+- A page takes conversations from the one that can reach the newest message, and stops when the next one cannot reach above the oldest message of the page. A page of a long thread reads one conversation, or a few where times overlap.
+- A search reads conversations one at a time, newest first, and stops once it has twenty matches and the next conversation cannot reach above the twentieth. A search with fewer matches reads every conversation, one at a time, in batches of 200 messages with a pause between them.
+- The prompt's history reads pages back from the newest message until its 24,000 characters are full, at most 100 pages. The time of the newest complete answer comes from the index alone.
+- The choice of the conversation for the next message, the last run, `updatedAt`, and the grant follow-up conversation come from the index alone.
+
+`thread` takes `{ repositoryId }` and may take `before`, a cursor, and `limit`, a whole number from 1 to 60 (60 when absent). Another key, a `before` that is not a string, a cursor this module did not write, or a `limit` outside its bound answers `invalid`.
+
+- The answer holds `messages`, `before`, `turn`, `sendTo`, `run`, and `updatedAt`.
+- `messages` are the newest `limit` messages before the cursor (or the newest of all, with no cursor), oldest first. Each is a stored message as `read` answers it, with the ID of its conversation in `conversationId`. A message ID repeats across conversations, so a message is known by both.
+- `before` is an opaque cursor for the page before the first message of this one, or null when there is none. It names the oldest message of the page it was made for, in the form this module writes; nothing else is a cursor.
+- `turn` is the repository's turn in the shape `read` answers it, with its `conversationId`: the one that answers, else the oldest follow-up that waits (it reads as `starting`), else null.
+- `sendTo` is the ID of the conversation the next message goes to, or null when a new one will be made.
+- `run` is `{ provider, model, effort? }` of the thread's last run, or null before the first message.
+- `updatedAt` is the newest update time of any conversation of the repository, or null. A client compares it with the one it read at.
+- Like `read`, it repairs a conversation that ends on the owner's message with no run behind it by adding one answer with the status `interrupted`, but not while a send or a grant write of the repository holds the turn.
+- The answer never holds a path, a `grantFollowUps` mark, or image bytes.
+
+### Searching the thread
+
+`search` takes `{ repositoryId, query }`. A query is trimmed text of 1 to 100 characters with no control character; anything else answers `invalid`.
+
+- The answer is `{ ok: true, matches }`: at most 20 matches, newest first.
+- A match is `{ conversationId, messageId, at, role, snippet }`. `role` is `user` or `agent`.
+- A message matches when its text holds the query as a substring, whatever the case of either. The query is never read as a pattern, and no accent is folded.
+- The snippet is a short plain excerpt around the first place the text matches: up to 40 characters before and 80 after, with runs of white space made single spaces and an ellipsis at each cut end. It is at most about 220 characters.
+- Only the text of a message is searched: not a proposal, an image, a status, or a grant follow-up mark. A grant follow-up line is searched like any message.
+
 ## Conversations
 
 Desktop main keeps one JSON file per conversation:
@@ -907,9 +966,10 @@ Desktop main keeps one JSON file per conversation:
   `low`, `medium`, `high`, and `xhigh`, and the field is absent when there is none. A record
   without it, such as one an older version wrote, reads as null; a value that is not one of the
   four makes the store refuse the record, as it does for a model outside the contract.
-- Bounds: 50 conversations for each repository, 200 messages for each conversation, 4,000
-  characters for a message of the owner, and 32,000 for an answer. A full repository or
-  conversation answers `limit`.
+- Bounds: 200 messages for each conversation, 4,000
+  characters for a message of the owner, and 32,000 for an answer. A repository holds any number of conversations.
+  A named conversation that is full answers `limit`.
+- Desktop main keeps an index of each repository's conversations in memory (see [Reading the thread](#reading-the-thread)) and the messages of the sixteen read last. Every other message stays in its file until a read asks for it.
 - A message of the owner may list its images as `{ id, type, bytes }`. The file never
   holds image bytes or a path: the images are files of their own (see [Images](#images)).
 - An answer of Aril may hold `followUp`, the ID of the proposal it follows up (see
@@ -920,8 +980,8 @@ Desktop main keeps one JSON file per conversation:
 - A write replaces the file whole, through a temporary file and a rename.
 - A file outside the contract, of another version, or over the size bound is never
   listed and never overwritten.
-- Nothing deletes a conversation except the owner's **Delete** (`delete`), which also
-  removes the folder of its images. Storage
+- Nothing deletes a conversation except `delete`, which also removes the folder of its images. The panel no longer offers it:
+  the owner sees one thread, and no client calls `delete`. Storage
   retention and the prune cycle of the observation store do not touch this directory.
 - A conversation that ends on the owner's message with no run behind it lost its answer:
   the app closed during the turn. The next read adds one answer with the status
@@ -933,10 +993,10 @@ Aril may record a rework link (references and a cause from a fixed list) without
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
-| `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer. The only surface whose `apply` can start a session or remove a worktree |
+| `pomegr:agent-chat` IPC | The renderer, through a trusted main frame only | One fixed operation and a payload of at most 17 KiB; answers the chat's own bounded answer, `thread` and `search` included. The only surface whose `apply` can start a session or remove a worktree |
 | `pomegr:agent-chat-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add` and `read`. `add`: a repository ID and the image bytes (a `Uint8Array` of at most 5 MiB); answers the image's ID, type, and size. `read`: a repository ID, a conversation ID, and an image ID; answers the type and the bytes. No answer carries a path |
 | `POST /api/agent-chat/image-add` and `GET /api/agent-chat/image-read` on the LAN gateway | A paired device only | The same two operations, answered in desktop main and never forwarded. `image-add` takes the bytes as an `application/octet-stream` body of at most 5 MiB with the repository ID as its only query key. `image-read` takes the repository ID, the conversation ID, and the image ID as its only query keys, and answers the bytes with one of the four media types, `no-store` |
-| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start, a worktree removal, or a feature edit answers `desktop_only`. Its `apply` of a queue change is accepted |
+| `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound, `thread` and `search` included; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start, a worktree removal, or a feature edit answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
 | Git in desktop main (`createTaskWorktrees`) | Desktop main | `worktree list`, `status`, `rev-list`, `worktree remove`, and, under the branch rule, `branch -D`, as argument arrays with no shell, for the worktree listing of a turn and for an approved removal. The prompt gets facts and result words only; no output, path, or error text |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
@@ -951,12 +1011,14 @@ The operations and their payloads, each with `repositoryId`:
 
 | Operation | Other keys | Answer on success |
 | --- | --- | --- |
-| `list` | none | The conversations (ID, title, update time, message count) and the conversation being answered, or null |
+| `list` | none | The newest 50 conversations (ID, title, update time, message count) and the conversation being answered, or null. The 50 bound an answer and not a repository. The panel asks it only to learn that something changed |
 | `read` | `conversationId` | The conversation and the running `turn` or null |
-| `send` | `conversationId` or null, `text`, `provider`, `model` or null; optional `effort` (`low`, `medium`, `high`, `xhigh`, or null), optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
+| `thread` | optional `before` (a cursor) and `limit` (1 to 60) | The newest page of the thread, a `turn`, `sendTo`, `run`, and `updatedAt`: see [Reading the thread](#reading-the-thread) |
+| `search` | `query` (1 to 100 characters) | At most 20 matches of the thread's text, newest first: see [Searching the thread](#searching-the-thread) |
+| `send` | `conversationId` or null (the panel sends null), `text`, `provider`, `model` or null; optional `effort` (`low`, `medium`, `high`, `xhigh`, or null), optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
 | `stop` | `conversationId` | Nothing more |
 | `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again, and that read may answer the `turn` of the follow-up. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer. An `apply` of a worktree removal answers success once each removal was tried, whatever its result |
-| `delete` | `conversationId` | Nothing more |
+| `delete` | `conversationId` | Nothing more. No client calls it |
 
 A refusal is `{ ok: false, error }` with one of `invalid`, `not_found`, `busy`, `limit`,
 `cli_missing`, `conflict`, `unavailable`, and `desktop_only`. A payload with another key
@@ -994,6 +1056,7 @@ The conversation is a new data class: text the owner wrote and text the agent wr
 is the one place where Pomegr shows a prompt and a response, and they are the chat's own,
 never a session's.
 
+- **The thread and the search.** `thread` and `search` answer only what `read` of the same conversations answers, in pages and excerpts: the stored messages with their proposals and the IDs, types, and sizes of their images (never the bytes), the turn, the ID of the conversation the next message goes to, the provider, model, and effort of the last run, the newest update time, an opaque cursor, and plain excerpts of message text. They go to the trusted renderer through `pomegr:agent-chat` and to a paired device through `POST /api/agent-chat`, as `read` does. No GET serves them. A query is held in memory while it is answered and by the panel while it is open: nothing keeps it, logs it, sends it to the monitor or a provider, or writes it to browser storage. A search is a plain substring match, so the owner's text is never read as a pattern. Desktop main holds in memory an index of each repository's conversations (titles, counts, and times, with no message) and the messages of sixteen conversations; nothing else of a conversation is in memory.
 - **The effort is a fixed word.** One of four levels, stored in the conversation file on the
   conversation and on each answer, shown in the panel, and sent to the provider only as a
   validated argument of the run. It is never taken from text, and it adds no path to the
@@ -1019,7 +1082,7 @@ never a session's.
   The renderer keeps it in memory only; browser storage holds only the ID of the
   repository chosen last.
 - **What reaches the provider.** Each turn sends the prompt to the provider the owner
-  chose, through the owner's CLI. From 2026-10-25 (Aril operator phase 1), an owner-message prompt also holds unseen task-log entries.
+  chose, through the owner's CLI. Its conversation section holds the newest earlier messages of the repository's thread, from every conversation, in the same bound of 24,000 characters and as the same kinds of line: text the owner and Aril wrote in the chat, and grant follow-up lines, which the prompt held before only when the owner replied in their own conversation. From 2026-10-25 (Aril operator phase 1), an owner-message prompt also holds unseen task-log entries.
   These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text. A grant usage pause or resume has no task ID and carries only the fixed provider ID.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
@@ -1135,6 +1198,9 @@ never a session's.
 - Aril puts no image on a task. Only `apply` does, with an image the owner sent in the
   same conversation, through the monitor's own image route and under its bounds.
 - A proposal that names an image the conversation does not hold is never offered.
+- The thread adds no content kind: it shows, searches, and sends to the provider messages that are already stored, in pages and excerpts of the same bounds.
+- A message never goes to a grant follow-up conversation, and the owner never chooses a conversation.
+- A repository's thread never refuses a message for being full, and no read of the thread, its search, or its history for the prompt loads every conversation: each takes conversations newest first and stops when it is complete.
 - An image is served only when a message of its conversation names it.
 - Aril starts no session itself, except through the fixed grant actions while a grant the
   owner started is active: the desktop grant runner then starts an offered task or review,
@@ -1252,6 +1318,9 @@ never a session's.
 19. **A session that links later.** A start that launched is followed up at once, before
     the session reports in, so the snapshot of that follow-up usually shows no session
     on the task yet. The request tells Aril that the launch is the only confirmed fact.
+20. **Images across a rollover.** The prompt lists the image files of the conversation it answers in. An image the owner sent in an earlier conversation of the thread is named in its message line, but not listed as a file, and a proposal can name only an image of the conversation it is answered in.
+21. **No compaction yet.** A thread longer than the 24,000 characters of the prompt's conversation section drops its oldest messages from the prompt, as one long conversation did. The owner still sees and searches them all. A repository's conversations are never deleted by size, so their files grow with use; the first read of a repository after the app starts reads each file once to build the index.
+22. **Search is plain.** It matches a substring, whatever the case, in message text only: it does not rank, fold accents, or read a proposal's operations.
 
 ## Change and verify
 
