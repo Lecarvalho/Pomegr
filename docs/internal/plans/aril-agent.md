@@ -6,7 +6,7 @@
 > Continuation owner: the product owner decides; the agent that builds a phase records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Agent chat](../architecture/agent-chat.md), [Tasks](../architecture/tasks.md), [DESIGN.md](../../../DESIGN.md), and the [agent chat](../design/agent-chat.md) and [Home](../design/home.md) design pages govern shipped behavior until each phase changes them.
 > Next task or decision: the owner reviews this plan and answers the open questions; phase 1 (the panel and the composer) needs no new authority and can start after that review.
-> Completion criteria: with Aril on, the owner settles how Aril works in conversation once, and Aril keeps the work moving without a grant, survives an app restart, and pings the owner only for what needs them; with Aril off, Aril does nothing; every rule below has a test.
+> Completion criteria: with Aril on, the owner settles how Aril works in conversation once, and Aril keeps the work moving without a grant, survives an app restart, and pings the owner only for what needs them; with Aril off, Aril does nothing; every rule below has a test; and the owner has tested each phase in real use and accepted it.
 > Permanent destinations: `AGENTS.md` for the control boundary, [Agent chat](../architecture/agent-chat.md) for agreements, the switch, quick replies, and pings, [Tasks](../architecture/tasks.md) for the actions an agreement allows, [DESIGN.md](../../../DESIGN.md) and the agent chat and Home design pages for the interface, and [PRODUCT.md](../../../PRODUCT.md) for the purpose wording.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
 
@@ -32,6 +32,7 @@ This plan makes three changes:
 | 2026-10-28 | Aril pings the owner when it needs them, sends follow-ups, and asks the owner to review what deserves their attention. The aim is not to work without pause; it is for Aril to propose what can be done, and how, in a way that works for both. |
 | 2026-10-28 | The owner rejects the `AGENTS.md` rule that only the owner starts a grant and that every other change needs Apply. One Aril in **Settings** holds the memory and the switch; when Aril is on, it works as settled. |
 | 2026-10-28 | Aril talks just enough, and clearly. Every message, the owner's included, carries its time. Quick-reply buttons are the default for a question; a multiple-choice question is for options that each need a line of trade-off. Aril asks only what it cannot decide itself: a routine choice inside the agreement, such as moving work to another provider when one reaches its usage limit, is Aril's to make and report. |
+| 2026-10-28 | This plan is critical. The owner tests each phase in real use to see whether Aril is really smarter, and the work is adjusted until it is; no phase is done before the owner accepts it. |
 | 2026-10-28 | The interface: a docked Aril panel, a borderless composer with borderless buttons and the repository and the model in its bottom row, and a Home with brief information above a centered composer. |
 
 ## The switch
@@ -104,6 +105,13 @@ The shipped actions stay as the means: start, review, send back, merge, mark don
 ## Phases
 
 Each phase ships on its own and names the [purpose scorecard](purpose-roadmap.md#purpose-scorecard) measure it should move before it ships.
+
+A phase is checked only after the owner accepts it:
+
+1. The phase merges with its tests passing.
+2. The owner uses it in real work, on real repositories, and says what is still off.
+3. Each finding becomes a fix in the same phase, or a task the owner agrees to defer, and is recorded in the checkpoint.
+4. The owner says the phase is accepted. Green tests alone never check a phase.
 
 - [ ] **1. Panel and composer.** The docked panel, the borderless composer, the repository and model in the composer, a time on every message, and quiet activity lines. No new authority. Measure: S1, owner time per accepted pull request, through faster answers.
 - [ ] **2. Quick replies and questions.** Aril's answer may carry quick replies and one multiple-choice question; the owner's choice is sent as the owner's message. Aril's prompt gets the talking rules. No new authority.
