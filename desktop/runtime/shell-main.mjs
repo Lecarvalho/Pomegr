@@ -48,7 +48,7 @@ import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNEL
 import {
   createNativeNotificationController,
   createNotificationPoller,
-  isAllowedNotificationTarget,
+  notificationWindowUrl,
   loadCommittedNotificationSnapshot,
 } from "./notifications.mjs";
 import { createNotificationDeliveryStore, notificationDeliveryProfile } from "./notification-delivery-store.mjs";
@@ -206,10 +206,10 @@ function openAbout() {
   void mainWindow.loadURL(`${webHandle.origin}/settings?section=about`).then(showShellWindow, showShellWindow);
 }
 
+// A session target opens its session; a grant follow-up's opens its repository's Aril chat at the follow-up.
 function openNotificationTarget(target, session = null) {
-  if (!isAllowedNotificationTarget(target) || !webHandle?.origin) return;
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  const url = `${webHandle.origin}${target}`;
+  const url = webHandle?.origin ? notificationWindowUrl(webHandle.origin, target) : null;
+  if (!url || !mainWindow || mainWindow.isDestroyed()) return;
   let current = "";
   try { current = mainWindow.webContents.getURL(); } catch { /* A crashed renderer reloads below. */ }
   const shown = current === url ? Promise.resolve(showShellWindow())
@@ -731,7 +731,7 @@ async function startDesktop() {
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain, monitorOrigin: privateMonitorOrigin, authorizationToken,
-          starter: taskStarter, grantWrite: agentChat.grantWrite, repositoryGithub,
+          starter: taskStarter, grantWrite: agentChat.grantWrite, grantFollowUp: agentChat.grantFollowUp, repositoryGithub,
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

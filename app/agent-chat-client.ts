@@ -135,6 +135,8 @@ function parseMessage(value: unknown): AgentChatMessage | null {
   if (proposal) parsed.proposal = proposal;
   if (message.proposalUnreadable === true || (message.proposal !== undefined && !proposal)) parsed.proposalUnreadable = true;
   if (text(message.followUp) && AGENT_CHAT_PROPOSAL_ID_PATTERN.test(message.followUp)) parsed.followUp = message.followUp;
+  // A grant follow-up never offers a proposal: one that names one is not drawn as a follow-up.
+  if (message.grantFollowUp === true && !parsed.proposal && !parsed.proposalUnreadable && parsed.followUp === undefined) parsed.grantFollowUp = true;
   return parsed;
 }
 

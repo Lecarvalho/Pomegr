@@ -144,4 +144,45 @@ export function serveGrantRunner({ request, response, taskStore, resolveGateFact
     } else json(response, 200, { ok: true });
   } catch { json(response, action === "grant-write-tasks" ? 400 : 503, rejected(action === "grant-write-tasks" ? "invalid" : "unavailable")); }
 }
-
+
+const CONVERSATION_ID_PATTERN = /^chat-[0-9a-f]{12}$/u;
+const MESSAGE_ID_PATTERN = /^m-[1-9][0-9]{0,5}$/u;
+const followUpBatch = (entry) => isPlainObject(entry) && typeof entry.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(entry.repositoryId)
+  && Number.isSafeInteger(entry.grant) && Number.isSafeInteger(entry.through) && entry.through >= 0 && typeof entry.followUps === "boolean"
+  && Array.isArray(entry.items) && Number.isSafeInteger(entry.more) && (entry.ended === null || typeof entry.ended === "string");
+const located = (message) => message === null || (isPlainObject(message) && Object.keys(message).length === 2
+  && typeof message.conversationId === "string" && CONVERSATION_ID_PATTERN.test(message.conversationId)
+  && typeof message.messageId === "string" && MESSAGE_ID_PATTERN.test(message.messageId));
+
+/**
+ * `POST /internal/tasks/grant-follow-ups` answers the grant follow-ups ready to send; `grant-follow-up-ack` settles one
+ * after the desktop wrote it into the chat (`message`) or skipped it (`null`), and with follow-ups on commits its notification.
+ */
+export function serveGrantFollowUps({ request, response, taskStore, acceptArilFollowUp, action, body }) {
+  if (request.headers["x-pomegr-lan-gateway"] !== undefined) { json(response, 403, rejected("unavailable")); return; }
+  const fields = action === "grant-follow-ups" ? [] : ["repositoryId", "grant", "through", "ended", "message"];
+  if (!isPlainObject(body) || Object.keys(body).length !== fields.length || !fields.every((key) => Object.hasOwn(body, key))
+    || (action === "grant-follow-up-ack" && (typeof body.repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(body.repositoryId) || !located(body.message)))) {
+    json(response, 400, rejected("invalid")); return;
+  }
+  try {
+    if (action === "grant-follow-ups") {
+      const result = taskStore?.nextFollowUps?.();
+      if (result?.ok !== true || !Array.isArray(result.batches)) { json(response, 503, rejected("unavailable")); return; }
+      json(response, 200, { ok: true, batches: result.batches.filter(followUpBatch).slice(0, 16)
+        .map(({ repositoryId, grant, through, followUps, items, more, ended }) => ({ repositoryId, grant, through, followUps, items, more, ended })) });
+      return;
+    }
+    const result = taskStore?.ackFollowUp?.(body.repositoryId, { grant: body.grant, through: body.through, ended: body.ended });
+    if (result?.ok !== true) {
+      const error = Object.hasOwn(GRANT_STATUS, result?.error) ? result.error : "unavailable";
+      json(response, GRANT_STATUS[error], rejected(error)); return;
+    }
+    if (result.followUp && typeof acceptArilFollowUp === "function") {
+      try {
+        acceptArilFollowUp({ ...result.followUp, conversationId: body.message?.conversationId ?? null, messageId: body.message?.messageId ?? null });
+      } catch { /* The chat holds the follow-up; a failed notification changes nothing else. */ }
+    }
+    json(response, 200, { ok: true });
+  } catch { json(response, 503, rejected("unavailable")); }
+}

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { USAGE_NOTIFICATION_RULE } from "./usage-notifications.mjs";
 import { RELEASE_NOTIFICATION_RULE } from "./release-notifications.mjs";
 import { MODEL_NOTIFICATION_RULE } from "./model-notifications.mjs";
+import { ARIL_FOLLOW_UP_NOTIFICATION_RULE } from "./aril-follow-up-notifications.mjs";
 import { inputNotificationTime } from "../normalize/input-notification-facts.mjs";
 
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -24,6 +25,7 @@ export const NOTIFICATION_RULES = Object.freeze([
   USAGE_NOTIFICATION_RULE,
   RELEASE_NOTIFICATION_RULE,
   MODEL_NOTIFICATION_RULE,
+  ARIL_FOLLOW_UP_NOTIFICATION_RULE,
   Object.freeze({
     kind: "needs_input", source: "catalog", capability: "session_catalog", scope: "session",
     identity: "normalized_session_id", freshness: "ready_row", transition: "false_to_true",

@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   createNativeNotificationController, createNotificationPoller, isAllowedNotificationTarget,
-  loadCommittedNotificationSnapshot, nativeNotificationPayload, normalizeNativeNotificationSnapshot, notificationTarget,
+  loadCommittedNotificationSnapshot, nativeNotificationPayload, normalizeNativeNotificationSnapshot, notificationTarget, notificationWindowUrl,
 } from "../desktop/runtime/notifications.mjs";
 import { createNotificationDeliveryStore, notificationDeliveryProfile } from "../desktop/runtime/notification-delivery-store.mjs";
 
@@ -329,4 +329,53 @@ test("native reader requests only the bounded committed notification GET with lo
   assert.equal(await read(new Response("x".repeat(1024 * 1024 + 1))), null);
   assert.equal(await loadCommittedNotificationSnapshot({ origin: "https://evil.example", authorizationToken: "local-token", signal,
     fetchImpl: () => assert.fail("unsafe origin must not fetch") }), null);
+});
+
+// Grant follow-ups (T-183): one toast per follow-up, and a click that opens the Aril chat of the follow-up's own repository.
+const REPOSITORY_A = `repo-${"a".repeat(24)}`;
+const REPOSITORY_B = `repo-${"b".repeat(24)}`;
+const followUp = (number, repositoryId, options = {}) => occurrence(number, { kind: "aril_follow_up", category: "aril", severity: "info", lifecycle: "resolved",
+  priority: 50, timeBasis: "observed", action: "open_aril_chat", provider: null,
+  data: { repositoryId, conversationId: "chat-0123456789ab", messageId: `m-${number}`, items: [{ kind: "grant_merge", task: "T-5", provider: null }], more: 0, ended: null },
+  ...options });
+
+test("each grant follow-up is one notification call whose click opens its own repository's Aril chat; a session click still opens its session", async (context) => {
+  const { store } = await fixture(context);
+  const native = controller(store());
+  await native.instance.start();
+  await native.instance.observe(snapshot([]));
+  assert.equal(await native.instance.observe(snapshot([followUp(1, REPOSITORY_A)], 2)), 1);
+  assert.equal(await native.instance.observe(snapshot([followUp(1, REPOSITORY_A)], 3)), 0, "a follow-up already shown is never shown again");
+  assert.equal(await native.instance.observe(snapshot([followUp(2, REPOSITORY_B, { data: { ...followUp(2, REPOSITORY_B).data, conversationId: null, messageId: null } }), occurrence(9)], 4)), 2);
+  assert.equal(native.shown.length, 3);
+  assert.deepEqual(native.shown[0].payload, { title: "Aril", body: "Merged T-5. Nothing needs you yet." });
+  native.shown[0].onClick();
+  const sessionToast = native.shown.findIndex((entry) => entry.payload.title === "Session 9");
+  native.shown[3 - sessionToast].onClick();
+  native.shown[sessionToast].onClick();
+  assert.deepEqual(native.opened, [`/tasks?repository=${REPOSITORY_A}&aril=chat-0123456789ab&message=m-1`, `/tasks?repository=${REPOSITORY_B}&aril=open`, "/sessions/codex-session-9"]);
+  assert.deepEqual(native.sessions, [null, null, { id: "codex:session-9", title: "Session 9" }]);
+  for (const target of native.opened) assert.equal(isAllowedNotificationTarget(target), true);
+});
+
+test("a follow-up is a native category on by default, and its quiet and disabled states consume it", async (context) => {
+  const { store } = await fixture(context);
+  const off = controller(store(), { preferences: () => ({ enabled: true, categories: { aril: false } }) });
+  await off.instance.start();
+  await off.instance.observe(snapshot([]));
+  assert.equal(await off.instance.observe(snapshot([followUp(3, REPOSITORY_A)], 2)), 0);
+  assert.equal(notificationTarget({ ...followUp(4, REPOSITORY_A), data: { ...followUp(4, REPOSITORY_A).data, repositoryId: "repo-x" } }), "/sessions");
+  assert.equal(notificationTarget({ ...followUp(4, REPOSITORY_A), kind: "needs_input" }), "/sessions");
+  for (const target of [`/tasks?repository=${REPOSITORY_A}`, `/tasks?repository=${REPOSITORY_A}&aril=chat-0123456789ab`, `/tasks?repository=${REPOSITORY_A}&aril=open&message=m-1`,
+    `/tasks?repository=${REPOSITORY_A}&aril=chat-0123456789ab&message=m-1&next=https://x`]) assert.equal(isAllowedNotificationTarget(target), false, target);
+  for (const bad of [{ provider: "claude" }, { category: "attention" }, { action: "open_session" }, { data: { ...followUp(5, REPOSITORY_A).data, text: "raw" } }]) {
+    assert.equal(normalizeNativeNotificationSnapshot(snapshot([followUp(5, REPOSITORY_A, bad)])), null, JSON.stringify(bad));
+  }
+});
+
+test("a click opens only an allowed target on the app's own origin: a follow-up's Aril chat or a session, as before", () => {
+  const origin = "http://127.0.0.1:3003";
+  assert.equal(notificationWindowUrl(origin, notificationTarget(followUp(6, REPOSITORY_B))), `${origin}/tasks?repository=${REPOSITORY_B}&aril=chat-0123456789ab&message=m-6`);
+  assert.equal(notificationWindowUrl(origin, notificationTarget(occurrence(6))), `${origin}/sessions/codex-session-6`);
+  for (const target of ["//evil.example/x", "https://evil.example/", "/tasks", "/sessions/../x"]) assert.equal(notificationWindowUrl(origin, target), null, target);
 });

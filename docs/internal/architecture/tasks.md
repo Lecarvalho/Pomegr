@@ -176,6 +176,7 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - `mergeMethod` is null by default (the repository default), or `squash`, `merge`, or `rebase`; old stored settings without this field read as null.
 - `mergeMode` is null (not settled), `direct`, or `auto`; `deleteBranch` is null (the repository's own GitHub setting decides, and Pomegr deletes nothing), `true`, or `false`. Old stored settings without either field read as null. The owner and Aril settle both after reading the repository's own rules and GitHub settings ([Agent chat: Prompt](agent-chat.md#prompt)).
 - The panel puts **Merge mode** (**Not set**, **Merge when green**, **Auto-merge when green**) and **Delete branch after merge** (**Repository default**, **Delete**, **Keep**) under Actions, next to **Merge method**. A paired device without permission reads them as text.
+- `followUps` is a boolean, true by default; old stored settings without it read as true. While it is on, Pomegr writes grant follow-ups into the chat and notifies ([Grant follow-ups](#grant-follow-ups)). Aril may propose it; a paired device with permission may change it. The panel shows it as **Send follow-ups** under Actions.
 - `limits` has nullable integers: `hours` 1–72, `tasks` 1–100, `tasksAtATime` 1–min(10, `TASK_GROUP_LIMIT`), `sendBacks` 0–10, and `usagePercent` 1–100; all default to null, meaning not settled yet, so Aril asks once and proposes the answer.
 - Settings migrate legacy `starts` to `tasks`, `concurrent` to `tasksAtATime`, and `allowancePercent` to `usagePercent`; canonical fields take precedence when both names exist.
 - `workRules` defaults to an empty list and holds at most 20 `{ kind, value }` records: `tag`, `text`, `feature`, `tasks`, or `plan`.
@@ -281,6 +282,18 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - Only the five booleans and the default branch name (a valid Git branch name, else null) are kept, in memory: 30 minutes after a read, and a failed read as unknown for 5 minutes. They are never stored on disk, in the task store, or in a log.
 - The grant merge reuses the same read to choose the one allowed method and to check `autoMergeAllowed`; the delete step reuses it for the default branch name. The agent chat reads the same facts for [its prompt](agent-chat.md#prompt), and Aril is told to read the repository's own rules before it proposes merge settings.
 
+
+## Grant follow-ups
+
+Added on 2026-10-26 (task T-183). The monitor coalesces a grant's task-log entries into batches; the desktop writes each into the chat ([Agent chat: Grant follow-ups](agent-chat.md#grant-follow-ups)).
+
+- The cursor is the `task_log_cursors` row with consumer `followups`. `grant_start` sets it to the log's last entry, so a grant reports only its own entries, unless an earlier grant's end is not reported yet: then the cursor stays, and the earlier grant's last entries and its end go first. A repository with a grant and no cursor row gets one at the log's end, and every grant before it, and its ended grant, counts as reported, so the first read after an upgrade reports nothing old.
+- A batch holds the entries after the cursor of the oldest grant whose end is not reported, or else of the latest grant, written from its start to its end, of the follow-up kinds, at most 50 for each read. `items` holds the first eight as `{ kind, task, provider }`: a usage entry has `task: null` and its provider; any other has its task ID and `provider: null`. `more` counts the rest of the read.
+- A batch is ready 45 seconds after its newest entry, 3 minutes after its oldest, or at 50 entries. A grant whose end is not reported yet is ready at once, with `ended` set to its end reason, in the read that holds its last entries. The end is reported once: the `meta` key `grant_follow_up_end:<repository ID>` holds the ID of the last grant whose end was reported.
+- `grant-follow-ups` accepts `{}` and answers `{ ok: true, batches }`: at most 16 batches `{ repositoryId, grant, through, followUps, items, more, ended }`.
+- `grant-follow-up-ack` accepts exactly `{ repositoryId, grant, through, ended, message }`, where `message` is null or `{ conversationId, messageId }`. It answers `not_eligible` for another grant, a `through` below the cursor or past the log, or an `ended` that is not the grant's unreported end reason. Otherwise it moves the cursor to `through`, reports the end, and answers `{ ok: true }`. A repeated ack is settled again and commits nothing new.
+- With `followUps` on and at least one entry or an end, the ack commits one `aril_follow_up` notification occurrence with the same facts.
+- Both routes refuse the LAN gateway with 403; only desktop main calls them.
 ## Record
 
 The browser-visible shape follows. `shared/task-contract.ts` owns the

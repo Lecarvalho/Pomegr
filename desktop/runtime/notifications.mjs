@@ -3,6 +3,7 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { isUsageNotificationKind, normalizeUsageNotificationData, usageNotificationPayload, usageNotificationPolicy } from "../../shared/usage-notification.mjs";
 import { isReleaseNotificationKind, normalizeReleaseNotificationData, releaseNotificationPayload, releaseNotificationPolicy } from "../../shared/release-notification.mjs";
 import { isModelNotificationKind, normalizeModelNotificationData, modelNotificationPayload, modelNotificationPolicy } from "../../shared/model-notification.mjs";
+import { arilFollowUpPayload, arilFollowUpPolicy, arilFollowUpTarget, isArilFollowUpKind, normalizeArilFollowUpData } from "../../shared/aril-follow-up.mjs";
 
 export const NOTIFICATION_POLL_INTERVAL_MS = 2_000;
 export const NOTIFICATION_MAX_CATCHUP_MS = 15 * 60_000;
@@ -11,14 +12,14 @@ export const NOTIFICATION_MAX_RESPONSE_BYTES = 1024 * 1024;
 export const NOTIFICATION_FALLBACK_TARGET = "/sessions";
 export const NATIVE_NOTIFICATION_CATEGORY_DEFAULTS = Object.freeze({
   attention: true, provider_service: false, system: false,
-  usage: true, provider_news: false, model_news: false,
+  usage: true, provider_news: false, model_news: false, aril: true,
 });
 
 const ID = /^[a-f0-9]{32}$/u;
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const TERMINAL = /^[a-z][a-z_]{0,31}$/u;
 const SAFE_TEXT = /^[^<>\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]*$/u;
-const ALLOWED_NOTIFICATION_TARGET = /^(?:\/|\/sessions(?:\/(?:claude|codex)-[A-Za-z0-9][A-Za-z0-9._-]{0,127})?|\/usage-limits)$/u;
+const ALLOWED_NOTIFICATION_TARGET = /^(?:\/|\/sessions(?:\/(?:claude|codex)-[A-Za-z0-9][A-Za-z0-9._-]{0,127})?|\/usage-limits|\/tasks\?repository=repo-[a-f0-9]{24}&aril=(?:open|chat-[0-9a-f]{12}&message=m-[1-9][0-9]{0,5}))$/u;
 const PROVIDER_LABEL = Object.freeze({ claude: "Claude Code", codex: "Codex" });
 
 export function isAllowedNotificationTarget(value) {
@@ -52,6 +53,15 @@ export async function loadCommittedNotificationSnapshot({ origin, authorizationT
   return JSON.parse(body);
 }
 
+/** The window URL a click opens: an allowed target on the app's own origin, or null. A follow-up's opens its repository's Aril chat. */
+export function notificationWindowUrl(origin, target) {
+  if (!isAllowedNotificationTarget(target) || typeof origin !== "string") return null;
+  try {
+    const url = new URL(target, origin);
+    return url.origin === new URL(origin).origin && `${url.pathname}${url.search}` === target ? url.href : null;
+  } catch { return null; }
+}
+
 /** Resolve only fixed local destinations; records never supply a URL. */
 export function notificationTarget(record) {
   if (record?.action === "open_session" && record.kind === "needs_input"
@@ -61,6 +71,12 @@ export function notificationTarget(record) {
       const target = `/sessions/${encodeSessionRoute(record.data.sessionId)}`;
       if (isAllowedNotificationTarget(target)) return target;
     } catch { /* A malformed identity falls back to the session list. */ }
+  }
+  // A grant follow-up opens its own repository's Aril chat at the follow-up, never another repository's.
+  if (record?.action === "open_aril_chat" && isArilFollowUpKind(record.kind)) {
+    const data = normalizeArilFollowUpData(record.kind, record.provider, record.data);
+    const target = data ? arilFollowUpTarget(data) : null;
+    if (target && isAllowedNotificationTarget(target)) return target;
   }
   if (["open_providers", "open_usage_limits"].includes(record?.action)) return "/usage-limits";
   if (record?.action === "open_workspace") return "/";
@@ -87,11 +103,11 @@ export function normalizeNativeNotificationSnapshot(input) {
       || typeof row.category !== "string" || !TERMINAL.test(row.category) || !iso(row.occurredAt)
       || !Number.isSafeInteger(row.priority) || row.priority < 0 || row.priority > 100
       || typeof row.deliveryEligible !== "boolean" || !["active", "resolved"].includes(row.lifecycle)
-      || !["claude", "codex", ...(isReleaseNotificationKind(row.kind) ? [null] : [])].includes(row.provider)) return null;
+      || !["claude", "codex", ...(isReleaseNotificationKind(row.kind) || isArilFollowUpKind(row.kind) ? [null] : [])].includes(row.provider)) return null;
     seen.add(row.id);
     const normalized = { id: row.id, kind: row.kind, category: row.category, priority: row.priority,
       occurredAt: row.occurredAt, deliveryEligible: row.deliveryEligible, lifecycle: row.lifecycle,
-      provider: row.provider, action: ["open_session", "open_sessions", "open_providers", "open_workspace", "open_usage_limits"].includes(row.action) ? row.action : null,
+      provider: row.provider, action: ["open_session", "open_sessions", "open_providers", "open_workspace", "open_usage_limits", "open_aril_chat"].includes(row.action) ? row.action : null,
       data: {} };
     if (isUsageNotificationKind(row.kind)) {
       const data = normalizeUsageNotificationData(row.kind, row.provider, row.data);
@@ -108,6 +124,12 @@ export function normalizeNativeNotificationSnapshot(input) {
     } else if (isModelNotificationKind(row.kind)) {
       const data = normalizeModelNotificationData(row.kind, row.provider, row.data);
       const policy = modelNotificationPolicy(row.kind);
+      if (!data || row.category !== policy.category || row.action !== policy.action || row.priority !== policy.priority
+        || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
+      normalized.data = data;
+    } else if (isArilFollowUpKind(row.kind)) {
+      const data = normalizeArilFollowUpData(row.kind, row.provider, row.data);
+      const policy = arilFollowUpPolicy();
       if (!data || row.category !== policy.category || row.action !== policy.action || row.priority !== policy.priority
         || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
       normalized.data = data;
@@ -142,6 +164,7 @@ function nativeBody(text) {
 export function nativeNotificationPayload(record) {
   if (isModelNotificationKind(record.kind)) return modelNotificationPayload(record);
   if (isUsageNotificationKind(record.kind)) return usageNotificationPayload(record);
+  if (isArilFollowUpKind(record.kind)) return arilFollowUpPayload(record);
   if (isReleaseNotificationKind(record.kind)) {
     const payload = releaseNotificationPayload(record);
     return payload ? { title: payload.title, body: nativeBody(payload.body) } : null;

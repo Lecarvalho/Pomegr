@@ -642,6 +642,7 @@ export function createMonitorRuntime(options = {}) {
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
     serveNotifications: notifications.read,
+    acceptArilFollowUp: notifications.acceptArilFollowUp,
     resolveRunModels: observation.resolveRunModels,
     resolveTaskStart: observation.resolveTaskStart,
     declareChatRun: (sessionId) => chatRuns.declare(sessionId),

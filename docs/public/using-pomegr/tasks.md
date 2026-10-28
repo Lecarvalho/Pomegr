@@ -115,6 +115,8 @@ repository's own rules and GitHub settings first.
   nothing. **Delete** deletes the task's branch from the repository after its pull request is merged, never the
   default branch or a fork's branch. **Keep** deletes nothing. A grant that used all its tasks waits up to ten
   minutes after the last merge for that deletion.
+- **Send follow-ups.** On by default. After grant actions, Aril adds a short line to the chat and sends a
+  notification. See [Agent chat](agent-chat.md).
 
 The grant starts no task, review, or send-back for a provider whose usage is unknown, stale,
 unavailable, or at the usage limit. Writing tasks waits the same way for the provider that would run it.

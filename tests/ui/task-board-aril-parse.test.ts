@@ -7,7 +7,7 @@ const settings = {
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: 2, tasks: 2, tasksAtATime: 1, sendBacks: null, usagePercent: 80 },
   workRules: [{ kind: "tag", value: "pilot" }, { kind: "tasks", value: ["T-1", "T-2"] }],
-  reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, settledAt: "2026-10-25T10:00:00.000Z",
+  reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true, settledAt: "2026-10-25T10:00:00.000Z",
 };
 const memory = [{ id: 1, text: "Run focused tests first.", createdAt: 1, updatedAt: 2 }];
 const grant = { startedAt: 1, endsAt: 2, startsUsed: 0, actions: settings.actions, limits: settings.limits, active: false, endedAt: 2, endReason: "stopped" };
@@ -20,7 +20,8 @@ describe("parseTaskBoard Aril settings", () => {
   });
 
   it("leaves Aril out when any part is malformed, and keeps the board", () => {
-    for (const broken of [undefined, { settings, memory: "x" }, { settings: { ...settings, mergeMode: "fast" }, memory },
+    for (const broken of [undefined, { settings, memory: "x" }, { settings: { ...settings, mergeMode: "fast" }, memory }, { settings: { ...settings, followUps: "on" }, memory },
+      { settings: Object.fromEntries(Object.entries(settings).filter(([key]) => key !== "followUps")), memory },
       { settings: { ...settings, limits: { ...settings.limits, tasks: "2" } }, memory }, { settings, memory, grant: { ...grant, endReason: "other" } }]) {
       const board = parseTaskBoard(body(broken), repositoryId);
       expect(board).not.toBeNull();

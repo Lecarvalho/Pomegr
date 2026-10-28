@@ -10,11 +10,13 @@ import { CommandIcon } from "./CommandIcon";
 import { usageNotificationPayload } from "../../../shared/usage-notification.mjs";
 import { releaseNotificationPayload } from "../../../shared/release-notification.mjs";
 import { MODEL_NOTIFICATION_KINDS, modelNotificationPayload } from "../../../shared/model-notification.mjs";
+import { arilFollowUpPayload, arilFollowUpTarget } from "../../../shared/aril-follow-up.mjs";
+import { openAgentChatLink } from "../agent-chat/agent-chat-presentation";
 
 export type NotificationView = {
   id: string;
   kind: string;
-  group: "Needs attention" | "Provider service" | "Usage limits" | "Provider updates" | "Model news" | "System";
+  group: "Needs attention" | "Provider service" | "Usage limits" | "Provider updates" | "Model news" | "Aril" | "System";
   title: string;
   description: string;
   href: string;
@@ -46,6 +48,8 @@ export function notificationDestination(action: NotificationAction, record: Noti
     case "open_providers": return { href: "/usage-limits", label: "View providers" };
     case "open_usage_limits": return { href: "/usage-limits", label: "View usage limits" };
     case "open_workspace": return { href: "/", label: "View workspace" };
+    // A follow-up opens its own repository's Aril chat at the follow-up.
+    case "open_aril_chat": return record.kind === "aril_follow_up" ? { href: arilFollowUpTarget(record.data), label: "Open chat" } : { href: "/tasks", label: "View tasks" };
   }
 }
 
@@ -84,6 +88,10 @@ export const NOTIFICATION_PRESENTATION: readonly NotificationPresentationRule[] 
     group: "Provider service", title: `${PROVIDER_LABEL[record.provider]} reports service restored`,
     description: "The provider's public status is operational again. This does not confirm that a session succeeded.", tone: "online",
   } : null },
+  { kind: "aril_follow_up", present: (record) => {
+    const payload = record.kind === "aril_follow_up" ? arilFollowUpPayload(record) : null;
+    return payload ? { group: "Aril", title: "Grant follow-up", description: payload.body, tone: "online" } : null;
+  } },
   { kind: "monitor_unreachable", present: (record) => record.kind === "monitor_unreachable" ? {
     group: "System", title: "Monitor unavailable",
     description: "Pomegr will retry automatically while preserving the last known-good state.", tone: "offline",
@@ -149,7 +157,7 @@ export function NotificationCenter({ entries, isUnread, unreadCount, markAllRead
           <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString()}</time></span>
           <strong>{entry.title}</strong><p>{entry.description}</p>
           <span className="commandNotificationLinks">
-            <Link href={entry.href} onClick={() => onClose(false)}>{entry.linkLabel}</Link>
+            <Link href={entry.href} onClick={() => { onClose(false); if (entry.kind === "aril_follow_up") openAgentChatLink(entry.href); }}>{entry.linkLabel}</Link>
             {entry.releaseHref && <a href={entry.releaseHref} target="_blank" rel="noopener noreferrer">What&apos;s new</a>}
           </span>
         </div>

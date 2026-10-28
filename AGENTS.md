@@ -116,7 +116,9 @@ These rules always apply:
   Each other control action needs an explicit confirmation boundary.
 - The agent chat starts only its own read-only provider run, which Pomegr may stop. It
   starts one for each message of the owner, and one for the follow-up after the owner
-  applies or dismisses a proposal. After any applied or partial outcome, a
+  applies or dismisses a proposal. While a grant works, desktop main also writes fixed
+  grant follow-up lines from the task log into the chat and notifies, with no provider run;
+  a grant follow-up proposes, applies, and starts nothing, and is never an owner message. After any applied or partial outcome, a
   follow-up may offer one proposal of board changes that continues the owner's earlier request.
   The owner must Apply or Dismiss that proposal; no proposal applies itself or starts an
   automatic chain. Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task. Another exception is a grant that allows writing tasks: the tasks Aril

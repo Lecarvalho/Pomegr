@@ -6,6 +6,7 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { arilMemoryAdd, arilMemoryRemove, arilMemoryUpdate, arilSettingsSet, ensureArilSettings, pruneArilTask, readAril } from "./task-aril-settings.mjs";
+import { followUpOperations } from "./task-aril-follow-ups.mjs";
 import { ensureArilGrants, grantOperations, grantStart, grantStartAllowed, grantStartGates, grantStop, readGrant } from "./task-aril-grant.mjs";
 import { TASK_HOME_BOARD_LIMIT, summarizeTaskHome } from "./task-home.mjs";
 import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, settleReadyColumn } from "./task-columns.mjs";
@@ -794,6 +795,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const readLog = (repositoryId, options) => link(() => runTransaction(database, () => readTaskLog(database, repositoryId, options)));
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
   const declareArilRework = (repositoryId, payload) => dispatch(({ database, transaction }) => transaction(() => declareArilTaskRework({ database, repositoryId, now }, payload)), {});
-  return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, bindStart, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
+  return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...followUpOperations(dispatch, now), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, bindStart, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
     addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

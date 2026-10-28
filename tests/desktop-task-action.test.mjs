@@ -236,6 +236,17 @@ test("preload exposes taskAction on the fixed channel and refuses bad calls loca
   assert.equal(invokes.length, 0);
   assert.deepEqual(await exposed.taskAction(repositoryId, "create", { text: "x" }), { ok: true });
   assert.deepEqual(invokes, [["pomegr:task-action", repositoryId, "create", { text: "x" }]]);
+  // The follow-ups switch (T-183) crosses the preload allow-list as an ordinary Aril settings payload.
+  assert.deepEqual(await exposed.taskAction(repositoryId, "aril_settings_set", { settings: { followUps: false } }), { ok: true });
+  assert.deepEqual(invokes.at(-1), ["pomegr:task-action", repositoryId, "aril_settings_set", { settings: { followUps: false } }]);
+});
+
+test("the follow-ups switch reaches the monitor unchanged and only ok comes back", async () => {
+  const saved = { followUps: false };
+  const { action, calls } = harness(() => json({ ok: true, settings: saved, board: "hidden" }));
+  assert.deepEqual(await action.run(trusted, repositoryId, "aril_settings_set", { settings: { followUps: false } }), { ok: true });
+  assert.equal(calls[0].url, `${origin}/internal/tasks/aril_settings_set`);
+  assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload: { settings: { followUps: false } } });
 });
 
 test("feature_update is a fixed action and its answer carries nothing from the monitor beyond ok", async () => {

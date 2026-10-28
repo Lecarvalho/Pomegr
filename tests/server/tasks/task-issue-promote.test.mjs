@@ -291,7 +291,7 @@ test("the served source is validated again at the route", async (context) => {
       aril: { settings: { actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
         mergeMethod: null,
         limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
-        workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false }, memory: [] },
+        workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true }, memory: [] },
       queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] },
       tasks: [
         { id: "T-1", source: { kind: "github_issue", number: 4, login: "SECRET-LOGIN" } },

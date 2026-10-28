@@ -243,7 +243,7 @@ function validArilSettings(value: unknown): value is ArilSettings & { settledAt?
         ? Array.isArray(entry.value) && entry.value.every((id) => typeof id === "string" && TASK_ID_PATTERN.test(id)) : text(entry.value, 200));
     })
     && reviewer !== null && (reviewer.provider === null || PROVIDERS.has(reviewer.provider as string)) && nullableText(reviewer.model, LIMITS.model)
-    && typeof reviewer.differentFromBuilder === "boolean" && typeof body.pairedDevices === "boolean"
+    && typeof reviewer.differentFromBuilder === "boolean" && typeof body.pairedDevices === "boolean" && typeof body.followUps === "boolean"
     && (body.settledAt === undefined || body.settledAt === null || timestamp(body.settledAt));
 }
 function validArilMemory(value: unknown): value is ArilMemoryEntry {

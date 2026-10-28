@@ -6,6 +6,8 @@ import { USAGE_NOTIFICATION_KINDS, USAGE_NOTIFICATION_WINDOWS, validUsageNotific
 import { RELEASE_KINDS, RELEASE_PRODUCTS, validReleaseNotificationState } from "./release-notifications.mjs";
 import { isReleaseExcerpt } from "../../shared/release-notification.mjs";
 import { validModelNotificationState } from "./model-notifications.mjs";
+import { isArilFollowUpKey } from "./aril-follow-up-notifications.mjs";
+import { arilFollowUpPolicy, isArilFollowUpKind, normalizeArilFollowUpData } from "../../shared/aril-follow-up.mjs";
 import { isModelNotificationKind, normalizeModelNotificationData, modelNotificationPolicy } from "../../shared/model-notification.mjs";
 import { NOTIFICATION_MAX_ACTIVE_SESSIONS, NOTIFICATION_MAX_BYTES, NOTIFICATION_MAX_OCCURRENCES, NOTIFICATION_RETENTION_MS } from "./notification-ledger.mjs";
 
@@ -29,7 +31,7 @@ function iso(value) {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 }
 function group(value) {
-  return typeof value === "string" && /^(needs_input|provider_incident|usage_window_reset|release_published|model_announced)\u0000[a-f0-9]{64}$/u.test(value);
+  return typeof value === "string" && /^(needs_input|provider_incident|usage_window_reset|release_published|model_announced|aril_follow_up)\u0000[a-f0-9]{64}$/u.test(value);
 }
 function evidenceKey(value) {
   if (typeof value !== "string" || value.length > MAX_KEY) return false;
@@ -38,6 +40,7 @@ function evidenceKey(value) {
   if (parts[0] === "usage_window_reset") return /^(?:claude:(?:five_hour|weekly|model_weekly|authentication)|codex:(?:[a-f0-9]{64}|credits|authentication))$/u.test(parts[2]);
   if (parts[0] === "release_published") return RELEASE_PRODUCTS.includes(parts[2]);
   if (parts[0] === "model_announced") return /^(claude|codex):[a-f0-9]{64}$/u.test(parts[2]);
+  if (parts[0] === "aril_follow_up") return isArilFollowUpKey(parts[2]);
   return parts[0] === "needs_input" ? isSafeSessionId(parts[2]) : ["claude", "codex"].includes(parts[2]);
 }
 function validRow(row) {
@@ -45,7 +48,13 @@ function validRow(row) {
   if (!exact(row, keys) || typeof row.id !== "string" || !ID.test(row.id) || !["active", "resolved"].includes(row.lifecycle)
     || !Number.isSafeInteger(row.priority) || row.priority < 0 || row.priority > 100
     || !iso(row.occurredAt) || !["recorded", "observed"].includes(row.timeBasis)
-    || typeof row.deliveryEligible !== "boolean" || !["claude", "codex", ...(RELEASE_KINDS.includes(row.kind) ? [null] : [])].includes(row.provider)) return false;
+    || typeof row.deliveryEligible !== "boolean" || !["claude", "codex", ...(RELEASE_KINDS.includes(row.kind) || isArilFollowUpKind(row.kind) ? [null] : [])].includes(row.provider)) return false;
+  if (isArilFollowUpKind(row.kind)) {
+    const policy = arilFollowUpPolicy();
+    return normalizeArilFollowUpData(row.kind, row.provider, row.data) !== null
+      && row.category === policy.category && row.severity === policy.severity && row.action === policy.action
+      && row.priority === policy.priority && row.lifecycle === "resolved" && row.timeBasis === "observed";
+  }
   if (isModelNotificationKind(row.kind)) {
     const policy = modelNotificationPolicy(row.kind);
     return normalizeModelNotificationData(row.kind, row.provider, row.data) !== null

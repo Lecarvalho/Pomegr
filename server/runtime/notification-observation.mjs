@@ -13,6 +13,7 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
   let startPromise = null;
   let releaseRevision = 0;
   let modelRevision = 0;
+  let followUpRevision = 0;
   const published = new Map();
   const pluginSetups = new Map();
 
@@ -162,6 +163,13 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
     catch { return ledger.readSnapshot(); }
   }
 
+  // One grant follow-up the desktop settled; the monitor built its facts from the task log.
+  function acceptArilFollowUp(value) {
+    if (stopped || !value || typeof value !== "object") return ledger.readSnapshot();
+    try { return ledger.acceptFacts({ arilFollowUps: { revision: ++followUpRevision, followUps: [value], sourceScope } }); }
+    catch { return ledger.readSnapshot(); }
+  }
+
   function subscribeRevisionEvents(listener) {
     if (typeof listener !== "function") throw new TypeError("Revision subscriber must be a function");
     if (stopped) return () => {};
@@ -180,6 +188,6 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
   }
 
   return Object.freeze({ start, attachCatalog, acceptCatalogCommit, acceptProviderStatusCommit, acceptUsageCommit,
-    acceptReleaseObservations, acceptPluginSetupCommits, acceptModelObservations,
+    acceptReleaseObservations, acceptPluginSetupCommits, acceptModelObservations, acceptArilFollowUp,
     read, readSnapshot: ledger.readSnapshot, subscribeRevisionEvents, stop });
 }

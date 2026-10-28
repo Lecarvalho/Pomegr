@@ -136,6 +136,9 @@ export type AgentChatAgentMessage = {
   // proposal, with no message of the owner before it. After an applied or partial outcome it may carry
   // another board proposal that waits for the owner; never start_session, set_queue, settings, or memory operations.
   followUp?: string;
+  // A grant follow-up: one fixed line Pomegr wrote from the task log while a grant worked, with no provider run.
+  // It carries no proposal and is never a message of the owner.
+  grantFollowUp?: true;
 };
 export type AgentChatMessage = AgentChatUserMessage | AgentChatAgentMessage;
 

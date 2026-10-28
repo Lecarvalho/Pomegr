@@ -285,7 +285,7 @@ test("the route serves only the contract's four queue keys even when the store h
         actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
         mergeMethod: null,
         limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
-        workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+        workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
       },
       memory: [],
     },

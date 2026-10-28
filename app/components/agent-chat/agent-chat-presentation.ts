@@ -55,7 +55,10 @@ export function errorCopy(error: AgentChatError, context: { provider: AgentChatP
   }
 }
 
-export function agentCaption(message: { provider: AgentChatProvider; model: string | null }): string {
+export const GRANT_FOLLOW_UP_CAPTION = "Grant follow-up";
+
+export function agentCaption(message: { provider: AgentChatProvider; model: string | null; grantFollowUp?: true }): string {
+  if (message.grantFollowUp) return GRANT_FOLLOW_UP_CAPTION;
   return `${PROVIDER_LABELS[message.provider]} · ${message.model ?? "default model"}`;
 }
 
@@ -90,6 +93,32 @@ export function repositoryFromRoute(pathname: string, search: string, known: rea
   }
   const match = /^\/repositories\/(repo-[a-f0-9]{24})(?:\/|$)/u.exec(pathname);
   return match && known.includes(match[1]) ? match[1] : null;
+}
+
+// A grant follow-up's link: the Tasks page of its repository, with the conversation and message to open in the chat.
+export type AgentChatLink = { repositoryId: string; conversationId: string | null; messageId: string | null };
+export const AGENT_CHAT_OPEN_EVENT = "pomegr:open-aril-chat";
+const LINK_CONVERSATION = /^chat-[0-9a-f]{12}$/u;
+const LINK_MESSAGE = /^m-[1-9][0-9]{0,5}$/u;
+
+export function agentChatLink(pathname: string, search: string): AgentChatLink | null {
+  if (pathname !== "/tasks") return null;
+  const params = new URLSearchParams(search);
+  const repositoryId = repositoryRouteId(params.get("repository"));
+  const aril = params.get("aril");
+  const message = params.get("message");
+  if (!repositoryId || aril === null) return null;
+  if (aril === "open") return message === null ? { repositoryId, conversationId: null, messageId: null } : null;
+  return LINK_CONVERSATION.test(aril) && message !== null && LINK_MESSAGE.test(message) ? { repositoryId, conversationId: aril, messageId: message } : null;
+}
+
+/** Opens the chat at a follow-up from inside the app, as the follow-up's link does when the page loads. */
+export function openAgentChatLink(href: string): void {
+  try {
+    const url = new URL(href, window.location.origin);
+    const link = agentChatLink(url.pathname, url.search);
+    if (link) window.dispatchEvent(new CustomEvent<AgentChatLink>(AGENT_CHAT_OPEN_EVENT, { detail: link }));
+  } catch { /* A link outside the contract opens nothing. */ }
 }
 
 /** The route's repository, else the last one used, else the first listed. */

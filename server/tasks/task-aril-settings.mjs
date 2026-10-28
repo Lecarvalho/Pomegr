@@ -19,7 +19,7 @@ const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
-  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false,
+  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
 });
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const keys = (value, allowed) => object(value) && Object.keys(value).every((key) => allowed.includes(key));
@@ -87,7 +87,7 @@ export function arilSettingsSet({ database, repositoryId, ensureRepository, now 
     if (field === "workRules" && (!Array.isArray(value) || value.length > 20 || !value.every((rule) => validRule(database, repositoryId, rule)))) return invalid();
     if (field === "reviewer" && (!exact(value, Object.keys(base.reviewer)) || ![null, "claude", "codex"].includes(value.provider)
       || normalizeModelIdentifier(value.model) === undefined || typeof value.differentFromBuilder !== "boolean")) return invalid();
-    if (field === "pairedDevices" && typeof value !== "boolean") return invalid();
+    if ((field === "pairedDevices" || field === "followUps") && typeof value !== "boolean") return invalid();
   }
   const settings = { ...readSettings(database, repositoryId), ...input };
   if (input.reviewer) settings.reviewer = { ...input.reviewer, model: normalizeModelIdentifier(input.reviewer.model) };
