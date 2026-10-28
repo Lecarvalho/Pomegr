@@ -6,7 +6,7 @@ description: "Ask Aril, the Pomegr task-board agent, to cut work into tasks, ord
 # Agent chat
 
 **Aril** is the agent built into Pomegr that helps you organize a repository's task
-board. You ask in a chat panel at the bottom right of the window. Aril reads the board,
+board. You ask in a chat panel on the right side of the window. Aril reads the board,
 the repository's files, and what Pomegr observed, then answers. Aril proposes board
 changes, and you apply them.
 
@@ -61,10 +61,14 @@ Aril sees how many texts were shortened and can retrieve needed full tasks with 
 Aril sees board changes since its last completed answer: task starts, reports, stalls, CI results, and merges.
 You can ask what happened while you were away. For these changes, Aril receives only task IDs, event kinds, times, and pull-request numbers.
 
-1. Select **Aril** at the bottom right. The panel opens on your newest conversation.
-2. Choose the repository in the **Repository** menu when Pomegr lists more than one.
-3. Choose the provider and model in **Run on**. **Default model** uses the tool's own
-   default.
+1. Select **Aril** at the bottom right. The panel opens on the right side of the window, on your newest
+   conversation. It lays over the page, which dims behind it. Select **Expand** to widen it over the page,
+   and **Dock** to bring it back. Select the dimmed page, or **Close Aril**, to close it.
+2. Choose the repository in the **Repository** menu beside the attach button when Pomegr lists more than one.
+3. Choose the **Model** and the **Effort** beside the send button. The list shows named models, grouped
+   by provider. A new chat starts on the newest model Pomegr knows and on **Medium**, and a chat you
+   continue starts on what its last message used. The coding tool runs with the model and the effort
+   you chose.
 4. Type your message and press Enter. Shift+Enter starts a new line.
 5. Select **Stop** to end an answer early. The text written so far is kept.
 
@@ -94,7 +98,7 @@ why it chose it. If you name a provider, a model, or an effort, Aril uses it.
 You can show Aril a screenshot or a mock-up.
 
 1. Select **Attach image**, paste an image into the message field, or drop one on it.
-   The image shows above the **Run on** menu. **Remove image** takes it out again.
+   The image shows under the message field. **Remove image** takes it out again.
 2. Type what you want Aril to do with it, and press Enter.
 
 A message holds up to four images: PNG, JPEG, GIF, or WebP, up to 5 MB each. A message
@@ -104,7 +108,7 @@ Ask "create a task for this" or "attach this to T-12". Aril then proposes the ta
 the image, or the image for a task that has not started. The proposal shows each image,
 and the session that runs the task gets the image. A task holds up to four images.
 
-**Minimize** closes the panel and keeps the conversation. **New conversation** starts an
+**Close Aril** closes the panel and keeps the conversation. Each message shows the time it was sent. **New conversation** starts an
 empty one. **Conversations** lists the saved ones and lets you delete one.
 
 ## Apply a proposal
@@ -264,7 +268,7 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
 - **Sent to the provider.** Each message sends the conversation and the board to the
   provider you chose, through your own coding tool. Applying or dismissing a proposal
   sends them once more, with the result of the proposal, for Aril's follow-up. That run
-  uses the provider and model of the conversation's last message. The board includes the text of your
+  uses the provider, model, and effort of the conversation's last message. The board includes the text of your
   tasks. Aril may also send file content and session evidence that it reads. The images
   you sent in the conversation go to the provider too, and the prompt names the folder
   where Pomegr keeps them. The board snapshot also sends a grant's active state, end
@@ -287,7 +291,7 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
 | What you see | What to do |
 | --- | --- |
 | No **Aril** button | Open the Pomegr desktop app, or pair the phone again. |
-| The tool is not installed on this computer | Install Claude Code or Codex, or choose the other provider in **Run on**. |
+| The tool is not installed on this computer | Install Claude Code or Codex, or choose a model of the other provider in **Model**. |
 | Aril could not finish this answer | Open the coding tool once in a terminal. Check that you are signed in and that the tool is up to date. |
 | This answer took too long and was stopped | Ask a narrower question. A run may take ten minutes. |
 | Aril is already answering | Wait for the running answer, or select **Stop** in its conversation. |

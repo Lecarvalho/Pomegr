@@ -1,22 +1,30 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import type { TaskEffort } from "../../../shared/task-contract";
 import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatConversation, AgentChatOperationResult, AgentChatProposal, AgentChatTurn } from "../../../shared/agent-chat-contract";
 import { AgentChatComposer } from "../agent-chat/AgentChatComposer";
-import { AgentChatHeader, AgentChatLauncher, AgentChatPanelFrame, AgentChatRepositoryRow } from "../agent-chat/AgentChatFrame";
+import { AgentChatHeader, AgentChatLauncher, AgentChatPanelFrame, AgentChatScrim } from "../agent-chat/AgentChatFrame";
 import { AgentChatHistory } from "../agent-chat/AgentChatHistory";
 import { SafeMarkdown } from "../markdown/SafeMarkdown";
 import { AgentChatMessages, type AgentChatLogState } from "../agent-chat/AgentChatMessages";
 import { AgentChatProposalCard } from "../agent-chat/AgentChatProposalCard";
-import { DEFAULT_RUN, NO_MODELS, runSelectOptions, runSelectValue } from "../tasks/task-fields";
+import { NO_MODELS } from "../tasks/task-fields";
+import { chatModelOptions, chatModelValue, initialChatRun } from "../agent-chat/agent-chat-run";
 import { Sample, Section } from "./DesignSystemKit";
 
 // Static samples of the Aril chat: the real panel parts drawn from invented conversations. Nothing here reads a store.
 
 const noop = () => undefined;
 const AT = "2026-10-11T10:00:00.000Z";
+const LATER = "2026-10-11T10:05:00.000Z";
 const REPOSITORIES = [{ value: "repo-000000000000000000000001", label: "pomegr" }, { value: "repo-000000000000000000000002", label: "catalogus" }];
-const RUN_OPTIONS = runSelectOptions({ ...NO_MODELS, claude: ["model-large", "model-small"], codex: ["model-code"] }, DEFAULT_RUN);
+// The model list the chat reads: named models grouped by provider, and the run it starts on is never a default.
+const SAMPLE_MODELS = { ...NO_MODELS, claude: ["model-large", "model-small"], codex: ["model-code"] };
+const SAMPLE_RUN = initialChatRun(SAMPLE_MODELS, null);
+const MODEL_OPTIONS = chatModelOptions(SAMPLE_MODELS, SAMPLE_RUN);
+const BARE_RUN = initialChatRun(NO_MODELS, null);
+const BARE_OPTIONS = chatModelOptions(NO_MODELS, BARE_RUN);
 const TASKS = [{ id: "T-12", text: "Log upload retries\nInclude the attempt number." }, { id: "T-14", text: "Remove the legacy uploader" }];
 
 const OPERATIONS: AgentChatBoardOperation[] = [
@@ -42,7 +50,7 @@ const EVERY_WORD = proposal("partial", [
   { ok: false, error: "conflict" }, { ok: false, error: "unsupported" }, { ok: false, error: "unavailable" },
 ]);
 
-const agent = (id: string, text: string, overrides: Partial<AgentChatAgentMessage> = {}): AgentChatAgentMessage => ({ id, role: "agent", text, at: AT, provider: "claude", model: "model-large", status: "complete", ...overrides });
+const agent = (id: string, text: string, overrides: Partial<AgentChatAgentMessage> = {}): AgentChatAgentMessage => ({ id, role: "agent", text, at: AT, provider: "claude", model: "model-large", effort: "medium", status: "complete", ...overrides });
 
 function conversation(messages: AgentChatConversation["messages"]): AgentChatConversation {
   return { id: "chat-0123456789ab", title: "Plan the upload work", provider: "claude", model: "model-large", createdAt: AT, updatedAt: AT, messages };
@@ -62,7 +70,13 @@ const ANSWER = [
 
 const ASK = { id: "m-1", role: "user" as const, text: "Break the upload feature into tasks.", at: AT };
 const PROPOSED = conversation([ASK, agent("m-2", ANSWER, { proposal: proposal("pending") })]);
-const STREAMING_TURN: AgentChatTurn = { conversationId: "chat-0123456789ab", startedAt: AT, provider: "claude", model: "model-large", activity: "reading_files", text: "I am reading the upload client and the board. The retry path is" };
+const STREAMING_TURN: AgentChatTurn = { conversationId: "chat-0123456789ab", startedAt: AT, provider: "claude", model: "model-large", effort: "medium", activity: "reading_files", text: "I am reading the upload client and the board. The retry path is" };
+const QUIET = conversation([
+  ASK,
+  agent("m-2", "I cut it into three tasks. Apply them when you are ready.", { at: AT }),
+  agent("m-3", "Merged T-5 and started T-6. Nothing needs you yet.", { grantFollowUp: true, at: LATER, effort: null }),
+  agent("m-4", "Could not merge T-7. T-7 needs you.", { grantFollowUp: true, at: LATER, effort: null }),
+]);
 const NOTES = conversation([
   ASK,
   agent("m-2", "I started to answer, then the run ended.", { status: "failed" }),
@@ -105,29 +119,29 @@ const WITH_IMAGES = conversation([
   agent("m-2", "I would create one task with the first image and attach the second to T-12.", { proposal: IMAGE_PROPOSAL }),
 ]);
 
-function SampleComposer({ initial = "", ...rest }: { initial?: string; running?: boolean; error?: string | null; runningElsewhere?: boolean; busy?: boolean; disabled?: boolean; images?: string[]; imageUrls?: Map<string, string>; uploading?: boolean; imageError?: string | null }) {
+function SampleComposer({ initial = "", ...rest }: { initial?: string; repositories?: boolean; noModels?: boolean; effort?: TaskEffort; running?: boolean; error?: string | null; runningElsewhere?: boolean; busy?: boolean; disabled?: boolean; images?: string[]; imageUrls?: Map<string, string>; uploading?: boolean; imageError?: string | null }) {
   const [value, setValue] = useState(initial);
-  return <AgentChatComposer value={value} onChange={setValue} onSend={noop} onStop={noop} runOptions={RUN_OPTIONS} runValue={runSelectValue(DEFAULT_RUN)} onRunChange={noop}
+  return <AgentChatComposer value={value} onChange={setValue} onSend={noop} onStop={noop} modelOptions={rest.noModels ? BARE_OPTIONS : MODEL_OPTIONS} modelValue={chatModelValue(rest.noModels ? BARE_RUN : SAMPLE_RUN)} onModelChange={noop} effort={rest.effort ?? SAMPLE_RUN.effort} onEffortChange={noop}
+    repositories={rest.repositories ? REPOSITORIES : undefined} repositoryId={REPOSITORIES[0].value} onRepositoryChange={noop}
     running={rest.running ?? false} busy={rest.busy ?? false} runningElsewhere={rest.runningElsewhere ?? false} error={rest.error ?? null} disabled={rest.disabled}
     images={rest.images} imageUrls={rest.imageUrls} uploading={rest.uploading} imageError={rest.imageError} onAttach={noop} onRemoveImage={noop} />;
 }
 
-function Panel({ state = "ready", conversation: shown = null, turn = null, pending = null, repositories = false, history = false, children }: {
+function Panel({ state = "ready", conversation: shown = null, turn = null, pending = null, history = false, expanded = false, children }: {
   state?: AgentChatLogState;
   conversation?: AgentChatConversation | null;
   turn?: AgentChatTurn | null;
   pending?: string | null;
-  repositories?: boolean;
   history?: boolean;
+  expanded?: boolean;
   children?: ReactNode;
 }) {
-  return <AgentChatPanelFrame isStatic>
-    <AgentChatHeader historyOpen={history} onToggleHistory={noop} onNew={noop} onMinimize={noop} />
-    {repositories && <AgentChatRepositoryRow options={REPOSITORIES} value={REPOSITORIES[0].value} onChange={noop} />}
+  return <AgentChatPanelFrame isStatic expanded={expanded}>
+    <AgentChatHeader historyOpen={history} onToggleHistory={noop} onNew={noop} expanded={expanded} onToggleExpanded={noop} onClose={noop} />
     <div className="agentChatBody">
       {history
         ? <AgentChatHistory conversations={HISTORY} openId={HISTORY[0].id} runningId={null} onOpen={noop} onDelete={noop} />
-        : <AgentChatMessages state={state} conversation={shown} turn={turn} pendingMessage={pending} imageUrls={IMAGE_URLS} tasks={TASKS} resolving={null} onSuggest={noop} onApply={noop} onDismiss={noop} />}
+        : <AgentChatMessages state={state} conversation={shown} turn={turn} pendingMessage={pending} pendingAt={pending === null ? null : AT} imageUrls={IMAGE_URLS} tasks={TASKS} resolving={null} onSuggest={noop} onApply={noop} onDismiss={noop} />}
     </div>
     {children}
   </AgentChatPanelFrame>;
@@ -145,21 +159,24 @@ function Card({ label, note, shown, busy = false, startHere = true, held = false
 }
 
 export function AgentChatSection() {
-  return <Section id="agent-chat" title="Agent chat" lede="The Aril launcher and panel: shell chrome and the six button roles, drawn from invented conversations. The real panel is a floating region at the bottom right of the desktop app and of a paired phone, never on this page.">
+  return <Section id="agent-chat" title="Agent chat" lede="The Aril launcher and panel: shell chrome and the six button roles, drawn from invented conversations. The real panel is docked to the right edge of the desktop app, or a full-screen sheet on a paired phone, and never on this page.">
     <div className="designSystemGrid">
       <Sample label="Launcher"><AgentChatLauncher isStatic answering={false} fresh={false} /></Sample>
       <Sample label="Launcher, answering" note="While an answer is being written and the panel is minimized."><AgentChatLauncher isStatic answering fresh={false} /></Sample>
       <Sample label="Launcher, new answer" note="A brand dot until the panel is opened; the accessible name adds “new answer”."><AgentChatLauncher isStatic answering={false} fresh /></Sample>
     </div>
     <div className="designSystemGrid designSystemChatGrid">
-      <Sample label="Panel, empty" note="Suggestions only fill the message field; nothing is sent.">
-        <Panel state="empty" repositories><SampleComposer /></Panel>
+      <Sample label="Panel, empty" note="Suggestions only fill the message field; nothing is sent. The repository choice sits in the composer, and only when more than one repository is listed.">
+        <Panel state="empty"><SampleComposer repositories /></Panel>
       </Sample>
-      <Sample label="Panel, proposal" note="A pending proposal under Aril's answer: one row for each operation, and Apply changes or Dismiss.">
+      <Sample label="Panel, proposal" note="A pending proposal under Aril's answer: one row for each operation, and Apply changes or Dismiss. Each message shows its time.">
         <Panel conversation={PROPOSED}><SampleComposer /></Panel>
       </Sample>
-      <Sample label="Panel, answer being written" note="The partial answer, one fixed activity line, and Stop in place of Send.">
+      <Sample label="Panel, answer being written" note="The partial answer under a head with the time the turn started, one fixed activity line, and the round Stop in place of Send.">
         <Panel conversation={conversation([ASK])} turn={STREAMING_TURN}><SampleComposer running /></Panel>
+      </Sample>
+      <Sample label="Panel, activity lines" note="A grant follow-up is one quiet line: an icon, its text, and its time. It has no head and no card.">
+        <Panel conversation={QUIET}><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, conversations" note="The saved conversations replace the message list; the open one is marked.">
         <Panel history><SampleComposer /></Panel>
@@ -172,10 +189,24 @@ export function AgentChatSection() {
       </Sample>
       <Sample label="Panel, no repository" note="The composer is disabled until a repository is observed.">
         <AgentChatPanelFrame isStatic>
-          <AgentChatHeader historyOpen={false} onToggleHistory={noop} onNew={noop} onMinimize={noop} disabled />
+          <AgentChatHeader historyOpen={false} onToggleHistory={noop} onNew={noop} expanded={false} onToggleExpanded={noop} onClose={noop} disabled />
           <div className="agentChatBody"><div className="agentChatLogFrame"><div className="agentChatLog"><p className="agentChatLoading">No repositories observed yet.</p></div></div></div>
           <SampleComposer disabled />
         </AgentChatPanelFrame>
+      </Sample>
+    </div>
+    <div className="designSystemGrid">
+      <Sample label="Panel, over the dimmed page" note="The panel lays over the page and does not move it. A light scrim dims the page below the header, behind the panel, and a click on it closes the panel. The scrim is not drawn at 760px and narrower, where the panel is a sheet.">
+        <div className="designSystemChatStage">
+          <div className="designSystemChatPage"><b>Tasks</b><span>Ready (3)</span><span>In progress (1)</span><span>Review (2)</span></div>
+          <AgentChatScrim isStatic />
+          <Panel conversation={PROPOSED}><SampleComposer /></Panel>
+        </div>
+      </Sample>
+    </div>
+    <div className="designSystemGrid">
+      <Sample label="Panel, expanded" note="Expanded, the panel covers the content area beside the rail. The header keeps its place; the log and the composer sit in a centered column about 760px wide. The header action reads Dock and is pressed.">
+        <Panel conversation={PROPOSED} expanded><SampleComposer repositories /></Panel>
       </Sample>
     </div>
     <div className="designSystemGrid designSystemChatGrid">
@@ -215,6 +246,15 @@ export function AgentChatSection() {
       </Sample>
       <Sample label="Composer, image error" note="One fixed line as an alert; the images already attached stay.">
         <div className="designSystemTaskFrame"><SampleComposer initial="Which one is wrong?" images={[IMAGE_ONE]} imageUrls={IMAGE_URLS} imageError="An image can be at most 5 MB." /></div>
+      </Sample>
+      <Sample label="Composer, repository" note="With more than one repository listed, the repository choice follows Attach. The buttons and select triggers have no frame, and Send is round.">
+        <div className="designSystemTaskFrame"><SampleComposer initial="Which task should run first?" repositories /></div>
+      </Sample>
+      <Sample label="Composer, model and effort" note="The model and the effort follow the spacer. The model list holds named models only, grouped by provider, and never offers a default. The effort is Low, Medium, High, or Xhigh, and starts at Medium.">
+        <div className="designSystemTaskFrame"><SampleComposer initial="Which model fits this?" effort="high" /></div>
+      </Sample>
+      <Sample label="Composer, no known model" note="Only when no model is known at all for a provider, the model reads the provider's name.">
+        <div className="designSystemTaskFrame"><SampleComposer initial="Which task should run first?" noModels /></div>
       </Sample>
       <Sample label="Composer, error" note="One fixed line as an alert; the typed text stays.">
         <div className="designSystemTaskFrame"><SampleComposer initial="Which task should run first?" error="Aril is already answering. Wait for it to finish." /></div>

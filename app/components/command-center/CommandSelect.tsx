@@ -35,6 +35,8 @@ type CommandSelectProps<V extends string | number> = {
   disabled?: boolean;
   className?: string;
   placeholder?: string;
+  /** False reads the chosen option's label alone on the closed control; the list keeps its group headings. */
+  groupInValue?: boolean;
 };
 
 type ListPosition = { top: number; left: number; minWidth: number; maxHeight: number };
@@ -45,7 +47,7 @@ const TRIGGER_GAP = 4;
 const MAX_LIST_HEIGHT = 320;
 
 /** Shared single-select dropdown. */
-export function CommandSelect<V extends string | number>({ options, value, onChange, "aria-label": ariaLabel, id, disabled = false, className, placeholder = "" }: CommandSelectProps<V>) {
+export function CommandSelect<V extends string | number>({ options, value, onChange, "aria-label": ariaLabel, id, disabled = false, className, placeholder = "", groupInValue = true }: CommandSelectProps<V>) {
   const [openState, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [position, setPosition] = useState<ListPosition | null>(null);
@@ -208,7 +210,7 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
       onBlur={close}
     >
       {selected?.icon && <span className="commandSelectIcon" aria-hidden="true">{selected.icon}</span>}
-      <span className="commandSelectValue">{selected ? (selected.group ? `${selected.group} · ${selected.label}` : selected.label) : placeholder}</span>
+      <span className="commandSelectValue">{selected ? (selected.group && groupInValue ? `${selected.group} · ${selected.label}` : selected.label) : placeholder}</span>
       {selected?.iconLabel && <span className="commandVisuallyHidden">, {selected.iconLabel}</span>}
     </button>
     {open && host && createPortal(

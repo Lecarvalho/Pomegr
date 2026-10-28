@@ -67,3 +67,8 @@
 }
 /* The Aril chat panels and proposal cards are drawn at their real width, so a column is never narrower than the panel. */
 .designSystemChatGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+/* The Aril panel over a page that its scrim dims: an invented page, the scrim, and the docked panel at the right edge. */
+.designSystemChatStage { position: relative; flex: 1 1 100%; min-width: 0; min-height: 360px; display: flex; justify-content: flex-end; overflow: hidden; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); }
+.designSystemChatPage { flex: 1 1 auto; min-width: 0; padding: var(--space-4); display: grid; gap: var(--space-2); align-content: start; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+.designSystemChatPage > b { color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.designSystemChatStage .agentChatPanel.isStatic { z-index: 1; flex: 0 0 auto; width: min(420px, 70%); height: auto; border-width: 0 0 0 1px; border-radius: 0; }

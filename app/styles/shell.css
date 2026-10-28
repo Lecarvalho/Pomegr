@@ -1,11 +1,15 @@
 /* Application shell: approved HTML preview, August 2026. */
+/* The shell geometry that other chrome (the docked Aril panel) lines up with: the header's height and the rail's width. */
+:root { --command-header-height: 60px; --command-rail-width: 220px; }
+@media (max-width: 1080px) { :root { --command-header-height: 56px; --command-rail-width: 54px; } }
+@media (max-width: 760px) { :root { --command-rail-width: 0px; } }
 html[data-theme="dark"] body { background: var(--paper); }
 ::selection { background: var(--color-brand-text); color: var(--color-canvas); }
 .commandShell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  grid-template-rows: 60px minmax(0, 1fr);
+  grid-template-columns: var(--command-rail-width) minmax(0, 1fr);
+  grid-template-rows: var(--command-header-height) minmax(0, 1fr);
   overflow: clip;
   background: var(--command-ground);
   color: var(--command-ink);
@@ -139,7 +143,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandNotificationEmpty { min-height: 150px; padding: 30px 18px; display: grid; place-items: center; align-content: center; color: var(--command-muted); text-align: center; }
 .commandNotificationEmpty strong { margin-top: 10px; color: var(--command-ink); font-size: var(--text-xs); }
 .commandNotificationEmpty p { max-width: 30ch; margin: 6px 0 0; font-size: var(--text-xs); line-height: 1.5; }
-.commandSidebar { position: sticky; z-index: 30; top: 60px; grid-column: 1; grid-row: 2 / -1; height: calc(100vh - 60px); padding: 20px 12px 14px; display: flex; flex-direction: column; border-right: 1px solid var(--command-line); background: var(--command-sidebar); }
+.commandSidebar { position: sticky; z-index: 30; top: var(--command-header-height); grid-column: 1; grid-row: 2 / -1; height: calc(100vh - var(--command-header-height)); padding: 20px 12px 14px; display: flex; flex-direction: column; border-right: 1px solid var(--command-line); background: var(--command-sidebar); }
 .commandSidebar nav { display: grid; gap: 3px; }
 .commandNavItem { min-width: 0; min-height: 40px; padding: 0 12px; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 0; border-radius: var(--control-radius); color: var(--command-muted); text-decoration: none; position: relative; }
 .commandNavItem:hover { border-color: var(--command-line); background: var(--command-panel); color: var(--command-ink); }
@@ -322,13 +326,13 @@ html[data-theme="dark"] body { background: var(--paper); }
 .storageSettingsFootnote { margin: 0; padding: 10px 16px 12px; color: var(--command-muted); font-size: var(--text-caption); }
 
 @media (max-width: 1080px) {
-  .commandShell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); }
+  .commandShell { grid-template-columns: var(--command-rail-width) minmax(0, 1fr); grid-template-rows: var(--command-header-height) minmax(0, 1fr); }
   .commandHeader { grid-template-columns: max-content minmax(0, 1fr) minmax(0, 200px) auto; padding-inline: 9px; gap: 9px; }
   /* Fill the 200px column; the base 280px rule outranks a bare class selector. */
   .commandHeader > .commandPaletteTrigger { grid-column: 3; width: 100%; min-width: 0; }
   .commandEnvironment { display: none; }
   .commandHeaderTools { grid-column: 4; }
-  .commandSidebar { top: 56px; height: calc(100vh - 56px); padding-inline: 6px; }
+  .commandSidebar { top: var(--command-header-height); height: calc(100vh - var(--command-header-height)); padding-inline: 6px; }
   .commandNavItem { padding: 0; grid-template-columns: 1fr; place-items: center; }
   .commandNavItem span, .commandNavItem em, .commandSidebarFoot, .commandNavDivider { display: none; }
   .commandMain { grid-column: 2; }

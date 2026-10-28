@@ -1,6 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FakeChat, REPO_A, REPO_B, agentMessage, chatId, conversationOf, harness, installHarness, removeHarness, setInventory, settle, userMessage } from "./agent-chat-fixture";
+import { AT, FakeChat, REPO_A, REPO_B, agentMessage, chatId, conversationOf, harness, installHarness, removeHarness, setInventory, settle, userMessage } from "./agent-chat-fixture";
 
 vi.mock("next/navigation", async () => {
   const { harness } = await import("./agent-chat-fixture");
@@ -63,7 +63,11 @@ describe("a follow-up's link", () => {
     const message = within(log()).getByText(followUpText).closest("article")!;
     expect(message).toHaveAccessibleName("Aril");
     expect(message).toHaveAttribute("data-message-id", "m-1");
-    expect(within(message).getByText("Grant follow-up")).toBeInTheDocument();
+    // A quiet line: its text and its time, with no head, no caption, and no message bubble.
+    expect(message).toHaveClass("agentChatQuietLine");
+    expect(message.querySelector("time")).toHaveAttribute("datetime", AT);
+    expect(message.querySelector(".agentChatMessageHead")).toBeNull();
+    expect(within(message).queryByText("Grant follow-up")).toBeNull();
     expect(within(log()).queryByRole("button", { name: "Apply" })).toBeNull();
   });
 

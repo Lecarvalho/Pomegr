@@ -4,7 +4,7 @@ import {
   type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
   type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
-import { plainTaskText, type Task } from "../../../shared/task-contract";
+import { plainTaskText, type Task, type TaskEffort } from "../../../shared/task-contract";
 import { repositoryRouteId } from "../repositories/repository-route";
 import { CHECK_SHORT_LABELS, EFFORT_LABELS, PROVIDER_LABELS } from "../tasks/task-fields";
 
@@ -55,11 +55,11 @@ export function errorCopy(error: AgentChatError, context: { provider: AgentChatP
   }
 }
 
-export const GRANT_FOLLOW_UP_CAPTION = "Grant follow-up";
-
-export function agentCaption(message: { provider: AgentChatProvider; model: string | null; grantFollowUp?: true }): string {
-  if (message.grantFollowUp) return GRANT_FOLLOW_UP_CAPTION;
-  return `${PROVIDER_LABELS[message.provider]} · ${message.model ?? "default model"}`;
+/** "provider · model", and " · Effort" when an effort is stored. A record without a model reads "default model". */
+export function agentCaption(message: { provider: AgentChatProvider; model: string | null; effort?: TaskEffort | null }): string {
+  const parts = [PROVIDER_LABELS[message.provider], message.model ?? "default model"];
+  if (message.effort) parts.push(EFFORT_LABELS[message.effort]);
+  return parts.join(" · ");
 }
 
 export function firstLine(text: string): string {
@@ -75,6 +75,25 @@ export function conversationMeta(summary: Pick<AgentChatConversationSummary, "me
   const time = Date.parse(summary.updatedAt);
   const count = `${formatCount(summary.messages)} ${summary.messages === 1 ? "message" : "messages"}`;
   return Number.isFinite(time) ? `${count} · ${DATE.format(time)}` : count;
+}
+
+const CLOCK = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const FULL_TIME = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+
+const sameLocalDay = (left: Date, right: Date) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+
+/** The time of a message in the owner's local time: "HH:MM" today, "Mon D, HH:MM" on an earlier day, and null for a value that is no time. */
+export function formatMessageTime(at: string, now: Date | number = Date.now()): string | null {
+  const time = Date.parse(at);
+  if (!Number.isFinite(time)) return null;
+  const moment = new Date(time);
+  return sameLocalDay(moment, new Date(now)) ? CLOCK.format(moment) : DATE.format(moment);
+}
+
+/** The whole local date and time of a message, for its tooltip. */
+export function fullMessageTime(at: string): string | null {
+  const time = Date.parse(at);
+  return Number.isFinite(time) ? FULL_TIME.format(time) : null;
 }
 
 /** Whether the pending message of the owner is already the last stored message, so it is not drawn twice. */

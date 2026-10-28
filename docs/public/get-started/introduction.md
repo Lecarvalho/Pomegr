@@ -94,7 +94,7 @@ when you select **Start session**, or when you turn on the queue. The queue star
 cards from the top of **Ready**, one after another. Cards in a **Parallel** group
 start together, each in a Git worktree of its own. See [Tasks](../using-pomegr/tasks.md).
 
-**Aril** is the chat panel at the bottom right of the window. It reads the board, the
+**Aril** is the chat panel on the right side of the window. It reads the board, the
 repository's files, and what Pomegr observed, then proposes changes, such as tasks
 cut from a feature. Nothing changes until you select **Apply changes**, and Aril
 starts a session or turns the queue on or off only through a proposal you apply. The
