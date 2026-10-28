@@ -124,6 +124,7 @@ is no archive directory.
 | [Durable session store](plans/durable-session-store.md) | Normalized session evidence in the monitor SQLite store |
 | [Session receipt](plans/session-receipt.md) | A picture of one session that a user can copy or save |
 | [Guidance impact](plans/guidance-impact.md) | Sessions tagged with the guidance revision they ran under |
+| [Aril agent](plans/aril-agent.md) | One standing Aril in Settings with an On/Off switch, agreements settled in conversation instead of grants, and the docked panel, composer, and Home; proposed |
 | [Aril front door](plans/aril-front-door.md) | One chat that routes to each repository's Aril; rough draft with open questions |
 | [Commercial strategy](plans/commercial-strategy.md) | Editions, pricing, and buyer hypotheses |
 | [Remote platform](plans/remote-platform-and-orgs.md) | Remote and organization features; nothing is built |
