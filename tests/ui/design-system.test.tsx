@@ -643,8 +643,8 @@ describe("Design-system reference page", { timeout: 20_000 }, () => {
     expect(sample(cells, "Done").querySelector(".commandChip")).toHaveClass("neutral");
     expect(sample(cells, "Under a Feature group").querySelector(".commandSessionTaskFeature")).toBeNull();
     expect(sample(cells, "No feature").querySelector(".commandSessionTaskFeature")).toBeNull();
-    expect(within(sample(cells, "Started by you")).getByTitle("Not started from a task and not assigned to one")).toHaveTextContent("—");
-    expect(within(sample(cells, "Table footnote")).getByText(/^Task shows the task a session was started for, and the tasks it is assigned to\./)).toHaveClass("commandUnavailableNote");
+    expect(within(sample(cells, "Started by you")).getByTitle("Not started from a task, reviewing one, or assigned to one")).toHaveTextContent("—");
+    expect(within(sample(cells, "Table footnote")).getByText(/^Task shows the task a session was started for or reviewed \(marked Review\), and the tasks it is assigned to\./)).toHaveClass("commandUnavailableNote");
 
     const fields = sectionOf("Task fields");
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(4);

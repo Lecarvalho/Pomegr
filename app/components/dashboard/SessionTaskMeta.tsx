@@ -8,7 +8,7 @@ export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference
   const boardHref = sessionFeatureHref(task);
   return <span className="sessionTaskMeta">
     <span className="sessionTaskMetaGroup">
-      <span>Task</span>
+      <span>{task.role === "review" ? "Review" : "Task"}</span>
       {taskHref ? <Link className="commandTextLink sessionTaskMetaId" href={taskHref}>{task.id}</Link> : <span className="sessionTaskMetaId isPlain">{task.id}</span>}
     </span>
     {task.feature !== null && <span className="sessionTaskMetaGroup">

@@ -24,7 +24,8 @@ export function parseSessionTaskReference(value: unknown): SessionTaskReference 
   if (typeof task.id !== "string" || !TASK_ID_PATTERN.test(task.id) || typeof task.repositoryId !== "string" || !REPOSITORY_ID.test(task.repositoryId)) return null;
   if (!(task.state === null || STATES.has(task.state as string))) return null;
   if (!(task.featureId === null || boundedText(task.featureId, 200)) || !(task.feature === null || boundedText(task.feature, 80))) return null;
-  return { id: task.id, repositoryId: task.repositoryId, state: task.state as SessionTaskReference["state"], featureId: task.featureId as string | null, feature: task.feature as string | null };
+  if (task.role !== undefined && task.role !== "review") return null;
+  return { id: task.id, repositoryId: task.repositoryId, state: task.state as SessionTaskReference["state"], featureId: task.featureId as string | null, feature: task.feature as string | null, ...(task.role === "review" ? { role: "review" as const } : {}) };
 }
 
 export function parseSessionTaskAnswer(value: unknown, sessionId: string): SessionTaskResult | null {
@@ -42,7 +43,7 @@ export function parseSessionTaskAnswer(value: unknown, sessionId: string): Sessi
 function sameResult(left: SessionTaskResult, right: SessionTaskResult) {
   if (left.status !== right.status) return false;
   const a = left.task, b = right.task;
-  return a === b || (a !== null && b !== null && a.id === b.id && a.repositoryId === b.repositoryId && a.state === b.state && a.featureId === b.featureId && a.feature === b.feature);
+  return a === b || (a !== null && b !== null && a.id === b.id && a.repositoryId === b.repositoryId && a.state === b.state && a.featureId === b.featureId && a.feature === b.feature && a.role === b.role);
 }
 
 /** Reads the session's task reference and rereads it while the page is visible. */

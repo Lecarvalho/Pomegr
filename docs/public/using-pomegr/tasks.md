@@ -194,6 +194,11 @@ The row reads **Review running…** until the reviewer reports, then **Passed** 
 from the task's current stay in Review. Starting a review is available only in
 the Windows desktop app.
 
+Pomegr keeps the ID of every reviewer session with its task, and when it was linked,
+until you delete the task. The **Sessions** list shows a reviewer session's task,
+marked **Review**, after the review ends and after the task is done or requeued. The
+task's **Terminal** tab still finds an ended review.
+
 ## Run the queue
 
 1. Open a task and select **Add to queue**. Its card moves to **Ready**, last.

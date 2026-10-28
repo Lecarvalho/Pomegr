@@ -33,6 +33,7 @@ test("board review shows only the current Review verdict without reviewer identi
 const key = (kind, id = "T-1") => `task_${kind}:${REPOSITORY}:${id}`;
 const plan = (env, payload = { id: "T-1" }, facts = FACTS) => env.store.planReview(REPOSITORY, payload, () => facts);
 const rows = (env, table) => withDatabase(env.directory, (db) => db.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+const reviewerCount = (env) => withDatabase(env.directory, (db) => db.prepare("SELECT COUNT(*) AS count FROM task_reviewers").get().count);
 const report = (env, fields = {}) => env.store.reportReview({ sessionId: REVIEWER, verdict: "pass", ...fields });
 async function setup(t, bind = false) {
   const env = await openTemporaryStore(t);
@@ -208,8 +209,51 @@ test("deleting a task removes reviews and both review keys", async (t) => {
   plan(env);
   assert.equal(env.store.apply(REPOSITORY, "delete", { id: "T-1" }).ok, true);
   assert.equal(rows(env, "task_reviews").length, 0);
+  assert.equal(reviewerCount(env), 0);
   assert.equal(metaValue(env.directory, key("reviewer")), null);
   assert.equal(metaValue(env.directory, key("review_dispatch")), null);
+});
+
+// T-188: every reviewer session stays linked to its task until the task is deleted.
+test("the reviewer record keeps each reviewer with its link time while the current pointer clears", async (t) => {
+  const env = await setup(t, true);
+  const kept = () => reviewerCount(env);
+  assert.deepEqual(withDatabase(env.directory, (db) => db.prepare("SELECT repository_id, number, session_id, at FROM task_reviewers").all()).map((row) => ({ ...row })),
+    [{ repository_id: REPOSITORY, number: 1, session_id: REVIEWER, at: env.clock.now }]);
+  assert.equal(env.store.apply(REPOSITORY, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(metaValue(env.directory, key("reviewer")), null);
+  assert.equal(kept(), 1);
+  assert.deepEqual(env.store.reviewSession(REPOSITORY, { id: "T-1" }), { ok: true, sessionId: null, sessionIds: [REVIEWER] });
+  assert.deepEqual([...env.store.sessionReviews([REVIEWER, SESSION, "codex:unknown"]).keys()], [REVIEWER]);
+  assert.equal(env.store.sessionReviews([REVIEWER]).get(REVIEWER).role, "review");
+  assert.equal(env.store.readBoard(REPOSITORY).tasks[0].review, null);
+  assert.ok(!JSON.stringify(env.store.readBoard(REPOSITORY)).includes(REVIEWER), "the board never serves a reviewer identity");
+});
+
+test("a kept reviewer still reviews only its own task, and the same reviewer relinks its task without a second row", async (t) => {
+  const env = await setup(t, true);
+  createTask(env.store);
+  updateTask(env.directory, 2, { state: "needs_review", session_id: "claude:builder2" });
+  assert.equal(env.store.apply(REPOSITORY, "resolve_done", { id: "T-1" }).ok, true);
+  assert.deepEqual(env.store.bindSession({ token: plan(env, { id: "T-2" }).plan.token, sessionId: REVIEWER }), { ok: false, error: "not_found" });
+  updateTask(env.directory, 1, { state: "needs_review", session_id: SESSION });
+  env.clock.now += 1000;
+  assert.deepEqual(env.store.bindSession({ token: plan(env).plan.token, sessionId: REVIEWER }), { ok: true });
+  assert.equal(reviewerCount(env), 1);
+});
+
+test("existing stores fill the reviewer record from verdicts and current reviewers", async (t) => {
+  const env = await setup(t, true);
+  report(env);
+  createTask(env.store);
+  updateTask(env.directory, 2, { state: "needs_review", session_id: "claude:builder2" });
+  assert.deepEqual(env.store.bindSession({ token: plan(env, { id: "T-2" }).plan.token, sessionId: "codex:current" }), { ok: true });
+  env.store.close();
+  withDatabase(env.directory, (db) => db.exec("DROP TABLE task_reviewers"));
+  const reopened = openTaskStore({ directory: env.directory, now: () => env.clock.now });
+  try {
+    assert.deepEqual([...reopened.sessionReviews([REVIEWER, "codex:current"])].map(([session, task]) => [session, task.id]), [[REVIEWER, "T-1"], ["codex:current", "T-2"]]);
+  } finally { reopened.close(); }
 });
 
 test("review prompt has the task, feature and fixed read-only review instructions within 8000 characters", () => {

@@ -63,7 +63,10 @@ export function createTerminalController(options = {}) {
         body: JSON.stringify({ repositoryId, payload: { id: taskId } }),
       });
       const answer = await response.json();
-      return response.ok && answer?.ok === true ? answer.sessionId : null;
+      if (!response.ok || answer?.ok !== true) return null;
+      const valid = (value) => typeof value === "string" && SESSION.test(value);
+      return { sessionId: valid(answer.sessionId) ? answer.sessionId : null,
+        sessionIds: Array.isArray(answer.sessionIds) ? answer.sessionIds.filter(valid) : [] };
     } catch { return null; }
   }
 
@@ -118,9 +121,31 @@ export function createTerminalController(options = {}) {
         const taskRows = [...records.values()].filter((row) => row.repositoryId === id && row.taskId === task.id && row.role === role && (seen.has(row.key) || row.state === "exited"));
         const live = taskRows.filter((row) => row.state !== "exited");
         const candidates = live.length ? live : taskRows;
+        if (role === "review") {
+          const unresolved = taskRows.filter((row) => !row.sessionId);
+          const linked = unresolved.length ? await readReviewSession(id, task.id) : null;
+          if (!linked) continue;
+          const claimed = new Set([...records.values()].map((row) => row.sessionId).filter(Boolean));
+          // The current reviewer belongs to the one candidate key. Only an ended candidate falls back to the latest
+          // kept reviewer: a live key whose review has not linked yet waits, or it would take an earlier reviewer.
+          const only = candidates.length === 1 && !candidates[0].sessionId ? candidates[0] : null;
+          const latest = only?.state === "exited" ? linked.sessionIds.filter((value) => !claimed.has(value)).at(-1) : null;
+          const current = linked.sessionId && !claimed.has(linked.sessionId) ? linked.sessionId : latest;
+          if (only && current) {
+            only.sessionId = current;
+            claimed.add(current);
+          }
+          // The store keeps every reviewer in link order, and one host lists ended reviews in creation order,
+          // so the remaining ended keys pair with the unclaimed reviewers. Live keys stay unbound until their review links.
+          const rest = unresolved.filter((row) => !row.sessionId && row.state === "exited");
+          const open = linked.sessionIds.filter((value) => !claimed.has(value));
+          if (rest.length > 0 && open.length === rest.length && rest.every((row) => row.connection === rest[0].connection)) {
+            rest.forEach((row, index) => { row.sessionId = open[index]; });
+          }
+          continue;
+        }
         if (candidates.length !== 1 || candidates[0].sessionId) continue;
-        const linked = role === "review" ? await readReviewSession(id, task.id) : task.session?.id;
-        // More than one key cannot be reconstructed from a store that keeps only the current link.
+        const linked = task.session?.id;
         if (typeof linked === "string" && SESSION.test(linked)) candidates[0].sessionId = linked;
       }
     }

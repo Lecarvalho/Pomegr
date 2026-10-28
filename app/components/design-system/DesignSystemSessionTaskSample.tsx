@@ -20,6 +20,7 @@ export function SessionTaskSection() {
       <Sample label="No feature" note="The ID alone, with no feature line."><SessionTaskCell task={reference("T-9", null, null)} /></Sample>
       <Sample label="Promoted from an issue" note="The issue number is plain muted text after the task ID: no chip, border, icon or link, so the ID stays the one prominent identifier."><SessionTaskCell task={reference("T-14", null, "Upload reliability", 128)} /></Sample>
       <Sample label="Promoted from an issue, with an outcome" note="The number sits between the ID and the outcome chip."><SessionTaskCell task={reference("T-12", "needs_review", "Upload reliability", 128)} /></Sample>
+      <Sample label="Reviewer session" note="A review session Pomegr started shows the task it reviewed, with the muted word Review, after the review ends too."><SessionTaskCell task={{ ...reference("T-12", "needs_review"), role: "review" }} /></Sample>
       <Sample label="Started by you" note="A dash, with a title that says the session was not started from a task."><SessionTaskCell task={null} /></Sample>
     </div>
     <div className="designSystemGrid">

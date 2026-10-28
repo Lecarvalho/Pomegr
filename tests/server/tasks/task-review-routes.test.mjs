@@ -173,16 +173,21 @@ test("desktop review-session returns only the bound reviewer identity, never the
   const unbound = await action(env, "review-session", { id: "T-1" });
   assert.equal(unbound.status, 200);
   assert.equal(unbound.headers["cache-control"], "no-store");
-  assert.deepEqual(unbound.json, { ok: true, sessionId: null });
+  assert.deepEqual(unbound.json, { ok: true, sessionId: null, sessionIds: [] });
   const planned = await action(env, "review-plan", { id: "T-1" });
   assert.equal(env.store.bindSession({ token: planned.json.plan.token, sessionId: REVIEWER }).ok, true);
   const bound = await action(env, "review-session", { id: "T-1" });
   assert.equal(bound.status, 200);
-  assert.deepEqual(bound.json, { ok: true, sessionId: REVIEWER });
+  assert.deepEqual(bound.json, { ok: true, sessionId: REVIEWER, sessionIds: [REVIEWER] });
   assert.doesNotMatch(bound.text, /builder|repositoryRoot|prompt|token|reasons|plan/u);
-  withDatabase(env.directory, (database) => database.prepare("UPDATE meta SET value = ? WHERE key = ?")
-    .run("C:/private/reviewer.txt", `task_reviewer:${REPOSITORY_ID}:T-1`));
-  assert.deepEqual((await action(env, "review-session", { id: "T-1" })).json, { ok: true, sessionId: null });
+  // T-188: a pointer that is not a session ID is not the current review; a kept value that is not one is never served.
+  withDatabase(env.directory, (database) => {
+    database.prepare("UPDATE meta SET value = ? WHERE key = ?").run("C:/private/reviewer.txt", `task_reviewer:${REPOSITORY_ID}:T-1`);
+    database.prepare("INSERT INTO task_reviewers (repository_id, number, session_id, at) VALUES (?, 1, ?, ?)").run(REPOSITORY_ID, "C:/private/kept.txt", Date.now() * 2);
+  });
+  const fallback = await action(env, "review-session", { id: "T-1" });
+  assert.deepEqual(fallback.json, { ok: true, sessionId: null, sessionIds: [REVIEWER] });
+  assert.doesNotMatch(fallback.text, /private/u);
 });
 
 test("review-session rejects non-desktop callers and GET", async (t) => {

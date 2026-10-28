@@ -21,6 +21,13 @@ describe("session task reference", () => {
     }
   });
 
+  // T-188: a reviewer session's reference carries the review role, and only that role.
+  it("keeps the review role of a reviewer session and refuses any other role", () => {
+    expect(parseSessionTaskReference({ ...REFERENCE, role: "review" })).toEqual({ ...REFERENCE, role: "review" });
+    expect(parseSessionTaskAnswer(page({ ...REFERENCE, role: "review" }), SESSION)).toEqual({ status: "present", task: { ...REFERENCE, role: "review" } });
+    for (const role of ["build", "Review", null, 1]) expect(parseSessionTaskReference({ ...REFERENCE, role })).toBeNull();
+  });
+
   it("reads present, absent and unknown from a directory answer", () => {
     expect(parseSessionTaskAnswer(page(REFERENCE), SESSION)).toEqual({ status: "present", task: REFERENCE });
     expect(parseSessionTaskAnswer(page(null), SESSION)).toEqual({ status: "absent", task: null });

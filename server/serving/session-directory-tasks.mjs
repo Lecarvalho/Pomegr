@@ -10,11 +10,11 @@ export function validFeatureQuery(value) {
   return value === "" || FEATURE_ID.test(value);
 }
 
-// `assignedTasks` is present only on a session that is assigned to a task.
-function withTasks(sessions, references, assigned) {
+// `assignedTasks` is present only on a session that is assigned to a task. A reviewer's `task` carries `role: "review"`.
+function withTasks(sessions, references, assigned, reviews) {
   return sessions.map((session) => {
     const tasks = assigned?.get(session.id);
-    return { ...session, task: references.get(session.id) ?? null, ...(tasks ? { assignedTasks: tasks } : {}) };
+    return { ...session, task: references.get(session.id) ?? reviews?.get(session.id) ?? null, ...(tasks ? { assignedTasks: tasks } : {}) };
   });
 }
 
@@ -50,10 +50,11 @@ export function serveSessionDirectoryWithTasks({ runtime, taskStore = null, allo
   const references = taskStore.sessionTasks(sessionIds);
   if (!references) return { ...page, taskReadiness: "unavailable" };
   const assigned = typeof taskStore.sessionAssignedTasks === "function" ? taskStore.sessionAssignedTasks(sessionIds) : null;
+  const reviews = typeof taskStore.sessionReviews === "function" ? taskStore.sessionReviews(sessionIds) : null;
   return {
     ...page,
-    sessions: withTasks(page.sessions, references, assigned),
-    ...(Array.isArray(page.groups) ? { groups: page.groups.map((group) => ({ ...group, sessions: withTasks(group.sessions, references, assigned) })) } : {}),
+    sessions: withTasks(page.sessions, references, assigned, reviews),
+    ...(Array.isArray(page.groups) ? { groups: page.groups.map((group) => ({ ...group, sessions: withTasks(group.sessions, references, assigned, reviews) })) } : {}),
     ...(feature ? { feature: featureLabel } : {}),
     taskReadiness: "ready",
   };
