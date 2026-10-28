@@ -111,10 +111,10 @@ describe("opening the panel", () => {
     expect(panel().tagName).toBe("SECTION");
     expect(panel()).not.toHaveAttribute("aria-modal");
     expect(within(panel()).getByRole("heading", { level: 2, name: "Aril" })).toBeInTheDocument();
-    expect(within(panel()).getByText("Task-board agent")).toBeInTheDocument();
+    expect(within(panel()).queryByText("Task-board agent")).toBeNull();
     expect(field()).toHaveFocus();
     // The panel never traps focus: Tab leaves the field for the next control.
-    expect(field()).toHaveAttribute("placeholder", "Ask about this board…");
+    expect(field()).toHaveAttribute("placeholder", "Ask Aril…");
   });
 
   it("shows the empty state only once the list is ready, never before it, and its suggestions only fill the field", async () => {
@@ -191,13 +191,15 @@ describe("sending a message", () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    expect(screen.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Claude Code · Default model");
+    // The run starts on the newest known Claude model and Medium: never a default.
+    expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-large$/);
+    expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^Medium$/);
     let release = () => {};
     chat.hold = new Promise<void>((resolve) => { release = resolve; });
     await person.type(field(), "  Which task should run first?  ");
     await person.keyboard("{Enter}");
     await settle();
-    expect(chat.calls("send")).toEqual([{ repositoryId: REPO_A, conversationId: null, text: "Which task should run first?", provider: "claude", model: null }]);
+    expect(chat.calls("send")).toEqual([{ repositoryId: REPO_A, conversationId: null, text: "Which task should run first?", provider: "claude", model: "model-large", effort: "medium" }]);
     // The message is on its way: drawn once, the field is empty, and the activity line has a fixed word.
     expect(within(log()).getAllByText("Which task should run first?")).toHaveLength(1);
     expect(field()).toHaveValue("");
@@ -233,26 +235,85 @@ describe("sending a message", () => {
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
   });
 
-  it("sends the Run on choice and keeps effort out of it", async () => {
+  it("lists only named models, grouped by provider, and sends the model and the effort the owner chooses", async () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    await person.click(screen.getByRole("combobox", { name: "Run on" }));
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["model-largeClaude Code", "Default modelClaude Code", "model-codeCodex", "Default modelCodex"].map((text) => expect.stringContaining(text.replace(/(Claude Code|Codex)$/u, ""))));
+    await person.click(screen.getByRole("combobox", { name: "Model" }));
+    const list = screen.getByRole("listbox", { name: "Model" });
+    expect([...list.querySelectorAll(".commandSelectGroup")].map((heading) => heading.textContent)).toEqual(["Claude Code", "Codex"]);
+    expect(within(list).getAllByRole("option").map((option) => option.textContent)).toEqual(["model-large, Claude Code", "model-code, Codex"]);
+    expect(list.textContent).not.toMatch(/default/i);
     await person.click(screen.getByRole("option", { name: /^model-code/ }));
-    expect(screen.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Codex · model-code");
-    expect(screen.queryByRole("button", { name: "High" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-code$/);
+
+    await person.click(screen.getByRole("combobox", { name: "Effort" }));
+    expect(within(screen.getByRole("listbox", { name: "Effort" })).getAllByRole("option").map((option) => option.textContent)).toEqual(["Low", "Medium", "High", "Xhigh"]);
+    await person.click(screen.getByRole("option", { name: "High" }));
+    expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^High$/);
     await ask(person, "Is T-12 too big?");
-    expect(chat.calls("send")).toEqual([{ repositoryId: REPO_A, conversationId: null, text: "Is T-12 too big?", provider: "codex", model: "model-code" }]);
+    expect(chat.calls("send")).toEqual([{ repositoryId: REPO_A, conversationId: null, text: "Is T-12 too big?", provider: "codex", model: "model-code", effort: "high" }]);
   });
 
-  it("starts Run on from the open conversation's provider and model", async () => {
-    chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A", { provider: "codex", model: "model-code" })], { provider: "codex", model: "model-code" }));
+  it("keeps a chosen effort when only the model changes, and a chosen model when only the effort changes", async () => {
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await person.click(screen.getByRole("combobox", { name: "Effort" }));
+    await person.click(screen.getByRole("option", { name: "Low" }));
+    await person.click(screen.getByRole("combobox", { name: "Model" }));
+    await person.click(screen.getByRole("option", { name: /^model-code/ }));
+    expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^Low$/);
+    await person.click(screen.getByRole("combobox", { name: "Effort" }));
+    await person.click(screen.getByRole("option", { name: "Xhigh" }));
+    expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-code$/);
+    await ask(person, "Is T-12 too big?");
+    expect(chat.calls("send")[0]).toMatchObject({ provider: "codex", model: "model-code", effort: "xhigh" });
+  });
+
+  it("starts the run from the open conversation's provider, model, and effort", async () => {
+    chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A", { provider: "codex", model: "model-code", effort: "high" })], { provider: "codex", model: "model-code", effort: "high" }));
     render(<AgentChatDock />);
     await openPanel();
-    expect(screen.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Codex · model-code");
+    expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-code$/);
+    expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^High$/);
     await ask(user(), "Follow up");
-    expect(chat.calls("send")[0]).toMatchObject({ conversationId: chatId(1), provider: "codex", model: "model-code" });
+    expect(chat.calls("send")[0]).toMatchObject({ conversationId: chatId(1), provider: "codex", model: "model-code", effort: "high" });
+  });
+
+  it("shows the newest known model and Medium for a stored conversation that has no model and no effort", async () => {
+    chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A")]));
+    render(<AgentChatDock />);
+    await openPanel();
+    expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-large$/);
+    expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^Medium$/);
+    await ask(user(), "Follow up");
+    expect(chat.calls("send")[0]).toMatchObject({ conversationId: chatId(1), provider: "claude", model: "model-large", effort: "medium" });
+  });
+
+  it("names the effort in the caption of an answer that stored one, and leaves an older answer's caption as it was", async () => {
+    chat.seed(REPO_A, conversationOf(1, [
+      userMessage("One"), agentMessage("Fine.", { provider: "codex", model: "model-code", effort: "xhigh" }, "m-2"),
+      userMessage("Two", "m-3"), agentMessage("Older.", {}, "m-4"),
+    ]));
+    render(<AgentChatDock />);
+    await openPanel();
+    const answers = within(log()).getAllByRole("article", { name: "Aril" });
+    expect(answers[0].querySelector(".agentChatMessageCaption")).toHaveTextContent("Codex · model-code · Xhigh");
+    expect(answers[1].querySelector(".agentChatMessageCaption")).toHaveTextContent(/^Claude Code · default model$/);
+  });
+
+  it("names the effort on the answer being written and on the stored answer", async () => {
+    const person = user();
+    render(<AgentChatDock />);
+    await openPanel(person);
+    await ask(person, "Think about it");
+    chat.write("Partway", "writing");
+    await settle(500);
+    expect(log().querySelector(".isWriting .agentChatMessageCaption")).toHaveTextContent("Claude Code · model-large · Medium");
+    chat.finish("Done.");
+    await settle(500);
+    expect(within(log()).getByText("Done.").closest("article")!.querySelector(".agentChatMessageCaption")).toHaveTextContent("Claude Code · model-large · Medium");
   });
 
   it("sends on Enter, makes a new line on Shift+Enter, and never sends while an IME composition is confirmed", async () => {
@@ -349,8 +410,8 @@ describe("refused operations", () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    await person.click(screen.getByRole("combobox", { name: "Run on" }));
-    await person.click(screen.getByRole("option", { name: /^Default model, Codex/ }));
+    await person.click(screen.getByRole("combobox", { name: "Model" }));
+    await person.click(screen.getByRole("option", { name: /^model-code, Codex/ }));
     chat.refuse = "cli_missing";
     await ask(person, "Hello");
     expect(screen.getByRole("alert")).toHaveTextContent("Codex is not installed on this computer.");

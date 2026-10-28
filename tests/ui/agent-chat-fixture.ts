@@ -12,8 +12,8 @@ export const PROPOSAL_ID = "p-0123456789ab";
 export const AT = "2026-10-11T10:00:00.000Z";
 
 type Json = Record<string, unknown>;
-type StoredConversation = { id: string; title: string; provider: "claude" | "codex"; model: string | null; createdAt: string; updatedAt: string; messages: Json[] };
-type Turn = { repositoryId: string; conversationId: string; startedAt: string; provider: string; model: string | null; activity: string; text: string };
+type StoredConversation = { id: string; title: string; provider: "claude" | "codex"; model: string | null; effort?: string; createdAt: string; updatedAt: string; messages: Json[] };
+type Turn = { repositoryId: string; conversationId: string; startedAt: string; provider: string; model: string | null; effort?: string; activity: string; text: string };
 
 export const userMessage = (text: string, id = "m-1"): Json => ({ id, role: "user", text, at: AT });
 export const agentMessage = (text: string, overrides: Json = {}, id = "m-2"): Json => ({ id, role: "agent", text, at: AT, provider: "claude", model: null, status: "complete", ...overrides });
@@ -121,13 +121,13 @@ export class FakeChat {
     const turn = this.turn;
     if (!turn) return;
     const conversation = this.conversation(turn.repositoryId, turn.conversationId);
-    conversation?.messages.push(agentMessage(text, { provider: turn.provider, model: turn.model, status, ...extra }, `m-${conversation.messages.length + 1}`));
+    conversation?.messages.push(agentMessage(text, { provider: turn.provider, model: turn.model, ...(turn.effort ? { effort: turn.effort } : {}), status, ...extra }, `m-${conversation.messages.length + 1}`));
     if (conversation) conversation.updatedAt = this.stamp();
     this.turn = null;
   }
 
   private answered(repositoryId: string, stored: StoredConversation): Json {
-    if (this.followUps) this.turn = { repositoryId, conversationId: stored.id, startedAt: AT, provider: stored.provider, model: stored.model, activity: "starting", text: "" };
+    if (this.followUps) this.turn = { repositoryId, conversationId: stored.id, startedAt: AT, provider: stored.provider, model: stored.model, ...(stored.effort ? { effort: stored.effort } : {}), activity: "starting", text: "" };
     return { ok: true };
   }
 
@@ -147,7 +147,7 @@ export class FakeChat {
       case "read": {
         if (!stored) return { ok: false, error: "not_found" };
         const running = this.turn?.repositoryId === repositoryId && this.turn.conversationId === stored.id ? this.turn : null;
-        return { ok: true, conversation: structuredClone(stored), turn: running ? { conversationId: running.conversationId, startedAt: running.startedAt, provider: running.provider, model: running.model, activity: running.activity, text: running.text } : null };
+        return { ok: true, conversation: structuredClone(stored), turn: running ? { conversationId: running.conversationId, startedAt: running.startedAt, provider: running.provider, model: running.model, ...(running.effort ? { effort: running.effort } : {}), activity: running.activity, text: running.text } : null };
       }
       case "send": {
         if (this.hold) await this.hold;
@@ -157,12 +157,16 @@ export class FakeChat {
         const text = String(payload.text);
         const imageIds = Array.isArray(payload.images) ? payload.images.map(String) : [];
         if (imageIds.some((id) => !this.images.has(id))) return { ok: false, error: "invalid" };
+        const effort = typeof payload.effort === "string" ? payload.effort : undefined;
         const target = stored ?? conversationOf(this.counter += 1, [], { title: text.slice(0, 80), provider: payload.provider as "claude" | "codex", model: (payload.model as string | null) ?? null });
+        target.provider = payload.provider as "claude" | "codex";
+        target.model = (payload.model as string | null) ?? null;
+        if (effort) target.effort = effort; else delete target.effort;
         map.set(target.id, target);
         const images = imageIds.map((id) => ({ id, type: this.images.get(id)!.type, bytes: this.images.get(id)!.bytes.byteLength }));
         target.messages.push({ ...userMessage(text, `m-${target.messages.length + 1}`), ...(images.length > 0 ? { images } : {}) });
         target.updatedAt = this.stamp();
-        this.turn = { repositoryId, conversationId: target.id, startedAt: AT, provider: String(payload.provider), model: (payload.model as string | null) ?? null, activity: "thinking", text: "" };
+        this.turn = { repositoryId, conversationId: target.id, startedAt: AT, provider: String(payload.provider), model: (payload.model as string | null) ?? null, ...(effort ? { effort } : {}), activity: "thinking", text: "" };
         return { ok: true, conversationId: target.id };
       }
       case "stop": {

@@ -14,7 +14,7 @@ import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
 import { chatTaskLog } from "./agent-chat-task-log.mjs";
 import { AGENT_CHAT_INSTRUCTIONS, composePrompt, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
-import { runChatTurn, validInstructionsFile } from "./agent-chat-runner.mjs";
+import { CHAT_EFFORTS, runChatTurn, validInstructionsFile } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
@@ -38,6 +38,9 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MESSAGE_TEXT = /^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]*$/u;
 const PROVIDERS = new Set(["claude", "codex"]);
+const EFFORTS = new Set(CHAT_EFFORTS);
+// The effort a record carries: the field for a level, nothing for none, so an older record without one still reads as null.
+const effortField = (effort) => (typeof effort === "string" && EFFORTS.has(effort) ? { effort } : {});
 const TASK_ACTIONS = new Set(["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"]);
 // The canonical queue control of the Tasks page. The chat sends it only for an approved queue proposal, with the one setting `on`.
 const QUEUE_ACTION = "queue_settings";
@@ -308,7 +311,7 @@ export function createAgentChat(options = {}) {
     if (disposed) return;
     const key = `${repositoryId}/${proposalId}`;
     followUps.delete(key);
-    followUps.set(key, { repositoryId, conversationId: conversation.id, proposalId, provider: conversation.provider, model: conversation.model, queuedAt: now().toISOString() });
+    followUps.set(key, { repositoryId, conversationId: conversation.id, proposalId, provider: conversation.provider, model: conversation.model, effort: conversation.effort ?? null, queuedAt: now().toISOString() });
     startFollowUp();
   }
 
@@ -318,7 +321,7 @@ export function createAgentChat(options = {}) {
     if (!next) return;
     followUps.delete(key);
     const turn = {
-      repositoryId: next.repositoryId, conversationId: next.conversationId, provider: next.provider, model: next.model, followUp: next.proposalId,
+      repositoryId: next.repositoryId, conversationId: next.conversationId, provider: next.provider, model: next.model, effort: next.effort, followUp: next.proposalId,
       startedAt: now().toISOString(), activity: "starting", text: "", stopped: false, stop: () => { turn.stopped = true; },
     };
     active = turn;
@@ -364,7 +367,7 @@ export function createAgentChat(options = {}) {
         return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
       }
       const run = runTurn({ instructionsFile,
-        spawn, executable: command, provider: turn.provider, model: turn.model, mcpServer: taskServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null, sessionId,
+        spawn, executable: command, provider: turn.provider, model: turn.model, effort: turn.effort, mcpServer: taskServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null, sessionId,
         cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
@@ -380,7 +383,7 @@ export function createAgentChat(options = {}) {
     if (!last || last.role !== "user" || (active && active.repositoryId === repositoryId && active.conversationId === conversation.id)) return conversation;
     const at = now().toISOString();
     const repaired = { ...conversation, updatedAt: at, messages: [...conversation.messages, {
-      id: `m-${conversation.messages.length + 1}`, role: "agent", text: "", at, provider: conversation.provider, model: conversation.model, status: "interrupted",
+      id: `m-${conversation.messages.length + 1}`, role: "agent", text: "", at, provider: conversation.provider, model: conversation.model, ...effortField(conversation.effort), status: "interrupted",
     }] };
     return await store.save(repositoryId, repaired) ? repaired : conversation;
   }
@@ -405,7 +408,7 @@ export function createAgentChat(options = {}) {
       read = await recordRework(read, (payload) => disposed || turn.stopped ? UNAVAILABLE : monitor("/internal/tasks/aril-declare-rework", { method: "POST",
         headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...payload }),
       }), ANSWER_LENGTH);
-      const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, status };
+      const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, ...effortField(turn.effort), status };
       // Only a successful or partial outcome may offer another board proposal. It still waits for the owner.
       if (turn.followUp) {
         message.followUp = turn.followUp;
@@ -439,14 +442,18 @@ export function createAgentChat(options = {}) {
 
   async function send(payload) {
     const withImages = isPlainObject(payload) && Object.hasOwn(payload, "images");
-    if (!exactly(payload, ["repositoryId", "conversationId", "text", "provider", "model", ...(withImages ? ["images"] : [])])) return INVALID;
+    // `effort` is optional: a client that names none reads as null, as a record without one does.
+    const withEffort = isPlainObject(payload) && Object.hasOwn(payload, "effort");
+    if (!exactly(payload, ["repositoryId", "conversationId", "text", "provider", "model", ...(withEffort ? ["effort"] : []), ...(withImages ? ["images"] : [])])) return INVALID;
     const { repositoryId, conversationId, provider, model } = payload;
+    const effort = withEffort ? payload.effort : null;
     const imageIds = withImages ? chatImageIds(payload.images) : [];
     if (imageIds === null) return INVALID;
     const text = typeof payload.text === "string" ? payload.text.trim() : "";
     if (!REPOSITORY_ID.test(String(repositoryId)) || !(conversationId === null || (typeof conversationId === "string" && CONVERSATION_ID.test(conversationId)))
       || !text || text.length > MESSAGE_LENGTH || !MESSAGE_TEXT.test(text) || !PROVIDERS.has(provider)
-      || !(model === null || (typeof model === "string" && MODEL.test(model)))) return INVALID;
+      || !(model === null || (typeof model === "string" && MODEL.test(model)))
+      || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort)))) return INVALID;
     if (active) return refused("busy");
     const reservation = { reserved: true, repositoryId, conversationId };
     active = reservation;
@@ -469,7 +476,7 @@ export function createAgentChat(options = {}) {
         try { github = await repositoryGithub.read(repositoryId, root); } catch { github = null; }
         if (disposed) return UNAVAILABLE;
       }
-      const conversation = existing ?? await store.create(repositoryId, { provider, model, title: conversationTitle(text) });
+      const conversation = existing ?? await store.create(repositoryId, { provider, model, effort, title: conversationTitle(text) });
       if (!conversation) return refused("limit");
       // A conversation that was made for this message is not kept when the message is refused.
       const abandoned = async (answer) => {
@@ -487,14 +494,14 @@ export function createAgentChat(options = {}) {
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
-      const next = { ...conversation, provider, model, updatedAt: at, messages: [...conversation.messages, message] };
+      const next = { ...conversation, provider, model, effort, updatedAt: at, messages: [...conversation.messages, message] };
       if (!await store.save(repositoryId, next)) return abandoned(UNAVAILABLE);
       // The run may read the folder of this conversation's images, and nothing else outside the repository.
       const newest = new Set(attached.map((image) => image.id));
       const runImages = shown.length > 0 ? { folder: images.folder(repositoryId, conversation.id), files: shown.filter((image) => newest.has(image.id)).map((image) => image.file) } : null;
       sessionId = await declareRun(provider);
       if (disposed) { withdrawRun(sessionId); return UNAVAILABLE; }
-      turn = { repositoryId, conversationId: conversation.id, provider, model, startedAt: at, activity: "starting", text: "", stopped: false,
+      turn = { repositoryId, conversationId: conversation.id, provider, model, effort, startedAt: at, activity: "starting", text: "", stopped: false,
         logThrough: Math.max(0, ...(taskLog?.entries ?? []).map((entry) => entry.id)),
         stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
@@ -506,7 +513,7 @@ export function createAgentChat(options = {}) {
         return UNAVAILABLE;
       }
       const run = runTurn({ instructionsFile,
-        spawn, executable: command, provider, model, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        spawn, executable: command, provider, model, effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
@@ -590,10 +597,10 @@ export function createAgentChat(options = {}) {
     const conversation = await settled(payload.repositoryId, found.conversation);
     // A follow-up that waits behind another turn reads as a turn that is starting, so the client keeps reading.
     const waiting = waitingOf(payload.repositoryId, conversation.id);
-    const turn = turnOf(payload.repositoryId, conversation.id) ?? (waiting ? { conversationId: conversation.id, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, activity: "starting", text: "" } : null);
+    const turn = turnOf(payload.repositoryId, conversation.id) ?? (waiting ? { conversationId: conversation.id, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, ...effortField(waiting.effort), activity: "starting", text: "" } : null);
     return {
       ok: true, conversation: Object.fromEntries(Object.entries(conversation).filter(([key]) => key !== "grantFollowUps")),
-      turn: turn ? { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, activity: turn.activity, text: visibleAnswer(turn.text) } : null,
+      turn: turn ? { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, ...effortField(turn.effort), activity: turn.activity, text: visibleAnswer(turn.text) } : null,
     };
   }
 

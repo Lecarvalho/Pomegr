@@ -2,49 +2,52 @@
 
 import type { KeyboardEventHandler, ReactNode, Ref } from "react";
 import { CommandIcon } from "../command-center/CommandIcon";
-import { CommandSelect, type CommandSelectOption } from "../command-center/CommandSelect";
 
 export const PANEL_LABEL = "Aril, the Pomegr agent";
 
-/** The floating panel: a non-modal region fixed to the bottom right, or a full-screen sheet on a phone. */
-export function AgentChatPanelFrame({ id, open = true, isStatic = false, panelRef, onKeyDown, children }: {
+/** The panel: a non-modal region docked to the right edge, below the shell header (or expanded over the content area), or a full-screen sheet on a phone. */
+export function AgentChatPanelFrame({ id, open = true, isStatic = false, expanded = false, panelRef, onKeyDown, children }: {
   id?: string;
   open?: boolean;
   /** Draws in the page's flow instead of fixed to the window; for the design-system reference. */
   isStatic?: boolean;
+  /** Covers the content area, with the log and the composer in a centered column. */
+  expanded?: boolean;
   panelRef?: Ref<HTMLElement>;
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
   children?: ReactNode;
 }) {
-  return <section ref={panelRef} id={id} className={`agentChatPanel${isStatic ? " isStatic" : ""}`} aria-label={PANEL_LABEL} hidden={!open} onKeyDown={onKeyDown}>{children}</section>;
+  return <section ref={panelRef} id={id} className={`agentChatPanel${isStatic ? " isStatic" : ""}${expanded ? " isExpanded" : ""}`} aria-label={PANEL_LABEL} hidden={!open} onKeyDown={onKeyDown}>{children}</section>;
 }
 
-export function AgentChatHeader({ historyOpen, onToggleHistory, onNew, onMinimize, disabled = false }: {
+export function AgentChatHeader({ historyOpen, onToggleHistory, onNew, expanded, onToggleExpanded, onClose, disabled = false }: {
   historyOpen: boolean;
   onToggleHistory(): void;
   onNew(): void;
-  onMinimize(): void;
+  expanded: boolean;
+  onToggleExpanded(): void;
+  onClose(): void;
   disabled?: boolean;
 }) {
   return <header className="agentChatHeader">
     <span className="agentChatGlyph"><CommandIcon name="spark" /></span>
     <h2 className="agentChatTitle">Aril</h2>
-    <span className="agentChatCaption">Task-board agent</span>
     <span className="agentChatSpacer" />
     <button type="button" className="commandIconAction" aria-label="Conversations" title="Conversations" aria-pressed={historyOpen} disabled={disabled} onClick={onToggleHistory}><CommandIcon name="history" /></button>
     <button type="button" className="commandIconAction" aria-label="New conversation" title="New conversation" disabled={disabled} onClick={onNew}><CommandIcon name="plus" /></button>
-    <button type="button" className="commandIconAction" aria-label="Minimize" title="Minimize" data-minimize="" onClick={onMinimize}><CommandIcon name="collapse" /></button>
+    <button type="button" className="commandIconAction agentChatExpand" aria-label={expanded ? "Dock" : "Expand"} title={expanded ? "Dock" : "Expand"} aria-pressed={expanded} onClick={onToggleExpanded}><CommandIcon name={expanded ? "dock" : "expand"} /></button>
+    <button type="button" className="commandIconAction" aria-label="Close Aril" title="Close Aril" data-close="" onClick={onClose}><CommandIcon name="close" /></button>
   </header>;
 }
 
-/** The repository the conversations belong to; drawn only when more than one is listed. */
-export function AgentChatRepositoryRow({ options, value, onChange }: { options: ReadonlyArray<CommandSelectOption>; value: string; onChange(value: string): void }) {
-  return <div className="agentChatRepository"><CommandSelect aria-label="Repository" options={options} value={value} onChange={onChange} /></div>;
+/** The light dim over the page behind the open panel. A click on it closes the panel; the keyboard has Close and Escape, so it is out of the tab order. */
+export function AgentChatScrim({ isStatic = false, onClick }: { isStatic?: boolean; onClick?(): void }) {
+  return <button type="button" className={`agentChatScrim${isStatic ? " isStatic" : ""}`} tabIndex={-1} aria-hidden="true" onClick={onClick} />;
 }
 
 export type AgentChatLauncherState = { answering: boolean; fresh: boolean };
 
-/** The Aril button at the bottom right; shown only while the panel is minimized. */
+/** The Aril button at the bottom right; shown only while the panel is closed. */
 export function AgentChatLauncher({ answering, fresh, isStatic = false, expanded = false, controls, buttonRef, onClick }: AgentChatLauncherState & {
   isStatic?: boolean;
   expanded?: boolean;

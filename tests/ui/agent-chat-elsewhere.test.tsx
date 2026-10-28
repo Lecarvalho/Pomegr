@@ -111,14 +111,14 @@ describe("a turn started from another device", () => {
     expect(screen.getByRole("button", { name: /^A new topic from the phone/ })).toBeInTheDocument();
   });
 
-  it("asks nothing while the panel is minimized and idle, so the launcher learns nothing of it", async () => {
+  it("asks nothing while the panel is closed and idle, so the launcher learns nothing of it", async () => {
     for (const paired of [false, true]) {
       const fetchMock = paired ? pairDevice() : null;
-      const sent = `Sent while minimized${paired ? " on a paired device" : ""}`;
+      const sent = `Sent while closed${paired ? " on a paired device" : ""}`;
       const person = user();
       const { unmount } = render(<AgentChatDock />);
       await openPanel(person);
-      await person.click(within(panel()).getByRole("button", { name: "Minimize" }));
+      await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
       const before = chat.agentChat.mock.calls.length;
       const fetched = fetchMock?.mock.calls.length ?? 0;
       await chat.sendElsewhere(REPO_A, chatId(1), sent);

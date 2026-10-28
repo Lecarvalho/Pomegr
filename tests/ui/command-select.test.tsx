@@ -59,6 +59,17 @@ describe("CommandSelect", () => {
     expect(control).toHaveAttribute("data-value", "b:default");
   });
 
+  it("reads the label alone on the closed control when the group is left out of the value, and keeps the headings in the list", () => {
+    const grouped: CommandSelectOption[] = [{ value: "a:one", label: "one", group: "Alpha" }, { value: "b:two", label: "two", group: "Beta" }];
+    render(<CommandSelect aria-label="Model" value="b:two" options={grouped} onChange={() => {}} groupInValue={false} />);
+    const control = screen.getByRole("combobox", { name: "Model" });
+    expect(control).toHaveTextContent(/^two$/);
+    fireEvent.click(control);
+    const list = screen.getByRole("listbox", { name: "Model" });
+    expect([...list.querySelectorAll(".commandSelectGroup")].map((heading) => heading.textContent)).toEqual(["Alpha", "Beta"]);
+    expect(within(list).getAllByRole("option").map((option) => option.textContent)).toEqual(["one, Alpha", "two, Beta"]);
+  });
+
   it("follows native select keys: arrows, Home/End, typeahead, Enter, and Escape", () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);

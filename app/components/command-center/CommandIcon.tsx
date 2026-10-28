@@ -10,6 +10,8 @@ export type CommandIconName =
   | "close"
   | "collapse"
   | "dashboard"
+  | "dock"
+  | "expand"
   | "external"
   | "git"
   | "grid"
@@ -24,8 +26,10 @@ export type CommandIconName =
   | "search"
   | "session"
   | "settings"
+  | "send"
   | "sessions"
   | "spark"
+  | "stop"
   | "timer"
   | "trash";
 
@@ -39,6 +43,8 @@ const paths: Record<CommandIconName, ReactNode> = {
   close: <><path d="m6 6 12 12M18 6 6 18" /></>,
   collapse: <path d="m6 9 6 6 6-6" />,
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+  dock: <><path d="M20 10h-6V4M4 14h6v6M14 10l7-7M3 21l7-7" /></>,
+  expand: <><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></>,
   external: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" /></>,
   git: <><circle cx="7" cy="5" r="2" /><circle cx="17" cy="19" r="2" /><circle cx="17" cy="5" r="2" /><path d="M9 5h6M7 7v8a4 4 0 0 0 4 4h4M17 7v10" /></>,
   grid: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></>,
@@ -53,8 +59,10 @@ const paths: Record<CommandIconName, ReactNode> = {
   search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   session: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M7 12h6M7 16h4" /></>,
   settings: <><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" /><circle cx="12" cy="12" r="4" /></>,
+  send: <><path d="M12 19V5M5 12l7-7 7 7" /></>,
   sessions: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M7 12h6M7 16h4" /></>,
   spark: <><path d="m12 3 1.6 6.4L20 11l-6.4 1.6L12 19l-1.6-6.4L4 11l6.4-1.6z" /></>,
+  stop: <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />,
   timer: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9 3h6" /></>,
   trash: <><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></>,
 };

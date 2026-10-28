@@ -54,7 +54,7 @@ async function ask(person: ReturnType<typeof user>, text: string) {
 }
 
 describe("the panel", () => {
-  it("minimizes on Escape and on Minimize, returns focus to the launcher, and keeps the draft", async () => {
+  it("closes on Escape and on Close, returns focus to the launcher, and keeps the draft", async () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
@@ -66,21 +66,21 @@ describe("the panel", () => {
     await person.click(launcher());
     expect(field()).toHaveValue("A draft");
     expect(field()).toHaveFocus();
-    await person.click(within(panel()).getByRole("button", { name: "Minimize" }));
+    await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
     expect(screen.queryByRole("region", { name: "Aril, the Pomegr agent" })).toBeNull();
     expect(launcher()).toHaveFocus();
   });
 
-  it("leaves Escape to an open list, and minimizes on the next Escape", async () => {
+  it("leaves Escape to an open list, and closes on the next Escape", async () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    await person.click(screen.getByRole("combobox", { name: "Run on" }));
-    expect(screen.getByRole("listbox", { name: "Run on" })).toBeInTheDocument();
+    await person.click(screen.getByRole("combobox", { name: "Model" }));
+    expect(screen.getByRole("listbox", { name: "Model" })).toBeInTheDocument();
     await person.keyboard("{Escape}");
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(panel()).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Run on" })).toHaveFocus();
+    expect(screen.getByRole("combobox", { name: "Model" })).toHaveFocus();
     await person.keyboard("{Escape}");
     expect(screen.queryByRole("region", { name: "Aril, the Pomegr agent" })).toBeNull();
   });
@@ -99,16 +99,16 @@ describe("the panel", () => {
     expect(screen.getByRole("button", { name: "Conversations" })).toHaveFocus();
   });
 
-  it("shows Answering on the launcher while minimized, then a dot and a new-answer name until the panel is opened", async () => {
+  it("shows Answering on the launcher while the panel is closed, then a dot and a new-answer name until it is opened", async () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
     await ask(person, "Think about it");
-    await person.click(within(panel()).getByRole("button", { name: "Minimize" }));
+    await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
     expect(launcher()).toHaveTextContent("Aril · answering…");
     expect(launcher()).toHaveAccessibleName("Open Aril, the Pomegr agent, answering");
     expect(launcher().querySelector(".agentChatLauncherDot")).toBeNull();
-    // A minimized panel keeps following the answer.
+    // A closed panel keeps following the answer.
     chat.write("Partway there", "writing");
     await settle(500);
     chat.finish("Finished while you were away");
@@ -119,19 +119,19 @@ describe("the panel", () => {
     await person.click(launcher());
     await settle();
     expect(within(log()).getByText("Finished while you were away")).toBeInTheDocument();
-    await person.click(within(panel()).getByRole("button", { name: "Minimize" }));
+    await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
     expect(launcher()).toHaveAccessibleName("Open Aril, the Pomegr agent");
     expect(launcher().querySelector(".agentChatLauncherDot")).toBeNull();
   });
 
-  it("asks nothing while minimized and idle, and keeps the dot away when the answer ended with the panel open", async () => {
+  it("asks nothing while closed and idle, and keeps the dot away when the answer ended with the panel open", async () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
     await ask(person, "Quick one");
     chat.finish("Done already");
     await settle(500);
-    await person.click(within(panel()).getByRole("button", { name: "Minimize" }));
+    await person.click(within(panel()).getByRole("button", { name: "Close Aril" }));
     const before = chat.agentChat.mock.calls.length;
     await settle(10_000);
     expect(chat.agentChat.mock.calls.length).toBe(before);
@@ -243,7 +243,7 @@ describe("saved conversations", () => {
     await person.click(within(question).getByRole("button", { name: "Keep" }));
     expect(screen.queryByRole("group", { name: /Delete/ })).toBeNull();
     expect(chat.calls("delete")).toEqual([]);
-    // Escape answers the question first and does not minimize the panel.
+    // Escape answers the question first and does not close the panel.
     await person.click(screen.getByRole("button", { name: "Delete conversation: Second topic" }));
     await person.keyboard("{Escape}");
     expect(screen.queryByRole("group", { name: /Delete/ })).toBeNull();
@@ -271,7 +271,7 @@ describe("saved conversations", () => {
 describe("the repository", () => {
   const two: [string, string][] = [[REPO_A, "pomegr"], [REPO_B, "catalogus"]];
 
-  it("draws no repository menu for one repository, and a compact one under the header for several", async () => {
+  it("draws no repository menu for one repository, and one in the composer for several", async () => {
     render(<AgentChatDock />);
     await openPanel();
     expect(screen.queryByRole("combobox", { name: "Repository" })).toBeNull();
@@ -279,6 +279,7 @@ describe("the repository", () => {
     cleanupAndRender();
     await openPanel();
     expect(screen.getByRole("combobox", { name: "Repository" })).toHaveTextContent("pomegr");
+    expect(screen.getByRole("combobox", { name: "Repository" }).closest("form")).toHaveClass("agentChatComposer");
   });
 
   function cleanupAndRender() {
@@ -367,7 +368,7 @@ describe("the repository", () => {
     expect(screen.getByText("No repositories observed yet.")).toBeInTheDocument();
     expect(field()).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
-    expect(within(panel()).getByRole("button", { name: "Minimize" })).toHaveFocus();
+    expect(within(panel()).getByRole("button", { name: "Close Aril" })).toHaveFocus();
     expect(chat.agentChat).not.toHaveBeenCalled();
   });
 

@@ -2,12 +2,16 @@
 
 import { useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent, type Ref } from "react";
 import { AGENT_CHAT_BOUNDS } from "../../../shared/agent-chat-contract";
+import type { TaskEffort } from "../../../shared/task-contract";
+import { CommandIcon } from "../command-center/CommandIcon";
 import { CommandSelect, type CommandSelectOption } from "../command-center/CommandSelect";
 import { AgentChatImageAttach, AgentChatImageStrip } from "./AgentChatImages";
 import type { AgentChatImageUrls } from "./agent-chat-images";
 import { COUNTER_SHOWN_FROM, MESSAGE_LIMIT, formatCount } from "./agent-chat-presentation";
+import { CHAT_EFFORT_OPTIONS, isChatEffort } from "./agent-chat-run";
 
 const NO_IMAGES: readonly string[] = [];
+const NO_REPOSITORIES: ReadonlyArray<CommandSelectOption> = [];
 const NO_URLS: AgentChatImageUrls = new Map();
 const imageFiles = (files: FileList | null | undefined) => [...(files ?? [])].filter((file) => file.type.startsWith("image/"));
 
@@ -17,9 +21,16 @@ export type AgentChatComposerProps = {
   /** Sends the trimmed text; the composer has already checked that sending is allowed. */
   onSend(): void;
   onStop(): void;
-  runOptions: ReadonlyArray<CommandSelectOption>;
-  runValue: string;
-  onRunChange(value: string): void;
+  /** The named models of each provider, grouped by provider; never a default. */
+  modelOptions: ReadonlyArray<CommandSelectOption>;
+  modelValue: string;
+  onModelChange(value: string): void;
+  effort: TaskEffort;
+  onEffortChange(effort: TaskEffort): void;
+  /** The repositories the chat can belong to, with the one chosen. The choice is drawn only when more than one is listed. */
+  repositories?: ReadonlyArray<CommandSelectOption>;
+  repositoryId?: string;
+  onRepositoryChange?(repositoryId: string): void;
   /** No repository, so nothing can be asked. */
   disabled?: boolean;
   /** An answer is being written in the open conversation: Stop replaces Send. */
@@ -47,8 +58,8 @@ export type AgentChatComposerHandle = {
   focus(): void;
 };
 
-/** The message field, the Run on choice, and Send, or Stop while an answer is being written. */
-export function AgentChatComposer({ value, onChange, onSend, onStop, runOptions, runValue, onRunChange, disabled = false, running, busy, runningElsewhere, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, ref }: AgentChatComposerProps) {
+/** The message field, the repository, model, and effort choices, and Send, or Stop while an answer is being written. */
+export function AgentChatComposer({ value, onChange, onSend, onStop, modelOptions, modelValue, onModelChange, effort, onEffortChange, repositories = NO_REPOSITORIES, repositoryId, onRepositoryChange, disabled = false, running, busy, runningElsewhere, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, ref }: AgentChatComposerProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const length = value.length;
   const over = length > MESSAGE_LIMIT;
@@ -91,7 +102,7 @@ export function AgentChatComposer({ value, onChange, onSend, onStop, runOptions,
     {error && <p className="agentChatError" role="alert">{error}</p>}
     {imageError && <p className="agentChatError" role="alert">{imageError}</p>}
     {runningElsewhere && <p className="agentChatNote">Aril is answering in another conversation.</p>}
-    <textarea ref={own} className="agentChatField" aria-label="Message Aril" placeholder="Ask about this board…" rows={1}
+    <textarea ref={own} className="agentChatField" aria-label="Message Aril" placeholder="Ask Aril…" rows={1}
       value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} onKeyDown={keyDown}
       onPaste={(event) => {
         const files = imageFiles(event.clipboardData?.files);
@@ -103,12 +114,14 @@ export function AgentChatComposer({ value, onChange, onSend, onStop, runOptions,
     {uploading && <p className="agentChatNote" role="status">Adding image…</p>}
     <div className="agentChatComposerRow">
       <AgentChatImageAttach disabled={!canAttach || images.length >= AGENT_CHAT_BOUNDS.imagesPerMessage} onAttach={attach} />
-      <CommandSelect className="agentChatRun" aria-label="Run on" options={runOptions} value={runValue} disabled={disabled} onChange={onRunChange} />
+      {repositories.length > 1 && repositoryId !== undefined && onRepositoryChange && <CommandSelect className="agentChatRepository" aria-label="Repository" options={repositories} value={repositoryId} onChange={onRepositoryChange} />}
       <span className="agentChatSpacer" />
+      <CommandSelect className="agentChatModel" aria-label="Model" groupInValue={false} options={modelOptions} value={modelValue} disabled={disabled} onChange={onModelChange} />
+      <CommandSelect className="agentChatEffort" aria-label="Effort" options={CHAT_EFFORT_OPTIONS} value={effort} disabled={disabled} onChange={(next) => { if (isChatEffort(next)) onEffortChange(next); }} />
       {length > COUNTER_SHOWN_FROM && <span className={`agentChatCounter${over ? " isOver" : ""}`}>{`${formatCount(length)} / ${formatCount(MESSAGE_LIMIT)}`}</span>}
       {running
-        ? <button type="button" className="commandSecondaryAction" onClick={onStop}>Stop</button>
-        : <button type="submit" className="commandSecondaryAction" disabled={!canSend}>Send</button>}
+        ? <button key="stop" type="button" className="commandIconAction agentChatSend" aria-label="Stop" title="Stop" onClick={onStop}><CommandIcon name="stop" /></button>
+        : <button key="send" type="submit" className="commandIconAction agentChatSend" aria-label="Send" title="Send" disabled={!canSend}><CommandIcon name="send" /></button>}
     </div>
   </form>;
 }

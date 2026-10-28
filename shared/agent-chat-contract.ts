@@ -128,6 +128,8 @@ export type AgentChatAgentMessage = {
   at: string;
   provider: AgentChatProvider;
   model: string | null;
+  // The effort the turn ran with. Absent reads as null: an older record, or a run that named none.
+  effort?: TaskEffort | null;
   status: AgentChatTurnStatus;
   proposal?: AgentChatProposal;
   // The agent wrote a proposal the desktop could not read or permit in this follow-up, so nothing is offered.
@@ -149,13 +151,15 @@ export type AgentChatConversation = {
   title: string;
   provider: AgentChatProvider;
   model: string | null;
+  // The effort of the last message sent. Absent reads as null.
+  effort?: TaskEffort | null;
   createdAt: string;
   updatedAt: string;
   messages: AgentChatMessage[];
 };
 
 // The answer being written, while a turn runs.
-export type AgentChatTurn = { conversationId: string; startedAt: string; provider: AgentChatProvider; model: string | null; activity: AgentChatActivity; text: string };
+export type AgentChatTurn = { conversationId: string; startedAt: string; provider: AgentChatProvider; model: string | null; effort?: TaskEffort | null; activity: AgentChatActivity; text: string };
 
 export type AgentChatFailure = { ok: false; error: AgentChatError };
 export type AgentChatListResult = { ok: true; conversations: AgentChatConversationSummary[]; running: string | null } | AgentChatFailure;

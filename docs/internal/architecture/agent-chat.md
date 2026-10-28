@@ -89,8 +89,9 @@ any applied or partial outcome. The owner must Apply or Dismiss it, which starts
 single follow-up run; no proposal starts a run or applies itself. Follow-ups never propose a session start, a queue change, or a worktree removal.
 
 1. The client sends `send` with the repository, the conversation or none, the message,
-   the provider, the model or none, and the IDs of the images it added, when it added
-   any (see [Images](#images)).
+   the provider, the model or none, the effort or none, and the IDs of the images it added,
+   when it added any (see [Images](#images)). The chat panel always names a model once one is
+   known and an effort; a client that sends no `effort` key reads as none.
 2. Desktop main refuses the message when a turn is already running anywhere (`busy`).
    One turn runs at a time for the whole app.
 3. It finds the provider's executable with the same rules a task start uses. No
@@ -119,7 +120,7 @@ single follow-up run; no proposal starts a run or applies itself. Follow-ups nev
    minutes.
 
 The run is a new provider conversation every time. Pomegr sends the earlier messages in
-the prompt, so the owner may change the provider or the model between two messages.
+the prompt, so the owner may change the provider, the model, or the effort between two messages.
 
 ### Tasks from a grant's plans
 
@@ -141,7 +142,7 @@ While a grant works, Pomegr tells the owner what it did without being asked. It 
 - `grantFollowUp` builds the line with `arilFollowUpText`: one or two sentences with task IDs and fixed words, never task or provider text. The first sentence lists at most three entries and counts the rest. The second names the tasks that need the owner (a refused merge or branch delete, or a failed review that the burst did not send back), says the grant ended and why, says which provider's new starts wait for usage, or says `Nothing needs you yet.` The line is at most 200 characters.
 - Every grant of a repository writes into one conversation, titled `Grant follow-ups`, so follow-ups take one of the repository's 50 conversations. It is made at the first follow-up, found again by its stored `grantFollowUps` mark, and replaced by a new one only when it holds 200 messages. Its provider is Claude when Claude Code is installed, else Codex, so the owner can reply in it.
 - The mark names the last follow-up written: `{ grant, through, ended, messageId }`. A batch with the same `grant`, `through`, and `ended` answers that message again and writes nothing, so an ack the monitor never received does not add a second line.
-- The message is `{ role: "agent", status: "complete", model: null, grantFollowUp: true }` with the line as `text`. It carries no proposal, `followUp`, or `proposalUnreadable`; the store refuses one that does. The panel captions it **Grant follow-up** instead of a provider and model.
+- The message is `{ role: "agent", status: "complete", model: null, grantFollowUp: true }` with the line as `text`. It carries no proposal, `followUp`, or `proposalUnreadable`; the store refuses one that does. It carries no effort. The panel draws it as a quiet line (an icon, its text, and its time), not as a message with a head.
 - A conversation that is answering, waits for a follow-up turn, or is being sent to answers `busy`, and the runner asks again on the next tick. A full conversation or repository answers `limit`; the runner then acknowledges the batch with no message, and the notification still goes out.
 - With `followUps` off, the runner writes nothing and acknowledges each batch with no message, and the monitor commits no notification.
 - After an acknowledged batch with `followUps` on, the monitor commits one `aril_follow_up` notification with the same facts, so its body is the same line ([Notification privacy](privacy/notifications.md#aril-follow-ups)). Clicking it opens `/tasks?repository=<ID>&aril=<conversation ID>&message=<message ID>`, or `&aril=open` when no message was written. The chat panel then opens in that repository, opens that conversation, and brings the message into view. A tray click inside the app does the same through the `pomegr:open-aril-chat` window event.
@@ -151,10 +152,11 @@ While a grant works, Pomegr tells the owner what it did without being asked. It 
 
 The run is the owner's own provider CLI, signed in as the owner. Pomegr reads and stores
 no credential, and offers no sign-in of its own. The arguments are fixed
-(`chatArguments` in `agent-chat-runner.mjs`); only a validated model identifier, the
-desktop's own MCP server, the desktop's own image folder and image files, and the
+(`chatArguments` in `agent-chat-runner.mjs`); only a validated model identifier, a validated
+effort level, the desktop's own MCP server, the desktop's own image folder and image files, and the
 session ID desktop main made for the run, and the desktop's fixed-instructions file vary.
 
+- **Effort:** the run passes it only when it is exactly `low`, `medium`, `high`, or `xhigh`, as the task dispatcher passes a task's effort (`desktop/runtime/task-dispatch.mjs`). Claude Code gets `--effort <level>` after `--model`. Codex gets `-c model_reasoning_effort=<level>` after `--model`, before the `-` that marks the prompt. Any other value, or none, adds no argument.
 - **Claude Code:** print mode with JSON lines, `--no-session-persistence`, and `--session-id` with the run's own ID.
   `--append-system-prompt-file` supplies the fixed instructions, with `--exclude-dynamic-system-prompt-sections` so nearby turns can reuse the system prefix.
   Desktop main atomically writes `AGENT_CHAT_INSTRUCTIONS` to `<desktop data root>/agent-chat-v1/instructions-<sha256>.md`, reusing the file while its content matches.
@@ -754,7 +756,7 @@ another message.
   `busy`, `not_found`, and a start the dispatcher cancelled.
 - **A start or a queue change that was not made is an outcome too.** Its proposal stays
   `pending` with the fixed result, and each Apply of the owner is followed up once.
-- **It is a turn like any other.** The same provider run, with the provider and model
+- **It is a turn like any other.** The same provider run, with the provider, model, and effort
   the conversation used last. It has no tool that writes. `read` answers its `turn`,
   **Stop** ends it, and a message of the owner sent meanwhile answers `busy`.
 - **The outcome record.** `proposalOutcome` in `agent-chat-prompt.mjs` builds it from the
@@ -899,8 +901,12 @@ Desktop main keeps one JSON file per conversation:
 `{ version: 1, repositoryId, conversation }`.
 
 - A conversation has an ID (`chat-<12 hex>`), a title (the first line of the first
-  message, at most 80 characters), the provider and model last used, two times, and its
+  message, at most 80 characters), the provider, model, and effort last used, two times, and its
   messages.
+- An answer of Aril stores the provider, the model, and the effort it ran with. The effort is one of
+  `low`, `medium`, `high`, and `xhigh`, and the field is absent when there is none. A record
+  without it, such as one an older version wrote, reads as null; a value that is not one of the
+  four makes the store refuse the record, as it does for a model outside the contract.
 - Bounds: 50 conversations for each repository, 200 messages for each conversation, 4,000
   characters for a message of the owner, and 32,000 for an answer. A full repository or
   conversation answers `limit`.
@@ -947,7 +953,7 @@ The operations and their payloads, each with `repositoryId`:
 | --- | --- | --- |
 | `list` | none | The conversations (ID, title, update time, message count) and the conversation being answered, or null |
 | `read` | `conversationId` | The conversation and the running `turn` or null |
-| `send` | `conversationId` or null, `text`, `provider`, `model` or null; optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
+| `send` | `conversationId` or null, `text`, `provider`, `model` or null; optional `effort` (`low`, `medium`, `high`, `xhigh`, or null), optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
 | `stop` | `conversationId` | Nothing more |
 | `apply`, `dismiss` | `conversationId`, `proposalId` | Nothing more; the client reads the conversation again, and that read may answer the `turn` of the follow-up. An `apply` of a session start also answers success when the start was held, failed, or cancelled: the stored proposal says which. An `apply` of a queue change also answers success when the monitor refused it or did not answer. An `apply` of a worktree removal answers success once each removal was tried, whatever its result |
 | `delete` | `conversationId` | Nothing more |
@@ -971,8 +977,8 @@ memory while `pairedDevices` is not true.
   or a payload without a repository ID before any call. It exposes
   `agentChatImage(operation, payload)` too, and refuses a payload outside the exact shape
   of `add` or `read`.
-- A `turn` carries the conversation ID, the start time, the provider, the model, the
-  answer text so far, and one activity: `starting`, `thinking`, `reading_files`,
+- A `turn` carries the conversation ID, the start time, the provider, the model, the effort when
+  there is one, the answer text so far, and one activity: `starting`, `thinking`, `reading_files`,
   `reading_sessions`, `reading_usage`, or `writing`. The label is chosen from the tool's
   name. No tool input, tool result, or provider error text is read into an answer.
 
@@ -987,6 +993,11 @@ Aril may record a rework link (references and a cause from a fixed list) without
 The conversation is a new data class: text the owner wrote and text the agent wrote. It
 is the one place where Pomegr shows a prompt and a response, and they are the chat's own,
 never a session's.
+
+- **The effort is a fixed word.** One of four levels, stored in the conversation file on the
+  conversation and on each answer, shown in the panel, and sent to the provider only as a
+  validated argument of the run. It is never taken from text, and it adds no path to the
+  browser, the monitor, a log, or a notification.
 
 - **Images are part of it.** An image the owner sends is the owner's own content, of the
   same data class as the message it belongs to. It is kept as a file under the chat's

@@ -14,6 +14,8 @@ colors:
   control-line: "#7b8592"
   brand-fill: "#a63c32"
   brand-text: "#994238"
+  on-brand: "#ffffff"
+  scrim: "#0000001a"
   green: "#376e4b"
   amber: "#815710"
   context: "#6d6099"
@@ -59,6 +61,8 @@ typography:
 rounded:
   control: "4px"
   panel: "6px"
+  composer: "12px"
+  round: "50%"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -112,6 +116,17 @@ components:
     textColor: "{colors.text}"
     rounded: "{rounded.panel}"
     padding: "16px"
+  agent-chat-composer:
+    backgroundColor: "{colors.light-raised}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.composer}"
+    padding: "12px"
+  agent-chat-send-action:
+    backgroundColor: "{colors.brand-fill}"
+    textColor: "{colors.on-brand}"
+    rounded: "{rounded.round}"
+    padding: "0"
+    height: "32px"
 ---
 
 # Design System: Pomegr
@@ -244,6 +259,10 @@ Role tint is the one exception that colors agent roles. [Agents design](docs/int
 - The evidence workspace is flexible and stays bounded by the shell.
 - Panels use a 4px, 8px, 16px, 24px, and 32px spacing rhythm.
 - The shell has no persistent footer row.
+- The header height and the rail width are the tokens `--command-header-height` and `--command-rail-width`, which other chrome lines up with.
+- While the Aril panel is open on a desktop width, it lays over the evidence workspace, docked to the right edge below the header, and a light scrim dims the workspace behind it.
+- The workspace does not move or resize for the panel.
+- [Agent chat design](docs/internal/design/agent-chat.md) owns the panel.
 - A session page ends with its final evidence panel. It does not repeat observer, update, source, license, or version metadata.
 - That supporting information belongs in Settings or About.
 
@@ -282,6 +301,8 @@ Compact and phone modes keep the accessible names and the current-route state.
 - Operational surfaces are flat at rest.
 - Depth comes from charcoal or light tonal steps, one-pixel rules, and ownership boundaries.
 - The only routine shadow is the tokenized overlay shadow for menus and trays.
+- The docked Aril panel is flat and takes no shadow.
+- A scrim dims the page behind the open Aril panel: `--command-scrim`, black at 10% in light mode and 18% in dark mode, with no blur.
 - Landing shadows stay on the landing page.
 
 ### Shadow Vocabulary
@@ -302,6 +323,29 @@ Compact and phone modes keep the accessible names and the current-route state.
 - Evidence panels use a 6px radius.
 - Borders are one pixel and rectangular.
 - Do not use pills, ornamental clipping, or irregular silhouettes in the application.
+- The Agent chat has the intended exceptions below, and no other surface may use them.
+
+#### Agent chat exceptions
+
+These are exceptions to the 4px and 6px radius rule and to the six button roles. [Agent chat design](docs/internal/design/agent-chat.md) owns the surface.
+
+- The composer uses the 12px composer radius, token `--composer-radius`.
+- The composer has no border and a raised `--command-panel-2` fill, and it sits inset from the panel edges.
+- The text field in the composer is transparent.
+- The buttons and select triggers in the composer have no frame and take a 6% ink tint on hover.
+- Send and Stop are one round 32px action, `.agentChatSend`, with a 50% radius, the brand fill, and `--command-on-brand` ink.
+- Send and Stop are 44px on coarse pointers and phone, and stay round.
+- Send and Stop compose the Icon role with a local look. They are not a seventh role.
+- The Aril panel is docked to the right edge, with a one-pixel left line, no radius, and no shadow.
+- The panel lays over the page and does not move it.
+- The panel is not a floating card, so it takes no overlay shadow.
+- Only the Aril launcher takes the overlay shadow among the surfaces of the chat.
+- While the panel is open on a desktop width, a scrim covers the page below the header and behind the panel, with the `--command-scrim` fill and no blur.
+- A click on the scrim closes the panel as Close does.
+- The scrim is not drawn at 760px and narrower, where the panel is a sheet.
+- The message field in the composer shows no focus ring when it is focused, and its caret marks focus.
+- The message field is the only Aril control without the ring: every button and select in the composer keeps it for keyboard users.
+- The composer's model select reads the model alone on its closed control, through the `CommandSelect` option `groupInValue={false}`.
 
 Touch size is separate from shape:
 
@@ -335,7 +379,7 @@ All six roles share these rules:
 - The disabled treatment is opacity .48.
 - Borders use the panel line token. The stronger control line shows only on hover and on form fields such as selects.
 - Hover and focus move between neutral tones without lift.
-- Every interactive control shows the visible focus ring.
+- Every interactive control shows the visible focus ring, but for the Aril message field, which shows none (see [Agent chat exceptions](#agent-chat-exceptions)).
 - Controls keep reduced-motion behavior.
 
 States:
@@ -402,6 +446,7 @@ These controls keep their own contracts on purpose. They are not counted among t
 | Theme toggle | | Its own contract |
 | Copy-transcript button | | Its copied and error states carry meaning |
 | Desktop session-header ID chip | `button.sessionIdChip` | Keeps the chip look and copies the full session ID on click. It shows the stronger line on hover. It turns positive after a copy and negative after a failure. |
+| Aril composer Send and Stop | `.agentChatSend` on an Icon action | Round 32px, brand fill, `--command-on-brand` ink, and an `aria-label` of Send or Stop. See [Agent chat exceptions](#agent-chat-exceptions). |
 
 Compositions that are not a seventh role:
 
@@ -456,6 +501,7 @@ Every single-select dropdown uses `CommandSelect`. Do not add a native `<select>
 - Arrows, Home/End, Page Up/Down, typeahead, Enter/Space, Escape, and Tab follow the native select.
 - An option may name a `group`. Consecutive options that share a group sit under a muted `--text-xs` heading that is not selectable.
 - For a grouped option, the closed control reads “group · label”, and the option appends the group to its accessible name.
+- `groupInValue={false}` reads the label alone on the closed control, and the list keeps its group headings.
 - An option may carry a decorative glyph with a visually hidden `iconLabel`.
 
 ### Inline Explanations

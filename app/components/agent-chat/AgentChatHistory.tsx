@@ -16,7 +16,7 @@ export function AgentChatHistory({ conversations, openId, runningId, onOpen, onD
   const [confirming, setConfirming] = useState<string | null>(null);
   const cancelOnEscape = (event: KeyboardEvent) => {
     if (event.key !== "Escape") return;
-    // The inline question is an inner layer: Escape answers it before it can minimize the panel.
+    // The inline question is an inner layer: Escape answers it before it can close the panel.
     event.preventDefault();
     setConfirming(null);
   };

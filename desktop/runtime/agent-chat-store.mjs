@@ -116,6 +116,15 @@ function storedProposal(proposal) {
   return stored;
 }
 
+const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
+
+// The effort of a record: `{ effort }` for a known level, `{}` for none (an older record has no effort, which reads as null),
+// and `undefined` for a value that is neither, so the record is refused as a model outside the contract is.
+function storedEffort(value) {
+  if (value === undefined || value === null) return {};
+  return typeof value === "string" && EFFORTS.has(value) ? { effort: value } : undefined;
+}
+
 function storedMessage(message) {
   if (!isPlainObject(message) || typeof message.id !== "string" || !MESSAGE_ID.test(message.id) || !instant(message.at)) return null;
   if (message.role === "user") {
@@ -130,7 +139,9 @@ function storedMessage(message) {
   }
   if (message.role !== "agent" || !bounded(message.text, ANSWER_LENGTH, { empty: true }) || !PROVIDERS.has(message.provider)
     || !(message.model === null || (typeof message.model === "string" && MODEL.test(message.model))) || !TURN_STATUSES.has(message.status)) return null;
-  const stored = { id: message.id, role: "agent", text: message.text, at: message.at, provider: message.provider, model: message.model, status: message.status };
+  const effort = storedEffort(message.effort);
+  if (effort === undefined) return null;
+  const stored = { id: message.id, role: "agent", text: message.text, at: message.at, provider: message.provider, model: message.model, ...effort, status: message.status };
   if (message.proposal !== undefined) {
     const proposal = storedProposal(message.proposal);
     if (!proposal) return null;
@@ -165,12 +176,14 @@ export function normalizeConversation(value) {
   if (!isPlainObject(value) || typeof value.id !== "string" || !CONVERSATION_ID.test(value.id) || !bounded(value.title, TITLE_LENGTH)
     || !PROVIDERS.has(value.provider) || !(value.model === null || (typeof value.model === "string" && MODEL.test(value.model)))
     || !instant(value.createdAt) || !instant(value.updatedAt) || !Array.isArray(value.messages) || value.messages.length > MESSAGE_LIMIT) return null;
+  const effort = storedEffort(value.effort);
+  if (effort === undefined) return null;
   const messages = value.messages.map(storedMessage);
   if (messages.some((message) => message === null) || new Set(messages.map((message) => message.id)).size !== messages.length) return null;
   // `grantFollowUps` marks the repository's follow-up conversation and names the last follow-up written into it.
   const mark = value.grantFollowUps === undefined ? undefined : followUpMark(value.grantFollowUps);
   if (mark === null) return null;
-  return { id: value.id, title: value.title, provider: value.provider, model: value.model, createdAt: value.createdAt, updatedAt: value.updatedAt, messages,
+  return { id: value.id, title: value.title, provider: value.provider, model: value.model, ...effort, createdAt: value.createdAt, updatedAt: value.updatedAt, messages,
     ...(mark === undefined ? {} : { grantFollowUps: mark }) };
 }
 
@@ -240,12 +253,12 @@ export function createAgentChatStore({ directory, filesystem = fs, now = () => n
       return (await load(repositoryId)).get(id) ?? null;
     },
     /** A new, empty conversation, kept in memory until its first save; `null` when the repository holds its limit. */
-    async create(repositoryId, { provider, model, title, grantFollowUps }) {
+    async create(repositoryId, { provider, model, effort, title, grantFollowUps }) {
       if (!valid(repositoryId)) return null;
       const conversations = await load(repositoryId);
       if (conversations.size >= CONVERSATION_LIMIT) return null;
       const at = now().toISOString();
-      const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, createdAt: at, updatedAt: at, messages: [], ...(grantFollowUps === undefined ? {} : { grantFollowUps }) });
+      const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, effort, createdAt: at, updatedAt: at, messages: [], ...(grantFollowUps === undefined ? {} : { grantFollowUps }) });
       if (conversation) conversations.set(conversation.id, conversation);
       return conversation;
     },

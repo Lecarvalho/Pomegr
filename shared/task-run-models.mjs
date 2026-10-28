@@ -48,6 +48,22 @@ export function latestModels(models) {
 }
 
 /**
+ * The single newest model of a list, across families: the highest version, then the latest date, and the first listed
+ * model on a tie. `null` for an empty list or for identifiers that are not models.
+ * @param {Iterable<string>} models
+ * @returns {string | null}
+ */
+export function newestModel(models) {
+  let newest = null;
+  for (const model of models) {
+    if (!isModelIdentifier(model)) continue;
+    const parsed = modelVersion(model);
+    if (newest === null || isNewerModel(parsed, newest.parsed)) newest = { model, parsed };
+  }
+  return newest === null ? null : newest.model;
+}
+
+/**
  * Run on models per provider.
  * @param {ReadonlyArray<{ source: string; model: string | null }>} runs
  * @param {ReadonlyArray<{ id: string }>} [codexCatalog]

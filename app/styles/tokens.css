@@ -15,6 +15,7 @@
   --command-brand-mark-size: 24px;
   --control-radius: 4px;
   --panel-radius: 6px;
+  --composer-radius: 12px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -31,6 +32,7 @@
   --color-control: #7b8592;
   --color-brand-fill: #a63c32;
   --color-brand-text: #994238;
+  --color-on-brand: #ffffff;
   --color-brand-soft: #f5e9e5;
   --color-green: #376e4b;
   --color-green-soft: #e6f2e9;
@@ -41,6 +43,7 @@
   --color-error-soft: #fbeaed;
   --focus-ring: #255fa1;
   --shadow-overlay: 0 12px 32px #20252b20;
+  --color-scrim: #0000001a;
   --resource-cpu: #465d66;
   --resource-memory: #6e6674;
   --resource-read: #526c6d;
@@ -86,12 +89,14 @@
   --command-faint: var(--color-muted);
   --command-brand: var(--color-brand-fill);
   --command-brand-text: var(--color-brand-text);
+  --command-on-brand: var(--color-on-brand);
   --command-green: var(--color-green);
   --command-amber: var(--color-amber);
   --command-blue: var(--color-context);
   --command-error: var(--color-error);
   --command-lavender: var(--color-context);
   --command-overlay-shadow: var(--shadow-overlay);
+  --command-scrim: var(--color-scrim);
 }
 html[data-theme="dark"] {
   color-scheme: dark;
@@ -113,6 +118,7 @@ html[data-theme="dark"] {
   --color-error-soft: #39272b;
   --focus-ring: #91b8ee;
   --shadow-overlay: 0 12px 32px #00000066;
+  --color-scrim: #0000002e;
   --resource-cpu: #8ca8b3;
   --resource-memory: #aaa0b0;
   --resource-read: #8caaa8;

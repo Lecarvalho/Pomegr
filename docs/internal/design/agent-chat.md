@@ -6,7 +6,7 @@
 > Related code and checks: `app/components/agent-chat/`, `app/styles/agent-chat.css`, the `/design-system` samples,
 > and `tests/ui/pomegr-design-contract.test.tsx`.
 
-The **Aril** chat is a floating panel at the bottom right of the window where the owner talks to Aril, the Pomegr task-board agent.
+The **Aril** chat is a panel docked to the right edge of the window, below the header, where the owner talks to Aril, the Pomegr task-board agent.
 
 The runs, the proposals, and the privacy rules of the chat are in [Agent chat](../architecture/agent-chat.md).
 The task board is in [Task board design](task-board.md).
@@ -16,6 +16,7 @@ The task board is in [Task board design](task-board.md).
 - The chat is `AgentChatDock` and its siblings in `app/components/agent-chat/`, with styles in `app/styles/agent-chat.css`.
 - The chat is a composition of the existing roles, chips, `CommandSelect`, notices, and tokens.
 - The chat adds no button role.
+- The round **Send** and **Stop** compose the Icon role, and the composer has its own radius. [DESIGN.md](../../../DESIGN.md#agent-chat-exceptions) records both as intended exceptions.
 - `AppShell` mounts the chat once, after the shell.
 - The chat is drawn only where it can be reached: the desktop app and a paired phone.
 - That decision is made before anything is drawn.
@@ -38,31 +39,47 @@ The task board is in [Task board design](task-board.md).
 - The accessible name is “Open Aril, the Pomegr agent”.
 - `aria-expanded` and `aria-controls` name the panel.
 - The launcher is hidden while the panel is open.
-- The z-index of the launcher and of the panel is 85: above the sidebar and the header, below the agent inspector sheet (90) and the select list (120).
+- The z-index of the launcher is 85: above the sidebar and the header, below the agent inspector sheet (90) and the select list (120).
+- The z-index of the docked panel is 75, below the header (80), so the notification tray and the profile menu open over it.
+- The z-index of the scrim is 74: above the sidebar, below the panel.
+- The z-index of the phone sheet is 85.
 
 | State | Label | Accessible name |
 | --- | --- | --- |
-| An answer is being written and the panel is minimized | The label reads “Aril · answering…” | Adds “answering” |
-| An answer finished while the panel was minimized | A 7px `--command-brand` dot follows the name | Adds “new answer” until the panel is opened |
+| An answer is being written and the panel is closed | The label reads “Aril · answering…” | Adds “answering” |
+| An answer finished while the panel was closed | A 7px `--command-brand` dot follows the name | Adds “new answer” until the panel is opened |
 
 - Both states follow a turn of the open conversation that another device started, once the open panel has seen it.
-- A turn that another device starts while the panel is minimized and idle does not change the launcher, because that panel asks nothing.
+- A turn that another device starts while the panel is closed and idle does not change the launcher, because that panel asks nothing.
 
 ## Panel
 
 ### Layout
 
 - `.agentChatPanel` is a non-modal `<section aria-label="Aril, the Pomegr agent">`.
-- The panel is fixed 16px from the right and bottom edges.
-- The panel is 420px wide and `min(640px, calc(100dvh - 92px))` tall.
-- The panel has the panel fill, a one-pixel `--command-line-strong` border, the panel radius, and the overlay shadow.
-- The panel is a column of header, optional repository row, body, and composer.
-- At 760px and narrower, the panel is a full-screen sheet (`inset: 0`, no radius, border, or shadow, padded by the safe area) with 44px targets.
+- Wider than 760px, the panel is docked: `position: fixed` to the right edge, from the bottom of the shell header to the bottom of the window.
+- The top edge of the panel is the shell's header height, token `--command-header-height`.
+- The panel is 520px wide, and never wider than the content area (`min(520px, 100vw - --command-rail-width)`).
+- The panel has the panel fill, a one-pixel `--command-line` left line, no radius, and no shadow.
+- The panel is a column of header, body, and composer.
+- The panel lays over the page and does not move it: the page keeps its width, its layout, and its scroll position.
+- While the panel is open and wider than 760px, `AgentChatDock` draws the scrim (`.agentChatScrim`) over the page below the header, behind the panel.
+- The scrim covers the rail too, and the header stays above it.
+- The scrim has the `--command-scrim` fill (black at 10% in light mode and 18% in dark mode) and no blur.
+- The scrim is a button that is out of the tab order and `aria-hidden`, because the keyboard has **Close Aril** and Escape.
+- A click on the scrim closes the panel exactly like **Close Aril**: the panel stays mounted, the draft is kept, and focus returns to the launcher.
+- The scrim fades in with the panel, and the fade is removed under `prefers-reduced-motion`.
+- The header action **Expand** changes the panel to `expanded`, and **Dock** changes it back.
+- Expanded, the panel covers the whole content area, from the rail's right edge (`--command-rail-width`) to the right edge of the window, and the scrim dims the rail beside it.
+- Expanded, the log, the conversation list, and the composer sit in a centered column of at most 760px, and the header keeps the full width.
+- The dock keeps the mode in memory while the app runs and never writes it to browser storage.
+- At 760px and narrower, the panel is a full-screen sheet (`inset: 0`, z-index 85, no border, padded by the safe area) with 44px targets.
+- At 760px and narrower, **Expand** is not drawn and the scrim is not drawn.
 - The only motion is a 140ms opacity fade when the panel opens, removed under `prefers-reduced-motion`.
-- The panel is built the first time it opens and is then kept, hidden, while minimized.
+- The panel is built the first time it opens and is then kept, hidden, while closed.
 - So the draft and the scroll position survive.
 - The chat asks the desktop only while the panel is open or an answer is being written.
-- A minimized, idle panel asks nothing.
+- A closed, idle panel asks nothing.
 - An open panel that follows no answer asks for the conversation list every five seconds, on the desktop and on a paired device.
 - So a message sent from another device, and the turn it starts, reach an open panel without reopening it.
 - A turn started elsewhere in the open conversation shows as the panel's own: the answer text, the activity line, Stop in place of Send, then the stored messages.
@@ -72,18 +89,20 @@ The task board is in [Task board design](task-board.md).
 ### Header
 
 - The header (`.agentChatHeader`) has a one-pixel rule below it.
-- The header holds the `spark` glyph, the 16px/650 `h2` **Aril**, and the muted 12px caption “Task-board agent”.
-- The header ends with three [Icon](../../../DESIGN.md#buttons)-role actions, each with an `aria-label` and a `title`.
+- The header holds the `spark` glyph and the 16px/650 `h2` **Aril**, with no caption.
+- The header ends with four [Icon](../../../DESIGN.md#buttons)-role actions, each with an `aria-label` and a `title`.
 - **Conversations** has a `history` glyph and `aria-pressed`.
 - The pressed state of **Conversations** takes the raised fill, a local toggle state of the role.
 - **New conversation** has a `plus` glyph.
-- **Minimize** has a `collapse` glyph.
+- **Expand** has an `expand` glyph and `aria-pressed`.
+- The pressed **Expand** is named **Dock** and has a `dock` glyph.
+- **Close Aril** has a `close` glyph.
+- **Close Aril** closes the panel and keeps it mounted, and the launcher returns.
 
 ### Repository
 
 - The chat belongs to one repository.
-- A compact `CommandSelect` named **Repository** sits under the header.
-- The select is 32px high with 12px text, and 44px on phone and coarse pointers.
+- A `CommandSelect` named **Repository** sits in the composer's action row, right after **Attach image**.
 - The select appears only when more than one repository is listed.
 - Choosing a repository remounts the body, so no conversation is shown under another repository.
 - Focus stays on the menu after a choice.
@@ -102,8 +121,9 @@ The task board is in [Task board design](task-board.md).
 
 ### Keyboard and focus
 
-- Opening moves focus to the message field, or to Minimize when the field is disabled.
-- Minimize and Escape close the panel and return focus to the launcher.
+- Opening moves focus to the message field, or to **Close Aril** when the field is disabled.
+- **Close Aril** and Escape close the panel and return focus to the launcher.
+- **Expand** and **Dock** keep focus on themselves.
 - Escape first belongs to a layer inside the panel: an open `CommandSelect` list, or an inline delete question.
 - The panel never traps focus.
 - Nothing moves focus while an answer is written.
@@ -117,17 +137,21 @@ The task board is in [Task board design](task-board.md).
 - The log keeps the newest line in view only while the owner is at the bottom.
 - Once the owner scrolls up, the log stays where they are.
 - A Quiet **Jump to latest** brings the log back to the newest line.
-- **Jump to latest** has the panel fill and a one-pixel line, and sits at the bottom right of the log.
+- **Jump to latest** has the panel fill and a one-pixel line, and sits at the bottom right of the log; its fill is opaque, hover included, so the log never shows through.
 
 ### Owner and Aril
 
-- The owner's message is a block at the right, at most 85% wide.
-- The owner's message has the raised fill (`--command-panel-2`), the control radius, and 13px text, with its line breaks kept.
-- The images of the owner's message follow its text as an image strip named “Images you sent”. See [Image strip](#image-strip).
+- The owner's message is a block at the right, at most 85% wide, made of a bubble and its time.
+- The bubble has the raised fill (`--command-panel-2`), the control radius, and 13px text, with its line breaks kept.
+- The images of the owner's message follow its text inside the bubble as an image strip named “Images you sent”. See [Image strip](#image-strip).
+- The time of the owner's message sits below the bubble, right-aligned.
 - Aril's message is full width with no fill.
-- Aril's message starts with a head line of the 12px/600 name and a muted data-font caption “provider · model”.
-- The caption reads “Claude Code · default model” when no model was chosen.
-- A grant follow-up is drawn as a message of Aril with the caption “Grant follow-up” instead of provider and model, and never draws a card (T-183).
+- Aril's message starts with a head line of the 12px/600 name, its time, and a muted data-font caption “provider · model · Effort”.
+- The caption leaves the effort out for an answer that stored none, and the answer being written shows the effort of its turn.
+- The effort reads as the Effort field of the Task modal labels it.
+- The caption reads “Claude Code · default model” for an older answer with no model.
+- A grant follow-up is drawn as a quiet line and not as a message: a 14px `spark` glyph, its text, and its time, all muted, with no head, no caption, and no bubble.
+- A grant follow-up never draws a card (T-183).
 - A grant follow-up notification opens the panel in its repository, opens its conversation, and brings the follow-up into view.
 - The answer follows as Markdown.
 - An answer that did not complete ends with one muted line of fixed words.
@@ -144,6 +168,17 @@ The task board is in [Task board design](task-board.md).
 | “This answer took too long and was stopped.” |
 | “Pomegr closed before this answer was finished.” |
 
+### Message time
+
+- Every message shows its time: the owner's message, Aril's answer, the answer being written, and a quiet line.
+- A time is a `<time>` element whose `dateTime` is the stored instant and whose `title` is the whole local date and time.
+- A time is muted `--text-xs` text in the data face.
+- A time reads `HH:MM` (24-hour, local) for a message of today.
+- A time reads `Mon D, HH:MM` for a message of an earlier day.
+- The day is decided in the owner's local time.
+- A message whose time cannot be read draws no time.
+- `formatMessageTime` and `fullMessageTime` in `agent-chat-presentation.ts` build the words.
+
 ### Image strip
 
 - `AgentChatImageStrip` is a list (`.agentChatImages`) that wraps, with an 8px gap.
@@ -159,6 +194,8 @@ The task board is in [Task board design](task-board.md).
 ### While a turn runs
 
 - The pending message of the owner is drawn once, and never again when it reaches the stored conversation.
+- The pending message of the owner shows the time it was sent, and its answer's head shows that time until the turn reports its own start.
+- The answer being written shows the time its turn started in its head.
 - The pending message shows its images from the files the owner added, so they do not load again.
 - An agent block then holds the partial text.
 - The agent block is in an `aria-live="off"` wrapper, so the log announces each stored message and not each chunk.
@@ -320,7 +357,9 @@ The task board is in [Task board design](task-board.md).
 
 ### Layout
 
-- `.agentChatComposer` has a one-pixel rule above it.
+- `.agentChatComposer` is a form with no border, the raised fill (`--command-panel-2`), and the 12px `--composer-radius`.
+- The composer has 12px of padding and an 8px gap between its parts.
+- The composer sits inset from the panel edges: 16px at the sides and the bottom, and 12px at 760px and narrower.
 - The composer holds these parts, from the top.
 
 | Part | Contract |
@@ -328,18 +367,36 @@ The task board is in [Task board design](task-board.md).
 | Alert line | One `role="alert"` line of fixed words for the last refused operation, in error-colored text, never a fill |
 | Busy line | The muted line “Aril is answering in another conversation.”, while that is so |
 | Image alert line | One `role="alert"` line of fixed words for the last image that was not added |
-| Message field | A `textarea` named “Message Aril” with the placeholder “Ask about this board…” |
+| Message field | A `textarea` named “Message Aril” with the placeholder “Ask Aril…” |
 | Image strip | The images of the message being written, named “Images to send”, each with a **Remove image n** Icon action |
 | Adding line | The muted `role="status"` line “Adding image…”, while an image is on its way to the desktop app |
-| Action row | The **Attach image** Icon action, the **Run on** `CommandSelect`, the counter, and the Secondary **Send** |
+| Action row | **Attach image**, the **Repository** `CommandSelect` when more than one repository is listed, a spacer, the **Model** `CommandSelect`, the **Effort** `CommandSelect`, the counter, and the round **Send** or **Stop** |
 
 - The message field has 13px text, and is one row that grows to six and then scrolls.
-- The message field has a one-pixel `--command-line-strong` border, the control radius, the panel fill, and the shared focus ring.
-- The options and defaults of **Run on** are the Task modal's. See [Run on and Effort](task-modal.md#run-on-and-effort).
-- **Run on** starts from the open conversation's provider and model, else from Claude Code's default model.
-- **Run on** leaves effort out.
+- The message field has no border and a transparent fill, so the composer's fill shows through.
+- The message field shows no focus ring when it is focused: the caret marks focus. [DESIGN.md](../../../DESIGN.md#agent-chat-exceptions) records the exception.
+- Every button and select in the composer keeps the shared focus ring for keyboard users.
+- Every button and select trigger in the composer has no frame: a transparent fill, no border, and a 6% ink tint on hover and while open.
+- The select triggers in the composer are 32px high with muted 14px text, and 44px on phone and coarse pointers.
+- The **Repository** options are the listed repositories, and the choice remounts the body as the [Repository](#repository) rules say.
 - The counter is muted data-font text that reads “n / 4,000”.
 - The counter appears only past 3,600 and takes the error color past 4,000.
+
+### Model and effort
+
+- **Model** is a `CommandSelect` named **Model**, and its closed control reads the model alone.
+- The options are the named models of each provider under a heading for the provider: the Claude models of the Task modal's Run on list, sorted, and the Codex catalog in its order. See [Run on and Effort](task-modal.md#run-on-and-effort).
+- The list never offers a default model, and no control in the composer reads “default”.
+- A provider with no known model has one row labelled with the provider's name and no heading, so the provider can still be chosen.
+- The model of an open conversation is listed even when the known models no longer include it.
+- The initial model is the model of the open conversation, else the newest known Claude model, else the newest known Codex model.
+- A stored conversation with no model shows the newest known model of its provider.
+- The newest model has the highest version, then the latest date (`newestModel` in `shared/task-run-models.mjs`).
+- **Effort** is a `CommandSelect` named **Effort** with **Low**, **Medium**, **High**, and **Xhigh**, labelled as the Task modal labels them.
+- The initial effort is the effort of the open conversation, else **Medium**.
+- Choosing a model keeps the effort, and choosing an effort keeps the model.
+- The choice lasts for the conversation in view, and each send carries both.
+- Both selects follow the composer's rule: no frame, a 6% ink tint on hover, and a visible ring on keyboard focus.
 
 ### Images
 
@@ -348,7 +405,7 @@ The task board is in [Task board design](task-board.md).
 - **Attach image** is disabled with no repository and when the message holds four images.
 - An image pasted into the message field is attached, and no text is pasted then.
 - An image dropped on the composer is attached, and a dropped file is never opened or typed as its path.
-- **Remove image n** is a 24px Icon action at the top right of its picture, with the panel fill and a one-pixel `--command-line-strong` border.
+- **Remove image n** is a 24px Icon action at the top right of its picture, with the panel fill and no border.
 - **Remove image n** is 44px at 760px and narrower and on coarse pointers.
 - An image that is not accepted is not sent to the desktop app.
 
@@ -366,7 +423,9 @@ The task board is in [Task board design](task-board.md).
 - The key that confirms an IME composition never sends.
 - **Send** is disabled for an empty or over-long message, while a message or an image is on its way, while an answer is written elsewhere, and with no repository.
 - A message that holds only images cannot be sent.
-- While an answer is written in the open conversation, the Secondary **Stop** takes the place of **Send**.
+- **Send** is a round 32px action composed from the Icon role, with the brand fill, `--command-on-brand` ink, and an up-arrow (`send`) glyph, named “Send”.
+- While an answer is written in the open conversation, **Stop** takes the place of **Send**: the same round action with a square (`stop`) glyph, named “Stop”.
+- **Send** and **Stop** are 44px at 760px and narrower and on coarse pointers, and stay round.
 - **Stop** also ends a follow-up, and takes back one that has not started.
 - A message that was refused stays in the field, with its images.
 
@@ -404,10 +463,12 @@ The task board is in [Task board design](task-board.md).
 ## Samples
 
 - `/design-system` renders the Aril launcher in its three states.
-- It renders the panel from invented conversations: empty, with a pending proposal holding all eight operations, with an answer being written, as the conversation list, with the notes under an answer and the unreadable-proposal notice, and with no repository.
+- It renders the panel from invented conversations: empty, with a pending proposal holding all eight operations, with an answer being written, with quiet activity lines, as the conversation list, with the notes under an answer and the unreadable-proposal notice, and with no repository.
+- It renders the expanded panel, with the log and the composer in their centered column.
 - It renders the proposal card pending, with a delete, in flight, applied, partly applied, with a task that was not found, with every result word, and dismissed.
 - It renders the session start proposed, held, failed, launched, and on a paired device.
 - It renders the queue change proposed for on and for off, on a paired device, turned on, turned on and held, turned off, and not changed.
-- It renders the composer with an error, over the limit, and while an answer is written elsewhere.
+- It renders the composer with a repository choice, with the model and the effort, with no known model, with an error, over the limit, and while an answer is written elsewhere.
+- It renders the panel over a dimmed page, with the scrim.
 - It renders the answer text, including HTML and a link shown as literal text.
-- The panel's own behavior (focus, Escape, the repository choice, polling, and the desktop bridge) is specified here but is not rendered there.
+- The panel's own behavior (docking, the room the page makes for it, focus, Escape, the repository choice, polling, and the desktop bridge) is specified here but is not rendered there.

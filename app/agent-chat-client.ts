@@ -8,7 +8,7 @@ import {
   type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
   type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSendResult, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
-import { TASK_IMAGE_TYPES } from "../shared/task-contract";
+import { TASK_EFFORTS, TASK_IMAGE_TYPES, type TaskEffort } from "../shared/task-contract";
 import { useClientAccess } from "./hooks/ClientAccessContext";
 
 // Client of the Pomegr agent chat. The desktop app owns the chat: this module only asks it, through the desktop
@@ -118,6 +118,9 @@ function parseProposal(value: unknown): AgentChatProposal | null {
   return parsed;
 }
 
+/** The effort of a record: only a known value. A record without one, an older record, reads as none. */
+const effortOf = (value: unknown): { effort: TaskEffort } | Record<string, never> => ((TASK_EFFORTS as readonly string[]).includes(value as string) ? { effort: value as TaskEffort } : {});
+
 function parseMessage(value: unknown): AgentChatMessage | null {
   const message = record(value);
   if (!message || !text(message.id) || !text(message.text) || !text(message.at)) return null;
@@ -129,7 +132,7 @@ function parseMessage(value: unknown): AgentChatMessage | null {
   if (message.role !== "agent" || (message.provider !== "claude" && message.provider !== "codex") || !(AGENT_CHAT_TURN_STATUSES as readonly string[]).includes(message.status as string)) return null;
   const parsed: AgentChatAgentMessage = {
     id: message.id, role: "agent", text: message.text, at: message.at, provider: message.provider,
-    model: text(message.model) ? message.model : null, status: message.status as AgentChatAgentMessage["status"],
+    model: text(message.model) ? message.model : null, ...effortOf(message.effort), status: message.status as AgentChatAgentMessage["status"],
   };
   const proposal = message.proposal === undefined ? null : parseProposal(message.proposal);
   if (proposal) parsed.proposal = proposal;
@@ -147,7 +150,7 @@ function parseConversation(value: unknown): AgentChatConversation | null {
   const messages = conversation.messages.map(parseMessage);
   if (messages.some((message) => message === null)) return null;
   return {
-    id: conversation.id, title: conversation.title, provider: conversation.provider, model: text(conversation.model) ? conversation.model : null,
+    id: conversation.id, title: conversation.title, provider: conversation.provider, model: text(conversation.model) ? conversation.model : null, ...effortOf(conversation.effort),
     createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, messages: messages as AgentChatMessage[],
   };
 }
@@ -156,7 +159,7 @@ function parseTurn(value: unknown): AgentChatTurn | null {
   const turn = record(value);
   if (!turn || !text(turn.conversationId) || !text(turn.startedAt) || !text(turn.text) || (turn.provider !== "claude" && turn.provider !== "codex")) return null;
   const activity = (AGENT_CHAT_ACTIVITIES as readonly string[]).includes(turn.activity as string) ? turn.activity as AgentChatActivity : "thinking";
-  return { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: text(turn.model) ? turn.model : null, activity, text: turn.text };
+  return { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: text(turn.model) ? turn.model : null, ...effortOf(turn.effort), activity, text: turn.text };
 }
 
 export async function listAgentChats(repositoryId: string): Promise<AgentChatListResult> {
@@ -179,8 +182,8 @@ export async function readAgentChat(repositoryId: string, conversationId: string
   return { ok: true, conversation, turn: answer!.turn === null || answer!.turn === undefined ? null : parseTurn(answer!.turn) };
 }
 
-export async function sendAgentChat(repositoryId: string, conversationId: string | null, message: string, provider: AgentChatProvider, model: string | null, images: readonly string[] = []): Promise<AgentChatSendResult> {
-  const answer = await request("send", { repositoryId, conversationId, text: message, provider, model, ...(images.length > 0 ? { images: [...images] } : {}) });
+export async function sendAgentChat(repositoryId: string, conversationId: string | null, message: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null, images: readonly string[] = []): Promise<AgentChatSendResult> {
+  const answer = await request("send", { repositoryId, conversationId, text: message, provider, model, effort, ...(images.length > 0 ? { images: [...images] } : {}) });
   return answer?.ok === true && text(answer.conversationId) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(answer.conversationId) ? { ok: true, conversationId: answer.conversationId } : failure(answer);
 }
 
@@ -217,7 +220,7 @@ export type AgentChatView = {
   /** Why the last operation was refused; cleared by the next one. */
   error: AgentChatError | null;
   open(conversationId: string | null): void;
-  send(message: string, provider: AgentChatProvider, model: string | null, images?: readonly AgentChatImage[]): Promise<boolean>;
+  send(message: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null, images?: readonly AgentChatImage[]): Promise<boolean>;
   stop(): void;
   /** Answers true when the proposal ran, whole or in part, so the caller can read the board again. */
   apply(proposalId: string): Promise<boolean>;
@@ -333,13 +336,13 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     setOpenId(conversationId);
   }, []);
 
-  const send = useCallback(async (message: string, provider: AgentChatProvider, model: string | null, images: readonly AgentChatImage[] = []) => {
+  const send = useCallback(async (message: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null, images: readonly AgentChatImage[] = []) => {
     if (repositoryId === null) return false;
     const at = generation.current;
     setError(null);
     setPendingMessage(message);
     setPendingImages(images);
-    const answer = await sendAgentChat(repositoryId, openId, message, provider, model, images.map((image) => image.id));
+    const answer = await sendAgentChat(repositoryId, openId, message, provider, model, effort, images.map((image) => image.id));
     if (at !== generation.current) return false;
     if (!answer.ok) { setPendingMessage(null); setError(answer.error); return false; }
     chosen.current = true;

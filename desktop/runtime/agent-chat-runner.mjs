@@ -7,6 +7,8 @@ export const STDOUT_LINE_LIMIT = 4 * 1024 * 1024;
 export const ANSWER_LIMIT = 32_000;
 
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
+// The effort levels of a run; the same values the task dispatcher passes to a session.
+export const CHAT_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh"]);
 // A random version 4 UUID that desktop main made for one turn.
 export const CHAT_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -53,14 +55,16 @@ export function validInstructionsFile(instructions) {
 }
 
 /**
- * The fixed arguments of one turn. Only a validated model identifier, the desktop's own MCP server, and the
- * desktop's own image folder, files, instructions file, and session ID vary.
+ * The fixed arguments of one turn. Only a validated model identifier, a validated effort level, the desktop's own MCP
+ * server, and the desktop's own image folder, files, instructions file, and session ID vary. The effort is passed as the
+ * task dispatcher passes it: `--effort` to Claude Code and `-c model_reasoning_effort=` to Codex.
  * The run uses provider-native read access, the conversation images, and Pomegr's read tools. Native permissions
  * can permit reads outside the repository. User settings and hooks are excluded; managed provider policy still
  * applies. No write access or interactive approval is enabled.
  */
-export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null) {
+export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, effort = null) {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
+  const level = typeof effort === "string" && CHAT_EFFORTS.includes(effort) ? effort : null;
   const identity = typeof sessionId === "string" && CHAT_SESSION_ID.test(sessionId) ? sessionId : null;
   const server = validServer(mcpServer) ? { command: mcpServer.command, args: [...mcpServer.args], env: { ...mcpServer.env } } : null;
   // Pass the turn capability through process environments, never provider argv or an on-disk config.
@@ -80,6 +84,7 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
       "--tools", CLAUDE_FILE_TOOLS.join(","),
       "--allowedTools", [...CLAUDE_FILE_TOOLS, ...POMEGR_READ_TOOLS.map((name) => `mcp__${MCP_SERVER_NAME}__${name}`)].join(","),
       ...(chosen ? ["--model", chosen] : []),
+      ...(level ? ["--effort", level] : []),
       // The conversation image folder remains a desktop-owned working directory.
       ...(shown ? ["--add-dir", shown.folder] : []),
       ...(validInstructionsFile(instructionsFile) ? ["--append-system-prompt-file", instructionsFile.file, "--exclude-dynamic-system-prompt-sections"] : []),
@@ -99,6 +104,7 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
         ...(inherited.length > 0 ? ["-c", `mcp_servers.${MCP_SERVER_NAME}.env_vars=[${inherited.map(tomlString).join(", ")}]`] : []),
       ] : []),
       ...(chosen ? ["--model", chosen] : []),
+      ...(level ? ["-c", `model_reasoning_effort=${level}`] : []),
       "-",
       // The image flag takes a list of values, so it follows the prompt marker: before it, it would swallow the marker.
       ...(shown && shown.files.length > 0 ? ["--image", ...shown.files] : []),
@@ -199,8 +205,8 @@ export function createTurnReader(provider, { onText = () => {}, onActivity = () 
  * Starts one turn and answers `{ status, text }` when the run ends: `complete`, `failed`, `timed_out`, or `stopped`.
  * `stop()` ends Pomegr's own headless run; it is never a session the owner started.
  */
-export function runChatTurn({ spawn, executable, provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
-  const args = chatArguments(provider, model, mcpServer, images, sessionId, instructionsFile);
+export function runChatTurn({ spawn, executable, provider, model = null, effort = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
+  const args = chatArguments(provider, model, mcpServer, images, sessionId, instructionsFile, effort);
   let child = null;
   let stopped = false;
   let timedOut = false;
