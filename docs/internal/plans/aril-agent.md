@@ -1,11 +1,11 @@
 # Aril agent: one standing agent that works as settled with the owner
 
-> Status: proposed; the owner set the direction and the interface on 2026-10-28 and reviews this plan before any build.
+> Status: accepted; the owner set the direction and the interface on 2026-10-28, merged the plan, and answered its open questions the same day.
 > Created: 2026-10-28.
-> Scope: replace the time-boxed grant with one Aril that the owner turns on or off in **Settings** and that acts exactly as settled with the owner in conversation; Aril takes the first step with a new user and a new repository; Aril talks briefly, with quick replies; the chat panel, the composer, and Home change to match. It reuses the shipped actions of the [Aril operator plan](aril-operator.md) and the routing questions of the [Aril front door plan](aril-front-door.md) instead of redefining them.
+> Scope: replace the time-boxed grant with one Aril that the owner turns on or off in **Settings** and that acts exactly as settled with the owner in conversation; Aril takes the first step with a new user and a new repository; Aril talks briefly, with quick replies; the chat panel, the composer, and Home change to match. It reuses the shipped actions of the [Aril operator plan](aril-operator.md) instead of redefining them, and it absorbs the front door plan: the one Aril in Settings routes each message to the right repository.
 > Continuation owner: the product owner decides; the agent that builds a phase records its evidence in the checkpoint.
 > Authority: working plan. `AGENTS.md`, [Agent chat](../architecture/agent-chat.md), [Tasks](../architecture/tasks.md), [DESIGN.md](../../../DESIGN.md), and the [agent chat](../design/agent-chat.md) and [Home](../design/home.md) design pages govern shipped behavior until each phase changes them.
-> Next task or decision: the owner reviews this plan and answers the open questions; phase 1 (the panel and the composer) needs no new authority and can start after that review.
+> Next task or decision: phase 1, the panel, the composer, and one thread for each repository; it needs no new authority.
 > Completion criteria: with Aril on, the owner settles how Aril works in conversation once, and Aril keeps the work moving without a grant, survives an app restart, and pings the owner only for what needs them; with Aril off, Aril does nothing; every rule below has a test; and the owner has tested each phase in real use and accepted it.
 > Permanent destinations: `AGENTS.md` for the control boundary, [Agent chat](../architecture/agent-chat.md) for agreements, the switch, quick replies, and pings, [Tasks](../architecture/tasks.md) for the actions an agreement allows, [DESIGN.md](../../../DESIGN.md) and the agent chat and Home design pages for the interface, and [PRODUCT.md](../../../PRODUCT.md) for the purpose wording.
 > Lifetime: temporary; delete on completion, cancellation, or supersession after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
@@ -34,17 +34,23 @@ This plan makes three changes:
 | 2026-10-28 | Aril talks just enough, and clearly. Every message, the owner's included, carries its time. Quick-reply buttons are the default for a question; a multiple-choice question is for options that each need a line of trade-off. Aril asks only what it cannot decide itself: a routine choice inside the agreement, such as moving work to another provider when one reaches its usage limit, is Aril's to make and report. |
 | 2026-10-28 | This plan is critical. The owner tests each phase in real use to see whether Aril is really smarter, and the work is adjusted until it is; no phase is done before the owner accepts it. |
 | 2026-10-28 | The interface: a docked Aril panel, a borderless composer with borderless buttons and the repository and the model in its bottom row, and a Home with brief information above a centered composer. |
+| 2026-10-28 | Each repository is one continuous conversation with Aril, with search; there is no conversation list. |
+| 2026-10-28 | When a repository's conversation outgrows what a run can carry, Pomegr notices and compacts the older part into a summary instead of dropping it. |
+| 2026-10-28 | Typing into a session stays outside every agreement. Ending a session is allowed when an agreement covers it, and only for a task or review session Pomegr started; never a session the owner started. |
+| 2026-10-28 | An agreement applies to the repository it was settled for, unless the owner says it holds everywhere. |
+| 2026-10-28 | Settings › Aril is the one Aril of the former front door plan: the owner talks to one Aril, and it routes each message to the right repository. That plan is folded in here and deleted. |
+| 2026-10-28 | On a paired phone, the docked panel opens as a full-screen sheet, and the phone gets the new Home. |
 
 ## The switch
 
 - **Settings › Aril** holds one **On/Off** switch, the owner's memory, each repository's memory, and the agreements.
-- Off takes effect at once, on the desktop and on a paired phone. Aril starts, sends back, merges, and writes nothing more; running sessions continue, because Pomegr never ends a session.
+- Off takes effect at once, on the desktop and on a paired phone. Aril starts, sends back, merges, ends, and writes nothing more; running sessions continue.
 - Only the owner turns Aril on. Aril can pause itself, and resume after its own pause, but it never turns itself on and never resumes after the owner's Off.
 - Off also stops Aril's own provider runs for follow-ups; the chat still answers when the owner writes.
 
 ## Agreements
 
-An agreement is what the owner settled with Aril about how it works, for one repository or for all of them.
+An agreement is what the owner settled with Aril about how it works. It applies to the repository it was settled for, unless the owner says it holds everywhere; Aril's restatement names the scope.
 
 - **Settled in conversation.** The owner says it in the chat. Aril restates it in one line with quick replies ("Save this agreement?" **Save** · **Change it**). The saved record is the authority.
 - **Visible and editable.** Settings › Aril lists every agreement in the owner's words and Aril's one-line restatement; the owner can edit or delete each one, and Aril proposes a change when it sees one is needed.
@@ -62,7 +68,8 @@ These hold whatever an agreement says:
 4. Every action is one fixed, validated action, and every action, refusal, and pause is in the log with its reason.
 5. A merge still needs green CI on the pull request's head and a passing review.
 
-Typing into a session and ending one stay outside every agreement until the owner decides otherwise (open question 2).
+6. No agent, Aril, queue, or tool ever types into a session.
+7. Aril ends a session only when an agreement covers it, only a task or review session Pomegr started, and with the reason in the log. It never ends a session the owner started, and it never ends one while Aril is off.
 
 ## How Aril works
 
@@ -85,6 +92,9 @@ Typing into a session and ending one stay outside every agreement until the owne
 The owner reviewed a prototype canvas on 2026-10-28 and chose this direction:
 
 - **Panel.** Docked on the right, full height below the header, about 520px wide, with an expand-to-page action. The header holds the name, the On state, expand, and close. The conversation-history icon and the **+** are removed; the repository choice moves from the top of the panel into the composer.
+- **One thread for each repository.** The composer's repository picks the thread; older messages load as the owner scrolls up, and search finds a message in the thread. Today's saved conversations of a repository join its thread in time order.
+- **Context.** Each run is a new provider conversation that carries the newest messages that fit. When the thread outgrows that, Pomegr compacts the older part into a saved summary, made by an Aril run, and the prompt carries the summary and the newest messages. The thread shows a quiet line where it was compacted, and the owner's messages stay readable and searchable in full. Agreements and memory live outside the thread, so compaction never changes them. The summary keeps what Aril concluded from the files, board, and logs it read, never the raw tool results, so a compacted thread frees that room; a run that only re-reads them later can read them again.
+- **Phone.** The panel opens as a full-screen sheet; the phone gets the new Home.
 - **Composer.** Borderless, on a raised fill, with rounded corners and borderless buttons. The bottom row holds attach, the repository, then the model and effort, and a round send action.
 - **Messages.** The owner's message is a bubble with its time below it. Aril's answer starts with its name and time, then a collapsed line of what it read, then the answer. A thing that needs the owner is a small card with its links or quick replies.
 - **Home.** One centered column: a greeting and one Aril line of what happened, the items that need the owner, **Continue** (the last viewed session and the pinned destinations), one quiet line with provider status and What's new, and the composer at the bottom with a few suggestions above it. The session guides and the roadmap preview leave Home.
@@ -113,27 +123,39 @@ A phase is checked only after the owner accepts it:
 3. Each finding becomes a fix in the same phase, or a task the owner agrees to defer, and is recorded in the checkpoint.
 4. The owner says the phase is accepted. Green tests alone never check a phase.
 
-- [ ] **1. Panel and composer.** The docked panel, the borderless composer, the repository and model in the composer, a time on every message, and quiet activity lines. No new authority. Measure: S1, owner time per accepted pull request, through faster answers.
+- [ ] **1. Panel and composer.** The docked panel and its phone sheet, the borderless composer, the repository and model in the composer, one thread for each repository with search and compaction, a time on every message, and quiet activity lines. No new authority. Measure: S1, owner time per accepted pull request, through faster answers.
 - [ ] **2. Quick replies and questions.** Aril's answer may carry quick replies and one multiple-choice question; the owner's choice is sent as the owner's message. Aril's prompt gets the talking rules. No new authority.
-- [ ] **3. Home.** The new Home with the Aril line, the needs-you items, Continue, and the composer.
+- [ ] **3. Home.** The new Home, on the desktop and the phone, with the Aril line, the needs-you items, Continue, and the composer. The Aril line and the needs-you items come from each repository's task log, with no model run.
 - [ ] **4. Aril in Settings.** Settings › Aril with the switch and both memories; Aril settings move there from the Tasks page. Off stops the grant runner at once.
-- [ ] **5. Agreements.** Settled in the chat, saved, listed, and edited in Settings; they replace the grant start, end time, and task total; Aril resumes after a restart; the `AGENTS.md` control rule, Agent chat, and Tasks change in this phase. Measure: S7, owner interventions during absence.
+- [ ] **5. Agreements.** Settled in the chat, saved, listed, and edited in Settings, scoped to one repository unless the owner says everywhere; they replace the grant start, end time, and task total; Aril resumes after a restart; ending a Pomegr-started session becomes an action an agreement can allow; the `AGENTS.md` control rule, Agent chat, and Tasks change in this phase. Measure: S7, owner interventions during absence.
 - [ ] **6. Pings.** Notifications only for what needs the owner; follow-ups stay in the chat.
 - [ ] **7. First steps.** Aril's first conversation with a new user, and its question when a repository appears.
 - [ ] **8. Wider judgment.** Ordering, versioning and branching, self-pause and resume, and a second review, each within the agreement and each with its own log entries. Measure: S2, first-pass acceptance, and S5, manual closeouts.
+- [ ] **9. One Aril across repositories.** The composer's **All repositories** choice: Aril routes each message to the right repository, as in [Routing](#routing), and answers across repositories from their task logs. Measure: messages that reached the right repository without a repository change, and clarifying questions per routed message.
 
 The operator plan's phase 8, the acceptance run, runs under an agreement once phase 5 ships.
 
+## Routing
+
+From the former front door plan. Phase 9 builds it; each repository keeps its own thread, board, folder, memory, agreements, and log.
+
+- Cheap clues decide first, in this order: a repository the owner names, a repository-prefixed task ID ("Pomegr T-12"), the page the owner is on.
+- Only when the clues do not settle it does a small, cheap model choose, from short repository summaries (name, open features, recent log entries). It never sees transcripts or task text beyond those summaries.
+- When it is still unsure, Aril asks with quick replies (**Pomegr** · **Clapline**).
+- A bare task ID such as "T-12" exists in every repository, so it never routes by itself.
+- A routed message is posted in that repository's thread, and the full message goes only to that repository's run.
+- An action belongs to one repository and runs under that repository's agreements.
+
 ## Open questions
 
-These are the owner's decisions. Settle them before the phase that needs them.
+These are the owner's decisions; settle them before phase 9.
 
-1. **Conversation history.** With the history icon gone, is each repository one continuous thread, with search, or does history move into Settings › Aril? (Phase 1.)
-2. **Sessions.** Do typing into a session and ending one stay outside every agreement? This plan assumes yes. (Phase 5.)
-3. **Default scope.** Does an agreement apply to one repository unless the owner says "everywhere", or the other way round? (Phase 5.)
-4. **Front door.** Is Settings › Aril the one Aril of the [front door plan](aril-front-door.md), so routing between repositories becomes part of this plan? (Phase 7.)
-5. **Phone.** Does the phone get the docked panel's layout as a full-screen sheet, and the new Home? (Phases 1 and 3.)
+1. **Mixed questions.** When a message touches several repositories, does Aril answer it from the task-log summaries, or split it into each repository's thread?
+2. **Routing model.** Which small model routes, and from which provider when the owner has only one? Is a routing cost per message acceptable, or should routing stay clue-only plus the clarifying question?
+3. **Summary content.** What belongs in the repository summary the router sees, and does any of it need the owner's opt-in per repository?
+4. **Work across repositories.** Is coordinated work across repositories (a shared source and its hand-copied consumers) needed, or is routing enough?
 
 ## Checkpoint
 
 2026-10-28: plan written after the owner rejected the time-boxed grant, set the standing-agreement direction, and reviewed a prototype of the panel, the composer, and Home. Next action: the owner reviews this plan and answers the open questions.
+2026-10-28: the owner answered the five open questions (one thread for each repository, ending Pomegr-started sessions by agreement, repository scope by default, the front door folded in, the phone sheet and Home) and asked that an outgrown thread be compacted, not dropped, freeing the room tool results take. The front door plan is deleted; its routing rules and remaining questions are above. Next action: phase 1.
