@@ -122,6 +122,16 @@ test("merge and branch delete steps are accepted only in their exact shapes", as
   assert.equal(accepted.calls.some(({ route }) => route === "grant-end"), false);
 });
 
+test("a mark-done step asks the monitor once, in its exact shape, and a refusal ends no grant (T-182)", async () => {
+  const markDone = { repositoryId: repoA, taskId: "T-7", kind: "mark_done" };
+  const h = harness({ grantStarter: true, grantNext: { ok: true, steps: [markDone, { ...markDone, taskId: "T-6", run: { provider: "codex", model: null, effort: null } },
+    { ...markDone, taskId: "bad" }] } });
+  h.runner.start();
+  await h.timers.fire();
+  assert.deepEqual(h.calls.filter(({ route }) => route === "grant-done").map(({ body }) => body), [{ repositoryId: repoA, taskId: "T-7" }]);
+  assert.equal(h.calls.some(({ route }) => ["grant-check", "grant-record", "grant-end"].includes(route)), false);
+});
+
 test("the interval defaults to 15 seconds and never drops below 5", () => {
   for (const [intervalMs, expected] of [[undefined, 15_000], [100, 5_000], [20_000, 20_000], [Number.NaN, 15_000], ["1000", 15_000]]) {
     const h = harness({ overrides: { intervalMs } });

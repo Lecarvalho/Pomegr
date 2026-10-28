@@ -27,7 +27,7 @@ const SCHEDULED: TaskQueue = { ...QUEUE_IDLE, schedule: { startAt: SAMPLE_FUTURE
 const STOP_ONLY: TaskQueue = { ...QUEUE_RUNNING, schedule: { startAt: null, stopAfter: SAMPLE_FUTURE_STOP } };
 const NO_GATES: TaskQueue = { status: "idle", blockedBy: null, pauseReason: null, order: [] };
 const ARIL_SETTINGS: Settings = {
-  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,

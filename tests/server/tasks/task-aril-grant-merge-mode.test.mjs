@@ -8,7 +8,7 @@ import { REPOSITORY as REPO, passingGates, createTask, queueTask, updateTask, wi
 // Merge mode, auto-merge outcomes, and the branch delete step of a grant (Aril operator phase 9b).
 const HEAD = "a".repeat(40);
 const green = { number: 42, state: "open", checks: "passed", headOid: HEAD };
-const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false };
+const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false, markDone: false };
 const limits = { hours: 1, tasks: 4, tasksAtATime: 3, sendBacks: null, usagePercent: 80 };
 const error = (answer, code) => assert.deepEqual(answer, { ok: false, error: code });
 

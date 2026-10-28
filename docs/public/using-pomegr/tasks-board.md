@@ -40,7 +40,7 @@ Pomegr moves a card to another column when its task changes state:
 | --- | --- |
 | The task's session starts and links to it | **In progress** |
 | The task becomes **Needs review**: the agent reported it complete | **Review** |
-| The task becomes **Done**: you chose **Mark done** | **Done** |
+| The task becomes **Done**: you chose **Mark done**, or an [Aril grant](tasks.md#aril-grants) you allowed to marked it | **Done** |
 
 - **Blocked by agent** and **Stalled** do not move a card. It stays where it is,
   normally **In progress**, and holds the queue. A card in **Review** does not hold the
@@ -91,7 +91,7 @@ lists its tasks before the usual destinations.
 | **Needs review** | The agent reported complete. The task window shows each checked condition's result and the agent's attention line, if it gave one. | Pomegr, when it verifies the report. |
 | **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. It leaves Stalled when that session reports or works again. |
 | **Blocked by agent** | The latest report says the agent cannot continue. A later completion changes the task to **Needs review**. | The agent sets the block; you resolve it. |
-| **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done** or a move to **Done**. |
+| **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done** or a move to **Done**, or an [Aril grant](tasks.md#aril-grants) with **Mark done when acceptance passes** after the task's acceptance passed. |
 
 A task has no **Running** state. Once a session is linked to a task that has no outcome
 yet, its state is that session's observed state, such as **In progress** (see

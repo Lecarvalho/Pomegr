@@ -225,7 +225,7 @@ export const TASK_LOG_LABELS = {
   grant_start: "Started by Aril under a grant", grant_review: "Review started by Aril under a grant", sent_back: "Sent back by Aril under a grant",
   grant_merge: "Merged by Aril under a grant", grant_merge_refused: "Merge refused",
   grant_merge_auto: "Auto-merge enabled by Aril", grant_branch_deleted: "Branch deleted by Aril", grant_branch_delete_refused: "Branch delete refused",
-  grant_task_written: "Written by Aril from a plan",
+  grant_task_written: "Written by Aril from a plan", grant_done: "Marked done by Aril under a grant",
   rework: "Rework",
   grant_usage_hold: "Paused for provider usage", grant_usage_resume: "Resumed after provider usage",
 } as const;

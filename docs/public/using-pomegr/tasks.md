@@ -99,7 +99,11 @@ While a grant is active, the desktop app does these things, as far as you allowe
   send-backs are used, the task stays in **Review** for you.
 - **Merge.** With **Merge on green**, it merges a task's open pull request only after the latest review
   passed and CI passed for the known pull-request head. It attempts each head commit once. The task
-  stays in **Review** for your **Mark done**.
+  stays in **Review** for your **Mark done**, unless you also allowed **Mark done when acceptance passes**.
+- **Mark done.** With **Mark done when acceptance passes**, it marks a task **Done** after its pull request
+  merged, when a fresh check shows every **Complete when** condition passed and its review passed (when reviews
+  are on). A condition Pomegr could not check is no pass. A task with no **Complete when** condition, or whose
+  **Complete when** asks for your validation, stays yours. Tasks that run after it can then start. The log reads “Marked done by Aril under a grant”.
 - **Write tasks.** With **Write tasks from plans**, Aril creates tasks in **Ready** from the next unbuilt
   step of the plans you named. It writes at most **Tasks** tasks, and they join the grant's work set.
 
@@ -208,7 +212,7 @@ wait for another, see [Parallel tasks and Runs after](tasks-order.md).
 
 - It never stops, attaches to, answers, or approves work in a running session. A pull
   request can be merged only by the desktop runner under an active grant, after passing
-  CI and review; the owner still marks the task Done.
+  CI and review. Only you mark a task Done, or a grant you allowed to, after its acceptance passes.
 - It makes no AI judgment about whether work is complete. It compares the agent's
   report with observed facts. The own condition is the agent's judgment. An unknown
   fact never passes.

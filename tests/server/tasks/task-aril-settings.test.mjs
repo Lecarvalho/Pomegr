@@ -8,7 +8,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 const REPO = `repo-${"a".repeat(24)}`;
 const OTHER = `repo-${"b".repeat(24)}`;
 const defaults = () => ({
-  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+  actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
   workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
@@ -106,6 +106,20 @@ test("merge mode and branch deletion accept only their values, default to not se
       .run(JSON.stringify(Object.fromEntries(Object.entries(defaults()).filter(([key]) => !["mergeMode", "deleteBranch"].includes(key)))), REPO);
   } finally { database.close(); }
   assert.deepEqual([store.readBoard(REPO).aril.settings.mergeMode, store.readBoard(REPO).aril.settings.deleteBranch], [null, null]);
+});
+
+test("Mark done is its own boolean action, off by default, required with the other actions, and off in old rows (T-182)", (t) => {
+  const { store, directory, set } = setup(t);
+  assert.equal(store.readBoard(REPO).aril.settings.actions.markDone, false);
+  assert.equal(set({ actions: { ...defaults().actions, markDone: true } }).settings.actions.markDone, true);
+  const older = Object.fromEntries(Object.entries(defaults().actions).filter(([key]) => key !== "markDone"));
+  for (const actions of [older, { ...defaults().actions, markDone: "yes" }, { ...defaults().actions, markDone: null }]) invalid(set({ actions }));
+  assert.equal(store.readBoard(REPO).aril.settings.actions.markDone, true);
+  const database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  try {
+    database.prepare("UPDATE aril_settings SET value = ? WHERE repository_id = ?").run(JSON.stringify({ ...defaults(), actions: { ...older, merge: true } }), REPO);
+  } finally { database.close(); }
+  assert.deepEqual(store.readBoard(REPO).aril.settings.actions, { ...defaults().actions, merge: true });
 });
 
 test("every limit accepts null and inclusive integer bounds only", (t) => {

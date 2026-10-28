@@ -224,7 +224,7 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   };
 }
 
-const ARIL_ACTIONS = ["start", "review", "sendBack", "merge", "writeTasks"] as const;
+const ARIL_ACTIONS = ["start", "review", "sendBack", "merge", "writeTasks", "markDone"] as const;
 const ARIL_LIMITS = ["hours", "tasks", "tasksAtATime", "sendBacks", "usagePercent"] as const;
 const ARIL_RULE_KINDS = new Set(["tag", "text", "feature", "plan", "tasks"]);
 const ARIL_END_REASONS = new Set(["stopped", "expired", "tasks_used", "start_failed", "app_restart"]);

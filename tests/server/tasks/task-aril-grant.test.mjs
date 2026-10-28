@@ -7,7 +7,7 @@ import { buildTaskPrompt } from "../../../server/tasks/task-dispatch.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { REPOSITORY as REPO, passingGates, GATE_FACTS, FACTS, createTask, queueTask, updateTask, setMeta, withDatabase, dispatchMintedAt, repositoryNumber } from "./queue-test-support.mjs";
 
-const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false };
+const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false, markDone: false };
 const limits = { hours: 1, tasks: 4, tasksAtATime: 3, sendBacks: null, usagePercent: 80 };
 function setup(t) {
   const directory = mkdtempSync(path.join(process.cwd(), ".grant-test-"));
@@ -103,7 +103,7 @@ for (const kind of ["start", "review", "send_back", "write_tasks"]) test(`usage 
 
 test("a task write without a reviewer provider is held only when every provider with usage is at the limit", (t) => {
   const f = setup(t);
-  f.configure({ actions: { ...actions, writeTasks: true }, workRules: [{ kind: "plan", value: "docs/next.md" }] });
+  f.configure({ actions: { ...actions, writeTasks: true, markDone: false }, workRules: [{ kind: "plan", value: "docs/next.md" }] });
   f.start();
   const next = (claude, codex) => f.store.nextGrantSteps({ resolveGateFacts: passingGates, resolveUsage: (provider) => (provider === "claude" ? claude : codex) });
   for (const [claude, codex] of [[null, null], [80, 90], [80, null]]) assert.deepEqual(next(claude, codex).steps, []);

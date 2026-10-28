@@ -45,6 +45,7 @@ This plan adds that authority as a **standing grant** that the owner approves be
 | 2026-10-25 | Aril may propose removing task worktrees to free disk space; the owner confirms each removal. |
 | 2026-10-25 | A settled rule is not asked again. Aril asks again only when it detects a change in the repository's workflow or the owner says the rule changed. |
 | 2026-10-25 | A concurrency limit may later also weigh the machine's load; Pomegr has no machine-usage metric yet. |
+| 2026-10-26 | Acceptance settled with Aril is enough: under a grant with **Mark done** on, Pomegr marks a merged task Done when every Complete when check passes on a fresh reading and its review passed, so a runs-after chain continues without the owner. `user_validated` and a task with no Complete when check stay the owner's (T-182). |
 
 ## Lessons from the first pilot
 
@@ -116,7 +117,8 @@ Aril stays a read-only provider run. Each action below is a fixed operation that
 | Start a review | After a task reports complete; same worktree; brief lists the task, the brief, the repository rules, and the proof recipe | Task dispatch, with a reviewer role |
 | Send back | After a failing verdict, within the send-back limit; a new builder session in the same worktree with the verdict as its brief (G9) | Task dispatch; Continue's resume path where the provider supports it |
 | Merge | Pull request open, CI green on its head, review passed, proof present (G4), no unresolved review comments, branch protections satisfied; the repository's own merge method | A new desktop action through `gh`, owner-only today |
-| Report complete | After merge; the task goes to Review for the owner's **Mark done** | `complete_task` semantics |
+| Report complete | After merge; the task stays in Review for the owner's **Mark done**, unless Mark done below applies | `complete_task` semantics |
+| Mark done (T-182) | **Mark done** switch on; the task is in the work set, its pull request merged, a fresh check reading shows every **Complete when** check passed (unavailable is no pass), its review passed when reviews are on, **Complete when** has at least one check and no `user_validated`, and it is neither blocked nor stalled. Logged as `grant_done`; it is no new grant task | The owner's Mark done write (`markTaskDone`) and the report's fresh check read |
 | Write tasks | From the next unbuilt step of a plan a work rule selects, with full text, **Complete when**, and dependencies | The existing task add path |
 
 Every action writes one log entry. A refused action records its fixed reason.
@@ -200,4 +202,4 @@ Phases 1 to 3 add no authority.
 2026-10-25: phase 9d built: Aril treats its settings and memory as settled, and the desktop lists the workflow sources that changed after the oldest settled time. Next action: the other phase 9 slices.
 2026-10-25: phase 9c built: Aril sees the task worktrees that remain and proposes removing them, and the owner applies each removal in the desktop app. Next action: the other phase 9 slices; phase 8 still needs the owner.
 2026-10-25: phase 9 shipped (#336–#340 and this change). Next action: phase 8, the acceptance run, which needs the owner.
-2026-10-26: T-183 built grant follow-ups: a coalesced fixed line in the chat and one notification for each burst of grant entries and for the grant's end, behind the `followUps` setting. Next action: phase 8, the acceptance run, which needs the owner.
+2026-10-26: T-183 built grant follow-ups: a coalesced fixed line in the chat and one notification for each burst of grant entries and for the grant's end, behind the `followUps` setting. The owner then decided that acceptance settled with Aril is enough to mark a merged task Done under a grant; T-182 built the **Mark done** action. Next action: phase 8, the acceptance run, which needs the owner.

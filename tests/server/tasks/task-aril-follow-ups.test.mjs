@@ -7,7 +7,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { REPOSITORY as REPO, createTask, withDatabase } from "./queue-test-support.mjs";
 
 // Aril's grant follow-ups (T-183): the monitor coalesces a grant's task-log entries into one batch per burst.
-const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false };
+const actions = { start: true, review: true, sendBack: false, merge: false, writeTasks: false, markDone: false };
 const limits = { hours: 2, tasks: 4, tasksAtATime: 3, sendBacks: null, usagePercent: 80 };
 
 function setup(t) {

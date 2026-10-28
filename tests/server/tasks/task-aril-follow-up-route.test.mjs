@@ -31,7 +31,7 @@ async function setup(t, { followUps = true } = {}) {
   });
   assert.equal(store.apply(REPOSITORY_ID, "create", { text: "work" }).ok, true);
   assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings: { followUps,
-    actions: { start: true, review: false, sendBack: false, merge: false, writeTasks: false },
+    actions: { start: true, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
     limits: { hours: 1, tasks: 2, tasksAtATime: 1, sendBacks: null, usagePercent: 80 }, workRules: [{ kind: "text", value: "work" }] } }).ok, true);
   assert.equal(store.apply(REPOSITORY_ID, "grant_start", {}).ok, true);
   withDatabase(directory, (db) => db.prepare("INSERT INTO task_log(repository_id, number, kind, at) VALUES (?, 1, 'grant_merge_refused', ?)").run(REPOSITORY_ID, clock.now));

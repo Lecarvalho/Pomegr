@@ -67,11 +67,11 @@ function stepsFrom(answer) {
       && step.plans.every((plan) => typeof plan === "string" && plan.length <= 200
         && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.md$/u.test(plan)
         && !plan.split("/").some((part) => part === "." || part === ".."));
-    if (typeof step.taskId !== "string" || !TASK_ID.test(step.taskId) || !["start", "review", "send_back", "merge", "delete_branch"].includes(step.kind)) return false;
+    if (typeof step.taskId !== "string" || !TASK_ID.test(step.taskId) || !["start", "review", "send_back", "merge", "delete_branch", "mark_done"].includes(step.kind)) return false;
     if (step.kind === "merge") return Number.isSafeInteger(step.pullRequest) && step.pullRequest > 0 && /^[a-f0-9]{40}$/u.test(step.headOid)
       && (step.mergeMethod === null || ["squash", "merge", "rebase"].includes(step.mergeMethod)) && ["direct", "auto"].includes(step.mergeMode) && !Object.hasOwn(step, "run");
     if (step.kind === "delete_branch") return Number.isSafeInteger(step.pullRequest) && step.pullRequest > 0 && isBranchName(step.branch) && !Object.hasOwn(step, "run");
-    if (step.kind === "send_back") return !Object.hasOwn(step, "run");
+    if (step.kind === "send_back" || step.kind === "mark_done") return !Object.hasOwn(step, "run");
     return !Object.hasOwn(step, "run") || (isPlainObject(step.run) && Object.keys(step.run).length === 3
       && ["claude", "codex"].includes(step.run.provider)
       && (step.run.model === null || (typeof step.run.model === "string" && MODEL.test(step.run.model)))
@@ -183,6 +183,11 @@ export function createTaskQueueRunner(options = {}) {
         continue;
       }
       if (kind === "send_back") continue;
+      // The monitor reads the task's checks and marks it Done only when the grant still allows it.
+      if (kind === "mark_done") {
+        try { await post("grant-done", { repositoryId, taskId }); } catch { /* a refused or failed mark-done is offered again later */ }
+        continue;
+      }
       const isAuthorized = async () => {
         if (disposed) return false;
         try {

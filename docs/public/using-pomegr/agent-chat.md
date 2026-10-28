@@ -14,7 +14,8 @@ Aril records links when the evidence shows that one task or pull request fixes e
 
 Aril can also work under a grant that only you start. A grant is time-bound and scoped by
 your Aril settings. The desktop app then starts tasks and reviews, sends failed work back,
-and merges on green CI, within limits you set. Aril cannot start or extend a grant. Under a
+merges on green CI, and, when you allow it, marks merged tasks Done whose acceptance passed,
+within limits you set. Aril cannot start or extend a grant. Under a
 grant that allows **Write tasks from plans**, Aril also creates tasks in **Ready** from the
 plans you named, when the chat is free, without **Apply changes**. See
 [Aril grants](tasks.md#aril-grants) for the actions, the limits, and **Stop grant**.

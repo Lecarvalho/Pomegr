@@ -288,7 +288,7 @@ test("the served source is validated again at the route", async (context) => {
   const store = {
     readBoard: () => ({
       version: 1, readiness: "ready", repositoryId: REPOSITORY, columns: [], features: [],
-      aril: { settings: { actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false },
+      aril: { settings: { actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
         mergeMethod: null,
         limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: null },
         workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true }, memory: [] },

@@ -270,8 +270,8 @@ export function createRequestHandler({
       }
       await serveTaskActionRoute({
         request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts, resolveUsage: (provider) => runtime.resolveTaskUsage?.(provider), resolveCheckFacts, resolveOutcomeFacts, resolvePullRequestFacts: (...args) => runtime.resolveTaskPullRequestFacts?.(...args), acceptArilFollowUp: (data) => runtime.acceptArilFollowUp?.(data),
-        // Read lazily, and only for an assignment.
-        resolveSession: (ref) => runtime.resolveTaskSession?.(ref),
+        // Read lazily: a grant's mark-done reads the task's checks fresh, like a session's own report, and an assignment reads its session.
+        readCheckFacts: (ref) => (typeof runtime.readTaskCheckFacts === "function" ? runtime.readTaskCheckFacts(ref) : resolveCheckFacts(ref)), resolveSession: (ref) => runtime.resolveTaskSession?.(ref),
         resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),
       });
       return;
