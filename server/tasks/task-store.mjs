@@ -778,7 +778,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const featureLinks = () => link(featureSessionGroups, {});
   const reportChecks = (sessionId, taskId) => link(reportableChecks, { sessionId, taskId });
   const sessionAssigned = (sessionIds) => link(sessionAssignedReferences, { sessionIds });
-  const sessionReviews = (sessionIds) => link(sessionReviewReferences, { sessionIds });
   const feature = (repositoryId, reference) => link(readFeature, { repositoryId, feature: reference });
   // A task's images (task-images.mjs): the bytes are files beside the database, the list is in `meta`.
   const image = (operation, repositoryId, payload) => {
@@ -797,5 +796,5 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const ackLog = (repositoryId, consumer, through) => link(() => runTransaction(database, () => ackTaskLog(database, repositoryId, consumer, through)));
   const declareArilRework = (repositoryId, payload) => dispatch(({ database, transaction }) => transaction(() => declareArilTaskRework({ database, repositoryId, now }, payload)), {});
   return Object.freeze({ ...grantOperations(dispatch, loadRows, now, createTask), ...followUpOperations(dispatch, now), ...reviewOperations(dispatch, now), readBoard, readHome, readAgentTasks, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, bindStart, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, logPullRequests: (resolveFacts) => dispatch(logPullRequests, { resolveFacts, now }), nextQueueStarts: nextStarts, pauseQueue: pauseAt, worktreeCleanups, worktreeCleaned,
-    addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, sessionReviews, readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, readScorecard, readLog, ackLog, declareArilRework, sessionTasks, sessionAssignedTasks: sessionAssigned, sessionReviews: (sessionIds) => link(sessionReviewReferences, { sessionIds }), readFeature: feature, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
