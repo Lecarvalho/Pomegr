@@ -51,7 +51,7 @@ export function errorCopy(error: AgentChatError, context: { provider: AgentChatP
     case "conflict": return "That proposal was already answered.";
     case "invalid": return "That message could not be sent.";
     case "unavailable": return "Aril could not be reached. Try again.";
-    case "desktop_only": return "A session can be started from this chat only in the Pomegr desktop app.";
+    case "desktop_only": return "This proposal can be applied only in the Pomegr desktop app.";
   }
 }
 
@@ -285,6 +285,11 @@ export function worktreeProposal(proposal: Pick<AgentChatProposal, "operations">
   return proposal.operations.length > 0 && proposal.operations.every((operation) => operation.op === "remove_worktree");
 }
 
+/** Whether a proposal edits a feature already on the board: only the desktop window edits features, so it is applied there alone. */
+export function featureEditProposal(proposal: Pick<AgentChatProposal, "operations">): boolean {
+  return proposal.operations.some((operation) => operation.op === "update_feature" || operation.op === "delete_feature");
+}
+
 /** The queue state a proposal asks for (`true` is on), or null when it is not a queue proposal. */
 export function queueProposalState(proposal: Pick<AgentChatProposal, "operations">): boolean | null {
   const [first] = proposal.operations;
@@ -331,6 +336,7 @@ export const START_ELSEWHERE_NOTE = "Aril's start can be applied only in the Pom
 
 export const WORKTREE_PENDING_NOTE = "Nothing is removed until you apply. Pomegr keeps any worktree with uncommitted changes or commits that exist nowhere else.";
 export const WORKTREE_ELSEWHERE_NOTE = "Aril's worktree removal can be applied only in the Pomegr desktop app.";
+export const FEATURE_ELSEWHERE_NOTE = "This proposal changes a feature, so it can be applied only in the Pomegr desktop app.";
 
 export const QUEUE_ON_NOTE = "Nothing changes until you select Turn queue on. Pomegr may then start queued tasks by itself on the computer that runs Pomegr, in Ready order, as each passes the start gates.";
 export const QUEUE_OFF_NOTE = "Nothing changes until you select Turn queue off. No new task starts then, and running sessions continue.";
@@ -342,18 +348,20 @@ export function proposalLabel(proposal: AgentChatProposal): string {
   return queueProposalState(proposal) !== null ? "Proposed queue change" : "Proposed board changes";
 }
 
-/** The card's one Primary, or null where the proposal cannot be applied: a session start or a worktree removal outside the desktop window. */
+/** The card's one Primary, or null where the proposal cannot be applied: a session start, a worktree removal, or a feature edit outside the desktop window. */
 export function proposalPrimary(proposal: AgentChatProposal, startHere = false): string | null {
   if (startProposalTask(proposal) !== null) return startHere ? "Start session" : null;
   if (worktreeProposal(proposal)) return startHere ? (proposal.operations.length === 1 ? "Remove worktree" : "Remove worktrees") : null;
+  if (featureEditProposal(proposal) && !startHere) return null;
   const queueOn = queueProposalState(proposal);
   return queueOn === null ? "Apply changes" : queueOn ? "Turn queue on" : "Turn queue off";
 }
 
-/** `startHere` is true in the desktop window, the one place where a start or a worktree removal can be applied. */
+/** `startHere` is true in the desktop window, the one place where a start, a worktree removal, or a feature edit can be applied. */
 export function proposalNote(proposal: AgentChatProposal, startHere = false): string {
   if (startProposalTask(proposal) !== null) return startHere ? START_PENDING_NOTE : START_ELSEWHERE_NOTE;
   if (worktreeProposal(proposal)) return startHere ? WORKTREE_PENDING_NOTE : WORKTREE_ELSEWHERE_NOTE;
+  if (featureEditProposal(proposal) && !startHere) return FEATURE_ELSEWHERE_NOTE;
   const queueOn = queueProposalState(proposal);
   if (queueOn !== null) return queueOn ? QUEUE_ON_NOTE : QUEUE_OFF_NOTE;
   return proposal.operations.some((operation) => operation.op === "delete_task" || operation.op === "delete_feature") ? PROPOSAL_DELETE_NOTE : PROPOSAL_PENDING_NOTE;

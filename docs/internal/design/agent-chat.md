@@ -305,6 +305,7 @@ The task board is in [Task board design](task-board.md).
 - The Primary of a worktree removal reads **Remove worktree** for one worktree and **Remove worktrees** for more.
 - The footer line of a worktree removal reads “Nothing is removed until you apply. Pomegr keeps any worktree with uncommitted changes or commits that exist nowhere else.”
 - On a paired device a worktree removal has no Primary, only **Dismiss**, and its footer line reads “Aril's worktree removal can be applied only in the Pomegr desktop app.”
+- On a paired device a proposal that renames, marks done, reopens, or deletes a feature has no Primary, only **Dismiss**, and its footer line reads “This proposal changes a feature, so it can be applied only in the Pomegr desktop app.”
 - A worktree removal does not stop at a worktree it kept: every row shows its own result.
 
 ### Unreadable proposal
@@ -379,7 +380,7 @@ The task board is in [Task board design](task-board.md).
 | “That proposal was already answered.” | None |
 | “That message could not be sent.” | None |
 | “Aril could not be reached. Try again.” | None |
-| “A session can be started from this chat only in the Pomegr desktop app.” | A session start that was applied outside the desktop window |
+| “This proposal can be applied only in the Pomegr desktop app.” | A proposal that only the desktop window applies was applied elsewhere |
 
 ## Conversations
 

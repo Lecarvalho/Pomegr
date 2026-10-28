@@ -294,4 +294,4 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
 | A start proposal says **Not started.** | Read the reason on the proposal. [Start gates](tasks-start-gates.md#start-gates) explains a held start. Select **Start session** again when it is gone. |
 | A queue proposal says **Queue not changed.** | Check that Pomegr shows **Local monitor**, then select the same button again. |
 | The queue is on and nothing starts | Open **Tasks**. A banner or a "Waiting:" line names what holds the queue. See [Run the queue](tasks.md#run-the-queue). |
-| A session can be started from this chat only in the Pomegr desktop app | Apply the start proposal in the desktop app, or start the task from its window. |
+| This proposal can be applied only in the Pomegr desktop app | Apply the proposal in the desktop app. To start a task from this device, open the task and select **Start session**. |
