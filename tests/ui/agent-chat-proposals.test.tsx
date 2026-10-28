@@ -115,6 +115,37 @@ describe("proposals", () => {
     expect(within(card()).getByText("Nothing changes until you apply. Deleting cannot be undone.")).toBeInTheDocument();
   });
 
+  it("names a feature edit by its title: a new title, done or reopened, and a delete that cannot be undone", () => {
+    const proposal = { id: PROPOSAL_ID, summary: "Tidy the features.", state: "pending", operations: [
+      { op: "update_feature", feature: "Upload reliability", name: "Uploads" },
+      { op: "update_feature", feature: "Uploads", done: true },
+      { op: "update_feature", feature: "Shipped", done: false },
+      { op: "delete_feature", feature: "Legacy" },
+    ] } as never;
+    render(<AgentChatProposalCard proposal={proposal} tasks={[]} busy={false} startHere onApply={() => {}} onDismiss={() => {}} />);
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("Update featureUpload reliability");
+    expect(rows[0]).toHaveTextContent("New title: Uploads");
+    expect(rows[1]).toHaveTextContent("Mark done");
+    expect(rows[2]).toHaveTextContent("Shipped");
+    expect(rows[2]).toHaveTextContent("Reopen");
+    expect(rows[3]).toHaveTextContent("Delete featureLegacy");
+    expect(rows[3].querySelector(".agentChatOpWarning")).toHaveTextContent("Cannot be undone");
+    expect(screen.getByText("Nothing changes until you apply. Deleting cannot be undone.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply changes" })).toBeEnabled();
+  });
+
+  it("offers no Apply for a feature edit outside the desktop window, only Dismiss and where it can be applied", () => {
+    const proposal = { id: PROPOSAL_ID, summary: "Rename a feature.", state: "pending", operations: [
+      { op: "create_task", text: "Write the upload guide" },
+      { op: "update_feature", feature: "Upload reliability", name: "Uploads" },
+    ] } as never;
+    render(<AgentChatProposalCard proposal={proposal} tasks={[]} busy={false} onApply={() => {}} onDismiss={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    expect(screen.getByText("This proposal changes a feature, so it can be applied only in the Pomegr desktop app.")).toBeInTheDocument();
+  });
+
   it("omits the board's line for a task it does not hold, and the delete sentence for a proposal without a delete", async () => {
     withProposal([{ op: "update_task", id: "T-99", effort: undefined, run: { provider: "codex", model: null } }, { op: "queue_task", id: "T-12" }]);
     render(<AgentChatDock />);
@@ -454,7 +485,7 @@ describe("a proposed session start", () => {
     await openPanel(person);
     await person.click(startButton());
     await settle();
-    expect(screen.getByRole("alert")).toHaveTextContent("A session can be started from this chat only in the Pomegr desktop app.");
+    expect(screen.getByRole("alert")).toHaveTextContent("This proposal can be applied only in the Pomegr desktop app.");
     expect(card().querySelector(".commandChip")).toBeNull();
     expect(harness.refresh).not.toHaveBeenCalled();
   });

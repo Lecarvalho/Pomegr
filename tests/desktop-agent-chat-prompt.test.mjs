@@ -613,8 +613,10 @@ test("the instructions name every board operation, the proposal fence, and the s
   for (const operation of BOARD_OPERATIONS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`{"op":"${operation}"`), true, operation);
   assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(`\`\`\`${PROPOSAL_FENCE}\n{"summary"`), true);
   for (const tool of POMEGR_READ_TOOLS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(tool), true, tool);
+  // update_feature and delete_feature are proposal operations of the same names, always written quoted, never tools.
+  const unquoted = AGENT_CHAT_INSTRUCTIONS.replace(/"(?:update|delete)_feature"/gu, "");
   for (const writing of ["add_task", "remove_task", "complete_task", "block_task", "update_feature", "delete_feature", "get_feature"]) {
-    assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(writing), false, `${writing} is not a tool of this chat`);
+    assert.equal(unquoted.includes(writing), false, `${writing} is not a tool of this chat`);
   }
   assert.match(AGENT_CHAT_INSTRUCTIONS, /MCP server named pomegr/u);
   for (const column of BOARD_COLUMNS) assert.equal(AGENT_CHAT_INSTRUCTIONS.includes(column), true, column);
@@ -644,7 +646,7 @@ test("the instructions propose a change Aril recommends instead of asking whethe
   assert.match(AGENT_CHAT_INSTRUCTIONS, /An answer that is advice only, such as a model recommendation or a diagnosis that calls for no board change, has no block./u);
   assert.equal(AGENT_CHAT_INSTRUCTIONS.includes("only when, the owner asked"), false);
   assert.equal(AGENT_CHAT_INSTRUCTIONS.includes("When you are unsure what the owner wants"), false);
-  assert.match(AGENT_CHAT_INSTRUCTIONS, /Your own reading never proposes "start_session", "set_queue", or "delete_task": each needs the owner's own request/u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /Your own reading never proposes "start_session", "set_queue", "delete_task", or "delete_feature": each needs the owner's own request/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Never propose a start on your own initiative/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Never propose a queue change on your own initiative/u);
   assert.match(AGENT_CHAT_INSTRUCTIONS, /Propose "delete_task" only when the owner asked to remove that task/u);

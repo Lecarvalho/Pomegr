@@ -566,7 +566,7 @@ test("every request the controller makes refuses redirects, is bounded in time, 
   assert.equal([...controller.matchAll(/fetchImpl\(/gu)].length, 1, "one function makes every request");
   assert.match(controller, /cache: "no-store", redirect: "error", signal: AbortSignal\.timeout\(/u);
   assert.match(controller, /\[DESKTOP_AUTH_HEADER\]: authorizationToken/u);
-  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"\]\);/u);
+  assert.match(controller, /const TASK_ACTIONS = new Set\(\["create", "update", "delete", "move", "feature_create", "feature_update", "feature_delete", "queue_add", "queue_remove", "queue_group", "queue_ungroup", "after_set", "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove"\]\);/u);
   for (const forbidden of ["queue_settings", "resolve_done", "resolve_requeue", "start", "image"]) assert.equal(new RegExp(`TASK_ACTIONS[^;]*"${forbidden}"`, "u").test(controller), false, forbidden);
   assert.match(controller, /if \(!TASK_ACTIONS\.has\(action\)\) return refused\("invalid"\);/u);
 });
@@ -596,4 +596,46 @@ test("an applied set_after sends after_set with the list, and a task the board d
   await apply(h, second.id);
   assert.equal(h.actionCalls().length, before);
   assert.deepEqual((await storedProposal(h, second.id)).results, [{ ok: false, error: "not_found" }]);
+});
+
+test("feature edits apply through feature_update and feature_delete in the desktop window, and never from a paired device", async (context) => {
+  const operations = [
+    { op: "update_feature", feature: "Auth", name: "Sign-in" },
+    { op: "update_feature", feature: "Shipped", done: false },
+    { op: "update_feature", feature: "Empty", done: true },
+    { op: "delete_feature", feature: "Empty" },
+  ];
+  const h = await chatHarness(context);
+  h.state.board.features = [...h.state.board.features, { id: "feat-2", name: "Shipped", done: true }, { id: "feat-3", name: "Empty", done: false }];
+  const conversation = await seed(h, { messages: withProposal(pendingProposal({ operations })) });
+  const payload = { repositoryId, conversationId: conversation.id, proposalId: "p-0123456789ab" };
+  assert.deepEqual(await h.chat.handle("apply", payload, { paired: true }), { ok: false, error: "desktop_only" });
+  assert.equal(h.actionCalls().length, 0);
+  assert.equal((await storedProposal(h, conversation.id)).state, "pending");
+  assert.deepEqual(await h.chat.handle("apply", payload, { event: {} }), { ok: true });
+  assert.deepEqual(h.actionCalls().map(({ pathname, body }) => [pathname.replace("/internal/tasks/", ""), body.payload]), [
+    ["feature_update", { id: "feat-1", name: "Sign-in" }],
+    ["feature_update", { id: "feat-2", done: false }],
+    ["feature_update", { id: "feat-3", done: true }],
+    ["feature_delete", { id: "feat-3" }],
+  ]);
+  const stored = await storedProposal(h, conversation.id);
+  assert.equal(stored.state, "applied");
+  assert.deepEqual(stored.results, Array(4).fill({ ok: true }));
+  await h.finishFollowUp(conversation.id);
+});
+
+test("a rename to a taken title and a delete of a feature with tasks are stored as conflict", async (context) => {
+  for (const [operation, sent] of [[{ op: "update_feature", feature: "Auth", name: "Taken" }, 1], [{ op: "delete_feature", feature: "Auth" }, 0]]) {
+    const h = await chatHarness(context);
+    h.state.board.features = [...h.state.board.features, { id: "feat-2", name: "Taken", done: false }];
+    h.state.actions = () => ({ ok: false, error: "conflict" });
+    const conversation = await seed(h, { messages: withProposal(pendingProposal({ operations: [operation] })) });
+    assert.deepEqual(await h.chat.handle("apply", { repositoryId, conversationId: conversation.id, proposalId: "p-0123456789ab" }, { event: {} }), { ok: true });
+    assert.equal(h.actionCalls().length, sent, operation.op);
+    const stored = await storedProposal(h, conversation.id);
+    assert.equal(stored.state, "partial");
+    assert.deepEqual(stored.results, [{ ok: false, error: "conflict" }]);
+    await h.finishFollowUp(conversation.id);
+  }
 });

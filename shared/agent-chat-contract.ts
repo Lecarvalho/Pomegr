@@ -49,6 +49,8 @@ export const AGENT_CHAT_COLUMNS: readonly AgentChatColumn[] = ["Backlog", "Ready
 // `placeAfter` names, in that task's column. Without either it lands at the end of Backlog. A placement never queues.
 export type AgentChatBoardOperation =
   | { op: "create_feature"; name: string }
+  | { op: "update_feature"; feature: string; name?: string; done?: boolean }
+  | { op: "delete_feature"; feature: string }
   | { op: "create_task"; text: string; feature?: string; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen>; queue?: boolean; images?: string[]; column?: AgentChatColumn; position?: number; placeAfter?: string; after?: string[] }
   | { op: "update_task"; id: string; text?: string; feature?: string | null; run?: Partial<AgentChatRun>; completeWhen?: Partial<AgentChatCompleteWhen> }
   | { op: "delete_task"; id: string }
@@ -69,7 +71,7 @@ export type AgentChatBoardOperation =
 
 export type AgentChatBoardOperationName = AgentChatBoardOperation["op"];
 export const AGENT_CHAT_BOARD_OPERATIONS: readonly AgentChatBoardOperationName[] = [
-  "create_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree",
+  "create_feature", "update_feature", "delete_feature", "create_task", "update_task", "delete_task", "move_task", "queue_task", "unqueue_task", "group_tasks", "ungroup_tasks", "set_after", "attach_images", "start_session", "set_queue", "set_aril_settings", "add_memory", "update_memory", "remove_memory", "remove_worktree",
 ];
 
 // What an approved queue change left: on, on and held by a stalled or blocked task, or off.

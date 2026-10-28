@@ -140,7 +140,10 @@ follow-up when they differ.
 
 A proposal can create a feature, create a task in a place you name, update, delete, or
 move a task, add a task to the queue or remove it, put queued tasks in a parallel group
-or take them out of one, and put an image that you sent on a task. It cannot mark a task done,
+or take them out of one, and put an image that you sent on a task. It can also rename a
+feature, mark it done, reopen it, or delete a feature that has no task. You apply a feature
+edit in the desktop app only. Marking a feature done or reopening it changes none of its
+tasks, and deleting a feature cannot be undone. It cannot mark a task done,
 requeue a task, or change the queue's threshold or schedule. Those stay with you, as
 described in [Tasks](tasks.md). Starting a session, turning the queue on or off, and removing
 task worktrees are proposals of their own, described below.
@@ -291,4 +294,4 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
 | A start proposal says **Not started.** | Read the reason on the proposal. [Start gates](tasks-start-gates.md#start-gates) explains a held start. Select **Start session** again when it is gone. |
 | A queue proposal says **Queue not changed.** | Check that Pomegr shows **Local monitor**, then select the same button again. |
 | The queue is on and nothing starts | Open **Tasks**. A banner or a "Waiting:" line names what holds the queue. See [Run the queue](tasks.md#run-the-queue). |
-| A session can be started from this chat only in the Pomegr desktop app | Apply the start proposal in the desktop app, or start the task from its window. |
+| This proposal can be applied only in the Pomegr desktop app | Apply the proposal in the desktop app. To start a task from this device, open the task and select **Start session**. |
