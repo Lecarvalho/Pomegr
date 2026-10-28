@@ -221,7 +221,7 @@ describe("Aril settings panel", () => {
     const dialog = screen.getByRole("dialog", { name: "Aril settings" });
     expect(dialog).toHaveClass("taskQueueSettingsScrim");
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
-    expect(within(dialog).getAllByRole("switch")).toHaveLength(8);
+    expect(within(dialog).getAllByRole("switch")).toHaveLength(9);
     for (const control of within(dialog).getAllByRole("switch")) expect((control as HTMLInputElement).checked).toBe(control === within(dialog).getByRole("switch", { name: "Send follow-ups" }));
     for (const label of ["Hours", "Tasks", "Tasks at a time", "Send-backs per task", "Usage limit %"]) {
       expect(screen.getByRole("combobox", { name: label })).toHaveTextContent("Not settled: Aril will ask");
