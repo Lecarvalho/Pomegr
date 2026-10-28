@@ -126,17 +126,20 @@ export function createTerminalController(options = {}) {
           const linked = unresolved.length ? await readReviewSession(id, task.id) : null;
           if (!linked) continue;
           const claimed = new Set([...records.values()].map((row) => row.sessionId).filter(Boolean));
-          // The current (or latest) reviewer belongs to the one candidate key.
-          if (candidates.length === 1 && !candidates[0].sessionId && linked.sessionId && !claimed.has(linked.sessionId)) {
-            candidates[0].sessionId = linked.sessionId;
-            claimed.add(linked.sessionId);
+          // The current reviewer belongs to the one candidate key. Only an ended candidate falls back to the latest
+          // kept reviewer: a live key whose review has not linked yet waits, or it would take an earlier reviewer.
+          const only = candidates.length === 1 && !candidates[0].sessionId ? candidates[0] : null;
+          const latest = only?.state === "exited" ? linked.sessionIds.filter((value) => !claimed.has(value)).at(-1) : null;
+          const current = linked.sessionId && !claimed.has(linked.sessionId) ? linked.sessionId : latest;
+          if (only && current) {
+            only.sessionId = current;
+            claimed.add(current);
           }
           // The store keeps every reviewer in link order, and one host lists ended reviews in creation order,
-          // so the remaining keys pair with the unclaimed reviewers. Live keys that could overlap stay unbound.
-          const rest = unresolved.filter((row) => !row.sessionId);
+          // so the remaining ended keys pair with the unclaimed reviewers. Live keys stay unbound until their review links.
+          const rest = unresolved.filter((row) => !row.sessionId && row.state === "exited");
           const open = linked.sessionIds.filter((value) => !claimed.has(value));
-          if (rest.length > 0 && open.length === rest.length && (rest.length === 1
-            || rest.every((row) => row.state === "exited" && row.connection === rest[0].connection))) {
+          if (rest.length > 0 && open.length === rest.length && rest.every((row) => row.connection === rest[0].connection)) {
             rest.forEach((row, index) => { row.sessionId = open[index]; });
           }
           continue;

@@ -55,9 +55,10 @@ function reviewSession({ database, repositoryId, payload }) {
   const number = Number(payload.id.slice(2));
   if (!rowOf(database, repositoryId, number)) return { ok: false, error: "not_found" };
   const current = valueOf(database, reviewerKey(repositoryId, number));
-  // Every reviewer the task has had, in link order, so an ended review still resolves.
+  // `sessionId` is only the current review, so a live review key never takes an earlier reviewer.
+  // `sessionIds` is every reviewer the task has had, in link order, so an ended review still resolves.
   const sessionIds = taskReviewerSessions(database, repositoryId, number);
-  return { ok: true, sessionId: isTaskSessionId(current) ? current : sessionIds.at(-1) ?? null, sessionIds };
+  return { ok: true, sessionId: isTaskSessionId(current) ? current : null, sessionIds };
 }
 
 function taskReviewerSessions(database, repositoryId, number) {

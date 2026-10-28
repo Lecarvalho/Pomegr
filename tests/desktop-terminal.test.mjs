@@ -112,6 +112,11 @@ test("ended review keys pair with the kept reviewers in creation order; live ove
   // A count that does not match, or a value that is not a session ID, pairs nothing.
   assert.deepEqual(await rows({ sessions: ended, reviewSession: null, reviewSessions: [reviewerId] }), [null, null]);
   assert.deepEqual(await rows({ sessions: ended, reviewSession: null, reviewSessions: [earlier, "C:/private"] }), [null, null]);
+  // A live review that has not linked yet waits: it never takes an earlier reviewer, which stays with its ended key.
+  assert.deepEqual(await rows({ sessions: [{ key: reviewKey, exited: true }, { key: second, exited: false }], reviewSession: null, reviewSessions: [earlier] }), [earlier, null]);
+  assert.deepEqual(await rows({ sessions: [{ key: second, exited: false }], reviewSession: null, reviewSessions: [earlier] }), [null]);
+  // An ended key alone falls back to the latest kept reviewer.
+  assert.deepEqual(await rows({ sessions: [{ key: second, exited: true }], reviewSession: null, reviewSessions: [earlier, reviewerId] }), [reviewerId]);
   // A builder identity is never claimed by a review key.
   assert.deepEqual(await rows({ sessions: [{ key, exited: false }, { key: reviewKey, exited: true }], reviewSession: null, reviewSessions: [sessionId] }), [sessionId, null]);
 });

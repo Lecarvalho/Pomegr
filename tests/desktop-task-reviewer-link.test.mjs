@@ -102,7 +102,7 @@ test("a reviewer stays linked after a pass verdict", async (context) => {
 test("a reviewer stays linked after a fail verdict and a grant send-back", async (context) => {
   const env = await monitor(context);
   const settings = {
-    actions: { start: true, review: true, sendBack: true, merge: false, writeTasks: false },
+    actions: { start: true, review: true, sendBack: true, merge: false, writeTasks: false, markDone: false },
     limits: { hours: 1, tasks: 4, tasksAtATime: 3, sendBacks: 2, usagePercent: 80 },
     workRules: [{ kind: "text", value: "task" }],
   };
@@ -138,7 +138,7 @@ test("a second review of the same task keeps both reviewers", async (context) =>
   assert.deepEqual(await terminalSessions(context, env, [reviewKey("a"), reviewKey("b")]), [["review", FIRST, "exited"], ["review", SECOND, "exited"]]);
   assert.equal(env.store.apply(REPOSITORY_ID, "resolve_done", { id: "T-1" }).ok, true);
   assert.deepEqual(directoryTasks(env, [FIRST, SECOND]), [reviewerRef("done"), reviewerRef("done")]);
-  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: SECOND, sessionIds: [FIRST, SECOND] });
+  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: null, sessionIds: [FIRST, SECOND] });
   assert.deepEqual(await terminalSessions(context, env, [reviewKey("a"), reviewKey("b")]), [["review", FIRST, "exited"], ["review", SECOND, "exited"]]);
 });
 

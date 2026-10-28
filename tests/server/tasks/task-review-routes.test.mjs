@@ -180,13 +180,13 @@ test("desktop review-session returns only the bound reviewer identity, never the
   assert.equal(bound.status, 200);
   assert.deepEqual(bound.json, { ok: true, sessionId: REVIEWER, sessionIds: [REVIEWER] });
   assert.doesNotMatch(bound.text, /builder|repositoryRoot|prompt|token|reasons|plan/u);
-  // T-188: a pointer that is not a session ID falls back to the kept reviewer; a kept value that is not one is never served.
+  // T-188: a pointer that is not a session ID is not the current review; a kept value that is not one is never served.
   withDatabase(env.directory, (database) => {
     database.prepare("UPDATE meta SET value = ? WHERE key = ?").run("C:/private/reviewer.txt", `task_reviewer:${REPOSITORY_ID}:T-1`);
     database.prepare("INSERT INTO task_reviewers (repository_id, number, session_id, at) VALUES (?, 1, ?, ?)").run(REPOSITORY_ID, "C:/private/kept.txt", Date.now() * 2);
   });
   const fallback = await action(env, "review-session", { id: "T-1" });
-  assert.deepEqual(fallback.json, { ok: true, sessionId: REVIEWER, sessionIds: [REVIEWER] });
+  assert.deepEqual(fallback.json, { ok: true, sessionId: null, sessionIds: [REVIEWER] });
   assert.doesNotMatch(fallback.text, /private/u);
 });
 

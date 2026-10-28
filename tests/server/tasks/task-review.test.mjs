@@ -223,7 +223,7 @@ test("the reviewer record keeps each reviewer with its link time while the curre
   assert.equal(env.store.apply(REPOSITORY, "resolve_requeue", { id: "T-1" }).ok, true);
   assert.equal(metaValue(env.directory, key("reviewer")), null);
   assert.equal(kept(), 1);
-  assert.deepEqual(env.store.reviewSession(REPOSITORY, { id: "T-1" }), { ok: true, sessionId: REVIEWER, sessionIds: [REVIEWER] });
+  assert.deepEqual(env.store.reviewSession(REPOSITORY, { id: "T-1" }), { ok: true, sessionId: null, sessionIds: [REVIEWER] });
   assert.deepEqual([...env.store.sessionReviews([REVIEWER, SESSION, "codex:unknown"]).keys()], [REVIEWER]);
   assert.equal(env.store.sessionReviews([REVIEWER]).get(REVIEWER).role, "review");
   assert.equal(env.store.readBoard(REPOSITORY).tasks[0].review, null);
