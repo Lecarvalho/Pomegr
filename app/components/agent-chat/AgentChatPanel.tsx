@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useAgentChat, type AgentChatAvailability } from "../../agent-chat-client";
+import { useAgentChatSearch } from "../../agent-chat-search";
 import { useTasks } from "../../tasks-store";
 import { AGENT_CHAT_BOUNDS, type AgentChatImage, type AgentChatProvider } from "../../../shared/agent-chat-contract";
 import type { TaskEffort } from "../../../shared/task-contract";
@@ -11,9 +12,9 @@ import { heldStartLine } from "../tasks/task-gates-model";
 import { useTaskModelOptions } from "../tasks/task-panel-hooks";
 import { AgentChatComposer, type AgentChatComposerHandle } from "./AgentChatComposer";
 import { AgentChatPanelFrame, AgentChatHeader } from "./AgentChatFrame";
-import { AgentChatHistory } from "./AgentChatHistory";
-import { AgentChatMessages, type AgentChatLogState } from "./AgentChatMessages";
-import { IMAGE_ADD_FAILURE_MESSAGE, IMAGE_TYPE_MESSAGE, acceptChatImageFiles, addAgentChatImage, conversationImageIds, useAgentChatImageUrls } from "./agent-chat-images";
+import { AgentChatMessages, type AgentChatLogState, type MessageTarget } from "./AgentChatMessages";
+import { AgentChatSearch } from "./AgentChatSearch";
+import { IMAGE_ADD_FAILURE_MESSAGE, IMAGE_TYPE_MESSAGE, acceptChatImageFiles, addAgentChatImage, threadImageSources, useAgentChatImageUrls } from "./agent-chat-images";
 import { errorCopy } from "./agent-chat-presentation";
 import { CHAT_DEFAULT_EFFORT, chatModelFromValue, chatModelOptions, chatModelValue, initialChatRun, resolveChatRun } from "./agent-chat-run";
 
@@ -26,12 +27,12 @@ type Shared = {
   onClose(): void;
 };
 
-// What the owner chose for the conversation in view, over the run it would start on. `key` is the conversation, or "new".
-type ChosenRun = { key: string; pick?: { provider: AgentChatProvider; model: string | null }; effort?: TaskEffort };
-// A follow-up to open: its conversation and message. `nonce` changes for each opening, so the same link opens it again.
+// What the owner chose over the run the thread would start on.
+type ChosenRun = { pick?: { provider: AgentChatProvider; model: string | null }; effort?: TaskEffort };
+// A message to open: a follow-up's. `nonce` changes for each opening, so the same link opens it again.
 type ChatFocus = { conversationId: string | null; messageId: string | null; nonce: number };
 
-/** One repository's chat. Mounted once for each repository (a `key`), so no conversation of one repository is shown under another. */
+/** One repository's chat. Mounted once for each repository (a `key`), so no message of one repository is shown under another. */
 function AgentChatBody({ repositoryId, availability, open, repositories, onRepositoryChange, expanded, onToggleExpanded, onClose, onAnswering, onAnswered, focus }: Shared & {
   repositoryId: string;
   focus: ChatFocus | null;
@@ -47,31 +48,44 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
 
   const { board, refresh } = useTasks(repositoryId);
   const models = useTaskModelOptions(board.runModels);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const search = useAgentChatSearch(repositoryId, searchOpen);
+  const searchId = useId();
+  const searchToggle = useRef<HTMLButtonElement>(null);
   const [draft, setDraft] = useState("");
-  // When the message on its way was sent, until it reaches the stored conversation with its own time.
+  // When the message on its way was sent, until it reaches the stored thread with its own time.
   const [sentAt, setSentAt] = useState<string | null>(null);
-  const [chosen, setChosen] = useState<ChosenRun | null>(null);
+  const [chosen, setChosen] = useState<ChosenRun>({});
   const [sentProvider, setSentProvider] = useState<AgentChatProvider>(DEFAULT_RUN.provider ?? "claude");
   const [pin, setPin] = useState(0);
   // The images of the message being written: the desktop app holds their bytes, this holds what it answered.
   const [attached, setAttached] = useState<readonly AgentChatImage[]>([]);
   const [uploading, setUploading] = useState(0);
   const [imageError, setImageError] = useState<string | null>(null);
-  const shownImages = useMemo(() => [...conversationImageIds(view.conversation?.messages ?? []), ...view.pendingImages.map((image) => image.id)], [view.conversation, view.pendingImages]);
-  const { urls: imageUrls, remember } = useAgentChatImageUrls(repositoryId, view.conversation?.id ?? null, shownImages);
+  const imageSources = useMemo(() => threadImageSources(view.messages), [view.messages]);
+  const { urls: imageUrls, remember } = useAgentChatImageUrls(repositoryId, imageSources);
   const composer = useRef<AgentChatComposerHandle>(null);
   const wasAnswering = useRef(false);
-  const openConversation = view.open;
 
-  // A follow-up's link opens its conversation; the log then brings the follow-up into view.
+  // A message to bring into view: it is loaded first, by loading older pages a bounded number of times, and then drawn in view.
+  const [target, setTarget] = useState<MessageTarget | null>(null);
+  const requested = useRef(0);
+  const reveal = view.reveal;
+  const bring = useCallback((conversationId: string, messageId: string) => {
+    void reveal(conversationId, messageId).then((found) => {
+      if (found) { requested.current += 1; setTarget({ conversationId, messageId, nonce: requested.current }); }
+    });
+  }, [reveal]);
+
+  // A follow-up's link brings its message into view, once the thread is read.
   const focusNonce = focus?.nonce ?? 0;
   const focusConversation = focus?.conversationId ?? null;
+  const focusMessage = focus?.messageId ?? null;
   const [shownNonce, setShownNonce] = useState(0);
-  if (shownNonce !== focusNonce) { setShownNonce(focusNonce); setHistoryOpen(false); }
+  if (shownNonce !== focusNonce) { setShownNonce(focusNonce); setSearchOpen(false); }
   useEffect(() => {
-    if (focusNonce !== 0 && focusConversation !== null) openConversation(focusConversation);
-  }, [focusNonce, focusConversation, openConversation]);
+    if (focusNonce !== 0 && view.ready && focusConversation !== null && focusMessage !== null) bring(focusConversation, focusMessage);
+  }, [focusNonce, view.ready, focusConversation, focusMessage, bring]);
 
   useEffect(() => {
     onAnswering(answering);
@@ -80,17 +94,17 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
   }, [answering, open, onAnswering, onAnswered]);
   useEffect(() => () => onAnswering(false), [onAnswering]);
 
-  // The run starts from the open conversation's model and effort, else the newest known model and Medium. It is never a default.
-  const key = view.conversation?.id ?? "new";
-  const base = initialChatRun(models, view.conversation);
-  const choice = chosen !== null && chosen.key === key ? chosen : null;
-  const run = resolveChatRun(models, { ...base, ...choice?.pick, effort: choice?.effort ?? base.effort });
+  // The run starts from what the thread last ran with, else the newest known model and Medium. It is never a default.
+  const base = initialChatRun(models, view.run);
+  const run = resolveChatRun(models, { ...base, ...chosen.pick, effort: chosen.effort ?? base.effort });
   const modelOptions = chatModelOptions(models, run);
 
+  const closeSearch = () => { setSearchOpen(false); search.setQuery(""); searchToggle.current?.focus({ preventScroll: true }); };
   const send = async () => {
     const text = draft.trim();
     if (text === "") return;
-    setHistoryOpen(false);
+    setSearchOpen(false);
+    search.setQuery("");
     setSentProvider(run.provider);
     setSentAt(new Date().toISOString());
     setPin((current) => current + 1);
@@ -116,38 +130,35 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
       setAttached((current) => (current.length < AGENT_CHAT_BOUNDS.imagesPerMessage ? [...current, answer.image] : current));
     }
   };
-  const apply = async (proposalId: string) => { if (await view.apply(proposalId)) await refresh(); };
+  const apply = async (conversationId: string, proposalId: string) => { if (await view.apply(conversationId, proposalId)) await refresh(); };
   const heldStart = (taskId: string) => {
     const task = board.tasks.find((candidate) => candidate.id === taskId);
     return task ? heldStartLine(task, board.queue) : null;
   };
-  const startNew = () => { view.open(null); setHistoryOpen(false); composer.current?.focus(); };
   const suggest = (text: string) => { setDraft(text); composer.current?.focus(); };
 
-  const hasContent = view.conversation !== null || view.pendingMessage !== null || view.turn !== null;
-  const logState: AgentChatLogState = hasContent ? "ready"
-    : !view.ready ? "loading"
-      : view.openId === null ? "empty"
-        : view.error === null ? "loading" : "ready";
+  const hasContent = view.messages.length > 0 || view.pendingMessage !== null || view.turn !== null;
+  const logState: AgentChatLogState = !view.ready ? "loading" : hasContent ? "ready" : "empty";
 
   return <>
-    <AgentChatHeader historyOpen={historyOpen} onToggleHistory={() => setHistoryOpen((current) => !current)} onNew={startNew} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} />
+    <AgentChatHeader searchOpen={searchOpen} onToggleSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))} searchRef={searchToggle} searchControls={searchId}
+      expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} />
+    {searchOpen && <AgentChatSearch id={searchId} query={search.query} onQueryChange={search.setQuery} matches={search.matches} failed={search.failed}
+      onChoose={(match) => { closeSearch(); bring(match.conversationId, match.messageId); }} onClose={closeSearch} />}
     <div className="agentChatBody">
-      {historyOpen
-        ? <AgentChatHistory conversations={view.conversations} openId={view.openId} runningId={view.runningId}
-          onOpen={(conversationId) => { view.open(conversationId); setHistoryOpen(false); }} onDelete={(conversationId) => { void view.remove(conversationId); }} />
-        : <AgentChatMessages state={logState} conversation={view.conversation} turn={view.turn} pendingMessage={view.pendingMessage} pendingAt={sentAt} pendingImages={view.pendingImages} imageUrls={imageUrls} tasks={board.tasks}
-          resolving={view.resolving} pinSignal={pin} focusMessageId={focus !== null && focus.conversationId === view.openId ? focus.messageId : null} startHere={availability === "desktop"} heldStart={heldStart} onSuggest={suggest} onApply={(proposalId) => { void apply(proposalId); }} onDismiss={(proposalId) => { void view.dismiss(proposalId); }} />}
+      <AgentChatMessages state={logState} messages={view.messages} turn={view.turn} pendingMessage={view.pendingMessage} pendingAt={sentAt} pendingImages={view.pendingImages} imageUrls={imageUrls} tasks={board.tasks}
+        resolving={view.resolving} pinSignal={pin} target={target} hasOlder={view.hasOlder} loadingOlder={view.loadingOlder} startHere={availability === "desktop"} heldStart={heldStart}
+        onLoadOlder={() => { void view.loadOlder(); }} onSuggest={suggest} onApply={(conversationId, proposalId) => { void apply(conversationId, proposalId); }} onDismiss={(conversationId, proposalId) => { void view.dismiss(conversationId, proposalId); }} />
     </div>
     <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop}
       modelOptions={modelOptions} modelValue={chatModelValue(run)}
       repositories={repositories} repositoryId={repositoryId} onRepositoryChange={onRepositoryChange}
-      onModelChange={(value) => { const pick = chatModelFromValue(value); if (pick) setChosen({ ...choice, key, pick }); }}
-      effort={run.effort} onEffortChange={(effort) => setChosen({ ...choice, key, effort })}
-      running={view.turn !== null} busy={view.pendingMessage !== null} runningElsewhere={view.runningElsewhere}
+      onModelChange={(value) => { const pick = chatModelFromValue(value); if (pick) setChosen({ ...chosen, pick }); }}
+      effort={run.effort} onEffortChange={(effort) => setChosen({ ...chosen, effort })}
+      running={view.turn !== null} busy={view.pendingMessage !== null}
       images={attached.map((image) => image.id)} imageUrls={imageUrls} uploading={uploading > 0} imageError={imageError}
       onAttach={(files) => { void attach(files); }} onRemoveImage={(imageId) => { setImageError(null); setAttached((current) => current.filter((image) => image.id !== imageId)); }}
-      error={view.error ? errorCopy(view.error, { provider: sentProvider, conversationOpen: view.openId !== null }) : null} />
+      error={view.error ? errorCopy(view.error, { provider: sentProvider }) : null} />
   </>;
 }
 
@@ -155,14 +166,14 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
 function AgentChatWithoutRepository({ loading, expanded, onToggleExpanded, onClose }: { loading: boolean; expanded: boolean; onToggleExpanded(): void; onClose(): void }) {
   const options = useMemo(() => chatModelOptions(NO_MODELS, initialChatRun(NO_MODELS, null)), []);
   return <>
-    <AgentChatHeader historyOpen={false} onToggleHistory={() => undefined} onNew={() => undefined} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} disabled />
+    <AgentChatHeader searchOpen={false} onToggleSearch={() => undefined} expanded={expanded} onToggleExpanded={onToggleExpanded} onClose={onClose} disabled />
     <div className="agentChatBody">
       <div className="agentChatLogFrame"><div className="agentChatLog">
         <p className="agentChatLoading">{loading ? "Loading…" : "No repositories observed yet."}</p>
       </div></div>
     </div>
     <AgentChatComposer value="" onChange={() => undefined} onSend={() => undefined} onStop={() => undefined} modelOptions={options} modelValue={chatModelValue(initialChatRun(NO_MODELS, null))}
-      onModelChange={() => undefined} effort={CHAT_DEFAULT_EFFORT} onEffortChange={() => undefined} disabled running={false} busy={false} runningElsewhere={false} error={null} />
+      onModelChange={() => undefined} effort={CHAT_DEFAULT_EFFORT} onEffortChange={() => undefined} disabled running={false} busy={false} error={null} />
   </>;
 }
 

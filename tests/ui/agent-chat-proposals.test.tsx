@@ -35,7 +35,7 @@ afterEach(() => { removeHarness(); });
 
 const user = newUser;
 /** The repositories the chat asked about, once each, in order. */
-const listed = () => [...new Set(chat.calls("list").map((payload) => payload.repositoryId))];
+const listed = () => [...new Set(chat.calls("thread").map((payload) => payload.repositoryId))];
 const launcher = () => screen.getByRole("button", { name: /^Open Aril, the Pomegr agent/ });
 const panel = () => screen.getByRole("region", { name: "Aril, the Pomegr agent" });
 const field = () => screen.getByRole("textbox", { name: "Message Aril" });
@@ -157,7 +157,7 @@ describe("proposals", () => {
     expect(within(card()).getByText("Nothing changes until you apply.")).toBeInTheDocument();
   });
 
-  it("applies, reads the conversation again, shows each result and the chip, and reads the board again", async () => {
+  it("applies, reads its conversation again, shows each result and the chip, and reads the board again", async () => {
     withProposal();
     const person = user();
     render(<AgentChatDock />);
@@ -175,8 +175,9 @@ describe("proposals", () => {
     expect(within(card()).queryByRole("button", { name: "Dismiss" })).toBeNull();
     expect(within(card()).queryByText(/Nothing changes until you apply/)).toBeNull();
     expect(harness.refresh).toHaveBeenCalledTimes(1);
-    // The conversation was read again after the answer.
-    expect(chat.calls("read").length).toBeGreaterThanOrEqual(2);
+    // The conversation of the proposal was read again after the answer, and the thread after it.
+    expect(chat.calls("read")).toEqual([{ repositoryId: REPO_A, conversationId: chatId(1) }]);
+    expect(chat.calls("thread").length).toBeGreaterThanOrEqual(2);
   });
 
   it("reads Aril's follow-up after an Apply or a Dismiss until it is stored, and asks for the answer once", async () => {

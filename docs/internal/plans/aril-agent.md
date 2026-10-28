@@ -40,6 +40,7 @@ This plan makes three changes:
 | 2026-10-28 | An agreement applies to the repository it was settled for, unless the owner says it holds everywhere. |
 | 2026-10-28 | Settings › Aril is the one Aril of the former front door plan: the owner talks to one Aril, and it routes each message to the right repository. That plan is folded in here and deleted. |
 | 2026-10-28 | On a paired phone, the docked panel opens as a full-screen sheet, and the phone gets the new Home. |
+| 2026-10-28 | A repository's thread has no cap: it never refuses a message for being full. Settings › Aril shows how much space each repository's thread takes and gets an action that flushes the oldest messages to get space back. |
 
 ## The switch
 
@@ -126,7 +127,7 @@ A phase is checked only after the owner accepts it:
 - [ ] **1. Panel and composer.** The docked panel and its phone sheet, the borderless composer, the repository and model in the composer, one thread for each repository with search and compaction, a time on every message, and quiet activity lines. No new authority. Measure: S1, owner time per accepted pull request, through faster answers.
 - [ ] **2. Quick replies and questions.** Aril's answer may carry quick replies and one multiple-choice question; the owner's choice is sent as the owner's message. Aril's prompt gets the talking rules. No new authority.
 - [ ] **3. Home.** The new Home, on the desktop and the phone, with the Aril line, the needs-you items, Continue, and the composer. The Aril line and the needs-you items come from each repository's task log, with no model run.
-- [ ] **4. Aril in Settings.** Settings › Aril with the switch and both memories; Aril settings move there from the Tasks page. Off stops the grant runner at once.
+- [ ] **4. Aril in Settings.** Settings › Aril with the switch, both memories, each repository's thread size on disk, and a way to flush its oldest messages to get that space back; Aril settings move there from the Tasks page. Off stops the grant runner at once.
 - [ ] **5. Agreements.** Settled in the chat, saved, listed, and edited in Settings, scoped to one repository unless the owner says everywhere; they replace the grant start, end time, and task total; Aril resumes after a restart; ending a Pomegr-started session becomes an action an agreement can allow; the `AGENTS.md` control rule, Agent chat, and Tasks change in this phase. Measure: S7, owner interventions during absence.
 - [ ] **6. Pings.** Notifications only for what needs the owner; follow-ups stay in the chat.
 - [ ] **7. First steps.** Aril's first conversation with a new user, and its question when a repository appears.
@@ -160,3 +161,4 @@ These are the owner's decisions; settle them before phase 9.
 2026-10-28: plan written after the owner rejected the time-boxed grant, set the standing-agreement direction, and reviewed a prototype of the panel, the composer, and Home. Next action: the owner reviews this plan and answers the open questions.
 2026-10-28: the owner answered the five open questions (one thread for each repository, ending Pomegr-started sessions by agreement, repository scope by default, the front door folded in, the phone sheet and Home) and asked that an outgrown thread be compacted, not dropped, freeing the room tool results take. The front door plan is deleted; its routing rules and remaining questions are above. Next action: phase 1.
 2026-10-28: phase 1, first pull request: the docked panel over a light dim, Expand, Close, the borderless composer with the repository, model, and effort (effort now reaches the run), a time on every message, quiet grant follow-up lines, and no ring on the message field. The owner tested it in the desktop app and accepted it after fixes to the model and effort controls, the overlay, the field ring, and the Jump to latest fill. Next action: the second pull request, one thread for each repository with search.
+2026-10-28: phase 1, second pull request: one thread for each repository over the stored conversations, with paging, search, a send that rolls into a new conversation, no cap on conversations, and the prompt's history read across conversations. The owner tested it in the desktop app and accepted it; the owner added that Settings › Aril shows each thread's size and can flush its oldest messages (phase 4). Next action: the third pull request, compaction.

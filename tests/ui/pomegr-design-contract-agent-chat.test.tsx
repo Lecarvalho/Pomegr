@@ -48,7 +48,7 @@ describe("Aril chat visual contract", () => {
     expect(styles).toMatch(/--command-scrim:\s*var\(--color-scrim\)/);
     expect(chatStyles).toMatch(/@media \(min-width: 761px\) \{/);
     expect(chatStyles).toMatch(/\.agentChatPanel\.isExpanded:not\(\.isStatic\) \{ left: var\(--command-rail-width\); width: auto; \}/);
-    expect(chatStyles).toMatch(/\.agentChatPanel\.isExpanded \.agentChatLog, \.agentChatPanel\.isExpanded \.agentChatHistory \{ padding-inline: max\(var\(--space-4\), calc\(\(100% - var\(--aril-column-width\)\) \/ 2\)\); \}/);
+    expect(chatStyles).toMatch(/\.agentChatPanel\.isExpanded \.agentChatLog, \.agentChatPanel\.isExpanded \.agentChatSearch \{ padding-inline: max\(var\(--space-4\), calc\(\(100% - var\(--aril-column-width\)\) \/ 2\)\); \}/);
     expect(chatStyles).toMatch(/\.agentChatPanel\.isExpanded \.agentChatComposer \{ align-self: center; width: min\(var\(--aril-column-width\), calc\(100% - 2 \* var\(--space-4\)\)\); margin-inline: 0; \}/);
     expect(chatStyles).toMatch(/@media \(max-width: 760px\) \{\s*\.agentChatPanel \{ inset: 0; z-index: 85; width: auto; height: auto;[^}]*border: 0; \}\s*\.agentChatExpand, \.agentChatScrim \{ display: none; \}/);
     expect(chatStyles).toMatch(/@media \(max-width: 760px\), \(pointer: coarse\) \{\s*(?:\.agentChat(?:Attach|ImagePicture)[^\n]*\n\s*)*\.agentChatLauncher, \.agentChatField[^{]*\{ min-height: 44px; \}/);
@@ -64,9 +64,16 @@ describe("Aril chat visual contract", () => {
     expect(chatStyles).toMatch(/\.agentChatMessageTime, \.agentChatMessageCaption \{ color: var\(--command-muted\); font: 400 var\(--text-xs\)\/1\.4 var\(--font-data\); \}/);
     expect(chatStyles).toMatch(/\.agentChatQuietLine \{[^}]*color: var\(--command-muted\); font: 400 var\(--text-xs\)\/1\.5 var\(--font-ui\); \}/);
     expect(chatStyles).toMatch(/\.agentChatField \{[^}]*border: 0; border-radius: var\(--control-radius\); background: transparent;[^}]*font: 400 var\(--text-sm\)\/1\.4 var\(--font-ui\)/);
-    // The message field shows no ring (the caret marks focus), and it is the only rule in the chat that removes one; every button and select keeps the shared ring.
+    // The message field and the search field show no ring (the caret marks focus), and they are the only rules in the chat that remove one; every button and select keeps the shared ring.
     expect(chatStyles).toMatch(/\.agentChatField:focus-visible \{ outline: 0; \}/);
-    expect(chatStyles.match(/outline:\s*(?:0|none)/g)).toHaveLength(1);
+    expect(chatStyles).toMatch(/\.agentChatSearchField:focus-visible \{ outline: 0; \}/);
+    expect(chatStyles.match(/outline:\s*(?:0|none)/g)).toHaveLength(2);
+    expect(chatStyles).toMatch(/\.agentChatSearchResult:focus-visible \{ outline: 2px solid var\(--focus-ring\);/);
+    // The thread: the log turns the browser's scroll anchoring off and keeps its own place when older messages are added above; the search is a region of its own, at most 45% of the panel.
+    expect(chatStyles).toMatch(/\.agentChatLog \{[^}]*overflow-y: auto; overflow-anchor: none;/);
+    expect(chatStyles).toMatch(/\.agentChatSearch \{[^}]*max-height: 45%;[^}]*border-bottom: 1px solid var\(--command-line\);/);
+    expect(chatStyles).toMatch(/\.agentChatSearchMark \{ background: none; color: var\(--command-ink\); font-weight: 650; \}/);
+    expect(chatStyles).toMatch(/\.agentChatEarlier \{ position: absolute; top: var\(--space-2\);/);
     expect(chatStyles).not.toMatch(/\.agentChatComposer[^{]*:focus(?:-visible)?[^{]*\{[^}]*outline:\s*(?:0|none)/);
     expect(styles).toMatch(/\.commandSelectTrigger:focus-visible \{ outline: 2px solid var\(--focus-ring\); outline-offset: 2px; \}/);
     // The composer: no border, the raised fill, the composer radius, inset from the panel. Its select triggers have no frame, and Send and Stop are one round brand action.
@@ -90,12 +97,12 @@ describe("Aril chat visual contract", () => {
     expect(chatStyles).toMatch(/\.agentChatCode \{[^}]*font: 400 var\(--text-xs\)\/1\.5 var\(--font-data\)/);
     expect(chatStyles).toMatch(/\.agentChatMdHeading \{ font: 650 var\(--text-sm\)\/1\.4 var\(--font-ui\); \}/);
 
-    // Every button is one of the six roles, but for the launcher (shell chrome) and the conversation row, as documented. No native select, and no markup from a string.
-    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatHistory.tsx", "AgentChatImages.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx"].map(read).join("\n") + readFileSync(join(process.cwd(), "app", "components", "markdown", "SafeMarkdown.tsx"), "utf8");
+    // Every button is one of the six roles, but for the launcher (shell chrome) and the row of a search match, as documented. No native select, and no markup from a string.
+    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatImages.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx", "AgentChatSearch.tsx"].map(read).join("\n") + readFileSync(join(process.cwd(), "app", "components", "markdown", "SafeMarkdown.tsx"), "utf8");
     expect(sources).not.toMatch(/<select|dangerouslySetInnerHTML|innerHTML/);
     const tags = [...sources.matchAll(/<button\b[^>]*>/g)].map(([tag]) => tag);
     expect(tags.length).toBeGreaterThanOrEqual(12);
-    for (const tag of tags) expect(tag).toMatch(/className=\{?[`"](?:commandPrimaryAction|commandSecondaryAction|commandQuietAction|commandIconAction|agentChatLauncher|agentChatScrim|agentChatHistoryOpen)/);
+    for (const tag of tags) expect(tag).toMatch(/className=\{?[`"](?:commandPrimaryAction|commandSecondaryAction|commandQuietAction|commandIconAction|agentChatLauncher|agentChatScrim|agentChatSearchResult)/);
     // The card has one Primary: Apply changes, or Start session for a session start where it can be applied.
     expect(read("AgentChatProposalCard.tsx")).toContain("const primary = proposalPrimary(proposal, startHere);");
     expect(read("agent-chat-presentation.ts")).toContain('if (startProposalTask(proposal) !== null) return startHere ? "Start session" : null;');
@@ -109,7 +116,10 @@ describe("Aril chat visual contract", () => {
     expect(read("AgentChatComposer.tsx")).toContain('placeholder="Ask Aril…"');
     expect(read("AgentChatFrame.tsx")).toMatch(/className="commandIconAction" aria-label="Close Aril" title="Close Aril"/);
     expect(read("AgentChatFrame.tsx")).toMatch(/className="commandIconAction agentChatExpand" aria-label=\{expanded \? "Dock" : "Expand"\} title=\{expanded \? "Dock" : "Expand"\} aria-pressed=\{expanded\}/);
-    expect(read("AgentChatFrame.tsx")).not.toMatch(/Minimize|Task-board agent/);
+    expect(read("AgentChatFrame.tsx")).toMatch(/aria-label="Search" title="Search" aria-pressed=\{searchOpen\}/);
+    expect(read("AgentChatFrame.tsx")).not.toMatch(/Minimize|Task-board agent|Conversations|New conversation/);
+    expect(read("AgentChatSearch.tsx")).toMatch(/<input ref=\{field\} className="agentChatSearchField" type="search" aria-label=\{SEARCH_LABEL\}/);
+    expect(read("AgentChatSearch.tsx")).toMatch(/role="search" aria-label="Search the conversation"/);
     expect(read("AgentChatDock.tsx")).toMatch(/\{open && <AgentChatScrim onClick=\{close\} \/>\}/);
     expect(read("AgentChatDock.tsx")).not.toMatch(/arilPanel|data-aril-panel/);
     expect(read("AgentChatFrame.tsx")).toMatch(/className=\{`agentChatScrim\$\{isStatic \? " isStatic" : ""\}`\} tabIndex=\{-1\} aria-hidden="true" onClick=\{onClick\}/);
@@ -121,12 +131,12 @@ describe("Aril chat visual contract", () => {
     // AppShell mounts the dock once, after the shell, and the design-system reference draws every part from static data.
     expect(readFileSync(join(process.cwd(), "app", "components", "AppShell.tsx"), "utf8")).toMatch(/<\/CommandCenterShell>\s*<AgentChatDock \/>/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemAgentChatSample.tsx"), "utf8");
-    for (const label of ["Launcher", "Launcher, answering", "Launcher, new answer", "Panel, empty", "Panel, proposal", "Panel, images", "Panel, expanded", "Panel, over the dimmed page", "Panel, activity lines", "Proposal, images, pending", "Composer, images", "Composer, repository", "Composer, model and effort", "Composer, no known model", "Composer, uploading image", "Composer, image error", "Panel, answer being written", "Panel, conversations", "Panel, no repository", "Proposal, pending", "Proposal, applied", "Proposal, partly applied", "Proposal, every result word", "Composer, error", "Composer, over the limit", "Answer text"]) {
+    for (const label of ["Launcher", "Launcher, answering", "Launcher, new answer", "Panel, empty", "Panel, proposal", "Panel, images", "Panel, expanded", "Panel, over the dimmed page", "Panel, activity lines", "Panel, search", "Panel, search without a match", "Panel, earlier messages loading", "Proposal, images, pending", "Composer, images", "Composer, repository", "Composer, model and effort", "Composer, no known model", "Composer, uploading image", "Composer, image error", "Panel, answer being written", "Panel, no repository", "Proposal, pending", "Proposal, applied", "Proposal, partly applied", "Proposal, every result word", "Composer, error", "Composer, over the limit", "Answer text"]) {
       expect(sample).toContain(`label="${label}"`);
     }
     expect(designSystemStyles).toMatch(/\.designSystemChatGrid \{ grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 420px\), 1fr\)\); \}/);
 
-    // The Agent chat design page documents the launcher, the panel, the proposal card, the composer, and the conversation list, and DESIGN.md routes to it.
+    // The Agent chat design page documents the launcher, the panel, the thread, the search, the proposal card, and the composer, and DESIGN.md routes to it.
     expect(designContract).toMatch(/^# Agent chat design$/m);
     expect(designContract).toMatch(/\[Agent chat design\]\(docs\/internal\/design\/agent-chat\.md\)/);
     expect(designContract).toMatch(/`\.agentChatLauncher` is shell chrome like the header icon buttons \(`\.commandIconButton`\), not a seventh role/);
@@ -147,10 +157,10 @@ describe("Aril chat visual contract", () => {
     expect(designContract).toMatch(/Every button and select in the composer keeps the shared focus ring for keyboard users/);
     expect(designContract).toMatch(/### Model and effort[^]*\*\*Model\*\* is a `CommandSelect` named \*\*Model\*\*, and its closed control reads the model alone/);
     expect(designContract).toMatch(/The list never offers a default model, and no control in the composer reads “default”/);
-    expect(designContract).toMatch(/The initial model is the model of the open conversation, else the newest known Claude model, else the newest known Codex model/);
-    expect(designContract).toMatch(/The initial effort is the effort of the open conversation, else \*\*Medium\*\*/);
+    expect(designContract).toMatch(/The initial model is the model of the thread's last run, else the newest known Claude model, else the newest known Codex model/);
+    expect(designContract).toMatch(/The initial effort is the effort of the thread's last run, else \*\*Medium\*\*/);
     expect(designContract).toMatch(/`groupInValue=\{false\}` reads the label alone on the closed control, and the list keeps its group headings/);
-    expect(designContract).toMatch(/Expanded, the log, the conversation list, and the composer sit in a centered column of at most 760px/);
+    expect(designContract).toMatch(/Expanded, the log, the search, and the composer sit in a centered column of at most 760px/);
     expect(designContract).toMatch(/## Composer[^]*`\.agentChatComposer` is a form with no border, the raised fill \(`--command-panel-2`\), and the 12px `--composer-radius`/);
     expect(designContract).toMatch(/\*\*Send\*\* is a round 32px action composed from the Icon role, with the brand fill, `--command-on-brand` ink, and an up-arrow \(`send`\) glyph, named “Send”/);
     expect(designContract).toMatch(/A time reads `HH:MM` \(24-hour, local\) for a message of today/);
@@ -169,6 +179,19 @@ describe("Aril chat visual contract", () => {
     expect(designContract).toMatch(/“Cannot be undone” in the error color \(text only, never a fill\)/);
     expect(designContract).toMatch(/Each pending card has its own Primary/);
     expect(designContract).toMatch(/A message that was refused stays in the field/);
-    expect(designContract).toMatch(/an inline question, a Secondary \*\*Delete\*\* and a Quiet \*\*Keep\*\*[^.]*and no native dialog/);
+    // The thread is one conversation for each repository, with search and no conversation list.
+    expect(designContract).toMatch(/The header has no conversation list, no \*\*Conversations\*\* action, and no \*\*New conversation\*\* action: the repository has one thread/);
+    expect(designContract).toMatch(/The log shows one thread for each repository: its saved conversations as one continuous conversation, in the order of the time of each message/);
+    expect(designContract).toMatch(/The panel offers no way to choose, start, or delete a conversation/);
+    expect(designContract).toMatch(/Scrolling to within 80px of the first message loads the page of messages before it, at most 60/);
+    expect(designContract).toMatch(/Older messages added above leave the lines the owner reads where they were/);
+    expect(designContract).toMatch(/A message that is brought into view is loaded first, by loading older pages, at most ten/);
+    expect(designContract).toMatch(/\*\*Search\*\* has a `search` glyph and `aria-pressed`/);
+    expect(designContract).toMatch(/The field shows no focus ring when it is focused: the caret marks focus\. \[DESIGN\.md\]/);
+    expect(designContract).toMatch(/The search field under the Aril header shows no focus ring either, and its text caret marks focus/);
+    expect(designContract).toMatch(/Escape closes the search, empties the field, and returns focus to \*\*Search\*\*, and it does not close the panel then/);
+    expect(designContract).toMatch(/The search asks the desktop 250ms after the last key/);
+    expect(designContract).toMatch(/The matches are a list named “Matching messages”, newest first, at most 20/);
+    expect(designContract).not.toMatch(/Delete conversation|Conversations are kept on this computer|No conversations yet|answering in another conversation/);
   });
 });

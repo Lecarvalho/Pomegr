@@ -100,15 +100,16 @@ describe("a turn started from another device", () => {
     expect(chat.agentChat.mock.calls.length).toBe(fetchMock.mock.calls.length);
   });
 
-  it("shows a new conversation started elsewhere in the list, and keeps Send busy while it is answered", async () => {
+  it("shows a message sent elsewhere without a conversation in the thread, and the turn it starts as the panel's own", async () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
     await chat.sendElsewhere(REPO_A, null, "A new topic from the phone");
     await settle(IDLE);
-    expect(screen.getByText("Aril is answering in another conversation.")).toBeInTheDocument();
-    await person.click(screen.getByRole("button", { name: "Conversations" }));
-    expect(screen.getByRole("button", { name: /^A new topic from the phone/ })).toBeInTheDocument();
+    expect(within(log()).getByText("A new topic from the phone")).toBeInTheDocument();
+    expect(screen.queryByText("Aril is answering in another conversation.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Conversations" })).toBeNull();
   });
 
   it("asks nothing while the panel is closed and idle, so the launcher learns nothing of it", async () => {

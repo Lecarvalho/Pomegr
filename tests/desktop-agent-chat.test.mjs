@@ -182,7 +182,7 @@ test("a follow-up neither reads nor acknowledges the log", async (context) => {
 
 test("the channel, operations, errors, and request bound are fixed", () => {
   assert.equal(AGENT_CHAT_CHANNEL, "pomegr:agent-chat");
-  assert.deepEqual([...AGENT_CHAT_OPERATIONS], ["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
+  assert.deepEqual([...AGENT_CHAT_OPERATIONS], ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"]);
   assert.deepEqual([...AGENT_CHAT_ERRORS], ["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"]);
   assert.equal(AGENT_CHAT_REQUEST_MAX_BYTES, 17 * 1024);
 });
@@ -190,6 +190,8 @@ test("the channel, operations, errors, and request bound are fixed", () => {
 const goodPayloads = {
   list: { repositoryId },
   read: { repositoryId, conversationId },
+  thread: { repositoryId },
+  search: { repositoryId, query: "plan" },
   stop: { repositoryId, conversationId },
   delete: { repositoryId, conversationId },
   apply: { repositoryId, conversationId, proposalId },
@@ -201,6 +203,7 @@ const badValues = {
   repositoryId: ["repo-short", "repo-0123456789ABCDEF01234567", "../x", `${repositoryId}/..`, "C:\\Work", 7, null, undefined, ""],
   conversationId: ["chat-short", "chat-0123456789AB", "../x", "..\\x", 7, undefined, ""],
   proposalId: ["p-short", "p-0123456789AB", "../x", 7, null, undefined, ""],
+  query: ["", "   \n\t ", "x".repeat(101), "a\u0000b", "a\nb", "a\u001bb", "a\u0085b", 5, null, undefined, ["a"]],
   text: ["", "   \n\t ", "x".repeat(4001), "a\u0000b", "a\u001bb", "a\u0085b", "a\u007fb", 5, null, undefined, ["a"]],
   provider: ["gemini", "Claude", "", null, undefined, 5],
   model: ["../x", "a b", "-x", "--help", "", 7, undefined, "m".repeat(121)],
@@ -376,7 +379,7 @@ test("a provider whose executable is missing or not safe answers cli_missing and
     assert.deepEqual(await send(h, { provider }), { ok: false, error: "cli_missing" }, rule);
     assert.equal(h.calls.length, 0, rule);
     assert.equal(h.runs.length, 0, rule);
-    assert.deepEqual(await h.reload().list(repositoryId), [], rule);
+    assert.deepEqual(await h.reload().index(repositoryId), [], rule);
     // The refusal frees the app for the next message.
     const other = provider === "claude" ? "codex" : "claude";
     if (overrides.files.includes(other === "claude" ? claudeExecutable : codexExecutable)) assert.equal((await send(h, { provider: other })).ok, true, `${rule}: the next send is not busy`);
@@ -403,8 +406,8 @@ test("a board that is not ready, or a root that is missing, is unavailable, stor
     change(h.state);
     assert.deepEqual(await send(h), unavailable, rule);
     assert.equal(h.runs.length, 0, rule);
-    assert.deepEqual(await h.reload().list(repositoryId), [], rule);
-    assert.deepEqual(await h.store.list(repositoryId), [], `${rule}: no conversation is kept in memory either`);
+    assert.deepEqual(await h.reload().index(repositoryId), [], rule);
+    assert.deepEqual(await h.store.index(repositoryId), [], `${rule}: no conversation is kept in memory either`);
     Object.assign(h.state, { board: readyBoard(), rootAnswer: { ok: true, root }, fetchError: null });
     assert.equal((await send(h)).ok, true, `${rule}: the next send is not busy`);
   }
@@ -415,7 +418,7 @@ test("a prompt past its limit is refused as invalid and stores nothing", async (
   h.state.board.features = [{ id: "feat-1", name: "x".repeat(200_000) }];
   assert.deepEqual(await send(h), invalid);
   assert.equal(h.runs.length, 0);
-  assert.deepEqual(await h.reload().list(repositoryId), []);
+  assert.deepEqual(await h.reload().index(repositoryId), []);
 });
 
 test("a second send is busy while a turn runs, in any conversation or repository, and also while the first is still preparing", async (context) => {
@@ -444,13 +447,17 @@ test("a conversation that does not exist is not_found before any request, and a 
   assert.equal((await send(h)).ok, true);
 });
 
-test("fifty conversations and two hundred messages are the limits", async (context) => {
+test("a conversation holds two hundred messages, and a repository holds any number of conversations", async (context) => {
   const crowded = await chatHarness(context);
-  for (let index = 0; index < 50; index += 1) assert.ok(await crowded.store.create(repositoryId, { provider: "claude", model: null, title: `Chat ${index}` }));
-  assert.deepEqual(await send(crowded), { ok: false, error: "limit" });
-  assert.equal(crowded.runs.length, 0);
+  // A grant follow-up conversation never takes the owner's message, and the number of conversations is no limit: a new one is made.
+  const followUps = { grant: null, through: null, ended: null, messageId: null };
+  for (let index = 0; index < 60; index += 1) assert.ok(await crowded.store.create(repositoryId, { provider: "claude", model: null, title: `Chat ${index}`, grantFollowUps: followUps }));
+  const sent = await send(crowded);
+  assert.equal(sent.ok, true);
+  assert.equal((await crowded.store.index(repositoryId)).length, 61);
+  assert.equal(crowded.runs.length, 1);
   crowded.state.board = { ...readyBoard(), repositoryId: otherRepositoryId };
-  assert.equal((await send(crowded, { repositoryId: otherRepositoryId })).ok, true, "another repository has its own fifty");
+  assert.deepEqual(await send(crowded, { repositoryId: otherRepositoryId }), { ok: false, error: "busy" }, "one turn runs at a time for the whole app");
 
   const messages = (count) => Array.from({ length: count }, (_, index) => (index % 2 === 0 ? userMessage(index + 1) : agentMessage(index + 1)));
   const full = await chatHarness(context);

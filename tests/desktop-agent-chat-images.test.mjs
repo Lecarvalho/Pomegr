@@ -379,7 +379,7 @@ test("a staged image that is not there answers invalid, keeps no conversation, a
   assert.deepEqual(await send(h, { images: ["img-aaaaaaaaaaaa"] }), invalid);
   assert.deepEqual(await send(h, { images: [staged.id, "img-aaaaaaaaaaaa"] }), invalid);
   assert.deepEqual(storedFiles(h.directory), {}, "no conversation was kept");
-  assert.deepEqual(await h.reload().list(repositoryId), []);
+  assert.deepEqual(await h.reload().index(repositoryId), []);
   assert.equal(h.runs.length, 0);
   assert.equal(await exists(stagedFile(h.directory, repositoryId, staged)), true, "the image that exists stays staged");
   assert.deepEqual((await fs.readdir(path.join(h.directory, repositoryId, "images"))).sort(), ["staged"], "no conversation folder is left");

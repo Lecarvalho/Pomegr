@@ -2,13 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import type { TaskEffort } from "../../../shared/task-contract";
-import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatConversation, AgentChatOperationResult, AgentChatProposal, AgentChatTurn } from "../../../shared/agent-chat-contract";
+import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatMessage, AgentChatOperationResult, AgentChatProposal, AgentChatSearchMatch, AgentChatThreadMessage, AgentChatTurn } from "../../../shared/agent-chat-contract";
 import { AgentChatComposer } from "../agent-chat/AgentChatComposer";
 import { AgentChatHeader, AgentChatLauncher, AgentChatPanelFrame, AgentChatScrim } from "../agent-chat/AgentChatFrame";
-import { AgentChatHistory } from "../agent-chat/AgentChatHistory";
 import { SafeMarkdown } from "../markdown/SafeMarkdown";
 import { AgentChatMessages, type AgentChatLogState } from "../agent-chat/AgentChatMessages";
 import { AgentChatProposalCard } from "../agent-chat/AgentChatProposalCard";
+import { AgentChatSearch } from "../agent-chat/AgentChatSearch";
 import { NO_MODELS } from "../tasks/task-fields";
 import { chatModelOptions, chatModelValue, initialChatRun } from "../agent-chat/agent-chat-run";
 import { Sample, Section } from "./DesignSystemKit";
@@ -52,8 +52,9 @@ const EVERY_WORD = proposal("partial", [
 
 const agent = (id: string, text: string, overrides: Partial<AgentChatAgentMessage> = {}): AgentChatAgentMessage => ({ id, role: "agent", text, at: AT, provider: "claude", model: "model-large", effort: "medium", status: "complete", ...overrides });
 
-function conversation(messages: AgentChatConversation["messages"]): AgentChatConversation {
-  return { id: "chat-0123456789ab", title: "Plan the upload work", provider: "claude", model: "model-large", createdAt: AT, updatedAt: AT, messages };
+// The thread of the sample repository: each message names the conversation it is saved in, and the panel draws them as one.
+function thread(messages: AgentChatMessage[]): AgentChatThreadMessage[] {
+  return messages.map((message) => ({ ...message, conversationId: "chat-0123456789ab" }));
 }
 
 const ANSWER = [
@@ -69,15 +70,15 @@ const ANSWER = [
 ].join("\n");
 
 const ASK = { id: "m-1", role: "user" as const, text: "Break the upload feature into tasks.", at: AT };
-const PROPOSED = conversation([ASK, agent("m-2", ANSWER, { proposal: proposal("pending") })]);
+const PROPOSED = thread([ASK, agent("m-2", ANSWER, { proposal: proposal("pending") })]);
 const STREAMING_TURN: AgentChatTurn = { conversationId: "chat-0123456789ab", startedAt: AT, provider: "claude", model: "model-large", effort: "medium", activity: "reading_files", text: "I am reading the upload client and the board. The retry path is" };
-const QUIET = conversation([
+const QUIET = thread([
   ASK,
   agent("m-2", "I cut it into three tasks. Apply them when you are ready.", { at: AT }),
   agent("m-3", "Merged T-5 and started T-6. Nothing needs you yet.", { grantFollowUp: true, at: LATER, effort: null }),
   agent("m-4", "Could not merge T-7. T-7 needs you.", { grantFollowUp: true, at: LATER, effort: null }),
 ]);
-const NOTES = conversation([
+const NOTES = thread([
   ASK,
   agent("m-2", "I started to answer, then the run ended.", { status: "failed" }),
   { id: "m-3", role: "user", text: "Try again.", at: AT },
@@ -85,10 +86,11 @@ const NOTES = conversation([
   agent("m-5", "The proposal below could not be read.", { proposalUnreadable: true }),
 ]);
 
-const HISTORY = [
-  { id: "chat-000000000001", title: "Plan the upload work", updatedAt: AT, messages: 4 },
-  { id: "chat-000000000002", title: "Which model fits the cleanup tasks?", updatedAt: "2026-10-10T16:30:00.000Z", messages: 2 },
-  { id: "chat-000000000003", title: "Is T-12 too big for one session?", updatedAt: "2026-10-09T09:15:00.000Z", messages: 1 },
+// Three invented matches of a search for "retry", newest first: a message of today's thread, and two of an earlier day.
+const MATCHES: AgentChatSearchMatch[] = [
+  { conversationId: "chat-000000000001", messageId: "m-2", at: AT, role: "agent", snippet: "The upload client has no retry, and the log cannot show one. I would cut this into three tasks…" },
+  { conversationId: "chat-000000000001", messageId: "m-1", at: "2026-10-10T16:30:00.000Z", role: "user", snippet: "Add a retry to the upload client" },
+  { conversationId: "chat-000000000002", messageId: "m-4", at: "2026-10-09T09:15:00.000Z", role: "agent", snippet: "…with backoff, so a retry never repeats the same request at once." },
 ];
 
 function Wide({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
@@ -114,34 +116,36 @@ const PLACE_OPERATIONS: AgentChatBoardOperation[] = [
 ];
 const PLACED = proposal("pending", undefined, PLACE_OPERATIONS);
 const NOT_PLACED = proposal("partial", [{ ok: false, error: "not_found", taskId: "T-19", part: "placement" }, skipped], PLACE_OPERATIONS);
-const WITH_IMAGES = conversation([
+const WITH_IMAGES = thread([
   { id: "m-1", role: "user", text: "The upload dialog looks wrong in both of these. Can you make a task for the first one and add the second to T-12?", at: AT, images: [sentImage(IMAGE_ONE), sentImage(IMAGE_TWO)] },
   agent("m-2", "I would create one task with the first image and attach the second to T-12.", { proposal: IMAGE_PROPOSAL }),
 ]);
 
-function SampleComposer({ initial = "", ...rest }: { initial?: string; repositories?: boolean; noModels?: boolean; effort?: TaskEffort; running?: boolean; error?: string | null; runningElsewhere?: boolean; busy?: boolean; disabled?: boolean; images?: string[]; imageUrls?: Map<string, string>; uploading?: boolean; imageError?: string | null }) {
+function SampleComposer({ initial = "", ...rest }: { initial?: string; repositories?: boolean; noModels?: boolean; effort?: TaskEffort; running?: boolean; error?: string | null; busy?: boolean; disabled?: boolean; images?: string[]; imageUrls?: Map<string, string>; uploading?: boolean; imageError?: string | null }) {
   const [value, setValue] = useState(initial);
   return <AgentChatComposer value={value} onChange={setValue} onSend={noop} onStop={noop} modelOptions={rest.noModels ? BARE_OPTIONS : MODEL_OPTIONS} modelValue={chatModelValue(rest.noModels ? BARE_RUN : SAMPLE_RUN)} onModelChange={noop} effort={rest.effort ?? SAMPLE_RUN.effort} onEffortChange={noop}
     repositories={rest.repositories ? REPOSITORIES : undefined} repositoryId={REPOSITORIES[0].value} onRepositoryChange={noop}
-    running={rest.running ?? false} busy={rest.busy ?? false} runningElsewhere={rest.runningElsewhere ?? false} error={rest.error ?? null} disabled={rest.disabled}
+    running={rest.running ?? false} busy={rest.busy ?? false} error={rest.error ?? null} disabled={rest.disabled}
     images={rest.images} imageUrls={rest.imageUrls} uploading={rest.uploading} imageError={rest.imageError} onAttach={noop} onRemoveImage={noop} />;
 }
 
-function Panel({ state = "ready", conversation: shown = null, turn = null, pending = null, history = false, expanded = false, children }: {
+function Panel({ state = "ready", messages = [], turn = null, pending = null, search = null, loadingOlder = false, expanded = false, children }: {
   state?: AgentChatLogState;
-  conversation?: AgentChatConversation | null;
+  messages?: AgentChatThreadMessage[];
   turn?: AgentChatTurn | null;
   pending?: string | null;
-  history?: boolean;
+  /** The search under the header: what the field holds and what it found, or nothing when the search is closed. */
+  search?: { query: string; matches: AgentChatSearchMatch[] | null } | null;
+  loadingOlder?: boolean;
   expanded?: boolean;
   children?: ReactNode;
 }) {
   return <AgentChatPanelFrame isStatic expanded={expanded}>
-    <AgentChatHeader historyOpen={history} onToggleHistory={noop} onNew={noop} expanded={expanded} onToggleExpanded={noop} onClose={noop} />
+    <AgentChatHeader searchOpen={search !== null} onToggleSearch={noop} expanded={expanded} onToggleExpanded={noop} onClose={noop} />
+    {search !== null && <AgentChatSearch query={search.query} onQueryChange={noop} matches={search.matches} failed={false} onChoose={noop} onClose={noop} />}
     <div className="agentChatBody">
-      {history
-        ? <AgentChatHistory conversations={HISTORY} openId={HISTORY[0].id} runningId={null} onOpen={noop} onDelete={noop} />
-        : <AgentChatMessages state={state} conversation={shown} turn={turn} pendingMessage={pending} pendingAt={pending === null ? null : AT} imageUrls={IMAGE_URLS} tasks={TASKS} resolving={null} onSuggest={noop} onApply={noop} onDismiss={noop} />}
+      <AgentChatMessages state={state} messages={messages} turn={turn} pendingMessage={pending} pendingAt={pending === null ? null : AT} imageUrls={IMAGE_URLS} tasks={TASKS} resolving={null}
+        hasOlder={loadingOlder} loadingOlder={loadingOlder} onSuggest={noop} onApply={noop} onDismiss={noop} />
     </div>
     {children}
   </AgentChatPanelFrame>;
@@ -170,26 +174,32 @@ export function AgentChatSection() {
         <Panel state="empty"><SampleComposer repositories /></Panel>
       </Sample>
       <Sample label="Panel, proposal" note="A pending proposal under Aril's answer: one row for each operation, and Apply changes or Dismiss. Each message shows its time.">
-        <Panel conversation={PROPOSED}><SampleComposer /></Panel>
+        <Panel messages={PROPOSED}><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, answer being written" note="The partial answer under a head with the time the turn started, one fixed activity line, and the round Stop in place of Send.">
-        <Panel conversation={conversation([ASK])} turn={STREAMING_TURN}><SampleComposer running /></Panel>
+        <Panel messages={thread([ASK])} turn={STREAMING_TURN}><SampleComposer running /></Panel>
       </Sample>
       <Sample label="Panel, activity lines" note="A grant follow-up is one quiet line: an icon, its text, and its time. It has no head and no card.">
-        <Panel conversation={QUIET}><SampleComposer /></Panel>
+        <Panel messages={QUIET}><SampleComposer /></Panel>
       </Sample>
-      <Sample label="Panel, conversations" note="The saved conversations replace the message list; the open one is marked.">
-        <Panel history><SampleComposer /></Panel>
+      <Sample label="Panel, search" note="The search opens under the header. Each match shows who wrote it, its time, and an excerpt with the searched text emphasized. Choosing one loads the thread to that message and marks it for a moment.">
+        <Panel messages={PROPOSED} search={{ query: "retry", matches: MATCHES }}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, search without a match" note="One quiet line. Before anything is typed, the line reads what the search covers.">
+        <Panel messages={PROPOSED} search={{ query: "rollback", matches: [] }}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, earlier messages loading" note="Scrolling to the first message loads the page before it. A quiet status shows at the top while it loads, and the log stays where the owner was reading.">
+        <Panel messages={PROPOSED} loadingOlder><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, notes under an answer" note="A failed answer, a timed-out answer, and a proposal that could not be read.">
-        <Panel conversation={NOTES}><SampleComposer /></Panel>
+        <Panel messages={NOTES}><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, images" note="The owner's message shows its images under the text. A proposal row that names an image shows it too.">
-        <Panel conversation={WITH_IMAGES}><SampleComposer /></Panel>
+        <Panel messages={WITH_IMAGES}><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, no repository" note="The composer is disabled until a repository is observed.">
         <AgentChatPanelFrame isStatic>
-          <AgentChatHeader historyOpen={false} onToggleHistory={noop} onNew={noop} expanded={false} onToggleExpanded={noop} onClose={noop} disabled />
+          <AgentChatHeader searchOpen={false} onToggleSearch={noop} expanded={false} onToggleExpanded={noop} onClose={noop} disabled />
           <div className="agentChatBody"><div className="agentChatLogFrame"><div className="agentChatLog"><p className="agentChatLoading">No repositories observed yet.</p></div></div></div>
           <SampleComposer disabled />
         </AgentChatPanelFrame>
@@ -200,13 +210,13 @@ export function AgentChatSection() {
         <div className="designSystemChatStage">
           <div className="designSystemChatPage"><b>Tasks</b><span>Ready (3)</span><span>In progress (1)</span><span>Review (2)</span></div>
           <AgentChatScrim isStatic />
-          <Panel conversation={PROPOSED}><SampleComposer /></Panel>
+          <Panel messages={PROPOSED}><SampleComposer /></Panel>
         </div>
       </Sample>
     </div>
     <div className="designSystemGrid">
       <Sample label="Panel, expanded" note="Expanded, the panel covers the content area beside the rail. The header keeps its place; the log and the composer sit in a centered column about 760px wide. The header action reads Dock and is pressed.">
-        <Panel conversation={PROPOSED} expanded><SampleComposer repositories /></Panel>
+        <Panel messages={PROPOSED} expanded><SampleComposer repositories /></Panel>
       </Sample>
     </div>
     <div className="designSystemGrid designSystemChatGrid">
@@ -261,9 +271,6 @@ export function AgentChatSection() {
       </Sample>
       <Sample label="Composer, over the limit" note="The counter appears past 3,600 characters and turns to the error color past 4,000; Send is disabled.">
         <div className="designSystemTaskFrame"><SampleComposer initial={"x".repeat(4_012)} /></div>
-      </Sample>
-      <Sample label="Composer, answering elsewhere" note="Send is disabled while an answer is being written in another conversation.">
-        <div className="designSystemTaskFrame"><SampleComposer initial="Is any task too big?" runningElsewhere /></div>
       </Sample>
     </div>
     <Wide label="Answer text" note="Tables, quotes, rules, nested and task lists, emphasis, strikethrough, and code. HTML, links and images stay literal text: nothing here can navigate.">

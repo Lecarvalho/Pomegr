@@ -13,7 +13,7 @@ const TASK_ACTIONS = new Set([
   "aril_settings_set", "aril_memory_add", "aril_memory_update", "aril_memory_remove", "grant_start", "grant_stop",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
-const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "send", "stop", "apply", "dismiss", "delete"]);
+const AGENT_CHAT_OPERATIONS = new Set(["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"]);
 const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
 const TASK_FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;

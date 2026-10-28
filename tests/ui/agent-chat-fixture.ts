@@ -12,7 +12,7 @@ export const PROPOSAL_ID = "p-0123456789ab";
 export const AT = "2026-10-11T10:00:00.000Z";
 
 type Json = Record<string, unknown>;
-type StoredConversation = { id: string; title: string; provider: "claude" | "codex"; model: string | null; effort?: string; createdAt: string; updatedAt: string; messages: Json[] };
+type StoredConversation = { id: string; title: string; provider: "claude" | "codex"; model: string | null; effort?: string; createdAt: string; updatedAt: string; messages: Json[]; grantFollowUps?: true };
 type Turn = { repositoryId: string; conversationId: string; startedAt: string; provider: string; model: string | null; effort?: string; activity: string; text: string };
 
 export const userMessage = (text: string, id = "m-1"): Json => ({ id, role: "user", text, at: AT });
@@ -51,6 +51,8 @@ export class FakeChat {
   hold: Promise<void> | null = null;
   /** True makes an answered proposal start Aril's follow-up, as the desktop does: a turn with no message of the owner. */
   followUps = false;
+  /** The messages of one page of the thread, as the desktop's bound is sixty. */
+  pageSize = 60;
   readonly agentChat = vi.fn((operation: string, payload: Json) => this.handle(operation, payload));
   /** The bytes of each image the desktop holds, by ID. */
   readonly images = new Map<string, { type: string; bytes: Uint8Array }>();
@@ -121,14 +123,37 @@ export class FakeChat {
     const turn = this.turn;
     if (!turn) return;
     const conversation = this.conversation(turn.repositoryId, turn.conversationId);
-    conversation?.messages.push(agentMessage(text, { provider: turn.provider, model: turn.model, ...(turn.effort ? { effort: turn.effort } : {}), status, ...extra }, `m-${conversation.messages.length + 1}`));
-    if (conversation) conversation.updatedAt = this.stamp();
+    const at = this.stamp();
+    conversation?.messages.push(agentMessage(text, { provider: turn.provider, model: turn.model, ...(turn.effort ? { effort: turn.effort } : {}), status, at, ...extra }, `m-${conversation.messages.length + 1}`));
+    if (conversation) conversation.updatedAt = at;
     this.turn = null;
   }
 
   private answered(repositoryId: string, stored: StoredConversation): Json {
     if (this.followUps) this.turn = { repositoryId, conversationId: stored.id, startedAt: AT, provider: stored.provider, model: stored.model, ...(stored.effort ? { effort: stored.effort } : {}), activity: "starting", text: "" };
     return { ok: true };
+  }
+
+  /** The messages of a repository in thread order, as the desktop sorts them: by time, then conversation creation, then place. */
+  private entries(repositoryId: string) {
+    const all: { conversation: StoredConversation; message: Json; index: number }[] = [];
+    for (const conversation of this.byRepository.get(repositoryId)?.values() ?? []) conversation.messages.forEach((message, index) => all.push({ conversation, message, index }));
+    return all.sort((left, right) => String(left.message.at).localeCompare(String(right.message.at)) || left.conversation.createdAt.localeCompare(right.conversation.createdAt)
+      || left.conversation.id.localeCompare(right.conversation.id) || left.index - right.index);
+  }
+
+  private cursorOf(entry: { conversation: StoredConversation; message: Json }) {
+    return `${entry.conversation.id}-${entry.message.id}`;
+  }
+
+  /** The conversation the next message goes to: the newest that is not a grant follow-up conversation and has room. */
+  private current(repositoryId: string) {
+    return [...(this.byRepository.get(repositoryId)?.values() ?? [])].filter((conversation) => !conversation.grantFollowUps && conversation.messages.length <= 198)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  }
+
+  private turnView(turn: Turn): Json {
+    return { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, ...(turn.effort ? { effort: turn.effort } : {}), activity: turn.activity, text: turn.text };
   }
 
   private summaries(repositoryId: string) {
@@ -147,7 +172,33 @@ export class FakeChat {
       case "read": {
         if (!stored) return { ok: false, error: "not_found" };
         const running = this.turn?.repositoryId === repositoryId && this.turn.conversationId === stored.id ? this.turn : null;
-        return { ok: true, conversation: structuredClone(stored), turn: running ? { conversationId: running.conversationId, startedAt: running.startedAt, provider: running.provider, model: running.model, ...(running.effort ? { effort: running.effort } : {}), activity: running.activity, text: running.text } : null };
+        return { ok: true, conversation: structuredClone(stored), turn: running ? this.turnView(running) : null };
+      }
+      case "thread": {
+        const all = this.entries(repositoryId);
+        const limit = typeof payload.limit === "number" ? payload.limit : this.pageSize;
+        let eligible = all;
+        if (typeof payload.before === "string") {
+          const at = all.findIndex((entry) => this.cursorOf(entry) === payload.before);
+          if (at < 0) return { ok: false, error: "invalid" };
+          eligible = all.slice(0, at);
+        }
+        const page = eligible.slice(-limit);
+        const conversations = [...(this.byRepository.get(repositoryId)?.values() ?? [])].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+        const own = conversations.find((conversation) => !conversation.grantFollowUps);
+        const running = this.turn?.repositoryId === repositoryId ? this.turn : null;
+        return {
+          ok: true, messages: page.map((entry) => ({ conversationId: entry.conversation.id, ...structuredClone(entry.message) })),
+          before: eligible.length > page.length ? this.cursorOf(page[0]) : null, turn: running ? this.turnView(running) : null,
+          sendTo: this.current(repositoryId)?.id ?? null, run: own ? { provider: own.provider, model: own.model, ...(own.effort ? { effort: own.effort } : {}) } : null,
+          updatedAt: conversations[0]?.updatedAt ?? null,
+        };
+      }
+      case "search": {
+        const query = String(payload.query).trim().toLowerCase();
+        const matches = this.entries(repositoryId).reverse().filter((entry) => String(entry.message.text).toLowerCase().includes(query)).slice(0, 20)
+          .map((entry) => ({ conversationId: entry.conversation.id, messageId: entry.message.id, at: entry.message.at, role: entry.message.role, snippet: String(entry.message.text).replace(/\s+/g, " ").trim() }));
+        return { ok: true, matches };
       }
       case "send": {
         if (this.hold) await this.hold;
@@ -158,14 +209,15 @@ export class FakeChat {
         const imageIds = Array.isArray(payload.images) ? payload.images.map(String) : [];
         if (imageIds.some((id) => !this.images.has(id))) return { ok: false, error: "invalid" };
         const effort = typeof payload.effort === "string" ? payload.effort : undefined;
-        const target = stored ?? conversationOf(this.counter += 1, [], { title: text.slice(0, 80), provider: payload.provider as "claude" | "codex", model: (payload.model as string | null) ?? null });
+        const target = stored ?? (conversationId === null ? this.current(repositoryId) : undefined) ?? conversationOf(this.counter += 1, [], { title: text.slice(0, 80), provider: payload.provider as "claude" | "codex", model: (payload.model as string | null) ?? null });
         target.provider = payload.provider as "claude" | "codex";
         target.model = (payload.model as string | null) ?? null;
         if (effort) target.effort = effort; else delete target.effort;
         map.set(target.id, target);
         const images = imageIds.map((id) => ({ id, type: this.images.get(id)!.type, bytes: this.images.get(id)!.bytes.byteLength }));
-        target.messages.push({ ...userMessage(text, `m-${target.messages.length + 1}`), ...(images.length > 0 ? { images } : {}) });
-        target.updatedAt = this.stamp();
+        const at = this.stamp();
+        target.messages.push({ ...userMessage(text, `m-${target.messages.length + 1}`), at, ...(images.length > 0 ? { images } : {}) });
+        target.updatedAt = at;
         this.turn = { repositoryId, conversationId: target.id, startedAt: AT, provider: String(payload.provider), model: (payload.model as string | null) ?? null, ...(effort ? { effort } : {}), activity: "thinking", text: "" };
         return { ok: true, conversationId: target.id };
       }

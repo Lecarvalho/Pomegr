@@ -1,6 +1,6 @@
 # Agent chat design
 
-> Scope: the Aril chat, its launcher, panel, repository choice, messages, answer text, proposal card, composer, and conversation list.
+> Scope: the Aril chat, its launcher, panel, repository choice, thread, search, messages, answer text, proposal card, and composer.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/components/agent-chat/`, `app/styles/agent-chat.css`, the `/design-system` samples,
@@ -24,7 +24,7 @@ The task board is in [Task board design](task-board.md).
 - A browser on the same computer draws nothing.
 - So the launcher is never drawn and then taken away.
 - The chat holds no data of its own.
-- The conversations and the answer being written come from `useAgentChat`.
+- The thread and the answer being written come from `useAgentChat`, and the search matches from `useAgentChatSearch`.
 - The board rows come from `useTasks`.
 - The repositories come from the inventory.
 - The only thing the chat writes to browser storage is the last repository ID (`pomegr.agentChat.repository`), never a message.
@@ -71,7 +71,7 @@ The task board is in [Task board design](task-board.md).
 - The scrim fades in with the panel, and the fade is removed under `prefers-reduced-motion`.
 - The header action **Expand** changes the panel to `expanded`, and **Dock** changes it back.
 - Expanded, the panel covers the whole content area, from the rail's right edge (`--command-rail-width`) to the right edge of the window, and the scrim dims the rail beside it.
-- Expanded, the log, the conversation list, and the composer sit in a centered column of at most 760px, and the header keeps the full width.
+- Expanded, the log, the search, and the composer sit in a centered column of at most 760px, and the header keeps the full width.
 - The dock keeps the mode in memory while the app runs and never writes it to browser storage.
 - At 760px and narrower, the panel is a full-screen sheet (`inset: 0`, z-index 85, no border, padded by the safe area) with 44px targets.
 - At 760px and narrower, **Expand** is not drawn and the scrim is not drawn.
@@ -82,18 +82,18 @@ The task board is in [Task board design](task-board.md).
 - A closed, idle panel asks nothing.
 - An open panel that follows no answer asks for the conversation list every five seconds, on the desktop and on a paired device.
 - So a message sent from another device, and the turn it starts, reach an open panel without reopening it.
-- A turn started elsewhere in the open conversation shows as the panel's own: the answer text, the activity line, Stop in place of Send, then the stored messages.
-- A newer stored open conversation in that list is read again, so a turn that ended between two asks still shows.
-- A conversation started elsewhere joins the conversation list, and the busy line disables Send while it is answered.
+- A turn started elsewhere shows as the panel's own: the answer text, the activity line, Stop in place of Send, then the stored messages.
+- A newer update time in that list reads the thread's newest page again, so a turn that ended between two asks still shows.
+- The panel reads the thread's newest page every poll interval while an answer is written, and older pages only on request.
 
 ### Header
 
 - The header (`.agentChatHeader`) has a one-pixel rule below it.
 - The header holds the `spark` glyph and the 16px/650 `h2` **Aril**, with no caption.
-- The header ends with four [Icon](../../../DESIGN.md#buttons)-role actions, each with an `aria-label` and a `title`.
-- **Conversations** has a `history` glyph and `aria-pressed`.
-- The pressed state of **Conversations** takes the raised fill, a local toggle state of the role.
-- **New conversation** has a `plus` glyph.
+- The header ends with three [Icon](../../../DESIGN.md#buttons)-role actions, each with an `aria-label` and a `title`.
+- **Search** has a `search` glyph and `aria-pressed`.
+- The pressed state of **Search** takes the raised fill, a local toggle state of the role.
+- The header has no conversation list, no **Conversations** action, and no **New conversation** action: the repository has one thread.
 - **Expand** has an `expand` glyph and `aria-pressed`.
 - The pressed **Expand** is named **Dock** and has a `dock` glyph.
 - **Close Aril** has a `close` glyph.
@@ -124,9 +124,53 @@ The task board is in [Task board design](task-board.md).
 - Opening moves focus to the message field, or to **Close Aril** when the field is disabled.
 - **Close Aril** and Escape close the panel and return focus to the launcher.
 - **Expand** and **Dock** keep focus on themselves.
-- Escape first belongs to a layer inside the panel: an open `CommandSelect` list, or an inline delete question.
+- Escape first belongs to a layer inside the panel: an open `CommandSelect` list, or the open search.
 - The panel never traps focus.
 - Nothing moves focus while an answer is written.
+
+## Search
+
+- **Search** opens the search under the header: `.agentChatSearch`, a `role="search"` region named “Search the conversation”, holding a field and the matches below it.
+- The search region is as wide as the panel, at most 45% of its height, and scrolls inside that height.
+- The field is `type="search"`, named “Search messages”, with the placeholder “Search messages…” and at most 100 characters.
+- The field has the raised fill (`--command-panel-2`), the control radius, 13px text, and no border.
+- The browser's own clear button is not drawn.
+- The field shows no focus ring when it is focused: the caret marks focus. [DESIGN.md](../../../DESIGN.md#agent-chat-exceptions) records the exception.
+- Focus moves to the field when the search opens.
+- Escape closes the search, empties the field, and returns focus to **Search**, and it does not close the panel then.
+- **Search** closes the search the same way, and sending a message closes it.
+- The search asks the desktop 250ms after the last key, and asks nothing for a field that holds only spaces.
+- The matches are a list named “Matching messages”, newest first, at most 20.
+- A match is a full-width button row with a minimum height of 32px, and 44px at 760px and narrower and on coarse pointers.
+- A match has two lines: who wrote the message, **You** or **Aril** in 12px/600, with its time; and a plain excerpt in muted 13px text.
+- The time of a match reads as a message time does: `HH:MM` for today, and `Mon D, HH:MM` for an earlier day.
+- The excerpt shows the searched text where it occurs, in the ink color at weight 650, whatever its case.
+- A row has a 6% ink tint on hover and the shared focus ring.
+- Choosing a match closes the search and brings its message into view as the [Thread](#thread) rules say.
+- The search has one quiet line in each of three states, in muted 12px text.
+
+| State | Line |
+| --- | --- |
+| Nothing typed | “Search the messages of this repository.” |
+| No match | “No messages match.” |
+| The desktop did not answer | “Search could not be reached. Try again.” |
+
+## Thread
+
+- The log shows one thread for each repository: its saved conversations as one continuous conversation, in the order of the time of each message.
+- The panel offers no way to choose, start, or delete a conversation, and it never says in which conversation a message is stored.
+- A message that follows one from another conversation is drawn like any other: nothing marks the boundary.
+- The log opens on the newest line.
+- Scrolling to within 80px of the first message loads the page of messages before it, at most 60.
+- A log whose messages do not fill its height loads the page before them, once it has a height.
+- A quiet status, “Loading earlier messages…”, floats at the top center of the log while a page loads. It sits over the log, so the log does not move for it.
+- Older messages added above leave the lines the owner reads where they were: the browser's scroll anchoring is off for the log, and the panel keeps the place.
+- A message that is brought into view is loaded first, by loading older pages, at most ten.
+- It is then scrolled to the middle of the log and marked for two seconds: the raised fill behind it, with the owner's bubble one step lighter.
+- A follow-up's notification link and a match the owner chose in the search bring a message into view in the same way.
+- A message that no page holds is not reached, and the log stays where it was.
+- **Apply changes**, **Dismiss**, and the other card actions belong to the proposal's own conversation, which the panel finds from the message.
+- An answer being written, and a follow-up that waits for the one turn, show in the thread wherever they run: the panel has no note of another conversation.
 
 ## Messages
 
@@ -152,7 +196,7 @@ The task board is in [Task board design](task-board.md).
 - The caption reads “Claude Code · default model” for an older answer with no model.
 - A grant follow-up is drawn as a quiet line and not as a message: a 14px `spark` glyph, its text, and its time, all muted, with no head, no caption, and no bubble.
 - A grant follow-up never draws a card (T-183).
-- A grant follow-up notification opens the panel in its repository, opens its conversation, and brings the follow-up into view.
+- A grant follow-up notification opens the panel in its repository, and brings the follow-up into view.
 - The answer follows as Markdown.
 - An answer that did not complete ends with one muted line of fixed words.
 - Aril's follow-up after an applied or dismissed proposal is drawn as any message of Aril, with no message of the owner before it.
@@ -201,16 +245,15 @@ The task board is in [Task board design](task-board.md).
 - The agent block is in an `aria-live="off"` wrapper, so the log announces each stored message and not each chunk.
 - A `role="status"` line holds one fixed word.
 - After **Apply changes**, **Start session**, a queue Primary, or **Dismiss**, the agent block of the follow-up is drawn the same way, with no pending message.
-- A follow-up that waits for an answer in another conversation reads “Starting…”.
+- A follow-up that waits for the one turn reads “Starting…”.
 - The panel asks for no follow-up: it reads the turn that the desktop app started.
 - The fixed word is “Starting…”, “Thinking…”, “Reading repository files…”, “Reading sessions…”, “Reading usage limits…”, or “Writing…”.
 
 ### Loading and empty states
 
-- Before the first list has answered, the log reads a quiet “Loading…”.
-- A saved conversation that is being read reads the same.
+- Before the first read of the thread has answered, the log reads a quiet “Loading…”.
 - The log never shows an empty state that is then replaced.
-- The empty state shows when no conversation is open and the list is ready.
+- The empty state shows when the thread holds no message and has been read.
 - The empty state starts with a 14px/650 “Ask Aril about this board” and one muted 12px sentence.
 - Four full-width Secondary rows follow, and they only fill the message field.
 - The rows read “Break this feature into tasks: ”, “Which task should run first, and why?”, “Is any task too big for one session?”, and “Which model fits this kind of task: ”.
@@ -365,7 +408,6 @@ The task board is in [Task board design](task-board.md).
 | Part | Contract |
 | --- | --- |
 | Alert line | One `role="alert"` line of fixed words for the last refused operation, in error-colored text, never a fill |
-| Busy line | The muted line “Aril is answering in another conversation.”, while that is so |
 | Image alert line | One `role="alert"` line of fixed words for the last image that was not added |
 | Message field | A `textarea` named “Message Aril” with the placeholder “Ask Aril…” |
 | Image strip | The images of the message being written, named “Images to send”, each with a **Remove image n** Icon action |
@@ -388,14 +430,15 @@ The task board is in [Task board design](task-board.md).
 - The options are the named models of each provider under a heading for the provider: the Claude models of the Task modal's Run on list, sorted, and the Codex catalog in its order. See [Run on and Effort](task-modal.md#run-on-and-effort).
 - The list never offers a default model, and no control in the composer reads “default”.
 - A provider with no known model has one row labelled with the provider's name and no heading, so the provider can still be chosen.
-- The model of an open conversation is listed even when the known models no longer include it.
-- The initial model is the model of the open conversation, else the newest known Claude model, else the newest known Codex model.
-- A stored conversation with no model shows the newest known model of its provider.
+- The model of the thread's last run is listed even when the known models no longer include it.
+- The initial model is the model of the thread's last run, else the newest known Claude model, else the newest known Codex model.
+- The last run of a thread is that of its newest conversation that is not a grant follow-up conversation.
+- A last run with no model shows the newest known model of its provider.
 - The newest model has the highest version, then the latest date (`newestModel` in `shared/task-run-models.mjs`).
 - **Effort** is a `CommandSelect` named **Effort** with **Low**, **Medium**, **High**, and **Xhigh**, labelled as the Task modal labels them.
-- The initial effort is the effort of the open conversation, else **Medium**.
+- The initial effort is the effort of the thread's last run, else **Medium**.
 - Choosing a model keeps the effort, and choosing an effort keeps the model.
-- The choice lasts for the conversation in view, and each send carries both.
+- The choice lasts while the panel stays on the repository, and each send carries both.
 - Both selects follow the composer's rule: no frame, a 6% ink tint on hover, and a visible ring on keyboard focus.
 
 ### Images
@@ -421,7 +464,7 @@ The task board is in [Task board design](task-board.md).
 - Enter sends.
 - Shift+Enter makes a new line.
 - The key that confirms an IME composition never sends.
-- **Send** is disabled for an empty or over-long message, while a message or an image is on its way, while an answer is written elsewhere, and with no repository.
+- **Send** is disabled for an empty or over-long message, while a message or an image is on its way, and with no repository.
 - A message that holds only images cannot be sent.
 - **Send** is a round 32px action composed from the Icon role, with the brand fill, `--command-on-brand` ink, and an up-arrow (`send`) glyph, named “Send”.
 - While an answer is written in the open conversation, **Stop** takes the place of **Send**: the same round action with a square (`stop`) glyph, named “Stop”.
@@ -435,40 +478,21 @@ The task board is in [Task board design](task-board.md).
 | --- | --- |
 | “Aril is already answering. Wait for it to finish.” | None |
 | “Claude Code is not installed on this computer.” | The line names the provider that was asked |
-| “This repository holds 50 conversations. Delete one to start another.” | None |
-| “This conversation is full. Start a new one.” | It replaces the line above when a conversation is open |
-| “That conversation is no longer there.” | None |
+| “That message is no longer there.” | None |
 | “That proposal was already answered.” | None |
 | “That message could not be sent.” | None |
 | “Aril could not be reached. Try again.” | None |
 | “This proposal can be applied only in the Pomegr desktop app.” | A proposal that only the desktop window applies was applied elsewhere |
 
-## Conversations
-
-- The **Conversations** action replaces the message list with the conversation list.
-- The list has a heading, the caption eyebrow “Conversations”.
-- The list shows the saved conversations of the repository, newest first.
-- A muted footnote reads “Conversations are kept on this computer until you delete them.”
-- A row is a full-width button.
-- A row holds a 13px/500 title that ends in an ellipsis and a muted data-font “n messages · date”.
-- The open conversation is marked `aria-current="true"` on the raised fill.
-- Choosing a row opens it and leaves the list.
-- Each row ends with an Icon-role **Delete conversation** (a `trash` glyph).
-- **Delete conversation** swaps in an inline question, a Secondary **Delete** and a Quiet **Keep**, and no native dialog.
-- Focus starts on **Keep**, and Escape answers the question.
-- **Delete conversation** is disabled for the conversation whose answer is being written.
-- An empty list reads “No conversations yet.”
-- **New conversation** opens an empty conversation, leaves the list, and focuses the field.
-
 ## Samples
 
 - `/design-system` renders the Aril launcher in its three states.
-- It renders the panel from invented conversations: empty, with a pending proposal holding all eight operations, with an answer being written, with quiet activity lines, as the conversation list, with the notes under an answer and the unreadable-proposal notice, and with no repository.
+- It renders the panel from invented threads: empty, with a pending proposal holding all eight operations, with an answer being written, with quiet activity lines, with the search open and with a search that found nothing, while earlier messages load, with the notes under an answer and the unreadable-proposal notice, and with no repository.
 - It renders the expanded panel, with the log and the composer in their centered column.
 - It renders the proposal card pending, with a delete, in flight, applied, partly applied, with a task that was not found, with every result word, and dismissed.
 - It renders the session start proposed, held, failed, launched, and on a paired device.
 - It renders the queue change proposed for on and for off, on a paired device, turned on, turned on and held, turned off, and not changed.
-- It renders the composer with a repository choice, with the model and the effort, with no known model, with an error, over the limit, and while an answer is written elsewhere.
+- It renders the composer with a repository choice, with the model and the effort, with no known model, with an error, and over the limit.
 - It renders the panel over a dimmed page, with the scrim.
 - It renders the answer text, including HTML and a link shown as literal text.
-- The panel's own behavior (docking, the room the page makes for it, focus, Escape, the repository choice, polling, and the desktop bridge) is specified here but is not rendered there.
+- The panel's own behavior (docking, the room the page makes for it, focus, Escape, the repository choice, loading older pages, bringing a message into view, polling, and the desktop bridge) is specified here but is not rendered there.

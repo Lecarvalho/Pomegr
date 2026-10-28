@@ -122,7 +122,7 @@ test("a paired device, or any call without the desktop window's event, is refuse
   const { h, starts, apply, proposal } = await startHarness(context);
   for (const origin of [null, {}, { event: null }, { event: undefined }, { paired: true }]) assert.deepEqual(await apply(origin), { ok: false, error: "desktop_only" }, JSON.stringify(origin));
   // The gateway's call shape: an operation and a payload, and no origin.
-  assert.deepEqual(await h.handle("apply", { repositoryId, conversationId: (await h.store.list(repositoryId))[0].id, proposalId }), { ok: false, error: "desktop_only" });
+  assert.deepEqual(await h.handle("apply", { repositoryId, conversationId: (await h.store.index(repositoryId))[0].id, proposalId }), { ok: false, error: "desktop_only" });
   assert.deepEqual(starts, []);
   assert.deepEqual(h.calls, []);
   assert.deepEqual(await proposal(), startProposal(), "still pending, with no result, so the owner can apply it on the computer");

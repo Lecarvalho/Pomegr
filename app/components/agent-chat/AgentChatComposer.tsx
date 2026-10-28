@@ -33,11 +33,10 @@ export type AgentChatComposerProps = {
   onRepositoryChange?(repositoryId: string): void;
   /** No repository, so nothing can be asked. */
   disabled?: boolean;
-  /** An answer is being written in the open conversation: Stop replaces Send. */
+  /** An answer is being written in the thread: Stop replaces Send. */
   running: boolean;
-  /** A message is on its way, or an answer is being written elsewhere in this repository. */
+  /** A message is on its way. */
   busy: boolean;
-  runningElsewhere: boolean;
   /** One fixed line for the last refused operation. */
   error: string | null;
   /** The images of the message being written, in the order the owner added them. */
@@ -59,11 +58,11 @@ export type AgentChatComposerHandle = {
 };
 
 /** The message field, the repository, model, and effort choices, and Send, or Stop while an answer is being written. */
-export function AgentChatComposer({ value, onChange, onSend, onStop, modelOptions, modelValue, onModelChange, effort, onEffortChange, repositories = NO_REPOSITORIES, repositoryId, onRepositoryChange, disabled = false, running, busy, runningElsewhere, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, ref }: AgentChatComposerProps) {
+export function AgentChatComposer({ value, onChange, onSend, onStop, modelOptions, modelValue, onModelChange, effort, onEffortChange, repositories = NO_REPOSITORIES, repositoryId, onRepositoryChange, disabled = false, running, busy, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, ref }: AgentChatComposerProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const length = value.length;
   const over = length > MESSAGE_LIMIT;
-  const canSend = !disabled && !busy && !runningElsewhere && !running && !uploading && value.trim() !== "" && !over;
+  const canSend = !disabled && !busy && !running && !uploading && value.trim() !== "" && !over;
   const canAttach = !disabled && onAttach !== undefined;
   const attach = (files: File[]) => { if (canAttach && files.length > 0) onAttach(files); };
 
@@ -101,7 +100,6 @@ export function AgentChatComposer({ value, onChange, onSend, onStop, modelOption
     }}>
     {error && <p className="agentChatError" role="alert">{error}</p>}
     {imageError && <p className="agentChatError" role="alert">{imageError}</p>}
-    {runningElsewhere && <p className="agentChatNote">Aril is answering in another conversation.</p>}
     <textarea ref={own} className="agentChatField" aria-label="Message Aril" placeholder="Ask Aril…" rows={1}
       value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} onKeyDown={keyDown}
       onPaste={(event) => {

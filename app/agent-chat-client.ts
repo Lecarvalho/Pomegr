@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_PROPOSAL_ID_PATTERN,
+  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PROPOSAL_ID_PATTERN,
   AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES, AGENT_CHAT_WORKTREE_RESULTS,
   type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatConversation, type AgentChatConversationSummary,
   type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
-  type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSendResult, type AgentChatTurn,
+  type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
+  type AgentChatThreadResult, type AgentChatThreadRun, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
 import { TASK_EFFORTS, TASK_IMAGE_TYPES, type TaskEffort } from "../shared/task-contract";
 import { useClientAccess } from "./hooks/ClientAccessContext";
@@ -16,10 +17,12 @@ import { useClientAccess } from "./hooks/ClientAccessContext";
 
 const DESKTOP_POLL_MS = 500;
 const PAIRED_POLL_MS = 1_000;
-// While the panel is open and no answer of its conversation is being written, the list is asked at this slower pace,
-// so a message sent from another device, and the turn it starts, reach this panel.
+// While the panel is open and no answer is being written, the list is asked at this slower pace, so a message sent from
+// another device, and the turn it starts, reach this panel.
 const IDLE_POLL_MS = 5_000;
 const PAIRED_PATH = "/api/agent-chat";
+// Older pages the thread loads to bring one message into view: ten pages are 600 messages.
+const REVEAL_PAGES = 10;
 
 type Bridge = { agentChat(operation: AgentChatOperationName, payload: unknown): Promise<unknown> };
 type Json = Record<string, unknown>;
@@ -182,6 +185,48 @@ export async function readAgentChat(repositoryId: string, conversationId: string
   return { ok: true, conversation, turn: answer!.turn === null || answer!.turn === undefined ? null : parseTurn(answer!.turn) };
 }
 
+function parseRun(value: unknown): AgentChatThreadRun | null {
+  const run = record(value);
+  return run && (run.provider === "claude" || run.provider === "codex") ? { provider: run.provider, model: text(run.model) ? run.model : null, ...effortOf(run.effort) } : null;
+}
+
+/** A message of the thread: a stored message with the conversation it is in. One outside the contract is not drawn. */
+function parseThreadMessage(value: unknown): AgentChatThreadMessage | null {
+  const stored = record(value);
+  const message = parseMessage(value);
+  return stored && message && text(stored.conversationId) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(stored.conversationId) ? { ...message, conversationId: stored.conversationId } : null;
+}
+
+/** The newest page of a repository's thread, or the page before a cursor. */
+export async function threadAgentChat(repositoryId: string, before: string | null = null): Promise<AgentChatThreadResult> {
+  const answer = await request("thread", { repositoryId, ...(before === null ? {} : { before }) });
+  if (answer?.ok !== true || !Array.isArray(answer.messages)) return answer ? failure(answer) : UNAVAILABLE;
+  return {
+    ok: true,
+    messages: answer.messages.map(parseThreadMessage).filter((message): message is AgentChatThreadMessage => message !== null),
+    before: text(answer.before) && answer.before.length <= AGENT_CHAT_BOUNDS.cursorLength ? answer.before : null,
+    turn: answer.turn === null || answer.turn === undefined ? null : parseTurn(answer.turn),
+    sendTo: text(answer.sendTo) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(answer.sendTo) ? answer.sendTo : null,
+    run: answer.run === null || answer.run === undefined ? null : parseRun(answer.run),
+    updatedAt: text(answer.updatedAt) ? answer.updatedAt : null,
+  };
+}
+
+/** The newest messages of the thread whose text holds the query, as plain excerpts. */
+export async function searchAgentChat(repositoryId: string, query: string): Promise<AgentChatSearchResult> {
+  const answer = await request("search", { repositoryId, query });
+  if (answer?.ok !== true || !Array.isArray(answer.matches)) return answer ? failure(answer) : UNAVAILABLE;
+  const matches: AgentChatSearchMatch[] = [];
+  for (const entry of answer.matches) {
+    const match = record(entry);
+    if (match && text(match.conversationId) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(match.conversationId) && text(match.messageId) && AGENT_CHAT_MESSAGE_ID_PATTERN.test(match.messageId)
+      && text(match.at) && (match.role === "user" || match.role === "agent") && text(match.snippet)) {
+      matches.push({ conversationId: match.conversationId, messageId: match.messageId, at: match.at, role: match.role, snippet: match.snippet });
+    }
+  }
+  return { ok: true, matches };
+}
+
 export async function sendAgentChat(repositoryId: string, conversationId: string | null, message: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null, images: readonly string[] = []): Promise<AgentChatSendResult> {
   const answer = await request("send", { repositoryId, conversationId, text: message, provider, model, effort, ...(images.length > 0 ? { images: [...images] } : {}) });
   return answer?.ok === true && text(answer.conversationId) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(answer.conversationId) ? { ok: true, conversationId: answer.conversationId } : failure(answer);
@@ -193,122 +238,129 @@ async function done(operation: AgentChatOperationName, payload: Json): Promise<A
 }
 
 export const stopAgentChat = (repositoryId: string, conversationId: string) => done("stop", { repositoryId, conversationId });
-export const deleteAgentChat = (repositoryId: string, conversationId: string) => done("delete", { repositoryId, conversationId });
 export const applyAgentChatProposal = (repositoryId: string, conversationId: string, proposalId: string) => done("apply", { repositoryId, conversationId, proposalId });
 export const dismissAgentChatProposal = (repositoryId: string, conversationId: string, proposalId: string) => done("dismiss", { repositoryId, conversationId, proposalId });
 
+/** The thread as far as it is loaded: the messages in time order, and the cursor of the page before the first one. */
+export type LoadedThread = { messages: readonly AgentChatThreadMessage[]; before: string | null };
+const EMPTY_THREAD: LoadedThread = { messages: [], before: null };
+
+/** Messages of different conversations share their IDs (`m-1`), so a message is known by both. */
+export const threadMessageKey = (message: { conversationId: string; id: string }) => `${message.conversationId}/${message.id}`;
+
+/**
+ * The newest page laid over what is loaded: everything before the first loaded message that the page holds stays, and the page
+ * replaces the rest. A page that touches nothing loaded (the first read, or a thread that moved on by more than a page) replaces it.
+ */
+export function mergeNewest(loaded: LoadedThread, page: LoadedThread): LoadedThread {
+  const keys = new Set(page.messages.map(threadMessageKey));
+  const at = loaded.messages.findIndex((message) => keys.has(threadMessageKey(message)));
+  return at < 0 ? { messages: page.messages, before: page.before } : { messages: [...loaded.messages.slice(0, at), ...page.messages], before: loaded.before };
+}
+
+/** A conversation read again after a proposal was answered: its loaded messages are replaced where they stand. */
+function replaceConversation(loaded: LoadedThread, conversation: AgentChatConversation): LoadedThread {
+  const latest = new Map(conversation.messages.map((message) => [message.id, message]));
+  return { ...loaded, messages: loaded.messages.map((message) => { const next = message.conversationId === conversation.id ? latest.get(message.id) : undefined; return next ? { ...next, conversationId: conversation.id } : message; }) };
+}
+
 export type AgentChatView = {
-  /** False until the first list of this repository has answered. */
+  /** False until the first read of this repository's thread has answered. */
   ready: boolean;
-  conversations: AgentChatConversationSummary[];
-  /** The open conversation, or null for a new one. */
-  conversation: AgentChatConversation | null;
-  /** The conversation being opened, or null for a new one. It is set before `conversation` has been read. */
-  openId: string | null;
-  /** The conversation of this repository whose answer is being written, or null. */
-  runningId: string | null;
-  /** The answer being written in the open conversation. */
+  /** The loaded part of the thread, oldest first. */
+  messages: readonly AgentChatThreadMessage[];
+  /** More messages exist before the first one loaded. */
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  /** The answer being written, in whichever conversation it runs. */
   turn: AgentChatTurn | null;
-  /** The owner's message that was sent and is not in the stored conversation yet. */
+  /** What the thread last ran with, for the composer to start from. */
+  run: AgentChatThreadRun | null;
+  /** The owner's message that was sent and is not in the stored thread yet. */
   pendingMessage: string | null;
   /** The images of that message. */
   pendingImages: readonly AgentChatImage[];
-  /** A turn runs in another conversation of this repository, so Send would answer busy. */
-  runningElsewhere: boolean;
   /** The proposal whose Apply or Dismiss is in flight. */
   resolving: string | null;
   /** Why the last operation was refused; cleared by the next one. */
   error: AgentChatError | null;
-  open(conversationId: string | null): void;
   send(message: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null, images?: readonly AgentChatImage[]): Promise<boolean>;
   stop(): void;
   /** Answers true when the proposal ran, whole or in part, so the caller can read the board again. */
-  apply(proposalId: string): Promise<boolean>;
-  dismiss(proposalId: string): Promise<void>;
-  remove(conversationId: string): Promise<void>;
+  apply(conversationId: string, proposalId: string): Promise<boolean>;
+  dismiss(conversationId: string, proposalId: string): Promise<void>;
+  /** Loads the page before the first loaded message. Answers true when messages were added. */
+  loadOlder(): Promise<boolean>;
+  /** Loads older pages, a bounded number, until the message is loaded. Answers whether it is. */
+  reveal(conversationId: string, messageId: string): Promise<boolean>;
 };
 
 /**
- * The chat of one repository while its panel is open. `active` false stops every request, so a closed or minimized
- * panel asks nothing. Reads the open conversation every poll interval while its answer is being written, and the list
- * every idle interval otherwise, so a turn started from another device is followed as this panel's own. The caller mounts one instance per repository
- * (a `key`), so no conversation of one repository is ever shown under another.
+ * The chat of one repository while its panel is open: one thread, whatever conversations it is saved in. `active` false stops every
+ * request, so a closed or minimized panel asks nothing. While an answer is being written the newest page is read every poll interval;
+ * otherwise the conversation list is asked at the idle pace, and the thread is read again only when something changed, so a turn
+ * started from another device is followed as this panel's own. The caller mounts one instance per repository (a `key`), so no
+ * message of one repository is ever shown under another.
  */
 export function useAgentChat(repositoryId: string | null, active: boolean, availability: AgentChatAvailability): AgentChatView {
   const [ready, setReady] = useState(false);
-  const [conversations, setConversations] = useState<AgentChatConversationSummary[]>([]);
-  const [running, setRunning] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [conversation, setConversation] = useState<AgentChatConversation | null>(null);
+  const [thread, setThread] = useState<LoadedThread>(EMPTY_THREAD);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [turn, setTurn] = useState<AgentChatTurn | null>(null);
+  const [run, setRun] = useState<AgentChatThreadRun | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<readonly AgentChatImage[]>([]);
   const [resolving, setResolving] = useState<string | null>(null);
   const [error, setError] = useState<AgentChatError | null>(null);
-  // Bumped when the list shows that the open conversation changed since it was read, so it is read again.
-  const [revision, setRevision] = useState(0);
-  const shown = useRef<AgentChatConversation | null>(null);
+  const loaded = useRef<LoadedThread>(EMPTY_THREAD);
+  // The time of the last update the loaded thread was read at, so the idle list can tell that something changed.
+  const revision = useRef<string | null>(null);
   const generation = useRef(0);
-  const chosen = useRef(false);
+  const requests = useRef(0);
+  // Once a message is accepted, the first read that starts after it holds the stored message and replaces the pending one.
+  const accepted = useRef(Number.POSITIVE_INFINITY);
+  const paging = useRef<Promise<boolean> | null>(null);
   const usable = active && repositoryId !== null && (availability === "desktop" || availability === "paired");
   const pollMs = availability === "paired" ? PAIRED_POLL_MS : DESKTOP_POLL_MS;
+  const fast = turn !== null || pendingMessage !== null;
 
   // An answer that arrives after the panel left is dropped.
   useEffect(() => () => { generation.current += 1; }, []);
 
-  const applyList = useCallback((answer: AgentChatListResult, at: number) => {
-    if (at !== generation.current) return;
-    if (answer.ok) {
-      setConversations(answer.conversations);
-      setRunning(answer.running);
-      // The panel opens on the conversation being answered, else on the newest one.
-      if (!chosen.current) { chosen.current = true; setOpenId(answer.running ?? answer.conversations[0]?.id ?? null); }
-    } else setError(answer.error);
-    setReady(true);
-  }, []);
+  const commit = useCallback((next: LoadedThread) => { loaded.current = next; setThread(next); }, []);
 
-  const refreshList = useCallback(async () => {
+  // Reads the newest page. A read that a newer one overtook is dropped, so an old answer never replaces a newer one.
+  const refresh = useCallback(async () => {
     if (repositoryId === null) return;
     const at = generation.current;
-    applyList(await listAgentChats(repositoryId), at);
-  }, [repositoryId, applyList]);
+    const sequence = (requests.current += 1);
+    const answer = await threadAgentChat(repositoryId);
+    if (at !== generation.current || sequence !== requests.current) return;
+    setReady(true);
+    if (!answer.ok) { setError(answer.error); return; }
+    commit(mergeNewest(loaded.current, answer));
+    revision.current = answer.updatedAt;
+    setTurn(answer.turn);
+    setRun(answer.run);
+    if (sequence > accepted.current) { accepted.current = Number.POSITIVE_INFINITY; setPendingMessage(null); }
+  }, [repositoryId, commit]);
 
+  // Reads the thread when the panel opens, and keeps reading it while an answer is being written.
   useEffect(() => {
-    if (!usable || repositoryId === null) return;
-    const at = generation.current;
-    void listAgentChats(repositoryId).then((answer) => applyList(answer, at));
-  }, [usable, repositoryId, applyList]);
-
-  useEffect(() => { shown.current = conversation; }, [conversation]);
-
-  // Reads the open conversation, and keeps reading while its answer is being written.
-  useEffect(() => {
-    if (!usable || repositoryId === null || openId === null) return;
-    const at = generation.current;
+    if (!usable) return;
     let cancelled = false;
     let timer: number | null = null;
-    const read = async () => {
-      const answer = await readAgentChat(repositoryId, openId);
-      if (cancelled || at !== generation.current) return;
-      if (!answer.ok) {
-        if (answer.error === "not_found") { setOpenId(null); setConversation(null); setTurn(null); void refreshList(); } else setError(answer.error);
-        return;
-      }
-      setConversation(answer.conversation);
-      setTurn(answer.turn);
-      // The stored conversation now holds the message that was sent.
-      setPendingMessage(null);
-      if (answer.turn) timer = window.setTimeout(() => { timer = null; void read(); }, pollMs);
-      else { setRunning((current) => (current === openId ? null : current)); void refreshList(); }
+    const tick = async () => {
+      await refresh();
+      if (fast && !cancelled) timer = window.setTimeout(() => { timer = null; void tick(); }, pollMs);
     };
-    void read();
+    void tick();
     return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
-  }, [usable, repositoryId, openId, pollMs, running, revision, refreshList]);
+  }, [usable, fast, pollMs, refresh]);
 
-  // While no answer of the open conversation is being written, asks the list again at the idle pace. A turn that
-  // another device started sets `running`, which reads the open conversation again; a newer stored conversation
-  // is read again through `revision`.
-  const idle = usable && turn === null && pendingMessage === null;
+  // While no answer is being written, asks the list at the idle pace. A turn that another device started, or a newer stored
+  // change, reads the thread again.
+  const idle = usable && !fast;
   useEffect(() => {
     if (!idle || repositoryId === null) return;
     const at = generation.current;
@@ -318,23 +370,40 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     const poll = async () => {
       const answer = await listAgentChats(repositoryId);
       if (cancelled || at !== generation.current) return;
-      applyList(answer, at);
-      if (answer.ok && openId !== null && answer.running !== openId) {
-        const summary = answer.conversations.find((entry) => entry.id === openId);
-        if (summary?.updatedAt !== shown.current?.updatedAt) setRevision((value) => value + 1);
-      }
-      schedule();
+      if (!answer.ok) setError(answer.error);
+      else if (answer.running !== null || (answer.conversations[0]?.updatedAt ?? null) !== revision.current) await refresh();
+      if (!cancelled) schedule();
     };
     schedule();
     return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
-  }, [idle, repositoryId, openId, applyList]);
+  }, [idle, repositoryId, refresh]);
 
-  const open = useCallback((conversationId: string | null) => {
-    chosen.current = true;
-    setError(null); setPendingMessage(null); setTurn(null);
-    setConversation((current) => (current?.id === conversationId ? current : null));
-    setOpenId(conversationId);
-  }, []);
+  const loadOlder = useCallback((): Promise<boolean> => {
+    const cursor = loaded.current.before;
+    if (repositoryId === null || cursor === null) return Promise.resolve(false);
+    if (paging.current) return paging.current;
+    const at = generation.current;
+    setLoadingOlder(true);
+    const page = (async () => {
+      const answer = await threadAgentChat(repositoryId, cursor);
+      if (at !== generation.current) return false;
+      setLoadingOlder(false);
+      if (!answer.ok) { setError(answer.error); return false; }
+      // The thread was read again from its newest page meanwhile: this cursor is not the first loaded message's any more.
+      if (loaded.current.before !== cursor) return false;
+      const known = new Set(loaded.current.messages.map(threadMessageKey));
+      commit({ messages: [...answer.messages.filter((message) => !known.has(threadMessageKey(message))), ...loaded.current.messages], before: answer.before });
+      return true;
+    })().finally(() => { paging.current = null; });
+    paging.current = page;
+    return page;
+  }, [repositoryId, commit]);
+
+  const reveal = useCallback(async (conversationId: string, messageId: string) => {
+    const present = () => loaded.current.messages.some((message) => message.conversationId === conversationId && message.id === messageId);
+    for (let pages = 0; !present() && pages < REVEAL_PAGES; pages += 1) if (!await loadOlder()) break;
+    return present();
+  }, [loadOlder]);
 
   const send = useCallback(async (message: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null, images: readonly AgentChatImage[] = []) => {
     if (repositoryId === null) return false;
@@ -342,54 +411,43 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     setError(null);
     setPendingMessage(message);
     setPendingImages(images);
-    const answer = await sendAgentChat(repositoryId, openId, message, provider, model, effort, images.map((image) => image.id));
+    accepted.current = Number.POSITIVE_INFINITY;
+    // The desktop chooses the conversation: the thread's current one, or a new one when it is full.
+    const answer = await sendAgentChat(repositoryId, null, message, provider, model, effort, images.map((image) => image.id));
     if (at !== generation.current) return false;
     if (!answer.ok) { setPendingMessage(null); setError(answer.error); return false; }
-    chosen.current = true;
-    setOpenId(answer.conversationId);
-    setRunning(answer.conversationId);
+    accepted.current = requests.current;
+    void refresh();
     return true;
-  }, [repositoryId, openId]);
+  }, [repositoryId, refresh]);
 
   const stop = useCallback(() => {
-    if (repositoryId !== null && openId !== null) void stopAgentChat(repositoryId, openId);
-  }, [repositoryId, openId]);
+    if (repositoryId !== null && turn !== null) void stopAgentChat(repositoryId, turn.conversationId);
+  }, [repositoryId, turn]);
 
-  const resolve = useCallback(async (proposalId: string, approve: boolean) => {
-    if (repositoryId === null || openId === null) return false;
+  const resolve = useCallback(async (conversationId: string, proposalId: string, approve: boolean) => {
+    if (repositoryId === null) return false;
     const at = generation.current;
     setError(null);
     setResolving(proposalId);
-    const answer = await (approve ? applyAgentChatProposal : dismissAgentChatProposal)(repositoryId, openId, proposalId);
-    const latest = await readAgentChat(repositoryId, openId);
+    const answer = await (approve ? applyAgentChatProposal : dismissAgentChatProposal)(repositoryId, conversationId, proposalId);
+    const latest = await readAgentChat(repositoryId, conversationId);
     if (at !== generation.current) return false;
-    if (latest.ok) {
-      setConversation(latest.conversation);
-      // The desktop asks Aril for a follow-up once the outcome is stored. It is a turn like any other, so it is read until it ends.
-      if (latest.turn) { setTurn(latest.turn); setRunning(openId); }
-    }
+    // The proposal may sit above the newest page, so its conversation is replaced where it stands. The desktop asks Aril for a
+    // follow-up once the outcome is stored; it is a turn like any other, so the newest page is read, and then read until it ends.
+    if (latest.ok) commit(replaceConversation(loaded.current, latest.conversation));
+    await refresh();
+    if (at !== generation.current) return false;
     if (!answer.ok) setError(answer.error);
     setResolving(null);
     return answer.ok;
-  }, [repositoryId, openId]);
+  }, [repositoryId, commit, refresh]);
 
-  const apply = useCallback((proposalId: string) => resolve(proposalId, true), [resolve]);
-  const dismiss = useCallback(async (proposalId: string) => { await resolve(proposalId, false); }, [resolve]);
-
-  const remove = useCallback(async (conversationId: string) => {
-    if (repositoryId === null) return;
-    const at = generation.current;
-    setError(null);
-    const answer = await deleteAgentChat(repositoryId, conversationId);
-    if (at !== generation.current) return;
-    if (!answer.ok) { setError(answer.error); return; }
-    if (conversationId === openId) { setOpenId(null); setConversation(null); setTurn(null); }
-    await refreshList();
-  }, [repositoryId, openId, refreshList]);
+  const apply = useCallback((conversationId: string, proposalId: string) => resolve(conversationId, proposalId, true), [resolve]);
+  const dismiss = useCallback(async (conversationId: string, proposalId: string) => { await resolve(conversationId, proposalId, false); }, [resolve]);
 
   return {
-    ready, conversations, conversation: conversation?.id === openId ? conversation : null, openId, runningId: running,
-    turn: turn?.conversationId === openId ? turn : null,
-    pendingMessage, pendingImages: pendingMessage === null ? NO_IMAGES : pendingImages, runningElsewhere: running !== null && running !== openId, resolving, error, open, send, stop, apply, dismiss, remove,
+    ready, messages: thread.messages, hasOlder: thread.before !== null, loadingOlder, turn, run,
+    pendingMessage, pendingImages: pendingMessage === null ? NO_IMAGES : pendingImages, resolving, error, send, stop, apply, dismiss, loadOlder, reveal,
   };
 }

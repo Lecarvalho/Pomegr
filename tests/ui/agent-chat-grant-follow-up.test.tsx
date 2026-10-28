@@ -59,10 +59,11 @@ describe("a follow-up's link", () => {
     render(<AgentChatDock />);
     await settle();
     expect(panel()).toBeVisible();
-    expect(chat.calls("read").at(-1)).toEqual({ repositoryId: REPO_B, conversationId: chatId(1) });
+    expect(chat.calls("thread").at(-1)).toEqual({ repositoryId: REPO_B });
     const message = within(log()).getByText(followUpText).closest("article")!;
     expect(message).toHaveAccessibleName("Aril");
     expect(message).toHaveAttribute("data-message-id", "m-1");
+    expect(message).toHaveAttribute("data-conversation-id", chatId(1));
     // A quiet line: its text and its time, with no head, no caption, and no message bubble.
     expect(message).toHaveClass("agentChatQuietLine");
     expect(message.querySelector("time")).toHaveAttribute("datetime", AT);
@@ -77,11 +78,11 @@ describe("a follow-up's link", () => {
     expect(screen.queryByRole("log")).toBeNull();
     act(() => openAgentChatLink(`/tasks?repository=${REPO_B}&aril=${chatId(1)}&message=m-1`));
     await settle();
-    expect(chat.calls("read").at(-1)).toEqual({ repositoryId: REPO_B, conversationId: chatId(1) });
+    expect(chat.calls("thread").at(-1)).toEqual({ repositoryId: REPO_B });
     expect(within(log()).getByText(followUpText)).toBeInTheDocument();
     expect(within(log()).queryByText("Repository A answer")).toBeNull();
     act(() => openAgentChatLink("/tasks?repository=repo-unknown&aril=open"));
     await settle();
-    expect(chat.calls("read").at(-1)).toEqual({ repositoryId: REPO_B, conversationId: chatId(1) });
+    expect(chat.calls("thread").at(-1)).toEqual({ repositoryId: REPO_B });
   });
 });

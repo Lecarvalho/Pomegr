@@ -33,8 +33,8 @@ beforeEach(() => { chat = installHarness(); });
 afterEach(() => { removeHarness(); });
 
 const user = newUser;
-/** The repositories the chat asked about, once each, in order. */
-const listed = () => [...new Set(chat.calls("list").map((payload) => payload.repositoryId))];
+/** The repositories the chat read the thread of, once each, in order. */
+const listed = () => [...new Set(chat.calls("thread").map((payload) => payload.repositoryId))];
 const launcher = () => screen.getByRole("button", { name: /^Open Aril, the Pomegr agent/ });
 const panel = () => screen.getByRole("region", { name: "Aril, the Pomegr agent" });
 const field = () => screen.getByRole("textbox", { name: "Message Aril" });
@@ -90,13 +90,13 @@ describe("the panel", () => {
     render(<AgentChatDock />);
     await openPanel(person);
     await ask(person, "Cut it up");
-    await person.click(screen.getByRole("button", { name: "Conversations" }));
-    expect(screen.getByRole("button", { name: "Conversations" })).toHaveFocus();
+    await person.click(screen.getByRole("button", { name: "Expand" }));
+    expect(screen.getByRole("button", { name: "Dock" })).toHaveFocus();
     chat.write("Some text", "writing");
     await settle(500);
     chat.finish("All done");
     await settle(500);
-    expect(screen.getByRole("button", { name: "Conversations" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Dock" })).toHaveFocus();
   });
 
   it("shows Answering on the launcher while the panel is closed, then a dot and a new-answer name until it is opened", async () => {
@@ -138,21 +138,21 @@ describe("the panel", () => {
     expect(launcher()).toHaveAccessibleName("Open Aril, the Pomegr agent");
   });
 
-  it("starts a new conversation, focuses the field, and leaves the conversation list", async () => {
+  it("sends a message without a conversation, so the desktop continues the thread, and offers no way to pick or start one", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Old question"), agentMessage("Old answer")]));
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
     expect(within(log()).getByText("Old answer")).toBeInTheDocument();
-    await person.click(screen.getByRole("button", { name: "Conversations" }));
-    await person.click(screen.getByRole("button", { name: "New conversation" }));
-    await settle();
-    expect(screen.getByRole("heading", { level: 3, name: "Ask Aril about this board" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Conversations" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Conversations" })).toHaveAttribute("aria-pressed", "false");
-    expect(field()).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Conversations" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New conversation" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Delete conversation/ })).toBeNull();
     await ask(person, "A new topic");
     expect(chat.calls("send")[0]).toMatchObject({ conversationId: null, text: "A new topic" });
+    expect(chat.conversation(REPO_A, chatId(1))?.messages.map((message) => message.text)).toEqual(["Old question", "Old answer", "A new topic"]);
+    // The old messages and the new one are one thread, in order.
+    expect(within(log()).getByText("Old answer")).toBeInTheDocument();
+    expect(within(log()).getByText("A new topic")).toBeInTheDocument();
   });
 
   it("follows the newest line only while the owner is at the bottom, and offers Jump to latest after they scroll up", async () => {
@@ -185,86 +185,53 @@ describe("the panel", () => {
   });
 });
 
-describe("saved conversations", () => {
+describe("the thread", () => {
+  const AT_ONE = "2026-10-11T09:00:00.000Z";
+  const stamped = (message: Record<string, unknown>, at: string) => ({ ...message, at });
   const seedThree = () => chat.seed(REPO_A,
-    conversationOf(1, [userMessage("First topic"), agentMessage("First answer")], { title: "First topic" }),
-    conversationOf(2, [userMessage("Second topic"), agentMessage("Second answer")], { title: "Second topic" }),
-    conversationOf(3, [userMessage("Third topic")], { title: "Third topic" }));
+    conversationOf(1, [stamped(userMessage("First topic"), AT_ONE), stamped(agentMessage("First answer"), "2026-10-11T09:01:00.000Z")], { title: "First topic" }),
+    conversationOf(2, [stamped(userMessage("Second topic"), "2026-10-11T09:05:00.000Z"), stamped(agentMessage("Second answer"), "2026-10-11T09:06:00.000Z")], { title: "Second topic" }),
+    conversationOf(3, [stamped(userMessage("Third topic"), "2026-10-11T09:03:00.000Z")], { title: "Third topic" }));
 
-  it("lists them with the open one marked, opens one, and leaves the list", async () => {
+  it("shows the messages of every conversation of the repository as one thread in time order, with no conversation list", async () => {
     seedThree();
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    const toggle = screen.getByRole("button", { name: "Conversations" });
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
-    await person.click(toggle);
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("heading", { level: 3, name: "Conversations" })).toBeInTheDocument();
-    expect(screen.queryByRole("log")).toBeNull();
-    const rows = screen.getAllByRole("listitem");
-    expect(rows).toHaveLength(3);
-    // Newest first; the newest one is open.
-    expect(rows[0]).toHaveTextContent("Third topic");
-    expect(rows[0].querySelector("[aria-current='true']")).not.toBeNull();
-    expect(rows[1].querySelector("[aria-current]")).toBeNull();
-    expect(rows[0]).toHaveTextContent(/1 message · [A-Z][a-z]{2} \d{1,2}, \d\d:\d\d/);
-    expect(rows[1]).toHaveTextContent(/2 messages · /);
-    expect(screen.getByText("Conversations are kept on this computer until you delete them.")).toBeInTheDocument();
-    await person.click(within(rows[2]).getByRole("button", { name: /^First topic/ }));
-    await settle();
-    expect(chat.calls("read").at(-1)).toEqual({ repositoryId: REPO_A, conversationId: chatId(1) });
+    const articles = [...log().querySelectorAll<HTMLElement>("article")];
+    expect(articles.map((article) => article.querySelector("p")?.textContent)).toBeDefined();
+    const texts = ["First topic", "First answer", "Third topic", "Second topic", "Second answer"];
+    const drawn = texts.map((text) => within(log()).getByText(text));
+    for (let index = 1; index < drawn.length; index += 1) {
+      expect(drawn[index - 1].compareDocumentPosition(drawn[index]) & Node.DOCUMENT_POSITION_FOLLOWING, texts[index]).toBeTruthy();
+    }
+    expect(chat.calls("thread")[0]).toEqual({ repositoryId: REPO_A });
+    expect(chat.calls("read")).toEqual([]);
+    expect(screen.queryByRole("button", { name: "Conversations" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Conversations" })).toBeNull();
-    expect(within(log()).getByText("First answer")).toBeInTheDocument();
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByText("Conversations are kept on this computer until you delete them.")).toBeNull();
+    // Each line names the conversation it is stored in, which is how Apply finds its proposal.
+    expect(within(log()).getByText("Third topic").closest("article")).toHaveAttribute("data-conversation-id", chatId(3));
+    expect(within(log()).getByText("Second answer").closest("article")).toHaveAttribute("data-conversation-id", chatId(2));
   });
 
-  it("says that there are none yet", async () => {
+  it("says nothing of conversations when there are none, and shows the empty state", async () => {
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    await person.click(screen.getByRole("button", { name: "Conversations" }));
-    expect(screen.getByText("No conversations yet.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Ask Aril about this board" })).toBeInTheDocument();
+    expect(screen.queryByText("No conversations yet.")).toBeNull();
   });
 
-  it("deletes after an inline question, and keeps the conversation when asked to keep it", async () => {
+  it("shows the answer being written in whichever conversation it runs, with Stop, and no note of another conversation", async () => {
     seedThree();
+    chat.turn = { repositoryId: REPO_A, conversationId: chatId(1), startedAt: "2026-10-11T10:00:00.000Z", provider: "claude", model: null, activity: "writing", text: "Partway" };
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    await person.click(screen.getByRole("button", { name: "Conversations" }));
-    const remove = screen.getByRole("button", { name: "Delete conversation: Second topic" });
-    expect(remove).toHaveClass("commandIconAction");
-    await person.click(remove);
-    const question = screen.getByRole("group", { name: "Delete Second topic?" });
-    expect(within(question).getByRole("button", { name: "Delete" })).toHaveClass("commandSecondaryAction");
-    expect(within(question).getByRole("button", { name: "Keep" })).toHaveClass("commandQuietAction");
-    expect(within(question).getByRole("button", { name: "Keep" })).toHaveFocus();
-    await person.click(within(question).getByRole("button", { name: "Keep" }));
-    expect(screen.queryByRole("group", { name: /Delete/ })).toBeNull();
-    expect(chat.calls("delete")).toEqual([]);
-    // Escape answers the question first and does not close the panel.
-    await person.click(screen.getByRole("button", { name: "Delete conversation: Second topic" }));
-    await person.keyboard("{Escape}");
-    expect(screen.queryByRole("group", { name: /Delete/ })).toBeNull();
-    expect(panel()).toBeInTheDocument();
-    await person.click(screen.getByRole("button", { name: "Delete conversation: Second topic" }));
-    await person.click(screen.getByRole("button", { name: "Delete" }));
-    await settle();
-    expect(chat.calls("delete")).toEqual([{ repositoryId: REPO_A, conversationId: chatId(2) }]);
-    expect(screen.queryByText("Second topic")).toBeNull();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
-  });
-
-  it("does not let the conversation whose answer is being written be deleted", async () => {
-    seedThree();
-    chat.turn = { repositoryId: REPO_A, conversationId: chatId(2), startedAt: "2026-10-11T10:00:00.000Z", provider: "claude", model: null, activity: "writing", text: "Partway" };
-    const person = user();
-    render(<AgentChatDock />);
-    await openPanel(person);
-    await person.click(screen.getByRole("button", { name: "Conversations" }));
-    expect(screen.getByRole("button", { name: "Delete conversation: Second topic" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Delete conversation: First topic" })).toBeEnabled();
+    expect(within(log()).getByText("Partway")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    expect(screen.queryByText("Aril is answering in another conversation.")).toBeNull();
   });
 });
 

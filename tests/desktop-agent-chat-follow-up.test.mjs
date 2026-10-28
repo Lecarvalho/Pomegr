@@ -7,7 +7,7 @@ import test from "node:test";
 import { AGENT_CHAT_INSTRUCTIONS, composePrompt, conversationHistory, proposalOutcome } from "../desktop/runtime/agent-chat-prompt.mjs";
 import { normalizeConversation } from "../desktop/runtime/agent-chat-store.mjs";
 import {
-  agentMessage, chatHarness, finishTurn, pendingProposal, readyBoard, repositoryId, root, seed, send, stamp, token, until, userMessage, withProposal,
+  agentMessage, chatHarness, finishTurn, pendingProposal, readyBoard, repositoryId, root, seed, seedCurrent, send, stamp, token, until, userMessage, withProposal,
 } from "./helpers/agent-chat-harness.mjs";
 
 const proposalId = "p-0123456789ab";
@@ -229,7 +229,9 @@ test("a provider run that fails, and a monitor that stops answering, lose no act
 test("a turn that already runs is not disturbed: the follow-up waits for it and then runs once", async (context) => {
   const h = await chatHarness(context);
   const conversation = await seed(h, { messages: withProposal() });
+  const current = await seedCurrent(h);
   const sent = await send(h);
+  assert.equal(sent.conversationId, current.id, "the thread sends the message to its newest conversation");
   assert.deepEqual(await answer(h, "apply", conversation.id), { ok: true }, "the board is changed while Aril answers elsewhere");
   assert.equal((await stored(h, conversation.id))[1].proposal.state, "applied");
   assert.equal(h.runs.length, 1, "no second run while one runs");
@@ -250,6 +252,7 @@ test("a turn that already runs is not disturbed: the follow-up waits for it and 
 test("Stop ends a follow-up like any turn, and takes back one that has not started", async (context) => {
   const h = await chatHarness(context);
   const conversation = await seed(h, { messages: withProposal() });
+  await seedCurrent(h);
   const sent = await send(h);
   await answer(h, "dismiss", conversation.id);
   assert.deepEqual(await h.handle("stop", { repositoryId, conversationId: conversation.id }), { ok: true });
@@ -342,6 +345,7 @@ test("a paired device's answer is followed up like the desktop's, with the conve
 test("deleting the conversation and closing the app drop a follow-up that waits", async (context) => {
   const h = await chatHarness(context);
   const conversation = await seed(h, { messages: withProposal() });
+  await seedCurrent(h);
   const sent = await send(h);
   await answer(h, "apply", conversation.id);
   assert.deepEqual(await h.handle("delete", { repositoryId, conversationId: conversation.id }), { ok: true });
@@ -350,6 +354,7 @@ test("deleting the conversation and closing the app drop a follow-up that waits"
 
   const closing = await chatHarness(context);
   const other = await seed(closing, { messages: withProposal() });
+  await seedCurrent(closing);
   await send(closing);
   await answer(closing, "dismiss", other.id);
   closing.chat.dispose();

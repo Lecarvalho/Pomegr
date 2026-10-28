@@ -169,7 +169,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | Repositories index and detail, file tree, file history | [Repositories design](docs/internal/design/repositories.md) |
 | Tasks page, board, cards, queue, session task surfaces | [Task board design](docs/internal/design/task-board.md) |
 | Task modal, task fields, Promote issues page | [Task modal design](docs/internal/design/task-modal.md) |
-| Aril chat launcher, panel, messages, proposal card, composer, conversations | [Agent chat design](docs/internal/design/agent-chat.md) |
+| Aril chat launcher, panel, thread, search, messages, proposal card, composer | [Agent chat design](docs/internal/design/agent-chat.md) |
 | Public website: home, download, and documentation pages, shared header and footer, landing tokens and motion | [Landing design](docs/internal/design/landing.md) |
 | `CommandTable` integration | [Command table](docs/internal/development/command-table.md) |
 
@@ -344,7 +344,8 @@ These are exceptions to the 4px and 6px radius rule and to the six button roles.
 - A click on the scrim closes the panel as Close does.
 - The scrim is not drawn at 760px and narrower, where the panel is a sheet.
 - The message field in the composer shows no focus ring when it is focused, and its caret marks focus.
-- The message field is the only Aril control without the ring: every button and select in the composer keeps it for keyboard users.
+- The search field under the Aril header shows no focus ring either, and its text caret marks focus.
+- The message field and the search field are the only Aril controls without the ring: every button and select in the composer keeps it for keyboard users, and so does every match of the search.
 - The composer's model select reads the model alone on its closed control, through the `CommandSelect` option `groupInValue={false}`.
 
 Touch size is separate from shape:
@@ -379,7 +380,7 @@ All six roles share these rules:
 - The disabled treatment is opacity .48.
 - Borders use the panel line token. The stronger control line shows only on hover and on form fields such as selects.
 - Hover and focus move between neutral tones without lift.
-- Every interactive control shows the visible focus ring, but for the Aril message field, which shows none (see [Agent chat exceptions](#agent-chat-exceptions)).
+- Every interactive control shows the visible focus ring, but for the Aril message field and search field, which show none (see [Agent chat exceptions](#agent-chat-exceptions)).
 - Controls keep reduced-motion behavior.
 
 States:

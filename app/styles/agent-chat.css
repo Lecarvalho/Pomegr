@@ -33,12 +33,15 @@
 .agentChatHeader .commandIconAction { flex: 0 0 auto; }
 .agentChatHeader .commandIconAction[aria-pressed="true"] { background: var(--command-panel-2); color: var(--command-ink); }
 
-/* Body: the conversation, or the saved conversations in its place. */
+/* Body: the thread with Aril. The search opens under the header, above it. */
 .agentChatBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .agentChatLogFrame { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.agentChatLog { flex: 1 1 auto; min-height: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
+/* The log keeps its own place when older messages are added above: the browser's scroll anchoring is off, so the panel does it once. */
+.agentChatLog { flex: 1 1 auto; min-height: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
 .agentChatLog:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .agentChatLoading { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+/* A quiet status at the top while the page before the first message loads. It floats over the log, so the log never moves for it. */
+.agentChatEarlier { position: absolute; top: var(--space-2); left: 50%; margin: 0; padding: var(--space-1) var(--space-3); transform: translateX(-50%); border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); white-space: nowrap; }
 /* Opaque, hover included: the shared Quiet role's transparent fills would let the log show through. */
 .agentChatJump.commandQuietAction { position: absolute; right: var(--jump-inset, var(--space-4)); bottom: var(--space-2); width: auto; white-space: nowrap; border: 1px solid var(--command-line); background: var(--command-panel); }
 .agentChatJump.commandQuietAction:hover:not(:disabled), .agentChatJump.commandQuietAction:active:not(:disabled) { background: var(--command-panel-2); }
@@ -55,6 +58,9 @@
 .agentChatQuietLine > .commandIcon { margin-top: var(--space-1); }
 .agentChatQuietText { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
 .agentChatQuietLine > .agentChatMessageTime { flex: 0 0 auto; }
+/* A message that was brought into view, by a notification or by the search, stays marked on the raised fill for a moment. */
+.agentChatLog .isMarked:not(.isOwner) { margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2)); padding: var(--space-1) var(--space-2); border-radius: var(--control-radius); background: var(--command-panel-2); }
+.agentChatLog .isMarked.isOwner .agentChatBubble { background: color-mix(in srgb, var(--command-ink) 10%, var(--command-panel-2)); }
 .agentChatMessageNote, .agentChatActivity { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
 
 /* The text of an answer. Preflight removes list markers and the code face, so both are set here. */
@@ -153,28 +159,27 @@
 .agentChatAttach { flex: 0 0 auto; }
 .agentChatOp > .agentChatImages { margin-top: var(--space-2); }
 
-/* Saved conversations. A row opens one; its Icon action asks inline before deleting. */
-.agentChatHistory { flex: 1 1 auto; min-height: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
-.agentChatEyebrow { margin: 0; color: var(--command-faint); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
-.agentChatHistoryEmpty, .agentChatHistoryNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
-.agentChatHistoryNote { margin-top: auto; padding-top: var(--space-2); }
-.agentChatHistoryList { margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); list-style: none; }
-.agentChatHistoryItem { display: flex; align-items: center; gap: var(--space-1); border-radius: var(--control-radius); }
-.agentChatHistoryItem.isCurrent { background: var(--command-panel-2); }
-.agentChatHistoryOpen { flex: 1 1 auto; min-width: 0; min-height: var(--control-height); padding: var(--space-1) var(--space-2); display: flex; flex-direction: column; align-items: flex-start; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; cursor: pointer; text-align: left; }
-.agentChatHistoryOpen:hover { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
-.agentChatHistoryOpen:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
-.agentChatHistoryTitle { max-width: 100%; overflow: hidden; font: 500 var(--text-sm)/1.4 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
-.agentChatHistoryMeta { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
-.agentChatHistoryDelete { flex: 0 0 auto; }
-.agentChatHistoryConfirm { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-1); padding-inline-end: var(--space-1); }
-.agentChatHistoryConfirm > button { width: auto; }
+/* Search under the header: a field with no ring (DESIGN.md records the exception, as for the message field), and the matches as rows. */
+.agentChatSearch { flex: 0 0 auto; max-height: 45%; padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; border-bottom: 1px solid var(--command-line); overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
+.agentChatSearchField { box-sizing: border-box; width: 100%; min-height: var(--control-height); padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--control-radius); background: var(--command-panel-2); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatSearchField::placeholder { color: var(--command-muted); opacity: 1; }
+.agentChatSearchField::-webkit-search-cancel-button { display: none; }
+.agentChatSearchField:focus-visible { outline: 0; }
+.agentChatSearchNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); }
+.agentChatSearchList { margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); list-style: none; }
+.agentChatSearchResult { width: 100%; min-height: var(--control-height); padding: var(--space-1) var(--space-2); display: flex; flex-direction: column; align-items: flex-start; gap: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.agentChatSearchResult:hover { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+.agentChatSearchResult:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.agentChatSearchMeta { display: flex; align-items: baseline; gap: var(--space-2); }
+.agentChatSearchWho { font: 600 var(--text-xs)/1.4 var(--font-ui); }
+.agentChatSearchSnippet { max-width: 100%; color: var(--command-muted); overflow-wrap: anywhere; font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatSearchMark { background: none; color: var(--command-ink); font-weight: 650; }
 
 /* Wider than 760px, an expanded panel covers the content area beside the rail, with the log and the composer in a centered column. */
 @media (min-width: 761px) {
   .agentChatPanel.isExpanded:not(.isStatic) { left: var(--command-rail-width); width: auto; }
   .agentChatPanel.isExpanded { --jump-inset: max(var(--space-4), calc((100% - var(--aril-column-width)) / 2)); }
-  .agentChatPanel.isExpanded .agentChatLog, .agentChatPanel.isExpanded .agentChatHistory { padding-inline: max(var(--space-4), calc((100% - var(--aril-column-width)) / 2)); }
+  .agentChatPanel.isExpanded .agentChatLog, .agentChatPanel.isExpanded .agentChatSearch { padding-inline: max(var(--space-4), calc((100% - var(--aril-column-width)) / 2)); }
   .agentChatPanel.isExpanded .agentChatComposer { align-self: center; width: min(var(--aril-column-width), calc(100% - 2 * var(--space-4))); margin-inline: 0; }
 }
 @media (max-width: 760px) {
@@ -186,7 +191,7 @@
 @media (max-width: 760px), (pointer: coarse) {
   .agentChatAttach, .agentChatImageRemove, .agentChatSend.commandIconAction { width: 44px; height: 44px; }
   .agentChatImagePicture { width: 96px; height: 96px; }
-  .agentChatLauncher, .agentChatField, .agentChatHistoryOpen, .agentChatComposer .commandSelectTrigger { min-height: 44px; }
+  .agentChatLauncher, .agentChatField, .agentChatSearchField, .agentChatSearchResult, .agentChatComposer .commandSelectTrigger { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .agentChatPanel, .agentChatScrim { animation: none; }

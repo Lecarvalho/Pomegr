@@ -34,7 +34,7 @@ afterEach(() => { removeHarness(); });
 
 const user = newUser;
 /** The repositories the chat asked about, once each, in order. */
-const listed = () => [...new Set(chat.calls("list").map((payload) => payload.repositoryId))];
+const listed = () => [...new Set(chat.calls("thread").map((payload) => payload.repositoryId))];
 const launcher = () => screen.getByRole("button", { name: /^Open Aril, the Pomegr agent/ });
 const panel = () => screen.getByRole("region", { name: "Aril, the Pomegr agent" });
 const field = () => screen.getByRole("textbox", { name: "Message Aril" });
@@ -91,22 +91,22 @@ describe("agent chat availability", () => {
     const first = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(first[0]).toBe("/api/agent-chat");
     expect(first[1]).toMatchObject({ method: "POST", cache: "no-store" });
-    expect(JSON.parse(String(first[1].body))).toEqual({ operation: "list", payload: { repositoryId: REPO_A } });
-    expect(fetchMock.mock.calls.map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation).slice(0, 2)).toEqual(["list", "read"]);
+    expect(JSON.parse(String(first[1].body))).toEqual({ operation: "thread", payload: { repositoryId: REPO_A } });
+    expect(fetchMock.mock.calls.map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { operation: string }).operation).slice(0, 2)).toEqual(["thread"]);
     expect(chat.agentChat.mock.calls.length).toBe(fetchMock.mock.calls.length);
   });
 });
 
 describe("opening the panel", () => {
-  it("opens on the newest conversation, hides the launcher, and puts focus in the message field", async () => {
+  it("opens on the thread, hides the launcher, and puts focus in the message field", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Old question"), agentMessage("Old answer")]), conversationOf(2, [userMessage("New question"), agentMessage("New answer")]));
     render(<AgentChatDock />);
     await openPanel();
     expect(listed()).toEqual([REPO_A]);
-    expect(chat.calls("read")).toEqual([{ repositoryId: REPO_A, conversationId: chatId(2) }]);
-    expect(within(log()).getByText("New question")).toBeInTheDocument();
-    expect(within(log()).getByText("New answer")).toBeInTheDocument();
-    expect(within(log()).queryByText("Old question")).toBeNull();
+    expect(chat.calls("thread")).toEqual([{ repositoryId: REPO_A }]);
+    expect(chat.calls("read")).toEqual([]);
+    // The messages of both conversations are one thread.
+    for (const text of ["Old question", "Old answer", "New question", "New answer"]) expect(within(log()).getByText(text)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Open Aril/ })).toBeNull();
     expect(panel().tagName).toBe("SECTION");
     expect(panel()).not.toHaveAttribute("aria-modal");
@@ -117,15 +117,15 @@ describe("opening the panel", () => {
     expect(field()).toHaveAttribute("placeholder", "Ask Aril…");
   });
 
-  it("shows the empty state only once the list is ready, never before it, and its suggestions only fill the field", async () => {
+  it("shows the empty state only once the thread is read, never before it, and its suggestions only fill the field", async () => {
     const person = user();
     render(<AgentChatDock />);
     let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const original = chat.agentChat.getMockImplementation()!;
-    chat.agentChat.mockImplementation(async (operation, payload) => { if (operation === "list") await gate; return original(operation, payload); });
+    chat.agentChat.mockImplementation(async (operation, payload) => { if (operation === "thread") await gate; return original(operation, payload); });
     await person.click(launcher());
-    // The list has not answered yet: a quiet line, not the empty state that would then be replaced.
+    // The thread has not answered yet: a quiet line, not the empty state that would then be replaced.
     expect(within(log()).getByText("Loading…")).toBeInTheDocument();
     expect(screen.queryByText("Ask Aril about this board")).toBeNull();
     release();
@@ -144,14 +144,14 @@ describe("opening the panel", () => {
     expect(chat.calls("send")).toEqual([]);
   });
 
-  it("shows no empty state while a saved conversation is being read", async () => {
+  it("shows no empty state while the saved thread is being read", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Question"), agentMessage("Answer")]));
     const person = user();
     render(<AgentChatDock />);
     let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const original = chat.agentChat.getMockImplementation()!;
-    chat.agentChat.mockImplementation(async (operation, payload) => { if (operation === "read") await gate; return original(operation, payload); });
+    chat.agentChat.mockImplementation(async (operation, payload) => { if (operation === "thread") await gate; return original(operation, payload); });
     await person.click(launcher());
     await settle();
     expect(within(log()).getByText("Loading…")).toBeInTheDocument();
@@ -271,24 +271,24 @@ describe("sending a message", () => {
     expect(chat.calls("send")[0]).toMatchObject({ provider: "codex", model: "model-code", effort: "xhigh" });
   });
 
-  it("starts the run from the open conversation's provider, model, and effort", async () => {
+  it("starts the run from what the thread last ran with", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A", { provider: "codex", model: "model-code", effort: "high" })], { provider: "codex", model: "model-code", effort: "high" }));
     render(<AgentChatDock />);
     await openPanel();
     expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-code$/);
     expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^High$/);
     await ask(user(), "Follow up");
-    expect(chat.calls("send")[0]).toMatchObject({ conversationId: chatId(1), provider: "codex", model: "model-code", effort: "high" });
+    expect(chat.calls("send")[0]).toMatchObject({ conversationId: null, provider: "codex", model: "model-code", effort: "high" });
   });
 
-  it("shows the newest known model and Medium for a stored conversation that has no model and no effort", async () => {
+  it("shows the newest known model and Medium for a thread whose last conversation has no model and no effort", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A")]));
     render(<AgentChatDock />);
     await openPanel();
     expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-large$/);
     expect(screen.getByRole("combobox", { name: "Effort" })).toHaveTextContent(/^Medium$/);
     await ask(user(), "Follow up");
-    expect(chat.calls("send")[0]).toMatchObject({ conversationId: chatId(1), provider: "claude", model: "model-large", effort: "medium" });
+    expect(chat.calls("send")[0]).toMatchObject({ conversationId: null, provider: "claude", model: "model-large", effort: "medium" });
   });
 
   it("names the effort in the caption of an answer that stored one, and leaves an older answer's caption as it was", async () => {
@@ -366,21 +366,18 @@ describe("sending a message", () => {
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
   });
 
-  it("says that an answer is being written in another conversation, and disables Send", async () => {
+  it("shows an answer being written in another conversation as the thread's own: Stop in place of Send, and no note of another conversation", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q1"), agentMessage("A1")]), conversationOf(2, [userMessage("Q2")]));
     chat.turn = { repositoryId: REPO_A, conversationId: chatId(2), startedAt: "2026-10-11T10:00:00.000Z", provider: "claude", model: null, activity: "thinking", text: "" };
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
-    // The panel opens on the conversation being answered.
     expect(within(log()).getByRole("status")).toHaveTextContent("Thinking…");
     expect(screen.queryByText("Aril is answering in another conversation.")).toBeNull();
-    await person.click(screen.getByRole("button", { name: "Conversations" }));
-    await person.click(screen.getByRole("button", { name: /^Conversation 1 / }));
-    await settle();
-    expect(screen.getByText("Aril is answering in another conversation.")).toBeInTheDocument();
-    fireEvent.change(field(), { target: { value: "Another question" } });
-    expect(sendButton()).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+    await person.click(screen.getByRole("button", { name: "Stop" }));
+    expect(chat.calls("stop")).toEqual([{ repositoryId: REPO_A, conversationId: chatId(2) }]);
   });
 });
 
@@ -388,8 +385,8 @@ describe("refused operations", () => {
   const cases: [string, string, string][] = [
     ["busy", "busy", "Aril is already answering. Wait for it to finish."],
     ["cli_missing", "cli_missing", "Claude Code is not installed on this computer."],
-    ["limit", "limit", "This repository holds 50 conversations. Delete one to start another."],
-    ["not_found", "not_found", "That conversation is no longer there."],
+    ["limit", "limit", "That message could not be sent."],
+    ["not_found", "not_found", "That message is no longer there."],
     ["invalid", "invalid", "That message could not be sent."],
     ["unavailable", "unavailable", "Aril could not be reached. Try again."],
   ];
@@ -417,14 +414,15 @@ describe("refused operations", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Codex is not installed on this computer.");
   });
 
-  it("says a full conversation is full when one is open, and answers a bridge that fails with the unreachable line", async () => {
+  it("never says that a conversation is full, and answers a bridge that fails with the unreachable line", async () => {
     chat.seed(REPO_A, conversationOf(1, [userMessage("Q"), agentMessage("A")]));
     const person = user();
     render(<AgentChatDock />);
     await openPanel(person);
     chat.refuse = "limit";
     await ask(person, "One more");
-    expect(screen.getByRole("alert")).toHaveTextContent("This conversation is full. Start a new one.");
+    expect(screen.getByRole("alert")).toHaveTextContent("That message could not be sent.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/full/);
     chat.refuse = null;
     const original = chat.agentChat.getMockImplementation()!;
     chat.agentChat.mockImplementation(async (operation, payload) => { if (operation === "send") throw new Error("the bridge failed"); return original(operation, payload); });

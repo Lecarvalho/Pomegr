@@ -91,11 +91,14 @@ export function acceptChatImageFiles(files: readonly File[], held: number): { ac
 
 export type AgentChatImageUrls = ReadonlyMap<string, string>;
 
+/** An image the thread draws, with the conversation whose message holds it: the desktop serves an image only through that message. */
+export type AgentChatImageSource = { conversationId: string; imageId: string };
+
 /**
  * The object URL of each image the panel draws. An image the owner just added is drawn from its own file (`remember`);
  * a stored one is read from the desktop once. Every URL is revoked when the panel leaves.
  */
-export function useAgentChatImageUrls(repositoryId: string, conversationId: string | null, imageIds: readonly string[]): { urls: AgentChatImageUrls; remember(imageId: string, blob: Blob): void } {
+export function useAgentChatImageUrls(repositoryId: string, sources: readonly AgentChatImageSource[]): { urls: AgentChatImageUrls; remember(imageId: string, blob: Blob): void } {
   const [urls, setUrls] = useState<AgentChatImageUrls>(() => new Map());
   const made = useRef(new Map<string, string>());
   const asked = useRef(new Set<string>());
@@ -117,20 +120,21 @@ export function useAgentChatImageUrls(repositoryId: string, conversationId: stri
     };
   }, []);
 
-  const wanted = imageIds.join(",");
+  const wanted = sources.map(({ conversationId, imageId }) => `${conversationId}/${imageId}`).join(",");
   useEffect(() => {
-    if (conversationId === null || wanted === "") return;
-    for (const imageId of wanted.split(",")) {
+    if (wanted === "") return;
+    for (const source of wanted.split(",")) {
+      const [conversationId, imageId] = source.split("/");
       if (made.current.has(imageId) || asked.current.has(imageId)) continue;
       asked.current.add(imageId);
       void readAgentChatImage(repositoryId, conversationId, imageId).then((blob) => { if (blob) keep(imageId, blob); });
     }
-  }, [repositoryId, conversationId, wanted, keep]);
+  }, [repositoryId, wanted, keep]);
 
   return { urls, remember: keep };
 }
 
-/** The IDs of every image the owner sent in a conversation. */
-export function conversationImageIds(messages: readonly { role: string; images?: readonly AgentChatImage[] }[]): string[] {
-  return messages.flatMap((message) => (message.role === "user" ? (message.images ?? []).map((image) => image.id) : []));
+/** Every image the owner sent in the messages of the thread, with the conversation of its message. */
+export function threadImageSources(messages: readonly { role: string; conversationId: string; images?: readonly AgentChatImage[] }[]): AgentChatImageSource[] {
+  return messages.flatMap((message) => (message.role === "user" ? (message.images ?? []).map((image) => ({ conversationId: message.conversationId, imageId: image.id })) : []));
 }

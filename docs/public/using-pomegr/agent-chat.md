@@ -20,7 +20,7 @@ grant that allows **Write tasks from plans**, Aril also creates tasks in **Ready
 plans you named, when the chat is free, without **Apply changes**. See
 [Aril grants](tasks.md#aril-grants) for the actions, the limits, and **Stop grant**.
 
-While a grant works, Aril writes short follow-ups into a **Grant follow-ups** conversation, so
+While a grant works, Aril writes short follow-ups into your conversation with it, so
 you need not ask what happened. Each one is one or two sentences: the task IDs, what the grant
 did, and what needs you, such as a refused merge. Actions close together are one follow-up. Each
 follow-up is also a notification; clicking it opens the chat at that follow-up. A follow-up is a
@@ -61,13 +61,13 @@ Aril sees how many texts were shortened and can retrieve needed full tasks with 
 Aril sees board changes since its last completed answer: task starts, reports, stalls, CI results, and merges.
 You can ask what happened while you were away. For these changes, Aril receives only task IDs, event kinds, times, and pull-request numbers.
 
-1. Select **Aril** at the bottom right. The panel opens on the right side of the window, on your newest
-   conversation. It lays over the page, which dims behind it. Select **Expand** to widen it over the page,
+1. Select **Aril** at the bottom right. The panel opens on the right side of the window, on your
+   conversation with Aril in that repository. It lays over the page, which dims behind it. Select **Expand** to widen it over the page,
    and **Dock** to bring it back. Select the dimmed page, or **Close Aril**, to close it.
 2. Choose the repository in the **Repository** menu beside the attach button when Pomegr lists more than one.
 3. Choose the **Model** and the **Effort** beside the send button. The list shows named models, grouped
-   by provider. A new chat starts on the newest model Pomegr knows and on **Medium**, and a chat you
-   continue starts on what its last message used. The coding tool runs with the model and the effort
+   by provider. A repository's first message starts on the newest model Pomegr knows and on **Medium**,
+   and later messages start on what the last one used. The coding tool runs with the model and the effort
    you chose.
 4. Type your message and press Enter. Shift+Enter starts a new line.
 5. Select **Stop** to end an answer early. The text written so far is kept.
@@ -102,14 +102,32 @@ You can show Aril a screenshot or a mock-up.
 2. Type what you want Aril to do with it, and press Enter.
 
 A message holds up to four images: PNG, JPEG, GIF, or WebP, up to 5 MB each. A message
-with an image still needs text. A conversation holds up to 40 images.
+with an image still needs text. Aril sees the images of the part of the conversation it answers in, and a part holds up to 40.
 
 Ask "create a task for this" or "attach this to T-12". Aril then proposes the task with
 the image, or the image for a task that has not started. The proposal shows each image,
 and the session that runs the task gets the image. A task holds up to four images.
 
-**Close Aril** closes the panel and keeps the conversation. Each message shows the time it was sent. **New conversation** starts an
-empty one. **Conversations** lists the saved ones and lets you delete one.
+**Close Aril** closes the panel and keeps the conversation. Each message shows the time it was sent.
+
+## One conversation for each repository
+
+Each repository has one continuous conversation with Aril. There is no list of conversations to
+choose from, and no button to start a new one: you keep writing in the same place, and Aril keeps
+the context of what you said before.
+
+- **Scroll up for older messages.** The panel shows the newest messages first. When you reach the
+  top, it loads the messages before them and keeps your place.
+- **Search.** Select **Search** in the panel's header, type, and read the matches: who wrote the
+  message, when, and a short excerpt with your text in bold. The search ignores case and reads your
+  text as plain letters, not as a pattern. Select a match to jump to that message, which stays
+  marked for a moment. Press Escape to close the search.
+- **A long conversation continues by itself.** Pomegr stores a conversation in parts of up to 200
+  messages and starts a new part when one is full, however many parts there are. You see one
+  thread, and Aril reads the newest messages of all the parts. A message a notification links to opens in the same thread.
+
+Pomegr does not shorten an old thread yet: when it is longer than what Aril can read at once, the
+oldest messages stay on screen and in the search, but Aril no longer reads them.
 
 ## Apply a proposal
 
@@ -261,14 +279,15 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
 
 ## Understand what is kept and sent
 
-- **Kept on this computer.** Pomegr saves every conversation in its private data folder
-  until you delete it, with the images you sent in it. Each repository holds up to 50
-  conversations. An image that Aril puts on a task is a copy: it stays on the task when
-  you delete the conversation.
-- **Sent to the provider.** Each message sends the conversation and the board to the
-  provider you chose, through your own coding tool. Applying or dismissing a proposal
+- **Kept on this computer.** Pomegr saves your conversation with Aril in its private data folder,
+  in parts of up to 200 messages, with the images you sent. A repository has no limit of
+  parts. An image that Aril puts on a task is a copy of the image. The search and the older
+  pages are answered from these files on your computer.
+- **Sent to the provider.** Each message sends the newest earlier messages of the repository's
+  conversation (as many as fit in 24,000 characters) and the board to the
+  provider you chose, through your own coding tool. The search sends nothing. Applying or dismissing a proposal
   sends them once more, with the result of the proposal, for Aril's follow-up. That run
-  uses the provider, model, and effort of the conversation's last message. The board includes the text of your
+  uses the provider, model, and effort of the last message. The board includes the text of your
   tasks. Aril may also send file content and session evidence that it reads. The images
   you sent in the conversation go to the provider too, and the prompt names the folder
   where Pomegr keeps them. The board snapshot also sends a grant's active state, end
@@ -281,7 +300,7 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
   Its usage counts in your account's usage windows.
 - **On a paired device.** The conversation crosses your local network without
   encryption, like the rest of phone access. Anyone who holds a paired phone can read
-  the conversations and their images, send a message or an image, and apply a proposal
+  and search the conversation and its images, send a message or an image, and apply a proposal
   of board changes or a queue change. Applying or dismissing a proposal there also runs
   Aril's follow-up on your computer. Turning the queue on lets Pomegr start queued tasks on your computer. A start
   that Aril proposed can be applied only in the desktop app.
@@ -294,9 +313,10 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
 | The tool is not installed on this computer | Install Claude Code or Codex, or choose a model of the other provider in **Model**. |
 | Aril could not finish this answer | Open the coding tool once in a terminal. Check that you are signed in and that the tool is up to date. |
 | This answer took too long and was stopped | Ask a narrower question. A run may take ten minutes. |
-| Aril is already answering | Wait for the running answer, or select **Stop** in its conversation. |
+| Aril is already answering | Wait for the running answer, or select **Stop**. Aril answers one message at a time for the whole app. |
 | Aril could not be reached | Check that Pomegr shows **Local monitor**, then send again. |
-| No follow-up after you applied or dismissed a proposal | Aril was answering in another conversation, so the follow-up waits for it. If Pomegr closed meanwhile, ask Aril what happened: the result is saved. |
+| No follow-up after you applied or dismissed a proposal | Aril was answering another message, so the follow-up waits for it. If Pomegr closed meanwhile, ask Aril what happened: the result is saved. |
+| Search could not be reached | Check that Pomegr shows **Local monitor**, then type the search again. |
 | The follow-up says that Aril could not finish | The proposal's result is saved and shown on its lines. Check the coding tool as for any answer. |
 | Aril wrote a proposal that Pomegr could not read | Ask for the proposal again. Nothing was changed. A rejected follow-up proposal has no card. |
 | A line says **No longer possible** or **Not found** | The board changed after Aril wrote the proposal. Ask again. |

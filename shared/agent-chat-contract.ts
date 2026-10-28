@@ -17,8 +17,8 @@ export const AGENT_CHAT_IMAGE_OPERATIONS: readonly AgentChatImageOperationName[]
 export type AgentChatImageError = "invalid" | "not_found" | "unavailable";
 
 // The fixed operations a client may ask for.
-export type AgentChatOperationName = "list" | "read" | "send" | "stop" | "apply" | "dismiss" | "delete";
-export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "send", "stop", "apply", "dismiss", "delete"];
+export type AgentChatOperationName = "list" | "read" | "thread" | "search" | "send" | "stop" | "apply" | "dismiss" | "delete";
+export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"];
 
 // Why an operation was refused.
 // `desktop_only` refuses a non-desktop session start or worktree removal, or a paired settings/memory Apply without pairedDevices enabled.
@@ -161,15 +161,38 @@ export type AgentChatConversation = {
 // The answer being written, while a turn runs.
 export type AgentChatTurn = { conversationId: string; startedAt: string; provider: AgentChatProvider; model: string | null; effort?: TaskEffort | null; activity: AgentChatActivity; text: string };
 
+// The thread of one repository: its saved conversations as one continuous conversation, in message-time order. A message
+// carries the conversation it is stored in, which its proposal's Apply and Dismiss name. Nothing here is more than `read` answers.
+export type AgentChatThreadMessage = AgentChatMessage & { conversationId: string };
+// The run the thread last ran with, that of the newest conversation that is not a grant follow-up conversation.
+export type AgentChatThreadRun = { provider: AgentChatProvider; model: string | null; effort?: TaskEffort | null };
+export type AgentChatThread = {
+  // The newest messages, oldest first, and an opaque cursor for the page before them, or null when there is none.
+  messages: AgentChatThreadMessage[];
+  before: string | null;
+  // The turn of the repository wherever it runs, a follow-up that waits included.
+  turn: AgentChatTurn | null;
+  // The conversation the next message goes to, or null when a new one will be made.
+  sendTo: string | null;
+  run: AgentChatThreadRun | null;
+  // The newest time any conversation changed, or null before the first message.
+  updatedAt: string | null;
+};
+// One message that holds the searched text: its conversation, its ID, its time, who wrote it, and a short plain excerpt.
+export type AgentChatSearchMatch = { conversationId: string; messageId: string; at: string; role: AgentChatMessage["role"]; snippet: string };
+
 export type AgentChatFailure = { ok: false; error: AgentChatError };
 export type AgentChatListResult = { ok: true; conversations: AgentChatConversationSummary[]; running: string | null } | AgentChatFailure;
 export type AgentChatReadResult = { ok: true; conversation: AgentChatConversation; turn: AgentChatTurn | null } | AgentChatFailure;
+export type AgentChatThreadResult = ({ ok: true } & AgentChatThread) | AgentChatFailure;
+export type AgentChatSearchResult = { ok: true; matches: AgentChatSearchMatch[] } | AgentChatFailure;
 export type AgentChatSendResult = { ok: true; conversationId: string } | AgentChatFailure;
 export type AgentChatDoneResult = { ok: true } | AgentChatFailure;
 export type AgentChatImageAddResult = { ok: true; image: AgentChatImage } | { ok: false; error: AgentChatImageError };
 
 export const AGENT_CHAT_BOUNDS = {
-  conversationsPerRepository: 50,
+  // The conversations one `list` answer holds, newest first. It bounds an answer, not what a repository keeps: a repository has no limit of conversations.
+  listedConversations: 50,
   messagesPerConversation: 200,
   messageLength: 4000,
   answerLength: 32_000,
@@ -182,8 +205,14 @@ export const AGENT_CHAT_BOUNDS = {
   imageBytes: 5 * 1024 * 1024,
   // A request a paired device sends, in bytes.
   requestBytes: 17 * 1024,
+  // The messages of one page of the thread, the matches of one search, the length of a query, and of a page cursor.
+  threadPage: 60,
+  searchMatches: 20,
+  searchQueryLength: 100,
+  cursorLength: 200,
 } as const;
 
 export const AGENT_CHAT_CONVERSATION_ID_PATTERN = /^chat-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_PROPOSAL_ID_PATTERN = /^p-[0-9a-f]{12}$/u;
 export const AGENT_CHAT_IMAGE_ID_PATTERN = /^img-[0-9a-f]{12}$/u;
+export const AGENT_CHAT_MESSAGE_ID_PATTERN = /^m-[1-9][0-9]{0,5}$/u;
