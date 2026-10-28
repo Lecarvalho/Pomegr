@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
+import { ARIL_FOLLOW_UP_END_REASONS } from "../../shared/aril-follow-up.mjs";
 import { normalizeChatImages } from "./agent-chat-images.mjs";
 import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 
@@ -151,16 +152,26 @@ function storedMessage(message) {
 }
 
 /** A conversation inside the stored contract, or null. */
+// The last follow-up written: its grant, task-log position, end, and message; before the first, all null.
+function followUpMark(value) {
+  if (!isPlainObject(value) || Object.keys(value).length !== 4 || !["grant", "through", "ended", "messageId"].every((key) => Object.hasOwn(value, key))) return null;
+  if (value.grant === null) return value.through === null && value.ended === null && value.messageId === null ? { grant: null, through: null, ended: null, messageId: null } : null;
+  return Number.isSafeInteger(value.grant) && value.grant > 0 && Number.isSafeInteger(value.through) && value.through >= 0
+    && (value.ended === null || ARIL_FOLLOW_UP_END_REASONS.includes(value.ended)) && typeof value.messageId === "string" && MESSAGE_ID.test(value.messageId)
+    ? { grant: value.grant, through: value.through, ended: value.ended, messageId: value.messageId } : null;
+}
+
 export function normalizeConversation(value) {
   if (!isPlainObject(value) || typeof value.id !== "string" || !CONVERSATION_ID.test(value.id) || !bounded(value.title, TITLE_LENGTH)
     || !PROVIDERS.has(value.provider) || !(value.model === null || (typeof value.model === "string" && MODEL.test(value.model)))
     || !instant(value.createdAt) || !instant(value.updatedAt) || !Array.isArray(value.messages) || value.messages.length > MESSAGE_LIMIT) return null;
   const messages = value.messages.map(storedMessage);
   if (messages.some((message) => message === null) || new Set(messages.map((message) => message.id)).size !== messages.length) return null;
-  // `grant` names the grant whose follow-ups this conversation holds.
-  if (value.grant !== undefined && (!Number.isSafeInteger(value.grant) || value.grant < 1)) return null;
+  // `grantFollowUps` marks the repository's follow-up conversation and names the last follow-up written into it.
+  const mark = value.grantFollowUps === undefined ? undefined : followUpMark(value.grantFollowUps);
+  if (mark === null) return null;
   return { id: value.id, title: value.title, provider: value.provider, model: value.model, createdAt: value.createdAt, updatedAt: value.updatedAt, messages,
-    ...(value.grant === undefined ? {} : { grant: value.grant }) };
+    ...(mark === undefined ? {} : { grantFollowUps: mark }) };
 }
 
 export function createAgentChatStore({ directory, filesystem = fs, now = () => new Date() } = {}) {
@@ -229,12 +240,12 @@ export function createAgentChatStore({ directory, filesystem = fs, now = () => n
       return (await load(repositoryId)).get(id) ?? null;
     },
     /** A new, empty conversation, kept in memory until its first save; `null` when the repository holds its limit. */
-    async create(repositoryId, { provider, model, title, grant }) {
+    async create(repositoryId, { provider, model, title, grantFollowUps }) {
       if (!valid(repositoryId)) return null;
       const conversations = await load(repositoryId);
       if (conversations.size >= CONVERSATION_LIMIT) return null;
       const at = now().toISOString();
-      const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, createdAt: at, updatedAt: at, messages: [], ...(grant === undefined ? {} : { grant }) });
+      const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, createdAt: at, updatedAt: at, messages: [], ...(grantFollowUps === undefined ? {} : { grantFollowUps }) });
       if (conversation) conversations.set(conversation.id, conversation);
       return conversation;
     },

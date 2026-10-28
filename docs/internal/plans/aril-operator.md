@@ -139,7 +139,7 @@ Every action writes one log entry. A refused action records its fixed reason.
 
 While a grant works, Aril sends the owner short follow-ups, so the owner need not ask what happened.
 
-- After grant task-log entries (`grant_start`, `grant_review`, `review_passed`, `review_failed`, `sent_back`, `grant_merge`, `grant_merge_auto`, `grant_merge_refused`, `grant_branch_deleted`, `grant_branch_delete_refused`, `grant_done` once it exists, `grant_usage_hold`, `grant_usage_resume`) and when the grant ends, Pomegr appends one Aril line to that repository's chat, in a `Grant follow-ups` conversation for each grant.
+- After grant task-log entries (`grant_start`, `grant_review`, `review_passed`, `review_failed`, `sent_back`, `grant_merge`, `grant_merge_auto`, `grant_merge_refused`, `grant_branch_deleted`, `grant_branch_delete_refused`, `grant_done` once it exists, `grant_usage_hold`, `grant_usage_resume`) and when the grant ends, Pomegr appends one Aril line to that repository's chat, in the repository's one `Grant follow-ups` conversation.
 - The line is a fixed template: one or two sentences with the task IDs, what happened, and what needs the owner or what is next. No provider runs: a turn that needs nothing ends without a provider call.
 - Entries that arrive close together are one follow-up: a merge, its branch delete, and the next start are one line.
 - The same line is one OS notification through the provider-notifications path, and a tray entry on a paired device. Its click opens that repository's chat at the follow-up; a session notification still opens its session.

@@ -135,11 +135,12 @@ Desktop sends `{ repositoryId, plan: plans[0], tasks }` to `grant-write-tasks`, 
 
 While a grant works, Pomegr tells the owner what it did without being asked. It writes one fixed line into the chat, with no provider run and no proposal.
 
-- The monitor answers `grant-follow-ups` with the latest grant's task-log entries of the kinds in `ARIL_FOLLOW_UP_LOG_KINDS` (`shared/aril-follow-up.mjs`): `grant_start`, `grant_review`, `review_passed`, `review_failed`, `sent_back`, `grant_merge`, `grant_merge_auto`, `grant_merge_refused`, `grant_branch_deleted`, `grant_branch_delete_refused`, `grant_done` once the task log records it, `grant_usage_hold`, and `grant_usage_resume` ([Tasks: Grant follow-ups](tasks.md#grant-follow-ups)).
+- The monitor answers `grant-follow-ups` with the task-log entries of the oldest grant whose end it has not reported, or else of the latest grant, of the kinds in `ARIL_FOLLOW_UP_LOG_KINDS` (`shared/aril-follow-up.mjs`): `grant_start`, `grant_review`, `review_passed`, `review_failed`, `sent_back`, `grant_merge`, `grant_merge_auto`, `grant_merge_refused`, `grant_branch_deleted`, `grant_branch_delete_refused`, `grant_done` once the task log records it, `grant_usage_hold`, and `grant_usage_resume` ([Tasks: Grant follow-ups](tasks.md#grant-follow-ups)).
 - Entries that arrive close together are one batch: a batch is ready 45 seconds after its newest entry, 3 minutes after its oldest, or at 50 entries. The grant's end is a batch of its own at once, or joins the entries still waiting.
-- The queue runner asks each tick. For each batch it calls the desktop-only `grantFollowUp({ repositoryId, grant, items, more, ended })`, then `grant-follow-up-ack` with the message it wrote, or `null`. A runner without a chat writer asks for nothing.
+- The queue runner asks each tick. For each batch it calls the desktop-only `grantFollowUp({ repositoryId, grant, through, items, more, ended })`, then `grant-follow-up-ack` with the message it wrote, or `null`. A runner without a chat writer asks for nothing.
 - `grantFollowUp` builds the line with `arilFollowUpText`: one or two sentences with task IDs and fixed words, never task or provider text. The first sentence lists at most three entries and counts the rest. The second names the tasks that need the owner (a refused merge or branch delete, or a failed review that the burst did not send back), says the grant ended and why, says which provider's new starts wait for usage, or says `Nothing needs you yet.` The line is at most 200 characters.
-- The line goes to the grant's own conversation, titled `Grant follow-ups`, made at the first follow-up of each grant and found again by its stored `grant` ID. Its provider is Claude when Claude Code is installed, else Codex, so the owner can reply in it.
+- Every grant of a repository writes into one conversation, titled `Grant follow-ups`, so follow-ups take one of the repository's 50 conversations. It is made at the first follow-up, found again by its stored `grantFollowUps` mark, and replaced by a new one only when it holds 200 messages. Its provider is Claude when Claude Code is installed, else Codex, so the owner can reply in it.
+- The mark names the last follow-up written: `{ grant, through, ended, messageId }`. A batch with the same `grant`, `through`, and `ended` answers that message again and writes nothing, so an ack the monitor never received does not add a second line.
 - The message is `{ role: "agent", status: "complete", model: null, grantFollowUp: true }` with the line as `text`. It carries no proposal, `followUp`, or `proposalUnreadable`; the store refuses one that does. The panel captions it **Grant follow-up** instead of a provider and model.
 - A conversation that is answering, waits for a follow-up turn, or is being sent to answers `busy`, and the runner asks again on the next tick. A full conversation or repository answers `limit`; the runner then acknowledges the batch with no message, and the notification still goes out.
 - With `followUps` off, the runner writes nothing and acknowledges each batch with no message, and the monitor commits no notification.
@@ -907,8 +908,8 @@ Desktop main keeps one JSON file per conversation:
 - An answer of Aril may hold `followUp`, the ID of the proposal it follows up (see
   [Follow-up](#follow-up)). Such an answer has no message of the owner before it.
 - A grant follow-up is an answer with `grantFollowUp: true` and no proposal (see
-  [Grant follow-ups](#grant-follow-ups)). Its conversation holds `grant`, the monitor's
-  grant ID, which a read never answers.
+  [Grant follow-ups](#grant-follow-ups)). Its conversation holds `grantFollowUps`, the mark
+  of the last follow-up written, which a read never answers.
 - A write replaces the file whole, through a temporary file and a rename.
 - A file outside the contract, of another version, or over the size bound is never
   listed and never overwritten.

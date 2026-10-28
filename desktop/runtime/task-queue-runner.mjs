@@ -220,7 +220,7 @@ export function createTaskQueueRunner(options = {}) {
       let message = null;
       if (followUps) {
         let written;
-        try { written = await options.grantFollowUp({ repositoryId, grant, items, more, ended }); } catch { written = null; }
+        try { written = await options.grantFollowUp({ repositoryId, grant, through, items, more, ended }); } catch { written = null; }
         if (disposed || written?.error === "busy") continue;
         if (written?.ok === true) message = { conversationId: written.conversationId, messageId: written.messageId };
       }

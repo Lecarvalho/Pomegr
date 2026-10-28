@@ -35,8 +35,8 @@ test("each settled burst becomes one chat message and one ack that names it", as
   const h = harness({ batches: [batch(repoA), batch(repoB, { grant: 7, through: 3, ended: "expired", items: [] })] });
   await h.tick();
   assert.deepEqual(h.written, [
-    { repositoryId: repoA, grant: 2, items: batch(repoA).items, more: 0, ended: null },
-    { repositoryId: repoB, grant: 7, items: [], more: 0, ended: "expired" },
+    { repositoryId: repoA, grant: 2, through: 40, items: batch(repoA).items, more: 0, ended: null },
+    { repositoryId: repoB, grant: 7, through: 3, items: [], more: 0, ended: "expired" },
   ]);
   assert.deepEqual(h.acks(), [
     { repositoryId: repoA, grant: 2, through: 40, ended: null, message: { conversationId: "chat-0123456789ab", messageId: "m-1" } },

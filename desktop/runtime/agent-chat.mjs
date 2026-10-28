@@ -592,7 +592,7 @@ export function createAgentChat(options = {}) {
     const waiting = waitingOf(payload.repositoryId, conversation.id);
     const turn = turnOf(payload.repositoryId, conversation.id) ?? (waiting ? { conversationId: conversation.id, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, activity: "starting", text: "" } : null);
     return {
-      ok: true, conversation: Object.fromEntries(Object.entries(conversation).filter(([key]) => key !== "grant")),
+      ok: true, conversation: Object.fromEntries(Object.entries(conversation).filter(([key]) => key !== "grantFollowUps")),
       turn: turn ? { conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, activity: turn.activity, text: visibleAnswer(turn.text) } : null,
     };
   }

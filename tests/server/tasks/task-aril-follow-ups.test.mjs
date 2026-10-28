@@ -116,6 +116,38 @@ test("a new grant starts at the log's end, and a repository seen first is a base
   assert.deepEqual(store.nextFollowUps().batches.map((batch) => batch.items), [items(["grant_start", "T-1"])]);
 });
 
+test("a grant started at once after another lets the earlier one report its last entries and its end first", (t) => {
+  const { store, clock, log, start, grantId } = setup(t);
+  start();
+  const first = grantId();
+  log(1, "grant_merge_refused");
+  assert.equal(store.apply(REPO, "grant_stop", {}).ok, true);
+  clock.now += 1000;
+  start();
+  const second = grantId();
+  log(2, "grant_start");
+  const [ended] = store.nextFollowUps().batches;
+  assert.deepEqual({ grant: ended.grant, items: ended.items, ended: ended.ended }, { grant: first, items: items(["grant_merge_refused", "T-1"]), ended: "stopped" });
+  assert.deepEqual(store.ackFollowUp(REPO, { grant: second, through: ended.through, ended: null }), { ok: false, error: "not_eligible" }, "the earlier grant settles first");
+  assert.equal(store.ackFollowUp(REPO, { grant: first, through: ended.through, ended: "stopped" }).ok, true);
+  clock.now += FOLLOW_UP_QUIET_MS;
+  const [next] = store.nextFollowUps().batches;
+  assert.deepEqual({ grant: next.grant, items: next.items, ended: next.ended }, { grant: second, items: items(["grant_start", "T-2"]), ended: null });
+});
+
+test("an ended grant reports its end with its last page, so none of its entries is left behind", (t) => {
+  const { store, clock, log, start } = setup(t);
+  start();
+  for (let index = 0; index < 55; index += 1) log(1, "grant_review");
+  assert.equal(store.apply(REPO, "grant_stop", {}).ok, true);
+  const [full] = store.nextFollowUps().batches;
+  assert.equal(full.ended, null, "a full page is not the grant's last");
+  assert.equal(store.ackFollowUp(REPO, { grant: full.grant, through: full.through, ended: null }).ok, true);
+  clock.now += 1000;
+  const [last] = store.nextFollowUps().batches;
+  assert.deepEqual({ count: last.items.length + last.more, ended: last.ended }, { count: 5, ended: "stopped" });
+});
+
 test("an ack is exact and only moves the cursor forward", (t) => {
   const { store, clock, log, start, grantId } = setup(t);
   start();
