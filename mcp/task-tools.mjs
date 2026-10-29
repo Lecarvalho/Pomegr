@@ -32,13 +32,16 @@ export const TASK_UNASSIGN_UNBOUND_TEXT = "Pomegr could not bind this call to th
 export const TASK_ASSIGN_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was assigned. It may have been: do not assume it failed. Calling assign_task once more with the same task ID is safe, because assigning a task again changes nothing.";
 export const TASK_UNASSIGN_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was unassigned. It may have been: do not assume it failed. Calling unassign_task once more with the same task ID is safe; if the answer is that this session is not assigned, the first call removed the assignment or there was none.";
 
+// A refusal for a repository Git did not confirm says so, so that it is never read as an empty board.
+const repositoryUnavailableText = (outcome) => `Git has not confirmed the current session's repository, so ${outcome}. It does not mean the board is empty: Pomegr did not read it.`;
+
 const noAnswer = (error) => error instanceof Error && error.message === AGENT_TASK_NO_ANSWER;
 
 const CHECKS = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"];
 const REASON_TEXT = {
   invalid: "Pomegr rejected the task as invalid, so no task was added.",
   session_not_found: "Pomegr does not know the current session yet, so no task was added.",
-  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was added.",
+  repository_unavailable: repositoryUnavailableText("no task was added"),
   feature_not_found: "That feature does not exist on the board, so no task was added.",
   limit: "The board is full, so no task was added.",
   after_not_found: "A task in runs_after is not on the board, so no task was added.",
@@ -140,13 +143,14 @@ export const TASK_REMOVE_UNBOUND_TEXT = "Pomegr could not bind this call to the 
 const REMOVE_REASON_TEXT = {
   invalid: "Pomegr rejected the request as invalid, so no task was removed.",
   not_found: "No task was removed. This session can remove only a task it added itself that has not started.",
+  repository_unavailable: repositoryUnavailableText("no task was removed"),
   unavailable: "Pomegr is unavailable, so no task was removed.",
 };
 
 const ASSIGN_REASON_TEXT = {
   invalid: "Pomegr rejected the request as invalid, so no task was assigned.",
   session_not_found: "Pomegr does not know the current session yet, so no task was assigned.",
-  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was assigned.",
+  repository_unavailable: repositoryUnavailableText("no task was assigned"),
   not_found: "No task was assigned. A session can be assigned only to a task on its own repository's board.",
   conflict: "No task was assigned. A task that is done cannot be assigned, and this session already reports the task Pomegr started it for.",
   limit: "No task was assigned. A task holds at most 16 assigned sessions, and a session can be assigned to at most 16 tasks.",
@@ -155,7 +159,7 @@ const ASSIGN_REASON_TEXT = {
 const UNASSIGN_REASON_TEXT = {
   invalid: "Pomegr rejected the request as invalid, so no task was unassigned.",
   session_not_found: "Pomegr does not know the current session yet, so no task was unassigned.",
-  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was unassigned.",
+  repository_unavailable: repositoryUnavailableText("no task was unassigned"),
   not_found: "No task was unassigned. This session can unassign only a task it is assigned to.",
   unavailable: "Pomegr is unavailable, so no task was unassigned.",
 };
@@ -169,7 +173,7 @@ export const TASK_UPDATE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it 
 const UPDATE_REASON_TEXT = {
   invalid: "Pomegr rejected the request as invalid, so no task was changed.",
   session_not_found: "Pomegr does not know the current session yet, so no task was changed.",
-  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was changed.",
+  repository_unavailable: repositoryUnavailableText("no task was changed"),
   not_found: "No task was changed. A task can be changed only while it is on this session's board and has not started.",
   after_not_found: "A task in runs_after is not on the board, so no task was changed.",
   after_loop: "These tasks would wait for each other, so no task was changed.",
@@ -181,7 +185,7 @@ export const FEATURE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is u
 const FEATURE_REASON_TEXT = {
   invalid: "Pomegr rejected the request as invalid, so no feature was read or changed.",
   session_not_found: "Pomegr does not know the current session yet, so no feature was read or changed.",
-  repository_unavailable: "Pomegr could not resolve the current session's repository, so no feature was read or changed.",
+  repository_unavailable: repositoryUnavailableText("no feature was read or changed"),
   task_required: "This session has more than one task, so no feature was read. Call get_feature again with task_id set to the task whose feature you want, or name the feature.",
   limit: "The board holds as many features as it can, so no feature was created.",
   unavailable: "Pomegr is unavailable, so no feature was read or changed.",
@@ -231,7 +235,7 @@ export const TASK_READ_UNBOUND_TEXT = "Pomegr could not bind this call to the cu
 const READ_REASON_TEXT = {
   invalid: "Pomegr rejected the request as invalid, so no task was read.",
   session_not_found: "Pomegr does not know the current session yet, so no task was read.",
-  repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was read.",
+  repository_unavailable: repositoryUnavailableText("no task was read"),
   not_found: "No such task on this session's board.",
   unavailable: "Pomegr is unavailable, so no task was read.",
 };

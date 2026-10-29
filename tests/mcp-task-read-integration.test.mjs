@@ -43,7 +43,7 @@ function createMonitor(context, store, token, repositories) {
   const runtime = {
     resolveTaskSession: (sessionRef) => {
       const repositoryId = repositories[sessionRef];
-      return repositoryId ? { found: true, repositoryId } : null;
+      return repositoryId ? { found: true, repositoryId, repositoryConfirmation: "confirmed" } : null;
     },
   };
   const server = http.createServer(createRequestHandler({

@@ -1,4 +1,5 @@
 import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
+import { agentBoardRepository } from "./agent-board-repository.mjs";
 import { serveArilActionRoute, serveArilRework, serveGrantFollowUps, serveGrantRunner } from "./task-aril-routes.mjs";
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 export const TASK_ACTIONS = Object.freeze([
@@ -28,6 +29,7 @@ const WORKTREE_CLEANUP_LIMIT = 64;
 const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 export const AGENT_SESSION_REF_PATTERN = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
+export { agentBoardRepository };
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const RUN_MODEL_LIMIT = 64;
 export const GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
@@ -470,15 +472,6 @@ export async function readAgentJson(request, requestUrl, limit) {
   try { return { body: JSON.parse(raw.toString("utf8")) }; } catch { return { body: null }; }
 }
 
-function linkedBoardRepositoryId(taskStore, sessionRef) {
-  try {
-    const repositoryId = typeof taskStore?.sessionTasks === "function" ? taskStore.sessionTasks([sessionRef])?.get(sessionRef)?.repositoryId : null;
-    return typeof repositoryId === "string" && REPOSITORY_ID_PATTERN.test(repositoryId) ? repositoryId : null;
-  } catch {
-    return null;
-  }
-}
-
 // The tasks of a session, as references: the one Pomegr started it for, then the ones it is assigned to.
 function agentSessionTasks(taskStore, sessionRef) {
   const started = taskStore.sessionTasks?.([sessionRef])?.get(sessionRef) ?? null;
@@ -486,18 +479,6 @@ function agentSessionTasks(taskStore, sessionRef) {
   return [...(started ? [started] : []), ...assigned];
 }
 
-export function agentBoardRepository(taskStore, resolveSession, sessionRef) {
-  const linkedRepositoryId = linkedBoardRepositoryId(taskStore, sessionRef);
-  let session = null;
-  try {
-    session = resolveSession(sessionRef);
-  } catch (error) {
-    if (linkedRepositoryId === null) throw error;
-  }
-  if (linkedRepositoryId === null && (!session || session.found !== true)) return { reason: "session_not_found" };
-  const repositoryId = linkedRepositoryId ?? session.repositoryId;
-  return typeof repositoryId === "string" && REPOSITORY_ID_PATTERN.test(repositoryId) ? { repositoryId } : { reason: "repository_unavailable" };
-}
 
 // `POST /api/agent/v1/tasks/add`, the first agent write.
 export async function serveAgentTaskAddRoute({ request, response, requestUrl, taskStore, resolveSession }) {
@@ -570,7 +551,7 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
 
 export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
 export const AGENT_REMOVE_BODY_LIMIT_BYTES = 1024;
-const AGENT_REMOVE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
+const AGENT_REMOVE_STATUS = Object.freeze({ invalid: 400, not_found: 404, repository_unavailable: 409, unavailable: 503 });
 export const AGENT_TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 
 // The answer of a write that carries nothing but its outcome: `ok`, or one fixed reason with its status.
@@ -603,9 +584,9 @@ export async function serveAgentTaskRemoveRoute({ request, response, requestUrl,
       writeAgentRemoveResult(response, "unavailable");
       return;
     }
-    const { repositoryId } = agentBoardRepository(taskStore, resolveSession, body.sessionRef);
+    const { repositoryId, reason: boardReason } = agentBoardRepository(taskStore, resolveSession, body.sessionRef);
     if (!repositoryId) {
-      writeAgentRemoveResult(response, "not_found");
+      writeAgentRemoveResult(response, boardReason === "repository_unavailable" ? boardReason : "not_found");
       return;
     }
     const result = taskStore.apply(repositoryId, "agent_remove", { sessionId: body.sessionRef, id: body.taskId });

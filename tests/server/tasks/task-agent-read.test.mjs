@@ -15,7 +15,7 @@ const BLOCK = "BLOCK-REASON-SENTINEL";
 const ATTENTION = "ATTENTION-SENTINEL";
 
 async function start(context, store) {
-  const runtime = { resolveTaskSession: (ref) => (Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref] } : null) };
+  const runtime = { resolveTaskSession: (ref) => (Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref], repositoryConfirmation: "confirmed" } : null) };
   const server = http.createServer(createRequestHandler({ runtime, taskStore: store, agentAuthorizationToken: TOKEN }));
   context.after(() => new Promise((done) => server.close(done)));
   await new Promise((done) => server.listen(0, "127.0.0.1", done));

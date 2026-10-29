@@ -134,7 +134,7 @@ test("create_feature, update_feature, and delete_feature post the fields they we
     ["delete_feature", { feature: "F" }, "not_found", /nothing was deleted/u],
     ["delete_feature", { feature: "F" }, "invalid", /rejected the request as invalid/u],
     ["delete_feature", { feature: "F" }, "session_not_found", /does not know the current session/u],
-    ["delete_feature", { feature: "F" }, "repository_unavailable", /could not resolve the current session's repository/u],
+    ["delete_feature", { feature: "F" }, "repository_unavailable", /Git has not confirmed the current session's repository/u],
     ["delete_feature", { feature: "F" }, SENTINEL, /^Pomegr is unavailable/u],
   ];
   for (const [name, input, reason, expected] of refusals) {

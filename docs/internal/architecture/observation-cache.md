@@ -3891,6 +3891,21 @@ checkout keeps the ID it had. A worktree of a bare repository, a separate Git di
 submodule, a non-Git folder, and a failed lookup keep the top level or the working
 directory, as before.
 
+Only a Git answer is cached as a repository identity (T-200). A lookup that gets no
+answer (a removed folder, a timeout, a failure) gives the folder-named identity for that
+read only: neither the Git root lookup nor the checkout roots keep it, and the next read
+asks Git again. Git refusing an existing folder (exit 128, `GIT_NOT_A_REPOSITORY` in
+`server/repository/git-checkout.mjs`) is an answer, and the Git root lookup keeps it for
+its usual time; the folder still has only the folder-named identity. The inventory remembers each identity as confirmed (Git answered) or
+guessed, and `repositoryConfirmation` answers `confirmed`, `guessed`, or `unknown` (not seen
+in this run) from monitor memory; a guess that hashes to a confirmed identity never
+downgrades it. No context binding is stored for a guessed identity. A session association
+that settled on a guessed identity is derived again on a later projection once 60 seconds
+have passed (`GUESSED_ASSOCIATION_RETRY_MS` in
+`server/repository/session-repository-association.mjs`), so a stalled Git read does not
+pin the guess. The task board refuses a guessed identity; see
+[Tasks: Session binding](tasks.md#session-binding).
+
 The session's own root stays its checkout. `resolveRepository` answers `root` (the
 worktree's top level) and `mainRoot`; a session's live Git check, its recorded branch,
 and the base of its repository-relative file paths use `root`, so a worktree session's
