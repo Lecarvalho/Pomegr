@@ -231,7 +231,7 @@ test("stale owners refresh asynchronously: reads never spawn synchronously, and 
   assert.equal(syncCalls, 1);
 });
 
-test("an owner older than the stale bound is re-probed synchronously when no refresh has answered", () => {
+test("an owner whose refresh has not answered within the stale bound of its start is re-probed synchronously", () => {
   let checkedAt = 1_786_000_000_000;
   let syncCalls = 0;
   const validate = createSessionRegistryOwnerValidator({
@@ -249,8 +249,45 @@ test("an owner older than the stale bound is re-probed synchronously when no ref
   assert.equal(validate(entries).get("session-a"), true);
   assert.equal(syncCalls, 1);
   checkedAt += 3_000;
-  assert.equal(validate(entries).get("session-a"), false, "past the stale bound the answer comes from a fresh probe");
+  assert.equal(validate(entries).get("session-a"), true, "a refresh that started 3 s ago may still answer");
+  assert.equal(syncCalls, 1);
+  checkedAt += 2_100;
+  assert.equal(validate(entries).get("session-a"), false, "past the stale bound of the refresh the answer comes from a fresh probe");
   assert.equal(syncCalls, 2);
+});
+
+test("a read long after the last one re-confirms a still-running owner asynchronously, never with a synchronous probe", async () => {
+  let checkedAt = 1_786_000_000_000;
+  let syncCalls = 0;
+  let asyncCalls = 0;
+  let ownerStart = "owner-start";
+  const validate = createSessionRegistryOwnerValidator({
+    now: () => checkedAt,
+    processExists: () => true,
+    processIdentities(pids) {
+      syncCalls += 1;
+      return new Map(pids.map((pid) => [pid, ownerStart]));
+    },
+    async processIdentitiesAsync(pids) {
+      asyncCalls += 1;
+      return new Map(pids.map((pid) => [pid, ownerStart]));
+    },
+  });
+  const entries = [{ sessionId: "session-a", pid: 100, procStart: "owner-start" }];
+  assert.equal(validate(entries).get("session-a"), true);
+  assert.equal(syncCalls, 1, "a first check still probes synchronously");
+  checkedAt += 20_000;
+  assert.equal(validate(entries).get("session-a"), true, "the last answer is served while the refresh runs");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(syncCalls, 1);
+  assert.equal(asyncCalls, 1);
+
+  ownerStart = "reused-pid-start";
+  checkedAt += 20_000;
+  assert.equal(validate(entries).get("session-a"), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(validate(entries).get("session-a"), false, "a reused pid is retired as soon as the refresh answers");
+  assert.equal(syncCalls, 1);
 });
 
 test("reads valid registry entries and ignores malformed files independently", async (context) => {

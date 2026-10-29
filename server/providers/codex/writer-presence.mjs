@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { runExecFile } from "../../normalize/exec-file-runner.mjs";
 import { isSafeCodexSessionId } from "./session-metadata.mjs";
 import { resolveCodexAppServerExecutable } from "./app-server-client.mjs";
 
@@ -197,9 +197,32 @@ export async function queryCodexWriterOwners(files, executables, options = {}) {
     || !files.length || files.length > CODEX_WRITER_PRESENCE_MAX_LOCKS || !executables.length || executables.length > 64
     || files.some((file) => typeof file !== "string" || !path.isAbsolute(file) || file.length > 1024)
     || executables.some((file) => typeof file !== "string" || !path.isAbsolute(file) || file.length > 1024)) return [];
-  const spawnFn = options.spawnFn || spawn;
   const timeoutMs = Math.min(CODEX_WRITER_PRESENCE_TIMEOUT_MS, Math.max(1, options.timeoutMs || CODEX_WRITER_PRESENCE_TIMEOUT_MS));
   const outputLimit = Math.min(CODEX_WRITER_PRESENCE_MAX_OUTPUT_BYTES, Math.max(1, options.maximumOutputBytes || CODEX_WRITER_PRESENCE_MAX_OUTPUT_BYTES));
+  const command = powershellPath(options.env || process.env);
+  const args = ["-NoProfile", "-NonInteractive", "-Command", OWNER_QUERY_SCRIPT];
+  const input = JSON.stringify({ files, executables });
+  const ownersFrom = (output) => {
+    try {
+      const parsed = JSON.parse(output || "[]");
+      const values = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === "object" ? [parsed] : []);
+      return values.length <= files.length ? values.filter(validOwner) : [];
+    } catch { return []; }
+  };
+  // The probe process starts off the monitor thread; an output limit or timeout ends it with no owners.
+  if (!options.spawnFn) return new Promise((resolve) => {
+    if (options.signal?.aborted) { resolve([]); return; }
+    let cancel = null;
+    const onAbort = () => { cancel?.(); };
+    options.signal?.addEventListener?.("abort", onAbort, { once: true });
+    cancel = runExecFile(command, args, {
+      windowsHide: true, shell: false, stdio: ["pipe", "pipe", "ignore"], encoding: "utf8", timeout: timeoutMs, maxBuffer: outputLimit, input,
+    }, (error, stdout) => {
+      options.signal?.removeEventListener?.("abort", onAbort);
+      resolve(error ? [] : ownersFrom(String(stdout)));
+    });
+  });
+  const spawnFn = options.spawnFn;
   return new Promise((resolve) => {
     let child; let settled = false; let output = ""; let outputBytes = 0;
     const stop = () => { try { child?.kill(); } catch { /* best effort */ } };
@@ -212,7 +235,7 @@ export async function queryCodexWriterOwners(files, executables, options = {}) {
     if (options.signal?.aborted) { finish(); return; }
     options.signal?.addEventListener?.("abort", onAbort, { once: true });
     try {
-      child = spawnFn(powershellPath(options.env || process.env), ["-NoProfile", "-NonInteractive", "-Command", OWNER_QUERY_SCRIPT], {
+      child = spawnFn(command, args, {
         windowsHide: true, shell: false, stdio: ["pipe", "pipe", "ignore"],
       });
       child.stdout?.on("data", (chunk) => {
@@ -224,13 +247,9 @@ export async function queryCodexWriterOwners(files, executables, options = {}) {
       child.stdin?.once?.("error", stop);
       child.once?.("close", (code) => {
         if (code !== 0 || settled) return finish();
-        try {
-          const parsed = JSON.parse(output || "[]");
-          const values = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === "object" ? [parsed] : []);
-          finish(values.length <= files.length ? values.filter(validOwner) : []);
-        } catch { finish(); }
+        finish(ownersFrom(output));
       });
-      child.stdin?.end(JSON.stringify({ files, executables }));
+      child.stdin?.end(input);
     } catch { if (child) stop(); else finish(); }
   });
 }

@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { runExecFile } from "../normalize/exec-file-runner.mjs";
 
 const MAX_PULL_REQUESTS = 8;
 const CACHE_TTL_MS = 60_000;
@@ -57,7 +57,7 @@ function pullRequestReference(url) {
 
 function runGh(cwd, args) {
   return new Promise((resolve) => {
-    execFile("gh", args, {
+    runExecFile("gh", args, {
       cwd: cwd || undefined,
       encoding: "utf8",
       timeout: GH_TIMEOUT_MS,

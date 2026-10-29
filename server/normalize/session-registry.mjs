@@ -1,6 +1,8 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+
+import { runExecFile } from "./exec-file-runner.mjs";
 
 const USER_ATTENTION_REASONS = ["input", "approval", "permission", "question"];
 const ACTIVE_STATUSES = new Set(["active", "busy", "running"]);
@@ -97,7 +99,7 @@ function asyncProcessIdentities(options = {}) {
   if (typeof options.processIdentities === "function" || (options.platform || process.platform) !== "win32") return null;
   return (pids) => new Promise((resolve) => {
     const [command, args] = windowsIdentityCommand(pids, options);
-    execFile(command, args, { encoding: "utf8", windowsHide: true, timeout: 3_000 }, (error, stdout) => {
+    runExecFile(command, args, { encoding: "utf8", windowsHide: true, timeout: 3_000 }, (error, stdout) => {
       try { resolve(error ? null : parseWindowsIdentities(stdout, pids)); } catch { resolve(null); }
     });
   });
@@ -152,7 +154,8 @@ export function createSessionRegistryOwnerValidator(options = {}) {
   }
   /** @type {Map<string, {pid: number, procStart: string, isCurrent: boolean, validatedAt: number}>} */
   const cache = new Map();
-  const refreshing = new Set();
+  /** @type {Map<string, number>} When each pending refresh started. */
+  const refreshing = new Map();
 
   function remember(entry, isCurrent, validatedAt) {
     cache.delete(entry.sessionId);
@@ -163,7 +166,8 @@ export function createSessionRegistryOwnerValidator(options = {}) {
   function refresh(entries) {
     const pending = entries.filter((entry) => !refreshing.has(entry.sessionId));
     if (!pending.length) return;
-    for (const entry of pending) refreshing.add(entry.sessionId);
+    const startedAt = now();
+    for (const entry of pending) refreshing.set(entry.sessionId, startedAt);
     const pids = [...new Set(pending.map((entry) => entry.pid))].sort((left, right) => left - right);
     Promise.resolve().then(() => probeAsync(pids)).catch(() => null).then((identities) => {
       const checkedAt = now();
@@ -195,7 +199,14 @@ export function createSessionRegistryOwnerValidator(options = {}) {
       }
       const age = now() - cached.validatedAt;
       if (age < freshMs) { result.set(entry.sessionId, cached.isCurrent); continue; }
-      if (probeAsync && age < maxStaleMs) {
+      // Past the stale bound, an owner whose process is still there keeps its last answer while one
+      // asynchronous probe re-confirms it: a synchronous PowerShell probe holds the event loop for
+      // 0.4 to 1.5 s. Only a refresh that has not answered within the stale bound of its start is
+      // followed by a synchronous one.
+      const refreshStartedAt = refreshing.get(entry.sessionId);
+      const refreshAnswering = refreshStartedAt !== undefined && now() - refreshStartedAt < maxStaleMs;
+      if (probeAsync && (age < maxStaleMs || refreshAnswering
+        || (refreshStartedAt === undefined && processExists(entry.pid) === true))) {
         toRefresh.push(entry);
         result.set(entry.sessionId, cached.isCurrent);
         continue;

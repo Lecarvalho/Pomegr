@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { runExecFile } from "../normalize/exec-file-runner.mjs";
 import { normalizedWorkKind, toolWorkKind } from "../normalize/work-kind.mjs";
 
 const CONTROL = /[\u0000-\u001f\u007f]/u;
@@ -451,7 +451,7 @@ export function readCommitsInWindow(repositoryRoot, { since, until, commandInter
     }
     const intervals = Array.isArray(commandIntervals) ? commandIntervals : [];
     try {
-      execFile("git", [
+      runExecFile("git", [
         "-c", "core.quotepath=false",
         "-C", repositoryRoot,
         "log", "--format=%H %cI", "--name-status", "--no-renames", `--since=${since}`, `--until=${until}`, "HEAD",

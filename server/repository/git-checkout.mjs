@@ -1,8 +1,7 @@
-import { execFile as execFileCallback } from "node:child_process";
 import path from "node:path";
-import { promisify } from "node:util";
 
-const execFile = promisify(execFileCallback);
+import { runExecFile } from "../normalize/exec-file-runner.mjs";
+
 const GIT_OPTIONS = Object.freeze({ windowsHide: true, timeout: 5_000, maxBuffer: 16 * 1024 });
 
 function absolutePath(value) {
@@ -15,11 +14,10 @@ function samePath(left, right) {
   return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
-async function revParse(cwd, args) {
-  try {
-    const { stdout } = await execFile("git", ["-C", cwd, "rev-parse", ...args], GIT_OPTIONS);
-    return String(stdout || "");
-  } catch { return null; }
+function revParse(cwd, args) {
+  return new Promise((resolve) => {
+    runExecFile("git", ["-C", cwd, "rev-parse", ...args], GIT_OPTIONS, (error, stdout) => resolve(error ? null : String(stdout || "")));
+  });
 }
 
 /** @param {string} cwd @returns {Promise<{ root: string, commonDir: string | null } | null>} */

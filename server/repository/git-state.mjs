@@ -1,8 +1,9 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { runExecFile } from "../normalize/exec-file-runner.mjs";
 import { repositoryRelativePath } from "../normalize/repository-path.mjs";
 
 const MAIN_BRANCH_CANDIDATES = ["main", "master", "trunk", "develop"];
@@ -29,7 +30,7 @@ function runGit(cwd, args, timeout = 1_500) {
 
 function runGitAsync(cwd, args, timeout = REMOTE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
-    execFile("git", [
+    runExecFile("git", [
       "-c", `safe.directory=${cwd}`,
       "-c", "core.quotepath=false",
       "-C", cwd,
