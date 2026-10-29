@@ -16,9 +16,10 @@ export type AgentChatImageOperationName = "add" | "read";
 export const AGENT_CHAT_IMAGE_OPERATIONS: readonly AgentChatImageOperationName[] = ["add", "read"];
 export type AgentChatImageError = "invalid" | "not_found" | "unavailable";
 
-// The fixed operations a client may ask for.
-export type AgentChatOperationName = "list" | "read" | "thread" | "search" | "send" | "stop" | "apply" | "dismiss" | "delete";
-export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"];
+// The fixed operations a client may ask for. `warm` asks for a provider run to wait for the thread's next message; it is no model call and
+// answers only ok or a refusal.
+export type AgentChatOperationName = "list" | "read" | "thread" | "search" | "send" | "stop" | "apply" | "dismiss" | "delete" | "warm";
+export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"];
 
 // Why an operation was refused.
 // `desktop_only` refuses a non-desktop session start or worktree removal, or a paired settings/memory Apply without pairedDevices enabled.
@@ -129,13 +130,15 @@ export type AgentChatPrepare = { total: number } & Partial<Record<AgentChatPrepa
 
 // How long one owner-message turn took, in milliseconds from the start of the provider process, how large its prompt was, in
 // characters for each part, and how long its preparation took. Numbers only. `eventMs` and `textMs` are null when the run ended before
-// a provider event or any words. `prepare` is absent for an older record.
+// a provider event or any words. `prepare` is absent for an older record. `warm` is true when a warm run answered: a Claude Code process that
+// waited for the message, whose times are counted from the moment the message was written to it, as every run's are.
 export type AgentChatTiming = {
   eventMs: number | null;
   textMs: number | null;
   doneMs: number;
   prompt: { instructions: number; board: number; taskLog: number; conversation: number; message: number; other: number };
   prepare?: AgentChatPrepare;
+  warm?: true;
 };
 
 // What Aril offers under an answer: 1 to 4 quick replies, or one multiple-choice question with 2 to 4 options. The first option is
@@ -220,6 +223,7 @@ export type AgentChatThreadResult = ({ ok: true } & AgentChatThread) | AgentChat
 export type AgentChatSearchResult = { ok: true; matches: AgentChatSearchMatch[] } | AgentChatFailure;
 export type AgentChatSendResult = { ok: true; conversationId: string } | AgentChatFailure;
 export type AgentChatDoneResult = { ok: true } | AgentChatFailure;
+// `warm` answers ok for a valid request, whether or not it started a run, so the answer says nothing of the runs.
 export type AgentChatImageAddResult = { ok: true; image: AgentChatImage } | { ok: false; error: AgentChatImageError };
 
 export const AGENT_CHAT_BOUNDS = {

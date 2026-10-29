@@ -105,7 +105,7 @@ Windows.
 
 - Owner-confirmed Continue uses the [Continue plan](session-evidence.md#continue-plan) in desktop main only; its folder appears only in native confirmation.
 - Continue IPC returns only a fixed status, never a plan, working folder, title, executable, arguments, or environment.
-- For each session start, review start, continue, and Aril run, desktop main reads the current Windows user and machine environment from the registry (see [Tasks: Session environment](../tasks.md#session-environment)).
+- For each session start, review start, continue, and Aril run, desktop main reads the current Windows user and machine environment from the registry (see [Tasks: Session environment](../tasks.md#session-environment)). A [warm Aril run](../agent-chat.md#the-warm-run) reads it when it starts, and the turn it serves reads it no more.
 - Those names and values stay in desktop main and reach only the new process; they are never stored, logged, or sent to the renderer, monitor, or a paired device.
 - Main sends a live host PID through private worker messages to resolve its unique committed session identity.
 - The monitor returns only that qualified session ID or null; the PID never reaches the renderer or HTTP.

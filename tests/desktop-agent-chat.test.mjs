@@ -182,7 +182,7 @@ test("a follow-up neither reads nor acknowledges the log", async (context) => {
 
 test("the channel, operations, errors, and request bound are fixed", () => {
   assert.equal(AGENT_CHAT_CHANNEL, "pomegr:agent-chat");
-  assert.deepEqual([...AGENT_CHAT_OPERATIONS], ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"]);
+  assert.deepEqual([...AGENT_CHAT_OPERATIONS], ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"]);
   assert.deepEqual([...AGENT_CHAT_ERRORS], ["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"]);
   assert.equal(AGENT_CHAT_REQUEST_MAX_BYTES, 17 * 1024);
 });

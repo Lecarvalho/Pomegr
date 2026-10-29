@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 
-import { chatArguments, POMEGR_READ_TOOLS, runChatTurn } from "../desktop/runtime/agent-chat-runner.mjs";
+import { chatArguments, claudeUserLine, POMEGR_READ_TOOLS, runChatTurn } from "../desktop/runtime/agent-chat-runner.mjs";
 
 const server = Object.freeze({
   command: "C:\\Program Files\\Pomegr\\Pomegr.exe",
@@ -15,7 +15,7 @@ const files = names.map((name) => `${folder}\\${name}`);
 const READ_TOOL_ARGUMENT = POMEGR_READ_TOOLS.map((name) => `mcp__pomegr__${name}`);
 
 const claudeBase = (mcp) => [
-  "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence", "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config", mcp,
+  "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence", "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config", mcp,
   "--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools", ["Read", "Grep", "Glob", ...READ_TOOL_ARGUMENT].join(","),
 ];
 const codexBase = ["exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--disable", "apps", "-c", 'approval_policy="never"', "-c", "features.prefer_mxc=true", "-c", 'windows.sandbox="elevated"'];
@@ -122,7 +122,7 @@ test("an unknown provider has no arguments, with or without images", () => {
 function fakeChild() {
   const child = new EventEmitter();
   child.stdout = Object.assign(new EventEmitter(), { setEncoding() {} });
-  child.stdin = Object.assign(new EventEmitter(), { writes: [], end(data, encoding) { this.writes.push([data, encoding]); } });
+  child.stdin = Object.assign(new EventEmitter(), { writes: [], write(data, encoding) { this.writes.push([data, encoding]); }, end(data, encoding) { if (data !== undefined) this.writes.push([data, encoding]); } });
   child.kill = () => true;
   return child;
 }
@@ -138,7 +138,8 @@ test("runChatTurn builds the arguments with the images and keeps the prompt on s
     assert.deepEqual(spawns[0][1], chatArguments(provider, null, server, { folder, files }));
     assert.ok(spawns[0][1].includes(provider === "claude" ? "--add-dir" : "--image"));
     assert.equal(spawns[0][1].some((argument) => argument.includes("SYNTHETIC-PROMPT")), false);
-    assert.deepEqual(child.stdin.writes, [["SYNTHETIC-PROMPT 4711", "utf8"]]);
+    // Claude Code reads one stream-json user message line; Codex reads the text up to the end of stdin.
+    assert.deepEqual(child.stdin.writes, [[provider === "claude" ? claudeUserLine("SYNTHETIC-PROMPT 4711") : "SYNTHETIC-PROMPT 4711", "utf8"]]);
     child.emit("close", 1);
     await turn.done;
   }

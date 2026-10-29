@@ -252,6 +252,9 @@ export class FakeChat {
         else proposal.state = "dismissed";
         return this.answered(repositoryId, stored);
       }
+      // A request to keep a run ready changes nothing the panel shows.
+      case "warm":
+        return { ok: true };
       case "delete":
         if (!stored) return { ok: false, error: "not_found" };
         this.byRepository.get(repositoryId)?.delete(stored.id);

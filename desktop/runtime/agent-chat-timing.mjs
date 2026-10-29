@@ -33,25 +33,28 @@ export function normalizePrepare(value) {
 }
 
 /**
- * A timing inside the contract, or null: `{ eventMs, textMs, doneMs, prompt, prepare? }`. `eventMs` and `textMs` are null when the run
- * ended before a provider event or before any words. A record without one, such as an older version wrote, simply has none, and a
- * `prepare` outside its contract is left out without the rest of the timing.
+ * A timing inside the contract, or null: `{ eventMs, textMs, doneMs, prompt, prepare?, warm? }`. `eventMs` and `textMs` are null when the
+ * run ended before a provider event or before any words. A record without one, such as an older version wrote, simply has none, and a
+ * `prepare` outside its contract, or a `warm` that is not `true`, is left out without the rest of the timing. `warm` says that a
+ * [warm run](../../docs/internal/architecture/agent-chat.md#the-warm-run) answered: its times are measured from the moment the prompt was
+ * written, as every run's are.
  */
 export function normalizeTiming(value) {
   const keys = ["eventMs", "textMs", "doneMs", "prompt"];
-  if (!isPlainObject(value) || !sameKeys(value, Object.hasOwn(value, "prepare") ? [...keys, "prepare"] : keys) || !isPlainObject(value.prompt) || !sameKeys(value.prompt, PROMPT_PARTS)) return null;
+  const optional = isPlainObject(value) ? ["prepare", "warm"].filter((key) => Object.hasOwn(value, key)) : [];
+  if (!isPlainObject(value) || !sameKeys(value, [...keys, ...optional]) || !isPlainObject(value.prompt) || !sameKeys(value.prompt, PROMPT_PARTS)) return null;
   const { eventMs, textMs, doneMs } = value;
   if (!whole(doneMs, TIMING_MAX_MS) || !(eventMs === null || (whole(eventMs, TIMING_MAX_MS) && eventMs <= doneMs))
     || !(textMs === null || (whole(textMs, TIMING_MAX_MS) && textMs <= doneMs && (eventMs === null || eventMs <= textMs)))) return null;
   if (!PROMPT_PARTS.every((part) => whole(value.prompt[part], PROMPT_PART_MAX))) return null;
   const prepare = normalizePrepare(value.prepare);
-  return { eventMs, textMs, doneMs, prompt: Object.fromEntries(PROMPT_PARTS.map((part) => [part, value.prompt[part]])), ...(prepare ? { prepare } : {}) };
+  return { eventMs, textMs, doneMs, prompt: Object.fromEntries(PROMPT_PARTS.map((part) => [part, value.prompt[part]])), ...(prepare ? { prepare } : {}), ...(value.warm === true ? { warm: true } : {}) };
 }
 
 /**
- * The timing to store from what the run measured (`{ eventMs, textMs, doneMs }`, milliseconds or null), the lengths of the prompt
- * parts, and optionally the preparation's milliseconds by step: whole numbers, cut to the bounds, or null when the run measured
- * nothing usable. A preparation that is not usable is left out; the timing keeps the run.
+ * The timing to store from what the run measured (`{ eventMs, textMs, doneMs, warm? }`, milliseconds or null, and `warm: true` for a
+ * warm run), the lengths of the prompt parts, and optionally the preparation's milliseconds by step: whole numbers, cut to the
+ * bounds, or null when the run measured nothing usable. A preparation that is not usable is left out; the timing keeps the run.
  */
 export function timingOf(measured, sections, prepare = null) {
   if (!isPlainObject(measured) || !isPlainObject(sections)) return null;
@@ -59,5 +62,5 @@ export function timingOf(measured, sections, prepare = null) {
   if (doneMs === null) return null;
   const prompt = Object.fromEntries(PROMPT_PARTS.map((part) => [part, clamp(sections[part] ?? 0, PROMPT_PART_MAX) ?? 0]));
   const prepared = isPlainObject(prepare) ? { prepare: Object.fromEntries(Object.entries(prepare).map(([name, ms]) => [name, clamp(ms, TIMING_MAX_MS)])) } : {};
-  return normalizeTiming({ eventMs: clamp(measured.eventMs, TIMING_MAX_MS), textMs: clamp(measured.textMs, TIMING_MAX_MS), doneMs, prompt, ...prepared });
+  return normalizeTiming({ eventMs: clamp(measured.eventMs, TIMING_MAX_MS), textMs: clamp(measured.textMs, TIMING_MAX_MS), doneMs, prompt, ...prepared, ...(measured.warm === true ? { warm: true } : {}) });
 }

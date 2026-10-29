@@ -127,6 +127,10 @@ The task board is in [Task board design](task-board.md).
 - Escape first belongs to a layer inside the panel: an open `CommandSelect` list, or the open search.
 - The panel never traps focus.
 - Nothing moves focus while an answer is written.
+- The message field asks the desktop to [warm a run](../architecture/agent-chat.md#the-warm-run) while it keeps its focus. The ask has no sign: it adds no line, no spinner, no state, and no word to the field, the composer, or the panel.
+- The ask waits 250ms (`WARM_DEBOUNCE_MS`) after the field gains focus, so the panel's own focus as it opens and a click into the field ask once, and a field that loses focus within the pause asks nothing.
+- The ask also waits for the thread to be read, so it names the run the composer shows (the thread's last run, or what the owner chose), and a change of that run while the field keeps its focus asks again.
+- Focus that returns to the field is another ask. Closing the panel is no ask and ends nothing: the desktop's idle clock alone closes a run that waits.
 
 ## Search
 
@@ -218,6 +222,7 @@ The task board is in [Task board design](task-board.md).
 - A time is a `<time>` element whose `dateTime` is the stored instant and whose `title` is the whole local date and time.
 - The `title` of the time of an answer that Pomegr measured adds a second line: “Started 1.2s · first words 6.8s · done 11.4s”.
 - The seconds have one decimal, and a step the run never reached is left out.
+- An answer that a [warm run](../architecture/agent-chat.md#the-warm-run) gave reads “Started 0.1s (warm)” in place of “Started 0.1s”. The words “(warm)” are fixed and come after the seconds of the start; an answer with no start has no such words.
 - A timing that holds the preparation adds a line above it: “Prepared in 3.2s (slowest: GitHub 2.9s)”.
 - The slowest step is named in fixed words, only when it took a tenth of a second or more; a quicker preparation reads “Prepared in 0.2s”.
 - An answer with no timing keeps the date and time alone, and the time itself still reads the clock.

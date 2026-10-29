@@ -23,6 +23,9 @@ const IDLE_POLL_MS = 5_000;
 const PAIRED_PATH = "/api/agent-chat";
 // Older pages the thread loads to bring one message into view: ten pages are 600 messages.
 const REVEAL_PAGES = 10;
+// The message field must keep its focus this long before the panel asks the desktop to warm a run, so a burst of focus events (the
+// panel focusing the field as it opens, then a click into it) asks once.
+export const WARM_DEBOUNCE_MS = 250;
 
 type Bridge = { agentChat(operation: AgentChatOperationName, payload: unknown): Promise<unknown> };
 type Json = Record<string, unknown>;
@@ -179,6 +182,8 @@ export function parseTiming(value: unknown): AgentChatTiming | null {
     eventMs: timing.eventMs as number | null, textMs: timing.textMs as number | null, doneMs: timing.doneMs,
     prompt: Object.fromEntries(PROMPT_PARTS.map((part) => [part, prompt[part]])) as AgentChatTiming["prompt"],
     ...(prepare ? { prepare } : {}),
+    // Only `true` means a warm run answered; anything else reads as a run that started cold.
+    ...(timing.warm === true ? { warm: true as const } : {}),
   };
 }
 
@@ -311,6 +316,8 @@ async function done(operation: AgentChatOperationName, payload: Json): Promise<A
 }
 
 export const stopAgentChat = (repositoryId: string, conversationId: string) => done("stop", { repositoryId, conversationId });
+/** Asks the desktop to keep a provider run ready for the thread's next message, with the run the composer shows. No model is called, and the answer is not read. */
+export const warmAgentChat = (repositoryId: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null) => done("warm", { repositoryId, provider, model, effort });
 export const applyAgentChatProposal = (repositoryId: string, conversationId: string, proposalId: string) => done("apply", { repositoryId, conversationId, proposalId });
 export const dismissAgentChatProposal = (repositoryId: string, conversationId: string, proposalId: string) => done("dismiss", { repositoryId, conversationId, proposalId });
 
@@ -361,6 +368,8 @@ export type AgentChatView = {
   error: AgentChatError | null;
   send(message: string, provider: AgentChatProvider, model: string | null, effort: TaskEffort | null, images?: readonly AgentChatImage[]): Promise<boolean>;
   stop(): void;
+  /** Asks the desktop to keep a provider run ready for the next message, with the run the composer shows. No model is called; the answer is not read. */
+  warm(provider: AgentChatProvider, model: string | null, effort: TaskEffort | null): void;
   /** Answers true when the proposal ran, whole or in part, so the caller can read the board again. */
   apply(conversationId: string, proposalId: string): Promise<boolean>;
   dismiss(conversationId: string, proposalId: string): Promise<void>;
@@ -505,6 +514,10 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     if (repositoryId !== null && turn !== null) void stopAgentChat(repositoryId, turn.conversationId);
   }, [repositoryId, turn]);
 
+  const warm = useCallback((provider: AgentChatProvider, model: string | null, effort: TaskEffort | null) => {
+    if (repositoryId !== null && usable) void warmAgentChat(repositoryId, provider, model, effort);
+  }, [repositoryId, usable]);
+
   const resolve = useCallback(async (conversationId: string, proposalId: string, approve: boolean) => {
     if (repositoryId === null) return false;
     const at = generation.current;
@@ -528,6 +541,6 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
 
   return {
     ready, messages: thread.messages, hasOlder: thread.before !== null, loadingOlder, turn, run, summarized,
-    pendingMessage, pendingImages: pendingMessage === null ? NO_IMAGES : pendingImages, resolving, error, send, stop, apply, dismiss, loadOlder, reveal,
+    pendingMessage, pendingImages: pendingMessage === null ? NO_IMAGES : pendingImages, resolving, error, send, stop, warm, apply, dismiss, loadOlder, reveal,
   };
 }

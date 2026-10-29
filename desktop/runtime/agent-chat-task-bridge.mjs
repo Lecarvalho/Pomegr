@@ -8,11 +8,13 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 
 /**
  * One memory-only capability per turn. Only this bridge knows the repository and the desktop credential. `monitor(pathname, init)`
- * is the caller's request to the monitor, and `current(turn)` says whether the turn is still the one that runs.
+ * is the caller's request to the monitor, and `current(turn)` says whether the turn is still the one that runs: the bridge answers a read
+ * only while it does. `opens(turn)` says whether the bridge may be opened for a turn at all, and is `current` unless given: a warm run's
+ * bridge opens before its turn exists, answers nothing until a turn takes the run, and `current` then says whether that turn runs.
  * Answers the MCP server entry with the bridge's origin and key in its environment, the entry unchanged when the bridge could not
  * start, or null when the turn ended meanwhile or there is no MCP server.
  */
-export function createTaskBridge({ mcpServer, monitor, current }) {
+export function createTaskBridge({ mcpServer, monitor, current, opens = current }) {
   return async function taskReadServer(turn) {
     if (!mcpServer) return null;
     const key = randomBytes(32).toString("base64url");
@@ -47,7 +49,7 @@ export function createTaskBridge({ mcpServer, monitor, current }) {
     turn.closeTaskRead = close;
     try {
       await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
-      if (turn.stopped || !current(turn)) { close(); return null; }
+      if (turn.stopped || !opens(turn)) { close(); return null; }
       return { ...mcpServer, env: { ...mcpServer.env,
         POMEGR_CHAT_TASK_ORIGIN: `http://127.0.0.1:${server.address().port}`,
         POMEGR_CHAT_TASK_KEY: key,
