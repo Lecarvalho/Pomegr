@@ -8,7 +8,7 @@ import test from "node:test";
 
 import { threadSince } from "../desktop/runtime/agent-chat-compaction.mjs";
 import {
-  AGENT_CHAT_INSTRUCTIONS, BOARD_SNAPSHOT_BUDGET, HISTORY_BUDGET, PROMPT_LIMIT, SUMMARY_SECTION_BUDGET, composePrompt, composePromptParts,
+  AGENT_CHAT_INSTRUCTIONS, BOARD_SNAPSHOT_BUDGET, BOARD_SNAPSHOT_LIMIT, BOARD_SNAPSHOT_ROOM, HISTORY_BUDGET, PROMPT_LIMIT, SUMMARY_SECTION_BUDGET, composePrompt, composePromptParts,
 } from "../desktop/runtime/agent-chat-prompt.mjs";
 import { SUMMARY_LENGTH } from "../desktop/runtime/agent-chat-summary.mjs";
 import { afterPosition } from "../desktop/runtime/agent-chat-thread.mjs";
@@ -109,7 +109,10 @@ test("a follow-up carries the summary too, and a grant write turn keeps its own 
 
 test("the section and its reserve are inside the prompt limit", () => {
   assert.equal(SUMMARY_SECTION_BUDGET, SUMMARY_LENGTH + 500);
-  assert.equal(BOARD_SNAPSHOT_BUDGET + AGENT_CHAT_INSTRUCTIONS.length + HISTORY_BUDGET + SUMMARY_SECTION_BUDGET + 60_000 + 5_000, PROMPT_LIMIT);
+  // The room left for the snapshot once every other part has its reserve; the snapshot's own bound is smaller still.
+  assert.equal(BOARD_SNAPSHOT_ROOM + AGENT_CHAT_INSTRUCTIONS.length + HISTORY_BUDGET + SUMMARY_SECTION_BUDGET + 60_000 + 5_000, PROMPT_LIMIT);
+  assert.equal(BOARD_SNAPSHOT_BUDGET, Math.min(BOARD_SNAPSHOT_ROOM, BOARD_SNAPSHOT_LIMIT));
+  assert.ok(BOARD_SNAPSHOT_BUDGET < BOARD_SNAPSHOT_ROOM, "a smaller prompt answers faster, so the snapshot is held well below its room");
   const now = new Date("2026-10-01T00:00:00.000Z");
   const bare = composePromptParts({ board: {}, message: "Hi", summary: null, now });
   const longest = composePromptParts({ board: {}, message: "Hi", summary: "s".repeat(SUMMARY_LENGTH), now });

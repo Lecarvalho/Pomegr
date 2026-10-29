@@ -263,6 +263,7 @@ The task board is in [Task board design](task-board.md).
 - The agent block is in an `aria-live="off"` wrapper, so the log announces each stored message and not each chunk.
 - A `role="status"` line holds one fixed word.
 - After **Apply changes**, **Start session**, a queue Primary, or **Dismiss**, the agent block of the follow-up is drawn the same way, with no pending message.
+- “Starting…” shows only until the provider process writes its first event; from then on the word is “Thinking…” until a tool, the text, or another block changes it.
 - A follow-up that waits for the one turn reads “Starting…”.
 - The panel asks for no follow-up: it reads the turn that the desktop app started.
 - The fixed word is “Starting…”, “Thinking…”, “Reading repository files…”, “Reading sessions…”, “Reading usage limits…”, or “Writing…”.

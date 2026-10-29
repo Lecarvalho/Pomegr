@@ -16,7 +16,7 @@
 > 2026-10-17 (task T-120). Grant follow-ups were added on 2026-10-26 (task T-183). One thread for each repository, with search, was
 > added on 2026-10-28 (Aril agent plan, phase 1), and so were its compaction into a summary
 > and the timing of each run. Quick replies and one multiple-choice question under an answer were added on 2026-10-28
-> (Aril agent plan, phase 2). A change that widens exposure changes the
+> (Aril agent plan, phase 2), and so were a smaller prompt and a "Starting" label that lasts only until the provider's first event (2026-10-29). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -127,7 +127,7 @@ summarizes an outgrown thread. It is no turn, answers no one, and proposes nothi
    monitor (see [The declared run](#the-declared-run)), and starts the run in the
    repository root. The answer to `send` is the conversation ID only.
 6. While the run writes, `thread` answers the newest page of the thread and a `turn`: the
-   answer text so far and one fixed activity label. While a client's panel is open and reads
+   answer text so far and one fixed activity label (see [Boundaries](#boundaries)). While a client's panel is open and reads
    no `turn`, the client sends `list` every five seconds. So it follows a turn that
    another device started: a `running` conversation, or an `updatedAt` newer than the
    one the thread was read at, makes the client read the thread's newest page again.
@@ -316,7 +316,9 @@ characters, including the fixed instructions even when Claude receives them thro
 2. **Board snapshot.** One JSON line (`boardSnapshot`): the repository folder name, the
    time, the column names, the features (title and whether done), the grant summary,
    the queue (status, order, blocker, start threshold, and the usage percentages of the start gates), the
-   model lists (`models`), and the shown tasks with their columns and positions.
+   model lists (`models`), and the shown tasks with their columns and positions. The snapshot is kept small on purpose: a
+   smaller prompt answers sooner, so it has its own bound (`BOARD_SNAPSHOT_LIMIT`, below), a null or empty field is left out,
+   and a task's text is its title line plus a share of a small budget.
 3. **Workflow changes.** Left out until the settings or a memory entry is settled. Otherwise the
    repository's workflow sources that changed since (see [Workflow changes](#workflow-changes)).
 4. **Task worktrees.** Owner-message and grant-write turns list the Pomegr task worktrees
@@ -362,18 +364,21 @@ Top-level `rework` holds `days: 30`, `by_cause` counts, and `by_run` rows with p
 
 Stable snapshot fields precede the volatile `now`, `queue` (including usage percentages), and `grant` fields.
 
-A full task in the snapshot holds its ID, column, position in that column (`position`, counted
-from 0 in the order the Board shows, null when the stored value is not a whole number of 0 or more), state, feature title, parallel-group label, the IDs
-of the tasks it runs after (`runs_after`, absent when none), planned
-provider, model and effort, complete-when checks and own condition, the linked session's
-reference, state, observed model and observed effort, the report's results (each one passed, failed, or
-unavailable), block reason and attention
-line, the GitHub issue number, the scheduled time, the update time, and the task text.
-Full task text shares a budget of 48,000 UTF-16 code units.
+A full task in the snapshot always holds its ID, column, position in that column (`position`, counted
+from 0 in the order the Board shows, null when the stored value is not a whole number of 0 or more), state, and task text.
+It holds each of the following only when it has a value, and leaves it out when it is null or empty: feature title, planned
+provider, model and effort, complete-when checks and own condition, parallel-group label, the IDs
+of the tasks it runs after (`runs_after`), `reworks` and `reworked_by`, the linked session's
+reference and state, its observed model and observed effort (only where they differ from the plan; the record counts a missing value
+as the plan), the report, the review verdict, the GitHub issue number, the scheduled time, and the update time.
+The report lists the checks by result, as `passed`, `failed`, and `unavailable` arrays of check names, then `block_reason` and `attention`;
+a report with nothing in it is left out. A Done card keeps its run, session reference, and results but not its complete-when checks or own
+condition, which `get_task` reads.
+Full task text shares a budget of 5,000 UTF-16 code units (`BOARD_TEXT_BUDGET`), so most cards show their title line and a short prefix.
 Pomegr reserves each source first line, excluding its LF or CRLF separator, before allocating bodies.
-Bodies follow In progress, Review, Ready in actual queue order, Done by newest update, then Backlog.
+Bodies follow In progress, Review, Ready in actual queue order, then Backlog. A Done card gets no body: it keeps its title line.
 Ready cards outside `queue.order` follow queued cards by position and numeric task ID.
-Other column ties use position then numeric task ID; Done update ties use numeric task ID.
+Other column ties use position then numeric task ID.
 Backlog and custom columns stay last regardless of task state. State supplies priority only when the column projection is absent.
 If the remaining text fits, Pomegr includes it whole. Otherwise, it adds at most 240 units of prefix and continues.
 That prefix includes any line separator after the title. A cut never splits a Unicode code point.
@@ -384,8 +389,12 @@ Each shortened source prefix carries `text_cut`. The snapshot always includes `t
 Allocation changes neither snapshot card order nor report fields. Aril retrieves needed omitted text with `get_task` instead of guessing.
 
 `BOARD_SNAPSHOT_BUDGET` budgets the complete serialized snapshot, including JSON escaping and every task field.
-It subtracts instruction length, `HISTORY_BUDGET`, `SUMMARY_SECTION_BUDGET` (6,500 characters), 60,000 characters for other sections, and 5,000 characters of margin from `PROMPT_LIMIT`.
-The snapshot budget is computed from the current instruction length, including rework instructions and metadata.
+It is the smaller of two bounds. `BOARD_SNAPSHOT_ROOM` subtracts instruction length, `HISTORY_BUDGET`, `SUMMARY_SECTION_BUDGET` (6,500 characters), 60,000 characters for other sections, and 5,000 characters of margin from `PROMPT_LIMIT`.
+It is computed from the current instruction length, including rework instructions and metadata.
+`BOARD_SNAPSHOT_LIMIT` (20,000 characters) keeps the snapshot small even when the prompt has room, because a larger prompt is slower to answer.
+It was chosen from a synthetic board of 120 tasks, 86 of them Done with texts of 1,400 to 3,800 characters (`tests/helpers/agent-chat-large-board.mjs`): the
+snapshot was 66,000 characters before and is about 20,000 now, and the whole prompt fell from about 130,000 to about 82,000 characters.
+`tests/desktop-agent-chat-prompt-size.test.mjs` fails when the snapshot, the instructions, or the whole prompt of that board grows past its bound.
 The summary section reserves its longest text (6,000 characters) and 500 for its tags and fixed line.
 Workflow changes reserve 12,000 characters. Owner turns reserve 10,000 each for task logs and worktrees, 500 for GitHub settings, and 4,000 for messages.
 Follow-ups instead reserve 32,000 for the outcome and request. Grant requests reserve 6,000. Image rows reserve 8,000 in either conversation turn.
@@ -1065,6 +1074,7 @@ An answer takes several seconds even on an empty board, and where the time goes 
 - It is stored on the answer of an owner's message, whatever its status, and on the summary record, from the run that wrote that summary. A follow-up, a grant write turn, and a grant follow-up line store none.
 - Every time is 0 to 3,600,000 and every part 0 to 1,000,000, as whole numbers, with the first event not after the first words and neither after the end. The writer cuts a measured number to those bounds, and a run that measured nothing usable stores no timing. A stored `timing` outside the contract is left out when the record is read, and the message or summary is kept. A record without one, as an older version wrote, stays valid.
 - The panel adds it to the tooltip of the answer's time. No console line, log, notification, or monitor request carries a timing. It is Pomegr's own clock around a process it started, not an authoritative measurement of the provider.
+- The first timings of real answers showed that the first event came within seconds while the first words took far longer, with prompts that had grown past 100,000 characters on a large board. Two changes followed on 2026-10-29: the activity label says `Starting…` only until the first event, and the prompt was made smaller (see [Prompt](#prompt)). The timings are to be read again after the owner has used them.
 
 ## Conversations
 
@@ -1160,6 +1170,10 @@ memory while `pairedDevices` is not true.
   there is one, the answer text so far, and one activity: `starting`, `thinking`, `reading_files`,
   `reading_sessions`, `reading_usage`, or `writing`. The label is chosen from the tool's
   name. No tool input, tool result, or provider error text is read into an answer.
+  `starting` covers only the time until the provider process writes its first event: Claude Code's `system` init line or Codex's
+  `thread.started` line, which the runner reads as the first event of any kind. From then on the activity is `thinking` until
+  a tool, text, or other block changes it. A follow-up that waits behind another turn stays `starting`.
+  The first event is the same moment that the run's [timing](#timing) records as `eventMs`.
 
 ## Privacy
 
@@ -1245,8 +1259,8 @@ never a session's.
   Pomegr does not filter source filenames or inspect source contents before the provider reads them.
   Instructions prohibit reading credentials and private session transcripts; this instruction is not a filesystem enforcement boundary.
   Native tool results can reach the chosen provider. Pomegr drops tool results and keeps only the conversation answer under the existing rules.
-- **Compact snapshot boundary.** Full task fields cross only for active, recent, and connected cards under the selection rule above. Other non-Done cards send only index lines; Done cards contribute aggregate counts and ten recent index lines. The saved completion time is used locally, with no new persistent marker or provider field.
-- **What the task read exposes.** `get_task` can send the full text omitted by the snapshot's shared budget to the same chat provider, with the T-118 task fields and only the snapshot's attention and block lines added. It exposes no path, credential, capability, repository ID, column ID, feature ID, session, image, dispatch fact, feature description, or app version. `list_tasks` sends the existing coding-session list projection (at most 100 rows and 300 characters of text each, with matched/truncated counts) to the same provider; it adds no attention or block lines. Both monitor and MCP worker apply the shared allowlist. It writes nothing. The snapshot retains its 48,000-unit text bound under the allocation rule above.
+- **Compact snapshot boundary.** Full task fields cross only for active, recent, and connected cards under the selection rule above. Other non-Done cards send only index lines; Done cards contribute aggregate counts and ten recent index lines, and a Done card with a full entry sends its run, results, and title line, not its conditions or body. The saved completion time is used locally, with no new persistent marker or provider field.
+- **What the task read exposes.** `get_task` can send the full text omitted by the snapshot's shared budget to the same chat provider, with the T-118 task fields and only the snapshot's attention and block lines added. It exposes no path, credential, capability, repository ID, column ID, feature ID, session, image, dispatch fact, feature description, or app version. `list_tasks` sends the existing coding-session list projection (at most 100 rows and 300 characters of text each, with matched/truncated counts) to the same provider; it adds no attention or block lines. Both monitor and MCP worker apply the shared allowlist. It writes nothing. The snapshot keeps its 5,000-unit text bound and its 20,000-character size bound under the rules above; shortening a value or leaving one out narrows what crosses, and the snapshot adds no value.
 - **What never enters a prompt.** Credentials, tokens, the desktop token, a path other
   than the grant's named plan paths, the working directory the process starts in, and the files of the conversation's
   images, the images of a task, an image of another conversation, and the description or
