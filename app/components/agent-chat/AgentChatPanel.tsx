@@ -146,7 +146,7 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
     {searchOpen && <AgentChatSearch id={searchId} query={search.query} onQueryChange={search.setQuery} matches={search.matches} failed={search.failed}
       onChoose={(match) => { closeSearch(); bring(match.conversationId, match.messageId); }} onClose={closeSearch} />}
     <div className="agentChatBody">
-      <AgentChatMessages state={logState} messages={view.messages} turn={view.turn} pendingMessage={view.pendingMessage} pendingAt={sentAt} pendingImages={view.pendingImages} imageUrls={imageUrls} tasks={board.tasks}
+      <AgentChatMessages state={logState} messages={view.messages} summarized={view.summarized} turn={view.turn} pendingMessage={view.pendingMessage} pendingAt={sentAt} pendingImages={view.pendingImages} imageUrls={imageUrls} tasks={board.tasks}
         resolving={view.resolving} pinSignal={pin} target={target} hasOlder={view.hasOlder} loadingOlder={view.loadingOlder} startHere={availability === "desktop"} heldStart={heldStart}
         onLoadOlder={() => { void view.loadOlder(); }} onSuggest={suggest} onApply={(conversationId, proposalId) => { void apply(conversationId, proposalId); }} onDismiss={(conversationId, proposalId) => { void view.dismiss(conversationId, proposalId); }} />
     </div>

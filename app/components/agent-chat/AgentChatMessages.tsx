@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { AgentChatAgentMessage, AgentChatImage, AgentChatThreadMessage, AgentChatTurn } from "../../../shared/agent-chat-contract";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { AgentChatAgentMessage, AgentChatImage, AgentChatThreadMessage, AgentChatThreadSummary, AgentChatTiming, AgentChatTurn } from "../../../shared/agent-chat-contract";
 import type { Task } from "../../../shared/task-contract";
 import { threadMessageKey } from "../../agent-chat-client";
 import { CommandIcon } from "../command-center/CommandIcon";
@@ -9,7 +9,7 @@ import { AgentChatImageStrip } from "./AgentChatImages";
 import type { AgentChatImageUrls } from "./agent-chat-images";
 import { SafeMarkdown } from "../markdown/SafeMarkdown";
 import { AgentChatProposalCard } from "./AgentChatProposalCard";
-import { ACTIVITY_LABELS, STATUS_NOTES, SUGGESTIONS, UNREADABLE_PROPOSAL, agentCaption, formatMessageTime, fullMessageTime, pendingIsStored } from "./agent-chat-presentation";
+import { ACTIVITY_LABELS, STATUS_NOTES, SUGGESTIONS, SUMMARIZED_LINE, UNREADABLE_PROPOSAL, agentCaption, answerTimeTitle, formatMessageTime, pendingIsStored } from "./agent-chat-presentation";
 
 type BoardTask = Pick<Task, "id" | "text">;
 
@@ -24,11 +24,36 @@ const NO_IMAGES: readonly AgentChatImage[] = [];
 /** A message to bring into view: one a notification opened, or one the owner chose in the search. `nonce` changes for each request, so the same message can be asked for again. */
 export type MessageTarget = { conversationId: string; messageId: string; nonce: number };
 
-/** The time of a message in the owner's local time, with the whole date and time as its tooltip. Nothing is drawn for a message with no time. */
-function MessageTime({ at }: { at: string | null | undefined }) {
+/**
+ * The time of a message in the owner's local time, with the whole date and time as its tooltip, and under it the timing of an answer
+ * that was measured. Nothing is drawn for a message with no time.
+ */
+function MessageTime({ at, timing }: { at: string | null | undefined; timing?: AgentChatTiming }) {
   const short = at ? formatMessageTime(at) : null;
   if (!at || short === null) return null;
-  return <time className="agentChatMessageTime" dateTime={at} title={fullMessageTime(at) ?? undefined}>{short}</time>;
+  return <time className="agentChatMessageTime" dateTime={at} title={answerTimeTitle(at, timing) ?? undefined}>{short}</time>;
+}
+
+/** The quiet line where the thread was summarized for Aril: an icon, fixed words, and the time. It is no message and holds no summary text. */
+function SummaryLine({ summarized }: { summarized: AgentChatThreadSummary }) {
+  return <div className="agentChatQuietLine isSummary">
+    <CommandIcon name="history" size="small" />
+    <span className="agentChatQuietText">{SUMMARIZED_LINE}</span>
+    <MessageTime at={summarized.at} />
+  </div>;
+}
+
+/**
+ * The message the summary line follows: the newest message the summary covers, or when that one is gone, the last message before its
+ * time. Null when no loaded message precedes the summary's end, as when the older pages that hold it are not loaded yet.
+ */
+function summaryAnchor(messages: readonly AgentChatThreadMessage[], summarized: AgentChatThreadSummary | null): string | null {
+  if (!summarized) return null;
+  const covered = threadMessageKey({ conversationId: summarized.through.conversationId, id: summarized.through.messageId });
+  if (messages.some((message) => threadMessageKey(message) === covered)) return covered;
+  const end = Date.parse(summarized.through.at);
+  const before = messages.filter((message) => Date.parse(message.at) < end).at(-1);
+  return before ? threadMessageKey(before) : null;
 }
 
 function OwnerMessage({ message, text, at, images, urls, marked = false }: { message?: AgentChatThreadMessage; text: string; at: string | null; images: readonly AgentChatImage[]; urls: AgentChatImageUrls; marked?: boolean }) {
@@ -43,8 +68,8 @@ function OwnerMessage({ message, text, at, images, urls, marked = false }: { mes
 
 export type AgentChatLogState = "loading" | "empty" | "ready";
 
-function AgentHead({ at, caption }: { at: string | null | undefined; caption: string | null }) {
-  return <p className="agentChatMessageHead"><span className="agentChatMessageName">Aril</span><MessageTime at={at} />{caption && <span className="agentChatMessageCaption">{caption}</span>}</p>;
+function AgentHead({ at, caption, timing }: { at: string | null | undefined; caption: string | null; timing?: AgentChatTiming }) {
+  return <p className="agentChatMessageHead"><span className="agentChatMessageName">Aril</span><MessageTime at={at} timing={timing} />{caption && <span className="agentChatMessageCaption">{caption}</span>}</p>;
 }
 
 /** A grant follow-up: one fixed line Pomegr wrote from the task log, drawn as a quiet line (an icon, its text, and its time) and not as a message. */
@@ -69,7 +94,7 @@ function AgentMessage({ message, marked, tasks, imageUrls, resolving, startHere,
 }) {
   if (message.grantFollowUp) return <QuietLine message={message} marked={marked} />;
   return <article className={`agentChatMessage isAgent${marked ? " isMarked" : ""}`} aria-label="Aril" data-conversation-id={message.conversationId} data-message-id={message.id}>
-    <AgentHead at={message.at} caption={agentCaption(message)} />
+    <AgentHead at={message.at} caption={agentCaption(message)} timing={message.timing} />
     {message.text !== "" && <SafeMarkdown text={message.text} />}
     {message.status !== "complete" && <p className="agentChatMessageNote">{STATUS_NOTES[message.status]}</p>}
     {message.proposal && <AgentChatProposalCard proposal={message.proposal} tasks={tasks} imageUrls={imageUrls} busy={resolving === message.proposal.id} startHere={startHere} heldStart={heldStart}
@@ -95,9 +120,11 @@ function Empty({ onSuggest }: { onSuggest(text: string): void }) {
  * owner was reading. The partial answer is not a live region of its own: the log announces each stored message, and the
  * activity line is a status.
  */
-export function AgentChatMessages({ state, messages, turn, pendingMessage, pendingAt = null, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, target = null, hasOlder = false, loadingOlder = false, startHere = false, heldStart, onLoadOlder, onSuggest, onApply, onDismiss }: {
+export function AgentChatMessages({ state, messages, summarized = null, turn, pendingMessage, pendingAt = null, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, target = null, hasOlder = false, loadingOlder = false, startHere = false, heldStart, onLoadOlder, onSuggest, onApply, onDismiss }: {
   state: AgentChatLogState;
   messages: readonly AgentChatThreadMessage[];
+  /** Where the thread was summarized for Aril: one quiet line follows the newest message the summary covers. */
+  summarized?: AgentChatThreadSummary | null;
   turn: AgentChatTurn | null;
   pendingMessage: string | null;
   /** When the message that is not stored yet was sent. */
@@ -130,6 +157,7 @@ export function AgentChatMessages({ state, messages, turn, pendingMessage, pendi
   const showPending = pendingMessage !== null && !pendingIsStored(messages, pendingMessage);
   const running = turn !== null || pendingMessage !== null;
   const [marked, setMarked] = useState<{ key: string; nonce: number } | null>(null);
+  const summaryKey = summaryAnchor(messages, summarized);
 
   const toBottom = useCallback(() => {
     const element = log.current;
@@ -204,9 +232,12 @@ export function AgentChatMessages({ state, messages, turn, pendingMessage, pendi
       {state === "ready" && <>
         {messages.map((message) => {
           const isMarked = marked !== null && marked.key === `${message.conversationId}/${message.id}`;
-          return message.role === "user"
-            ? <OwnerMessage key={threadMessageKey(message)} message={message} text={message.text} at={message.at} images={message.images ?? NO_IMAGES} urls={imageUrls} marked={isMarked} />
-            : <AgentMessage key={threadMessageKey(message)} message={message} marked={isMarked} tasks={tasks} imageUrls={imageUrls} resolving={resolving} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />;
+          return <Fragment key={threadMessageKey(message)}>
+            {message.role === "user"
+              ? <OwnerMessage message={message} text={message.text} at={message.at} images={message.images ?? NO_IMAGES} urls={imageUrls} marked={isMarked} />
+              : <AgentMessage message={message} marked={isMarked} tasks={tasks} imageUrls={imageUrls} resolving={resolving} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />}
+            {summarized && summaryKey === threadMessageKey(message) && <SummaryLine summarized={summarized} />}
+          </Fragment>;
         })}
         {showPending && <OwnerMessage text={pendingMessage} at={pendingAt} images={pendingImages} urls={imageUrls} />}
         {running && <article className="agentChatMessage isAgent isWriting" aria-label="Aril">

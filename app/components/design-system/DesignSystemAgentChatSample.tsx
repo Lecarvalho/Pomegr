@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { TaskEffort } from "../../../shared/task-contract";
-import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatMessage, AgentChatOperationResult, AgentChatProposal, AgentChatSearchMatch, AgentChatThreadMessage, AgentChatTurn } from "../../../shared/agent-chat-contract";
+import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatMessage, AgentChatOperationResult, AgentChatProposal, AgentChatSearchMatch, AgentChatThreadMessage, AgentChatThreadSummary, AgentChatTurn } from "../../../shared/agent-chat-contract";
 import { AgentChatComposer } from "../agent-chat/AgentChatComposer";
 import { AgentChatHeader, AgentChatLauncher, AgentChatPanelFrame, AgentChatScrim } from "../agent-chat/AgentChatFrame";
 import { SafeMarkdown } from "../markdown/SafeMarkdown";
@@ -78,6 +78,14 @@ const QUIET = thread([
   agent("m-3", "Merged T-5 and started T-6. Nothing needs you yet.", { grantFollowUp: true, at: LATER, effort: null }),
   agent("m-4", "Could not merge T-7. T-7 needs you.", { grantFollowUp: true, at: LATER, effort: null }),
 ]);
+// A thread summarized for Aril up to its second message. The answer after the line was measured, so its time shows the timing as a tooltip.
+const SUMMARIZED: AgentChatThreadSummary = { through: { conversationId: "chat-0123456789ab", messageId: "m-2", at: AT }, at: LATER };
+const SUMMARIZED_THREAD = thread([
+  ASK,
+  agent("m-2", "I cut it into three tasks. Apply them when you are ready.", { at: AT }),
+  { id: "m-3", role: "user", text: "Apply the first two and keep the third for later.", at: LATER },
+  agent("m-4", "Done. T-19 and T-20 are in Ready; the third stays in Backlog.", { at: LATER, timing: { eventMs: 1_200, textMs: 6_800, doneMs: 11_400, prompt: { instructions: 24_000, board: 18_000, taskLog: 300, conversation: 9_000, message: 52, other: 1_800 } } }),
+]);
 const NOTES = thread([
   ASK,
   agent("m-2", "I started to answer, then the run ended.", { status: "failed" }),
@@ -129,9 +137,10 @@ function SampleComposer({ initial = "", ...rest }: { initial?: string; repositor
     images={rest.images} imageUrls={rest.imageUrls} uploading={rest.uploading} imageError={rest.imageError} onAttach={noop} onRemoveImage={noop} />;
 }
 
-function Panel({ state = "ready", messages = [], turn = null, pending = null, search = null, loadingOlder = false, expanded = false, children }: {
+function Panel({ state = "ready", messages = [], summarized = null, turn = null, pending = null, search = null, loadingOlder = false, expanded = false, children }: {
   state?: AgentChatLogState;
   messages?: AgentChatThreadMessage[];
+  summarized?: AgentChatThreadSummary | null;
   turn?: AgentChatTurn | null;
   pending?: string | null;
   /** The search under the header: what the field holds and what it found, or nothing when the search is closed. */
@@ -144,7 +153,7 @@ function Panel({ state = "ready", messages = [], turn = null, pending = null, se
     <AgentChatHeader searchOpen={search !== null} onToggleSearch={noop} expanded={expanded} onToggleExpanded={noop} onClose={noop} />
     {search !== null && <AgentChatSearch query={search.query} onQueryChange={noop} matches={search.matches} failed={false} onChoose={noop} onClose={noop} />}
     <div className="agentChatBody">
-      <AgentChatMessages state={state} messages={messages} turn={turn} pendingMessage={pending} pendingAt={pending === null ? null : AT} imageUrls={IMAGE_URLS} tasks={TASKS} resolving={null}
+      <AgentChatMessages state={state} messages={messages} summarized={summarized} turn={turn} pendingMessage={pending} pendingAt={pending === null ? null : AT} imageUrls={IMAGE_URLS} tasks={TASKS} resolving={null}
         hasOlder={loadingOlder} loadingOlder={loadingOlder} onSuggest={noop} onApply={noop} onDismiss={noop} />
     </div>
     {children}
@@ -181,6 +190,9 @@ export function AgentChatSection() {
       </Sample>
       <Sample label="Panel, activity lines" note="A grant follow-up is one quiet line: an icon, its text, and its time. It has no head and no card.">
         <Panel messages={QUIET}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, earlier messages summarized" note="Where Pomegr summarized the older messages for Aril, one quiet line shows an icon, fixed words, and the time. The messages stay readable and searchable. The time of a measured answer adds its timing to the tooltip.">
+        <Panel messages={SUMMARIZED_THREAD} summarized={SUMMARIZED}><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, search" note="The search opens under the header. Each match shows who wrote it, its time, and an excerpt with the searched text emphasized. Choosing one loads the thread to that message and marks it for a moment.">
         <Panel messages={PROPOSED} search={{ query: "retry", matches: MATCHES }}><SampleComposer /></Panel>

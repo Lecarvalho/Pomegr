@@ -2,7 +2,7 @@ import {
   AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN,
   type AgentChatActivity, type AgentChatBoardOperation, type AgentChatError, type AgentChatMessage,
   type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
-  type AgentChatTurnStatus,
+  type AgentChatTiming, type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
 import { plainTaskText, type Task, type TaskEffort } from "../../../shared/task-contract";
 import { repositoryRouteId } from "../repositories/repository-route";
@@ -87,6 +87,28 @@ export function formatMessageTime(at: string, now: Date | number = Date.now()): 
 export function fullMessageTime(at: string): string | null {
   const time = Date.parse(at);
   return Number.isFinite(time) ? FULL_TIME.format(time) : null;
+}
+
+/** The words of the quiet line where the thread was summarized for Aril. */
+export const SUMMARIZED_LINE = "Earlier messages summarized for Aril";
+
+const seconds = (milliseconds: number) => `${(milliseconds / 1000).toFixed(1)}s`;
+
+/**
+ * What a measured answer's time shows besides the date: "Started 1.2s · first words 6.8s · done 11.4s". A step the run never reached
+ * is left out. Null when there is no timing. Numbers only: no text of the answer or the prompt is ever placed in it.
+ */
+export function timingLine(timing: AgentChatTiming | undefined | null): string | null {
+  if (!timing) return null;
+  const steps = [timing.eventMs === null ? null : `Started ${seconds(timing.eventMs)}`, timing.textMs === null ? null : `first words ${seconds(timing.textMs)}`, `done ${seconds(timing.doneMs)}`];
+  return steps.filter((step): step is string => step !== null).join(" · ");
+}
+
+/** The tooltip of an answer's time: the whole local date and time, and under it the timing when the answer has one. */
+export function answerTimeTitle(at: string, timing?: AgentChatTiming | null): string | null {
+  const full = fullMessageTime(at);
+  const line = timingLine(timing);
+  return full === null ? null : line === null ? full : [full, line].join("\n");
 }
 
 /** Whether the pending message of the owner is already the last stored message, so it is not drawn twice. */

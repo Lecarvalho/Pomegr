@@ -216,12 +216,30 @@ The task board is in [Task board design](task-board.md).
 
 - Every message shows its time: the owner's message, Aril's answer, the answer being written, and a quiet line.
 - A time is a `<time>` element whose `dateTime` is the stored instant and whose `title` is the whole local date and time.
+- The `title` of the time of an answer that Pomegr measured adds a second line: “Started 1.2s · first words 6.8s · done 11.4s”.
+- The seconds have one decimal, and a step the run never reached is left out.
+- An answer with no timing keeps the date and time alone, and the time itself still reads the clock.
+- `timingLine` and `answerTimeTitle` in `agent-chat-presentation.ts` build the words from numbers only.
 - A time is muted `--text-xs` text in the data face.
 - A time reads `HH:MM` (24-hour, local) for a message of today.
 - A time reads `Mon D, HH:MM` for a message of an earlier day.
 - The day is decided in the owner's local time.
 - A message whose time cannot be read draws no time.
 - `formatMessageTime` and `fullMessageTime` in `agent-chat-presentation.ts` build the words.
+
+### Summary line
+
+- Where Pomegr summarized the older messages for Aril, the log draws one quiet line after the newest message the summary covers.
+- The line is a 14px `history` glyph, the words “Earlier messages summarized for Aril”, and the time the summary was written, all muted.
+- It is drawn like the grant follow-up line, in a `.agentChatQuietLine`, and it adds no style of its own.
+- It is not a message: it has no head, no bubble, no card, and no address, and the search never finds it.
+- The words are fixed. The desktop sends the panel only a position and a time, never the summary.
+- The messages above the line stay in the log, readable and searchable.
+- A summary whose message is on an older page that is not loaded yet draws no line until that page loads.
+- When the message is gone, the line follows the last message before the time the summary ends at.
+- A thread that was never summarized draws no line.
+- The panel reads the thread again when a summary is written, so the line appears without a new message.
+- `SUMMARIZED_LINE` in `agent-chat-presentation.ts` holds the words.
 
 ### Image strip
 
@@ -487,7 +505,7 @@ The task board is in [Task board design](task-board.md).
 ## Samples
 
 - `/design-system` renders the Aril launcher in its three states.
-- It renders the panel from invented threads: empty, with a pending proposal holding all eight operations, with an answer being written, with quiet activity lines, with the search open and with a search that found nothing, while earlier messages load, with the notes under an answer and the unreadable-proposal notice, and with no repository.
+- It renders the panel from invented threads: empty, with a pending proposal holding all eight operations, with an answer being written, with quiet activity lines, with the line where earlier messages were summarized and the timing in the tooltip of a measured answer, with the search open and with a search that found nothing, while earlier messages load, with the notes under an answer and the unreadable-proposal notice, and with no repository.
 - It renders the expanded panel, with the log and the composer in their centered column.
 - It renders the proposal card pending, with a delete, in flight, applied, partly applied, with a task that was not found, with every result word, and dismissed.
 - It renders the session start proposed, held, failed, launched, and on a paired device.

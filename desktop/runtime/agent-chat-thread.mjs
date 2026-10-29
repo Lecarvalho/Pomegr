@@ -98,6 +98,18 @@ export async function threadPage(source, { before = null, limit = THREAD_PAGE } 
 }
 
 /**
+ * A test of whether a thread message (with its `conversationId`, `id`, and `at`) comes after a position of the thread (`{ conversationId,
+ * messageId, at }`), by the order of the thread. A message ID is the place in its conversation plus one, and a conversation that is no
+ * longer stored counts as created before all others, so a position still divides the messages by time.
+ */
+export function afterPosition(metas, position) {
+  const created = new Map(metas.map((meta) => [meta.id, Date.parse(meta.createdAt)]));
+  const keyOf = (conversationId, messageId, at) => ({ at: Date.parse(at), created: created.get(conversationId) ?? Number.NEGATIVE_INFINITY, conversation: conversationId, index: Number(String(messageId).slice(2)) - 1 });
+  const mark = keyOf(position.conversationId, position.messageId, position.at);
+  return (message) => compare(keyOf(message.conversationId, message.id, message.at), mark) > 0;
+}
+
+/**
  * The newest earlier messages of the thread, oldest first, for the prompt: pages are read back from the newest until `enough(messages)`
  * says the messages read already fill the history, so the older conversations are not read.
  */
@@ -182,10 +194,11 @@ export async function searchThread(source, query, pause = defer) {
 }
 
 /**
- * The two read operations of the thread. `settle(repositoryId, conversation)` repairs a conversation whose answer was lost, and
- * `turn(repositoryId)` answers the turn of the repository that runs or waits, in the shape `read` answers it, or null.
+ * The two read operations of the thread. `settle(repositoryId, conversation)` repairs a conversation whose answer was lost,
+ * `turn(repositoryId)` answers the turn of the repository that runs or waits, in the shape `read` answers it, or null, and
+ * `summarized(repositoryId)` answers where the thread's summary ends (`{ through, at }`, never its text), or null.
  */
-export function createAgentChatThread({ store, settle, turn }) {
+export function createAgentChatThread({ store, settle, turn, summarized = async () => null }) {
   // A conversation that ends on the owner's message may have lost its answer: only those are read to be repaired.
   async function indexOf(repositoryId) {
     for (const meta of await store.index(repositoryId)) {
@@ -206,7 +219,7 @@ export function createAgentChatThread({ store, settle, turn }) {
       const metas = await indexOf(payload.repositoryId);
       const page = await threadPage(threadSource(store, payload.repositoryId, metas), { before: Object.hasOwn(payload, "before") ? payload.before : null, limit });
       if (!page) return INVALID;
-      return { ok: true, ...page, turn: turn(payload.repositoryId), sendTo: currentConversation(metas)?.id ?? null, run: lastRun(metas), updatedAt: lastUpdate(metas) };
+      return { ok: true, ...page, turn: turn(payload.repositoryId), sendTo: currentConversation(metas)?.id ?? null, run: lastRun(metas), updatedAt: lastUpdate(metas), summarized: await summarized(payload.repositoryId) };
     },
     /** `{ repositoryId, query }`: up to `SEARCH_LIMIT` matches, newest first. */
     async search(payload) {

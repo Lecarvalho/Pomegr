@@ -7,7 +7,7 @@ import {
   type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatConversation, type AgentChatConversationSummary,
   type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
   type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
-  type AgentChatThreadResult, type AgentChatThreadRun, type AgentChatTurn,
+  type AgentChatThreadResult, type AgentChatThreadRun, type AgentChatThreadSummary, type AgentChatTiming, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
 import { TASK_EFFORTS, TASK_IMAGE_TYPES, type TaskEffort } from "../shared/task-contract";
 import { useClientAccess } from "./hooks/ClientAccessContext";
@@ -124,6 +124,22 @@ function parseProposal(value: unknown): AgentChatProposal | null {
 /** The effort of a record: only a known value. A record without one, an older record, reads as none. */
 const effortOf = (value: unknown): { effort: TaskEffort } | Record<string, never> => ((TASK_EFFORTS as readonly string[]).includes(value as string) ? { effort: value as TaskEffort } : {});
 
+const PROMPT_PARTS = ["instructions", "board", "taskLog", "conversation", "message", "other"] as const;
+const wholeNumber = (value: unknown, max: number): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= max;
+
+/** How long a turn took and how large its prompt was: whole numbers inside their bounds, or nothing. A timing outside the contract is not drawn; the message keeps its text. */
+export function parseTiming(value: unknown): AgentChatTiming | null {
+  const timing = record(value);
+  const prompt = record(timing?.prompt);
+  const max = AGENT_CHAT_BOUNDS.timingMs;
+  if (!timing || !prompt || !wholeNumber(timing.doneMs, max) || !(timing.eventMs === null || wholeNumber(timing.eventMs, max)) || !(timing.textMs === null || wholeNumber(timing.textMs, max))
+    || !PROMPT_PARTS.every((part) => wholeNumber(prompt[part], 1_000_000))) return null;
+  return {
+    eventMs: timing.eventMs as number | null, textMs: timing.textMs as number | null, doneMs: timing.doneMs,
+    prompt: Object.fromEntries(PROMPT_PARTS.map((part) => [part, prompt[part]])) as AgentChatTiming["prompt"],
+  };
+}
+
 function parseMessage(value: unknown): AgentChatMessage | null {
   const message = record(value);
   if (!message || !text(message.id) || !text(message.text) || !text(message.at)) return null;
@@ -141,6 +157,8 @@ function parseMessage(value: unknown): AgentChatMessage | null {
   if (proposal) parsed.proposal = proposal;
   if (message.proposalUnreadable === true || (message.proposal !== undefined && !proposal)) parsed.proposalUnreadable = true;
   if (text(message.followUp) && AGENT_CHAT_PROPOSAL_ID_PATTERN.test(message.followUp)) parsed.followUp = message.followUp;
+  const timing = parseTiming(message.timing);
+  if (timing) parsed.timing = timing;
   // A grant follow-up never offers a proposal: one that names one is not drawn as a follow-up.
   if (message.grantFollowUp === true && !parsed.proposal && !parsed.proposalUnreadable && parsed.followUp === undefined) parsed.grantFollowUp = true;
   return parsed;
@@ -175,7 +193,7 @@ export async function listAgentChats(repositoryId: string): Promise<AgentChatLis
       conversations.push({ id: row.id, title: row.title, updatedAt: row.updatedAt, messages: row.messages });
     }
   }
-  return { ok: true, conversations, running: text(answer.running) ? answer.running : null };
+  return { ok: true, conversations, running: text(answer.running) ? answer.running : null, ...(text(answer.summarizedAt) ? { summarizedAt: answer.summarizedAt } : {}) };
 }
 
 export async function readAgentChat(repositoryId: string, conversationId: string): Promise<AgentChatReadResult> {
@@ -188,6 +206,15 @@ export async function readAgentChat(repositoryId: string, conversationId: string
 function parseRun(value: unknown): AgentChatThreadRun | null {
   const run = record(value);
   return run && (run.provider === "claude" || run.provider === "codex") ? { provider: run.provider, model: text(run.model) ? run.model : null, ...effortOf(run.effort) } : null;
+}
+
+/** Where the thread was summarized for Aril: a position and a time, never text. Anything else reads as no summary. */
+function parseSummarized(value: unknown): AgentChatThreadSummary | null {
+  const summary = record(value);
+  const through = record(summary?.through);
+  return summary && through && text(through.conversationId) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(through.conversationId) && text(through.messageId)
+    && AGENT_CHAT_MESSAGE_ID_PATTERN.test(through.messageId) && text(through.at) && text(summary.at)
+    ? { through: { conversationId: through.conversationId, messageId: through.messageId, at: through.at }, at: summary.at } : null;
 }
 
 /** A message of the thread: a stored message with the conversation it is in. One outside the contract is not drawn. */
@@ -209,6 +236,7 @@ export async function threadAgentChat(repositoryId: string, before: string | nul
     sendTo: text(answer.sendTo) && AGENT_CHAT_CONVERSATION_ID_PATTERN.test(answer.sendTo) ? answer.sendTo : null,
     run: answer.run === null || answer.run === undefined ? null : parseRun(answer.run),
     updatedAt: text(answer.updatedAt) ? answer.updatedAt : null,
+    summarized: parseSummarized(answer.summarized),
   };
 }
 
@@ -276,6 +304,8 @@ export type AgentChatView = {
   turn: AgentChatTurn | null;
   /** What the thread last ran with, for the composer to start from. */
   run: AgentChatThreadRun | null;
+  /** Where the thread was summarized for Aril, or null: the panel draws one quiet line there. */
+  summarized: AgentChatThreadSummary | null;
   /** The owner's message that was sent and is not in the stored thread yet. */
   pendingMessage: string | null;
   /** The images of that message. */
@@ -308,6 +338,7 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [turn, setTurn] = useState<AgentChatTurn | null>(null);
   const [run, setRun] = useState<AgentChatThreadRun | null>(null);
+  const [summarized, setSummarized] = useState<AgentChatThreadSummary | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<readonly AgentChatImage[]>([]);
   const [resolving, setResolving] = useState<string | null>(null);
@@ -315,6 +346,8 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
   const loaded = useRef<LoadedThread>(EMPTY_THREAD);
   // The time of the last update the loaded thread was read at, so the idle list can tell that something changed.
   const revision = useRef<string | null>(null);
+  // The time the summary was written at when the thread was read, so the idle list can tell that a compaction finished.
+  const summaryRevision = useRef<string | null>(null);
   const generation = useRef(0);
   const requests = useRef(0);
   // Once a message is accepted, the first read that starts after it holds the stored message and replaces the pending one.
@@ -340,8 +373,10 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
     if (!answer.ok) { setError(answer.error); return; }
     commit(mergeNewest(loaded.current, answer));
     revision.current = answer.updatedAt;
+    summaryRevision.current = answer.summarized?.at ?? null;
     setTurn(answer.turn);
     setRun(answer.run);
+    setSummarized(answer.summarized);
     if (sequence > accepted.current) { accepted.current = Number.POSITIVE_INFINITY; setPendingMessage(null); }
   }, [repositoryId, commit]);
 
@@ -371,7 +406,7 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
       const answer = await listAgentChats(repositoryId);
       if (cancelled || at !== generation.current) return;
       if (!answer.ok) setError(answer.error);
-      else if (answer.running !== null || (answer.conversations[0]?.updatedAt ?? null) !== revision.current) await refresh();
+      else if (answer.running !== null || (answer.conversations[0]?.updatedAt ?? null) !== revision.current || (answer.summarizedAt ?? null) !== summaryRevision.current) await refresh();
       if (!cancelled) schedule();
     };
     schedule();
@@ -447,7 +482,7 @@ export function useAgentChat(repositoryId: string | null, active: boolean, avail
   const dismiss = useCallback(async (conversationId: string, proposalId: string) => { await resolve(conversationId, proposalId, false); }, [resolve]);
 
   return {
-    ready, messages: thread.messages, hasOlder: thread.before !== null, loadingOlder, turn, run,
+    ready, messages: thread.messages, hasOlder: thread.before !== null, loadingOlder, turn, run, summarized,
     pendingMessage, pendingImages: pendingMessage === null ? NO_IMAGES : pendingImages, resolving, error, send, stop, apply, dismiss, loadOlder, reveal,
   };
 }

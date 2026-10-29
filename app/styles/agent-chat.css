@@ -101,7 +101,7 @@
 .agentChatProposalHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
 .agentChatProposalSummary { min-width: 0; margin: 0; overflow-wrap: anywhere; font: 600 var(--text-sm)/1.4 var(--font-ui); }
 .agentChatProposalHead .commandChip { flex: 0 0 auto; }
-.agentChatOps { margin: 0; padding: 0 0 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); list-style: decimal; }
+.agentChatOps { margin: 0; padding: 0 0 0 var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); list-style: decimal; }
 .agentChatOps > li::marker { color: var(--command-muted); font: 400 var(--text-xs) var(--font-data); }
 .agentChatOp { min-width: 0; padding-inline-start: var(--space-1); }
 .agentChatOp > p { margin: 0; }
@@ -136,8 +136,7 @@
 .agentChatField:focus-visible { outline: 0; }
 .agentChatField:disabled { cursor: not-allowed; opacity: .55; }
 .agentChatComposerRow { display: flex; align-items: center; gap: var(--space-1); }
-.agentChatRepository { flex: 0 1 160px; min-width: 0; }
-.agentChatModel { flex: 0 1 240px; min-width: 0; }
+.agentChatRepository, .agentChatModel { flex: 0 1 auto; min-width: 0; }
 .agentChatEffort { flex: 0 0 auto; }
 .agentChatComposer .commandSelectTrigger { min-height: var(--control-compact); border-color: transparent; background: transparent; color: var(--command-muted); font-size: var(--text-xs); }
 .agentChatComposer .commandSelectTrigger:hover:not(:disabled), .agentChatComposer .commandSelectTrigger[aria-expanded="true"] { border-color: transparent; background: color-mix(in srgb, var(--command-ink) 6%, transparent); color: var(--command-ink); }

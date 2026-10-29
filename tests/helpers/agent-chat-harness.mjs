@@ -9,6 +9,7 @@ import path from "node:path";
 import { createAgentChat } from "../../desktop/runtime/agent-chat.mjs";
 import { createAgentChatImages } from "../../desktop/runtime/agent-chat-images.mjs";
 import { AGENT_CHAT_DIRECTORY, createAgentChatStore } from "../../desktop/runtime/agent-chat-store.mjs";
+import { createAgentChatSummaries } from "../../desktop/runtime/agent-chat-summary.mjs";
 
 export const repositoryId = "repo-0123456789abcdef01234567";
 export const otherRepositoryId = "repo-fedcba9876543210fedcba98";
@@ -62,9 +63,10 @@ export function fakeRuns() {
     let resolve;
     let reject;
     const done = new Promise((resolveDone, rejectDone) => { resolve = resolveDone; reject = rejectDone; });
-    const run = { options, stops: 0, resolve, reject, diskAtStart: null };
+    // `measured` is what the run measured of itself ({ eventMs, textMs, doneMs }); a test sets it before it finishes the run.
+    const run = { options, stops: 0, resolve, reject, diskAtStart: null, measured: null };
     runs.push(run);
-    return { done, stop: () => { run.stops += 1; } };
+    return { done, stop: () => { run.stops += 1; }, timing: () => run.measured };
   };
   return { runs, runTurn };
 }
@@ -111,6 +113,7 @@ export async function chatHarness(context, overrides = {}) {
   };
   const store = createAgentChatStore({ directory, now });
   const images = createAgentChatImages({ directory });
+  const summaries = createAgentChatSummaries({ directory });
   const { runs, runTurn: startRun } = fakeRuns();
   // What is on disk at the moment a turn starts: the owner's message must already be stored.
   const runTurn = (options) => {
@@ -123,7 +126,7 @@ export async function chatHarness(context, overrides = {}) {
     fetch: fetchImpl, monitorOrigin: origin, authorizationToken: token, environment: { ...sourceEnvironment }, platform: "win32",
     fileExists: (file) => files.includes(file), now, runTurn, spawn, worktrees: { inventory: async () => [] },
     executable: desktopExecutable, unpackedRoot,
-    ...(viaDataRoot ? { dataRoot } : { store, images }),
+    ...(viaDataRoot ? { dataRoot } : { store, images, summaries }),
     ...rest,
   });
   context.after(() => chat.dispose());
@@ -132,7 +135,7 @@ export async function chatHarness(context, overrides = {}) {
   const followUps = () => runs.filter((run) => run.options.prompt.includes("</proposal_outcome>"));
   const followUp = () => until(() => followUps().find((run) => !run.answered) ?? null);
   return {
-    chat, state, runs, calls, declarations: state.declarations, dataRoot, directory, store, images, spawn, now, followUps, followUp,
+    chat, state, runs, calls, declarations: state.declarations, dataRoot, directory, store, images, summaries, spawn, now, followUps, followUp,
     /** Answers the follow-up that runs or is about to, and waits until it is stored. */
     async finishFollowUp(conversationId, outcome = { status: "complete", text: "Noted." }, repository = repositoryId) {
       const run = await followUp();
@@ -143,6 +146,8 @@ export async function chatHarness(context, overrides = {}) {
     handle: (operation, payload) => chat.handle(operation, payload),
     /** The stored conversations as a new process would read them from disk. */
     reload: () => createAgentChatStore({ directory }),
+    /** The stored summaries as a new process would read them from disk. */
+    reloadSummaries: () => createAgentChatSummaries({ directory }),
     requests: (predicate = () => true) => calls.filter(predicate),
     imageCalls: () => calls.filter((call) => call.pathname === "/internal/tasks/image-add"),
     actionCalls: () => calls.filter((call) => call.pathname.startsWith("/internal/tasks/") && !["worktree-root", "image-add", "log-read", "log-ack"].some((route) => call.pathname === `/internal/tasks/${route}`)),

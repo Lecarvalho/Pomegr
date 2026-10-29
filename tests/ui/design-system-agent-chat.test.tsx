@@ -78,6 +78,20 @@ describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => 
       expect(line.querySelector(".agentChatMessageHead")).toBeNull();
     }
 
+    // The line where earlier messages were summarized: the quiet line's parts after the covered message, and no summary text anywhere.
+    const summarized = sample(chat, "Panel, earlier messages summarized");
+    const log = within(summarized).getByRole("log", { name: "Conversation with Aril" });
+    expect([...log.children].map((child) => (child.classList.contains("agentChatQuietLine") ? "line" : child.getAttribute("aria-label")))).toEqual(["You", "Aril", "line", "You", "Aril"]);
+    const line = log.querySelector(".agentChatQuietLine.isSummary")!;
+    expect(line.querySelector(".agentChatQuietText")).toHaveTextContent("Earlier messages summarized for Aril");
+    expect(line.querySelector("svg.commandIcon")).not.toBeNull();
+    expect(line.querySelector("time")).toHaveAttribute("datetime", "2026-10-11T10:05:00.000Z");
+    expect(line.querySelector(".agentChatMessageHead")).toBeNull();
+    // The measured answer after it shows its timing in the tooltip of its time.
+    const measured = within(log).getAllByRole("article", { name: "Aril" })[1].querySelector("time")!;
+    expect(measured.getAttribute("title")).toContain("Started 1.2s · first words 6.8s · done 11.4s");
+    expect(within(log).getAllByRole("article", { name: "Aril" })[0].querySelector("time")!.getAttribute("title")).not.toContain("Started");
+
     // The search under the header: a field with no frame, and the matches newest first, each with who wrote it, its time, and an excerpt with the searched text emphasized.
     const searching = sample(chat, "Panel, search");
     expect(within(searching).getByRole("button", { name: "Search", pressed: true })).toHaveClass("commandIconAction");

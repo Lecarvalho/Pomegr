@@ -62,7 +62,7 @@ export function validInstructionsFile(instructions) {
  * can permit reads outside the repository. User settings and hooks are excluded; managed provider policy still
  * applies. No write access or interactive approval is enabled.
  */
-export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, effort = null) {
+export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, effort = null, tools = "read") {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
   const level = typeof effort === "string" && CHAT_EFFORTS.includes(effort) ? effort : null;
   const identity = typeof sessionId === "string" && CHAT_SESSION_ID.test(sessionId) ? sessionId : null;
@@ -71,6 +71,8 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
   const inherited = server ? CHAT_TASK_ENV.filter((name) => Object.hasOwn(server.env, name)) : [];
   for (const name of inherited) delete server.env[name];
   const shown = validImages(images);
+  // `tools` is `"read"` (the files and Pomegr's read tools) or `"none"`; anything else reads as `"read"`.
+  const noTools = tools === "none";
   if (provider === "claude") {
     return [
       "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
@@ -79,10 +81,11 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
       ...(identity ? ["--session-id", identity] : []),
       // Leave out user/project/local settings and hooks; native tool allowlists keep the run read-only without confining reads to cwd.
       "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config", JSON.stringify({ mcpServers: server ? { [MCP_SERVER_NAME]: server } : {} }),
-      // A tool outside the allow list is refused, never asked about.
+      // A tool outside the allow list is refused, never asked about. A run with no tools (the compaction of a thread) is
+      // given the empty tool list and no allow list.
       "--permission-mode", "dontAsk",
-      "--tools", CLAUDE_FILE_TOOLS.join(","),
-      "--allowedTools", [...CLAUDE_FILE_TOOLS, ...POMEGR_READ_TOOLS.map((name) => `mcp__${MCP_SERVER_NAME}__${name}`)].join(","),
+      "--tools", noTools ? "" : CLAUDE_FILE_TOOLS.join(","),
+      ...(noTools ? [] : ["--allowedTools", [...CLAUDE_FILE_TOOLS, ...POMEGR_READ_TOOLS.map((name) => `mcp__${MCP_SERVER_NAME}__${name}`)].join(",")]),
       ...(chosen ? ["--model", chosen] : []),
       ...(level ? ["--effort", level] : []),
       // The conversation image folder remains a desktop-owned working directory.
@@ -127,14 +130,15 @@ const isObject = (value) => value !== null && typeof value === "object" && !Arra
  * Reads the provider's JSON lines and reports only three things: the answer text so far, one fixed activity label,
  * and how the turn ended. Tool input, tool output, and error text are never reported.
  */
-export function createTurnReader(provider, { onText = () => {}, onActivity = () => {} } = {}) {
+export function createTurnReader(provider, { onText = () => {}, onActivity = () => {}, onEvent = () => {}, onFirstText = () => {} } = {}) {
   let buffer = "";
   let overflow = false;
   let text = "";
   let final = null;
   let failed = false;
 
-  const setText = (next) => { text = next.length > ANSWER_LIMIT ? next.slice(0, ANSWER_LIMIT) : next; onText(text); };
+  // `onEvent` and `onFirstText` only tell that something arrived, for the run's timing; they carry no content.
+  const setText = (next) => { text = next.length > ANSWER_LIMIT ? next.slice(0, ANSWER_LIMIT) : next; if (text !== "") onFirstText(); onText(text); };
 
   function claude(event) {
     if (event.type === "stream_event" && isObject(event.event) && !event.parent_tool_use_id) {
@@ -176,6 +180,7 @@ export function createTurnReader(provider, { onText = () => {}, onActivity = () 
     let event;
     try { event = JSON.parse(trimmed); } catch { return; }
     if (!isObject(event) || typeof event.type !== "string") return;
+    onEvent();
     if (provider === "claude") claude(event); else codex(event);
   }
 
@@ -203,10 +208,12 @@ export function createTurnReader(provider, { onText = () => {}, onActivity = () 
 
 /**
  * Starts one turn and answers `{ status, text }` when the run ends: `complete`, `failed`, `timed_out`, or `stopped`.
- * `stop()` ends Pomegr's own headless run; it is never a session the owner started.
+ * `stop()` ends Pomegr's own headless run; it is never a session the owner started. `timing()` answers the milliseconds the run
+ * took, from the start of the process to its first provider event, to the first words of the answer, and to its end, or null before
+ * the process started. They are numbers only. `clock` is a monotonic clock in milliseconds.
  */
-export function runChatTurn({ spawn, executable, provider, model = null, effort = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity }) {
-  const args = chatArguments(provider, model, mcpServer, images, sessionId, instructionsFile, effort);
+export function runChatTurn({ spawn, executable, provider, model = null, effort = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, tools = "read", cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity, clock = () => performance.now() }) {
+  const args = chatArguments(provider, model, mcpServer, images, sessionId, instructionsFile, effort, tools);
   let child = null;
   let stopped = false;
   let timedOut = false;
@@ -214,15 +221,20 @@ export function runChatTurn({ spawn, executable, provider, model = null, effort 
   const done = new Promise((resolve) => { settle = resolve; });
   if (!args || typeof executable !== "string" || typeof prompt !== "string" || !prompt) {
     settle({ status: "failed", text: "" });
-    return { done, stop() {} };
+    return { done, stop() {}, timing: () => null };
   }
-  const reader = createTurnReader(provider, { onText, onActivity });
+  let begun = null;
+  let eventAt = null;
+  let textAt = null;
+  let doneAt = null;
+  const reader = createTurnReader(provider, { onText, onActivity, onEvent: () => { eventAt ??= clock(); }, onFirstText: () => { textAt ??= clock(); } });
   let finished = false;
   let timer;
   const finish = (exitCode) => {
     if (finished) return;
     finished = true;
     clearTimeout(timer);
+    doneAt = clock();
     const result = reader.end();
     const status = stopped ? "stopped" : timedOut ? "timed_out" : result.ok && exitCode === 0 ? "complete" : "failed";
     settle({ status, text: result.text });
@@ -232,6 +244,7 @@ export function runChatTurn({ spawn, executable, provider, model = null, effort 
     const capability = validServer(mcpServer) ? Object.fromEntries(CHAT_TASK_ENV
       .filter((name) => Object.hasOwn(mcpServer.env, name)).map((name) => [name, mcpServer.env[name]])) : {};
     const processEnvironment = Object.keys(capability).length > 0 ? { ...env, ...capability } : env;
+    begun = clock();
     child = spawn(executable, args, { cwd, env: processEnvironment, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
     child.stdout?.setEncoding?.("utf8");
     child.stdout?.on?.("data", (chunk) => reader.push(String(chunk)));
@@ -245,5 +258,10 @@ export function runChatTurn({ spawn, executable, provider, model = null, effort 
   } catch {
     finish(null);
   }
-  return { done, stop() { if (!finished) { stopped = true; kill(); } } };
+  const since = (instant) => (begun === null || instant === null ? null : Math.max(0, instant - begun));
+  return {
+    done,
+    stop() { if (!finished) { stopped = true; kill(); } },
+    timing: () => (begun === null || doneAt === null ? null : { eventMs: since(eventAt), textMs: since(textAt), doneMs: since(doneAt) }),
+  };
 }
