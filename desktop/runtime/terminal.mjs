@@ -91,9 +91,11 @@ export function createTerminalController(options = {}) {
     }
     // Injected clients need no runtime-directory discovery.
     if (options.client) sources.push({ connection: client });
+    const listed = new Set();
     for (const { connection, metadata } of sources) {
       try {
         const rows = await connection.list();
+        listed.add(connection);
         for (const row of rows) {
           const match = typeof row.key === "string" && KEY.exec(row.key);
           const continued = typeof row.key === "string" && CONTINUE_KEY.exec(row.key);
@@ -113,7 +115,8 @@ export function createTerminalController(options = {}) {
         }
       } catch { if (metadata) metadata.state = "host_unavailable"; }
     }
-    for (const record of records.values()) if (!seen.has(record.key) && record.state !== "exited") record.state = "host_unavailable";
+    // A host that answered no longer holds the key only after its process exited and the exit was acknowledged.
+    for (const record of records.values()) if (!seen.has(record.key) && record.state !== "exited") record.state = listed.has(record.connection) ? "exited" : "host_unavailable";
     const repositories = [...new Set([...records.values()].map((row) => row.repositoryId).filter(Boolean))];
     const boards = await Promise.all(repositories.map(async (id) => [id, await readBoard(id)]));
     for (const [id, board] of boards) {
