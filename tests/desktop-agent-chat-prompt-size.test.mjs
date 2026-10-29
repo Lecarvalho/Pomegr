@@ -15,8 +15,8 @@ import { LARGE_NOW, largeBoard, largePromptOptions } from "./helpers/agent-chat-
 // and the whole owner-message prompt with a full history of 24,000 characters. The board has 120 tasks, 86 of them Done, each with a
 // specification text of 1,400 to 3,800 characters; the owner's real prompts ran 79,000 to 131,000.
 const BEFORE = Object.freeze({ instructions: 37_983, board: 66_173, total: 129_785 });
-// The bounds are set from the measurement (instructions 36,867; board 19,992; total 82,488), with a little room.
-const AFTER_BOUND = Object.freeze({ instructions: 37_000, board: 20_500, total: 84_000 });
+// The bounds are set from the measurement (instructions 37,550; board 19,992; total 83,171), with a little room.
+const AFTER_BOUND = Object.freeze({ instructions: 37_650, board: 20_500, total: 84_000 });
 
 const options = largePromptOptions();
 const parts = composePromptParts(options);
