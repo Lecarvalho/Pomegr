@@ -27,7 +27,7 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
 
 import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { parseTiming } from "../../app/agent-chat-client";
-import { SUMMARIZED_LINE, answerTimeTitle, fullMessageTime, timingLine } from "../../app/components/agent-chat/agent-chat-presentation";
+import { SUMMARIZED_LINE, answerTimeTitle, fullMessageTime, prepareLine, timingLine } from "../../app/components/agent-chat/agent-chat-presentation";
 
 // The thread of a repository that was summarized for Aril shows one quiet line where the summary ends, and a measured answer's time
 // shows its timing in the tooltip. The desktop tells where the summary ends and never what it says.
@@ -41,6 +41,7 @@ afterEach(() => { removeHarness(); });
 const minute = (index: number) => `2026-10-11T09:${String(index).padStart(2, "0")}:00.000Z`;
 const at = (message: Record<string, unknown>, index: number) => ({ ...message, at: minute(index) });
 const TIMING = { eventMs: 1_200, textMs: 6_800, doneMs: 11_400, prompt: { instructions: 24_000, board: 18_000, taskLog: 300, conversation: 9_000, message: 52, other: 1_800 } };
+const PREPARE = { total: 3_200, board: 120, root: 90, github: 2_900, workflow: 480, worktrees: 640, environment: 1_100 };
 
 function seedFour(extra: Record<string, unknown> = {}) {
   chat.seed(REPO_A, conversationOf(1, [
@@ -157,6 +158,34 @@ describe("the time of a measured answer", () => {
       expect(parseTiming(bad)).toBeNull();
     }
     expect(Object.keys(parseTiming({ ...TIMING, extra: "a prompt", prompt: { ...TIMING.prompt, text: "a prompt" } })!.prompt)).toEqual(["instructions", "board", "taskLog", "conversation", "message", "other"]);
+  });
+
+  it("adds the preparation above the run's timing, and names the slowest step when it took a tenth of a second or more", async () => {
+    seedFour({ timing: { ...TIMING, prepare: PREPARE } });
+    await open();
+    const measured = within(log()).getAllByRole("article", { name: "Aril" })[1].querySelector("time")!;
+    expect(measured.getAttribute("title")).toBe([fullMessageTime(minute(4)), "Prepared in 3.2s (slowest: GitHub 2.9s)", "Started 1.2s · first words 6.8s · done 11.4s"].join("\n"));
+    expect(prepareLine({ ...TIMING, prepare: PREPARE })).toBe("Prepared in 3.2s (slowest: GitHub 2.9s)");
+    expect(prepareLine({ ...TIMING, prepare: { total: 400, workflow: 140, worktrees: 140, server: 60 } })).toBe("Prepared in 0.4s (slowest: workflow files 0.1s)");
+    expect(prepareLine({ ...TIMING, prepare: { total: 90, board: 90, store: 5 } })).toBe("Prepared in 0.1s");
+    expect(prepareLine({ ...TIMING, prepare: { total: 0 } })).toBe("Prepared in 0.0s");
+    expect(prepareLine(TIMING)).toBeNull();
+    expect(prepareLine(null)).toBeNull();
+    expect(prepareLine(undefined)).toBeNull();
+    expect(answerTimeTitle(AT, { ...TIMING, prepare: PREPARE })!.split("\n")).toEqual([answerTimeTitle(AT)!, "Prepared in 3.2s (slowest: GitHub 2.9s)", "Started 1.2s · first words 6.8s · done 11.4s"]);
+    expect(answerTimeTitle(AT, TIMING)!.split("\n")).toEqual([answerTimeTitle(AT)!, "Started 1.2s · first words 6.8s · done 11.4s"]);
+  });
+
+  it("reads a preparation only inside its contract, and keeps the run's timing when the preparation is outside it", () => {
+    expect(parseTiming({ ...TIMING, prepare: PREPARE })).toEqual({ ...TIMING, prepare: PREPARE });
+    expect(parseTiming({ ...TIMING, prepare: { board: 10, total: 20 } })!.prepare).toEqual({ board: 10, total: 20 });
+    expect(Object.hasOwn(parseTiming(TIMING)!, "prepare")).toBe(false);
+    for (const bad of [null, "slow", [], 5, {}, { board: 10 }, { total: -1 }, { total: 1.5 }, { total: 3_600_001 }, { total: "20" }, { total: 20, board: 21 }, { total: 20, board: 1.5 },
+      { total: 20, board: -1 }, { total: 20, board: "5" }, { total: 20, secret: 5 }, { total: 20, github: null }]) {
+      const timing = parseTiming({ ...TIMING, prepare: bad });
+      expect(timing, JSON.stringify(bad)).toEqual(TIMING);
+      expect(Object.hasOwn(timing!, "prepare")).toBe(false);
+    }
   });
 
   it("does not put the timing of a record outside the contract in the tooltip, and keeps the answer", async () => {

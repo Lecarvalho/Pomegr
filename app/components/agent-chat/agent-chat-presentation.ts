@@ -2,7 +2,7 @@ import {
   AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN,
   type AgentChatActivity, type AgentChatBoardOperation, type AgentChatError, type AgentChatMessage,
   type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
-  type AgentChatTiming, type AgentChatTurnStatus,
+  type AgentChatPrepareStep, type AgentChatTiming, type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
 import { plainTaskText, type Task, type TaskEffort } from "../../../shared/task-contract";
 import { repositoryRouteId } from "../repositories/repository-route";
@@ -104,11 +104,34 @@ export function timingLine(timing: AgentChatTiming | undefined | null): string |
   return steps.filter((step): step is string => step !== null).join(" · ");
 }
 
-/** The tooltip of an answer's time: the whole local date and time, and under it the timing when the answer has one. */
+// The words for the steps of a turn's preparation, chosen by a fixed step. The total is not a step: the line says it first.
+const PREPARE_LABELS: Record<Exclude<AgentChatPrepareStep, "total">, string> = {
+  board: "board", root: "repository", runs: "runs", taskLog: "task log", github: "GitHub", workflow: "workflow files", worktrees: "worktrees",
+  instructions: "instructions", context: "conversation", environment: "environment", store: "saving", declare: "run declaration", server: "task reader",
+};
+// A step shorter than this is not worth naming as the slow one.
+const PREPARE_SLOWEST_MS = 100;
+
+/**
+ * What a measured answer's tooltip says about the time before its run started: "Prepared in 3.2s (slowest: GitHub 2.9s)". The slowest
+ * step is named only when it took at least a tenth of a second. Null when the answer has no preparation. Numbers and fixed words only.
+ */
+export function prepareLine(timing: AgentChatTiming | undefined | null): string | null {
+  const prepare = timing?.prepare;
+  if (!prepare) return null;
+  let slowest: { step: keyof typeof PREPARE_LABELS; ms: number } | null = null;
+  for (const step of Object.keys(PREPARE_LABELS) as (keyof typeof PREPARE_LABELS)[]) {
+    const ms = prepare[step];
+    if (ms !== undefined && (slowest === null || ms > slowest.ms)) slowest = { step, ms };
+  }
+  const named = slowest !== null && slowest.ms >= PREPARE_SLOWEST_MS ? ` (slowest: ${PREPARE_LABELS[slowest.step]} ${seconds(slowest.ms)})` : "";
+  return `Prepared in ${seconds(prepare.total)}${named}`;
+}
+
+/** The tooltip of an answer's time: the whole local date and time, and under it what the answer's timing says: its preparation, then its run. */
 export function answerTimeTitle(at: string, timing?: AgentChatTiming | null): string | null {
   const full = fullMessageTime(at);
-  const line = timingLine(timing);
-  return full === null ? null : line === null ? full : [full, line].join("\n");
+  return full === null ? null : [full, prepareLine(timing), timingLine(timing)].filter((line): line is string => line !== null).join("\n");
 }
 
 /** Whether the pending message of the owner is already the last stored message, so it is not drawn twice. */

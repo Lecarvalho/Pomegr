@@ -9,11 +9,12 @@ import test from "node:test";
 import { AGENT_CHAT_INSTRUCTIONS } from "../desktop/runtime/agent-chat-prompt.mjs";
 import { chatArguments, CLAUDE_FILE_TOOLS, runChatTurn } from "../desktop/runtime/agent-chat-runner.mjs";
 import { normalizeConversation } from "../desktop/runtime/agent-chat-store.mjs";
-import { normalizeTiming, PROMPT_PARTS, PROMPT_PART_MAX, TIMING_MAX_MS, timingOf } from "../desktop/runtime/agent-chat-timing.mjs";
+import { normalizePrepare, normalizeTiming, PREPARE_STEPS, PROMPT_PARTS, PROMPT_PART_MAX, TIMING_MAX_MS, timingOf } from "../desktop/runtime/agent-chat-timing.mjs";
 import { agentMessage, chatHarness, finishTurn, repositoryId, seed, send, stamp, userMessage } from "./helpers/agent-chat-harness.mjs";
 
 const PROMPT = Object.freeze({ instructions: 24_000, board: 18_000, taskLog: 300, conversation: 9_000, message: 52, other: 1_800 });
 const TIMING = Object.freeze({ eventMs: 1_200, textMs: 6_800, doneMs: 11_400, prompt: PROMPT });
+const PREPARE = Object.freeze({ board: 120, root: 90, github: 2_900, workflow: 480, worktrees: 640, environment: 1_100, total: 3_200 });
 
 function fakeChild() {
   return Object.assign(new EventEmitter(), { stdout: Object.assign(new EventEmitter(), { setEncoding() {} }), stdin: Object.assign(new EventEmitter(), { end() {} }), kill: () => true });
@@ -119,7 +120,8 @@ test("an owner's message stores the timing of its run on the answer, with the le
   run.measured = { eventMs: 1_200, textMs: 6_800, doneMs: 11_400 };
   const conversation = await finishTurn(h, run, { status: "complete", text: "Run T-2 first." }, sent.conversationId);
   const answer = conversation.messages.at(-1);
-  assert.deepEqual(Object.keys(answer.timing), ["eventMs", "textMs", "doneMs", "prompt"]);
+  assert.deepEqual(Object.keys(answer.timing), ["eventMs", "textMs", "doneMs", "prompt", "prepare"]);
+  assert.deepEqual(Object.keys(answer.timing.prepare), ["board", "root", "runs", "taskLog", "workflow", "worktrees", "instructions", "context", "environment", "store", "declare", "server", "total"], "the steps this turn ran, in the contract's order");
   assert.deepEqual([answer.timing.eventMs, answer.timing.textMs, answer.timing.doneMs], [1_200, 6_800, 11_400]);
   const prompt = run.options.prompt;
   const { prompt: parts } = answer.timing;
@@ -187,4 +189,63 @@ test("a record without a timing stays valid, and a timing outside the contract i
   const h = await chatHarness(context);
   const stored = await seed(h, { messages: [userMessage(1), agentMessage(2, { timing: TIMING })] });
   assert.deepEqual((await h.handle("read", { repositoryId, conversationId: stored.id })).conversation.messages[1].timing, TIMING);
+});
+
+test("a preparation is whole milliseconds by step, with the total there and no step longer than it", () => {
+  assert.deepEqual(normalizePrepare(PREPARE), PREPARE);
+  assert.deepEqual(normalizePrepare({ total: 0 }), { total: 0 });
+  assert.deepEqual(Object.keys(normalizePrepare({ total: 9, server: 1, board: 2, store: 3 })), ["board", "store", "server", "total"], "the contract's order, whatever the order written");
+  assert.deepEqual(PREPARE_STEPS, ["board", "root", "runs", "taskLog", "github", "workflow", "worktrees", "instructions", "context", "environment", "store", "declare", "server", "total"]);
+  for (const bad of [
+    null, [], "3200", 5, {}, { board: 5 }, { total: -1 }, { total: 1.5 }, { total: TIMING_MAX_MS + 1 }, { total: "20" }, { total: Number.NaN }, { total: null },
+    { total: 20, board: 21 }, { total: 20, board: -1 }, { total: 20, board: 1.5 }, { total: 20, board: "5" }, { total: 20, board: null }, { total: 20, board: undefined },
+    { total: 20, text: 5 }, { total: 20, secret: 1 }, { total: 20, __proto__: { board: 1 }, path: 3 },
+  ]) assert.equal(normalizePrepare(bad), null, JSON.stringify(bad));
+});
+
+test("a timing carries a preparation, an older timing without one stays valid, and a preparation outside the contract is left out alone", () => {
+  assert.deepEqual(normalizeTiming({ ...TIMING, prepare: PREPARE }), { ...TIMING, prompt: PROMPT, prepare: PREPARE });
+  assert.deepEqual(Object.keys(normalizeTiming({ ...TIMING, prepare: PREPARE })), ["eventMs", "textMs", "doneMs", "prompt", "prepare"]);
+  assert.equal(Object.hasOwn(normalizeTiming(TIMING), "prepare"), false, "a timing from an older version has none");
+  for (const bad of [null, "3.2s", [], {}, { board: 5 }, { total: -1 }, { total: 20, board: 21 }, { total: 20, secret: "a prompt" }, undefined]) {
+    const kept = normalizeTiming({ ...TIMING, prepare: bad });
+    assert.deepEqual(kept, { ...TIMING, prompt: PROMPT }, `the run's timing is kept: ${JSON.stringify(bad)}`);
+    assert.equal(Object.hasOwn(kept, "prepare"), false, JSON.stringify(bad));
+  }
+  // Any other extra key still makes the whole timing unreadable.
+  assert.equal(normalizeTiming({ ...TIMING, prepare: PREPARE, extra: 1 }), null);
+  assert.equal(normalizeTiming({ ...TIMING, preparing: PREPARE }), null);
+});
+
+test("timingOf rounds the preparation, cuts it to the bounds, and leaves out one that is not usable", () => {
+  const measured = { eventMs: 1_200, textMs: 6_800, doneMs: 11_400 };
+  assert.deepEqual(timingOf(measured, PROMPT, { board: 120.4, github: 2_899.6, total: 3_200.2 }).prepare, { board: 120, github: 2_900, total: 3_200 });
+  assert.equal(timingOf(measured, PROMPT, { total: 9e9, board: 9e9 }).prepare.total, TIMING_MAX_MS, "a jumped clock cannot store a number beyond the bound");
+  assert.equal(timingOf(measured, PROMPT, { total: -5 }).prepare.total, 0);
+  for (const bad of [undefined, null, {}, { board: 5 }, { total: Number.NaN }, { total: 10, board: Number.NaN }, { total: 10, board: 11 }, { total: 10, secret: 1 }, [], "fast"]) {
+    const timing = timingOf(measured, PROMPT, bad);
+    assert.deepEqual(timing, { ...TIMING, prompt: PROMPT }, `the run's timing is kept: ${JSON.stringify(bad)}`);
+    assert.equal(Object.hasOwn(timing, "prepare"), false, JSON.stringify(bad));
+  }
+  assert.equal(timingOf({ doneMs: Number.NaN }, PROMPT, PREPARE), null, "a run that measured nothing stores no timing, whatever its preparation");
+});
+
+test("an older stored answer without a preparation reads fine, and a stored preparation outside the contract is dropped with the message kept", async (context) => {
+  const base = { id: "chat-0123456789ab", title: "T", provider: "claude", model: null, createdAt: stamp, updatedAt: stamp };
+  const older = normalizeConversation({ ...base, messages: [userMessage(1), agentMessage(2, { timing: TIMING })] });
+  assert.deepEqual(older.messages[1].timing, TIMING);
+  assert.equal(Object.hasOwn(older.messages[1].timing, "prepare"), false);
+  const newer = normalizeConversation({ ...base, messages: [userMessage(1), agentMessage(2, { timing: { ...TIMING, prepare: PREPARE } })] });
+  assert.deepEqual(newer.messages[1].timing, { ...TIMING, prepare: PREPARE });
+  for (const bad of [{ total: -1 }, { total: 20, board: 21 }, { board: 5 }, "slow", { total: 20, text: "a prompt" }]) {
+    const dropped = normalizeConversation({ ...base, messages: [userMessage(1), agentMessage(2, { text: "Kept", timing: { ...TIMING, prepare: bad } })] });
+    assert.equal(dropped.messages[1].text, "Kept", JSON.stringify(bad));
+    assert.deepEqual(dropped.messages[1].timing, TIMING, `the run's timing is kept: ${JSON.stringify(bad)}`);
+  }
+  const h = await chatHarness(context);
+  const stored = await seed(h, { messages: [userMessage(1), agentMessage(2, { timing: { ...TIMING, prepare: PREPARE } }), userMessage(3), agentMessage(4, { timing: TIMING })] });
+  const read = (await h.handle("read", { repositoryId, conversationId: stored.id })).conversation.messages;
+  assert.deepEqual(read[1].timing.prepare, PREPARE);
+  assert.equal(Object.hasOwn(read[3].timing, "prepare"), false);
+  assert.deepEqual((await h.reload().read(repositoryId, stored.id)).messages[1].timing.prepare, PREPARE, "the preparation is on disk");
 });

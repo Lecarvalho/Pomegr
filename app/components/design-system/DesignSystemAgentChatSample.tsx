@@ -93,13 +93,14 @@ const QUIET = thread([
   agent("m-3", "Merged T-5 and started T-6. Nothing needs you yet.", { grantFollowUp: true, at: LATER, effort: null }),
   agent("m-4", "Could not merge T-7. T-7 needs you.", { grantFollowUp: true, at: LATER, effort: null }),
 ]);
-// A thread summarized for Aril up to its second message. The answer after the line was measured, so its time shows the timing as a tooltip.
+// A thread summarized for Aril up to its second message. The answer after the line was measured, so its time shows the preparation and the timing as a tooltip.
 const SUMMARIZED: AgentChatThreadSummary = { through: { conversationId: "chat-0123456789ab", messageId: "m-2", at: AT }, at: LATER };
 const SUMMARIZED_THREAD = thread([
   ASK,
   agent("m-2", "I cut it into three tasks. Apply them when you are ready.", { at: AT }),
   { id: "m-3", role: "user", text: "Apply the first two and keep the third for later.", at: LATER },
-  agent("m-4", "Done. T-19 and T-20 are in Ready; the third stays in Backlog.", { at: LATER, timing: { eventMs: 1_200, textMs: 6_800, doneMs: 11_400, prompt: { instructions: 24_000, board: 18_000, taskLog: 300, conversation: 9_000, message: 52, other: 1_800 } } }),
+  agent("m-4", "Done. T-19 and T-20 are in Ready; the third stays in Backlog.", { at: LATER, timing: { eventMs: 1_200, textMs: 6_800, doneMs: 11_400, prompt: { instructions: 24_000, board: 18_000, taskLog: 300, conversation: 9_000, message: 52, other: 1_800 },
+    prepare: { total: 3_200, board: 120, root: 90, github: 2_900, workflow: 480, worktrees: 640, environment: 1_100 } } }),
 ]);
 const NOTES = thread([
   ASK,

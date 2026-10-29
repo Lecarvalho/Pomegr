@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PROPOSAL_ID_PATTERN,
+  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PREPARE_STEPS, AGENT_CHAT_PROPOSAL_ID_PATTERN,
   AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES, AGENT_CHAT_WORKTREE_RESULTS,
   type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatChoices, type AgentChatConversation, type AgentChatConversationSummary,
-  type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
+  type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult, type AgentChatPrepare,
   type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
   type AgentChatThreadResult, type AgentChatThreadRun, type AgentChatThreadSummary, type AgentChatTiming, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
@@ -158,16 +158,27 @@ const effortOf = (value: unknown): { effort: TaskEffort } | Record<string, never
 const PROMPT_PARTS = ["instructions", "board", "taskLog", "conversation", "message", "other"] as const;
 const wholeNumber = (value: unknown, max: number): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= max;
 
-/** How long a turn took and how large its prompt was: whole numbers inside their bounds, or nothing. A timing outside the contract is not drawn; the message keeps its text. */
+/** The milliseconds of each step of a turn's preparation: whole numbers inside their bounds, `total` there, no step longer than it, or nothing. */
+function parsePrepare(value: unknown): AgentChatPrepare | null {
+  const prepare = record(value);
+  if (!prepare || !wholeNumber(prepare.total, AGENT_CHAT_BOUNDS.timingMs)) return null;
+  const steps: readonly string[] = AGENT_CHAT_PREPARE_STEPS;
+  if (!Object.keys(prepare).every((name) => steps.includes(name) && wholeNumber(prepare[name], prepare.total as number))) return null;
+  return Object.fromEntries(AGENT_CHAT_PREPARE_STEPS.filter((name) => Object.hasOwn(prepare, name)).map((name) => [name, prepare[name]])) as AgentChatPrepare;
+}
+
+/** How long a turn took, how large its prompt was, and how long its preparation took: whole numbers inside their bounds, or nothing. A timing outside the contract is not drawn, and a preparation outside it is left out; the message keeps its text. */
 export function parseTiming(value: unknown): AgentChatTiming | null {
   const timing = record(value);
   const prompt = record(timing?.prompt);
   const max = AGENT_CHAT_BOUNDS.timingMs;
   if (!timing || !prompt || !wholeNumber(timing.doneMs, max) || !(timing.eventMs === null || wholeNumber(timing.eventMs, max)) || !(timing.textMs === null || wholeNumber(timing.textMs, max))
     || !PROMPT_PARTS.every((part) => wholeNumber(prompt[part], 1_000_000))) return null;
+  const prepare = parsePrepare(timing.prepare);
   return {
     eventMs: timing.eventMs as number | null, textMs: timing.textMs as number | null, doneMs: timing.doneMs,
     prompt: Object.fromEntries(PROMPT_PARTS.map((part) => [part, prompt[part]])) as AgentChatTiming["prompt"],
+    ...(prepare ? { prepare } : {}),
   };
 }
 
