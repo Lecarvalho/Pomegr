@@ -120,13 +120,22 @@ export type AgentChatProposal = {
   results?: AgentChatOperationResult[]; // one per operation, once the proposal ran or its start was tried
 };
 
-// How long one owner-message turn took, in milliseconds from the start of the provider process, and how large its prompt was, in
-// characters for each part. Numbers only. `eventMs` and `textMs` are null when the run ended before a provider event or any words.
+// The steps of a turn's preparation before its provider process starts, in the order a tooltip may name them. `total` is the time
+// from receiving the owner's message to starting the process; the other steps run side by side, so they do not add up to it.
+export const AGENT_CHAT_PREPARE_STEPS = ["board", "root", "runs", "taskLog", "github", "workflow", "worktrees", "instructions", "context", "environment", "store", "declare", "server", "total"] as const;
+export type AgentChatPrepareStep = (typeof AGENT_CHAT_PREPARE_STEPS)[number];
+// Whole milliseconds by step. `total` is always there and no step is longer than it; a step the turn did not need is absent.
+export type AgentChatPrepare = { total: number } & Partial<Record<AgentChatPrepareStep, number>>;
+
+// How long one owner-message turn took, in milliseconds from the start of the provider process, how large its prompt was, in
+// characters for each part, and how long its preparation took. Numbers only. `eventMs` and `textMs` are null when the run ended before
+// a provider event or any words. `prepare` is absent for an older record.
 export type AgentChatTiming = {
   eventMs: number | null;
   textMs: number | null;
   doneMs: number;
   prompt: { instructions: number; board: number; taskLog: number; conversation: number; message: number; other: number };
+  prepare?: AgentChatPrepare;
 };
 
 // What Aril offers under an answer: 1 to 4 quick replies, or one multiple-choice question with 2 to 4 options. The first option is

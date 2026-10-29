@@ -218,8 +218,10 @@ The task board is in [Task board design](task-board.md).
 - A time is a `<time>` element whose `dateTime` is the stored instant and whose `title` is the whole local date and time.
 - The `title` of the time of an answer that Pomegr measured adds a second line: “Started 1.2s · first words 6.8s · done 11.4s”.
 - The seconds have one decimal, and a step the run never reached is left out.
+- A timing that holds the preparation adds a line above it: “Prepared in 3.2s (slowest: GitHub 2.9s)”.
+- The slowest step is named in fixed words, only when it took a tenth of a second or more; a quicker preparation reads “Prepared in 0.2s”.
 - An answer with no timing keeps the date and time alone, and the time itself still reads the clock.
-- `timingLine` and `answerTimeTitle` in `agent-chat-presentation.ts` build the words from numbers only.
+- `prepareLine`, `timingLine`, and `answerTimeTitle` in `agent-chat-presentation.ts` build the words from numbers only.
 - A time is muted `--text-xs` text in the data face.
 - A time reads `HH:MM` (24-hour, local) for a message of today.
 - A time reads `Mon D, HH:MM` for a message of an earlier day.

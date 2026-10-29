@@ -89,7 +89,7 @@ describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => 
     expect(line.querySelector(".agentChatMessageHead")).toBeNull();
     // The measured answer after it shows its timing in the tooltip of its time.
     const measured = within(log).getAllByRole("article", { name: "Aril" })[1].querySelector("time")!;
-    expect(measured.getAttribute("title")).toContain("Started 1.2s · first words 6.8s · done 11.4s");
+    expect(measured.getAttribute("title")).toContain("Prepared in 3.2s (slowest: GitHub 2.9s)\nStarted 1.2s · first words 6.8s · done 11.4s");
     expect(within(log).getAllByRole("article", { name: "Aril" })[0].querySelector("time")!.getAttribute("title")).not.toContain("Started");
 
     // The search under the header: a field with no frame, and the matches newest first, each with who wrote it, its time, and an excerpt with the searched text emphasized.

@@ -6,22 +6,20 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
-import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
 import { createTaskBridge } from "./agent-chat-task-bridge.mjs";
-import { chatTaskLog } from "./agent-chat-task-log.mjs";
+import { createTurnPreparation } from "./agent-chat-prepare.mjs";
 import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
 import { extractChoices, shownAnswer } from "./agent-chat-choices.mjs";
-import { createCompaction, threadSince } from "./agent-chat-compaction.mjs";
+import { createCompaction } from "./agent-chat-compaction.mjs";
 import { composePrompt, composePromptParts, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 import { CHAT_EFFORTS, runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { createAgentChatSummaries, summarizedView } from "./agent-chat-summary.mjs";
-import { createAgentChatThread, currentConversation, LIST_LIMIT, lastAnswer } from "./agent-chat-thread.mjs";
+import { createAgentChatThread, currentConversation, LIST_LIMIT } from "./agent-chat-thread.mjs";
 import { timingOf } from "./agent-chat-timing.mjs";
-import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
@@ -96,6 +94,8 @@ export function createAgentChat(options = {}) {
   const spawn = options.spawn || spawnChild;
   const execFile = options.execFile || execFileChild;
   const now = options.now || (() => new Date());
+  // A monotonic clock in milliseconds, for the time a turn's preparation takes.
+  const clock = options.clock || (() => performance.now());
   const runTurn = options.runTurn || runChatTurn;
   // The desktop's manual start for a start the owner approved in the chat: `(event, repositoryId, taskId)` answers `{ status }`.
   const startTask = typeof options.startTask === "function" ? options.startTask : null;
@@ -148,44 +148,12 @@ export function createAgentChat(options = {}) {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId, payload }),
   });
 
-  async function readBoard(repositoryId) {
-    try {
-      const board = await monitor(`/api/tasks?${new URLSearchParams({ repositoryId })}`, { method: "GET" });
-      return isPlainObject(board) && board.readiness === "ready" && board.repositoryId === repositoryId ? board : null;
-    } catch { return null; }
-  }
-
-  async function readTaskLog(repositoryId) {
-    try { return chatTaskLog(await postAction("log-read", repositoryId, { limit: 100 })); } catch { return null; }
-  }
+  // The reads a turn makes before its process starts (see agent-chat-prepare.mjs): they begin together, and each is timed.
+  const preparation = createTurnPreparation({ monitor, postAction, worktrees, execFile, repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
+  const { readBoard, repositoryRoot } = preparation;
 
   // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
   const taskReadServer = createTaskBridge({ mcpServer, monitor, current: (turn) => active === turn && !disposed });
-
-  // The Pomegr task worktrees still on disk, as facts only (never a path). A turn goes on without them when they cannot be read.
-  async function readWorktrees(repositoryId, root, board) {
-    try {
-      const rows = await worktrees.inventory({ repositoryRoot: root, repositoryId, tasks: board.tasks, columns: board.columns });
-      return Array.isArray(rows) ? rows : [];
-    } catch { return []; }
-  }
-
-  // The observed runs the task form's Claude model list reads, cut to the source and the model of each. A committed GET;
-  // no answer leaves the Claude list to the board's own tasks.
-  async function readRuns() {
-    try {
-      const agents = await monitor(`/api/agents?${new URLSearchParams({ ...RUN_MODEL_AGENTS_QUERY, days: String(RUN_MODEL_AGENTS_QUERY.days) })}`, { method: "GET" });
-      return (Array.isArray(agents?.runs) ? agents.runs : []).filter(isPlainObject).map((run) => ({ source: run.source, model: run.model }));
-    } catch { return []; }
-  }
-
-  async function repositoryRoot(repositoryId) {
-    try {
-      const answer = await postAction("worktree-root", repositoryId, {});
-      const root = isPlainObject(answer) && answer.ok === true ? answer.root : null;
-      return typeof root === "string" && path.isAbsolute(root) && !/[\u0000\r\n"]/u.test(root) ? root : null;
-    } catch { return null; }
-  }
 
   const monitorRefusal = (answer) => refused(isPlainObject(answer) && typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
 
@@ -283,17 +251,6 @@ export function createAgentChat(options = {}) {
     void runFollowUp(turn);
   }
 
-  // From the index of the conversations: no message is read.
-  async function lastCompletedAnswer(repositoryId) {
-    return lastAnswer(await store.index(repositoryId));
-  }
-
-  // The summary of the repository's thread, and the newest messages after it that the prompt's history holds, read from the newest conversation back.
-  async function threadContext(repositoryId) {
-    const { summary, messages } = await threadSince({ store, summaries: summaries ?? NO_SUMMARIES, repositoryId, toWindow: true });
-    return { summary: summary?.text ?? null, messages };
-  }
-
   // After a turn is stored, an outgrown thread is summarized in the background; a turn that starts stops that run.
   const compaction = createCompaction({ store, summaries: summaries ?? NO_SUMMARIES, now, runTurn, spawn, env: runEnvironment, executable, repositoryRoot,
     declare: declareRun, withdraw: withdrawRun, timeoutMs: options.compactionTimeoutMs,
@@ -308,26 +265,23 @@ export function createAgentChat(options = {}) {
       // No provider, no board, or no repository root: the follow-up is stored as failed. The proposal keeps its outcome.
       const command = executable(turn.provider);
       if (!command) return await finishTurn(turn, null);
-      const [board, root, runs] = await Promise.all([readBoard(turn.repositoryId), repositoryRoot(turn.repositoryId), readRuns()]);
+      // The reads begin together; the ones that need the root or the board begin when those arrive.
+      const prep = preparation.begin(turn.repositoryId);
+      prep.startMonitor();
+      prep.startRepository({ provider: turn.provider, thread: true });
+      const { board, root, runs } = await prep.values("board", "root", "runs");
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
       if (!board || !root) return await finishTurn(turn, null);
       const held = conversationImages(conversation.messages);
       const shown = images && held.length > 0 ? await images.files(turn.repositoryId, conversation.id, held) : [];
       turn.followUpOutcome = proposalOutcome(proposal)?.outcome;
-      const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
-      const instructionsFile = turn.provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
-      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, ...await threadContext(turn.repositoryId), followUp: proposal, images: shown, now: now() });
+      const { workflow: workflowChanges, instructions: instructionsFile = null, context } = await prep.values("workflow", "instructions", "context");
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, workflowChanges, ...context, followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
-      const sessionId = await declareRun(turn.provider);
-      if (disposed || turn.stopped) {
-        withdrawRun(sessionId);
-        return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
-      }
-      const env = await runEnvironment();
-      const taskServer = await taskReadServer(turn);
+      const [sessionId, taskServer, { environment: env }] = await Promise.all([declareRun(turn.provider), taskReadServer(turn), prep.values("environment")]);
       if (disposed || turn.stopped) {
         withdrawRun(sessionId);
         return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
@@ -379,8 +333,8 @@ export function createAgentChat(options = {}) {
         headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...payload }),
       }), ANSWER_LENGTH);
       const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, ...effortField(turn.effort), status };
-      // How long the run took and how large its prompt was, as numbers, for an owner's message.
-      const timing = turn.promptSections ? timingOf(turn.timing?.(), turn.promptSections) : null;
+      // How long the run took, how large its prompt was, and how long each step of its preparation took, as numbers, for an owner's message.
+      const timing = turn.promptSections ? timingOf(turn.timing?.(), turn.promptSections, turn.prepare) : null;
       if (timing) message.timing = timing;
       // Only a successful or partial outcome may offer another board proposal. It still waits for the owner.
       if (turn.followUp) {
@@ -420,6 +374,7 @@ export function createAgentChat(options = {}) {
   }
 
   async function send(payload) {
+    const entered = clock();
     const withImages = isPlainObject(payload) && Object.hasOwn(payload, "images");
     // `effort` is optional: a client that names none reads as null, as a record without one does.
     const withEffort = isPlainObject(payload) && Object.hasOwn(payload, "effort");
@@ -434,11 +389,11 @@ export function createAgentChat(options = {}) {
       || !(model === null || (typeof model === "string" && MODEL.test(model)))
       || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort)))) return INVALID;
     if (active) return refused("busy");
+    const prep = preparation.begin(repositoryId, entered);
     const reservation = { reserved: true, repositoryId, conversationId };
     active = reservation;
     let started = false;
     let turn = null;
-    let sessionId = null;
     try {
       const command = executable(provider);
       if (!command) return refused("cli_missing");
@@ -451,14 +406,12 @@ export function createAgentChat(options = {}) {
       const held = conversationImages(existing?.messages);
       if (imageIds.length > 0 && !images) return UNAVAILABLE;
       if (held.length + imageIds.length > CHAT_IMAGES_PER_CONVERSATION) return refused("limit");
-      const [board, root, runs, taskLog] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId), readRuns(), readTaskLog(repositoryId)]);
+      // Every read that needs no other begins now; the ones that need the root or the board begin when those arrive.
+      prep.startMonitor({ taskLog: true });
+      prep.startRepository({ provider, github: true, worktrees: true, thread: true });
+      const { board, root } = await prep.values("board", "root");
       if (!board || !root || disposed) return UNAVAILABLE;
-      let github;
-      if (repositoryGithub) {
-        try { github = await repositoryGithub.read(repositoryId, root); } catch { github = null; }
-        if (disposed) return UNAVAILABLE;
-      }
-      const conversation = existing ?? await store.create(repositoryId, { provider, model, effort, title: conversationTitle(text) });
+      const conversation = existing ?? await prep.time("store", () => store.create(repositoryId, { provider, model, effort, title: conversationTitle(text) }));
       if (!conversation) return UNAVAILABLE;
       // A conversation that was made for this message is not kept when the message is refused.
       const abandoned = async (answer) => {
@@ -466,37 +419,36 @@ export function createAgentChat(options = {}) {
         return answer;
       };
       // The images wait in the staged folder since the owner added them; the message that names them takes them.
-      const attached = imageIds.length > 0 ? await images.claim(repositoryId, conversation.id, imageIds) : [];
+      const attached = imageIds.length > 0 ? await prep.time("store", () => images.claim(repositoryId, conversation.id, imageIds)) : [];
       if (!attached) return abandoned(INVALID);
-      const shown = images && held.length + attached.length > 0 ? await images.files(repositoryId, conversation.id, [...held, ...attached]) : [];
-      const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
-      const inventory = await readWorktrees(repositoryId, root, board);
-      const instructionsFile = provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
-      const composed = composePromptParts({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, ...await threadContext(repositoryId), message: text, images: shown, attached, repositoryGithub: github, now: now() });
+      const shown = images && held.length + attached.length > 0 ? await prep.time("store", () => images.files(repositoryId, conversation.id, [...held, ...attached])) : [];
+      // The rest of the reads have been running since the first line; the prompt waits only for the slowest.
+      const { runs, taskLog, github, workflow: workflowChanges, inventory, instructions: instructionsFile = null, context } = await prep.values("runs", "taskLog", "github", "workflow", "inventory", "instructions", "context");
+      if (disposed) return abandoned(UNAVAILABLE);
+      const composed = composePromptParts({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, ...context, message: text, images: shown, attached, repositoryGithub: github, now: now() });
       const prompt = composed?.prompt;
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
       const next = { ...conversation, provider, model, effort, updatedAt: at, messages: [...conversation.messages, message] };
-      if (!await store.save(repositoryId, next)) return abandoned(UNAVAILABLE);
+      if (!await prep.time("store", () => store.save(repositoryId, next))) return abandoned(UNAVAILABLE);
       // The run may read the folder of this conversation's images, and nothing else outside the repository.
       const newest = new Set(attached.map((image) => image.id));
       const runImages = shown.length > 0 ? { folder: images.folder(repositoryId, conversation.id), files: shown.filter((image) => newest.has(image.id)).map((image) => image.file) } : null;
-      sessionId = await declareRun(provider);
-      if (disposed) { withdrawRun(sessionId); return UNAVAILABLE; }
       turn = { repositoryId, conversationId: conversation.id, provider, model, effort, startedAt: at, activity: "starting", text: "", stopped: false, promptSections: composed.sections,
         logThrough: Math.max(0, ...(taskLog?.entries ?? []).map((entry) => entry.id)),
         stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
       started = true;
       compaction.cancel(repositoryId);
-      const env = await runEnvironment();
-      const taskServer = await taskReadServer(turn);
+      // The run's declaration, the task bridge, and the environment (begun with the first reads) need nothing from each other.
+      const [sessionId, taskServer, { environment: env }] = await Promise.all([prep.time("declare", () => declareRun(provider)), prep.time("server", () => taskReadServer(turn)), prep.values("environment")]);
       if (disposed || turn.stopped) {
         withdrawRun(sessionId);
         await finishTurn(turn, { status: "stopped", text: "" });
         return UNAVAILABLE;
       }
+      turn.prepare = prep.measure();
       const run = runTurn({ instructionsFile,
         spawn, executable: command, provider, model, effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
@@ -525,15 +477,16 @@ export function createAgentChat(options = {}) {
     let turn = null;
     let sessionId = null;
     try {
-      const [board, root, runs, taskLog] = await Promise.all([readBoard(repositoryId), repositoryRoot(repositoryId), readRuns(), readTaskLog(repositoryId)]);
+      const prep = preparation.begin(repositoryId);
+      prep.startMonitor({ taskLog: true });
+      const { board, root } = await prep.values("board", "root");
       if (!board || !root || disposed) return UNAVAILABLE;
       const provider = board.aril?.settings?.reviewer?.provider ?? (executable("claude") ? "claude" : "codex");
       const command = PROVIDERS.has(provider) ? executable(provider) : null;
       if (!command) return refused("cli_missing");
-      const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
-      const inventory = await readWorktrees(repositoryId, root, board);
-      const instructionsFile = provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
-      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, grantPlans: plans, now: now() });
+      prep.startRepository({ provider, worktrees: true });
+      const { runs, taskLog, workflow: workflowChanges, inventory, instructions: instructionsFile = null, context } = await prep.values("runs", "taskLog", "workflow", "inventory", "instructions", "context");
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, ...context, grantPlans: plans, now: now() });
       if (!prompt) return INVALID;
       const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
       if (!conversation) return UNAVAILABLE;
@@ -544,9 +497,8 @@ export function createAgentChat(options = {}) {
         stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
       compaction.cancel(repositoryId);
-      sessionId = await declareRun(provider);
-      const env = await runEnvironment();
-      const taskServer = await taskReadServer(turn);
+      const [declared, taskServer, { environment: env }] = await Promise.all([declareRun(provider), taskReadServer(turn), prep.values("environment")]);
+      sessionId = declared;
       if (disposed || turn.stopped) { await finishTurn(turn, { status: "stopped", text: "" }); return UNAVAILABLE; }
       const run = runTurn({ instructionsFile, spawn, executable: command, provider, model: null, mcpServer: taskServer, images: null, sessionId,
         cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs,
