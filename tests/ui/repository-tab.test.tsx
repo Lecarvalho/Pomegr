@@ -186,6 +186,28 @@ describe("RepositoryTab", () => {
     expect(FileTreeMock).not.toHaveBeenCalled();
   });
 
+  // T-194: only a Git-confirmed non-repository reads "Not a Git repository"; a failed read names its reason.
+  it("names each Git read reason, and says Not a Git repository only when Git confirmed it", () => {
+    const unavailable = repository({ available: false, branch: "", comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } });
+    const shown = (reason: RepositoryDomain["unavailableReason"]) => {
+      useSessionDomain.mockReturnValue(result(domain({ readiness: "unavailable", repository: unavailable, unavailableReason: reason, pullRequests: { status: "unavailable", checkedAt: null, items: [] }, commitsInSession: null })));
+    };
+    shown("timeout");
+    const { rerender } = renderTab({ sessionId: SESSION_ID, historical: false });
+    const again = () => rerender(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[]}><RepositoryTab sessionId={SESSION_ID} historical={false} /></SessionCatalogProvider></LiveClockProvider>);
+    expect(screen.getByText(/Git did not answer in time for this session's folder\./)).toBeInTheDocument();
+    expect(screen.queryByText(/not a Git repository/i)).not.toBeInTheDocument();
+    shown("git_missing"); again();
+    expect(screen.getByText(/Pomegr could not find Git on this computer\./)).toBeInTheDocument();
+    shown("refused"); again();
+    expect(screen.getByText(/Git refused this session's folder as unsafe/)).toBeInTheDocument();
+    shown("failed"); again();
+    expect(screen.getByText(/Pomegr could not read Git state for this session's folder\./)).toBeInTheDocument();
+    expect(screen.queryByText(/not a Git repository/i)).not.toBeInTheDocument();
+    shown("not_repository"); again();
+    expect(screen.getByText(/this session's folder is not a Git repository\./)).toBeInTheDocument();
+  });
+
   it("links the quiet Git action to the repository page's Git tab and hides it without a repositoryId", () => {
     useSessionDomain.mockReturnValue(result(domain()));
     const { rerender } = renderTab({ sessionId: SESSION_ID, historical: false });

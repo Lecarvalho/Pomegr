@@ -62,10 +62,11 @@ function emptyUsageLimits(error = "") {
   return createEmptyUsageLimits(error ? { error } : {});
 }
 
+// No Git result yet: its empty branch is never shown as a fact about the folder.
 function unavailableGitState() {
   return {
     available: false,
-    branch: "Not a Git repository",
+    branch: "",
     files: [],
     isMain: false,
     comparison: null,

@@ -109,6 +109,8 @@ This page covers how the repository surfaces look and how the user operates them
 
 - A single pull request is a chip link that opens its GitHub URL in the browser.
 - A count of multiple pull requests stays a noninteractive chip because it has no single destination.
+- A live session with no repository shown names the Git check's reason in one sentence (`app/components/dashboard/repository-unavailable.ts`), shared with the header and the Overview tile.
+- The bar says the folder is not a Git repository only when Git confirmed it; a timeout, missing Git, a `safe.directory` refusal, or another failure each has its own sentence.
 
 ## FileTree
 

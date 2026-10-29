@@ -456,7 +456,7 @@ test("background enrichment failures produce only sanitized unavailable shapes",
   const state = await runtime.analyze();
   assert.deepEqual(state.session.repository, {
     available: false,
-    branch: "Not a Git repository",
+    branch: "",
     files: [],
     isMain: false,
     comparison: null,

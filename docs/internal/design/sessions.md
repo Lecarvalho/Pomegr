@@ -117,6 +117,9 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - Phone summary disclosures identify the summary source once, in their toggle.
 - Phone summary disclosures keep agent-reported signals below the toggle.
 - Session toolbars offer report download and no pause action.
+- The branch chip shows only a branch Git read; with no binding or no completed read the header shows no repository chip.
+- A failed Git read takes the branch chip's place with its short reason, such as Git timed out; a branch change shows no chip.
+- The header says Not a Git repository only when Git confirmed the session's folder is not one.
 
 ## Session detail
 
@@ -274,6 +277,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 ### Repository tile
 
 - Repository is a compact tile.
+- A live view with no repository shows the short reason the Git check gave, such as Git timed out.
 - The tile starts with its heading link.
 - The heading link is an eyebrow on desktop and the 16px heading on phone.
 - The branch follows, beside a comparison chip.

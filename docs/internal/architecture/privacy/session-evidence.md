@@ -556,6 +556,10 @@ checkpoint. It holds only these values:
   - `commitsInSession`
   - a `gitTasks` total/failed count
 - `/api/state` `session.repository` may carry `recordedAt` and `commitsInSession` too.
+- A live view that shows no repository may carry `unavailableReason` in the repository
+  domain and in the session summary's `repository` block. It is one fixed code
+  (`branch_changed`, `not_repository`, `timeout`, `git_missing`, `refused`, or `failed`),
+  never a path, a branch name, or Git's message. It is not in `/api/state`.
 
 ## Observation checkpoints
 

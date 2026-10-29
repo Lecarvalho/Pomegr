@@ -52,6 +52,8 @@ export function createCodexRepositoryAttributionTracker() {
         state: "single", repositoryId: identity.repositoryId, root: identity.root, project: identity.project,
         fingerprint: createHash("sha256").update(identity.root).digest("hex").slice(0, 32),
         recordedBranch: identity.recordedBranch || null,
+        // The session's binding reads that checkout on the branch it has (see resolveSessionIdentity).
+        ...(identity.anyBranch === true ? { anyBranch: true } : {}),
       }
       : { state: identity.state });
     return identity;

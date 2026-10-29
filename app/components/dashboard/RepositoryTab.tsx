@@ -9,6 +9,7 @@ import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { useSessionDomain } from "../../session-domain-store";
 import { FileTree } from "../repositories/FileTree";
 import { SessionFilePanel } from "./SessionFilePanel";
+import { repositoryUnavailableSentence } from "./repository-unavailable";
 import { repositoryFilePath } from "../repositories/repository-route";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { RelativeTimeText } from "../LiveTime";
@@ -200,9 +201,7 @@ export function RepositoryTab({ sessionId, historical, paused = false, selectedP
     }
     return <div className="repositoryTab">
       <section className="panel repositoryTabBar repositoryTabBarEmpty" aria-label="Repository">
-        <p className="repositoryTabBarEmptyText">{domain.unavailableReason === "branch_changed"
-          ? "The working tree is no longer on this session's branch. Branch comparison, pull requests, and uncommitted files are unavailable."
-          : "Git state is unavailable for this session. Branch comparison, pull requests, and uncommitted files are unavailable."}</p>
+        <p className="repositoryTabBarEmptyText">{repositoryUnavailableSentence(domain.unavailableReason ?? null)}</p>
       </section>
       <RepositoryTabFiles domain={domain} workingTreeFiles={[]} repositoryId={domain.repositoryId} historical={historical} workingTreeKnown={false} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} onOpenAgent={onOpenAgent} />
     </div>;

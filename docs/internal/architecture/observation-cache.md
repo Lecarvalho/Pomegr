@@ -3451,10 +3451,21 @@ that is briefly unknown after the session had a repository, returns to `loading`
 keep the last committed value.
 
 When Git answers for the bound root on a branch other than the recorded one, the live check
-keeps the private reason `branch_changed`. The repository domain serves it as
-`unavailableReason: "branch_changed" | null`, only for a live view that shows no repository,
-through a projection side channel like `gitObserved`; it never rides on `session.repository`
-or `/api/state`, and no branch name accompanies it. Any other mismatch serves `null`.
+keeps the private reason `branch_changed`. When the Git read of the bound root fails, it
+keeps the fixed reason the Git reader classified from Git's own diagnostic: `not_repository`
+(Git confirmed the folder is not a repository), `timeout`, `git_missing`, `refused`
+(`safe.directory`), or `failed` (any other failure, such as a missing `HEAD`). The
+repository domain and the session summary's `repository` block serve it as
+`unavailableReason`, only for a live view that shows no repository, through a projection
+side channel like `gitObserved`; it never rides on `session.repository` or `/api/state`,
+and no branch name, path, or Git message accompanies it. Any other mismatch serves `null`.
+A held repository value keeps its last known-good revision through a failed read, and no
+reason is served beside it.
+
+No placeholder is a Git result. The live placeholder a session holds before its first
+completed read, or with no binding, has an empty branch, and the session summary serves a
+branch only for an available repository. The session page shows "Not a Git repository"
+only for `not_repository`.
 A `complete_task` report is the one read that accepts the other branch: it judges the
 bound root on the branch it has and commits nothing, so this state and its reason stay
 (see [Tasks](tasks.md#completion)).
@@ -3870,6 +3881,15 @@ working tree, branch, and pull request are never read from the main checkout. A 
 launch branch is kept only for the launch checkout itself, because one repository ID can
 now hold several checkouts on different branches. Git rename continuity keeps one head for
 each repository ID and reads it in the main root.
+
+A Codex session whose proven checkout has no recorded branch that applies to it carries
+`anyBranch` in its attribution, as the working checkout of a Claude session does: Codex
+recorded no branch, or it recorded the launch checkout's branch and the session's edits
+prove another checkout (`resolveSessionIdentity` in `server/normalize/session-identity.mjs`).
+The live check then reads that checkout on the branch it has. A task session that starts in
+the repository root and makes its own worktree is bound to that worktree this way, and its
+header shows the worktree's branch. A branch check the launch lookup did not answer in time
+decides nothing yet; the next read decides it again.
 
 ### The working checkout of a Claude session
 

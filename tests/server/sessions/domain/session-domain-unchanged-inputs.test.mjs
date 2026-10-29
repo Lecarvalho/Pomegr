@@ -262,8 +262,11 @@ const DIRTY_REPOSITORY = { session: { ...state().session, repository: { availabl
 const SIDE_INPUT_CASES = [
   { name: "the repository root", option: "repositoryRootForSession", initial: null, next: process.cwd(), domains: ["repository", "session-summary"], overrides: DIRTY_REPOSITORY,
     expected: (store) => assert.deepEqual(served(store, "repository").repository.files, [{ status: "modified", path: "app/file.ts" }]) },
-  { name: "the repository-unavailable reason", option: "repositoryUnavailableReasonForSession", initial: null, next: "branch_changed", domains: ["repository"], overrides: UNAVAILABLE_REPOSITORY,
-    expected: (store) => assert.equal(served(store, "repository").unavailableReason, "branch_changed") },
+  { name: "the repository-unavailable reason", option: "repositoryUnavailableReasonForSession", initial: null, next: "branch_changed", domains: ["repository", "session-summary"], overrides: UNAVAILABLE_REPOSITORY,
+    expected: (store) => {
+      assert.equal(served(store, "repository").unavailableReason, "branch_changed");
+      assert.equal(served(store, "session-summary").repository.unavailableReason, "branch_changed");
+    } },
   { name: "the retained resource block", option: "retainedResourcesForSession", initial: LOADING_RESOURCES, next: READY_RESOURCES, domains: ["resources", "session-summary"],
     expected: (store) => assert.equal(served(store, "resources").retained.peaks.length, 1) },
   { name: "the recorded file history", option: "fileHistoryForSession", initial: LOADING_FILES, next: READY_FILES, domains: ["repository", "session-summary"],

@@ -11,6 +11,7 @@ import { ActivitiesTab } from "./components/dashboard/ActivitiesTab";
 import { AgentsTab } from "./components/dashboard/AgentsTab";
 import { LegacySessionTab } from "./components/dashboard/LegacySessionTab";
 import { RepositoryTab } from "./components/dashboard/RepositoryTab";
+import { headerRepositoryReason, repositoryUnavailableLabel } from "./components/dashboard/repository-unavailable";
 import { SessionIdChip } from "./components/dashboard/SessionIdChip";
 import { ResourcesTab } from "./components/dashboard/ResourcesTab";
 import { SignalsTab } from "./components/dashboard/SignalsTab";
@@ -146,12 +147,16 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
   const nativeId = summary.session.id.split(":").at(-1) || summary.session.id;
   const signal = summary.session.signal;
   const taskTabHref = `/sessions/${encodeSessionRoute(sessionId)}?tab=task`;
+  // No chip while there is no binding or no completed read; a Git answer with no branch says why.
+  const headerReason = headerRepositoryReason(summary.repository.unavailableReason);
   const meta = <div className="sessionHeaderMeta">
     <ProviderBadge source={summary.source} />
     <span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span>
     {signal && <AgentChip className={`sessionSignal ${signal.tone}`} ariaLabel={`Session signal: ${signal.label}`} title={signal.description ? `Agent-reported session signal · ${signal.description}` : "Agent-reported session signal"}>{signal.label}</AgentChip>}
     <SessionIdChip sessionId={nativeId} />
-    {summary.sectionReadiness.repository === "ready" && summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}
+    {summary.sectionReadiness.repository === "ready" && summary.repository.available && summary.repository.branch
+      ? <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>
+      : headerReason && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{repositoryUnavailableLabel(headerReason)}</span>}
     {sessionTask.task && <SessionTaskMeta task={sessionTask.task} taskHref={activeTab === "task" ? null : taskTabHref} />}
     <span className="sessionStartedMeta">Started {summary.session.startedAt ? <time dateTime={summary.session.startedAt}>{sessionListTime(summary.session.startedAt)}</time> : "time unavailable"}</span>
   </div>;
