@@ -23,6 +23,7 @@ import { timingOf } from "./agent-chat-timing.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
+import { createWorktreeInventory } from "./agent-chat-worktrees.mjs";
 import { createTaskWorktrees, TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 export { agentChatMcpServer, prepareInstructionsFile };
 export { isWorkflowSourcePath, readWorkflowChanges, workflowSources } from "./agent-chat-workflow.mjs";
@@ -101,6 +102,8 @@ export function createAgentChat(options = {}) {
   const startTask = typeof options.startTask === "function" ? options.startTask : null;
   // The same Git worktrees as the dispatcher, found where it makes them. Their paths stay in this file's calls and never leave desktop main.
   const worktrees = options.worktrees || createTaskWorktrees({ root: options.dataRoot ? path.join(options.dataRoot, TASK_WORKTREE_DIRECTORY) : undefined, environment: sourceEnvironment, platform });
+  // The facts of those worktrees that a turn reads, kept between turns: a turn never waits on Git or on a folder walk, and a removal never reads them.
+  const worktreeInventory = options.worktreeInventory || createWorktreeInventory({ worktrees });
   // The repository's own GitHub merge settings, so Aril proposes merge settings that fit them: `read(repositoryId, root)`.
   const repositoryGithub = typeof options.repositoryGithub?.read === "function" ? options.repositoryGithub : null;
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
@@ -149,7 +152,7 @@ export function createAgentChat(options = {}) {
   });
 
   // The reads a turn makes before its process starts (see agent-chat-prepare.mjs): they begin together, and each is timed.
-  const preparation = createTurnPreparation({ monitor, postAction, worktrees, execFile, repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
+  const preparation = createTurnPreparation({ monitor, postAction, worktreeInventory, execFile, repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
   const { readBoard, repositoryRoot } = preparation;
 
   // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
@@ -425,7 +428,7 @@ export function createAgentChat(options = {}) {
       // The rest of the reads have been running since the first line; the prompt waits only for the slowest.
       const { runs, taskLog, github, workflow: workflowChanges, inventory, instructions: instructionsFile = null, context } = await prep.values("runs", "taskLog", "github", "workflow", "inventory", "instructions", "context");
       if (disposed) return abandoned(UNAVAILABLE);
-      const composed = composePromptParts({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, ...context, message: text, images: shown, attached, repositoryGithub: github, now: now() });
+      const composed = composePromptParts({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory?.rows, worktreesAt: inventory?.readAt, ...context, message: text, images: shown, attached, repositoryGithub: github, now: now() });
       const prompt = composed?.prompt;
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
@@ -486,7 +489,7 @@ export function createAgentChat(options = {}) {
       if (!command) return refused("cli_missing");
       prep.startRepository({ provider, worktrees: true });
       const { runs, taskLog, workflow: workflowChanges, inventory, instructions: instructionsFile = null, context } = await prep.values("runs", "taskLog", "workflow", "inventory", "instructions", "context");
-      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, ...context, grantPlans: plans, now: now() });
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory?.rows, worktreesAt: inventory?.readAt, ...context, grantPlans: plans, now: now() });
       if (!prompt) return INVALID;
       const conversation = await store.create(repositoryId, { provider, model: null, title: conversationTitle(`Grant: tasks from ${path.posix.basename(plans[0])}`) });
       if (!conversation) return UNAVAILABLE;
@@ -616,8 +619,11 @@ export function createAgentChat(options = {}) {
       const root = await repositoryRoot(repositoryId);
       if (!root) return "failed";
       const request = { repositoryRoot: root, repositoryId, taskId: operation.id };
-      if (!await worktrees.locate(request)) return "not_found";
+      // The removal reads the live tree and the live commits itself (`remove` in task-worktree.mjs); the turns' cached facts are never asked.
+      if (!await worktrees.locate(request)) { worktreeInventory.changed(repositoryId, operation.id); return "not_found"; }
       const result = await worktrees.remove({ ...request, deleteBranch: operation.branch, detailed: true });
+      // A removed worktree leaves the cached rows at once; any other answer means the cached facts were out of date.
+      worktreeInventory.changed(repositoryId, result === "removed" ? operation.id : null);
       return WORKTREE_RESULTS.includes(result) ? result : "failed";
     } catch { return "failed"; }
   }
@@ -711,7 +717,7 @@ export function createAgentChat(options = {}) {
     grantWrite,
     grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)),
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; followUps.clear(); compaction.dispose(); try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); compaction.dispose(); worktreeInventory.close?.(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 

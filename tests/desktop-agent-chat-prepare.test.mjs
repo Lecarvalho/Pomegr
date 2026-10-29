@@ -307,3 +307,26 @@ test("a step that fails waits inside its reader, passes the failure to the steps
     process.off("unhandledRejection", listener);
   }
 });
+
+test("the worktrees step takes the time of the Git facts on a first turn, none on a turn with cached facts, and never the time of a folder walk", async (context) => {
+  let clock = 1_000;
+  const walks = [];
+  // The first read of the Git facts takes four seconds on this clock; the folder walk never ends here.
+  const worktrees = {
+    inventory: async () => { clock += 4_000; return [{ taskId: "T-1", clean: true, uniqueCommits: false }]; },
+    sizes: () => { walks.push("walk"); return new Promise(() => {}); },
+  };
+  const h = await chatHarness(context, { clock: () => clock, worktrees });
+  const prepared = async (index) => {
+    const sent = await send(h);
+    h.runs[index].measured = { eventMs: 1, textMs: 2, doneMs: 3 };
+    return (await finishTurn(h, h.runs[index], { status: "complete", text: "Ok." }, sent.conversationId)).messages.at(-1).timing.prepare;
+  };
+  const first = await prepared(0);
+  assert.equal(first.worktrees, 4_000, "the Git facts, and no walk");
+  await until(() => walks.length === 1);
+  const second = await prepared(1);
+  assert.equal(second.worktrees, 0, "cached facts wait for nothing");
+  assert.deepEqual(walks, ["walk"], "the cached turn started no second walk");
+  assert.match(h.runs[1].options.prompt, /<task_worktrees>/u);
+});

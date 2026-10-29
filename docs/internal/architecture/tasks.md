@@ -949,18 +949,22 @@ paths stay desktop-private and never reach the monitor store or browser state.
   of 2026-10-25. Worktrees take disk space, so Aril may propose removing them. Nothing is removed until the owner
   applies that proposal in the desktop app. It adds no automatic removal and changes neither the removal of
   Mark done nor the queue runner's pass above.
-  - **What Aril sees.** On each turn that an owner message or a grant that writes tasks starts, desktop main asks
-    Git for the worktrees of the repository root and keeps those at one of the two locations above. The task ID
+  - **What Aril sees.** On each turn that an owner message or a grant that writes tasks starts, desktop main gives
+    Aril the cached facts of the worktrees of the repository root at one of the two locations above. They are read from
+    Git in the background and never during a turn, except the Git facts of a repository with no cache yet (see
+    [Agent chat: Task worktree facts](agent-chat.md#task-worktree-facts)). The task ID
     comes from the validated folder name only; a worktree anywhere else is never listed. A row holds the task ID,
-    the task's state and column from the board or "not on board", whether the working tree is clean, whether HEAD
+    the task's state and column from the board of the turn or "not on board", whether the working tree is clean, whether HEAD
     holds a commit that exists nowhere else (a fact Git cannot answer counts against removal), and the size in MB
-    from a walk that follows no link and stops at 20,000 entries, 2 seconds, or 6 seconds for all the worktrees of one turn, then reads "at least N MB". There
+    from a walk that follows no link and stops at 20,000 entries, 2 seconds, or 6 seconds for all the worktrees of one refresh, then reads "at least N MB",
+    or "unknown" until a walk has measured it. There
     are at most 30 rows, oldest task first. A path never enters the prompt, the chat store, the renderer, or a log
     (see [Agent chat: Privacy](agent-chat.md#privacy)).
   - **What the owner applies.** One to thirty `remove_worktree` operations, `{ id, branch }`, and nothing else in
     the proposal (see [Agent chat: Worktree removal](agent-chat.md#worktree-removal)). Desktop main takes them one
     after another. It reads the board again and answers `in_use` when the task is in flight or its review session
-    is running. It finds the worktree as Open folder does and runs the removal above, with the branch rule when
+    is running. It finds the worktree as Open folder does and runs the removal above, which reads the working tree
+    and the commits again and never the cached facts of the prompt, with the branch rule when
     `branch` is true. The result of each is `removed`, `not_found`, `dirty`, `unique_commits`, `in_use`, or
     `failed`, and a worktree that is kept does not stop the next one.
   - **The keep flag.** A task whose `run.keepWorktree` is on is removed too, because the owner's Apply is the

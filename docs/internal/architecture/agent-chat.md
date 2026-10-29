@@ -76,7 +76,8 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `desktop/runtime/agent-chat-summary.mjs` | The summary of a repository's thread: its record, its file, and the view of it a client may have (a position and a time) | Write outside its directory; answer its text to a client |
 | `desktop/runtime/agent-chat-compaction.mjs` | [Compaction](#compaction): when it runs, the messages it takes, its prompt, its read-only run with no tool, the check of its answer, and its stop | Run more than one for a repository, or while a turn of it runs; use a tool, a proposal, or the board; store anything but plain text; keep a partial answer |
 | `desktop/runtime/agent-chat-timing.mjs` | The record of a [timing](#timing) and its bounds, the preparation's milliseconds included | Hold any text |
-| `desktop/runtime/agent-chat-prepare.mjs` | The [preparation](#preparation) of a turn: the reads it needs before its process starts (board, repository root, observed runs, task log, GitHub settings, workflow changes, worktrees, instructions file, the thread's facts, and the run's environment), begun together, and the milliseconds each step took | Refuse a message; hold or time any text; read more than the reads it is given; keep anything after the turn |
+| `desktop/runtime/agent-chat-prepare.mjs` | The [preparation](#preparation) of a turn: the reads it needs before its process starts (board, repository root, observed runs, task log, GitHub settings, workflow changes, the cached worktree facts, instructions file, the thread's facts, and the run's environment), begun together, and the milliseconds each step took | Refuse a message; hold or time any text; read more than the reads it is given; keep anything after the turn |
+| `desktop/runtime/agent-chat-worktrees.mjs` | The [facts of the task worktrees](#task-worktree-facts) that a turn reads, kept in memory between turns: the Git facts, the sizes, when the Git facts were read, and their refresh in the background | Make a turn wait on a folder walk, or on Git once a repository has a cache; keep a path, a file name, or Git output; run two refreshes for a repository at once; be read by a removal |
 | `desktop/runtime/agent-chat-task-bridge.mjs` | The temporary loopback bridge through which the chat's MCP server reads a task of the turn's repository | Serve more than the two task reads; outlive its turn |
 | `desktop/runtime/agent-chat-provider-files.mjs` | The fixed instructions file Claude reads and the entry of the chat's own MCP server | Hold owner, board, conversation, or credential text |
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
@@ -124,7 +125,7 @@ summarizes an outgrown thread. It is no turn, answers no one, and proposes nothi
    the board's own models. A failed or malformed log read adds an unavailable line; it never refuses the turn.
    Beside them it begins the GitHub settings (once the root is known), the thread's facts, the
    instructions file, and the environment of the run, and, once the root and the board are both known, the workflow changes and
-   the listing of the Pomegr task worktrees of the repository (see [Prompt](#prompt)). A read
+   the cached facts of the Pomegr task worktrees of the repository (see [Task worktree facts](#task-worktree-facts)). A read
    that fails leaves its section out and never refuses the turn.
 5. It moves the message's images into the conversation while the rest of those reads finish, builds the prompt (see
    [Prompt](#prompt)), and stores the owner's message. Then it declares a Claude Code run to the
@@ -327,7 +328,8 @@ characters, including the fixed instructions even when Claude receives them thro
    repository's workflow sources that changed since (see [Workflow changes](#workflow-changes)).
 4. **Task worktrees.** Owner-message and grant-write turns list the Pomegr task worktrees
    that remain on disk, as facts only, and the fixed instruction for `remove_worktree` (see
-   [Worktree removal](#worktree-removal)). The section is left out when there are none.
+   [Worktree removal](#worktree-removal)). The section is left out when there are none. It says when the facts were read, that
+   they may be a few minutes old, and that a size can be unknown (see [Task worktree facts](#task-worktree-facts)).
 5. **Repository GitHub settings.** Owner-message turns include a `<repository_github>` section: the repository's `squashMergeAllowed`,
    `mergeCommitAllowed`, `rebaseMergeAllowed`, `autoMergeAllowed`, and `deleteBranchOnMerge` booleans and its default branch name as one JSON
    line, or `unknown` when desktop main could not read them (see [Repository GitHub settings](tasks.md#repository-github-settings)). The section is left out
@@ -707,11 +709,13 @@ runs.
   are at `<root>/.pomegr/worktrees/<task ID>` or at the legacy
   `<desktop data root>/task-worktrees/<repository ID>/<task ID>`. The task ID is taken from
   the validated folder name only. A row is a JSON line with the task ID, the task's `state`
-  and `column` from the board or "not on board", `clean`, `uniqueCommits` (HEAD holds a
+  and `column` from the board of this turn or "not on board", `clean`, `uniqueCommits` (HEAD holds a
   commit that exists on no remote and no other branch), and `size` in MB, "at least N MB"
-  when the walk stopped at 20,000 entries, 2 seconds, or the 6 seconds that all the walks of one turn share. A fact that cannot be read counts
+  when the walk stopped at 20,000 entries, 2 seconds, or the 6 seconds that all the walks of one refresh share, or "unknown" until a walk has
+  measured it. A fact that cannot be read counts
   against removal: not clean, and a unique commit. There are at most 30 rows, oldest task
-  first. A path is never in a row, the prompt, the store, the renderer, or a log. A
+  first. The facts are not read for each turn: they are the cached facts of
+  [Task worktree facts](#task-worktree-facts), and a line under the rows says when they were read. A path is never in a row, the prompt, the store, the renderer, or a log. A
   follow-up reads no listing.
 - **When Aril proposes it.** The fixed text under the rows tells Aril to propose removal
   when the owner asks about disk space or cleanup, or when a done or deleted task still has
@@ -735,7 +739,9 @@ runs.
   branch rule when `branch` is true. A task that is no longer on the board is removed the
   same way. It adds no monitor route: the board and the existing private task read answer.
   A `run.keepWorktree` flag that is on does not stop it, because the owner's Apply is the
-  choice; the flag is not changed.
+  choice; the flag is not changed. The removal never asks the cached facts of the prompt: `remove` reads the Git listing, the working
+  tree (`status`), and the commits (`rev-list`) again, so a row that went stale cannot allow a removal that the live state forbids.
+  Whatever the result, Apply then tells the cache that its facts are out of date, and a removed worktree leaves the rows at once.
 - **Results.** One fixed word for each operation: `removed`, `not_found` (no such
   worktree), `dirty` (uncommitted changes), `unique_commits` (a commit that exists nowhere
   else), `in_use`, or `failed` (Git or the file system refused, or an answer was missing).
@@ -1085,13 +1091,25 @@ An answer takes several seconds even on an empty board, and where the time goes 
 
 A real answer on 2026-10-29 showed the owner's message saved 20 to 80 seconds after the panel drew it, while the provider itself answered in 24 seconds. The reads before the process were awaited one after another and none of that time was measured. They now begin together, and each is timed.
 
-- An owner-message turn begins every read at once, after the refusals that need none of them (`busy`, `cli_missing`, `not_found`, `limit`). The board, the repository root, the observed runs, the task log, the thread's facts, the instructions file (Claude Code only), and the run's environment need nothing else. The GitHub settings need the root. The workflow changes and the worktree listing need the root and the board. Nothing waits for a read it does not need.
+- An owner-message turn begins every read at once, after the refusals that need none of them (`busy`, `cli_missing`, `not_found`, `limit`). The board, the repository root, the observed runs, the task log, the thread's facts, the instructions file (Claude Code only), and the run's environment need nothing else. The GitHub settings need the root. The workflow changes and the worktree facts need the root and the board. Nothing waits for a read it does not need.
 - The prompt waits for the slowest read. The refusals keep their order: a board that is not ready, or no root, answers `unavailable` as soon as those two have answered; then the conversation is made, then an image that cannot be claimed answers `invalid` and the conversation made for the message is removed, then a prompt past its limit answers `invalid` and removes it again, then a message that cannot be saved answers `unavailable` and removes it. Closing the app while the reads run answers `unavailable` and removes it. A read that fails or times out leaves its section out as before and refuses nothing. A read that a refused message did not wait for finishes unseen.
 - The run's declaration to the monitor, the opening of the task bridge, and the environment (begun with the other reads) are awaited together after the message is stored, then the process starts. A follow-up and a grant write turn begin the reads they need together in the same way.
 - Each step times itself with a monotonic clock, from when it began to when it answered, and `total` runs from the moment `send` is entered to the call that starts the process. The steps run side by side, so they do not add up to `total`, and a step that waited for the root or the board counts only its own work.
 - `prepare` holds the steps this turn ran, in this order: `board`, `root`, `runs`, `taskLog`, `github`, `workflow`, `worktrees`, `instructions`, `context` (the repository's last completed answer, the summary, and the thread's newest messages), `environment`, `store` (making the conversation, claiming its images, and saving the message, added up), `declare`, `server` (the task bridge), and `total`. `github` is absent when no reader is given, and `instructions` for Codex. Every value is a whole number of milliseconds, from 0 to 3,600,000, and no step is longer than `total`.
 - A follow-up, a grant write turn, and a grant follow-up line store none, as they store no timing.
-- Nothing is cached between messages by the preparation. The GitHub reader already keeps its answer in memory for 30 minutes, and for 5 when the read failed (see [Repository GitHub settings](tasks.md#repository-github-settings)). The workflow changes and the worktree listing are read again on every turn: the workflow rule asks Aril to ask again when a source changed, and a source the owner edited a minute ago must not read as unchanged.
+- The preparation itself keeps nothing between messages. The GitHub reader already keeps its answer in memory for 30 minutes, and for 5 when the read failed (see [Repository GitHub settings](tasks.md#repository-github-settings)), and the facts of the task worktrees have a cache of their own (see [Task worktree facts](#task-worktree-facts)). The workflow changes are read again on every turn: the workflow rule asks Aril to ask again when a source changed, and a source the owner edited a minute ago must not read as unchanged.
+
+### Task worktree facts
+
+A real answer on 2026-10-29 spent 9,806 of the 10,674 milliseconds of its preparation on the `worktrees` step. Before every message, the listing read two Git processes for each worktree one after another, then walked the size of each folder under a budget of 6 seconds. Its facts now live in `agent-chat-worktrees.mjs`, in desktop main's memory, and a turn does not wait for them to be read again.
+
+- **What it keeps.** For each repository ID: the rows `{ taskId, clean, uniqueCommits, sizeMB, atLeast }` that `task-worktree.mjs` answers (`inventory` for the Git facts, `sizes` for the folder walks), and the time its Git facts were read. Never a path, a file name, or Git output. Nothing is written to disk, so a restart starts with no cache. The task's `state` and `column` are not kept: every read joins the board of that turn, because a task that has just moved to Done is the reason to propose a removal.
+- **A turn with a cache** uses the rows at once and calls neither Git nor a folder walk. Its `worktrees` step is then about 0 milliseconds.
+- **A turn with no cache** (the first message for the repository since the app started) reads the Git facts and waits for them, never for a size. The facts are two Git processes for each worktree, three worktrees at a time, and its rows say `unknown` for the size. The walks then run in the background. When the Git facts cannot be read, the turn goes without the section, nothing is kept, and the next turn tries again.
+- **An old cache.** A cache older than 3 minutes, or one that a change made out of date, is read again in the background, and the turn that found it uses the old rows without waiting. One refresh runs for a repository at a time, until its walks end. A refresh that has run for a minute is given up on and its late answer is dropped, so a folder walk that hangs cannot stop later refreshes. A row keeps its last known size until a walk measures it again. A refresh that fails keeps the last rows and is tried again by the next turn.
+- **What makes it out of date.** A worktree made by a task start, and a worktree removed or found missing, whoever did it: the removal of Mark done and of the queue runner share the desktop's one `createTaskWorktrees` with the chat. Every Apply of a removal proposal, whatever its result, does too; a removed task's row leaves the rows at once, and any other result means the cached facts had moved.
+- **What a stale row cannot do.** The rows only inform Aril. A removal never reads them (see [Worktree removal](#worktree-removal)): `remove` of `task-worktree.mjs` reads the live Git listing, the working tree, and the commits again and keeps the worktree when any of them says it is not safe. The worst a stale row does is a proposal that Apply answers with `dirty` or `unique_commits`.
+- **What the prompt says.** The section tells Aril when the Git facts were read, that they may be a few minutes old, that a size can be unknown or older, and that Pomegr reads a worktree again when the owner applies its removal.
 
 ## Conversations
 
@@ -1141,7 +1159,7 @@ Aril may record a rework link (references and a cause from a fixed list) without
 | `POST /api/agent-chat/image-add` and `GET /api/agent-chat/image-read` on the LAN gateway | A paired device only | The same two operations, answered in desktop main and never forwarded. `image-add` takes the bytes as an `application/octet-stream` body of at most 5 MiB with the repository ID as its only query key. `image-read` takes the repository ID, the conversation ID, and the image ID as its only query keys, and answers the bytes with one of the four media types, `no-store` |
 | `POST /api/agent-chat` on the LAN gateway | A paired device only | `{ operation, payload }` with the same operations and bound, `thread` and `search` included; the gateway answers it in desktop main and never forwards it. Its `apply` of a session start, a worktree removal, or a feature edit answers `desktop_only`. Its `apply` of a queue change is accepted |
 | The manual start in desktop main (`createTaskStart().startApproved`) | Desktop main, for an approved start proposal of the desktop window | The window event, the repository ID, and the task ID in; one fixed start status out. No prompt, plan, path, or token reaches the chat |
-| Git in desktop main (`createTaskWorktrees`) | Desktop main | `worktree list`, `status`, `rev-list`, `worktree remove`, and, under the branch rule, `branch -D`, as argument arrays with no shell, for the worktree listing of a turn and for an approved removal. The prompt gets facts and result words only; no output, path, or error text |
+| Git in desktop main (`createTaskWorktrees`) | Desktop main | `worktree list`, `status`, `rev-list`, `worktree remove`, and, under the branch rule, `branch -D`, as argument arrays with no shell, for the facts of the worktree rows (read in the background, and during a turn only for a repository with no cache yet) and for an approved removal. The folder walk of the sizes follows no link. The prompt gets facts and result words only; no output, path, or error text |
 | `GET /api/tasks` and `POST /internal/tasks/worktree-root` on the monitor | Desktop main, with the desktop token | The board for the prompt and for an apply; the repository root for the run's working directory |
 | `POST /internal/tasks/log-read` and `log-ack` on the monitor | Desktop main, with the desktop token | The newest 100 log entries for owner-message prompts; acknowledgement through the highest shown ID after a complete turn |
 | `POST /internal/tasks/aril-declare-rework` on the monitor | Desktop main with desktop token; no browser Origin, LAN-gateway marker, or MCP capability | Exactly `{ repositoryId, fix, reworks, cause }`; fixed status or error; no renderer, paired-device, or MCP route |
@@ -1267,7 +1285,7 @@ never a session's.
   image, so the path of the chat's image folder under the desktop data root, which holds
   the user's folder name, reaches the provider. A task's session has had the path of its
   task's image folder in the same way.
-  From 2026-10-25 (Aril operator phase 9c), an owner-message or grant-write prompt also sends the facts of the Pomegr task worktrees that remain: the task ID, the task's state and column or "not on board", whether the tree is clean, whether HEAD holds a commit that exists nowhere else, and an approximate size in MB. Never a path, a file name, or Git output.
+  From 2026-10-25 (Aril operator phase 9c), an owner-message or grant-write prompt also sends the facts of the Pomegr task worktrees that remain: the task ID, the task's state and column or "not on board", whether the tree is clean, whether HEAD holds a commit that exists nowhere else, an approximate size in MB or "unknown", and the time the Git facts were read. Never a path, a file name, or Git output. The facts are kept in desktop main's memory between turns and never written.
   A grant write turn sends the normal board snapshot, repository settings and memory,
   workflow changes, task log, and the grant's named plan paths. Its fixed request asks Aril to read the
   next unbuilt step of an accepted plan and create 1–5 tasks with only `text`,
