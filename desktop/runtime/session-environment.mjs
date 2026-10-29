@@ -95,7 +95,8 @@ export function createWindowsEnvironment({ environment, platform = process.platf
     let timer;
     return Promise.race([
       new Promise((resolve) => { resolve(read()); }),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("SESSION_ENVIRONMENT_TIMEOUT")), timeoutMs); timer.unref?.(); }),
+      // Kept referenced: a read that never answers must still settle, and the timer is cleared as soon as it does.
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("SESSION_ENVIRONMENT_TIMEOUT")), timeoutMs); }),
     ]).finally(() => clearTimeout(timer));
   };
   // What the registry held when the app started, so a variable deleted since is dropped. Unknown when this read fails.
