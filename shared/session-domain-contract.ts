@@ -71,6 +71,7 @@ export type SessionSummaryDomain = SessionDomainBase & {
     readiness: Readiness;
     available: boolean;
     branch: string | null;
+    unavailableReason: RepositoryUnavailableReason | null;
     changedFiles: number | null;
     touchedFiles: number | null;
     pullRequestCount: number | null;
@@ -173,12 +174,16 @@ export type SignalsDomain = SessionDomainBase & {
   cacheReadDrops: MonitorState["metrics"]["tokens"]["cacheReadDrops"];
 };
 
+// Why a live view shows no repository: the session's branch changed, Git confirmed the folder is
+// not a repository, or the Git read failed (timed out, Git missing, refused by safe.directory, other).
+export type RepositoryUnavailableReason = "branch_changed" | "not_repository" | "timeout" | "git_missing" | "refused" | "failed";
+
 export type RepositoryDomain = SessionDomainBase & {
   domain: "repository";
   repositoryId: string | null;
   contextInventoryRef: NonNullable<MonitorState["session"]>["contextInventoryRef"] | null;
   repository: NonNullable<MonitorState["session"]>["repository"] | null;
-  unavailableReason: "branch_changed" | null;
+  unavailableReason: RepositoryUnavailableReason | null;
   pullRequests: NonNullable<MonitorState["session"]>["pullRequests"] | null;
   recordedAt: string | null;
   commitsInSession: number | null;

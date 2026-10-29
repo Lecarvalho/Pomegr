@@ -34,6 +34,9 @@ function sameRoot(left, right) {
   return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
+// The fixed reasons a bound session's live Git read found no repository to show.
+const GIT_READ_FAILURES = new Set(["not_repository", "timeout", "git_missing", "refused", "failed"]);
+
 // Monitor-private read times and revision-bound CI evidence.
 const PRIVATE_KEYS = ["readAt", "headOid", "checkReads"];
 
@@ -83,7 +86,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
       const forbiddenRoots = Object.values(providerFolders?.folders || {}).filter(Boolean);
       let acquired = await gitReader(input.root, { forbiddenRoots });
       if (fresh && Number.isFinite(acquired?._readStartedAt) && acquired._readStartedAt < readStartedAt) acquired = await gitReader(input.root, { forbiddenRoots });
-      const { _repositoryRoot: root = null, _headOid: headOid, _readStartedAt: inspectionStartedAt, _statusUnknown: statusUnknown = false, ...publicRepository } = acquired;
+      const { _repositoryRoot: root = null, _headOid: headOid, _readStartedAt: inspectionStartedAt, _statusUnknown: statusUnknown = false, _unavailable: readFailure = null, ...publicRepository } = acquired;
       const rootMatches = input.exactRoot ? sameRoot(root, input.root) : Boolean(root && path.isAbsolute(root));
       const onBranch = input.anyBranch ? Boolean(publicRepository.branch) : publicRepository.branch === input.branch;
       // Git answered for the bound root on another branch: the working tree left the session's recorded branch.
@@ -93,7 +96,8 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
       if (!reportOnly && (!rootMatches || !publicRepository.available || !onBranch)) {
         if (entry.generation === input.generation) {
           entry.checked = true;
-          entry.unavailableReason = branchChanged ? "branch_changed" : null;
+          entry.unavailableReason = branchChanged ? "branch_changed"
+            : !publicRepository.available && GIT_READ_FAILURES.has(readFailure) ? readFailure : null;
         }
         return false;
       }

@@ -5,6 +5,9 @@ import { projectAgentSessionActivityFallback } from "./session-current-activity.
 import { SESSION_EVENT_READINESS_SECTIONS, sessionEvents } from "./session-events.mjs";
 import { derivedSessionEventRecord, mergeSessionEventRecord } from "./session-event-record.mjs";
 
+// The fixed reasons a live Git check found no repository to show; never a path or a branch.
+const REPOSITORY_UNAVAILABLE_REASONS = new Set(["branch_changed", "not_repository", "timeout", "git_missing", "refused", "failed"]);
+
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
 
 export const SESSION_DOMAIN_CATALOG_FIELDS = Object.freeze(["isLive", "needsInput", "activityStatus", "currentActivity", "activityFallback"]);
@@ -296,7 +299,7 @@ function base(domain, sessionId, observedAt, state, domainReadiness) {
   };
 }
 
-function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFiles, events) {
+function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFiles, events, repositoryUnavailableReason) {
   const session = state?.session;
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const sections = sectionReadiness(ready, ["core", "agentEvidence", "contextEvidence", "activityEvidence", "repository"]);
@@ -368,7 +371,9 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
     repository: {
       readiness: readiness(ready.repository),
       available: repository?.available === true,
-      branch: typeof repository?.branch === "string" ? repository.branch : null,
+      // A branch is a Git result: an unavailable repository names none.
+      branch: repository?.available === true && typeof repository.branch === "string" && repository.branch ? repository.branch : null,
+      unavailableReason: repositoryUnavailableReason,
       changedFiles: repository?.available === true && Array.isArray(repository.files) ? repository.files.length : null,
       touchedFiles,
       pullRequestCount: pullRequests?.status === "ready" && Array.isArray(pullRequests.items) ? pullRequests.items.length : null,
@@ -427,6 +432,9 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const repository = publicRepository(session?.repository, options.repositoryRoot, options.forbiddenRoots, options.liveRepositoryFiles ?? null);
   const pullRequests = publicPullRequests(session?.pullRequests);
   const repositoryReadiness = readiness(ready.repository);
+  // Live views only, and only while no repository is shown: the one recognized reason the live Git check found none.
+  const repositoryUnavailableReason = repository?.available !== true && repository?.historical !== true
+    && REPOSITORY_UNAVAILABLE_REASONS.has(options.repositoryUnavailableReason) ? options.repositoryUnavailableReason : null;
   const retainedResources = options.retainedResources || null;
   const liveResourcesReadiness = readiness(ready.resources);
   const resourcesReadiness = resourcesDomainReadiness(liveResourcesReadiness, retainedResources);
@@ -451,7 +459,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     eventRecord,
   });
   const domains = new Map();
-  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(touchedFiles), events));
+  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(touchedFiles), events, repositoryUnavailableReason));
   domains.set("agents", {
     ...base("agents", sessionId, observedAt, state, ready.agentEvidence),
     agents,
@@ -478,9 +486,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     repositoryId: session?.repositoryId || null,
     contextInventoryRef: publicInventoryRef(session?.contextInventoryRef),
     repository,
-    // Live views only, and only while no repository is shown: the one recognized reason the live Git check found none.
-    unavailableReason: repository?.available !== true && repository?.historical !== true
-      && options.repositoryUnavailableReason === "branch_changed" ? "branch_changed" : null,
+    unavailableReason: repositoryUnavailableReason,
     pullRequests,
     recordedAt: repositoryRecordedAt(session?.repository?.recordedAt),
     commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),

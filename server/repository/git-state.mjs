@@ -39,11 +39,57 @@ function runGitAsync(cwd, args, timeout = REMOTE_TIMEOUT_MS) {
       timeout,
       windowsHide: true,
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
-    }, (error, stdout) => {
-      if (error) reject(error);
+    }, (error, stdout, stderr) => {
+      if (error) reject(Object.assign(error, { stderr: typeof stderr === "string" ? stderr : "" }));
       else resolve(stdout);
     });
   });
+}
+
+// The fixed reason a Git read failed. Only Git's own diagnostic is matched, never the command
+// line, and neither leaves the monitor: a path can appear in both.
+export function gitReadFailure(error) {
+  if (error?.code === "ENOENT") return "git_missing";
+  if (error?.killed === true || error?.code === "ETIMEDOUT" || (typeof error?.signal === "string" && error.signal)) return "timeout";
+  const diagnostic = String(error?.stderr || "").toLowerCase();
+  if (diagnostic.includes("dubious ownership") || diagnostic.includes("safe.directory")) return "refused";
+  if (diagnostic.includes("not a git repository")) return "not_repository";
+  return "failed";
+}
+
+// A read with no Git state. `branch` is empty, never a placeholder that could read as a fact;
+// the monitor-private `_unavailable` says why when Git was asked.
+function unavailableRead(reason = null) {
+  return {
+    available: false,
+    branch: "",
+    files: [],
+    isMain: false,
+    comparison: null,
+    commits: [],
+    remote: { status: "unavailable", checkedAt: null },
+    ...(reason ? { _unavailable: reason } : {}),
+  };
+}
+
+function readHead(cwd) {
+  try {
+    const head = execFileSync("git", ["-c", `safe.directory=${cwd}`, "-C", cwd, "rev-parse", "HEAD"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 1_500, windowsHide: true,
+    }).trim();
+    return head ? { head } : { failure: "failed" };
+  } catch (error) {
+    return { failure: gitReadFailure(error) };
+  }
+}
+
+async function readHeadAsync(cwd) {
+  try {
+    const head = (await runGitAsync(cwd, ["rev-parse", "HEAD"], 1_500)).trim();
+    return head ? { head } : { failure: "failed" };
+  } catch (error) {
+    return { failure: gitReadFailure(error) };
+  }
 }
 
 function tryGit(cwd, args, timeout) {
@@ -389,20 +435,11 @@ function remoteRepositoryState(cwd, currentBranch, head) {
 }
 
 export function readGitState(cwd, { forbiddenRoots = [] } = {}) {
-  const empty = {
-    available: false,
-    branch: "Not a Git repository",
-    files: [],
-    isMain: false,
-    comparison: null,
-    commits: [],
-    remote: { status: "unavailable", checkedAt: null },
-  };
-  if (!cwd) return empty;
+  if (!cwd) return unavailableRead();
 
   let branch = tryGit(cwd, ["branch", "--show-current"]).trim();
-  const head = tryGit(cwd, ["rev-parse", "HEAD"]).trim();
-  if (!head) return empty;
+  const { head, failure } = readHead(cwd);
+  if (!head) return unavailableRead(failure);
   if (!branch) branch = `detached@${head.slice(0, 12)}`;
 
   const root = repositoryRoot(cwd);
@@ -451,26 +488,16 @@ export async function readGitWorkingTreeAsync(cwd) {
 }
 
 async function inspectGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
-  const empty = {
-    available: false,
-    branch: "Not a Git repository",
-    files: [],
-    isMain: false,
-    comparison: null,
-    commits: [],
-    remote: { status: "unavailable", checkedAt: null },
-  };
-  if (!cwd) return empty;
+  if (!cwd) return unavailableRead();
 
-  const [branchOutput, headOutput, statusOutput, root] = await Promise.all([
+  const [branchOutput, { head, failure }, statusOutput, root] = await Promise.all([
     tryGitAsync(cwd, ["branch", "--show-current"], 1_500),
-    tryGitAsync(cwd, ["rev-parse", "HEAD"], 1_500),
+    readHeadAsync(cwd),
     runGitAsync(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], 2_500).catch(() => null),
     repositoryRootAsync(cwd),
   ]);
   let branch = branchOutput.trim();
-  const head = headOutput.trim();
-  if (!head) return empty;
+  if (!head) return unavailableRead(failure);
   if (!branch) branch = `detached@${head.slice(0, 12)}`;
 
   const files = repositoryFiles(statusOutput ?? "", root, forbiddenRoots);

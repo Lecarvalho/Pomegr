@@ -102,6 +102,43 @@ describe("T04 session workspace", () => {
     expect(ready.container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toHaveTextContent("feature/session-tabs");
   });
 
+  // T-194: the header and the Overview tile say "Not a Git repository" only when Git confirmed it.
+  it("shows no repository claim for an unbound session, even when an older monitor sends the placeholder branch", async () => {
+    const base = sessionSummaryFixture();
+    const { container } = mount({}, sessionSummaryFixture({ repository: { ...base.repository, available: false, branch: "Not a Git repository", unavailableReason: null, changedFiles: null, pullRequestCount: null } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toBeNull();
+    expect(screen.queryByText("Not a Git repository")).not.toBeInTheDocument();
+    expect(screen.getByText("No repository detected.")).toBeInTheDocument();
+  });
+
+  it("names a failed Git read by its reason in the header and the Overview tile, not as a non-repository", async () => {
+    const base = sessionSummaryFixture();
+    const { container } = mount({}, sessionSummaryFixture({ sectionReadiness: { ...base.sectionReadiness, repository: "unavailable" },
+      repository: { ...base.repository, readiness: "unavailable", available: false, branch: null, unavailableReason: "timeout", changedFiles: null, pullRequestCount: null } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toHaveTextContent("Git timed out");
+    expect(container.querySelector(".sessionRepositoryOneLine")).toHaveTextContent("Git timed out");
+    expect(screen.queryByText("Not a Git repository")).not.toBeInTheDocument();
+  });
+
+  it("says Not a Git repository when Git confirmed the session's folder is not one", async () => {
+    const base = sessionSummaryFixture();
+    const { container } = mount({}, sessionSummaryFixture({ sectionReadiness: { ...base.sectionReadiness, repository: "unavailable" },
+      repository: { ...base.repository, readiness: "unavailable", available: false, branch: null, unavailableReason: "not_repository", changedFiles: null, pullRequestCount: null } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toHaveTextContent("Not a Git repository");
+    expect(container.querySelector(".sessionRepositoryOneLine")).toHaveTextContent("Not a Git repository");
+  });
+
+  it("keeps a branch change out of the header, as before", async () => {
+    const base = sessionSummaryFixture();
+    const { container } = mount({}, sessionSummaryFixture({ sectionReadiness: { ...base.sectionReadiness, repository: "unavailable" },
+      repository: { ...base.repository, readiness: "unavailable", available: false, branch: null, unavailableReason: "branch_changed", changedFiles: null, pullRequestCount: null } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toBeNull();
+  });
+
   it("renders persistent summary-only chrome and falls back unknown tabs to Overview", async () => {
     const { fetchMock, container } = mount({ tab: "made-up", agent: "primary", request: "request-1", path: "app/Dashboard.tsx" });
     expect(await screen.findByRole("heading", { name: "Recorded implementation session" })).toBeInTheDocument();

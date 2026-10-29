@@ -63,7 +63,7 @@ test("a mutation proven in a worktree of the launch repository stays one reposit
     provenRepositories: [{ repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: "/data/task-worktrees/T-20", mainRoot: "/repo/main" }],
   });
   assert.deepEqual(identity, {
-    state: "single", repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", project: "main", recordedBranch: null, root: "/data/task-worktrees/T-20",
+    state: "single", repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", project: "main", recordedBranch: null, root: "/data/task-worktrees/T-20", anyBranch: true,
   });
 });
 
@@ -101,7 +101,7 @@ test("a proven mutation outside the launch repository refines the project and dr
     resolveRepository,
   });
   assert.deepEqual(identity, {
-    state: "single", repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", project: "mutated", recordedBranch: null, root: "/repo/mutated",
+    state: "single", repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", project: "mutated", recordedBranch: null, root: "/repo/mutated", anyBranch: true,
   });
 });
 

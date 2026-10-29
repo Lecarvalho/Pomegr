@@ -9,6 +9,7 @@ import { roleFamilyPresentation } from "../../role-family";
 import { PanelHeadingLink } from "../PanelHeadingLink";
 import { SessionEventsPanel } from "./SessionEventsPanel";
 import { Unavailable } from "./SessionOverviewUnavailable";
+import { repositoryUnavailableLabel } from "./repository-unavailable";
 import type { SessionRouteQuery } from "./session-route";
 
 const REQUEST_STRIP_SLOTS = 48;
@@ -26,6 +27,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   const agentReady = summary.sectionReadiness.agentEvidence;
   const activityReady = summary.sectionReadiness.activityEvidence;
   const repositoryReady = summary.repository.readiness;
+  const repositoryReason = summary.repository.unavailableReason ?? null;
   const stripSlots = usePhoneLayout() ? PHONE_REQUEST_STRIP_SLOTS : REQUEST_STRIP_SLOTS;
   const requests = summary.requestSnapshots.items.slice(-stripSlots);
   const roleCounts = new Map<AgentRole, Set<string>>();
@@ -113,7 +115,9 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
     <div className="sessionOverviewBottom">
     <section className="sessionOverviewPanel sessionRepositoryOneLine" aria-labelledby="session-repository">
       <div className="sessionOverviewHeading"><PanelHeadingLink id="session-repository" onOpen={() => onNavigate({ tab: "repository" })}>Repository</PanelHeadingLink></div>
-      {repositoryReady !== "ready" ? <Unavailable readiness={repositoryReady} label="Repository evidence" /> : !summary.repository.available
+      {repositoryReady !== "ready" ? repositoryReason && repositoryReady === "unavailable"
+        ? <p className="sessionOverviewEmpty">{repositoryUnavailableLabel(repositoryReason)}</p>
+        : <Unavailable readiness={repositoryReady} label="Repository evidence" /> : !summary.repository.available
         ? <p className="sessionOverviewEmpty">No repository detected.</p>
         : <div className="sessionRepositoryLine">
           <p className="sessionRepositoryLineMain">

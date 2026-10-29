@@ -74,7 +74,7 @@ function boundedResolve(resolveRepository, cwd, options, timeoutMs) {
  *   resolveRepository?: (cwd: string, options?: { requireGit?: boolean }) => Promise<{ repositoryId: string, root: string, mainRoot?: string } | null> | { repositoryId: string, root: string, mainRoot?: string } | null,
  *   resolverTimeoutMs?: number,
  * }} [input]
- * @returns {Promise<{ state: "single"|"multiple"|"unknown", repositoryId: string|null, project: string, recordedBranch: string|null, root: string|null }>}
+ * @returns {Promise<{ state: "single"|"multiple"|"unknown", repositoryId: string|null, project: string, recordedBranch: string|null, root: string|null, anyBranch?: true }>}
  */
 export async function resolveSessionIdentity({
   launchCwd = null,
@@ -117,6 +117,11 @@ export async function resolveSessionIdentity({
   const validatedBranch = hasBranchCandidate && launchIdentity !== UNANSWERED
     && launchIdentity?.repositoryId === resolved.repositoryId
     && (typeof launchIdentity.root !== "string" || sameCheckout(launchIdentity.root, resolved.root)) ? recordedBranch : null;
+  // No recorded branch names the checkout the session reached (none was recorded, or it names
+  // the launch checkout and not this one): that checkout is read on the branch it has.
+  // An unanswered branch check decides nothing yet.
+  const anyBranch = validatedBranch === null
+    && (!hasBranchCandidate || !hasLaunchCwd || !canResolve || launchIdentity !== UNANSWERED);
 
   return {
     state: "single",
@@ -124,6 +129,7 @@ export async function resolveSessionIdentity({
     project: basenameOf(resolved.namingRoot) || FALLBACK_PROJECT,
     recordedBranch: validatedBranch,
     root: resolved.root,
+    ...(anyBranch ? { anyBranch: true } : {}),
   };
 }
 
