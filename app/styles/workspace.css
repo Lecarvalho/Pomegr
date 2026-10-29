@@ -119,6 +119,8 @@
 .commandFilterCount { color: var(--command-muted); font: 500 var(--text-xs)/1.3 var(--font-ui); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px), (pointer: coarse) {
   .commandToolbar .commandFilterChip, .commandToolbar .commandSearch { min-height: 44px; }
+  /* Group by segments never shrink below their one-word labels; spare width still spreads across them. */
+  .commandSessionGroupBy .commandSegmented > button { flex: 1 0 auto; padding-inline: var(--space-2); white-space: nowrap; }
 }
 .commandToolbarCount { margin-left: auto; color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); white-space: nowrap; }
 .commandSessionsToolbar .commandToolbarCount { width: 11ch; margin: 0 var(--space-1) 0 0; line-height: inherit; text-align: right; }

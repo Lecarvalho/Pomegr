@@ -384,10 +384,11 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
   .commandSessionView .sessionSummaryKpis .sessionKpi > strong { font-size: 22px; line-height: 1.1; }
   .commandSessionView .sessionSummaryKpis .sessionKpi > small { font-size: var(--text-xs); line-height: 1.4; }
   .sessionDesktopTabs { display: none; }
-  .sessionPhoneTabs { position: sticky; top: var(--command-header-height); z-index: 8; display: grid; grid-template-columns: repeat(5, auto); justify-content: space-between; align-items: end; gap: 0 4px; background: var(--command-bg); }
+  .sessionPhoneTabs { position: sticky; top: var(--command-header-height); z-index: 8; display: grid; grid-template-columns: repeat(5, auto); justify-content: space-between; align-items: end; gap: 0 var(--space-2); background: var(--command-bg); }
   .sessionPhoneTablist { grid-column: 1 / 5; display: grid; grid-template-columns: subgrid; align-items: end; }
-  .sessionPhoneTabs button { min-width: 0; padding-inline: 6px; display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
-  .sessionPhoneTabs button > span { margin: 0; padding: 1px 6px; border-radius: var(--control-radius); background: var(--command-panel-2); color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); }
+  /* A tab never shrinks below its label and badge, so a three-digit Agents count stays in its own column at 360px. */
+  .sessionPhoneTabs button { padding-inline: 0; display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); white-space: nowrap; }
+  .sessionPhoneTabs button > span { margin: 0; padding: 1px var(--space-1); border-radius: var(--control-radius); background: var(--command-panel-2); color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); }
   .sessionPhoneTabs button > svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .sessionPhoneTabs button[aria-expanded="true"] > svg { transform: rotate(180deg); }
   .sessionMoreMenu { position: absolute; z-index: 9; right: 0; top: 47px; min-width: 180px; padding: 6px; display: grid; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--shadow-soft); }
