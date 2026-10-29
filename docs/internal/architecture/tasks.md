@@ -2510,7 +2510,11 @@ with the started session linked to its task and run in Pomegr's terminal host.
   values, then user values, plain values before `REG_EXPAND_SZ` values, which it expands,
   and `PATH` as the machine `Path` followed by the user `Path`. A variable that only the
   app's process had, such as one its launcher set or `PORTABLE_EXECUTABLE_*`, is kept. A
-  variable the registry held at app start and no longer holds is dropped. A read that
+  variable the registry held at app start and no longer holds is dropped. The logon's own
+  variables (`USERNAME`, `USERDOMAIN`, `USERDOMAIN_ROAMINGPROFILE`, `USERPROFILE`,
+  `HOMEDRIVE`, `HOMEPATH`, `HOMESHARE`, `LOGONSERVER`, `APPDATA`, `LOCALAPPDATA`,
+  `CLIENTNAME`, `SESSIONNAME`) keep their app-start values, because Windows sets them per
+  logon after the registry keys and the machine key holds `USERNAME=SYSTEM`. A read that
   fails or times out uses the copy taken at app start and logs nothing. The selected
   provider folders apply last, and executable discovery uses the same environment. Other
   platforms keep the copy taken at app start.

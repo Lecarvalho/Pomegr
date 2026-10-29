@@ -80,6 +80,15 @@ test("a user value wins over a machine value, and a deleted variable is dropped 
   assert.equal(Object.keys(env).some((name) => name.toLowerCase() === "old_tool"), false);
 });
 
+test("the logon's own variables keep their startup values: the machine key's USERNAME=SYSTEM never reaches a session", () => {
+  const env = refreshedEnvironment({ ...startup, USERNAME: "owner", USERPROFILE: "C:\Users\owner", APPDATA: "C:\Users\owner\AppData\Roaming" },
+    { machine: [variable("USERNAME", "SYSTEM")], user: [variable("APPDATA", "C:\Old")] },
+    { machine: [variable("USERNAME", "SYSTEM"), variable("USERPROFILE", "C:\Windows\system32\config\systemprofile")], user: [] });
+  assert.equal(env.USERNAME, "owner");
+  assert.equal(env.USERPROFILE, "C:\Users\owner");
+  assert.equal(env.APPDATA, "C:\Users\owner\AppData\Roaming");
+});
+
 test("each start reads the registry again; provider folders still win over it", async () => {
   const registry = fakeRegistry();
   const custom = path.resolve("C:\\Claude\\custom");

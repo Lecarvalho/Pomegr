@@ -54,13 +54,18 @@ function expand(value, environment) {
   return value.replace(/%([^%]+)%/gu, (whole, name) => environmentValue(environment, name) ?? whole);
 }
 
-const registryNames = (scopes) => new Set([...scopes.machine, ...scopes.user].map(({ name }) => name.toLowerCase()));
+// Windows sets these per logon, after the machine and user keys (the machine key holds USERNAME=SYSTEM), so the copy
+// taken at startup keeps them: the registry never replaces or drops one.
+const LOGON_NAMES = new Set(["username", "userdomain", "userdomain_roamingprofile", "userprofile", "homedrive", "homepath",
+  "homeshare", "logonserver", "appdata", "localappdata", "clientname", "sessionname"]);
+const registryNames = (scopes) => new Set([...scopes.machine, ...scopes.user].map(({ name }) => name.toLowerCase()).filter((name) => !LOGON_NAMES.has(name)));
 const pathName = (environment) => Object.keys(environment).find((name) => name.toLowerCase() === "path") ?? "Path";
 
 /**
  * Lays the current registry environment over the startup copy as Windows builds a new logon's: the machine key, then
  * the user key, plain values before expandable ones, and PATH as the machine Path followed by the user Path.
  * A variable the registry held at startup and no longer holds is dropped. A variable only the process had is kept.
+ * The logon's own variables, such as USERNAME and USERPROFILE, keep their startup values.
  */
 export function refreshedEnvironment(startup, startupScopes, currentScopes) {
   const environment = { ...startup };
@@ -72,7 +77,7 @@ export function refreshedEnvironment(startup, startupScopes, currentScopes) {
   for (const scope of ["machine", "user"]) {
     for (const expandable of [false, true]) {
       for (const { name, value, expand: isExpandable } of currentScopes[scope]) {
-        if (isExpandable !== expandable) continue;
+        if (isExpandable !== expandable || LOGON_NAMES.has(name.toLowerCase())) continue;
         const resolved = expandable ? expand(value, environment) : value;
         if (name.toLowerCase() === "path") paths.push(resolved);
         else setVariable(environment, name, resolved);
