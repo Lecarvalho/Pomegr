@@ -11,6 +11,7 @@ import {
   TASK_WORKTREE_OPEN_STATUSES,
   taskStartConfirmation,
 } from "../desktop/runtime/task-dispatch.mjs";
+import { userSessionEnvironment } from "../desktop/runtime/environment-policy.mjs";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const trusted = { trusted: true };
@@ -156,6 +157,12 @@ test("starts with no model or effort, exact args and options", async () => {
   assert.deepEqual(h.calls[0].body, { repositoryId, payload: { id: "T-3" } });
   assert.equal(h.calls[0].options.redirect, "error");
   assert.equal(h.calls[0].options.cache, "no-store");
+});
+
+test("a started session does not get the variables of the Claude Code or Codex session that started the app", () => {
+  const nested = { CLAUDECODE: "1", CLAUDE_PID: "1", CLAUDE_EFFORT: "high", CLAUDE_CODE_CHILD_SESSION: "1", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDE_CODE_EXECPATH: "x", CLAUDE_CODE_MESSAGING_SOCKET: "pipe", claude_code_messaging_token: "secret", CLAUDE_CODE_SESSION_ATTENDED: "1", CLAUDE_CODE_SESSION_ID: "s", CLAUDE_CODE_SSE_PORT: "1", CLAUDE_CODE_FORCE_SESSION_PERSISTENCE: "1", CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP: "1", CODEX_SANDBOX: "seatbelt", CODEX_SANDBOX_NETWORK_DISABLED: "1", CODEX_THREAD_ID: "t" };
+  const owner = { CLAUDE_CONFIG_DIR: "C:\claude", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDE_CODE_MAX_OUTPUT_TOKENS: "8000", CODEX_HOME: "C:\codex" };
+  assert.deepEqual(userSessionEnvironment({ ...sessionEnvironment, ...nested, ...owner }), { ...sessionEnvironment, ...owner });
 });
 
 test("model and effort flags precede the single prompt argument", async () => {

@@ -106,7 +106,10 @@ export function minimalRuntimeEnvironment(source, overrides = {}, fileExists = e
 // A provider session the user starts from the task board is the user's own terminal session: it gets the
 // environment the app inherited (its hooks and MCP servers need the user's Node, tools, and settings), without the
 // variables that belong to this app's own runtime or to one start. Stays in the Electron main process.
-const SESSION_EXCLUDED_ENVIRONMENT = /^(?:ELECTRON_.*|POMEGR_SMOKE_.*|POMEGR_START_.*|POMEGR_MONITOR_TOKEN|POMEGR_MONITOR_ORIGIN|POMEGR_TASK_TOKEN)$/iu;
+// When the app was started from inside a Claude Code or Codex session, the variables that session set about itself
+// are left out too: a new session that gets them thinks it runs inside the other one (Claude Code then drops its colors).
+// Owner settings such as CLAUDE_CONFIG_DIR, CLAUDE_CODE_USE_BEDROCK, or CODEX_HOME stay.
+const SESSION_EXCLUDED_ENVIRONMENT = /^(?:ELECTRON_.*|POMEGR_SMOKE_.*|POMEGR_START_.*|POMEGR_MONITOR_TOKEN|POMEGR_MONITOR_ORIGIN|POMEGR_TASK_TOKEN|CLAUDECODE|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_(?:CHILD_SESSION|ENTRYPOINT|EXECPATH|MESSAGING_SOCKET|MESSAGING_TOKEN|SESSION_ATTENDED|SESSION_ID|SSE_PORT|FORCE_SESSION_PERSISTENCE|DISABLE_BG_SHELL_PRESSURE_REAP)|CODEX_SANDBOX|CODEX_SANDBOX_NETWORK_DISABLED|CODEX_THREAD_ID)$/iu;
 export function userSessionEnvironment(source) {
   const environment = {};
   for (const [name, value] of Object.entries(source || {})) {
