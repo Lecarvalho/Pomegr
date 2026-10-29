@@ -248,7 +248,24 @@ test("a tool use, a thinking block, and a text block map to the fixed activities
     [tool("mcp__pomegr__get_usage_limits"), "reading_usage"], [tool("mcp__pomegr__get_provider_health"), "reading_usage"],
     [tool("Bash"), "thinking"], [tool("mcp__pomegr__add_task"), "thinking"], [tool("mcp__other__list_sessions"), "reading_sessions"], [tool("WebFetch"), "thinking"],
   ];
-  for (const [line, activity] of cases) assert.deepEqual(readClaude([line]).activities, [activity], line);
+  // A real run writes its `system` init first, so a block that opens the stream still follows the first label, "thinking".
+  for (const [line, activity] of cases) assert.deepEqual(readClaude([line]).activities, [...new Set(["thinking", activity])], line);
+});
+
+test("the turn is starting only until Claude's first event, and thinking from then until a block says otherwise", () => {
+  const init = JSON.stringify({ type: "system", subtype: "init", tools: ["Read"], mcp_servers: [] });
+  // Nothing is reported before an event: not silence, a partial line, a line that is no JSON, or a JSON value without a type.
+  assert.deepEqual(readClaude(["", "Warning: slow start", "[1,2]", '{"foo":1}', '{"type":5}']).activities, []);
+  const seen = [];
+  const reader = createTurnReader("claude", { onActivity: (activity) => seen.push(activity) });
+  reader.push(init.slice(0, 20));
+  assert.deepEqual(seen, [], "half a line is no event yet");
+  reader.push(`${init.slice(20)}\n`);
+  assert.deepEqual(seen, ["thinking"], "the init event, which is no content block, ends starting");
+  reader.push(`${event({ type: "message_start", message: {} })}\n${started({ type: "thinking", thinking: "" })}\n`);
+  assert.deepEqual(seen, ["thinking"], "more thinking is not reported again");
+  reader.push(`${started({ type: "tool_use", id: "t", name: "Read", input: {} })}\n${started({ type: "text", text: "" }, 1)}\n`);
+  assert.deepEqual(seen, ["thinking", "reading_files", "writing"]);
 });
 
 test("a result decides the turn: success gives the answer, an error or another subtype fails it", () => {
@@ -281,7 +298,8 @@ test("events of a sub-agent are ignored", () => {
     delta("Main"), result({ result: "Main" }),
   ]);
   assert.deepEqual(texts, ["Main"]);
-  assert.deepEqual(activities, []);
+  // The sub-agent's own tool label is ignored; its event still shows that the process is up.
+  assert.deepEqual(activities, ["thinking"]);
   assert.deepEqual(end, { ok: true, text: "Main" });
 });
 
@@ -296,7 +314,8 @@ test("lines that are not events, and events that are unknown, are ignored", () =
     delta("Kept"), result({ result: "Kept" }),
   ]);
   assert.deepEqual(texts, ["Kept"]);
-  assert.deepEqual(activities, []);
+  // Only the first well-formed event with a type, here the rate-limit one, ends starting.
+  assert.deepEqual(activities, ["thinking"]);
   assert.deepEqual(end, { ok: true, text: "Kept" });
 });
 
@@ -359,9 +378,17 @@ test("a Codex agent message is the answer and the last one wins", () => {
   ], Infinity, "codex");
   assert.deepEqual(texts, ["Draft", "Final answer"]);
   assert.deepEqual(end, { ok: true, text: "Final answer" });
-  assert.deepEqual(activities, ["thinking", "writing", "writing"]);
+  assert.deepEqual(activities, ["thinking", "writing"], "thread.started ends starting; the second message is still writing");
   assert.deepEqual(readClaude([item("agent_message", "i", { text: "Streaming" }, "item.updated")], Infinity, "codex").end, { ok: false, text: "Streaming" });
   assert.deepEqual(readClaude([item("agent_message", "i", { text: "Begun" }, "item.started")], Infinity, "codex").end, { ok: false, text: "Begun" });
+});
+
+test("the Codex turn is starting only until its first JSON line", () => {
+  assert.deepEqual(readClaude(["", "Reading prompt from stdin...", "not json", "[1]"], Infinity, "codex").activities, []);
+  assert.deepEqual(readClaude([codexLine({ type: "thread.started", thread_id: "synthetic-thread" })], Infinity, "codex").activities, ["thinking"]);
+  assert.deepEqual(readClaude([codexLine({ type: "thread.started" }), codexLine({ type: "turn.started" }), item("reasoning", "r", { text: "private" }, "item.started")], Infinity, "codex").activities, ["thinking"]);
+  // A first line that is a block is still preceded by the honest label.
+  assert.deepEqual(readClaude([item("agent_message", "a", { text: "Hi" })], Infinity, "codex").activities, ["thinking", "writing"]);
 });
 
 test("Codex reasoning, commands, and tool calls map to the fixed activities and expose nothing else", () => {
@@ -377,9 +404,7 @@ test("Codex reasoning, commands, and tool calls map to the fixed activities and 
     item("web_search", "w", { query: "private query" }), item("file_change", "f", { changes: [] }),
     item("agent_message", "a", { text: "Answer" }),
   ], Infinity, "codex");
-  assert.deepEqual(activities, [
-    "thinking", "thinking", "reading_files", "reading_files", "reading_sessions", "reading_usage", "reading_usage", "reading_sessions", "thinking", "thinking", "thinking", "writing",
-  ]);
+  assert.deepEqual(activities, ["thinking", "reading_files", "reading_sessions", "reading_usage", "reading_sessions", "thinking", "writing"]);
   assert.deepEqual(texts, ["Answer"]);
   assert.deepEqual(end, { ok: true, text: "Answer" });
 });
@@ -479,6 +504,22 @@ test("a turn is complete on exit 0 with a result, and reports the text and activ
   child.emit("close", 0);
   assert.deepEqual(await done, { status: "complete", text: "Hello world" });
   assert.equal(texts.at(-1), "Hello world");
+});
+
+test("a running turn reports no activity until the process writes its first event, then thinking, for both providers", async () => {
+  for (const [provider, first] of [["claude", claudeStream()[0]], ["codex", codexLine({ type: "thread.started", thread_id: "synthetic-thread" })]]) {
+    const { child, done, activities, turn } = startTurn({ provider, mcpServer: null });
+    // The process is spawned and the prompt is written, but nothing has come back: the turn is still starting.
+    assert.deepEqual(child.stdin.writes.length, 1);
+    assert.deepEqual(activities, [], provider);
+    child.stdout.emit("data", "Reading prompt from stdin...\n");
+    assert.deepEqual(activities, [], `${provider}: text that is no event does not end starting`);
+    child.stdout.emit("data", `${first}\n`);
+    assert.deepEqual(activities, ["thinking"], provider);
+    child.emit("close", 1);
+    await done;
+    assert.equal(turn.timing().eventMs !== null, true, "the event moment is the one the timing records");
+  }
 });
 
 test("a turn is failed on a non-zero exit, on a run without a result, on an error result, and on an error event", async () => {

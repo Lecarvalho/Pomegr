@@ -129,13 +129,18 @@ const isObject = (value) => value !== null && typeof value === "object" && !Arra
 /**
  * Reads the provider's JSON lines and reports only three things: the answer text so far, one fixed activity label,
  * and how the turn ended. Tool input, tool output, and error text are never reported.
+ * The turn is "starting" only until the process writes its first event. That event, whatever it holds, makes the activity
+ * "thinking", and a tool, text, or other block then changes it. A label is reported when it changes.
  */
-export function createTurnReader(provider, { onText = () => {}, onActivity = () => {}, onEvent = () => {}, onFirstText = () => {} } = {}) {
+export function createTurnReader(provider, { onText = () => {}, onActivity: report = () => {}, onEvent = () => {}, onFirstText = () => {} } = {}) {
   let buffer = "";
   let overflow = false;
   let text = "";
   let final = null;
   let failed = false;
+  let begun = false;
+  let shown = null;
+  const onActivity = (activity) => { if (activity !== shown) { shown = activity; report(activity); } };
 
   // `onEvent` and `onFirstText` only tell that something arrived, for the run's timing; they carry no content.
   const setText = (next) => { text = next.length > ANSWER_LIMIT ? next.slice(0, ANSWER_LIMIT) : next; if (text !== "") onFirstText(); onText(text); };
@@ -181,6 +186,9 @@ export function createTurnReader(provider, { onText = () => {}, onActivity = () 
     try { event = JSON.parse(trimmed); } catch { return; }
     if (!isObject(event) || typeof event.type !== "string") return;
     onEvent();
+    // The first event shows the provider process is up and working on the turn. Claude writes its `system` init first and
+    // Codex its `thread.started`; a block in the same event then replaces the label.
+    if (!begun) { begun = true; onActivity("thinking"); }
     if (provider === "claude") claude(event); else codex(event);
   }
 
