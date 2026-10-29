@@ -46,7 +46,7 @@ export function ArilSettingsSamples() {
     return <Sample key={state} label={`Aril settings, ${state}`} note="Queue settings frame, existing fields and button roles. Settings and memory grant no actions.">
       <Frame>{state === "active" && <CapacityStrip queue={board.queue} grant={grant} onOpenSettings={noop} onOpenAril={noop} />}
         <ArilSettings board={board} desktop={!state.startsWith("paired")} editable={state !== "paired read-only"} onClose={noop}
-        titleId={`design-system-aril-${index}`} initialConfirm={state === "confirm"} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })} /></Frame>
+        titleId={`design-system-aril-${index}`} initialConfirm={state === "confirm" && Date.parse(SAMPLE_FUTURE_STOP)} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })} /></Frame>
     </Sample>;
   })}</div>;
 }
