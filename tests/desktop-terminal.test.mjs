@@ -229,6 +229,16 @@ test("before a confirmed task report a PTY stays starting, and ambiguous keys ne
   assert.equal(rows.find((row) => row.key === key).exitCode, 3);
 });
 
+test("a session its answering host no longer lists has ended, not lost its host", async () => {
+  const f = fixture();
+  assert.equal((await f.controller.run(f.event, "list")).sessions[0].state, "live");
+  f.client.list = async () => [];
+  const ended = (await f.controller.run(f.event, "list")).sessions[0];
+  assert.equal(ended.state, "exited");
+  assert.equal(ended.exitCode, undefined);
+  assert.equal(ended.sessionId, sessionId);
+});
+
 test("lost hosts retain known metadata; incompatible host discovery never invents a session key", async () => {
   const f = fixture();
   await f.controller.run(f.event, "list");
