@@ -7,7 +7,7 @@ import path from 'node:path';
 import { EventEmitter, once } from 'node:events';
 import childProcess, { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { restrictDirectory, startTerminalHost } from '../desktop/terminal-host/host.mjs';
+import { killProcessTree, restrictDirectory, startTerminalHost } from '../desktop/terminal-host/host.mjs';
 import { VERSION, encodeFrame, decodeFrames } from '../desktop/terminal-host/protocol.mjs';
 import headless from '@xterm/headless';
 import serialize from '@xterm/addon-serialize';
@@ -410,6 +410,85 @@ test('exit releases the screen and acknowledgement removes the exited record', a
   await a.request('detach', { key: 'synthetic', acknowledge: true });
   assert.equal(dispose.mock.callCount(), 1);
   assert.deepEqual((await a.request('list')).sessions, []);
+});
+
+test('end stops the process tree of one running terminal and only for an authenticated client', async (t) => {
+  const killed = [];
+  const f = await fixture(t, { killTree: async (pid) => { killed.push(pid); return true; } });
+  const unauth = await f.connect(false); const closed = once(unauth.socket, 'close');
+  unauth.socket.write(encodeFrame({ id: 1, command: 'end', key: 'synthetic' }));
+  await closed; assert.deepEqual(unauth.frames, []);
+  const a = await f.connect();
+  await a.request('create', { plan: f.plan() }); await a.request('create', { plan: f.plan('other') });
+  assert.equal((await a.request('end', { key: 'missing' })).error, 'TERMINAL_NOT_FOUND');
+  assert.equal((await a.request('end', { key: 'synthetic' })).ok, true);
+  // Only the one process ID of that terminal is named; the host reports the exit once the process is gone.
+  assert.deepEqual(killed, [123]);
+  f.ptys[0].exit(1);
+  assert.deepEqual((await a.request('list')).sessions.map(({ key, exited }) => [key, exited]), [['synthetic', true], ['other', false]]);
+  assert.equal((await a.request('end', { key: 'synthetic' })).ok, true);
+  assert.deepEqual(killed, [123]);
+});
+
+test('end falls back to the pty kill when the tree stop fails, and fails when both do', async (t) => {
+  const f = await fixture(t, { killTree: async () => false });
+  const a = await f.connect(); await a.request('create', { plan: f.plan() });
+  let kills = 0;
+  f.ptys[0].kill = () => { kills += 1; };
+  assert.equal((await a.request('end', { key: 'synthetic' })).ok, true);
+  assert.equal(kills, 1);
+  f.ptys[0].kill = () => { throw new Error('denied'); };
+  assert.equal((await a.request('end', { key: 'synthetic' })).error, 'TERMINAL_INVALID');
+});
+
+test('killProcessTree names one process ID in an argument array and never a shell', async () => {
+  const calls = [];
+  // Off Windows the function signals the process itself, so only Windows takes the injected runner here.
+  if (process.platform === 'win32') {
+    assert.equal(await killProcessTree(4321, async (...args) => { calls.push(args); }), true);
+    assert.match(calls[0][0], /System32[\\/]taskkill\.exe$/iu);
+    assert.deepEqual(calls[0].slice(1, 2), [['/PID', '4321', '/T', '/F']]);
+    assert.equal(calls[0][2].windowsHide, true);
+    assert.equal(await killProcessTree(4321, async () => { throw new Error('gone'); }), false);
+  }
+  for (const bad of [0, -1, 1.5, '12', null, undefined, NaN]) assert.equal(await killProcessTree(bad, async () => { calls.push('called'); }), false);
+  assert.equal(calls.includes('called'), false);
+});
+
+test('real ConPTY end stops the terminal process and every helper it started', { skip: process.platform !== 'win32', timeout: 60000 }, async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'pomegr-native-end-'));
+  await restrictDirectory(directory);
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const script = String.raw`
+    import net from 'node:net';
+    import pty from 'node-pty';
+    import { readFile } from 'node:fs/promises';
+    import { once } from 'node:events';
+    const { startTerminalHost } = await import(process.argv[2] + 'desktop/terminal-host/host.mjs');
+    const { encodeFrame, decodeFrames } = await import(process.argv[2] + 'desktop/terminal-host/protocol.mjs');
+    const host = await startTerminalHost({ runtimeDirectory: process.argv[1], spawnPty: pty.spawn, idleMilliseconds: 1500, onIdle: () => process.exit(0) });
+    const socket = net.connect(host.pipe); await once(socket, 'connect');
+    const responses = new Map(); let output = ''; let id = 0;
+    decodeFrames(socket, (frame) => { if (frame.id) { responses.get(frame.id)?.(frame); responses.delete(frame.id); } else if (frame.event === 'output') output += frame.data; });
+    function request(command, fields = {}) { return new Promise((resolve) => { const current = ++id; responses.set(current, resolve); socket.write(encodeFrame({ id: current, command, ...fields })); }); }
+    async function until(predicate) { const deadline = Date.now() + 20000; while (Date.now() < deadline) { if (await predicate()) return; await new Promise((r) => setTimeout(r, 50)); } throw new Error('synthetic timeout: ' + output.slice(-512)); }
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; } };
+    if (!(await request('hello', { token: await readFile(process.argv[1] + '/host.token', 'utf8'), protocol: 1 })).ok) throw new Error('auth');
+    const started = await request('create', { plan: { key: 'native', executable: process.execPath, args: [process.argv[3]], cwd: process.argv[1], env: { PATH: process.env.PATH || '', SystemRoot: process.env.SystemRoot || '' }, cols: 80, rows: 24 } });
+    if (!started.ok) throw new Error('spawn');
+    await request('attach', { key: 'native' });
+    await until(() => /HELPER_PIDS [0-9,]+/.test(output) && /NESTED_PID [0-9]+/.test(output));
+    const pids = [started.pid, ...output.match(/HELPER_PIDS ([0-9,]+)/)[1].split(',').map(Number), Number(output.match(/NESTED_PID ([0-9]+)/)[1])];
+    if (!pids.every(alive)) throw new Error('helpers not running');
+    if (!(await request('end', { key: 'native' })).ok) throw new Error('end');
+    await until(async () => (await request('list')).sessions[0].exited === true);
+    await until(() => pids.every((pid) => !alive(pid)));
+    socket.destroy(); console.log('SYNTHETIC_TREE_ENDED ' + pids.length);
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '--eval', script, directory, new URL('../', import.meta.url).href, fileURLToPath(new URL('./fixtures/terminal-tree-cli.mjs', import.meta.url))], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => { if (child.exitCode === null) child.kill(); });
+  let output = ''; let error = ''; child.stdout.on('data', (data) => { output += data; }); child.stderr.on('data', (data) => { error += data; });
+  const [code] = await once(child, 'close'); assert.equal(code, 0, error); assert.match(output, /SYNTHETIC_TREE_ENDED 5/u);
 });
 
 test('a screen exceeding the cap without scrollback refuses attach without a partial replay', async (t) => {

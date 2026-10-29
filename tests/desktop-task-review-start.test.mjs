@@ -90,7 +90,7 @@ test("granted entries have no renderer IPC or preload exposure", async () => {
     starter: { start: async () => { calls.push("manual"); }, startReview: async () => { calls.push("review"); }, openWorktree: async () => {},
       startGranted: () => assert.fail("renderer reached a grant"), startGrantedReview: () => assert.fail("renderer reached a grant") },
   });
-  assert.deepEqual([...handlers.keys()].sort(), ["pomegr:task-review-start", "pomegr:task-start", "pomegr:task-worktree-open"]);
+  assert.deepEqual([...handlers.keys()].sort(), ["pomegr:task-review-start", "pomegr:task-sessions", "pomegr:task-start", "pomegr:task-worktree-open"]);
   await handlers.get(dispatch.TASK_START_CHANNEL)(trusted, repositoryId, taskId);
   await handlers.get(dispatch.TASK_REVIEW_START_CHANNEL)(trusted, repositoryId, taskId);
   assert.deepEqual(calls, ["manual", "review"]);
@@ -206,6 +206,33 @@ test("review IPC installs, contains errors and removes its channel", async () =>
   });
   assert.deepEqual(await handlers.get(dispatch.TASK_REVIEW_START_CHANNEL)(trusted, repositoryId, taskId), { status: "failed" });
   remove(); assert.equal(handlers.size, 0);
+});
+
+test("preload validates the Done action's session question before invoking its fixed channel", async () => {
+  const require = createRequire(import.meta.url), invokes = [];
+  let bridge;
+  const original = Module._load, previousWindow = globalThis.window;
+  globalThis.window = { addEventListener() {} };
+  Module._load = function (name, ...args) {
+    if (name === "electron") return { contextBridge: { exposeInMainWorld: (_name, value) => { bridge = value; } },
+      ipcRenderer: { invoke: async (...args) => { invokes.push(args); return { status: "ok" }; } } };
+    return original.call(this, name, ...args);
+  };
+  try { require("../desktop/runtime/preload.cjs"); }
+  finally { Module._load = original; globalThis.window = previousWindow; delete require.cache[require.resolve("../desktop/runtime/preload.cjs")]; }
+  for (const request of [["bad", taskId, "inspect"], [repositoryId, "T-0", "inspect"], [repositoryId, taskId, "end"], [repositoryId, taskId, "inspect", true],
+    [repositoryId, taskId, "settle"], [repositoryId, taskId, "settle", "yes"], [repositoryId, 3, "inspect"], [repositoryId, taskId]]) {
+    assert.deepEqual(await bridge.taskSessions(...request), { status: "invalid" }, JSON.stringify(request));
+  }
+  assert.deepEqual(invokes, []);
+  await bridge.taskSessions(repositoryId, taskId, "inspect");
+  await bridge.taskSessions(repositoryId, taskId, "settle", false);
+  await bridge.taskSessions(repositoryId, taskId, "settle", true);
+  assert.deepEqual(invokes, [
+    ["pomegr:task-sessions", repositoryId, taskId, "inspect"],
+    ["pomegr:task-sessions", repositoryId, taskId, "settle", false],
+    ["pomegr:task-sessions", repositoryId, taskId, "settle", true],
+  ]);
 });
 
 test("preload validates review IDs before invoking the fixed channel", async () => {

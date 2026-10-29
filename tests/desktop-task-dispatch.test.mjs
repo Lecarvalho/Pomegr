@@ -5,6 +5,7 @@ import {
   createTaskStart,
   confirmTaskStart,
   installTaskStartIpc,
+  TASK_SESSIONS_CHANNEL,
   TASK_START_CHANNEL,
   TASK_START_STATUSES,
   TASK_WORKTREE_OPEN_CHANNEL,
@@ -295,7 +296,7 @@ test("the installer replaces the handler, removes it and never throws", async ()
     removeHandler: (c) => { removed.push(c); handlers.delete(c); },
   };
   const remove = installTaskStartIpc({ ipcMain, isTrustedEvent: () => true, monitorOrigin: origin, authorizationToken: "s", platform: "win32", fileExists: () => false, environment });
-  assert.deepEqual(removed, [TASK_START_CHANNEL, "pomegr:task-review-start", TASK_WORKTREE_OPEN_CHANNEL, "pomegr:terminal"]);
+  assert.deepEqual(removed, [TASK_START_CHANNEL, "pomegr:task-review-start", TASK_WORKTREE_OPEN_CHANNEL, TASK_SESSIONS_CHANNEL, "pomegr:terminal"]);
   assert.deepEqual(await handlers.get(TASK_START_CHANNEL)({}, repositoryId, "T-3"), { status: "cli_missing" });
   remove();
   assert.equal(handlers.has(TASK_START_CHANNEL), false);

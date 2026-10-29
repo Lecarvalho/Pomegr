@@ -685,7 +685,7 @@ describe("Task modal resolutions", () => {
     expect(dialog.getAllByRole("button").some((button) => button.classList.contains("commandPrimaryAction"))).toBe(false);
     expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
-    expect(dialog.getByText("The session has not reported. Mark done and Requeue do not stop it.")).toHaveClass("taskModalNote");
+    expect(dialog.getByText("The session has not reported. Mark done ends it; Requeue does not.")).toHaveClass("taskModalNote");
     expect(dialog.getByRole("button", { name: "Delete task" }).compareDocumentPosition(requeue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(requeue.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(requeue);
@@ -710,7 +710,7 @@ describe("Task modal resolutions", () => {
       const dialog = within(screen.getByRole("dialog", { name: "Task" }));
       expect(dialog.queryByRole("button", { name: "Mark done" }) !== null).toBe(offered);
       expect(dialog.queryByRole("button", { name: "Requeue task" }) !== null).toBe(offered);
-      expect(dialog.queryByText(/do not stop it/u) !== null).toBe(offered);
+      expect(dialog.queryByText(/Mark done ends it/u) !== null).toBe(offered);
     }
   });
 
@@ -720,7 +720,7 @@ describe("Task modal resolutions", () => {
     await user.click(dialog.getByRole("button", { name: "Delete task" }));
     expect(dialog.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Requeue task" })).not.toBeInTheDocument();
-    expect(dialog.queryByText(/do not stop it/u)).not.toBeInTheDocument();
+    expect(dialog.queryByText(/Mark done ends it/u)).not.toBeInTheDocument();
   });
 
   it("shows one fixed line when the monitor refuses a resolution", async () => {

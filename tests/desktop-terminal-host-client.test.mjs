@@ -159,6 +159,69 @@ test("client buffers 4 MiB replay before attach reply while bounding unread live
   assert.deepEqual((await live.next()).value, { event: "detached", reason: "slow_client" });
 });
 
+test("end asks the host to stop one terminal and reports whether it is listed as exited", async (t) => {
+  const options = await fixture(t);
+  const copy = await prepareTerminalHostCopy(options);
+  const handlers = {};
+  const killed = [];
+  const host = await startTerminalHost({ runtimeDirectory: copy.directory,
+    killTree: async (pid) => { killed.push(pid); handlers.exit({ exitCode: 1 }); return true; },
+    spawnPty: () => ({ onData(callback) { handlers.data = callback; }, onExit(callback) { handlers.exit = callback; }, write() {}, resize() {}, pid: 321 }) });
+  t.after(() => host.close());
+  const client = createTerminalHostClient({ ...options, spawn() { throw new Error("must reuse"); }, pause: async () => {} });
+  t.after(() => client.close());
+  await client.ensureHost();
+  await client.create({ executable: process.execPath, args: [], cwd: process.cwd(), env: {}, cols: 80, rows: 24, key: "fixture" });
+  assert.equal(await client.end("fixture"), true);
+  assert.deepEqual(killed, [321]);
+  assert.equal((await client.list())[0].exited, true);
+  await client.detach("fixture", true);
+  await assert.rejects(client.end("fixture"), { message: "TERMINAL_NOT_FOUND" });
+});
+
+test("a host of an older build has no end: its terminal is stopped by the process ID it lists", async (t) => {
+  const options = await fixture(t);
+  const copy = await prepareTerminalHostCopy(options);
+  const pipe = `\\\\.\\pipe\\pomegr-terminal-${digest(String(Math.random()))}`;
+  await writeFile(path.join(copy.directory, "host.token"), "b".repeat(64));
+  await writeFile(path.join(copy.directory, "host.json"), JSON.stringify({ pid: process.pid, protocol: 1, pipe }));
+  const commands = [];
+  const rows = new Map([["gone", { key: "gone", pid: 4242, exited: false }], ["done", { key: "done", pid: 4343, exited: true, exitCode: 0 }]]);
+  const server = net.createServer((socket) => decodeFrames(socket, (frame) => {
+    commands.push(frame.command);
+    if (frame.command === "list") socket.write(encodeFrame({ id: frame.id, ok: true, sessions: [...rows.values()] }));
+    else if (frame.command === "hello") socket.write(encodeFrame({ id: frame.id, ok: true, protocol: 1 }));
+    else socket.write(encodeFrame({ id: frame.id, ok: false, error: "UNKNOWN_COMMAND" }));
+  }));
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(pipe, resolve); });
+  const killed = [];
+  let outcome = true;
+  let client;
+  t.after(async () => { client?.close(); await new Promise((resolve) => server.close(resolve)); });
+  client = createTerminalHostClient({ ...options, pause: async () => {}, killTree: async (pid) => {
+    killed.push(pid);
+    if (outcome) rows.set("gone", { key: "gone", pid, exited: true, exitCode: 1 });
+    return outcome;
+  } });
+  await client.connectHost(copy.buildId);
+  assert.equal(await client.end("gone"), true);
+  assert.deepEqual(killed, [4242]);
+  assert.equal(commands.filter((command) => command === "end").length, 1);
+  // An exited terminal needs no stop, and an unknown key is not found.
+  assert.equal(await client.end("done"), true);
+  await assert.rejects(client.end("missing"), { message: "TERMINAL_NOT_FOUND" });
+  assert.deepEqual(killed, [4242]);
+  // A stop that fails is a failure; a stop the host never lists as exited answers false.
+  rows.set("gone", { key: "gone", pid: 4242, exited: false });
+  outcome = false;
+  await assert.rejects(client.end("gone"), { message: "TERMINAL_UNAVAILABLE" });
+  rows.set("slow", { key: "slow", pid: 4444, exited: false });
+  client.close();
+  client = createTerminalHostClient({ ...options, pause: async () => {}, killTree: async () => true });
+  await client.connectHost(copy.buildId);
+  assert.equal(await client.end("slow"), false);
+});
+
 test("ensureHost starts only the copied node with a detached argument-array launch", async (t) => {
   const options = await fixture(t);
   let host;

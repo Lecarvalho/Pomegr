@@ -302,7 +302,7 @@ describe("a started task with no report", () => {
     expect(document.querySelectorAll(".taskModalFooter .commandPrimaryAction")).toHaveLength(0);
     const notes = within(document.querySelector(".taskModalNotes") as HTMLElement);
     expect(notes.getByText("A session is already linked to this task.")).toBeInTheDocument();
-    expect(notes.getByText("The session has not reported. Mark done and Requeue do not stop it.")).toBeInTheDocument();
+    expect(notes.getByText("The session has not reported. Mark done ends it; Requeue does not.")).toBeInTheDocument();
   });
 
   it("keeps Add to queue for a Not queued task whose session started by hand", () => {

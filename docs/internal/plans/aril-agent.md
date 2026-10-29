@@ -41,6 +41,7 @@ This plan makes three changes:
 | 2026-10-28 | Settings › Aril is the one Aril of the former front door plan: the owner talks to one Aril, and it routes each message to the right repository. That plan is folded in here and deleted. |
 | 2026-10-28 | On a paired phone, the docked panel opens as a full-screen sheet, and the phone gets the new Home. |
 | 2026-10-28 | A repository's thread has no cap: it never refuses a message for being full. Settings › Aril shows how much space each repository's thread takes and gets an action that flushes the oldest messages to get space back. |
+| 2026-10-28 | Marking a task Done ends the sessions Pomegr started for it; a working one only after the owner confirms, and a grant never ends a working one. |
 
 ## The switch
 

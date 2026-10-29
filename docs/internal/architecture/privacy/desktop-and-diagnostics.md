@@ -121,7 +121,13 @@ Windows.
   over HTTP, or included in `/api/state`.
 - Terminal output never reaches Aril, an MCP tool, a paired device, or another renderer.
 - The terminal host accepts input only from the owner's trusted desktop renderer. It has
-  no agent, queue, MCP, monitor, or session-ending command.
+  no agent, queue, MCP, or monitor command.
+- The host's `end` command, which ends one terminal's process tree, is sent by desktop main
+  alone, with the host token, and only for a Done task's session. The Tasks interface asks
+  desktop main through `pomegr:task-sessions`, which carries a repository ID, a task ID, and
+  fixed words in and counts or a fixed status out; no key, process ID, or terminal text
+  crosses it. Main ends a session only when the monitor lists its task as Done. See
+  [Ending a Done task's sessions](../tasks.md#ending-a-done-tasks-sessions).
 
 ## Provider-folder read
 

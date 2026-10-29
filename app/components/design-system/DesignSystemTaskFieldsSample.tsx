@@ -5,6 +5,7 @@ import { CommandSplitAction } from "../command-center/CommandSplitAction";
 import { FeatureFields } from "../tasks/FeatureFields";
 import { FeatureModalSamples } from "./DesignSystemFeatureModalSample";
 import { ISSUE_CONFIRM_FACTS, IssueCreateCheckbox, IssueCreateRowView, TaskIssueRow, type IssueCreateOption } from "../tasks/IssueCreate";
+import { TaskDoneSessionsAsk } from "../tasks/TaskDoneSessionsAsk";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { TaskQueueWait } from "../tasks/TaskQueueWait";
 import { PromoteIssueSummary, PromoteOutcomeNotice } from "../tasks/TaskModalPromote";
@@ -221,6 +222,7 @@ function TaskModalEditSamples() {
   const draftId = useId();
   const reviewId = useId();
   const runningId = useId();
+  const doneAskId = useId();
   const [text, setText] = useState(LONG_TASK_TEXT);
   const [feature, setFeature] = useState<FeatureDraft>(NO_FEATURE_DRAFT);
   const [run, setRun] = useState<TaskRun>(DEFAULT_RUN);
@@ -281,7 +283,23 @@ function TaskModalEditSamples() {
         </TaskModalChrome>
       </div>
     </Sample>
-    <Sample label="Task modal, edit, running" note="A started task whose session has not reported. There is no Review panel, so the session line leads. The footer note says that neither Mark done nor Requeue stops the session; both are Secondary, so the view has no primary. A requeue turns the same modal into the editable form.">
+    <Sample label="Task modal, Mark done, session working" note="Mark done on the desktop while a session Pomegr started for the task is still working. The question replaces Delete task and the actions: Secondary End session and Quiet Keep it running, which has the focus. Both mark the task Done; only End session ends the working session. The board draws the same group above its columns when a card moves into Done, and the Queue banner's Mark done and resume asks the same way.">
+      <div className="designSystemTaskFrame designSystemTaskModalStage">
+        <TaskModalChrome titleId={doneAskId} title="Task" subtitle="pomegr" onClose={noop}
+          titleExtra={<>
+            <span className="taskModalId">T-36</span>
+            <span className="commandChip taskCardChip positive">In progress</span>
+          </>}
+          footer={<>
+            <TaskDoneSessionsAsk ask={{ working: 1, answer: noop }} />
+            <span className="taskModalSpacer" aria-hidden="true" />
+          </>}>
+          <TaskSessionLine title="Add a retry budget to the uploader" sessionId="claude:design-system-running" />
+          <TaskReadView text={STORED_TEXT} urls={SAMPLE_IMAGE_URLS} note={STARTED_REQUEUE_NOTE} />
+        </TaskModalChrome>
+      </div>
+    </Sample>
+    <Sample label="Task modal, edit, running" note="A started task whose session has not reported. There is no Review panel, so the session line leads. The footer note says that Mark done ends the session and Requeue does not; both are Secondary, so the view has no primary. A requeue turns the same modal into the editable form.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={runningId} title="Task" subtitle="pomegr" onClose={noop}
           titleExtra={<>

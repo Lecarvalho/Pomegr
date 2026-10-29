@@ -13,6 +13,9 @@ import { createTerminalController, installTerminalIpc } from "./terminal.mjs";
 export const TASK_WORKTREE_OPEN_CHANNEL = "pomegr:task-worktree-open";
 export const TASK_WORKTREE_OPEN_STATUSES = Object.freeze(["opened", "not_found", "invalid", "unavailable"]);
 
+// The owner's Done action asks whether the task's sessions work (`inspect`), then settles them (`settle`) once the task is Done.
+export const TASK_SESSIONS_CHANNEL = "pomegr:task-sessions";
+
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_REVIEW_START_CHANNEL = "pomegr:task-review-start";
 export const TASK_START_STATUSES = Object.freeze([
@@ -337,6 +340,27 @@ export function createTaskStart(options = {}) {
     try { return await worktrees.remove({ repositoryRoot: root, repositoryId, taskId, deleteBranch: true }); } catch { return "failed"; }
   }
 
+  const noSessions = Object.freeze({ ended: 0, working: 0 });
+
+  /** Ends the sessions Pomegr started for Done tasks, for one task or all; a working one is never ended here. */
+  async function endDoneSessions({ repositoryId, taskId } = {}) {
+    if (disposed || typeof terminal.endDone !== "function") return noSessions;
+    try { return await terminal.endDone({ repositoryId, taskId }); } catch { return noSessions; }
+  }
+
+  /** The owner's Done action: `inspect` counts the task's running sessions, `settle` ends them once the monitor lists the task as Done. */
+  async function taskSessions(event, repositoryId, taskId, operation, endWorking) {
+    if (!isTrustedEvent(event)) return result("invalid");
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
+    if (operation !== "inspect" && operation !== "settle") return result("invalid");
+    if (operation === "settle" ? typeof endWorking !== "boolean" : endWorking !== undefined) return result("invalid");
+    if (disposed || typeof terminal.taskSessions !== "function" || typeof terminal.endDone !== "function") return result("unavailable");
+    try {
+      const counts = operation === "inspect" ? await terminal.taskSessions(repositoryId, taskId) : await terminal.endDone({ repositoryId, taskId, endWorking, owner: true });
+      return Object.freeze({ status: "ok", ...counts });
+    } catch { return result("unavailable"); }
+  }
+
   async function exclusive(mode, repositoryId, taskId) {
     if (active) return result("busy");
     active = true;
@@ -456,7 +480,7 @@ export function createTaskStart(options = {}) {
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startReview, startApproved, startQueued, startGranted, startGrantedReview, startPaired, openWorktree, cleanWorktree, terminal, dispose() { disposed = true; for (const timer of bindTimers) clearTimeout(timer); bindTimers.clear(); terminal.dispose?.(); } });
+  return Object.freeze({ start, startReview, startApproved, startQueued, startGranted, startGrantedReview, startPaired, openWorktree, cleanWorktree, endDoneSessions, taskSessions, terminal, dispose() { disposed = true; for (const timer of bindTimers) clearTimeout(timer); bindTimers.clear(); terminal.dispose?.(); } });
 }
 
 export function installTaskStartIpc(options = {}) {
@@ -478,7 +502,11 @@ export function installTaskStartIpc(options = {}) {
   ipcMain.handle(TASK_WORKTREE_OPEN_CHANNEL, async (event, repositoryId, taskId) => {
     try { return await starter.openWorktree(event, repositoryId, taskId); } catch { return result("unavailable"); }
   });
+  ipcMain.removeHandler(TASK_SESSIONS_CHANNEL);
+  ipcMain.handle(TASK_SESSIONS_CHANNEL, async (event, repositoryId, taskId, operation, endWorking) => {
+    try { return await starter.taskSessions(event, repositoryId, taskId, operation, endWorking); } catch { return result("unavailable"); }
+  });
   const removeTerminal = starter.terminal ? installTerminalIpc({ ipcMain, controller: starter.terminal }) : () => {};
   runner?.start();
-  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_REVIEW_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); runner?.dispose(); removeTerminal(); starter.dispose?.(); };
+  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_REVIEW_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); ipcMain.removeHandler(TASK_SESSIONS_CHANNEL); runner?.dispose(); removeTerminal(); starter.dispose?.(); };
 }

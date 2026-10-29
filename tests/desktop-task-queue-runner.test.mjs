@@ -33,7 +33,7 @@ function scheduler() {
 }
 
 /** Fake monitor: `next` answers queue-next (a value, or a function), pauses are recorded. */
-function harness({ next = { ok: true, starts: [] }, grantNext, grantCheck = { ok: true, active: true }, execFile, grantStarter, startQueued, pauseAnswer, cleanups, cleanWorktree, overrides = {} } = {}) {
+function harness({ next = { ok: true, starts: [] }, grantNext, grantCheck = { ok: true, active: true }, grantDone, execFile, grantStarter, startQueued, pauseAnswer, cleanups, cleanWorktree, endDoneSessions, overrides = {} } = {}) {
   const timers = scheduler();
   const calls = [];
   const started = [];
@@ -42,6 +42,7 @@ function harness({ next = { ok: true, starts: [] }, grantNext, grantCheck = { ok
     ...(grantStarter ? { startGranted() {}, startGrantedReview() {} } : {}),
     // Only a starter that can remove worktrees is asked to.
     ...(cleanWorktree ? { cleanWorktree } : {}),
+    ...(endDoneSessions ? { endDoneSessions } : {}),
   };
   const runner = createTaskQueueRunner({
     starter,
@@ -54,6 +55,7 @@ function harness({ next = { ok: true, starts: [] }, grantNext, grantCheck = { ok
       calls.push({ url, route, options, body: JSON.parse(options.body) });
       if (route === "grant-check") return typeof grantCheck === "function" ? grantCheck() : json(grantCheck);
       if (route === "grant-end-all") return json({ ok: true, ended: 0 });
+      if (route === "grant-done" && grantDone !== undefined) return typeof grantDone === "function" ? grantDone() : json(grantDone);
       if (route === "grant-next" && grantNext !== undefined) return typeof grantNext === "function" ? grantNext() : json(grantNext);
       if (route === "grant-merge-attempt") return json({ ok: true, pullRequest: 22 });
       if (route === "worktree-root") return json({ ok: true, root: "C:\\repo" });
@@ -130,6 +132,40 @@ test("a mark-done step asks the monitor once, in its exact shape, and a refusal 
   await h.timers.fire();
   assert.deepEqual(h.calls.filter(({ route }) => route === "grant-done").map(({ body }) => body), [{ repositoryId: repoA, taskId: "T-7" }]);
   assert.equal(h.calls.some(({ route }) => ["grant-check", "grant-record", "grant-end"].includes(route)), false);
+});
+
+test("a task the monitor marks Done for a grant releases its idle sessions at once, and a refused mark-done releases nothing", async () => {
+  const markDone = { repositoryId: repoA, taskId: "T-7", kind: "mark_done" };
+  const ended = [];
+  const accepted = harness({ grantStarter: true, grantNext: { ok: true, steps: [markDone] }, grantDone: { ok: true }, endDoneSessions: async (...request) => { ended.push(request); return { ended: 1, working: 0 }; } });
+  accepted.runner.start();
+  await accepted.timers.fire();
+  // The first tick also runs the pass over every Done task; the grant's own call names the one task and no working flag.
+  assert.deepEqual(ended.filter(([scope]) => scope !== undefined), [[{ repositoryId: repoA, taskId: "T-7" }]]);
+  for (const answer of [{ ok: false, error: "not_eligible" }, { ok: false, error: "unavailable" }, () => { throw new Error("offline"); }]) {
+    const refused = [];
+    const h = harness({ grantStarter: true, grantNext: { ok: true, steps: [markDone] }, grantDone: answer, endDoneSessions: async (...request) => { refused.push(request); } });
+    h.runner.start();
+    await h.timers.fire();
+    assert.deepEqual(refused.filter(([scope]) => scope !== undefined), []);
+  }
+});
+
+test("the sessions of Done tasks end on the first tick and every fourth after it, before the worktrees are cleaned, and a failed pass never stops the chain", async () => {
+  const order = [];
+  const h = harness({
+    cleanups: { ok: true, cleanups: [] }, cleanWorktree: async () => "removed",
+    endDoneSessions: async (...request) => { order.push(["end", request, routes(h).includes("worktree-cleanups")]); throw new Error("host"); },
+  });
+  h.runner.start();
+  await h.timers.fire();
+  assert.deepEqual(order, [["end", [], false]]);
+  for (let tick = 0; tick < 3; tick += 1) await h.timers.fire();
+  assert.equal(order.length, 1);
+  await h.timers.fire();
+  assert.equal(order.length, 2);
+  assert.equal(routes(h).filter((route) => route === "worktree-cleanups").length, 2);
+  assert.equal(h.timers.pending().length, 1);
 });
 
 test("the interval defaults to 15 seconds and never drops below 5", () => {

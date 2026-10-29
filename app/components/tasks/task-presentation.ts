@@ -14,7 +14,7 @@ export const taskStateLabels: Record<TaskState, string> = {
   done: "Done",
 };
 
-export const AWAITING_REPORT_NOTE = "The session has not reported. Mark done and Requeue do not stop it.";
+export const AWAITING_REPORT_NOTE = "The session has not reported. Mark done ends it; Requeue does not.";
 
 export function taskAwaitsReport(task: Pick<Task, "state" | "session">): boolean {
   return task.session !== null && (task.state === "not_queued" || task.state === "queued" || task.state === "scheduled");

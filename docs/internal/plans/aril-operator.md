@@ -69,7 +69,7 @@ A grant is one record per repository, set in the desktop app only, and shown on 
 - **Scope:** which actions it allows (start, review and send back, merge, write tasks), each a separate switch.
 - **Limits:** an end time, a maximum number of tasks, a maximum of tasks at a time (at most the repository's queue limit), a send-back limit per task, and a provider usage limit that every grant start respects. None has a fixed default: the owner and Aril settle them for the work at hand.
 - **Work set:** the board's Ready column in order, plus the tasks and plans that the repository's work rules select. Nothing else.
-- **Stop:** one action ends the grant at once. Running sessions continue (Pomegr never ends a session); Aril starts, sends back, and merges nothing more.
+- **Stop:** one action ends the grant at once. Running sessions continue (stopping a grant ends no session); Aril starts, sends back, and merges nothing more.
 - **Expiry:** the grant ends at its end time, when its limits are reached, or when the app quits; it never renews itself.
 - Paired devices can see and stop a grant. They can create or change one only when the owner turned on the paired-device setting in Aril settings, which is off by default.
 
@@ -156,7 +156,7 @@ These change `AGENTS.md` and the owner pages, each in the phase that ships it:
 - "Aril changes and starts nothing" becomes: Aril changes and starts nothing, except through the fixed grant actions while an owner-approved grant is active.
 - The grant actions join the list of control actions with their confirmation boundary: the grant itself is the owner's confirmation, scoped and time-bound.
 - Merge becomes a control action Pomegr may perform, only under a grant and only with the checks above.
-- Terminal input stays owner-only. Aril never types into a session and never ends one.
+- Terminal input stays owner-only. Aril never types into a session. A task marked Done, by the owner or by a grant, ends its idle sessions (owner decision of 2026-10-28).
 
 ## Phases
 

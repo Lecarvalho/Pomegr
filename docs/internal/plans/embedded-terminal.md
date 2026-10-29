@@ -36,7 +36,7 @@ These were settled in a design review on 2026-10-24, with the owner's later chan
 | External windows | None. New and continued sessions open only in Pomegr's terminal, because the owner does not want standalone terminal windows (owner, 2026-10-24). A failed launch offers a retry in the terminal, and only when it is certain that no session started. |
 | Unit | One terminal per session. A send-back (G9) or takeover starts a new session with its own terminal, linked to the same task and worktree. |
 | Who writes to a terminal | Only the owner's own keyboard and paste, through trusted desktop IPC. Aril, the queue, the MCP tools, and the monitor have no way to write to a terminal. |
-| Ending a session | Pomegr has no End session action. Closing a tab or the window only hides the view. The owner ends a session inside the CLI, with `/exit` or Ctrl+C. |
+| Ending a session | Pomegr has no End session button. Marking a task Done ends the sessions Pomegr started for it (owner, 2026-10-28; see [Ending a Done task's sessions](../architecture/tasks.md#ending-a-done-tasks-sessions)). Closing a tab or the window only hides the view. The owner can still end a session inside the CLI, with `/exit` or Ctrl+C. |
 | Session state | "Needs input", "Working", and completion come from observation and task reports, never from parsing terminal text. A process exit is shown as one quiet line with its exit code, never as done. |
 | Lifetime | A detached desktop-owned terminal host keeps sessions running through app quit, app crash, and update. Desktop main reconnects to its own host. Reconnection is never an attach to a process that Pomegr did not start. |
 | After an exit | The Terminal tab turns read-only and shows the saved history, with **Continue**. The host keeps no exited output. |
@@ -49,9 +49,9 @@ These were settled in a design review on 2026-10-24, with the owner's later chan
 
 Each change lands in its own pull request, before any code that depends on it.
 
-1. **Control.** `AGENTS.md` says that dispatch never stops or attaches to a session Pomegr did not start, answers work, or approves work in a running session. The desktop app lets the owner type and paste into a session Pomegr started in its terminal host. It does not let an agent, Aril, queue, MCP tool, or monitor send input or end a session. Continue is the second owner-confirmed control action, for ended sessions only.
+1. **Control.** `AGENTS.md` says that dispatch never stops or attaches to a session Pomegr did not start, answers work, or approves work in a running session. The desktop app lets the owner type and paste into a session Pomegr started in its terminal host. It does not let an agent, Aril, queue, MCP tool, or monitor send input, and a session ends only with its task's Done. Continue is the second owner-confirmed control action, for ended sessions only.
 
-   No agent, queue, tool, or monitor path may write to a terminal or start a resume, and Pomegr never ends a session. This is different from the deferred idea of managed messages to a running session, which stays deferred.
+   No agent, queue, tool, or monitor path may write to a terminal or start a resume, and a session ends only with its task's Done. This is different from the deferred idea of managed messages to a running session, which stays deferred.
 2. **History privacy.** A session's history holds raw prompts and responses. A new section of [session evidence privacy](../architecture/privacy/session-evidence.md) lists the history read as an exception to the raw-content rule:
    - The provider adapter reads the provider's own session file when the owner opens the tab; the app never reads a provider file or schema.
    - It returns owner messages and agent replies, and each tool call as one fixed line with its tool name and outcome. It never returns tool arguments, tool results, or reasoning.

@@ -6,8 +6,9 @@ import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
   GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_GROUP_ADD_FAILURE_MESSAGE, QUEUE_GROUP_FAILURE_MESSAGE, QUEUE_GROUP_LIMIT_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_UNGROUP_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE,
   groupDesktopTasks, moveDesktopTask, queueDesktopGroup,
-  requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, ungroupDesktopTasks, type TaskActionResult, type TaskMove,
+  requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, taskDesktopBridge, ungroupDesktopTasks, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
+import { useDoneSessions, type DoneSessionsAsk, type DoneSessionsGate } from "./use-task-done-sessions";
 
 const CONFIRM_FALLBACK_MS = 10_000;
 
@@ -18,6 +19,8 @@ export type TaskBoardEdits = {
   failure: string | null;
   busy: boolean;
   settled: number;
+  /** Set while a Done action waits for the owner to say whether a working session of the task ends. */
+  doneAsk: DoneSessionsAsk | null;
   moveTask(move: TaskMove): Promise<boolean>;
   /** Puts the waiting cards in one parallel group: the group of the first one, or a new group. */
   groupTasks(ids: readonly string[]): Promise<boolean>;
@@ -51,6 +54,13 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
   const active = useRef(0);
   const keys = useRef(0);
   const epoch = useRef(0);
+  const { ask: doneAsk, beforeDone } = useDoneSessions(repositoryId);
+  // A Done action is busy from its click, through the question to the owner, not only once it is sent.
+  const [deciding, setDeciding] = useState(0);
+  const decide = useCallback(async (id: string) => {
+    setDeciding((count) => count + 1);
+    try { return await beforeDone(id); } finally { setDeciding((count) => count - 1); }
+  }, [beforeDone]);
 
   if (repository !== repositoryId) {
     setRepository(repositoryId);
@@ -76,7 +86,7 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     return next;
   }, []);
 
-  const moveTask = useCallback((move: TaskMove) => {
+  const sendMove = useCallback((move: TaskMove, gate: DoneSessionsGate | null) => {
     const entry: PendingMove = { key: (keys.current += 1), epoch: epoch.current, move, acknowledged: false };
     setFailure(null);
     setPending((list) => [...list, entry]);
@@ -86,6 +96,7 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
       if (result.ok) {
         setPending((list) => list.map((candidate) => candidate.key === entry.key ? { ...candidate, acknowledged: true } : candidate));
         void refresh();
+        void gate?.settle();
       } else {
         epoch.current += 1;
         setPending((list) => list.filter((candidate) => candidate.acknowledged || candidate.epoch !== entry.epoch));
@@ -95,6 +106,13 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
       return result.ok;
     });
   }, [enqueue, refresh, repositoryId]);
+
+  // A move into the Done column is a Done action: with the desktop bridge, the sessions of the task are asked about first.
+  const moveTask = useCallback((move: TaskMove) => {
+    const toDone = board.columns.find((column) => column.id === move.columnId)?.role === "done" && board.tasks.find((task) => task.id === move.id)?.state !== "done";
+    if (!toDone || typeof taskDesktopBridge()?.taskSessions !== "function") return sendMove(move, null);
+    return decide(move.id).then((gate) => sendMove(move, gate));
+  }, [board.columns, board.tasks, decide, sendMove]);
 
   const waitedAction = useCallback((send: () => Promise<TaskActionResult>, message: (error: Extract<TaskActionResult, { ok: false }>["error"]) => string) => {
     setFailure(null);
@@ -111,8 +129,9 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
   return {
     board: display,
     failure,
-    busy: running > 0,
+    busy: running > 0 || deciding > 0,
     settled,
+    doneAsk,
     moveTask,
     groupTasks: useCallback((ids: readonly string[]) => waitedAction(() => groupDesktopTasks(repositoryId, ids), (error) => error === "limit" ? QUEUE_GROUP_LIMIT_MESSAGE : QUEUE_GROUP_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     queueGroup: useCallback((id: string) => waitedAction(() => queueDesktopGroup(repositoryId, id), () => QUEUE_GROUP_ADD_FAILURE_MESSAGE), [waitedAction, repositoryId]),
@@ -120,7 +139,12 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     setQueue: useCallback((on: boolean) => waitedAction(() => setDesktopQueue(repositoryId, on), () => QUEUE_SETTINGS_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setGateThreshold: useCallback((threshold: TaskGateThreshold) => waitedAction(() => setDesktopGateThreshold(repositoryId, threshold), () => GATE_THRESHOLD_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueueSchedule: useCallback((schedule: TaskQueueSchedule) => waitedAction(() => setDesktopQueueSchedule(repositoryId, schedule), () => QUEUE_SCHEDULE_FAILURE_MESSAGE), [waitedAction, repositoryId]),
-    resolveTask: useCallback((id: string, done: boolean) => waitedAction(() => done ? resolveDesktopTaskDone(repositoryId, id) : requeueDesktopTask(repositoryId, id),
-      () => done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE), [waitedAction, repositoryId]),
+    resolveTask: useCallback(async (id: string, done: boolean) => {
+      const gate = done ? await decide(id) : null;
+      const ok = await waitedAction(() => done ? resolveDesktopTaskDone(repositoryId, id) : requeueDesktopTask(repositoryId, id),
+        () => done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE);
+      if (ok) void gate?.settle();
+      return ok;
+    }, [waitedAction, decide, repositoryId]),
   };
 }

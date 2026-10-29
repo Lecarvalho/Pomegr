@@ -92,11 +92,14 @@ These rules always apply:
 - A value may cross a boundary only when the owner page lists it. A value that no page
   lists is private.
 - Keep the monitor bound to loopback.
-- Keep observation read-only. Task dispatch starts new sessions. Pomegr never ends a
-  task session, attaches to a session it did not start, or approves work in a running session.
+- Keep observation read-only. Task dispatch starts new sessions. Pomegr never attaches to
+  a session it did not start, or approves work in a running session. Pomegr ends a session
+  only when its task is marked Done, by the owner or by a grant's Mark done, and only a
+  session it started for that task in its terminal host. It asks the owner first when that
+  session is still working, and a grant never ends a working one. Nothing else ends a session.
   In the desktop app, the owner may type or paste into a session Pomegr started in its
-  terminal host. No agent, Aril, queue, MCP tool, or monitor path may send terminal input
-  or end a session. Continue is the second owner-confirmed control action: the desktop
+  terminal host. No agent, Aril, queue, MCP tool, or monitor path may send terminal input.
+  Continue is the second owner-confirmed control action: the desktop
   resumes an ended session in its terminal host through the provider's own resume.
   It never resumes a live or unknown session, or resumes through an agent, Aril, queue,
   or tool. The [Continue plan](docs/internal/architecture/privacy/session-evidence.md#continue-plan)
