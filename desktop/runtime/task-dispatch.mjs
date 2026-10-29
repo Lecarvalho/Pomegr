@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
-import { userSessionEnvironment } from "./environment-policy.mjs";
+import { sessionEnvironmentFits, userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
 import { createTaskQueueRunner } from "./task-queue-runner.mjs";
 import { createTaskWorktrees } from "./task-worktree.mjs";
@@ -20,7 +20,7 @@ export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_REVIEW_START_CHANNEL = "pomegr:task-review-start";
 export const TASK_START_STATUSES = Object.freeze([
   "started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty",
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty", "environment_invalid",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -162,6 +162,8 @@ export function createTaskStart(options = {}) {
   const timeoutMs = options.timeoutMs ?? 10_000;
   const platform = options.platform || process.platform;
   const sourceEnvironment = options.environment || process.env;
+  // The environment of one start, read again for each start; the fixed one serves the Git calls of the worktrees.
+  const sessionEnvironment = typeof options.sessionEnvironment === "function" ? options.sessionEnvironment : async () => sourceEnvironment;
   const fileExists = options.fileExists || existsSync;
   const directoryExists = options.directoryExists || defaultDirectoryExists;
   const terminal = options.terminal || createTerminalController(options);
@@ -224,9 +226,11 @@ export function createTaskStart(options = {}) {
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
     if (platform !== "win32") return result("unsupported_platform");
+    let environment;
+    try { environment = await sessionEnvironment(); } catch { environment = sourceEnvironment; }
     const executables = {};
     for (const name of Object.keys(PROVIDERS)) {
-      try { executables[name] = resolveSessionExecutable(name, sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
+      try { executables[name] = resolveSessionExecutable(name, environment, fileExists, platform) || null; } catch { executables[name] = null; }
     }
     if (!Object.values(executables).some(Boolean)) return result("cli_missing");
     if (confirmRequired && await confirm({ taskId, separateWorktree }) !== true) return result("cancelled");
@@ -263,6 +267,11 @@ export function createTaskStart(options = {}) {
     if (!executable) {
       await abort(repositoryId, taskId, plan.token);
       return result("cli_missing");
+    }
+    const env = { ...userSessionEnvironment(environment), POMEGR_TASK_TOKEN: plan.token };
+    if (!sessionEnvironmentFits(env)) {
+      await abort(repositoryId, taskId, plan.token);
+      return result("environment_invalid");
     }
     let directory = plan.root;
     let made = null;
@@ -309,7 +318,7 @@ export function createTaskStart(options = {}) {
       }
       const key = `${repositoryId}/${taskId}/${randomBytes(16).toString("hex")}`;
       const created = await terminal.create({
-        key, executable, args, cwd: directory, env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
+        key, executable, args, cwd: directory, env, cols: 80, rows: 24,
       });
       started = true;
       if (plan.provider === "codex") watchCodexBind(repositoryId, taskId, plan.token, key, created?.pid);
@@ -372,9 +381,11 @@ export function createTaskStart(options = {}) {
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
     if (platform !== "win32") return result("unsupported_platform");
+    let environment;
+    try { environment = await sessionEnvironment(); } catch { environment = sourceEnvironment; }
     const executables = {};
     for (const name of Object.keys(PROVIDERS)) {
-      try { executables[name] = resolveSessionExecutable(name, sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
+      try { executables[name] = resolveSessionExecutable(name, environment, fileExists, platform) || null; } catch { executables[name] = null; }
     }
     if (!Object.values(executables).some(Boolean)) return result("cli_missing");
     if (confirmRequired && await options.confirmReview?.({ taskId }) !== true) return result("cancelled");
@@ -401,7 +412,9 @@ export function createTaskStart(options = {}) {
       if (disposed) status = "cancelled";
       else if (plan) {
         const executable = executables[plan.provider];
+        const env = { ...userSessionEnvironment(environment), POMEGR_TASK_TOKEN: plan.token };
         if (!executable) status = "cli_missing";
+        else if (!sessionEnvironmentFits(env)) status = "environment_invalid";
         else {
           const located = await worktrees?.locate({ repositoryRoot: plan.root, repositoryId, taskId });
           const cwd = typeof located === "string" && path.isAbsolute(located) && !/[\u0000\r\n"]/u.test(located)
@@ -414,7 +427,7 @@ export function createTaskStart(options = {}) {
               const key = `${repositoryId}/${taskId}/review-${randomBytes(16).toString("hex")}`;
               const created = await terminal.create({
                 key, executable, args: [...PROVIDERS[plan.provider].flags(plan), plan.prompt], cwd,
-                env: { ...userSessionEnvironment(sourceEnvironment), POMEGR_TASK_TOKEN: plan.token }, cols: 80, rows: 24,
+                env, cols: 80, rows: 24,
               });
               if (plan.provider === "codex") watchCodexBind(repositoryId, taskId, plan.token, key, created?.pid);
               return result("started");

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
-import { userSessionEnvironment } from "./environment-policy.mjs";
+import { sessionEnvironmentFits, userSessionEnvironment } from "./environment-policy.mjs";
 import { CODEX_INLINE_FLAG, resolveSessionExecutable } from "./task-dispatch.mjs";
 
 export const SESSION_CONTINUE_CHANNEL = "pomegr:session-continue";
@@ -28,7 +28,9 @@ export function createSessionContinue(options = {}) {
   const active = new Set(), uncertain = new Set();
   const fetchImpl = options.fetch || fetch;
   const hasDirectory = options.directoryExists || directoryExists;
-  const environment = options.environment || process.env;
+  const startupEnvironment = options.environment || process.env;
+  // Read again for each continue, so the session gets the user's environment as it is now.
+  const sessionEnvironment = typeof options.sessionEnvironment === "function" ? options.sessionEnvironment : async () => startupEnvironment;
   let disposed = false, origin;
   try {
     const url = new URL(options.monitorOrigin);
@@ -67,8 +69,12 @@ export function createSessionContinue(options = {}) {
       const listing = await options.terminal.run(event, "list");
       if (!listing.ok || listing.hosts?.some((host) => host.state !== "ready")) return result("unavailable");
       if (listing.sessions?.some((row) => (row.sessionId === sessionId || row.continuedFrom === sessionId) && row.state !== "exited")) return result("busy");
+      let environment;
+      try { environment = await sessionEnvironment(); } catch { environment = startupEnvironment; }
       const executable = resolveSessionExecutable(first.plan.provider, environment, options.fileExists || existsSync, options.platform || process.platform);
       if (!executable) return result("cli_missing");
+      const env = userSessionEnvironment(environment);
+      if (!sessionEnvironmentFits(env)) return result("environment_invalid");
       await options.terminal.ensureHost();
       const current = await readPlan(sessionId);
       if (!current.plan) return current;
@@ -80,7 +86,7 @@ export function createSessionContinue(options = {}) {
       try {
         await options.terminal.create({ key: `continue/${plan.provider}/${plan.localId}/${randomBytes(16).toString("hex")}`,
           executable, args: plan.provider === "claude" ? ["--resume", plan.localId] : ["resume", CODEX_INLINE_FLAG, plan.localId], cwd: plan.cwd,
-          env: userSessionEnvironment(environment), cols: 80, rows: 24 });
+          env, cols: 80, rows: 24 });
         uncertain.delete(sessionId);
       } catch (error) {
         if (["TERMINAL_INVALID", "TERMINAL_CAPACITY", "TERMINAL_SPAWN_FAILED"].includes(error.message)) uncertain.delete(sessionId);

@@ -92,13 +92,15 @@ export function createCompaction({ store, summaries, now, runTurn, spawn, env, e
   async function runOnce(repositoryId, job, { provider, model, command, root, previous, chunk }) {
     const composed = compactionPrompt(previous?.text ?? null, chunk);
     if (!composed) return null;
+    // A function reads the run's environment again for each run.
+    const environment = typeof env === "function" ? await env() : env;
     const sessionId = await declare(provider);
     if (disposed || job.stopped) { withdraw(sessionId); return null; }
     let outcome = null;
     let timing = null;
     try {
       const run = runTurn({ spawn, executable: command, provider, model, effort: COMPACTION_EFFORT, mcpServer: null, images: null, sessionId, instructionsFile: null,
-        tools: "none", cwd: root, env, prompt: composed.prompt, timeoutMs, onText: () => {}, onActivity: () => {} });
+        tools: "none", cwd: root, env: environment, prompt: composed.prompt, timeoutMs, onText: () => {}, onActivity: () => {} });
       job.run = run;
       outcome = await run.done;
       timing = timingOf(run.timing?.() ?? null, composed.sections);

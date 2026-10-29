@@ -9,7 +9,7 @@ import { readTaskBlockHolds } from "./task-block-holds.mjs";
 import { isRepositoryId, isTaskId, normalizeQueueSchedule, projectBoard, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 // The reasons the desktop may report.
-export const TASK_QUEUE_PAUSE_REQUEST_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "worktree_dirty"]);
+export const TASK_QUEUE_PAUSE_REQUEST_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "worktree_dirty", "environment_invalid"]);
 export const TASK_QUEUE_START_LIMIT = 16;
 
 const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "object" && !Array.isArray(payload)

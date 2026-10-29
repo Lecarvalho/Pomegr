@@ -28,9 +28,11 @@ export type TaskWorktreeOpenStatus = "opened" | "not_found" | "invalid" | "unava
 const OPEN_STATUSES = new Set<string>(["opened", "not_found", "invalid", "unavailable"]);
 
 export type TaskStartStatus = "started" | "cancelled" | "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable"
-  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held" | "worktree_dirty" | "tree_dirty";
+  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held" | "worktree_dirty" | "tree_dirty"
+  | "environment_invalid";
 const START_STATUSES = new Set<string>(["started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held", "worktree_dirty", "tree_dirty"]);
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held", "worktree_dirty", "tree_dirty",
+  "environment_invalid"]);
 
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const FAILURES = new Set<string>(["invalid", "not_found", "limit", "conflict", "unsupported", "unavailable"]);

@@ -4,6 +4,7 @@ import { access, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import { environmentValue } from "./environment-policy.mjs";
+import { createWindowsEnvironment } from "./session-environment.mjs";
 
 export const PROVIDER_FOLDER_KEYS = Object.freeze(["claudeConfigDir", "claudeProjectsDir", "codexHome"]);
 const ENVIRONMENT_KEYS = Object.freeze({ claudeConfigDir: "CLAUDE_CONFIG_DIR", claudeProjectsDir: "CLAUDE_PROJECTS_DIR", codexHome: "CODEX_HOME" });
@@ -70,6 +71,18 @@ export function providerSessionEnvironment(environment, folders, options) {
     if (!selected[key] && !environmentValue(environment, ENVIRONMENT_KEYS[key])) setEnvironment(result, ENVIRONMENT_KEYS[key], undefined);
   }
   return result;
+}
+
+/**
+ * The environment of each session Pomegr starts: `startup`, the copy taken when the app started, and `current()`, read
+ * again for each start, with the user and machine variables as Windows holds them then. Provider folders apply last.
+ */
+export function createSessionEnvironment({ environment, folders, homeDir, dataRoot, ...read }) {
+  const windowsEnvironment = createWindowsEnvironment({ environment, ...read });
+  return Object.freeze({
+    startup: providerSessionEnvironment(environment, folders, { homeDir, dataRoot }),
+    current: async () => providerSessionEnvironment(await windowsEnvironment(), folders, { homeDir, dataRoot }),
+  });
 }
 
 async function readableDirectory(directory) {

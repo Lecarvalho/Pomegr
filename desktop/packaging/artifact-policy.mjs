@@ -76,6 +76,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/session-history.mjs",
   "desktop/runtime/session-link.mjs",
   "desktop/runtime/session-continue.mjs",
+  "desktop/runtime/session-environment.mjs",
   "desktop/runtime/terminal.mjs",
   "desktop/runtime/terminal-host-client.mjs",
   "desktop/runtime/terminal-host-runtime.mjs",

@@ -118,6 +118,16 @@ export function userSessionEnvironment(source) {
   return environment;
 }
 
+// The terminal host's limits for one session's environment (desktop/terminal-host/host.mjs). Desktop main checks them
+// first, so an environment the host would refuse fails the start with its own reason and is never cut to fit.
+export function sessionEnvironmentFits(environment) {
+  const entries = Object.entries(environment || {});
+  return entries.length <= 512
+    && entries.every(([key, value]) => /^[A-Za-z_][A-Za-z0-9_()]{0,127}$/u.test(key)
+      && typeof value === "string" && value.length <= 32767 && !value.includes("\0"))
+    && Buffer.byteLength(JSON.stringify(environment)) <= 48 * 1024;
+}
+
 export function keepOnlyRuntimeEnvironment(environment, overrides = {}, fileExists = existsSync) {
   const kept = minimalRuntimeEnvironment(environment, overrides, fileExists);
   for (const name of Object.keys(environment)) delete environment[name];

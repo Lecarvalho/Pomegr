@@ -135,7 +135,8 @@ test("a broken or malformed sent-back worktree lookup refuses without creating a
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");
   assert.ok(Object.isFrozen(TASK_START_STATUSES));
-  assert.equal(TASK_START_STATUSES.length, 15);
+  assert.equal(TASK_START_STATUSES.length, 16);
+  assert.ok(TASK_START_STATUSES.includes("environment_invalid"));
   assert.ok(TASK_START_STATUSES.includes("tree_dirty"));
   assert.ok(TASK_START_STATUSES.includes("worktree_dirty"));
   assert.ok(TASK_START_STATUSES.includes("gate_held"));

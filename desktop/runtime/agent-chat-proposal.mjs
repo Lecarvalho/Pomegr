@@ -22,7 +22,7 @@ export const QUEUE_RESULTS = Object.freeze(["on", "blocked", "off"]);
 // Why an approved start did not launch a session: the fixed statuses of a manual start, without `started` and `cancelled`.
 export const START_FAILURES = Object.freeze([
   "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held", "unsupported_provider", "not_found", "busy",
-  "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty",
+  "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty", "environment_invalid",
 ]);
 export const BOARD_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
 
