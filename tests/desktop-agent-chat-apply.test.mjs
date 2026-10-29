@@ -510,7 +510,7 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-provider-files.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-provider-files.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {
@@ -540,7 +540,7 @@ test("the chat's runtime files are a closed surface: no console, no shell, no ex
     }
   }
   assert.deepEqual([...sources.get("agent-chat-store.mjs").matchAll(/from\s+"(node:[^"]+)"/gu)].map((match) => match[1]).sort(), ["node:crypto", "node:fs/promises", "node:path"]);
-  for (const pure of ["agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-runner.mjs"]) assert.doesNotMatch(sources.get(pure), /from\s+"node:/u, `${pure} touches no node module`);
+  for (const pure of ["agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs"]) assert.doesNotMatch(sources.get(pure), /from\s+"node:/u, `${pure} touches no node module`);
   assert.deepEqual([...sources.get("agent-chat-images.mjs").matchAll(/from\s+"(node:[^"]+|\.\/[^"]+)"/gu)].map((match) => match[1]).sort(), ["./agent-chat-proposal.mjs", "node:crypto", "node:fs/promises", "node:path"]);
   assert.doesNotMatch(sources.get("agent-chat-runner.mjs"), /\bimport\b/u);
   assert.doesNotMatch(sources.get("agent-chat-proposal.mjs"), /\bimport\b/u);

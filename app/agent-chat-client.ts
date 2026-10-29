@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import {
   AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PROPOSAL_ID_PATTERN,
   AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES, AGENT_CHAT_WORKTREE_RESULTS,
-  type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatConversation, type AgentChatConversationSummary,
+  type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatChoices, type AgentChatConversation, type AgentChatConversationSummary,
   type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult,
   type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
   type AgentChatThreadResult, type AgentChatThreadRun, type AgentChatThreadSummary, type AgentChatTiming, type AgentChatTurn,
@@ -121,6 +121,37 @@ function parseProposal(value: unknown): AgentChatProposal | null {
   return parsed;
 }
 
+const BREAKS = /[\p{Cc}\p{Zl}\p{Zp}]/u;
+
+function choiceLine(value: unknown, limit: number): string | null {
+  if (!text(value)) return null;
+  const line = value.trim();
+  return line.length > 0 && line.length <= limit && !BREAKS.test(line) ? line : null;
+}
+
+const distinct = (labels: readonly string[]) => new Set(labels.map((label) => label.toLowerCase())).size === labels.length;
+
+/** The quick replies or the one question of an answer, inside the stored shape and its bounds. Anything else is not drawn; the message keeps its text. */
+export function parseChoices(value: unknown): AgentChatChoices | null {
+  const choices = record(value);
+  if (!choices) return null;
+  const keys = Object.keys(choices);
+  if (keys.length === 1 && Array.isArray(choices.replies)) {
+    if (choices.replies.length < 1 || choices.replies.length > AGENT_CHAT_BOUNDS.replies) return null;
+    const replies = choices.replies.map((reply) => choiceLine(reply, AGENT_CHAT_BOUNDS.replyLength));
+    return replies.every((reply): reply is string => reply !== null) && distinct(replies) ? { replies } : null;
+  }
+  const question = keys.length === 2 ? choiceLine(choices.question, AGENT_CHAT_BOUNDS.questionLength) : null;
+  if (!question || !Array.isArray(choices.options) || choices.options.length < AGENT_CHAT_BOUNDS.options.min || choices.options.length > AGENT_CHAT_BOUNDS.options.max) return null;
+  const options = choices.options.map((entry) => {
+    const option = record(entry);
+    const label = option && Object.keys(option).length === 2 ? choiceLine(option.label, AGENT_CHAT_BOUNDS.optionLabelLength) : null;
+    const detail = option ? choiceLine(option.detail, AGENT_CHAT_BOUNDS.optionDetailLength) : null;
+    return label && detail ? { label, detail } : null;
+  });
+  return options.every((option) => option !== null) && distinct(options.map((option) => option!.label)) ? { question, options: options as { label: string; detail: string }[] } : null;
+}
+
 /** The effort of a record: only a known value. A record without one, an older record, reads as none. */
 const effortOf = (value: unknown): { effort: TaskEffort } | Record<string, never> => ((TASK_EFFORTS as readonly string[]).includes(value as string) ? { effort: value as TaskEffort } : {});
 
@@ -156,6 +187,9 @@ function parseMessage(value: unknown): AgentChatMessage | null {
   const proposal = message.proposal === undefined ? null : parseProposal(message.proposal);
   if (proposal) parsed.proposal = proposal;
   if (message.proposalUnreadable === true || (message.proposal !== undefined && !proposal)) parsed.proposalUnreadable = true;
+  // Choices belong to an answer with no proposal, and a grant follow-up line never carries any.
+  const choices = parseChoices(message.choices);
+  if (choices && !parsed.proposal && message.grantFollowUp !== true) parsed.choices = choices;
   if (text(message.followUp) && AGENT_CHAT_PROPOSAL_ID_PATTERN.test(message.followUp)) parsed.followUp = message.followUp;
   const timing = parseTiming(message.timing);
   if (timing) parsed.timing = timing;

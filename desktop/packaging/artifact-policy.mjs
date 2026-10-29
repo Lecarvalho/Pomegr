@@ -35,6 +35,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/agent-chat-images.mjs",
   "desktop/runtime/agent-chat-prompt.mjs",
   "desktop/runtime/agent-chat-proposal.mjs",
+  "desktop/runtime/agent-chat-choices.mjs",
   "desktop/runtime/agent-chat-runner.mjs",
   "desktop/runtime/agent-chat-store.mjs",
   "desktop/runtime/agent-chat-workflow.mjs",

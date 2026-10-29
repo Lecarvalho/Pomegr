@@ -93,12 +93,21 @@ describe("Aril chat visual contract", () => {
     expect(chatStyles).toMatch(/\.agentChatOpWarning \{ color: var\(--command-error\);/);
     expect(chatStyles).toMatch(/\.agentChatOpResult\.is-error \{ color: var\(--command-error\); \}/);
     expect(chatStyles).not.toMatch(/\.agentChatOp[A-Za-z.-]*[^{]*\{[^}]*(?:background|border)/);
+    // Choices: quick replies and the rows of one question are Quiet buttons on the raised fill, 44px on coarse pointers; past choices are quiet text with the picked one marked.
+    expect(chatStyles).toMatch(/\.agentChatReply\.commandQuietAction, \.agentChatChoice\.commandQuietAction \{ background: var\(--command-panel-2\); color: var\(--command-ink\); white-space: normal;/);
+    expect(chatStyles).toMatch(/\.agentChatReply\.commandQuietAction \{ width: auto; max-width: 100%; min-height: var\(--control-compact\); padding: var\(--space-1\) var\(--space-3\); \}/);
+    expect(chatStyles).toMatch(/\.agentChatChoice\.commandQuietAction \{ width: 100%; min-height: var\(--control-compact\); padding: var\(--space-2\) var\(--space-3\); flex-direction: column;/);
+    expect(chatStyles).toMatch(/\.agentChatReply\.commandQuietAction, \.agentChatChoice\.commandQuietAction \{ min-height: 44px; \}/);
+    expect(chatStyles).toMatch(/\.agentChatChoiceDetail \{ color: var\(--command-muted\); font: 400 var\(--text-caption\)\/1\.4 var\(--font-ui\); \}/);
+    expect(chatStyles).toMatch(/\.agentChatReply\.isPast, \.agentChatChoice\.isPast \{[^}]*color: var\(--command-muted\);/);
+    expect(chatStyles).toMatch(/\.agentChatReply\.isPicked, \.agentChatChoice\.isPicked \{ color: var\(--command-ink\); \}/);
+    expect(chatStyles).not.toMatch(/\.agentChat(?:Reply|Choice)[^{]*\{[^}]*(?:border:|outline:|box-shadow)/);
     // Answer text: the data font at 12px for code, and a heading line that is not a heading element.
     expect(chatStyles).toMatch(/\.agentChatCode \{[^}]*font: 400 var\(--text-xs\)\/1\.5 var\(--font-data\)/);
     expect(chatStyles).toMatch(/\.agentChatMdHeading \{ font: 650 var\(--text-sm\)\/1\.4 var\(--font-ui\); \}/);
 
     // Every button is one of the six roles, but for the launcher (shell chrome) and the row of a search match, as documented. No native select, and no markup from a string.
-    const sources = ["AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatImages.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx", "AgentChatSearch.tsx"].map(read).join("\n") + readFileSync(join(process.cwd(), "app", "components", "markdown", "SafeMarkdown.tsx"), "utf8");
+    const sources = ["AgentChatChoices.tsx", "AgentChatComposer.tsx", "AgentChatDock.tsx", "AgentChatFrame.tsx", "AgentChatImages.tsx", "AgentChatMessages.tsx", "AgentChatPanel.tsx", "AgentChatProposalCard.tsx", "AgentChatSearch.tsx"].map(read).join("\n") + readFileSync(join(process.cwd(), "app", "components", "markdown", "SafeMarkdown.tsx"), "utf8");
     expect(sources).not.toMatch(/<select|dangerouslySetInnerHTML|innerHTML/);
     const tags = [...sources.matchAll(/<button\b[^>]*>/g)].map(([tag]) => tag);
     expect(tags.length).toBeGreaterThanOrEqual(12);
@@ -131,7 +140,7 @@ describe("Aril chat visual contract", () => {
     // AppShell mounts the dock once, after the shell, and the design-system reference draws every part from static data.
     expect(readFileSync(join(process.cwd(), "app", "components", "AppShell.tsx"), "utf8")).toMatch(/<\/CommandCenterShell>\s*<AgentChatDock \/>/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemAgentChatSample.tsx"), "utf8");
-    for (const label of ["Launcher", "Launcher, answering", "Launcher, new answer", "Panel, empty", "Panel, proposal", "Panel, images", "Panel, expanded", "Panel, over the dimmed page", "Panel, activity lines", "Panel, search", "Panel, search without a match", "Panel, earlier messages loading", "Proposal, images, pending", "Composer, images", "Composer, repository", "Composer, model and effort", "Composer, no known model", "Composer, uploading image", "Composer, image error", "Panel, answer being written", "Panel, no repository", "Proposal, pending", "Proposal, applied", "Proposal, partly applied", "Proposal, every result word", "Composer, error", "Composer, over the limit", "Answer text"]) {
+    for (const label of ["Launcher", "Launcher, answering", "Launcher, new answer", "Panel, empty", "Panel, proposal", "Panel, images", "Panel, expanded", "Panel, over the dimmed page", "Panel, activity lines", "Panel, quick replies", "Panel, quick replies, answered", "Panel, quick replies, waiting", "Panel, multiple-choice question", "Panel, multiple-choice question, answered", "Panel, search", "Panel, search without a match", "Panel, earlier messages loading", "Proposal, images, pending", "Composer, images", "Composer, repository", "Composer, model and effort", "Composer, no known model", "Composer, uploading image", "Composer, image error", "Panel, answer being written", "Panel, no repository", "Proposal, pending", "Proposal, applied", "Proposal, partly applied", "Proposal, every result word", "Composer, error", "Composer, over the limit", "Answer text"]) {
       expect(sample).toContain(`label="${label}"`);
     }
     expect(designSystemStyles).toMatch(/\.designSystemChatGrid \{ grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 420px\), 1fr\)\); \}/);
@@ -185,6 +194,25 @@ describe("Aril chat visual contract", () => {
     expect(designContract).toMatch(/The Primary of a queue change reads \*\*Turn queue on\*\* or \*\*Turn queue off\*\*, on a paired device too\./);
     expect(designContract).toMatch(/“Cannot be undone” in the error color \(text only, never a fill\)/);
     expect(designContract).toMatch(/Each pending card has its own Primary/);
+    // Choices: Quiet buttons under the newest answer that only send a label as the owner's own message, quiet text once answered, never beside a proposal.
+    const choices = read("AgentChatChoices.tsx");
+    expect(choices).toMatch(/<button type="button" className="commandQuietAction agentChatReply" disabled=\{state\.mode === "waiting"\} onClick=/);
+    expect(choices).toMatch(/<button type="button" className="commandQuietAction agentChatChoice" disabled=\{state\.mode === "waiting"\} onClick=/);
+    expect(choices).toContain('const Chip = ({ children }: { children: string }) => <span className="commandChip">{children}</span>;');
+    expect(designContract).toMatch(/## Choices[^]*Aril may end an answer with quick replies or with one multiple-choice question, never both/);
+    expect(designContract).toMatch(/A choice only sends its label as the owner's own message, with the repository, model, and effort that the composer shows/);
+    expect(designContract).toMatch(/A choice applies, starts, and changes nothing by itself/);
+    expect(designContract).toMatch(/An answer that carries a proposal draws no choices: the proposal has its own \*\*Apply changes\*\* and \*\*Dismiss\*\*/);
+    expect(designContract).toMatch(/A grant follow-up line draws no choices/);
+    expect(designContract).toMatch(/A reply \(`\.agentChatReply`\) is a \[Quiet\]\(\.\.\/\.\.\/\.\.\/DESIGN\.md#buttons\) button with the raised `--command-panel-2` fill/);
+    expect(designContract).toMatch(/A reply is the Quiet role with a local fill[^\n]*It is not a seventh role/);
+    expect(designContract).toMatch(/A reply is 32px high with 12px side padding, and 44px at 760px and narrower and on coarse pointers/);
+    expect(designContract).toMatch(/The first option is the one Aril recommends, and its label is followed by a neutral `\.commandChip` \*\*Recommended\*\*/);
+    expect(designContract).toMatch(/The panel draws no option for a free answer: the composer is the free answer/);
+    expect(designContract).toMatch(/\| Waiting \| The same choices while a turn runs, one that another device started included \| The same buttons, disabled \|/);
+    expect(designContract).toMatch(/\| Past \| The owner sent anything after the answer, a newer answer came, or a message is on its way \| Quiet text, not buttons \|/);
+    expect(designContract).toMatch(/The picked choice reads in ink at weight 650 and follows its label with a neutral `\.commandChip` \*\*Chosen\*\*/);
+    expect(designContract).toMatch(/A choice sent by a pointer moves no focus, so a tap on a phone opens no keyboard/);
     expect(designContract).toMatch(/A message that was refused stays in the field/);
     // The thread is one conversation for each repository, with search and no conversation list.
     expect(designContract).toMatch(/The header has no conversation list, no \*\*Conversations\*\* action, and no \*\*New conversation\*\* action: the repository has one thread/);

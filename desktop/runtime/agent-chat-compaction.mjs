@@ -6,7 +6,7 @@
 // starts nothing: its answer is stored as plain text, and a proposal block in it is dropped.
 
 import { conversationHistory, HISTORY_BUDGET, historyLine, PROMPT_LIMIT } from "./agent-chat-prompt.mjs";
-import { visibleAnswer } from "./agent-chat-proposal.mjs";
+import { shownAnswer } from "./agent-chat-choices.mjs";
 import { afterPosition, lastRun, threadHistory, threadSource } from "./agent-chat-thread.mjs";
 import { timingOf } from "./agent-chat-timing.mjs";
 
@@ -77,7 +77,7 @@ export function compactionPrompt(previous, messages) {
 
 /** The text to store from a run's answer: plain text without a proposal block. The summary's own contract bounds it. */
 export function summaryFromAnswer(answer) {
-  return typeof answer === "string" ? visibleAnswer(answer.replace(/\r\n?/gu, "\n")).trim() : "";
+  return typeof answer === "string" ? shownAnswer(answer.replace(/\r\n?/gu, "\n")).trim() : "";
 }
 
 /**

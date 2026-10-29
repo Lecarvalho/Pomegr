@@ -93,6 +93,17 @@ on your board, and the usage of both providers. It can choose any model that the
 on** menu of the task form offers, for Claude Code or Codex, and it says in one line
 why it chose it. If you name a provider, a model, or an effort, Aril uses it.
 
+### Quick replies and questions
+
+Aril keeps its answers short: the answer first, and more detail only when you ask. When it needs something from you, it asks under the answer:
+
+- **Quick replies** are small buttons for the likeliest answers, such as **Squash** or **Tell me more**.
+- **A multiple-choice question** is a short list. Each option has a label and one line of trade-off, and Aril's recommendation comes first, marked **Recommended**.
+
+Select one to send its label as your own message. It sends a message and nothing else: it applies nothing, starts nothing, and changes nothing on the board. You can always answer in your own words in the message field instead.
+
+Only the choices under Aril's newest answer can be selected, and not while Aril is answering. Once you send anything after the answer, the choices turn into plain text, and the one you picked is marked **Chosen**. Use Tab to reach a choice and Enter to send it. A choice that cannot be shown is left out, and the answer stays.
+
 ### Send an image
 
 You can show Aril a screenshot or a mock-up.

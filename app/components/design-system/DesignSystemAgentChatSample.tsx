@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { TaskEffort } from "../../../shared/task-contract";
-import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatMessage, AgentChatOperationResult, AgentChatProposal, AgentChatSearchMatch, AgentChatThreadMessage, AgentChatThreadSummary, AgentChatTurn } from "../../../shared/agent-chat-contract";
+import type { AgentChatAgentMessage, AgentChatBoardOperation, AgentChatChoices, AgentChatMessage, AgentChatOperationResult, AgentChatProposal, AgentChatSearchMatch, AgentChatThreadMessage, AgentChatThreadSummary, AgentChatTurn } from "../../../shared/agent-chat-contract";
 import { AgentChatComposer } from "../agent-chat/AgentChatComposer";
 import { AgentChatHeader, AgentChatLauncher, AgentChatPanelFrame, AgentChatScrim } from "../agent-chat/AgentChatFrame";
 import { SafeMarkdown } from "../markdown/SafeMarkdown";
@@ -71,6 +71,21 @@ const ANSWER = [
 
 const ASK = { id: "m-1", role: "user" as const, text: "Break the upload feature into tasks.", at: AT };
 const PROPOSED = thread([ASK, agent("m-2", ANSWER, { proposal: proposal("pending") })]);
+// Aril's choices under an answer: quick replies, or one question whose first option is the one Aril recommends.
+const REPLIES: AgentChatChoices = { replies: ["Squash", "Merge commit", "Tell me more"] };
+const QUESTION: AgentChatChoices = {
+  question: "Which merge method should this repository use?",
+  options: [
+    { label: "Squash", detail: "One commit for each pull request, as the history shows." },
+    { label: "Merge commit", detail: "Keeps every commit; the history is busier." },
+    { label: "Rebase", detail: "A straight history, but it rewrites commits." },
+  ],
+};
+const FITS = "Squash fits: the history is one commit for each pull request.";
+const REPLY_ASK = thread([{ id: "m-1", role: "user", text: "How should this repository merge?", at: AT }, agent("m-2", FITS, { choices: REPLIES })]);
+const REPLY_ANSWERED = thread([...REPLY_ASK, { id: "m-3", role: "user", text: "Squash", at: LATER }, agent("m-4", "Squash it is. I will settle it once you apply the setting.", { at: LATER })]);
+const QUESTION_ASK = thread([{ id: "m-1", role: "user", text: "How should this repository merge?", at: AT }, agent("m-2", "Three methods are allowed on GitHub, and they differ in the history they leave.", { choices: QUESTION })]);
+const QUESTION_ANSWERED = thread([...QUESTION_ASK, { id: "m-3", role: "user", text: "Merge commit", at: LATER }, agent("m-4", "Merge commit it is.", { at: LATER })]);
 const STREAMING_TURN: AgentChatTurn = { conversationId: "chat-0123456789ab", startedAt: AT, provider: "claude", model: "model-large", effort: "medium", activity: "reading_files", text: "I am reading the upload client and the board. The retry path is" };
 const QUIET = thread([
   ASK,
@@ -184,6 +199,21 @@ export function AgentChatSection() {
       </Sample>
       <Sample label="Panel, proposal" note="A pending proposal under Aril's answer: one row for each operation, and Apply changes or Dismiss. Each message shows its time.">
         <Panel messages={PROPOSED}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, quick replies" note="Small Quiet buttons under the newest answer. A tap sends the label as the owner's own message and does nothing else.">
+        <Panel messages={REPLY_ASK}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, quick replies, answered" note="Once the owner sends anything after the answer, the replies are quiet text and the one that was picked is marked Chosen.">
+        <Panel messages={REPLY_ANSWERED}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, quick replies, waiting" note="The newest answer's replies are disabled while a turn runs.">
+        <Panel messages={REPLY_ASK} turn={STREAMING_TURN}><SampleComposer running /></Panel>
+      </Sample>
+      <Sample label="Panel, multiple-choice question" note="One row for each option: the label and a one-line detail, the recommended option first. The composer is the free answer.">
+        <Panel messages={QUESTION_ASK}><SampleComposer /></Panel>
+      </Sample>
+      <Sample label="Panel, multiple-choice question, answered" note="The rows are quiet, and the row the owner picked is marked Chosen.">
+        <Panel messages={QUESTION_ANSWERED}><SampleComposer /></Panel>
       </Sample>
       <Sample label="Panel, answer being written" note="The partial answer under a head with the time the turn started, one fixed activity line, and the round Stop in place of Send.">
         <Panel messages={thread([ASK])} turn={STREAMING_TURN}><SampleComposer running /></Panel>

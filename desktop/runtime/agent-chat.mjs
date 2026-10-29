@@ -12,9 +12,10 @@ import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
 import { createTaskBridge } from "./agent-chat-task-bridge.mjs";
 import { chatTaskLog } from "./agent-chat-task-log.mjs";
 import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
+import { extractChoices, shownAnswer } from "./agent-chat-choices.mjs";
 import { createCompaction, threadSince } from "./agent-chat-compaction.mjs";
 import { composePrompt, composePromptParts, proposalOutcome } from "./agent-chat-prompt.mjs";
-import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
+import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 import { CHAT_EFFORTS, runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { createAgentChatSummaries, summarizedView } from "./agent-chat-summary.mjs";
@@ -233,7 +234,7 @@ export function createAgentChat(options = {}) {
 
   const turnOf = (repositoryId, conversationId) => (active && !active.reserved && active.repositoryId === repositoryId && active.conversationId === conversationId ? active : null);
   const waitingOf = (repositoryId, conversationId) => [...followUps.values()].find((entry) => entry.repositoryId === repositoryId && entry.conversationId === conversationId) ?? null;
-  const turnView = (turn) => ({ conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, ...effortField(turn.effort), activity: turn.activity, text: visibleAnswer(turn.text) });
+  const turnView = (turn) => ({ conversationId: turn.conversationId, startedAt: turn.startedAt, provider: turn.provider, model: turn.model, ...effortField(turn.effort), activity: turn.activity, text: shownAnswer(turn.text) });
   // A follow-up that waits behind another turn reads as a turn that is starting, so a client keeps reading.
   const waitingTurn = (waiting) => ({ conversationId: waiting.conversationId, startedAt: waiting.queuedAt, provider: waiting.provider, model: waiting.model, effort: waiting.effort, activity: "starting", text: "" });
   // The thread shows the turn of the repository wherever it runs: the one that answers, else the oldest follow-up that waits.
@@ -355,7 +356,9 @@ export function createAgentChat(options = {}) {
       void postAction("log-ack", turn.repositoryId, { consumer: "aril", through: turn.logThrough }).catch(() => {});
     }
     const answer = typeof outcome?.text === "string" ? outcome.text : "";
-    let read = status === "complete" ? extractProposal(answer, { grantWrite: Boolean(turn.grantPlans) }) : { text: visibleAnswer(answer), proposal: null, unreadable: false };
+    // The choices block comes out of the answer first; the proposal is read from the text that is left.
+    const offered = status === "complete" ? extractChoices(answer) : null;
+    let read = offered ? extractProposal(offered.text, { grantWrite: Boolean(turn.grantPlans) }) : { text: shownAnswer(answer), proposal: null, unreadable: false };
     try {
       const conversation = await store.read(turn.repositoryId, turn.conversationId);
       if (!conversation) return;
@@ -399,6 +402,12 @@ export function createAgentChat(options = {}) {
           results: read.proposal.operations.map((_, index) => taskIds ? { ok: true, taskId: taskIds[index] } : { ok: false, error }) };
       }
       if (read.unreadable) message.proposalUnreadable = true;
+      // A proposal already has Apply and Dismiss, and a grant write turn offers nothing to the owner: a choices block beside either is dropped.
+      // One that cannot be read leaves only a quiet mark, which the next prompt reads so Aril never assumes buttons the owner did not see.
+      if (offered && !message.proposal && !read.unreadable && !turn.grantPlans) {
+        if (offered.choices) message.choices = offered.choices;
+        else if (offered.unreadable) message.choicesUnreadable = true;
+      }
       return await store.save(turn.repositoryId, { ...conversation, updatedAt: message.at, messages: [...conversation.messages, message] });
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
     finally { release(turn); if (status === "complete") compaction.afterTurn(turn.repositoryId); }

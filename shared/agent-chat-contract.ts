@@ -129,6 +129,11 @@ export type AgentChatTiming = {
   prompt: { instructions: number; board: number; taskLog: number; conversation: number; message: number; other: number };
 };
 
+// What Aril offers under an answer: 1 to 4 quick replies, or one multiple-choice question with 2 to 4 options. The first option is
+// the one Aril recommends. A choice only sends its label as the owner's own message; it applies and starts nothing.
+export type AgentChatQuestionOption = { label: string; detail: string };
+export type AgentChatChoices = { replies: string[] } | { question: string; options: AgentChatQuestionOption[] };
+
 export type AgentChatUserMessage = { id: string; role: "user"; text: string; at: string; images?: AgentChatImage[] };
 export type AgentChatAgentMessage = {
   id: string;
@@ -143,6 +148,8 @@ export type AgentChatAgentMessage = {
   proposal?: AgentChatProposal;
   // The agent wrote a proposal the desktop could not read or permit in this follow-up, so nothing is offered.
   proposalUnreadable?: boolean;
+  // Quick replies or one multiple-choice question, for an answer with no proposal. Never on a grant follow-up line.
+  choices?: AgentChatChoices;
   // The ID of the proposal this answer follows up: the desktop asked for it after the owner applied or dismissed that
   // proposal, with no message of the owner before it. After an applied or partial outcome it may carry
   // another board proposal that waits for the owner; never start_session, set_queue, settings, or memory operations.
@@ -228,6 +235,13 @@ export const AGENT_CHAT_BOUNDS = {
   cursorLength: 200,
   // The longest time a timing may hold: an hour, in milliseconds.
   timingMs: 3_600_000,
+  // Choices under an answer: quick replies, and one question with its options. Lengths are in characters.
+  replies: 4,
+  replyLength: 40,
+  options: { min: 2, max: 4 },
+  questionLength: 120,
+  optionLabelLength: 60,
+  optionDetailLength: 120,
 } as const;
 
 export const AGENT_CHAT_CONVERSATION_ID_PATTERN = /^chat-[0-9a-f]{12}$/u;

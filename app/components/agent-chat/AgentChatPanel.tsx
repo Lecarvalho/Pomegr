@@ -118,6 +118,18 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
       setAttached((current) => (current.length === 0 ? images : current));
     }
   };
+  // A tap on a quick reply or an option sends its label as the owner's own message, with the run the composer shows. The draft stays as it is.
+  // Only a click the keyboard made keeps focus in the field: a tap on a phone should not open the keyboard.
+  const choose = async (label: string, byKeyboard: boolean) => {
+    if (view.turn !== null || view.pendingMessage !== null) return;
+    setSearchOpen(false);
+    search.setQuery("");
+    setSentProvider(run.provider);
+    setSentAt(new Date().toISOString());
+    setPin((current) => current + 1);
+    if (byKeyboard) composer.current?.focus();
+    await view.send(label, run.provider, run.model, run.effort);
+  };
   const attach = async (files: File[]) => {
     const { accepted, message } = acceptChatImageFiles(files, attached.length + uploading);
     setImageError(message);
@@ -148,7 +160,7 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
     <div className="agentChatBody">
       <AgentChatMessages state={logState} messages={view.messages} summarized={view.summarized} turn={view.turn} pendingMessage={view.pendingMessage} pendingAt={sentAt} pendingImages={view.pendingImages} imageUrls={imageUrls} tasks={board.tasks}
         resolving={view.resolving} pinSignal={pin} target={target} hasOlder={view.hasOlder} loadingOlder={view.loadingOlder} startHere={availability === "desktop"} heldStart={heldStart}
-        onLoadOlder={() => { void view.loadOlder(); }} onSuggest={suggest} onApply={(conversationId, proposalId) => { void apply(conversationId, proposalId); }} onDismiss={(conversationId, proposalId) => { void view.dismiss(conversationId, proposalId); }} />
+        onLoadOlder={() => { void view.loadOlder(); }} onSuggest={suggest} onChoose={(label, byKeyboard) => { void choose(label, byKeyboard); }} onApply={(conversationId, proposalId) => { void apply(conversationId, proposalId); }} onDismiss={(conversationId, proposalId) => { void view.dismiss(conversationId, proposalId); }} />
     </div>
     <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop}
       modelOptions={modelOptions} modelValue={chatModelValue(run)}

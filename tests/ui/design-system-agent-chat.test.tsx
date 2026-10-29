@@ -161,6 +161,25 @@ describe("Design-system reference page, Agent chat", { timeout: 20_000 }, () => 
     expect(queueCard("Queue change, not changed")).toHaveTextContent("Queue not changed. Pomegr did not answer. Try again.");
     expect(within(queueCard("Queue change, not changed")).getByRole("button", { name: "Turn queue on" })).toBeEnabled();
 
+    // Choices under Aril's newest answer: Quiet buttons, or the rows of one question with the first marked Recommended; quiet text once answered, with the pick marked.
+    const replies = within(sample(chat, "Panel, quick replies")).getByRole("list", { name: "Quick replies" });
+    expect(within(replies).getAllByRole("button").map((button) => button.textContent)).toEqual(["Squash", "Merge commit", "Tell me more"]);
+    for (const button of within(replies).getAllByRole("button")) expect(button).toHaveClass("commandQuietAction", "agentChatReply");
+    const answered = within(sample(chat, "Panel, quick replies, answered")).getByRole("list", { name: "Quick replies, answered" });
+    expect(within(answered).queryAllByRole("button")).toHaveLength(0);
+    expect(answered.querySelector(".isPicked")).toHaveTextContent("SquashChosen");
+    for (const button of within(within(sample(chat, "Panel, quick replies, waiting")).getByRole("list", { name: "Quick replies" })).getAllByRole("button")) expect(button).toBeDisabled();
+    const question = within(sample(chat, "Panel, multiple-choice question")).getByRole("group", { name: "Which merge method should this repository use?" });
+    const choiceRows = within(question).getAllByRole("button");
+    expect(choiceRows).toHaveLength(3);
+    for (const row of choiceRows) expect(row).toHaveClass("commandQuietAction", "agentChatChoice");
+    expect(choiceRows[0].querySelector(".commandChip")).toHaveTextContent("Recommended");
+    expect(choiceRows[1].querySelector(".commandChip")).toBeNull();
+    expect(choiceRows[2].querySelector(".agentChatChoiceDetail")).toHaveTextContent("A straight history, but it rewrites commits.");
+    const settled = within(sample(chat, "Panel, multiple-choice question, answered")).getByRole("group", { name: "Which merge method should this repository use?" });
+    expect(within(settled).queryAllByRole("button")).toHaveLength(0);
+    expect(settled.querySelector(".isPicked")).toHaveTextContent("Merge commitChosen");
+
     // The model and the effort: named models grouped by provider, never a default, and Medium to start; with no known model, the provider's name.
     const chosen = sample(chat, "Composer, model and effort");
     expect(within(chosen).getByRole("combobox", { name: "Model" })).toHaveTextContent(/^model-large$/);
