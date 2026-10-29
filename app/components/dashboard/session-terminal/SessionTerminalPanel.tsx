@@ -10,7 +10,7 @@ type Message = { kind: "owner" | "agent"; at: number | null; text: string }
   | { kind: "tool"; at: number | null; name: string; outcome: "completed" | "failed" | "pending" };
 export type HistoryPage = { messages: Message[]; cursor: Position | null; older: Position | null; reset: boolean; status: "ok" | "missing" | "unsupported" };
 type Request = { cursor?: Position; before?: Position; limit?: number };
-type ContinueStatus = "started" | "cancelled" | "live" | "unknown" | "folder_missing" | "history_missing" | "cli_missing" | "busy" | "invalid" | "not_found" | "unavailable" | "failed";
+type ContinueStatus = "started" | "cancelled" | "live" | "unknown" | "folder_missing" | "history_missing" | "cli_missing" | "environment_invalid" | "busy" | "invalid" | "not_found" | "unavailable" | "failed";
 type Bridge = { sessionHistory: (sessionId: string, request: Request) => Promise<{ ok: true; page: HistoryPage } | { ok: false }>; sessionContinue?: (sessionId: string) => Promise<{ status: ContinueStatus }>; openSessionLink?: (url: string) => Promise<{ ok: true } | { ok: false; error: "invalid" }> };
 function bridge() {
   if (typeof window === "undefined") return undefined;
@@ -66,7 +66,8 @@ export function SessionTerminalSurface({ page, busy, failed, live, onRefresh, on
 
 const CONTINUE_REASONS: Record<Exclude<ContinueStatus, "started" | "cancelled">, string> = {
   live: "session is already running", unknown: "session ownership could not be confirmed", folder_missing: "working directory is missing",
-  history_missing: "provider history is unavailable", cli_missing: "provider command is unavailable", busy: "another terminal action is in progress",
+  history_missing: "provider history is unavailable", cli_missing: "provider command is unavailable",
+  environment_invalid: "Windows environment is too large for a session or has a variable name a session cannot take", busy: "another terminal action is in progress",
   invalid: "session cannot be continued", not_found: "session was not found", unavailable: "terminal host is unavailable", failed: "session could not be continued",
 };
 function HistoryPanel({ sessionId, live, onContinued, allowContinue = true }: { sessionId: string; live: boolean; onContinued?: () => void; allowContinue?: boolean }) {

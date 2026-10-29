@@ -341,7 +341,7 @@ type TaskBoard = {
   tasks: Task[];
   queue: {
     status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null;
-    pauseReason: "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | "worktree_dirty" | null;
+    pauseReason: "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | "worktree_dirty" | "environment_invalid" | null;
     order: string[];
     schedule?: { startAt: string | null; stopAfter: string | null };   // absent when neither time is set
     gates?: {                              // absent from a board that is not ready and from an older monitor
@@ -1154,10 +1154,11 @@ its parallel group. Every start first passes the [start gates](#start-gates).
 - **Pause.** A start that does not succeed pauses the queue and is not retried: the
   runner posts `POST /internal/tasks/queue-pause` with `{ id, reason }`, the monitor
   stores `paused` with the task in `blockedBy` and the fixed reason (`cli_missing`,
-  `plugin_missing`, `unsupported_platform`, `worktree_dirty`, or `start_failed`), and offers
-  no next start until the user turns the queue on again. The runner reports a start's
-  fixed status as the reason when it is one of the first four, and `start_failed` for any
-  other failure; `worktree_dirty` is a requeued parallel task whose own worktree holds
+  `plugin_missing`, `unsupported_platform`, `worktree_dirty`, `environment_invalid`, or
+  `start_failed`), and offers no next start until the user turns the queue on again. The
+  runner reports a start's fixed status as the reason when it is one of the first five,
+  and `start_failed` for any other failure; `environment_invalid` is a
+  [session environment](#session-environment) over the terminal host's bounds; `worktree_dirty` is a requeued parallel task whose own worktree holds
   uncommitted changes, which Pomegr never removes. The user commits or discards them in
   the folder (the Queue banner's Open folder, see [Boundaries](#boundaries)) and then turns
   the queue on again. A start whose terminal opened but whose
@@ -2416,8 +2417,8 @@ A manual start is explicit and runs on the desktop computer.
    While an owner-started grant remains active, the desktop grant runner starts its offered tasks and reviews without per-start confirmation.
 2. Desktop main creates the provider CLI in the desktop-owned terminal host, in the
    repository root or task worktree. It passes the executable, argument array, and
-   working directory explicitly, with the owner's inherited session environment and
-   `POMEGR_TASK_TOKEN`. Task text is untrusted user content and never enters
+   working directory explicitly, with the owner's current
+   [session environment](#session-environment) and `POMEGR_TASK_TOKEN`. Task text is untrusted user content and never enters
    a command line or path.
 3. The session prompt is a fixed template holding the task text, the files of the
    task's images when it has any, the Complete when list, and
@@ -2444,7 +2445,7 @@ with the started session linked to its task and run in Pomegr's terminal host.
   one fixed status and nothing else: `started`, `cancelled`,
   `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`, `gate_held`,
   `tree_dirty`, `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`,
-  `failed`, or `worktree_dirty`.
+  `failed`, `worktree_dirty`, or `environment_invalid`.
 - Desktop main checks the platform and looks for the Claude Code and Codex executables.
   An IPC start then shows the native confirmation. A paired start was already confirmed on the requesting device. Only after the user
   confirms does it ask the monitor for the start plan, because the plan mints a
@@ -2483,8 +2484,22 @@ with the started session linked to its task and run in Pomegr's terminal host.
   in the prompt. A Claude Code plan may add the fixed `--remote-control` flag after the
   prompt and before its image flag. Pomegr supplies no session name. Remote Control stays
   Claude Code's feature; Pomegr does not connect to it or send it anything.
-- Desktop main passes `userSessionEnvironment(sourceEnvironment)` plus the fresh
-  `POMEGR_TASK_TOKEN`: the owner's full inherited environment minus `ELECTRON_*`,
+- <a id="session-environment"></a>**Session environment.** Desktop main builds each start's
+  environment when the start runs, not when the app started
+  (`createSessionEnvironment` in `desktop/runtime/provider-settings.mjs`). On Windows it
+  reads `HKCU\Environment` and
+  `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment` through Windows
+  PowerShell, with a 3-second bound and no shell (`desktop/runtime/session-environment.mjs`).
+  It lays them over the copy taken at app start as Windows builds a new logon's: machine
+  values, then user values, plain values before `REG_EXPAND_SZ` values, which it expands,
+  and `PATH` as the machine `Path` followed by the user `Path`. A variable that only the
+  app's process had, such as one its launcher set or `PORTABLE_EXECUTABLE_*`, is kept. A
+  variable the registry held at app start and no longer holds is dropped. A read that
+  fails or times out uses the copy taken at app start and logs nothing. The selected
+  provider folders apply last, and executable discovery uses the same environment. Other
+  platforms keep the copy taken at app start.
+- Desktop main passes `userSessionEnvironment` of that environment plus the fresh
+  `POMEGR_TASK_TOKEN`: the owner's full environment minus `ELECTRON_*`,
   `POMEGR_SMOKE_*`, `POMEGR_START_*`, `POMEGR_MONITOR_TOKEN`, `POMEGR_MONITOR_ORIGIN`,
   and the old `POMEGR_TASK_TOKEN`, matched without case sensitivity. When the app was
   started from inside a Claude Code or Codex session, it also leaves out the variables
@@ -2497,7 +2512,9 @@ with the started session linked to its task and run in Pomegr's terminal host.
 - The host validates environment shape and bounds without a name allowlist: at most
   512 string variables, names matching `^[A-Za-z_][A-Za-z0-9_()]{0,127}$`, each value at
   most 32767 characters, no NUL in names or values, and at most 48 KiB of serialized
-  UTF-8 JSON. The whole create frame retains its 64 KiB limit.
+  UTF-8 JSON. The whole create frame retains its 64 KiB limit. Desktop main checks the
+  same bounds first (`sessionEnvironmentFits`): an environment over them fails the start
+  with `environment_invalid`, aborts its dispatch, and is never cut to fit.
 - `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is set only when inherited or selected in Settings.
   The host launches the executable with an argument array, without a shell; it never
   launches PowerShell.
@@ -2604,10 +2621,10 @@ ends a session; it is a control action of the desktop, not of the monitor, an ag
 - Main validates the IDs and absolute normalized folder, then shows **Continue this session in Pomegr?** with Cancel as default.
 - The dialog shows the title, provider, and working folder. Cancel launches nothing.
 - After confirmation, main reads the plan again and refuses changed liveness or a changed or missing working folder.
-- Fixed refusals are `live`, `unknown`, `folder_missing`, `history_missing`, `cli_missing`, and `busy` for an already starting or running resume.
+- Fixed refusals are `live`, `unknown`, `folder_missing`, `history_missing`, `cli_missing`, `environment_invalid`, and `busy` for an already starting or running resume.
 - Codex `unknown` with `writer_released` remains unknown and cannot resume.
 - Invalid input, absent observation, transport failure, and launch failure answer only fixed statuses.
-- Main shares dispatch's executable resolution and passes `userSessionEnvironment` without minting a dispatch token.
+- Main shares dispatch's executable resolution and passes `userSessionEnvironment` of the current [session environment](#session-environment) without minting a dispatch token.
 - Claude Code receives only `["--resume", localId]`; Codex receives only `["resume", "--no-alt-screen", localId]`, so its transcript stays in the terminal's scrollback.
 - Local IDs must have the provider UUID format before entering arguments. No model, effort, or permission flags are replayed.
 - Continue never falls back to the repository root, requests a fork, or starts a replacement session.

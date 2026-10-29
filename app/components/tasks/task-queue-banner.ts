@@ -19,6 +19,7 @@ const PAUSE_REASONS: Record<TaskQueuePauseReason, string> = {
   start_failed: "the terminal window could not be opened.",
   session_not_linked: "its terminal opened, but the session did not report back.",
   worktree_dirty: "its worktree has uncommitted changes, and Pomegr never removes them.",
+  environment_invalid: "the Windows environment is too large for a session, or has a variable name a session cannot take.",
 };
 const UNKNOWN_PAUSE_REASON = "the start did not succeed.";
 

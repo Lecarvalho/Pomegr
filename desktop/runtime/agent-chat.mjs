@@ -86,6 +86,11 @@ export function createAgentChat(options = {}) {
   const monitorOrigin = trustedMonitorOrigin(options.monitorOrigin);
   const authorizationToken = options.authorizationToken;
   const sourceEnvironment = options.environment || process.env;
+  // Each run's environment is read again when it starts; the fixed one serves executable discovery and the worktrees' Git calls.
+  const sessionEnvironment = typeof options.sessionEnvironment === "function" ? options.sessionEnvironment : async () => sourceEnvironment;
+  const runEnvironment = async () => {
+    try { return userSessionEnvironment(await sessionEnvironment()); } catch { return userSessionEnvironment(sourceEnvironment); }
+  };
   const platform = options.platform || process.platform;
   const fileExists = options.fileExists || existsSync;
   const spawn = options.spawn || spawnChild;
@@ -290,7 +295,7 @@ export function createAgentChat(options = {}) {
   }
 
   // After a turn is stored, an outgrown thread is summarized in the background; a turn that starts stops that run.
-  const compaction = createCompaction({ store, summaries: summaries ?? NO_SUMMARIES, now, runTurn, spawn, env: userSessionEnvironment(sourceEnvironment), executable, repositoryRoot,
+  const compaction = createCompaction({ store, summaries: summaries ?? NO_SUMMARIES, now, runTurn, spawn, env: runEnvironment, executable, repositoryRoot,
     declare: declareRun, withdraw: withdrawRun, timeoutMs: options.compactionTimeoutMs,
     busy: (repositoryId) => active?.repositoryId === repositoryId || [...followUps.values()].some((entry) => entry.repositoryId === repositoryId) });
 
@@ -321,6 +326,7 @@ export function createAgentChat(options = {}) {
         withdrawRun(sessionId);
         return disposed ? release(turn) : await finishTurn(turn, { status: "stopped", text: "" });
       }
+      const env = await runEnvironment();
       const taskServer = await taskReadServer(turn);
       if (disposed || turn.stopped) {
         withdrawRun(sessionId);
@@ -328,7 +334,7 @@ export function createAgentChat(options = {}) {
       }
       const run = runTurn({ instructionsFile,
         spawn, executable: command, provider: turn.provider, model: turn.model, effort: turn.effort, mcpServer: taskServer, images: shown.length > 0 ? { folder: images.folder(turn.repositoryId, conversation.id), files: [] } : null, sessionId,
-        cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
@@ -484,6 +490,7 @@ export function createAgentChat(options = {}) {
       active = turn;
       started = true;
       compaction.cancel(repositoryId);
+      const env = await runEnvironment();
       const taskServer = await taskReadServer(turn);
       if (disposed || turn.stopped) {
         withdrawRun(sessionId);
@@ -491,7 +498,7 @@ export function createAgentChat(options = {}) {
         return UNAVAILABLE;
       }
       const run = runTurn({ instructionsFile,
-        spawn, executable: command, provider, model, effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        spawn, executable: command, provider, model, effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; },
         onActivity: (value) => { turn.activity = value; },
       });
@@ -538,10 +545,11 @@ export function createAgentChat(options = {}) {
       active = turn;
       compaction.cancel(repositoryId);
       sessionId = await declareRun(provider);
+      const env = await runEnvironment();
       const taskServer = await taskReadServer(turn);
       if (disposed || turn.stopped) { await finishTurn(turn, { status: "stopped", text: "" }); return UNAVAILABLE; }
       const run = runTurn({ instructionsFile, spawn, executable: command, provider, model: null, mcpServer: taskServer, images: null, sessionId,
-        cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
+        cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; }, onActivity: (value) => { turn.activity = value; } });
       turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
       turn.timing = () => run.timing?.() ?? null;

@@ -80,10 +80,10 @@ export const AGENT_CHAT_QUEUE_RESULTS: readonly AgentChatQueueResult[] = ["on", 
 
 // Why an approved session start launched nothing: the fixed statuses of a manual start, without `started` and `cancelled`.
 export type AgentChatStartFailure = "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable" | "gate_held" | "unsupported_provider"
-  | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "worktree_dirty" | "tree_dirty";
+  | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "worktree_dirty" | "tree_dirty" | "environment_invalid";
 export const AGENT_CHAT_START_FAILURES: readonly AgentChatStartFailure[] = [
   "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held", "unsupported_provider", "not_found", "busy",
-  "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty",
+  "invalid", "unavailable", "failed", "worktree_dirty", "tree_dirty", "environment_invalid",
 ];
 
 // What became of one approved worktree removal: removed, or the fixed reason the worktree is still on disk.

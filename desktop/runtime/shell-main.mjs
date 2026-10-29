@@ -42,7 +42,7 @@ import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createWebBuildSnapshot } from "./web-build-snapshot.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
-import { createProviderSettingsController, installProviderSettingsIpc, providerSessionEnvironment, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
+import { createProviderSettingsController, installProviderSettingsIpc, createSessionEnvironment, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
 import { createStorageSettingsController, installStorageSettingsIpc, storageSettingsEnvironment } from "./storage-settings.mjs";
 import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "./lan-sharing.mjs";
 import {
@@ -505,7 +505,7 @@ async function startDesktop() {
     if (value) launchEnvironment[key] = value;
   }
   const providerEnvironment = providerSettingsEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot });
-  const taskSessionEnvironment = providerSessionEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot }); // before process.env is stripped
+  const sessionEnvironment = createSessionEnvironment({ environment: process.env, folders: desktopSettings.providerFolders, homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot }); // before process.env is stripped
   async function restartApp() {
     persistCurrentWindowState();
     try {
@@ -676,11 +676,11 @@ async function startDesktop() {
         });
         // An applied chat start takes the Tasks page's manual start, including its native confirmation.
         const repositoryGithub = createRepositoryGithub();
-        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: taskSessionEnvironment, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
+        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           sessionForProcess: (pid) => requestTerminalSession(monitorChild, pid),
           isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken,
-          environment: taskSessionEnvironment, worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
+          environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
           openPath: (directory) => shell.openPath(directory),
           confirm: (request) => confirmTaskStart(dialog, () => mainWindow, request),
           confirmReview: (request) => confirmTaskReviewStart(dialog, () => mainWindow, request),
@@ -726,7 +726,7 @@ async function startDesktop() {
         });
         const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
         const removeTaskBridges = [installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow }), installTaskActionIpc(taskBridge), installTaskImageIpc({ ...taskBridge, action: taskImage }), installTaskFeatureIpc(taskBridge), installTaskLogIpc({ ...taskBridge, action: taskLog }), installTaskScorecardIpc({ ...taskBridge, appVersion: boundedDesktopVersion(app.getVersion()) }), installSessionHistoryIpc(taskBridge), installSessionLinkIpc({ ...taskBridge, openExternal: (url) => shell.openExternal(url) }), installAgentChatIpc({ ...taskBridge, chat: agentChat }),
-          installSessionContinueIpc({ ...taskBridge, terminal: taskStarter.terminal, environment: taskSessionEnvironment,
+          installSessionContinueIpc({ ...taskBridge, terminal: taskStarter.terminal, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current,
             confirm: (plan) => confirmSessionContinue(dialog, () => mainWindow, plan) })];
         removeTaskActionIpc = () => { for (const remove of removeTaskBridges) remove(); };
         removeTaskStartIpc = installTaskStartIpc({

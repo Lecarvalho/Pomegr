@@ -15,7 +15,7 @@ const MAX_CLEANUPS = 64;
 const CLEANUP_EVERY_TICKS = 4;
 const CLEANED = new Set(["removed", "absent"]);
 // Other failures pause as `start_failed`; a manual start in flight, a moved task, or a closed gate never pause (the next tick asks again).
-const PAUSE_REASONS = new Set(["cli_missing", "plugin_missing", "unsupported_platform", "worktree_dirty"]);
+const PAUSE_REASONS = new Set(["cli_missing", "plugin_missing", "unsupported_platform", "worktree_dirty", "environment_invalid"]);
 const SETTLED = new Set(["started", "busy", "not_startable", "gate_held", "tree_dirty", "not_found", "cancelled"]);
 
 function trustedMonitorOrigin(value) {

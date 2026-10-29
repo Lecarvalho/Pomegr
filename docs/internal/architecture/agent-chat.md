@@ -229,8 +229,10 @@ travels on stdin, except Claude's fixed instructions when its system-prompt file
 a path, or the environment. An image folder or file is in an argument only in the form
 desktop main builds: the chat's directory, a validated repository ID and conversation
 ID, and a file named by an image ID that desktop main made. The runner refuses any other
-form and then adds no image argument. The environment is the owner's own, as for a task start
-(`userSessionEnvironment`): the app's own variables and tokens are left out.
+form and then adds no image argument. The environment is the owner's own, read again for
+each run as for a task start ([Tasks: Session environment](tasks.md#session-environment),
+then `userSessionEnvironment`): the app's own variables and tokens are left out. A
+summary run reads it the same way.
 
 **Stop** ends this run. It is Pomegr's own headless process and never a session the
 owner started. Closing the app ends a running turn the same way.

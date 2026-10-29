@@ -7,7 +7,8 @@ export type TaskEffort = "low" | "medium" | "high" | "xhigh";
 export type TaskBoardReadiness = "ready" | "loading" | "unavailable" | "desktop_only";
 export type TaskQueueStatus = "idle" | "running" | "blocked" | "paused";
 // Why a queue is paused: a start the queue made did not succeed.
-export type TaskQueuePauseReason = "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | "worktree_dirty";
+export type TaskQueuePauseReason = "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | "worktree_dirty"
+  | "environment_invalid";
 export type TaskActionError = "invalid" | "not_found" | "limit" | "conflict" | "unsupported";
 
 export type TaskColumnRole = "in_progress" | "review" | "done";
@@ -197,7 +198,7 @@ export const TASK_STATES: readonly TaskState[] = ["not_queued", "queued", "sched
 export const TASK_PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 export const TASK_EFFORTS: readonly TaskEffort[] = ["low", "medium", "high", "xhigh"];
 export const TASK_QUEUE_STATUSES: readonly TaskQueueStatus[] = ["idle", "running", "blocked", "paused"];
-export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty"];
+export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty", "environment_invalid"];
 export const TASK_GATE_THRESHOLDS: readonly TaskGateThreshold[] = [70, 85, 95];
 export const DEFAULT_TASK_GATE_THRESHOLD: TaskGateThreshold = 85;
 export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["earlier_task", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];

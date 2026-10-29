@@ -352,6 +352,7 @@ const START_FAILURE_LINES: Record<AgentChatStartFailure, string> = {
   failed: "Not started. The session could not be started.",
   worktree_dirty: "Not started. This task's worktree had uncommitted changes, and Pomegr never removes them.",
   tree_dirty: "Not started. This repository had uncommitted changes. Commit or discard them, or open the task to start it in a separate worktree.",
+  environment_invalid: "Not started. The Windows environment was too large for a session, or had a variable name a session cannot take.",
 };
 
 /** The task a proposal asks to start a session for, or null for a proposal of board changes. */

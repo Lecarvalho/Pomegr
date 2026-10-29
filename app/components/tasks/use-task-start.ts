@@ -30,6 +30,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   gate_held: "A start gate holds this task. See Start gates in Queue settings.",
   tree_dirty: "This repository has uncommitted changes. Commit or discard them, or start the task in a separate worktree, which leaves them out.",
   worktree_dirty: "This task's worktree has uncommitted changes. Pomegr never removes them. Open the folder to commit or discard them, then try again.",
+  environment_invalid: "The Windows environment is too large for a session, or has a variable name a session cannot take.",
 };
 const FINAL = new Set<TaskStartStatus>(["unsupported_platform", "cli_missing", "plugin_missing", "unsupported_provider"]);
 

@@ -138,6 +138,7 @@ one of these reasons. Fix it, then select **On** again to retry.
 | The Pomegr plugin is not installed in this repository, or needs an update. | Install it, or update it to 0.9.0 or later; see [Reporting plugins](reporting-plugins.md#install-the-plugin). |
 | Starting sessions is available on Windows only. | Start tasks from a Windows computer. |
 | Its worktree has uncommitted changes, and Pomegr never removes them. | Select **Open folder** in the banner (desktop app, Windows), commit or discard the changes there, then select **On** again. |
+| The Windows environment is too large for a session, or has a variable name a session cannot take. | Shorten or remove the variable in Windows environment variables, then select **On** again. |
 | The terminal window could not be opened. | Select **On** to retry. |
 | The terminal opened, but the session did not report back. | Check the plugin, and for Codex that its hooks are trusted. |
 
@@ -147,3 +148,6 @@ one of these reasons. Fix it, then select **On** again to retry.
 - If Pomegr cannot find the Claude Code or Codex program, a start says "The
   provider's command-line tool was not found on this computer."
 - Codex runs plugin hooks only after you trust them.
+- On Windows, each session Pomegr starts gets your user and system environment
+  variables as they are at that start. A variable you add or remove takes effect at
+  the next start without restarting Pomegr.
