@@ -35,6 +35,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 - The **Group by** control is a `.commandSegmented` [Segmented](../../../DESIGN.md#buttons) control.
 - Its options are **Recent**, **Repository**, **Provider**, and **Feature**.
 - Muted 12px text labels the control.
+- On phone and touch each segment is at least its label's width plus 8px padding on each side, and spare width spreads across the segments.
 - The browser remembers the choice for each browser.
 
 | Option | List | Footer |
@@ -146,6 +147,7 @@ The session Task column, Task panel, and Task tab are in [Task board design](tas
 
 - On phone the tabs are content-width and spread across the row.
 - On phone the tabs never scroll horizontally.
+- On phone a tab never shrinks below its label and badge, so all five fit at 360px with a three-digit Agents count.
 - **More** opens the remaining real tab destinations.
 - A tab switch preserves the `agent`, `request`, and `path` query selections.
 

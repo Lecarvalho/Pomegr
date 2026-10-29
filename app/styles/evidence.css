@@ -338,8 +338,9 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .resourcePeakZoomCaveat, .resourcePeaksCaveat { margin: 0; color: var(--muted); font-size: var(--text-caption); }
 
 .resourcePeaksTableHeader { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
-.resourcePeaksRows { display: flex; flex-direction: column; }
-.resourcePeaksRow { display: grid; grid-template-columns: 84px 112px minmax(0, 1fr) 48px; align-items: center; gap: var(--space-2); border-top: 1px solid var(--line); }
+/* Rows share one column grid: the time and metric columns fit their widest value (a 12-hour time with seconds, "Memory 617 MiB") and stay aligned. */
+.resourcePeaksRows { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr) 48px; column-gap: var(--space-3); }
+.resourcePeaksRow { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; border-top: 1px solid var(--line); }
 .resourcePeaksRow:first-child { border-top: 0; }
 .resourcePeaksRow.isSelected { background: var(--panel-2); }
 .resourcePeaksRowSelect { display: contents; }
@@ -401,7 +402,11 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .disclosureSummaryMetrics { gap: 5px 12px; }
   .agentTreeCanvas { padding: 14px; }.agentTreeCard { gap: 6px 10px; padding: 11px; }.agentTreeEvidence { gap-inline: 8px; }.agentTreeNote { margin: 8px 14px 14px; }
   .resourceCardsGrid, .resourcesLowerGrid { grid-template-columns: 1fr; }
-  .resourcePeaksRow { grid-template-columns: 76px 96px minmax(0, 1fr) 40px; }
+  /* A phone row has no room for the task beside the time and metric, so the task takes a second line under them. */
+  .resourcePeaksRows { grid-template-columns: max-content max-content minmax(0, 1fr) 40px; column-gap: var(--space-2); }
+  .resourcePeaksRowSelect > .resourcePeaksRowSummary { grid-column: 1 / 4; grid-row: 2; padding: 0 0 8px var(--space-1); }
+  .resourcePeaksRowSelect > .resourcePeaksRowSummary:empty { display: none; }
+  .resourcePeaksRowRequest { grid-column: 4; grid-row: 1; }
   .resourcePeakZoomTasks th:nth-child(1) { width: 72px; }
   .resourcePeakZoomTasks th:nth-child(4) { width: 76px; }
   .resourcePeakZoomRow { grid-template-columns: 1fr; gap: 4px; }
