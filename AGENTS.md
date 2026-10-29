@@ -16,12 +16,8 @@ copying it here.
   depend on it.
 - In the desktop app and on a paired device, Pomegr also has an agent chat. The owner
   talks to Aril, an agent that reads the task board and Pomegr's observations and
-  proposes board changes and, when the owner asks, the start of one task's session or
-  turning the repository's queue on or off. Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task. Aril otherwise changes and starts nothing, except
-  through the fixed grant actions while a grant the owner started is active: it may then
-  start the Ready tasks its work rules select, their reviews, send failed work back
-  within the send-back limit, merge a task's pull request on green CI after a passing review,
-  with the repository's merge method, directly or through the repository's auto-merge, and, when the owner settled it, delete its branch after the merge, at most once per head commit, write tasks from the plans the grant names, and, when the owner allowed Mark done, mark a merged task Done once its settled acceptance passes. The owner applies every other change.
+  proposes changes. The owner applies them, except for the few actions
+  [Agent chat](docs/internal/architecture/agent-chat.md) lets Aril take by itself.
 - Describe a capability as available only when its contract says that it is built.
 - Never describe a heuristic as an AI judgment or an authoritative measurement.
 
@@ -105,37 +101,17 @@ These rules always apply:
   It never resumes a live or unknown session, or resumes through an agent, Aril, queue,
   or tool. The [Continue plan](docs/internal/architecture/privacy/session-evidence.md#continue-plan)
   carries the working folder to desktop main only. Managed messages remain deferred.
-  A grant is the third owner-confirmed control action: the owner starts it in the desktop
-  app (or on a paired device the owner allowed), it is scoped by Aril settings and
-  time-bound, and while it is active the desktop starts selected tasks and reviews behind
-  every start gate, sends failed work back within its limit, and merges a task's pull request
-  on green CI after a passing review, with the repository's merge method, directly or through the repository's auto-merge, and, when the owner settled it, deletes its branch after the merge, at most once per head commit, writes tasks from the plans the grant names,
-  and, when the owner allowed Mark done, marks a merged task Done once its settled acceptance passes,
-  without a per-action confirmation. A session never marks its own task Done. Merge is a control action Pomegr may perform only under a grant, with the checks above.
-  Stopping it takes effect at once; it never ends a running session. No agent, Aril run,
-  queue, or MCP tool may start a grant.
+  A grant is the third owner-confirmed control action. Only the owner starts one, in the
+  desktop app or on a paired device the owner allowed. While it is active, the desktop
+  takes the fixed actions of [Aril grants](docs/internal/architecture/tasks.md#aril-grants)
+  without asking each time. Stopping it takes effect at once and ends no running session.
+  A session never marks its own task Done.
   Each other control action needs an explicit confirmation boundary.
-- The agent chat starts only its own read-only provider run, which Pomegr may stop. It
-  starts one for each message of the owner, and one for the follow-up after the owner
-  applies or dismisses a proposal. While a grant works, desktop main also writes fixed
-  grant follow-up lines from the task log into the chat and notifies, with no provider run;
-  a grant follow-up proposes, applies, and starts nothing, and is never an owner message. After any applied or partial outcome, a
-  follow-up may offer one proposal of board changes that continues the owner's earlier request.
-  The owner must Apply or Dismiss that proposal; no proposal applies itself or starts an
-  automatic chain. Aril may record a rework link (references and a cause from a fixed list) without Apply; it changes no task. Another exception is a grant that allows writing tasks: the tasks Aril
-  writes from the grant's named plans are created in Ready without Apply, within the
-  grant's cap, and nothing else in that answer applies.
-  A follow-up after a dismissed, refused, or failed proposal carries no
-  proposal. Follow-ups never propose a session start or queue change. They apply and
-  retry nothing. Board changes still use the fixed task actions after the owner applies
-  each proposal, except for the grant task writes above. An image reaches a task only through the task image route, with an image
-  the owner sent in that conversation, after the owner applies a proposal. A task's
-  session starts only through the manual start, after the owner confirms a start proposal
-  in the desktop app, or under an active grant. The queue changes only through the Tasks page's queue action, with
-  the state the proposal names, after the owner applies a queue proposal in the desktop
-  app or on a paired device. Aril may propose removing task worktrees; a worktree is
-  removed only through the desktop's safe removal, after the owner applies that proposal
-  in the desktop app, or when its task is marked done.
+- Aril starts only its own read-only provider runs, and Pomegr may stop them. Aril
+  changes nothing itself: each change goes through a fixed action, after the owner
+  applies Aril's proposal or while a grant is active. No proposal applies itself.
+  [Agent chat](docs/internal/architecture/agent-chat.md) lists every run, every action,
+  and their exceptions. A change that adds one updates that page in the same pull request.
 - Start processes with `execFile` or `spawn` and an argument array. Never put
   session-derived text into a command line or a path.
 - Never commit `.env`, transcripts, credentials, build output, or Wrangler state.
