@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 import { normalizeProposal, applyOperations } from "../desktop/runtime/agent-chat-proposal.mjs";
 import { composePrompt, conversationHistory, proposalOutcome } from "../desktop/runtime/agent-chat-prompt.mjs";
-import { agentMessage, chatHarness, readyBoard, repositoryId, root, seed, send, until, userMessage } from "./helpers/agent-chat-harness.mjs";
+import { createWorktreeInventory } from "../desktop/runtime/agent-chat-worktrees.mjs";
+import { createTaskWorktrees } from "../desktop/runtime/task-worktree.mjs";
+import { agentMessage, chatHarness, finishTurn, readyBoard, repositoryId, root, seed, send, until, userMessage } from "./helpers/agent-chat-harness.mjs";
 
 const operation = (id = "T-1", branch = true) => ({ op: "remove_worktree", id, branch });
 const proposal = (operations = [operation()]) => ({ summary: "Remove old worktrees", operations });
 const row = { taskId: "T-1", state: "done", column: "Done", clean: true, uniqueCommits: false, sizeMB: 3, atLeast: true };
+// What `inventory` of the task worktrees answers: the Git facts of a worktree and no size.
+const fact = { taskId: "T-1", clean: true, uniqueCommits: false };
 const proposalId = "p-0123456789ab";
 const pending = (operations) => ({ ...proposal(operations), id: proposalId, state: "pending" });
 
@@ -30,24 +35,198 @@ test("task_worktrees appears only with rows and projects facts without paths", (
   assert.doesNotMatch(prompt, /PRIVATE_PATH/u);
 });
 
-test("owner and grant-write turns acquire the repository inventory without storing it", async (context) => {
+test("worktrees that are not known yet are told in one short sentence, not left out as if there were none", () => {
+  const base = { board: readyBoard(), repositoryName: "Example", message: "Clean up" };
+  const pending = composePrompt({ ...base, worktrees: null });
+  assert.match(pending, /<task_worktrees>\nTask worktree facts are still being read, so do not say there are none\.\n<\/task_worktrees>/u);
+  assert.doesNotMatch(pending, /These are Pomegr task worktrees|read these facts/u);
+  assert.doesNotMatch(composePrompt({ ...base, worktrees: [] }), /<task_worktrees>/u, "a known empty list leaves the section out");
+});
+
+test("task_worktrees says when its facts were read, that a size can be unknown, and that a removal reads the worktree again", () => {
+  const base = { board: readyBoard(), repositoryName: "Example", message: "Clean up" };
+  const prompt = composePrompt({ ...base, worktrees: [row, { ...row, taskId: "T-2", sizeMB: null, atLeast: false }], worktreesAt: Date.parse("2026-10-29T10:00:00.000Z") });
+  assert.match(prompt, /"taskId":"T-1".*"size":"at least 3 MB"/u);
+  assert.match(prompt, /"taskId":"T-2".*"size":"unknown"/u);
+  assert.match(prompt, /read these facts at 2026-10-29T10:00:00\.000Z, so they may be a few minutes old, and a size can be unknown or older/u);
+  assert.match(prompt, /reads a worktree's tree and commits again when the owner applies its removal/u);
+  assert.doesNotMatch(composePrompt({ ...base, worktrees: [row] }), / at 20\d\d-/u, "no time is told when none was given");
+});
+
+test("owner and grant-write turns never wait for the worktree facts, then read them, join the board, and store nothing", async (context) => {
   for (const grant of [false, true]) {
     const reads = [];
-    const h = await chatHarness(context, { worktrees: { inventory: async (request) => { reads.push(request); return [row]; } } });
-    // A grant-write turn holds its promise until the answer is stored, so the run is finished before it is awaited.
-    const sending = grant ? h.chat.grantWrite({ repositoryId, plans: ["plan.md"] }) : send(h);
-    const run = await until(() => h.runs[0]);
+    const h = await chatHarness(context, { worktrees: { inventory: async (request) => { reads.push(request); return [fact]; } } });
+    h.state.board.tasks = [{ ...readyBoard().tasks[0], id: "T-1", state: "done", columnId: "col-e" }];
+    const turn = async () => {
+      const before = h.runs.length;
+      // A grant-write turn holds its promise until the answer is stored, so the run is finished before it is awaited.
+      const sending = grant ? h.chat.grantWrite({ repositoryId, plans: ["plan.md"] }) : send(h);
+      const run = await until(() => h.runs[before]);
+      return { run, finish: async () => {
+        run.resolve({ status: "complete", text: "No changes." });
+        const sent = await sending;
+        assert.equal(sent.ok, true);
+        await until(async () => (await h.handle("read", { repositoryId, conversationId: sent.conversationId })).turn === null);
+        assert.doesNotMatch(JSON.stringify(await h.reload().read(repositoryId, sent.conversationId)), /sizeMB|task_worktrees|still being read/u);
+      } };
+    };
+    // The first turn finds no cache: it starts the one read, goes on without its rows, and does not say that there are none.
+    const cold = await turn();
+    assert.deepEqual(reads, [{ repositoryRoot: root, repositoryId }], "Git facts of the repository, with no board and no size walk");
+    assert.match(cold.run.options.prompt, /<task_worktrees>\nTask worktree facts are still being read, so do not say there are none\.\n<\/task_worktrees>/u);
+    assert.doesNotMatch(cold.run.options.prompt, /"taskId":"T-1"/u);
+    await cold.finish();
+    // The next turn finds the rows, with the board of its own turn, and reads nothing again.
+    const warm = await turn();
     assert.equal(reads.length, 1);
-    assert.equal(reads[0].repositoryRoot, root);
-    assert.deepEqual(reads[0].tasks, h.state.board.tasks);
-    assert.deepEqual(reads[0].columns, h.state.board.columns);
-    assert.match(run.options.prompt, /<task_worktrees>/u);
-    run.resolve({ status: "complete", text: "No changes." });
-    const sent = await sending;
-    assert.equal(sent.ok, true);
-    await until(async () => (await h.handle("read", { repositoryId, conversationId: sent.conversationId })).turn === null);
-    assert.doesNotMatch(JSON.stringify(await h.reload().read(repositoryId, sent.conversationId)), /sizeMB|task_worktrees/u);
+    assert.match(warm.run.options.prompt, /"taskId":"T-1","state":"done","column":"Done","clean":true,"uniqueCommits":false,"size":"unknown"/u, "the board of this turn, and a size nobody measured");
+    assert.match(warm.run.options.prompt, /Pomegr read these facts at 20\d\d-/u);
+    assert.doesNotMatch(warm.run.options.prompt, /still being read/u);
+    await warm.finish();
   }
+});
+
+test("an owner's next message answers from the cached facts without calling Git again, and a stale cache is read again once in the background", async (context) => {
+  let wall = 5_000_000;
+  const reads = [];
+  const refresh = (() => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; })();
+  const worktrees = { inventory: async (request) => { reads.push(request); return reads.length === 1 ? [fact] : refresh.promise; }, sizes: () => new Promise(() => {}) };
+  const worktreeInventory = createWorktreeInventory({ worktrees, now: () => wall });
+  const h = await chatHarness(context, { worktrees, worktreeInventory });
+  const first = await send(h);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Ok." }, first.conversationId);
+  assert.equal(reads.length, 1);
+  assert.match(h.runs[0].options.prompt, /still being read/u, "the first turn found no cache and did not wait");
+  await until(() => worktreeInventory.read({ repositoryRoot: root, repositoryId }).rows !== null);
+
+  wall += 60_000;
+  const second = await send(h, { conversationId: first.conversationId, text: "And now?" });
+  await finishTurn(h, h.runs[1], { status: "complete", text: "Ok." }, second.conversationId);
+  assert.equal(reads.length, 1, "a fresh cache calls nothing");
+  assert.match(h.runs[1].options.prompt, /"taskId":"T-1".*"size":"unknown"/u, "and the size walk, which never ends here, is not waited for");
+
+  wall += 4 * 60_000;
+  const third = await send(h, { conversationId: first.conversationId, text: "Later?" });
+  await finishTurn(h, h.runs[2], { status: "complete", text: "Ok." }, third.conversationId);
+  assert.equal(reads.length, 2, "a stale cache is read again");
+  assert.match(h.runs[2].options.prompt, /"taskId":"T-1"/u, "and the turn did not wait for it");
+  const fourth = await send(h, { conversationId: first.conversationId, text: "Again?" });
+  await finishTurn(h, h.runs[3], { status: "complete", text: "Ok." }, fourth.conversationId);
+  assert.equal(reads.length, 2, "one read at a time");
+  refresh.resolve([]);
+});
+
+test("a cold turn does not wait for Git facts that never come, and the turn after it starts no second read", async (context) => {
+  const reads = [];
+  const h = await chatHarness(context, { worktrees: { inventory: (request) => { reads.push(request); return new Promise(() => {}); } } });
+  const first = await send(h);
+  assert.equal(first.ok, true);
+  assert.match((await until(() => h.runs[0])).options.prompt, /Task worktree facts are still being read, so do not say there are none\./u);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Ok." }, first.conversationId);
+  const second = await send(h, { conversationId: first.conversationId, text: "Still there?" });
+  await finishTurn(h, h.runs[1], { status: "complete", text: "Ok." }, second.conversationId);
+  assert.match(h.runs[1].options.prompt, /still being read/u);
+  assert.equal(reads.length, 1, "one read at a time");
+});
+
+test("desktop main reads the worktree facts of every board a little after it starts, so the first message finds them", async (context) => {
+  const reads = [];
+  const worktrees = { inventory: async (request) => { reads.push(request); return [fact]; } };
+  const worktreeInventory = createWorktreeInventory({ worktrees });
+  const timers = [];
+  const h = await chatHarness(context, { worktrees, worktreeInventory, prefetchWorktrees: {
+    delaysMs: [10_000], setTimer: (callback, delay) => { const timer = { callback, delay, cleared: false, unref() {} }; timers.push(timer); return timer; }, clearTimer: (timer) => { timer.cleared = true; },
+  } });
+  assert.deepEqual(timers.map(({ delay }) => delay), [10_000]);
+  assert.deepEqual([reads, h.calls], [[], []], "nothing is asked of the monitor or of Git before the delay");
+  timers[0].callback();
+  await until(() => reads.length === 1);
+  assert.deepEqual(reads, [{ repositoryRoot: root, repositoryId }]);
+  assert.deepEqual(h.calls.map((call) => `${call.pathname}${call.search}`), ["/api/tasks?view=home", "/internal/tasks/worktree-root"]);
+  await until(() => worktreeInventory.read({ repositoryRoot: root, repositoryId }).rows !== null);
+
+  // The first message finds the rows and reads nothing.
+  const sent = await send(h);
+  assert.equal(sent.ok, true);
+  const run = await until(() => h.runs[0]);
+  assert.match(run.options.prompt, /"taskId":"T-1"/u);
+  assert.doesNotMatch(run.options.prompt, /still being read/u);
+  assert.equal(reads.length, 1);
+  await finishTurn(h, run, { status: "complete", text: "Ok." }, sent.conversationId);
+});
+
+test("closing the app stops a worktree prefetch that has not run", async (context) => {
+  const timers = [];
+  const reads = [];
+  const h = await chatHarness(context, { worktrees: { inventory: async (request) => { reads.push(request); return []; } }, prefetchWorktrees: {
+    delaysMs: [10_000, 60_000], setTimer: (callback, delay) => { const timer = { callback, delay, cleared: false, unref() {} }; timers.push(timer); return timer; }, clearTimer: (timer) => { timer.cleared = true; },
+  } });
+  h.chat.dispose();
+  assert.deepEqual(timers.map(({ cleared }) => cleared), [true, true]);
+  assert.deepEqual([reads, h.calls], [[], []]);
+});
+
+test("a removal reads the live tree and commits again, whatever the cached facts say", async (context) => {
+  // The cache says T-1 is clean. Then its tree changes. Apply must see the live tree, and Git must not remove anything.
+  const repositoryRoot = path.resolve("/work/repo");
+  const directory = path.join(repositoryRoot, ".pomegr", "worktrees", "T-1");
+  const state = { dirty: false, commits: "0\n", removed: false };
+  const git = [];
+  const listing = () => `worktree ${repositoryRoot.replaceAll("\\", "/")}\nHEAD a\nbranch refs/heads/main\n\n${state.removed ? "" : `worktree ${directory.replaceAll("\\", "/")}\nHEAD b\nbranch refs/heads/tasks/T-1\n\n`}`;
+  const worktrees = createTaskWorktrees({
+    environment: {},
+    directoryExists: (target) => target === directory && !state.removed,
+    openDirectory: async () => { throw new Error("no walk"); },
+    execFile: (_file, args, _options, callback) => {
+      git.push(args.slice(2).join(" "));
+      const stdout = args[2] === "worktree" && args[3] === "list" ? listing() : args[2] === "status" ? (state.dirty ? " M work.txt\n" : "") : args[2] === "rev-list" ? state.commits : "";
+      if (args[2] === "worktree" && args[3] === "remove") state.removed = true;
+      queueMicrotask(() => callback(null, stdout, ""));
+    },
+  });
+  const worktreeInventory = createWorktreeInventory({ worktrees });
+  const h = await chatHarness(context, { worktrees, worktreeInventory });
+  h.state.rootAnswer = { ok: true, root: repositoryRoot };
+  h.state.board.tasks = [{ ...readyBoard().tasks[0], id: "T-1", state: "done", columnId: "col-e" }];
+  const first = await send(h);
+  await finishTurn(h, h.runs[0], { status: "complete", text: "Ok." }, first.conversationId);
+  await until(() => worktreeInventory.read({ repositoryRoot, repositoryId }).rows !== null);
+  const sent = await send(h, { conversationId: first.conversationId, text: "What remains?" });
+  assert.match(h.runs[1].options.prompt, /"taskId":"T-1","state":"done","column":"Done","clean":true,"uniqueCommits":false/u);
+  const conversation = await finishTurn(h, h.runs[1], { status: "complete", text: "Ok." }, sent.conversationId);
+  const asked = git.length;
+  assert.ok(git.some((command) => command.startsWith("status")), "the turn read the tree once");
+
+  const apply = async (id) => {
+    const stored = await seed(h, { messages: [userMessage(1), agentMessage(2, { proposal: { ...pending([operation("T-1", false)]), id } })] });
+    assert.deepEqual(await h.chat.handle("apply", { repositoryId, conversationId: stored.id, proposalId: id }, { event: {} }), { ok: true });
+    await h.finishFollowUp(stored.id);
+    return (await h.reload().read(repositoryId, stored.id)).messages[1].proposal;
+  };
+
+  // The tree is now dirty; the cache still says clean. The removal sees the live tree.
+  state.dirty = true;
+  const dirty = await apply("p-aaaaaaaaaaaa");
+  assert.deepEqual(dirty.results.map(({ worktree }) => worktree), ["dirty"]);
+  assert.equal(dirty.state, "partial");
+  assert.ok(git.slice(asked).some((command) => command.startsWith("status")), "the apply read the live tree");
+  assert.equal(git.some((command) => command.startsWith("worktree remove")), false, "nothing was removed");
+
+  // The tree is clean again, but a commit now exists nowhere else.
+  state.dirty = false;
+  state.commits = "1\n";
+  assert.deepEqual((await apply("p-bbbbbbbbbbbb")).results.map(({ worktree }) => worktree), ["unique_commits"]);
+  assert.equal(git.some((command) => command.startsWith("worktree remove")), false, "nothing was removed");
+
+  // Both facts are fine now: the same apply removes it, and the next turn no longer lists the worktree.
+  state.commits = "0\n";
+  assert.deepEqual((await apply("p-cccccccccccc")).results.map(({ worktree }) => worktree), ["removed"]);
+  assert.equal(git.filter((command) => command.startsWith("worktree remove")).length, 1);
+  const next = await send(h, { conversationId: conversation.id, text: "Anything left?" });
+  assert.equal(next.ok, true);
+  const run = await until(() => h.runs.at(-1).options.prompt.includes("Anything left?") ? h.runs.at(-1) : null);
+  assert.doesNotMatch(run.options.prompt, /<task_worktrees>/u, "the removed worktree left the cached rows at once");
 });
 
 test("paired apply refuses removal before reading a board or touching Git", async (context) => {

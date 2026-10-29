@@ -10,9 +10,9 @@ import { threadSince } from "./agent-chat-compaction.mjs";
 import { prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
 import { chatTaskLog } from "./agent-chat-task-log.mjs";
 import { lastAnswer } from "./agent-chat-thread.mjs";
-import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const NO_WORKTREES = Object.freeze({ rows: Object.freeze([]), readAt: null });
 
 /**
  * A clock for one turn's preparation, started now. `step(name, work, needs)` begins `work` at once, or when the readers in `needs` have
@@ -41,10 +41,11 @@ export function createPreparation(clock = () => performance.now(), begun = clock
 
 /**
  * The reads of a turn. `monitor(pathname, init)` and `postAction(route, repositoryId, payload)` are the chat's requests to the
- * monitor, `worktrees` the task worktrees, `context(repositoryId, thread)` the facts from the stored thread, and `environment()` the
+ * monitor, `workflowReader` the workflow changes (`agent-chat-workflow.mjs`, which keeps the facts it read from Git while their key is the same), `worktreeInventory` the cached facts of the task worktrees (`agent-chat-worktrees.mjs`: the preparation keeps nothing, and
+ * a turn never waits for them), `context(repositoryId, thread)` the facts from the stored thread, and `environment()` the
  * environment of the run. Every read answers null or an empty value when it cannot be read, so a turn goes on without it.
  */
-export function createTurnPreparation({ monitor, postAction, worktrees, execFile, repositoryGithub = null, dataRoot, environment, store, summaries, clock }) {
+export function createTurnPreparation({ monitor, postAction, worktreeInventory, workflowReader, repositoryGithub = null, dataRoot, environment, store, summaries, clock }) {
   async function readBoard(repositoryId) {
     try {
       const board = await monitor(`/api/tasks?${new URLSearchParams({ repositoryId })}`, { method: "GET" });
@@ -56,12 +57,13 @@ export function createTurnPreparation({ monitor, postAction, worktrees, execFile
     try { return chatTaskLog(await postAction("log-read", repositoryId, { limit: 100 })); } catch { return null; }
   }
 
-  // The Pomegr task worktrees still on disk, as facts only (never a path). A turn goes on without them when they cannot be read.
+  // The Pomegr task worktrees still on disk, as facts only (never a path), and when their Git facts were read. It never waits: `rows`
+  // is null while the repository has no cache yet, which is not the same as no worktrees. A turn goes on without them when they cannot be read.
   async function readWorktrees(repositoryId, root, board) {
     try {
-      const rows = await worktrees.inventory({ repositoryRoot: root, repositoryId, tasks: board.tasks, columns: board.columns });
-      return Array.isArray(rows) ? rows : [];
-    } catch { return []; }
+      const { rows, readAt } = worktreeInventory.read({ repositoryRoot: root, repositoryId, tasks: board.tasks, columns: board.columns });
+      return { rows: rows === null || Array.isArray(rows) ? rows : [], readAt };
+    } catch { return NO_WORKTREES; }
   }
 
   // The observed runs the task form's Claude model list reads, cut to the source and the model of each. A committed GET;
@@ -113,8 +115,8 @@ export function createTurnPreparation({ monitor, postAction, worktrees, execFile
       },
       startRepository({ provider, github = false, worktrees: inventory = false, thread = false }) {
         if (github && repositoryGithub) reads.github = step("github", (root) => readGithub(repositoryId, root), [reads.root]);
-        reads.workflow = step("workflow", (root, board) => (root && board ? readWorkflowChanges(root, board.aril, { execFile }) : undefined), [reads.root, reads.board]);
-        if (inventory) reads.inventory = step("worktrees", (root, board) => (root && board ? readWorktrees(repositoryId, root, board) : []), [reads.root, reads.board]);
+        reads.workflow = step("workflow", (root, board) => (root && board ? workflowReader.read(root, board.aril) : undefined), [reads.root, reads.board]);
+        if (inventory) reads.inventory = step("worktrees", (root, board) => (root && board ? readWorktrees(repositoryId, root, board) : NO_WORKTREES), [reads.root, reads.board]);
         if (provider === "claude") reads.instructions = step("instructions", () => prepareInstructionsFile(dataRoot));
         reads.context = step("context", () => readContext(repositoryId, thread));
         reads.environment = step("environment", environment);

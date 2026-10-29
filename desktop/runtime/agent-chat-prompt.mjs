@@ -739,7 +739,7 @@ function githubSettings(facts) {
  * `workflowChanges` is the desktop's read of the repository's workflow sources: undefined when nothing is settled (no
  * section), null when Git could not tell, else the changed sources `{ path, changedAt, uncommitted }`.
  */
-export function composePromptParts({ includeInstructions = true, board, lastCompletedAt = null, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], repositoryGithub = undefined, messages = [], summary = null, message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
+export function composePromptParts({ includeInstructions = true, board, lastCompletedAt = null, repositoryName, runs = [], taskLog = undefined, workflowChanges = undefined, worktrees = [], worktreesAt = null, repositoryGithub = undefined, messages = [], summary = null, message, grantPlans = null, followUp = null, images = [], attached = [], now = new Date() }) {
   const history = conversationHistory(messages);
   const outcome = followUp ? proposalOutcome(followUp) : null;
   if (followUp && !outcome) return null;
@@ -762,7 +762,8 @@ export function composePromptParts({ includeInstructions = true, board, lastComp
         ? ["No workflow source changed since your settings and memory were settled."]
         : workflowChanges.map((entry) => `${entry.path} ${entry.changedAt ?? "date unknown"} ${entry.uncommitted ? "uncommitted" : "committed"}`)),
       "</workflow_changes>"]),
-    ...(worktrees.length ? ["", "<task_worktrees>", ...worktrees.map(({ taskId, state, column, clean, uniqueCommits, sizeMB, atLeast }) => JSON.stringify({ taskId, state, column, clean, uniqueCommits, size: `${atLeast ? "at least " : ""}${sizeMB} MB` })),
+    ...(worktrees === null ? ["", "<task_worktrees>", "Task worktree facts are still being read, so do not say there are none.", "</task_worktrees>"] : worktrees.length ? ["", "<task_worktrees>", ...worktrees.map(({ taskId, state, column, clean, uniqueCommits, sizeMB, atLeast }) => JSON.stringify({ taskId, state, column, clean, uniqueCommits, size: Number.isFinite(sizeMB) ? `${atLeast ? "at least " : ""}${sizeMB} MB` : "unknown" })),
+      `Pomegr read these facts${Number.isFinite(worktreesAt) ? ` at ${new Date(worktreesAt).toISOString()}` : ""}, so they may be a few minutes old, and a size can be unknown or older. Pomegr reads a worktree's tree and commits again when the owner applies its removal, and keeps one that is no longer safe to remove.`,
       "These are Pomegr task worktrees still on disk. When the owner asks about disk space or cleanup, or a done or deleted task still has one, you may propose remove_worktree for them. A worktree with uncommitted changes or a commit that exists nowhere else cannot be removed: tell the owner instead. Never propose removing the worktree of a task that is in progress or in Review with a session running.", "</task_worktrees>"] : []),
     ...(repositoryGithub === undefined ? [] : ["", "<repository_github>", githubSettings(repositoryGithub), "</repository_github>"]),
     ...part("taskLog", taskLog === undefined ? [] : ["", "<task_log_since_last_turn>",

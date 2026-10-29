@@ -48,7 +48,7 @@ test("the task branch and the worktree folders are fixed", () => {
   assert.equal(TASK_WORKTREE_DIRECTORY, "task-worktrees");
 });
 
-test("inventory includes only exact Git-known task folders and reports safe task and worktree facts", async () => {
+test("inventory includes only exact Git-known task folders and reports safe worktree facts without walking a folder", async () => {
   const old = path.join(repositoryRoot, ".pomegr", "worktrees", "T-2");
   const oldLegacy = path.join(root, repositoryId, "T-4");
   const arbitrary = path.join(repositoryRoot, "elsewhere", "T-1");
@@ -59,16 +59,13 @@ test("inventory includes only exact Git-known task folders and reports safe task
     `worktree ${oldLegacy.replaceAll("\\", "/")}\nHEAD mno\nbranch refs/heads/tasks/T-4`,
     `worktree ${arbitrary.replaceAll("\\", "/")}\nHEAD jkl\nbranch refs/heads/tasks/T-1`,
   ].join("\n\n");
-  const h = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: output }, "rev-list": { ok: true, stdout: "1\n" } } });
-  const rows = await h.worktrees.inventory({
-    ...place,
-    tasks: [{ id: "T-3", state: "queued", columnId: "col-ready" }],
-    columns: [{ id: "col-ready", name: "Ready" }],
-  });
+  const opened = [];
+  const h = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: output }, "rev-list": { ok: true, stdout: "1\n" } }, managerOptions: { openDirectory: async (target) => { opened.push(target); throw new Error("no walk"); } } });
+  const rows = await h.worktrees.inventory(place);
   assert.deepEqual(rows.map(({ taskId }) => taskId), ["T-2", "T-3", "T-4"]);
-  assert.deepEqual(rows.map(({ state, column }) => [state, column]), [["not on board", "not on board"], ["queued", "Ready"], ["not on board", "not on board"]]);
-  assert.equal(rows.every(({ clean, uniqueCommits, sizeMB, atLeast }) => typeof clean === "boolean" && typeof uniqueCommits === "boolean" && typeof sizeMB === "number" && typeof atLeast === "boolean"), true);
+  assert.equal(rows.every((row) => Object.keys(row).sort().join() === "clean,taskId,uniqueCommits" && typeof row.clean === "boolean" && typeof row.uniqueCommits === "boolean"), true);
   assert.equal(rows.some((row) => JSON.stringify(row).includes("/work/repo")), false);
+  assert.equal(opened.length, 0, "the inventory walks no folder");
 });
 
 test("inventory derives IDs from listed folder names, sorts numerically, and caps rows at 30", async () => {
@@ -78,7 +75,7 @@ test("inventory derives IDs from listed folder names, sorts numerically, and cap
     return `worktree ${at}\nHEAD abc\nbranch refs/heads/tasks/${id}`;
   });
   const h = harness({ answers: { "worktree list": { ok: true, stdout: entries.join("\n\n") } } });
-  const rows = await h.worktrees.inventory({ ...place, tasks: [{ id: "T-999", state: "done", columnId: "x" }] });
+  const rows = await h.worktrees.inventory({ ...place });
   assert.equal(rows.length, 30);
   assert.deepEqual(rows.map(({ taskId }) => taskId), Array.from({ length: 30 }, (_, index) => `T-${index + 1}`));
 });
@@ -96,7 +93,7 @@ test("inventory reads clean and unique-commit facts independently for each workt
   assert.deepEqual(rows.map(({ taskId, clean, uniqueCommits }) => [taskId, clean, uniqueCommits]), [["T-2", true, true], ["T-3", false, false]]);
 });
 
-test("inventory bounds directory iteration and size walks skip symlinks", async () => {
+test("sizes bounds directory iteration and skips symlinks", async () => {
   let read = 0;
   const entries = async function* () {
     for (let index = 0; index < 20_001; index++) {
@@ -113,14 +110,15 @@ test("inventory bounds directory iteration and size walks skip symlinks", async 
       now: () => 0,
     },
   });
-  const [row] = await h.worktrees.inventory({ ...place });
+  const [row] = await h.worktrees.sizes({ ...place });
+  assert.equal(row.taskId, "T-3");
   assert.equal(row.atLeast, true);
   assert.equal(row.sizeMB, 19.5);
   assert.equal(read, 20_000, "the iterator stops without reading an entry beyond its bound");
   assert.equal(statCalls, 19_999, "the first entry was a symlink and was never statted");
 });
 
-test("inventory stops a size walk at two seconds", async () => {
+test("sizes stops a walk at two seconds", async () => {
   let clock = 0;
   const h = harness({
     answers: { "worktree list": { ok: true, stdout: listing() } },
@@ -130,7 +128,7 @@ test("inventory stops a size walk at two seconds", async () => {
       now: () => { clock += 1_000; return clock; },
     },
   });
-  const [row] = await h.worktrees.inventory({ ...place });
+  const [row] = await h.worktrees.sizes({ ...place });
   assert.equal(row.atLeast, true);
   assert.equal(row.sizeMB, 0);
 });
@@ -286,6 +284,70 @@ test("remove deletes only a listed, clean worktree whose commits exist elsewhere
   assert.equal(h.git().some((command) => command.startsWith("branch")), false);
 });
 
+test("a listener hears of a worktree made, removed, or found missing, and of none that stays", async () => {
+  const safe = { "worktree list": { ok: true, stdout: listing() }, "rev-list": { ok: true, stdout: "0\n" } };
+  const heard = [];
+  const listen = (h) => h.worktrees.onChange((...found) => { heard.push(found); });
+  let h = harness({ answers: { "show-ref": { ok: false } } });
+  listen(h);
+  await h.worktrees.ensure(place);
+  assert.deepEqual(heard.splice(0), [[repositoryId, "T-3"]], "a made worktree");
+
+  h = harness({ exists: true, answers: safe });
+  listen(h);
+  assert.equal(await h.worktrees.remove(place), "removed");
+  assert.deepEqual(heard.splice(0), [[repositoryId, "T-3"]], "a removed worktree");
+
+  h = harness();
+  listen(h);
+  assert.equal(await h.worktrees.remove({ ...place, detailed: true }), "not_found");
+  assert.deepEqual(heard.splice(0), [[repositoryId, "T-3"]], "a worktree that is no longer there");
+
+  for (const answers of [{ ...safe, status: { ok: true, stdout: " M a.txt\n" } }, { ...safe, "rev-list": { ok: true, stdout: "2\n" } }, { ...safe, "worktree remove": { ok: false } }]) {
+    h = harness({ exists: true, answers });
+    listen(h);
+    assert.notEqual(await h.worktrees.remove(place), "removed");
+    assert.deepEqual(heard.splice(0), [], "a worktree that stayed is no change");
+  }
+
+  // A reused worktree is no change, a listener that throws changes no outcome, and a listener that left hears nothing.
+  h = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: listing() } } });
+  listen(h);
+  assert.equal((await h.worktrees.ensure(place)).created, false);
+  assert.deepEqual(heard.splice(0), []);
+  h = harness({ exists: true, answers: safe });
+  h.worktrees.onChange(() => { throw new Error("listener failed"); });
+  const leave = listen(h);
+  leave();
+  assert.equal(await h.worktrees.remove(place), "removed");
+  assert.deepEqual(heard, []);
+});
+
+test("the inventory reads a few worktrees at a time and keeps the rows in task order", async () => {
+  const entries = Array.from({ length: 10 }, (_, index) => {
+    const id = `T-${10 - index}`;
+    return `worktree ${path.join(repositoryRoot, ".pomegr", "worktrees", id).replaceAll("\\", "/")}\nHEAD abc\nbranch refs/heads/tasks/${id}`;
+  });
+  let running = 0;
+  let peak = 0;
+  const worktrees = createTaskWorktrees({
+    root,
+    execFile: (_file, args, _options, callback) => {
+      running += 1;
+      peak = Math.max(peak, running);
+      setTimeout(() => {
+        running -= 1;
+        const stdout = args[2] === "worktree" ? entries.join("\n\n") : args[2] === "status" ? (path.basename(args[1]) === "T-4" ? " M a.txt\n" : "") : "0\n";
+        callback(null, stdout, "");
+      }, 2);
+    },
+  });
+  const rows = await worktrees.inventory(place);
+  assert.deepEqual(rows.map(({ taskId }) => taskId), Array.from({ length: 10 }, (_, index) => `T-${index + 1}`));
+  assert.deepEqual(rows.filter(({ clean }) => !clean).map(({ taskId }) => taskId), ["T-4"]);
+  assert.ok(peak > 2 && peak <= 6, `three worktrees at once, two Git processes each, saw ${peak}`);
+});
+
 test("a throwing execFile is a failure, never an exception", async () => {
   const worktrees = createTaskWorktrees({ root, directoryExists: () => false, makeDirectory() {}, execFile: () => { throw new Error("ENOENT"); } });
   assert.deepEqual(await worktrees.ensure(place), { ok: false });
@@ -388,14 +450,13 @@ test("with real Git: the inventory lists only Pomegr task worktrees with their f
   git(two.directory, "add", ".");
   git(two.directory, "commit", "--quiet", "-m", "task work");
 
-  const rows = await worktrees.inventory({ ...at("T-1"), tasks: [{ id: "T-2", state: "done", columnId: "col-done" }], columns: [{ id: "col-done", name: "Done" }] });
-  assert.deepEqual(rows.map(({ taskId, state, column, clean, uniqueCommits }) => [taskId, state, column, clean, uniqueCommits]), [
-    ["T-1", "not on board", "not on board", false, false], ["T-2", "done", "Done", true, true],
-    ["T-3", "not on board", "not on board", true, false], ["T-4", "not on board", "not on board", true, false],
-  ]);
-  assert.equal(rows[0].sizeMB >= 2 && rows[0].sizeMB < 3, true);
-  assert.equal(rows.every((row) => row.atLeast === false && Object.keys(row).sort().join() === "atLeast,clean,column,sizeMB,state,taskId,uniqueCommits"), true);
-  assert.equal(JSON.stringify(rows).includes("pomegr-task-worktree"), false, "no row holds a path");
+  const rows = await worktrees.inventory(at("T-1"));
+  assert.deepEqual(rows.map(({ taskId, clean, uniqueCommits }) => [taskId, clean, uniqueCommits]), [["T-1", false, false], ["T-2", true, true], ["T-3", true, false], ["T-4", true, false]]);
+  const sizes = await worktrees.sizes(at("T-1"));
+  assert.deepEqual(sizes.map(({ taskId }) => taskId), ["T-1", "T-2", "T-3", "T-4"]);
+  assert.equal(sizes[0].sizeMB >= 2 && sizes[0].sizeMB < 3, true);
+  assert.equal(sizes.every((row) => row.atLeast === false && Object.keys(row).sort().join() === "atLeast,sizeMB,taskId"), true);
+  assert.equal(JSON.stringify([rows, sizes]).includes("pomegr-task-worktree"), false, "no row holds a path");
 
   assert.equal(await worktrees.remove({ ...at("T-1"), detailed: true }), "dirty");
   assert.equal(await worktrees.remove({ ...at("T-2"), detailed: true }), "unique_commits");

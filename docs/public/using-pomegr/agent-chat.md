@@ -267,6 +267,9 @@ always a proposal of its own.
 Task worktrees take disk space; see [Worktrees](tasks-order.md#worktrees). Ask Aril which
 worktrees remain, or to clean up. Aril sees each worktree's task, whether it has uncommitted
 changes or a commit that exists nowhere else, and about how large it is. It sees no path.
+These facts can be a few minutes old, and a size is unknown until Pomegr has measured it.
+Just after Pomegr starts, Aril may say it is still reading them; ask again in a moment.
+Pomegr checks a worktree again when you apply its removal.
 
 Aril proposes a removal when you ask about disk space or cleanup, or when a done or deleted
 task still has a worktree. It only tells you about a worktree that holds uncommitted changes

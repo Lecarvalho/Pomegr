@@ -16,6 +16,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const UNSAFE_PATH = /[\u0000\r\n"]/u;
 const GIT_TIMEOUT_MS = 30_000;
 const GIT_OUTPUT_BYTES = 1024 * 1024;
+const INVENTORY_PARALLEL = 3;
 
 export const taskBranch = (taskId) => `tasks/${taskId}`;
 
@@ -64,6 +65,7 @@ export function createTaskWorktrees(options = {}) {
   const openDirectory = options.openDirectory || opendir;
   const lstatEntry = options.lstat || lstat;
   const now = options.now || Date.now;
+  const listeners = new Set();
 
   function git(directory, args) {
     return new Promise((resolve) => {
@@ -74,6 +76,18 @@ export function createTaskWorktrees(options = {}) {
         }, (error, stdout) => resolve({ ok: !error, stdout: typeof stdout === "string" ? stdout : "" }));
       } catch { resolve({ ok: false, stdout: "" }); }
     });
+  }
+
+  /** `listener(repositoryId, taskId)` runs after a worktree of that task was made, was removed, or was found missing. It changes no outcome. */
+  function onChange(listener) {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+  }
+
+  function changed(repositoryId, taskId) {
+    for (const listener of listeners) {
+      try { listener(repositoryId, taskId); } catch { /* A listener never changes what happened to the worktree. */ }
+    }
   }
 
   function target({ repositoryRoot, repositoryId, taskId } = {}) {
@@ -125,34 +139,55 @@ export function createTaskWorktrees(options = {}) {
     return { sizeMB: Math.round(bytes / 104857.6) / 10, atLeast };
   }
 
+  // The task worktrees Git lists for the repository at the two Pomegr locations as `[task ID, folder]`, at most 30, oldest task first;
+  // null when Git cannot list them. The task ID comes only from the folder name.
+  async function discover({ repositoryRoot, repositoryId } = {}) {
+    if (!safeAbsolute(repositoryRoot) || !REPOSITORY_ID.test(repositoryId || "")) return null;
+    const listing = await git(repositoryRoot, ["worktree", "list", "--porcelain"]);
+    if (!listing.ok) return null;
+    const homes = [path.join(repositoryRoot, ...TASK_WORKTREE_REPOSITORY_PATH), ...(legacyRoot ? [path.join(legacyRoot, repositoryId)] : [])];
+    const found = new Map();
+    for (const block of listing.stdout.split(/\r?\n\r?\n/u)) {
+      const listed = block.split(/\r?\n/u).find((line) => line.startsWith("worktree "))?.slice("worktree ".length);
+      const taskId = listed ? path.basename(listed) : "";
+      if (TASK_ID.test(taskId) && homes.some((home) => samePath(listed, path.join(home, taskId), platform))) found.set(taskId, listed);
+    }
+    return [...found].sort(([a], [b]) => Number(a.slice(2)) - Number(b.slice(2))).slice(0, 30);
+  }
+
   /**
-   * The task worktrees Git lists for the repository at the two Pomegr locations, at most 30, oldest task first. The task ID comes only
-   * from the folder name. A row holds facts only, never a path; a fact that cannot be read counts against removal.
+   * The facts Git gives about the task worktrees of a repository, a row for each: `{ taskId, clean, uniqueCommits }`. It walks no folder.
+   * A row holds facts only, never a path; a fact that cannot be read counts against removal. A removal never trusts a row: `remove`
+   * reads both facts again.
    */
-  async function inventory({ repositoryRoot, repositoryId, tasks = [], columns = [] } = {}) {
-    if (!safeAbsolute(repositoryRoot) || !REPOSITORY_ID.test(repositoryId || "")) return [];
+  async function inventory(request = {}) {
     try {
-      const listing = await git(repositoryRoot, ["worktree", "list", "--porcelain"]);
-      if (!listing.ok) return [];
-      const homes = [path.join(repositoryRoot, ...TASK_WORKTREE_REPOSITORY_PATH), ...(legacyRoot ? [path.join(legacyRoot, repositoryId)] : [])];
-      const board = new Map(tasks.map((task) => [task?.id, task]));
-      const names = new Map(columns.map((column) => [column?.id, column?.name]));
-      const found = new Map();
-      for (const block of listing.stdout.split(/\r?\n\r?\n/u)) {
-        const listed = block.split(/\r?\n/u).find((line) => line.startsWith("worktree "))?.slice("worktree ".length);
-        const taskId = listed ? path.basename(listed) : "";
-        if (TASK_ID.test(taskId) && homes.some((home) => samePath(listed, path.join(home, taskId), platform))) found.set(taskId, listed);
-      }
-      // All size walks share one budget, so an Aril turn never waits on many large worktrees.
-      const rows = [], deadline = now() + 6_000;
-      for (const [taskId, directory] of [...found].sort(([a], [b]) => Number(a.slice(2)) - Number(b.slice(2))).slice(0, 30)) {
-        const task = board.get(taskId);
-        rows.push({
-          taskId, state: task?.state ?? "not on board", column: task ? names.get(task.columnId) ?? null : "not on board",
-          clean: await treeState(directory) === "clean", uniqueCommits: await uniqueCommits(directory, taskBranch(taskId)) !== false, ...await treeSize(directory, deadline),
-        });
-      }
+      const found = await discover(request);
+      if (!found) return [];
+      // A few worktrees at a time: each row is two Git processes.
+      const rows = new Array(found.length);
+      let next = 0;
+      const worker = async () => {
+        while (next < found.length) {
+          const index = next++;
+          const [taskId, directory] = found[index];
+          const [state, unique] = await Promise.all([treeState(directory), uniqueCommits(directory, taskBranch(taskId))]);
+          rows[index] = { taskId, clean: state === "clean", uniqueCommits: unique !== false };
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(INVENTORY_PARALLEL, found.length) }, worker));
       return rows;
+    } catch { return []; }
+  }
+
+  /** The sizes of those worktrees, `{ taskId, sizeMB, atLeast }` each. All the walks share one budget, so they end together in a few seconds. */
+  async function sizes(request = {}) {
+    try {
+      const found = await discover(request);
+      if (!found) return [];
+      const measured = [], deadline = now() + 6_000;
+      for (const [taskId, directory] of found) measured.push({ taskId, ...await treeSize(directory, deadline) });
+      return measured;
     } catch { return []; }
   }
 
@@ -176,6 +211,7 @@ export function createTaskWorktrees(options = {}) {
         ? await git(at.repositoryRoot, ["worktree", "add", at.directory, at.branch])
         : await git(at.repositoryRoot, ["worktree", "add", "-b", at.branch, at.directory, "HEAD"]);
       if (!added.ok || !directoryExists(at.directory)) return { ok: false };
+      changed(request.repositoryId, request.taskId);
       return { ok: true, directory: at.directory, created: true, branchCreated: !existing.ok };
     } catch { return { ok: false }; }
   }
@@ -185,8 +221,9 @@ export function createTaskWorktrees(options = {}) {
     const at = target(request);
     if (!at) return "failed";
     const detailed = request.detailed === true;
+    const gone = (outcome) => { changed(request.repositoryId, request.taskId); return outcome; };
     try {
-      if (!directoryExists(at.directory)) return detailed ? "not_found" : "absent";
+      if (!directoryExists(at.directory)) return gone(detailed ? "not_found" : "absent");
       const branch = await listed(at);
       if (branch === null) return detailed ? "failed" : "kept";
       const state = await treeState(at.directory);
@@ -197,7 +234,7 @@ export function createTaskWorktrees(options = {}) {
       if (unique) return detailed ? "unique_commits" : "kept";
       if (!(await git(at.repositoryRoot, ["worktree", "remove", at.directory])).ok) return "failed";
       if (request.deleteBranch === true && branch === `refs/heads/${at.branch}`) await git(at.repositoryRoot, ["branch", "-D", at.branch]);
-      return "removed";
+      return gone("removed");
     } catch { return "failed"; }
   }
 
@@ -218,5 +255,5 @@ export function createTaskWorktrees(options = {}) {
     } catch { return null; }
   }
 
-  return Object.freeze({ ensure, remove, locate, inventory });
+  return Object.freeze({ ensure, remove, locate, inventory, sizes, onChange });
 }

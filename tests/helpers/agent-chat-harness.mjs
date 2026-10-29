@@ -81,7 +81,7 @@ export async function chatHarness(context, overrides = {}) {
   const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pomegr-agent-chat-"));
   context.after(() => fs.rm(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   const directory = path.join(dataRoot, AGENT_CHAT_DIRECTORY);
-  const state = { board: readyBoard(), agents: { runs: [] }, rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), imageAdd: (call) => ({ ok: true, imageId: call.query.imageId }), gate: null, fetchError: null, calls: [], declarations: [], declarationError: null };
+  const state = { board: readyBoard(), home: { version: 1, readiness: "ready", boards: [{ repositoryId, readiness: "ready" }] }, agents: { runs: [] }, rootAnswer: { ok: true, root }, actions: () => ({ ok: true }), imageAdd: (call) => ({ ok: true, imageId: call.query.imageId }), gate: null, fetchError: null, calls: [], declarations: [], declarationError: null };
   const { viaDataRoot = false, files = [claudeExecutable, codexExecutable, mcpScript], ...rest } = overrides;
   let tick = 0;
   const now = () => new Date(Date.parse(stamp) + (tick += 1000));
@@ -100,6 +100,7 @@ export async function chatHarness(context, overrides = {}) {
     }
     state.calls.push(call);
     if (state.fetchError) throw state.fetchError;
+    if (init.method === "GET" && parsed.pathname === "/api/tasks" && parsed.searchParams.get("view") === "home") return json(state.home);
     if (init.method === "GET" && parsed.pathname === "/api/tasks") {
       if (state.gate) await state.gate;
       return json(state.board);

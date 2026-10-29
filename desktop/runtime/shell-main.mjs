@@ -67,7 +67,7 @@ import { createRepositoryGithub } from "./repository-github.mjs";
 import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { confirmTaskReviewStart, confirmTaskStart, createTaskStart, installTaskStartIpc } from "./task-dispatch.mjs";
 import { confirmSessionContinue, installSessionContinueIpc } from "./session-continue.mjs";
-import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
+import { createTaskWorktrees, TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 import {
   startupWindowState,
   applyDesktopNativeTheme,
@@ -674,13 +674,13 @@ async function startDesktop() {
             update: updaterController?.snapshot() || Object.freeze({ status: "disabled", version: null, lastCheckedAt: null }),
           }),
         });
-        // An applied chat start takes the Tasks page's manual start, including its native confirmation.
-        const repositoryGithub = createRepositoryGithub();
-        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
+        // An applied chat start takes the Tasks page's manual start, including its native confirmation. The start and the chat share one set of task worktrees, so the chat's cached worktree facts follow a start and a Done task's removal.
+        const repositoryGithub = createRepositoryGithub(), taskWorktrees = createTaskWorktrees({ root: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY), environment: sessionEnvironment.startup });
+        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktrees: taskWorktrees, prefetchWorktrees: true, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           sessionForProcess: (pid) => requestTerminalSession(monitorChild, pid),
           isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken,
-          environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
+          environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktrees: taskWorktrees, worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
           openPath: (directory) => shell.openPath(directory),
           confirm: (request) => confirmTaskStart(dialog, () => mainWindow, request),
           confirmReview: (request) => confirmTaskReviewStart(dialog, () => mainWindow, request),
