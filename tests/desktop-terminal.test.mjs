@@ -310,7 +310,10 @@ test("preload exposes only validated operations and removes its private output l
   await bridge.terminal("list");
   await bridge.terminal("attach", { key, attachId: "owner" });
   await bridge.terminal("input", { attachId: "owner", data: "x".repeat(16384) });
-  assert.equal(invokes.length, 3);
+  // A review session's key reaches desktop main too; T-180's review terminal never loaded without it.
+  await bridge.terminal("attach", { key: key.replace(/\/([a-f0-9]{32})$/u, "/review-$1"), attachId: "review" });
+  assert.equal((await bridge.terminal("attach", { key: key.replace(/\/([a-f0-9]{32})$/u, "/other-$1"), attachId: "x" })).status, "invalid");
+  assert.equal(invokes.length, 4);
   const frames = [];
   const remove = bridge.onTerminalOutput((frame) => frames.push(frame));
   listeners.get("pomegr:terminal-output")({ secret: true }, { attachId: "owner", event: "output", data: "private" });
