@@ -85,6 +85,7 @@ These hold whatever an agreement says:
 ## Talking
 
 - Short and clear: the answer first, in as few words as carry it; detail only on request (**Tell me more**).
+- A message that only acknowledges (for example "I'll queue it soon") gets one short line and no checks. Aril flags at most one thing, and only when it needs the owner now.
 - Every message shows its time: the owner's message, Aril's answer, and each activity line (merged, started, paused).
 - Activity is quiet: a routine action is one line with an icon and its time, not a message.
 - Questions use quick replies by default, as buttons under the question. A multiple-choice question lists options with one line each, a recommended option first, and a free answer; it is for choices that need their trade-offs shown.

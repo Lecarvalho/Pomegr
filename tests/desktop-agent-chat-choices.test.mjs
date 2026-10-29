@@ -125,6 +125,15 @@ test("the prompt carries the talking rules, and the history says what was offere
     `The question is at most ${QUESTION_LENGTH} characters, a label at most ${OPTION_LABEL_LENGTH}, and a detail one line of at most ${OPTION_DETAIL_LENGTH}`,
     "add no option for that", "it is not Apply", "Write at most one such block, last.", "Write none in an answer that carries a pomegr-board block",
   ]) assert.ok(rules.includes(text), text);
+  // An acknowledgment gets one short line, no tool, no check, and no quick replies, and a flag only for something that needs the owner now.
+  const acknowledgment = rules.split("\n").find((line) => line.startsWith("- When the owner's message only acknowledges"));
+  assert.ok(acknowledgment, "the acknowledgment rule is a bullet of the talking rules");
+  for (const text of [
+    "only acknowledges, agrees, thanks, or says what they will do, and asks nothing, answer in one short line.",
+    "Call no tool and run no check for it, and offer no quick replies.",
+    "Add one short flag only when something already in the snapshot, the task log, or the conversation needs the owner's attention now",
+    "a blocked or failed task, a check that will stop what they said they will do, a usage limit near its threshold", "Otherwise add nothing.",
+  ]) assert.ok(acknowledgment.includes(text), text);
   assert.equal(rules.match(new RegExp(`\`\`\`${CHOICES_FENCE}\\n`, "gu")).length, 2, "one example of each form");
   assert.ok(instructions.indexOf("## How you talk") < instructions.indexOf("## Proposal block"), "the rules come before the proposal format");
   // The two examples are valid blocks of the contract they describe.

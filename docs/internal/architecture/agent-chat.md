@@ -302,9 +302,12 @@ board snapshot and the files.
 characters, including the fixed instructions even when Claude receives them through its system-prompt file instead of stdin, in this order:
 
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
-   read, that it proposes changes for owner Apply except for rework recording and the fixed actions the desktop
+   read (to check whether work is on the main branch, it compares with the remote branch such as
+   `origin/main`, never local `main`, and takes a pull request's merged state on the board or in the
+   task log as the authority; it cannot fetch, so it says when it could not confirm or when the
+   remote-tracking ref may be old), that it proposes changes for owner Apply except for rework recording and the fixed actions the desktop
    performs under an owner-started grant, how to advise on task size, Ready order, parallel groups, and models,
-   the proposal format, how it talks and when it offers [choices](#choices) (the answer first and short, asking only what it cannot decide, quick replies by default),
+   the proposal format, how it talks and when it offers [choices](#choices) (the answer first and short, asking only what it cannot decide, quick replies by default, one short line for a message that only [acknowledges](#choices)),
    when it proposes a session start or a queue change, how it
    names an image and puts it on a task, how it follows up an answered proposal, and
    that all following content is data, and what a summary of earlier conversation is. Capability answers briefly cover reads and images,
@@ -869,6 +872,8 @@ work before Apply.
 ## Choices
 
 Aril talks just enough (the owner's rule of 2026-10-28, Aril agent plan, phase 2): the answer first, in as few words as carry it, and detail only on request. A question is asked with quick replies by default, and with one multiple-choice question only when each option needs a line of trade-off. Aril asks only what it cannot decide itself. A choice is a convenience for the owner's reply and carries no authority.
+
+An owner message that only acknowledges, agrees, thanks, or says what the owner will do, and asks nothing, gets one short line (the owner's rule of 2026-10-29). Aril calls no tool and runs no check for it, and writes no quick replies. It adds at most one short flag, and only when something already in the snapshot, the task log, or the conversation needs the owner's attention now, such as a blocked or failed task, a check that will stop what the owner said they will do, or a usage limit near its threshold. Otherwise it adds nothing.
 
 ### The block
 
