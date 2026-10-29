@@ -124,11 +124,13 @@ test("start-bind links only the named task's live review dispatch, once, and onl
   assert.deepEqual(bind({}), { ok: true });
   assert.deepEqual(env.store.readBoard(REPOSITORY).tasks[0], { ...before, review: { state: "running" } });
   assert.equal(env.store.reviewSession(REPOSITORY, { id: "T-1" }).sessionId, REVIEWER);
+  assert.equal(env.store.reviewSession(REPOSITORY, { id: "T-1" }).reported, false);
   assert.equal(metaValue(env.directory, key("review_dispatch")), null);
   assert.deepEqual(rows(env, "task_log").map((r) => r.kind), ["review_started"]);
   assert.deepEqual(bind({}), { ok: false, error: "not_found" });
   assert.deepEqual(env.store.bindSession({ token, sessionId: REVIEWER }), { ok: false, error: "not_found" }, "the hook's late report is refused");
   assert.equal(report(env).ok, true);
+  assert.equal(env.store.reviewSession(REPOSITORY, { id: "T-1" }).reported, true);
 });
 
 test("only the reviewer reports; changed verdicts append, identical retries do not", async (t) => {
@@ -223,7 +225,7 @@ test("the reviewer record keeps each reviewer with its link time while the curre
   assert.equal(env.store.apply(REPOSITORY, "resolve_requeue", { id: "T-1" }).ok, true);
   assert.equal(metaValue(env.directory, key("reviewer")), null);
   assert.equal(kept(), 1);
-  assert.deepEqual(env.store.reviewSession(REPOSITORY, { id: "T-1" }), { ok: true, sessionId: null, sessionIds: [REVIEWER] });
+  assert.deepEqual(env.store.reviewSession(REPOSITORY, { id: "T-1" }), { ok: true, sessionId: null, sessionIds: [REVIEWER], reported: false });
   assert.deepEqual([...env.store.sessionReviews([REVIEWER, SESSION, "codex:unknown"]).keys()], [REVIEWER]);
   assert.equal(env.store.sessionReviews([REVIEWER]).get(REVIEWER).role, "review");
   assert.equal(env.store.readBoard(REPOSITORY).tasks[0].review, null);

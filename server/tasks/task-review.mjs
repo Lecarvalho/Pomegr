@@ -57,13 +57,17 @@ function reviewSession({ database, repositoryId, payload }) {
   const current = valueOf(database, reviewerKey(repositoryId, number));
   // `sessionId` is only the current review, so a live review key never takes an earlier reviewer.
   // `sessionIds` is every reviewer the task has had, in link order, so an ended review still resolves.
-  const sessionIds = taskReviewerSessions(database, repositoryId, number);
-  return { ok: true, sessionId: isTaskSessionId(current) ? current : null, sessionIds };
+  const reviewers = taskReviewers(database, repositoryId, number);
+  // `reported` is whether the latest reviewer gave a verdict. The board clears `review` once the task leaves Review, so desktop main reads this instead.
+  const latest = reviewers.at(-1);
+  const reported = latest !== undefined && preparedStatement(database, "SELECT 1 FROM task_reviews WHERE repository_id = ? AND number = ? AND at >= ? LIMIT 1")
+    .get(repositoryId, number, latest.at) !== undefined;
+  return { ok: true, sessionId: isTaskSessionId(current) ? current : null, sessionIds: reviewers.map((row) => row.session_id), reported };
 }
 
-function taskReviewerSessions(database, repositoryId, number) {
-  return preparedStatement(database, "SELECT session_id FROM task_reviewers WHERE repository_id = ? AND number = ? ORDER BY at, rowid")
-    .all(repositoryId, number).map((row) => row.session_id).filter(isTaskSessionId);
+function taskReviewers(database, repositoryId, number) {
+  return preparedStatement(database, "SELECT session_id, at FROM task_reviewers WHERE repository_id = ? AND number = ? ORDER BY at, rowid")
+    .all(repositoryId, number).filter((row) => isTaskSessionId(row.session_id));
 }
 
 function planReview({ database, transaction, repositoryId, payload, resolveFacts, now }) {

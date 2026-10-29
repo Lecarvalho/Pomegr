@@ -173,12 +173,12 @@ test("desktop review-session returns only the bound reviewer identity, never the
   const unbound = await action(env, "review-session", { id: "T-1" });
   assert.equal(unbound.status, 200);
   assert.equal(unbound.headers["cache-control"], "no-store");
-  assert.deepEqual(unbound.json, { ok: true, sessionId: null, sessionIds: [] });
+  assert.deepEqual(unbound.json, { ok: true, sessionId: null, sessionIds: [], reported: false });
   const planned = await action(env, "review-plan", { id: "T-1" });
   assert.equal(env.store.bindSession({ token: planned.json.plan.token, sessionId: REVIEWER }).ok, true);
   const bound = await action(env, "review-session", { id: "T-1" });
   assert.equal(bound.status, 200);
-  assert.deepEqual(bound.json, { ok: true, sessionId: REVIEWER, sessionIds: [REVIEWER] });
+  assert.deepEqual(bound.json, { ok: true, sessionId: REVIEWER, sessionIds: [REVIEWER], reported: false });
   assert.doesNotMatch(bound.text, /builder|repositoryRoot|prompt|token|reasons|plan/u);
   // T-188: a pointer that is not a session ID is not the current review; a kept value that is not one is never served.
   withDatabase(env.directory, (database) => {
@@ -186,7 +186,7 @@ test("desktop review-session returns only the bound reviewer identity, never the
     database.prepare("INSERT INTO task_reviewers (repository_id, number, session_id, at) VALUES (?, 1, ?, ?)").run(REPOSITORY_ID, "C:/private/kept.txt", Date.now() * 2);
   });
   const fallback = await action(env, "review-session", { id: "T-1" });
-  assert.deepEqual(fallback.json, { ok: true, sessionId: null, sessionIds: [REVIEWER] });
+  assert.deepEqual(fallback.json, { ok: true, sessionId: null, sessionIds: [REVIEWER], reported: false });
   assert.doesNotMatch(fallback.text, /private/u);
 });
 
@@ -216,3 +216,30 @@ test("review-session validates the repository envelope and task and fixes missin
   env.closeStore();
   actionRefused(await action(env, "review-session", { id: "T-1" }), 503, "unavailable");
 });
+
+test("review-session says whether the latest reviewer reported, also once the task is Done", async (t) => {
+  const env = await setup(t);
+  await prepareReviewable(env);
+  const planned = await action(env, "review-plan", { id: "T-1" });
+  assert.equal(env.store.bindSession({ token: planned.json.plan.token, sessionId: REVIEWER }).ok, true);
+  // Linked without a verdict: the reviewer has not reported.
+  assert.equal((await action(env, "review-session", { id: "T-1" })).json.reported, false);
+  assert.deepEqual((await review(env, { sessionRef: REVIEWER, verdict: "pass" })).json, { schemaVersion: 1, ok: true });
+  const reported = await action(env, "review-session", { id: "T-1" });
+  assert.deepEqual(reported.json, { ok: true, sessionId: REVIEWER, sessionIds: [REVIEWER], reported: true });
+  // Done clears the board's review, but the verdict stays recorded.
+  withDatabase(env.directory, (database) => database.prepare("UPDATE tasks SET state = 'done' WHERE repository_id = ? AND number = 1").run(REPOSITORY_ID));
+  assert.equal((await action(env, "review-session", { id: "T-1" })).json.reported, true);
+  // A reviewer linked after that verdict, as when the task went back and was requeued, has not reported yet.
+  withDatabase(env.directory, (database) => database.prepare("INSERT INTO task_reviewers (repository_id, number, session_id, at) VALUES (?, 1, ?, ?)")
+    .run(REPOSITORY_ID, "codex:second-reviewer", Date.now() + 60_000));
+  const second = await action(env, "review-session", { id: "T-1" });
+  assert.deepEqual(second.json.sessionIds, [REVIEWER, "codex:second-reviewer"]);
+  assert.equal(second.json.reported, false);
+  // A reviewer value that is not a session ID is never served and never counts as the latest reviewer.
+  withDatabase(env.directory, (database) => database.prepare("DELETE FROM task_reviewers WHERE session_id = ?").run("codex:second-reviewer"));
+  withDatabase(env.directory, (database) => database.prepare("INSERT INTO task_reviewers (repository_id, number, session_id, at) VALUES (?, 1, ?, ?)")
+    .run(REPOSITORY_ID, "C:/private/kept.txt", Date.now() + 60_000));
+  assert.equal((await action(env, "review-session", { id: "T-1" })).json.reported, true);
+});
+
