@@ -42,7 +42,7 @@ async function start(context, taskStore, { resolve = true } = {}) {
   const runtime = resolve ? {
     resolveTaskSession(ref) {
       lookups.push(ref);
-      return Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref] } : null;
+      return Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref], repositoryConfirmation: "confirmed" } : null;
     },
   } : {};
   const server = http.createServer(createRequestHandler({ runtime, taskStore, agentAuthorizationToken: TOKEN }));
@@ -102,7 +102,7 @@ test("add_task creates a local task with no source and never reaches the issue r
   const store = await realStore(context);
   const touched = [];
   const runtime = new Proxy({
-    resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY_ID }),
+    resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY_ID, repositoryConfirmation: "confirmed" }),
     taskIssues: { create: () => { touched.push("create"); }, list: () => { touched.push("list"); }, status: () => { touched.push("status"); }, read: () => { touched.push("read"); } },
   }, { get(target, property) { touched.push(String(property)); return target[property]; } });
   const server = http.createServer(createRequestHandler({ runtime, taskStore: store, agentAuthorizationToken: TOKEN }));
@@ -346,12 +346,16 @@ test("the runtime session lookup reads only committed store and catalog facts", 
   const { resolveTaskSession } = await import("../../../server/runtime/task-session-lookup.mjs");
   const observationStore = { get: (provider, id) => (provider === "claude" && id === "live" ? { publicState: { session: { repositoryId: REPOSITORY_ID } } } : undefined) };
   const catalogSessions = () => [{ id: "codex:row", repositoryId: REPOSITORY_ID }, { id: "codex:bare" }];
-  const lookup = (ref) => resolveTaskSession(ref, { observationStore, catalogSessions });
-  assert.deepEqual(lookup("claude:live"), { found: true, repositoryId: REPOSITORY_ID });
-  assert.deepEqual(lookup("codex:row"), { found: true, repositoryId: REPOSITORY_ID });
-  assert.deepEqual(lookup("codex:bare"), { found: true, repositoryId: null });
+  const lookup = (ref, repositoryConfirmation) => resolveTaskSession(ref, { observationStore, catalogSessions, repositoryConfirmation });
+  assert.deepEqual(lookup("claude:live"), { found: true, repositoryId: REPOSITORY_ID, repositoryConfirmation: "unknown" });
+  assert.deepEqual(lookup("codex:row"), { found: true, repositoryId: REPOSITORY_ID, repositoryConfirmation: "unknown" });
+  assert.deepEqual(lookup("codex:bare"), { found: true, repositoryId: null, repositoryConfirmation: "unknown" });
   assert.equal(lookup("codex:none"), null);
   assert.equal(lookup("not a ref"), null);
+  // The repository inventory says whether Git confirmed the session's repository; any other answer confirms nothing.
+  assert.equal(lookup("claude:live", () => "confirmed").repositoryConfirmation, "confirmed");
+  assert.equal(lookup("claude:live", () => "guessed").repositoryConfirmation, "guessed");
+  for (const answer of [() => "yes", () => undefined, () => { throw new Error("boom"); }]) assert.equal(lookup("claude:live", answer).repositoryConfirmation, "unknown");
 });
 
 const REMOVE = "/api/agent/v1/tasks/remove";
@@ -393,8 +397,9 @@ test("a task the user or another session added, or one that does not exist, is t
   const answers = [await remove(port, "T-1"), await remove(port, "T-2"), await remove(port, "T-99")];
   for (const response of answers) refused(response);
   assert.equal(new Set(answers.map((response) => response.text)).size, 1);
-  // A session Pomegr does not know, one with no repository, and one on another board find nothing either.
-  for (const sessionRef of ["codex:missing", "claude:norepo", "claude:known"]) refused(await remove(port, "T-3", sessionRef));
+  // A session Pomegr does not know and one on another board find nothing either; one with no repository is told so.
+  for (const sessionRef of ["codex:missing", "claude:known"]) refused(await remove(port, "T-3", sessionRef));
+  reason(await remove(port, "T-3", "claude:norepo"), 409, "repository_unavailable");
   assert.deepEqual(taskIds(store), ["T-1", "T-2", "T-3"]);
 });
 

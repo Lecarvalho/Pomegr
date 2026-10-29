@@ -1931,6 +1931,21 @@ supplies.
   the store cannot answer. So a session started for a task adds to the repository
   whose board holds the task, even when its committed identity is missing, is not
   committed yet, or differs. It never accepts a path or a repository ID.
+- **An unlinked session's board must be confirmed (T-200).** `agentBoardRepository` in
+  `server/serving/agent-board-repository.mjs` decides it for every agent board route. A
+  committed identity is a board only when the repository inventory says Git confirmed that repository in this run
+  (`repositoryConfirmation` of `server/repository/repository-inventory-runtime.mjs`, read
+  by `resolveTaskSession` from monitor memory). An identity the inventory has not seen in
+  this run, such as one committed before a monitor restart, is served only when the task
+  store already has its board (`hasBoard`, which creates nothing). A guessed identity, the
+  folder-named one of a working directory Git did not answer for, is never a board, even
+  one an earlier build made for it. Every agent board route (add, update, remove, assign,
+  unassign, `get`, `list`, and the four feature paths) then answers
+  `repository_unavailable` and creates or reads no board. The plugin's text for that reason
+  says the board was not read, so an agent never takes it for an empty board. Before this
+  rule a session whose recorded working directory was a removed worktree folder read an
+  empty board for the folder's identity and added its task there as T-1. `bind` resolves
+  its board from the dispatch token, never from the session's identity.
 - The monitor serves `add_task` as `POST /api/agent/v1/tasks/add`, beside the agent-query
   GETs and under the same gate: loopback host, no `Origin` header, and the agent token
   when one is configured. The body is a JSON object of at most 16 KiB with
@@ -2201,8 +2216,9 @@ How it is built:
   and with the same content-type check. The body is a JSON object of at most 1 KiB with
   exactly `sessionRef` and `taskId`; any other key, a query string, or an ID outside the
   pattern is `invalid`. The answer is `{ schemaVersion: 1, ok: true }` or
-  `{ schemaVersion: 1, ok: false, reason }` with `invalid` (400), `not_found` (404), or
-  `unavailable` (503).
+  `{ schemaVersion: 1, ok: false, reason }` with `invalid` (400), `not_found` (404),
+  `repository_unavailable` (409, the session's repository is not a confirmed board), or
+  `unavailable` (503). A session Pomegr does not know answers `not_found`.
 - The MCP tool is `remove_task` in `mcp/task-tools.mjs`, with the one input `task_id`.
   The Claude Code hook binds and signs it as its own tool name
   (`plugin-src/claude-query-session.mjs`), so a proof made for `add_task` does not

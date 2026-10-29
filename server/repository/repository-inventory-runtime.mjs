@@ -20,7 +20,10 @@ export function createGitRootLookup(readGitRoot, { now = Date.now, ttlMs = GIT_R
     entries.delete(key);
     entries.set(key, entry);
     while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
-    entry.value.catch(() => { if (entries.get(key) === entry) entries.delete(key); });
+    // Only a Git answer is kept, including that a folder is no repository: no answer (a missing folder, a timeout,
+    // or a failure) is read again on the next lookup.
+    const forget = () => { if (entries.get(key) === entry) entries.delete(key); };
+    entry.value.then((value) => { if (!value) forget(); }, forget);
     return entry.value;
   };
 }
@@ -171,6 +174,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
   const cache = createCommittedResponseCache({ includeRevision: true, now });
   const targets = new Map();
   const roots = new Map();
+  const unanswered = new Set();
   const captureStates = new Map();
   const subscribers = new Set();
   let state;
@@ -272,22 +276,39 @@ export function createRepositoryInventoryRuntime(options = {}) {
     return mainRoot ? repositoryIdOf(mainRoot) : null;
   }
 
+  // `confirmed` is true only for an identity Git answered. A working directory Git did not answer for gets the
+  // folder-named identity for this read only: it is never cached, so the next read asks Git again.
   async function locate(cwd, recognized = null) {
     await ready;
     const normalizedCwd = path.resolve(cwd);
     let checkout = recognized || roots.get(normalizedCwd);
     if (!checkout) {
-      checkout = checkoutRoots(await gitRoot(normalizedCwd)) || { root: normalizedCwd, mainRoot: normalizedCwd, unanswered: true };
-      roots.set(normalizedCwd, checkout);
+      checkout = checkoutRoots(await gitRoot(normalizedCwd));
+      unanswered.delete(normalizedCwd);
+      if (checkout) roots.set(normalizedCwd, checkout);
+      else {
+        checkout = { root: normalizedCwd, mainRoot: normalizedCwd, unanswered: true };
+        unanswered.add(normalizedCwd);
+        while (unanswered.size > GIT_ROOT_MAX_ENTRIES) unanswered.delete(unanswered.values().next().value);
+      }
     }
     const { root, mainRoot } = checkout;
     const ownerId = checkout.unanswered ? taskWorktreeOwnerId(normalizedCwd) : null;
     const owner = ownerId ? targets.get(ownerId) : null;
-    if (owner) return { repositoryId: ownerId, name: owner.name, root, mainRoot: owner.root };
+    if (owner) return { repositoryId: ownerId, name: owner.name, root, mainRoot: owner.root, confirmed: owner.confirmed === true };
     const repositoryId = repositoryIdOf(mainRoot);
     const name = safeText(path.basename(mainRoot), 128, "Repository");
-    targets.set(repositoryId, { root: mainRoot, name });
-    return { repositoryId, name, root, mainRoot };
+    const confirmed = checkout.unanswered !== true;
+    // A guess that hashes to an identity Git already confirmed is that identity; it never downgrades it.
+    if (confirmed || targets.get(repositoryId)?.confirmed !== true) targets.set(repositoryId, { root: mainRoot, name, confirmed });
+    return { repositoryId, name, root, mainRoot, confirmed };
+  }
+
+  // "confirmed" when Git answered for the repository in this run, "guessed" when only a folder-named identity was
+  // derived for it, and "unknown" when the inventory has not seen it in this run.
+  function repositoryConfirmation(repositoryId) {
+    const target = targets.get(repositoryId);
+    return target ? target.confirmed === true ? "confirmed" : "guessed" : "unknown";
   }
 
   async function identify(cwd) {
@@ -298,7 +319,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
   function taskWorktreeOwner(cwd) {
     if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
     const normalizedCwd = path.resolve(cwd);
-    if (roots.get(normalizedCwd)?.unanswered !== true) return null;
+    if (!unanswered.has(normalizedCwd)) return null;
     const ownerId = taskWorktreeOwnerId(normalizedCwd);
     return ownerId ? targets.has(ownerId) ? "known" : "unknown" : null;
   }
@@ -318,7 +339,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
 
   async function associateSession({ sessionId, provider, startedAt, cwd, previousReference = null }) {
     await ready;
-    const { repositoryId } = await identify(cwd);
+    const { repositoryId, confirmed } = await locate(cwd);
     const storedBinding = state.bindings.find((entry) => entry.sessionId === sessionId);
     if (storedBinding) return {
       repositoryId,
@@ -331,8 +352,8 @@ export function createRepositoryInventoryRuntime(options = {}) {
     const eligible = Number.isFinite(startedMs) && startedMs >= Date.parse(state.introducedAt)
       ? revisionsFor(repositoryId, provider).find((entry) => Date.parse(entry.capturedAt) <= startedMs) : null;
     const reference = referenceFor(eligible);
-    // A task worktree path whose repository is not known yet keeps a provisional identity: no binding is stored for it.
-    if (/^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(sessionId || "") && taskWorktreeOwner(cwd) !== "unknown") {
+    // Only an identity Git confirmed is bound: a guessed one, such as a removed folder's, stays provisional.
+    if (/^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(sessionId || "") && confirmed) {
       try {
         await commitState((current) => ({ ...current, bindings: [...current.bindings, {
           sessionId, repositoryId, provider, evaluatedAt: new Date(now()).toISOString(), reference,
@@ -479,6 +500,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
     identify,
     resolveRepository,
     taskWorktreeOwner,
+    repositoryConfirmation,
     associateSession,
     reconcile,
     capture,

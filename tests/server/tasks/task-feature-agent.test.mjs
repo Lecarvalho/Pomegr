@@ -25,7 +25,7 @@ function createFeature(store, payload, repositoryId = REPOSITORY) {
 }
 
 async function start(context, store) {
-  const runtime = { resolveTaskSession: (ref) => (Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref] } : null) };
+  const runtime = { resolveTaskSession: (ref) => (Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref], repositoryConfirmation: "confirmed" } : null) };
   const server = http.createServer(createRequestHandler({ runtime, taskStore: store, agentAuthorizationToken: TOKEN }));
   context.after(() => new Promise((done) => server.close(done)));
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
@@ -280,8 +280,8 @@ test("the feature paths take a POST from the agent gate only", async (context) =
 });
 
 test("a missing store or session lookup answers unavailable", async (context) => {
-  for (const [taskStore, runtime] of [[null, { resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY }) }], [{ apply() {}, readFeature() {} }, {}],
-    [{ apply() { throw new Error("boom"); }, readFeature() { throw new Error("boom"); } }, { resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY }) }]]) {
+  for (const [taskStore, runtime] of [[null, { resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY, repositoryConfirmation: "confirmed" }) }], [{ apply() {}, readFeature() {} }, {}],
+    [{ apply() { throw new Error("boom"); }, readFeature() { throw new Error("boom"); } }, { resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY, repositoryConfirmation: "confirmed" }) }]]) {
     const server = http.createServer(createRequestHandler({ runtime, taskStore, agentAuthorizationToken: TOKEN }));
     context.after(() => new Promise((done) => server.close(done)));
     await new Promise((done) => server.listen(0, "127.0.0.1", done));

@@ -1,5 +1,8 @@
+// How long an association to an identity Git did not confirm is kept before a later read derives it again.
+export const GUESSED_ASSOCIATION_RETRY_MS = 60_000;
+
 /** Background-only association cache; stale completions cannot restore an old root. */
-export function createSessionRepositoryAssociations({ registry, inventory, previousReference, previousAssociation, onChange }) {
+export function createSessionRepositoryAssociations({ registry, inventory, previousReference, previousAssociation, onChange, now = Date.now }) {
   const associations = new Map();
   const pending = new Map();
   // Keys outlive the bounded value cache: a committed association is reused only for its own key.
@@ -14,7 +17,8 @@ export function createSessionRepositoryAssociations({ registry, inventory, previ
     }
   }
   function retain(id, key, value, provisional = false) {
-    associations.set(id, { key, value, provisional });
+    const guessed = typeof value?.repositoryId === "string" && inventory.repositoryConfirmation?.(value.repositoryId) === "guessed";
+    associations.set(id, { key, value, provisional, ...(guessed ? { retryAt: now() + GUESSED_ASSOCIATION_RETRY_MS } : {}) });
     if (provisional) awaitingOwner.set(id, cwdOf(key)); else awaitingOwner.delete(id);
     while (awaitingOwner.size > 128) awaitingOwner.delete(awaitingOwner.keys().next().value);
     while (associations.size > 128) associations.delete(associations.keys().next().value);
@@ -31,8 +35,10 @@ export function createSessionRepositoryAssociations({ registry, inventory, previ
       const cwd = attribution ? attribution.state === "single" ? attribution.root : null : session.cwd;
       const key = JSON.stringify([cwd, attribution?.state, session.repositoryAttribution]);
       const cached = associations.get(id);
-      // A removed task worktree whose repository was not known yet settled on a provisional identity.
-      const stale = cached?.key === key && cached.provisional === true && inventory.taskWorktreeOwner?.(cwd) === "known";
+      // A removed task worktree whose repository was not known yet settled on a provisional identity, and an
+      // identity Git did not answer for is asked again once its retry time has passed.
+      const stale = cached?.key === key && ((cached.provisional === true && inventory.taskWorktreeOwner?.(cwd) === "known")
+        || (cached.retryAt !== undefined && now() >= cached.retryAt));
       if (cached?.key === key && !stale) return cached.value;
       const committed = () => stale ? cached.value : settledKeys.get(id) === key ? previousAssociation?.(candidate) || null : null;
       if (pending.get(id)?.key === key) return committed();

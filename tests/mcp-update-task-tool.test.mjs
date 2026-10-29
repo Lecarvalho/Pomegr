@@ -71,7 +71,7 @@ test("update_task posts the bound session, and maps every answer to fixed text t
   const texts = {
     invalid: "Pomegr rejected the request as invalid, so no task was changed.",
     session_not_found: "Pomegr does not know the current session yet, so no task was changed.",
-    repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was changed.",
+    repository_unavailable: "Git has not confirmed the current session's repository, so no task was changed. It does not mean the board is empty: Pomegr did not read it.",
     not_found: "No task was changed. A task can be changed only while it is on this session's board and has not started.",
     unavailable: "Pomegr is unavailable, so no task was changed.",
   };

@@ -1,13 +1,20 @@
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { pullRequestCheckRead } from "../repository/pull-requests.mjs";
 
-export function resolveTaskSession(sessionRef, { observationStore, catalogSessions }) {
+// `repositoryConfirmation` says whether Git confirmed the session's repository in this run (see the repository inventory).
+export function resolveTaskSession(sessionRef, { observationStore, catalogSessions, repositoryConfirmation = null }) {
   const parsed = parseProviderSessionId(sessionRef);
   if (!parsed) return null;
   const committed = observationStore.get(parsed.providerId, parsed.localSessionId)?.publicState?.session;
   const entry = (catalogSessions() || []).find((row) => row?.id === sessionRef);
   if (!committed && !entry) return null;
-  return { found: true, repositoryId: committed?.repositoryId ?? entry?.repositoryId ?? null };
+  const repositoryId = committed?.repositoryId ?? entry?.repositoryId ?? null;
+  let confirmation = "unknown";
+  try {
+    const answer = repositoryId === null || typeof repositoryConfirmation !== "function" ? null : repositoryConfirmation(repositoryId);
+    if (answer === "confirmed" || answer === "guessed") confirmation = answer;
+  } catch { /* an inventory that cannot answer confirms nothing */ }
+  return { found: true, repositoryId, repositoryConfirmation: confirmation };
 }
 
 const CATALOG_TITLE_LENGTH = 160;

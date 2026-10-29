@@ -27,7 +27,9 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
         return taskUsagePercentFact(limits, gateSources?.now?.() ?? Date.now());
       } catch { return null; }
     },
-    resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, { observationStore, catalogSessions }),
+    resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, {
+      observationStore, catalogSessions, repositoryConfirmation: (repositoryId) => repositoryInventory.repositoryConfirmation?.(repositoryId),
+    }),
     resolveTaskSessionFacts: (sessionRef) => resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }),
     resolveTaskCheckFacts: (sessionRef) => resolveTaskCheckFacts(sessionRef, { observationStore }),
     resolveTaskOutcomeFacts: (sessionIds, sinceMs, taskId) => resolveTaskOutcomeFacts(sessionIds, sinceMs, taskId, { observationStore, repositoryRecordForSession }),

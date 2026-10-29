@@ -23,7 +23,7 @@ const task = (store, id, repositoryId = REPOSITORY) => store.readBoard(repositor
 async function serve(context, store, { facts = null } = {}) {
   const calls = [];
   const runtime = {
-    resolveTaskSession: (ref) => (Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref] } : null),
+    resolveTaskSession: (ref) => (Object.hasOwn(SESSIONS, ref) ? { found: true, repositoryId: SESSIONS[ref], repositoryConfirmation: "confirmed" } : null),
     resolveTaskCheckFacts: (ref) => { calls.push(ref); return facts; },
   };
   const server = http.createServer(createRequestHandler({ runtime, taskStore: store, authorizationToken: DESKTOP, agentAuthorizationToken: AGENT }));

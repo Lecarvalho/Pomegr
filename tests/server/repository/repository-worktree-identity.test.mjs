@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { checkoutRoots, readGitCheckout } from "../../../server/repository/git-checkout.mjs";
+import { GIT_NOT_A_REPOSITORY, checkoutRoots, readGitCheckout } from "../../../server/repository/git-checkout.mjs";
 import { createRepositoryInventoryRuntime } from "../../../server/repository/repository-inventory-runtime.mjs";
 
 const MAIN = path.resolve("/work/Pomegr");
@@ -139,7 +139,9 @@ test("a real git worktree resolves to its main repository through the default lo
   const fromBare = checkoutRoots(await readGitCheckout(bareWorktree));
   same(fromBare.root, bareWorktree);
   same(fromBare.mainRoot, bareWorktree);
-  assert.equal(await readGitCheckout(directory), null);
+  assert.equal(await readGitCheckout(directory), GIT_NOT_A_REPOSITORY, "Git answers that an existing folder is no repository");
+  assert.equal(checkoutRoots(GIT_NOT_A_REPOSITORY), null);
+  assert.equal(await readGitCheckout(path.join(directory, "removed")), null, "a missing folder gets no answer");
 
   const runtime = createRepositoryInventoryRuntime({ registry: { providers: [] }, storeFile: path.join(directory, "inventory.json") });
   const resolvedMain = await runtime.resolveRepository(main, { requireGit: true });

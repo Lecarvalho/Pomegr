@@ -66,7 +66,7 @@ test("assign_task and unassign_task post the bound session and the task ID, and 
       texts: {
         invalid: "Pomegr rejected the request as invalid, so no task was assigned.",
         session_not_found: "Pomegr does not know the current session yet, so no task was assigned.",
-        repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was assigned.",
+        repository_unavailable: "Git has not confirmed the current session's repository, so no task was assigned. It does not mean the board is empty: Pomegr did not read it.",
         not_found: "No task was assigned. A session can be assigned only to a task on its own repository's board.",
         conflict: "No task was assigned. A task that is done cannot be assigned, and this session already reports the task Pomegr started it for.",
         limit: "No task was assigned. A task holds at most 16 assigned sessions, and a session can be assigned to at most 16 tasks.",
@@ -78,7 +78,7 @@ test("assign_task and unassign_task post the bound session and the task ID, and 
       texts: {
         invalid: "Pomegr rejected the request as invalid, so no task was unassigned.",
         session_not_found: "Pomegr does not know the current session yet, so no task was unassigned.",
-        repository_unavailable: "Pomegr could not resolve the current session's repository, so no task was unassigned.",
+        repository_unavailable: "Git has not confirmed the current session's repository, so no task was unassigned. It does not mean the board is empty: Pomegr did not read it.",
         not_found: "No task was unassigned. This session can unassign only a task it is assigned to.",
         unavailable: "Pomegr is unavailable, so no task was unassigned.",
       },
