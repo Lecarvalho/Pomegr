@@ -233,7 +233,7 @@ function serveStartAction({ response, taskStore, resolveStart, resolveGateFacts,
         ? call(repositoryId, payload, (provider) => (typeof resolveStart === "function" ? resolveStart(repositoryId, provider) : null))
       : call(repositoryId, payload);
     if (result?.ok === true) {
-      writeActionResult(response, 200, action === "review-session" ? { ok: true, sessionId: result.sessionId, sessionIds: result.sessionIds } : planning ? { ok: true, plan: result.plan } : { ok: true });
+      writeActionResult(response, 200, action === "review-session" ? { ok: true, sessionId: result.sessionId, sessionIds: result.sessionIds, reported: result.reported === true } : planning ? { ok: true, plan: result.plan } : { ok: true });
       return;
     }
     const error = Object.hasOwn(START_STATUS, result?.error) ? result.error : "unavailable";

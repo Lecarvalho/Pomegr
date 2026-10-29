@@ -2580,9 +2580,12 @@ ends a session; it is a control action of the desktop, not of the monitor, an ag
   monitor serves lists its task as Done; no renderer value names a session or a state.
 - **Working or not.** A builder session is working unless the monitor observes its linked session as
   `idle`, `open`, `stopped`, or `closed`. `working`, `needs_input`, `unknown`, and a key that is not linked
-  to a session yet count as working. A reviewer is working until its task's review has a verdict
-  (`passed` or `failed`). This reads the observed state and the review verdict, never terminal text, and
-  it is a reading, not proof: a Codex session may be `open` while it still runs.
+  to a session yet count as working. A reviewer is working while its task's review is `running`, and until
+  it reported a verdict (`passed` or `failed`). The board serves `review` only while the task is in Review,
+  so when it carries none (a Done task), desktop main asks the monitor's `review-session` read whether the
+  task's latest reviewer reported, once for each task in a pass. A missing or failed answer counts as
+  working: nothing ends on missing evidence. This reads the observed state and the review verdict, never
+  terminal text, and it is a reading, not proof: a Codex session may be `open` while it still runs.
 - **The owner's Done.** On the desktop, Mark done, Mark done and resume, and a card moved into the Done
   column first ask `pomegr:task-sessions` (`inspect`) how many sessions of the task work. None working: the
   Done action runs and the idle sessions end at once. Some working: the modal or the board asks “Its session
@@ -2949,7 +2952,7 @@ Aril may record a rework link (references and a cause from a fixed list) without
 | `POST /internal/tasks/review-plan` | Desktop main, desktop token; no browser or paired route | Existing `{ repositoryId, payload }` envelope; payload `{ id }` or `{ id, provider, model, effort }`; answers the private review plan |
 | `pomegr:task-review-start` IPC | Trusted desktop main frame only, behind native confirmation | Repository ID and task ID only; answers one fixed start status, never the private review plan |
 | `POST /internal/tasks/review-abort` | Desktop main, desktop token | Existing repository envelope with `{ id, token }`; clears only the matching review dispatch |
-| `POST /internal/tasks/review-session` | Desktop token, loopback Host, no Origin; no browser or paired route (the LAN gateway forwards no internal task path) | `{ repositoryId, payload: { id } }`; read-only `{ ok: true, sessionId, sessionIds }`: `sessionId` from `task_reviewer` only (the current review), qualified ID or null, and `sessionIds` every qualified reviewer ID in `task_reviewers`, in link order; fixed `invalid`, `not_found`, or `unavailable` refusal; `no-store` |
+| `POST /internal/tasks/review-session` | Desktop token, loopback Host, no Origin; no browser or paired route (the LAN gateway forwards no internal task path) | `{ repositoryId, payload: { id } }`; read-only `{ ok: true, sessionId, sessionIds, reported }`: `sessionId` from `task_reviewer` only (the current review), qualified ID or null, `sessionIds` every qualified reviewer ID in `task_reviewers`, in link order, and `reported`, a boolean that is true when a `task_reviews` row exists at or after the latest `task_reviewers` link; fixed `invalid`, `not_found`, or `unavailable` refusal; `no-store` |
 | `POST /api/agent/v1/tasks/review` | Local agent-query capability, same gate as complete/block | `{ sessionRef, verdict, taskId?, reasons? }`; existing `schemaVersion: 1` envelope with `ok`, or fixed `reason`: `invalid`, `not_found`, `not_reviewable`, `unavailable`; no reasons or identity returned |
 | `POST /internal/tasks/scorecard-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { appVersion } }`; upserts the version's snapshot and answers `{ ok: true, scorecard }` with formula, current snapshot, and nullable baseline; counts, shares, medians, snapshot times, and app versions only |
 | `POST /internal/tasks/log-read` | Desktop main, with the desktop token; no Next route | `{ repositoryId, payload: { limit, after? } }`; answers `{ ok: true, log }` with entries carrying nullable `pullRequest`, pagination, cursors, and latest ID |
@@ -3133,7 +3136,7 @@ Aril may record a rework link (references and a cause from a fixed list) without
 - From 2026-10-26 (task T-188), the owner's decision keeps a reviewer session linked to its task after the review ends. This is a deliberate widening of what the Sessions list serves.
   - `task_reviewers` keeps each reviewer's normalized session ID and link time under repository and task identifiers, written when the review links and deleted only with the task.
   - The Sessions list serves a reviewer session's own row the task it reviewed, as the same task reference with `role: "review"`, under that route's gate, to a same-computer client or a paired device. It never serves a reviewer on a builder's row or a board.
-  - `POST /internal/tasks/review-session` returns the kept IDs to desktop main only, for the Terminal tab.
+  - `POST /internal/tasks/review-session` returns the kept IDs to desktop main only, for the Terminal tab, with a boolean for whether the latest reviewer reported, for [ending a Done task's sessions](#ending-a-done-tasks-sessions).
   - The kept IDs never enter `GET /api/tasks`, Aril's prompt, an agent tool, `/api/state`, a session domain, a catalog, a checkpoint, a report, a log, a notification, or diagnostics.
 
 - `task_events` stores only event kind, time, and nullable session ID under its repository and task identifiers, never text.

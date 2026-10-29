@@ -134,12 +134,36 @@ test("a second review of the same task keeps both reviewers", async (context) =>
   review(env, FIRST, "fail");
   review(env, SECOND, "pass");
   assert.deepEqual(directoryTasks(env, [FIRST, SECOND]), [reviewerRef("needs_review"), reviewerRef("needs_review")]);
-  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: SECOND, sessionIds: [FIRST, SECOND] });
+  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: SECOND, sessionIds: [FIRST, SECOND], reported: true });
   assert.deepEqual(await terminalSessions(context, env, [reviewKey("a"), reviewKey("b")]), [["review", FIRST, "exited"], ["review", SECOND, "exited"]]);
   assert.equal(env.store.apply(REPOSITORY_ID, "resolve_done", { id: "T-1" }).ok, true);
   assert.deepEqual(directoryTasks(env, [FIRST, SECOND]), [reviewerRef("done"), reviewerRef("done")]);
-  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: null, sessionIds: [FIRST, SECOND] });
+  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: null, sessionIds: [FIRST, SECOND], reported: true });
   assert.deepEqual(await terminalSessions(context, env, [reviewKey("a"), reviewKey("b")]), [["review", FIRST, "exited"], ["review", SECOND, "exited"]]);
+});
+
+test("the route says whether the latest reviewer reported, before and after Mark done", async (context) => {
+  const env = await monitor(context);
+  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: null, sessionIds: [], reported: false });
+  review(env, FIRST, "pass");
+  assert.equal((await reviewSessionRoute(env)).reported, true);
+  assert.equal(env.store.apply(REPOSITORY_ID, "resolve_done", { id: "T-1" }).ok, true);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).tasks[0].review, null, "the board no longer carries the review once the task is Done");
+  assert.equal((await reviewSessionRoute(env)).reported, true);
+});
+
+test("a task that went back keeps its new reviewer unreported until that reviewer gives a verdict", async (context) => {
+  const env = await monitor(context);
+  review(env, FIRST, "fail");
+  assert.equal(env.store.apply(REPOSITORY_ID, "resolve_requeue", { id: "T-1" }).ok, true);
+  inReview(env);
+  env.clock.now += 1000;
+  const token = env.store.planReview(REPOSITORY_ID, { id: "T-1" }, () => FACTS).plan.token;
+  assert.deepEqual(env.store.bindSession({ token, sessionId: SECOND }), { ok: true });
+  // The first reviewer's verdict is older than the second reviewer's link.
+  assert.deepEqual(await reviewSessionRoute(env), { ok: true, sessionId: SECOND, sessionIds: [FIRST, SECOND], reported: false });
+  assert.equal(env.store.apply(REPOSITORY_ID, "resolve_done", { id: "T-1" }).ok, true);
+  assert.equal((await reviewSessionRoute(env)).reported, false);
 });
 
 test("deleting the task removes every reviewer link", async (context) => {

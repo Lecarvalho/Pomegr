@@ -62,6 +62,7 @@ export function createTerminalController(options = {}) {
   }
 
   async function readReviewSession(repositoryId, taskId) {
+    if (!origin || !options.authorizationToken) return null;
     try {
       const response = await fetchImpl(`${origin}/internal/tasks/review-session`, {
         method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
@@ -72,7 +73,8 @@ export function createTerminalController(options = {}) {
       if (!response.ok || answer?.ok !== true) return null;
       const valid = (value) => typeof value === "string" && SESSION.test(value);
       return { sessionId: valid(answer.sessionId) ? answer.sessionId : null,
-        sessionIds: Array.isArray(answer.sessionIds) ? answer.sessionIds.filter(valid) : [] };
+        sessionIds: Array.isArray(answer.sessionIds) ? answer.sessionIds.filter(valid) : [],
+        reported: answer.reported === true };
     } catch { return null; }
   }
 
@@ -208,8 +210,19 @@ export function createTerminalController(options = {}) {
 
   // A builder is working unless the monitor observes its linked session in a state above; a reviewer is working until its verdict.
   // A session that is not linked to the task yet has no observed state, so it counts as working.
-  const isWorking = (record, task) => record.role === "review" ? !["passed", "failed"].includes(task.review?.state)
-    : !(record.sessionId && task.session?.id === record.sessionId && NOT_WORKING.has(task.session.state));
+  // The board serves `review` only while a task is in Review, so a reviewer of a Done task reads its verdict from the monitor once per pass.
+  // An answer that is missing or failed counts as no verdict: the session is never ended on missing evidence.
+  const reviewerReported = (reads, record) => {
+    const id = `${record.repositoryId}/${record.taskId}`;
+    if (!reads.has(id)) reads.set(id, readReviewSession(record.repositoryId, record.taskId).then((answer) => answer?.reported === true));
+    return reads.get(id);
+  };
+  async function isWorking(record, task, reads) {
+    if (record.role !== "review") return !(record.sessionId && task.session?.id === record.sessionId && NOT_WORKING.has(task.session.state));
+    if (task.review?.state === "running") return true;
+    if (["passed", "failed"].includes(task.review?.state)) return false;
+    return !(await reviewerReported(reads, record));
+  }
 
   // The task keys that are running now, each with the task the monitor lists for it. A key of another kind never appears.
   async function liveTaskSessions({ repositoryId, taskId, done }) {
@@ -228,8 +241,9 @@ export function createTerminalController(options = {}) {
   async function endNow({ repositoryId, taskId, endWorking = false, owner = false }) {
     let ended = 0;
     let working = 0;
+    const reads = new Map();
     for (const { record, task } of await liveTaskSessions({ repositoryId, taskId, done: true })) {
-      if (isWorking(record, task) && !endWorking) {
+      if (!endWorking && await isWorking(record, task, reads)) {
         working += 1;
         if (owner) kept.add(record.key);
         continue;
@@ -321,7 +335,9 @@ export function createTerminalController(options = {}) {
     async taskSessions(repositoryId, taskId) {
       if (!client || disposed) return { live: 0, working: 0 };
       const found = await liveTaskSessions({ repositoryId, taskId, done: false });
-      return { live: found.length, working: found.filter(({ record, task }) => isWorking(record, task)).length };
+      const reads = new Map();
+      const states = await Promise.all(found.map(({ record, task }) => isWorking(record, task, reads)));
+      return { live: found.length, working: states.filter(Boolean).length };
     },
     // Ends the sessions of Done tasks (every repository, or one task). Only the owner's Done action may pass `endWorking`.
     endDone(scope = {}) {
