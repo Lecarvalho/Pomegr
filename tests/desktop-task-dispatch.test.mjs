@@ -159,7 +159,7 @@ test("starts with no model or effort, exact args and options", async () => {
   assert.equal(h.calls[0].options.cache, "no-store");
 });
 
-test("a session never inherits the marks of a provider session the app was launched from", () => {
+test("a started session does not get the variables of the Claude Code or Codex session that started the app", () => {
   const nested = { CLAUDECODE: "1", CLAUDE_PID: "1", CLAUDE_EFFORT: "high", CLAUDE_CODE_CHILD_SESSION: "1", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDE_CODE_EXECPATH: "x", CLAUDE_CODE_MESSAGING_SOCKET: "pipe", claude_code_messaging_token: "secret", CLAUDE_CODE_SESSION_ATTENDED: "1", CLAUDE_CODE_SESSION_ID: "s", CLAUDE_CODE_SSE_PORT: "1", CLAUDE_CODE_FORCE_SESSION_PERSISTENCE: "1", CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP: "1", CODEX_SANDBOX: "seatbelt", CODEX_SANDBOX_NETWORK_DISABLED: "1", CODEX_THREAD_ID: "t" };
   const owner = { CLAUDE_CONFIG_DIR: "C:\claude", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDE_CODE_MAX_OUTPUT_TOKENS: "8000", CODEX_HOME: "C:\codex" };
   assert.deepEqual(userSessionEnvironment({ ...sessionEnvironment, ...nested, ...owner }), { ...sessionEnvironment, ...owner });
