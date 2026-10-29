@@ -2482,8 +2482,13 @@ with the started session linked to its task and run in Pomegr's terminal host.
 - Desktop main passes `userSessionEnvironment(sourceEnvironment)` plus the fresh
   `POMEGR_TASK_TOKEN`: the owner's full inherited environment minus `ELECTRON_*`,
   `POMEGR_SMOKE_*`, `POMEGR_START_*`, `POMEGR_MONITOR_TOKEN`, `POMEGR_MONITOR_ORIGIN`,
-  and the old `POMEGR_TASK_TOKEN`, matched without case sensitivity. Owner-set tools,
-  proxy variables, provider keys, and settings remain available to the child.
+  and the old `POMEGR_TASK_TOKEN`, matched without case sensitivity. It also leaves out
+  the marks of a provider session the app may have been launched from (`CLAUDECODE`,
+  `CLAUDE_PID`, `CLAUDE_EFFORT`, Claude Code's session `CLAUDE_CODE_*` names such as
+  `CLAUDE_CODE_SESSION_ID` and `CLAUDE_CODE_MESSAGING_TOKEN`, `CODEX_SANDBOX`,
+  `CODEX_SANDBOX_NETWORK_DISABLED`, `CODEX_THREAD_ID`), so the child never believes it
+  runs nested in that session. Owner-set tools, proxy variables, provider keys, and
+  settings, such as `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_USE_BEDROCK`, remain available to the child.
 - The host validates environment shape and bounds without a name allowlist: at most
   512 string variables, names matching `^[A-Za-z_][A-Za-z0-9_()]{0,127}$`, each value at
   most 32767 characters, no NUL in names or values, and at most 48 KiB of serialized
