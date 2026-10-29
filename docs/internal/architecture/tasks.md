@@ -951,7 +951,7 @@ paths stay desktop-private and never reach the monitor store or browser state.
   Mark done nor the queue runner's pass above.
   - **What Aril sees.** On each turn that an owner message or a grant that writes tasks starts, desktop main gives
     Aril the cached facts of the worktrees of the repository root at one of the two locations above. They are read from
-    Git in the background and never during a turn, except the Git facts of a repository with no cache yet (see
+    Git in the background and never during a turn; until the first read has finished, the prompt says so in one sentence (see
     [Agent chat: Task worktree facts](agent-chat.md#task-worktree-facts)). The task ID
     comes from the validated folder name only; a worktree anywhere else is never listed. A row holds the task ID,
     the task's state and column from the board of the turn or "not on board", whether the working tree is clean, whether HEAD

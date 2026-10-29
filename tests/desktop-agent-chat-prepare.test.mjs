@@ -308,12 +308,13 @@ test("a step that fails waits inside its reader, passes the failure to the steps
   }
 });
 
-test("the worktrees step takes the time of the Git facts on a first turn, none on a turn with cached facts, and never the time of a folder walk", async (context) => {
+test("the worktrees step of a cold turn takes no time, the read it starts runs in the background, and the next turn finds the rows at no time either", async (context) => {
   let clock = 1_000;
+  const read = deferred();
   const walks = [];
-  // The first read of the Git facts takes four seconds on this clock; the folder walk never ends here.
+  let reads = 0;
   const worktrees = {
-    inventory: async () => { clock += 4_000; return [{ taskId: "T-1", clean: true, uniqueCommits: false }]; },
+    inventory: () => { reads += 1; return read.promise; },
     sizes: () => { walks.push("walk"); return new Promise(() => {}); },
   };
   const h = await chatHarness(context, { clock: () => clock, worktrees });
@@ -322,11 +323,18 @@ test("the worktrees step takes the time of the Git facts on a first turn, none o
     h.runs[index].measured = { eventMs: 1, textMs: 2, doneMs: 3 };
     return (await finishTurn(h, h.runs[index], { status: "complete", text: "Ok." }, sent.conversationId)).messages.at(-1).timing.prepare;
   };
+  // The turn is over while the read, which would take seven seconds on this clock, is still running.
   const first = await prepared(0);
-  assert.equal(first.worktrees, 4_000, "the Git facts, and no walk");
+  assert.equal(reads, 1);
+  assert.equal(first.worktrees, 0, "a cold turn waits for nothing");
+  assert.equal(first.total, 0);
+  assert.match(h.runs[0].options.prompt, /<task_worktrees>\nTask worktree facts are still being read/u);
+  clock += 7_000;
+  read.resolve([{ taskId: "T-1", clean: true, uniqueCommits: false }]);
   await until(() => walks.length === 1);
   const second = await prepared(1);
   assert.equal(second.worktrees, 0, "cached facts wait for nothing");
   assert.deepEqual(walks, ["walk"], "the cached turn started no second walk");
-  assert.match(h.runs[1].options.prompt, /<task_worktrees>/u);
+  assert.equal(reads, 1);
+  assert.match(h.runs[1].options.prompt, /"taskId":"T-1"/u);
 });

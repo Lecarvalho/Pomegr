@@ -1,5 +1,5 @@
 // The facts of the Pomegr task worktrees that an Aril turn reads, kept in desktop main between turns so that a turn never waits on Git or on a
-// folder walk. See [Task worktrees](../../docs/internal/architecture/agent-chat.md#task-worktree-facts). The cache holds the facts of
+// folder walk. See [Task worktree facts](../../docs/internal/architecture/agent-chat.md#task-worktree-facts). The cache holds the facts of
 // `task-worktree.mjs` (clean, unique commits, size) and nothing else: never a path, a file name, or Git output. The board's own facts
 // (state, column) are joined on every read, because they change faster than the cache. A removal never reads this cache: `remove`
 // reads the live tree and the live commits itself.
@@ -7,6 +7,10 @@
 const STALE_MS = 3 * 60_000;
 // A refresh that has run this long is given up on, so a folder walk that hangs cannot stop every later refresh.
 const RUN_LIMIT_MS = 60_000;
+// When desktop main reads the facts of every repository with a board: a little after start so it does not compete with it, and again for
+// the repositories the monitor had not located yet.
+const PREFETCH_DELAYS_MS = Object.freeze([10_000, 60_000]);
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 
 // A row for the prompt: the cached facts and the task's current state and column from the board.
 function describe(rows, tasks, columns) {
@@ -20,10 +24,10 @@ function describe(rows, tasks, columns) {
 
 /**
  * `worktrees.inventory({ repositoryRoot, repositoryId })` answers the Git facts of each worktree, and `worktrees.sizes(...)`, when it has
- * it, their sizes. `read(...)` answers the cached rows at once. A repository with no cache reads the Git facts and waits for them, never
- * for a size. A cache older than `staleMs`, or one a change made out of date, is read again in the background, one repository at a time.
- * A row keeps its last known size until the new walk ends, and a size nobody measured is `null`. A refresh given up on may still answer
- * later; its answer is dropped.
+ * it, their sizes. `read(...)` never waits: it answers the cached rows at once, or `{ rows: null, readAt: null }` for a repository with no
+ * cache yet, whose first read it has just started in the background. A cache older than `staleMs`, or one a change made out of date, is
+ * read again in the background, one repository at a time. A row keeps its last known size until the new walk ends, and a size nobody
+ * measured is `null`. A refresh given up on may still answer later; its answer is dropped.
  */
 export function createWorktreeInventory({ worktrees, now = Date.now, staleMs = STALE_MS } = {}) {
   const repositories = new Map();
@@ -57,16 +61,25 @@ export function createWorktreeInventory({ worktrees, now = Date.now, staleMs = S
     return running;
   }
 
+  // Begins a refresh when the repository has no cache, an old one, or one a change made out of date; answers it, or null.
+  function ensure(repositoryId, repositoryRoot) {
+    const { entry, version } = stateOf(repositoryId);
+    return !entry || now() - entry.readAt > staleMs || entry.version !== version ? refresh(repositoryId, repositoryRoot) : null;
+  }
+
   /**
    * `{ rows, readAt }`: the rows `{ taskId, state, column, clean, uniqueCommits, sizeMB, atLeast }` and when their Git facts were read, in
-   * milliseconds. Rejects only when a repository with no cache could not read its Git facts.
+   * milliseconds. Both are null while the repository has no cache: nothing is known yet, which is not the same as no worktrees.
    */
-  async function read({ repositoryRoot, repositoryId, tasks = [], columns = [] } = {}) {
-    const state = stateOf(repositoryId);
-    if (!state.entry) await refresh(repositoryId, repositoryRoot).facts;
-    else if (now() - state.entry.readAt > staleMs || state.entry.version !== state.version) refresh(repositoryId, repositoryRoot);
-    // No entry only when the refresh was given up on while this read waited for it.
-    return state.entry ? { rows: describe(state.entry.rows, tasks, columns), readAt: state.entry.readAt } : { rows: [], readAt: null };
+  function read({ repositoryRoot, repositoryId, tasks = [], columns = [] } = {}) {
+    ensure(repositoryId, repositoryRoot);
+    const { entry } = stateOf(repositoryId);
+    return entry ? { rows: describe(entry.rows, tasks, columns), readAt: entry.readAt } : { rows: null, readAt: null };
+  }
+
+  /** Reads the repository's facts in the background when it has none or they are old. Answers when the Git facts are stored, never rejects. */
+  async function warm({ repositoryRoot, repositoryId } = {}) {
+    try { await ensure(repositoryId, repositoryRoot)?.facts; } catch { /* The next read tries again. */ }
   }
 
   /**
@@ -83,5 +96,38 @@ export function createWorktreeInventory({ worktrees, now = Date.now, staleMs = S
   // The worktrees' own changes, such as a task start making one or a Done task's removal, reach the cache too.
   const unsubscribe = typeof worktrees?.onChange === "function" ? worktrees.onChange(changed) : () => {};
 
-  return Object.freeze({ read, changed, close: unsubscribe });
+  return Object.freeze({ read, warm, changed, close: unsubscribe });
+}
+
+/**
+ * Reads the worktree facts of every repository that has a Pomegr board, a little after desktop main starts, so the first message finds them.
+ * `readHome()` answers the Tasks home of the monitor (`{ boards: [{ repositoryId }] }`) and `rootOf(repositoryId)` the repository root or
+ * null. One repository at a time, so many boards do not start many Git processes together. A repository whose root is not known yet is
+ * tried again at the next delay; one the prefetch never reaches is read by its first turn, which waits for nothing either. The timers
+ * do not keep the process alive. `cancel()` stops the ones still waiting.
+ */
+export function prefetchWorktreeFacts({ inventory, readHome, rootOf, delaysMs = PREFETCH_DELAYS_MS, setTimer = setTimeout, clearTimer = clearTimeout }) {
+  const warmed = new Set();
+  const timers = new Set();
+  let closed = false;
+  async function pass() {
+    let boards = [];
+    try { const home = await readHome(); boards = Array.isArray(home?.boards) ? home.boards : []; } catch { return; }
+    for (const board of boards) {
+      const repositoryId = board?.repositoryId;
+      if (closed) return;
+      if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || warmed.has(repositoryId)) continue;
+      let repositoryRoot = null;
+      try { repositoryRoot = await rootOf(repositoryId); } catch { /* Tried again at the next delay. */ }
+      if (!repositoryRoot || closed) continue;
+      warmed.add(repositoryId);
+      await inventory.warm({ repositoryRoot, repositoryId });
+    }
+  }
+  for (const delay of delaysMs) {
+    const timer = setTimer(() => { timers.delete(timer); void pass(); }, delay);
+    timer?.unref?.();
+    timers.add(timer);
+  }
+  return Object.freeze({ cancel() { closed = true; for (const timer of timers) clearTimer(timer); timers.clear(); } });
 }

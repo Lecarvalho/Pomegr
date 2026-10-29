@@ -23,10 +23,11 @@ import { timingOf } from "./agent-chat-timing.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
-import { createWorktreeInventory } from "./agent-chat-worktrees.mjs";
+import { createWorktreeInventory, prefetchWorktreeFacts } from "./agent-chat-worktrees.mjs";
 import { createTaskWorktrees, TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 export { agentChatMcpServer, prepareInstructionsFile };
-export { isWorkflowSourcePath, readWorkflowChanges, workflowSources } from "./agent-chat-workflow.mjs";
+import { createWorkflowReader } from "./agent-chat-workflow.mjs";
+export { createWorkflowReader, isWorkflowSourcePath, readWorkflowChanges, workflowSources } from "./agent-chat-workflow.mjs";
 
 export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat";
 // The images the owner sends to Aril travel on a channel of their own, because they are bytes and not a JSON payload.
@@ -152,8 +153,10 @@ export function createAgentChat(options = {}) {
   });
 
   // The reads a turn makes before its process starts (see agent-chat-prepare.mjs): they begin together, and each is timed.
-  const preparation = createTurnPreparation({ monitor, postAction, worktreeInventory, execFile, repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
+  const preparation = createTurnPreparation({ monitor, postAction, worktreeInventory, workflowReader: options.workflowReader || createWorkflowReader({ execFile }), repositoryGithub, dataRoot: options.dataRoot, environment: runEnvironment, store, summaries: summaries ?? NO_SUMMARIES, clock });
   const { readBoard, repositoryRoot } = preparation;
+  // Desktop main alone asks for it, a little after it starts: the facts of every repository with a board are read before the first message.
+  const worktreePrefetch = options.prefetchWorktrees ? prefetchWorktreeFacts({ inventory: worktreeInventory, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, ...(typeof options.prefetchWorktrees === "object" ? options.prefetchWorktrees : {}) }) : null;
 
   // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
   const taskReadServer = createTaskBridge({ mcpServer, monitor, current: (turn) => active === turn && !disposed });
@@ -717,7 +720,7 @@ export function createAgentChat(options = {}) {
     grantWrite,
     grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)),
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; followUps.clear(); compaction.dispose(); worktreeInventory.close?.(); try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); compaction.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 
