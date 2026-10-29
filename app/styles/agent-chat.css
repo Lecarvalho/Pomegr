@@ -121,6 +121,24 @@
 .agentChatProposalActions > button { width: auto; }
 .agentChatProposalNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 
+/* Choices under an answer: quick replies are small Quiet buttons on the raised fill, and one question is a list of rows, each a Quiet button with a
+   label and a one-line detail, the first marked Recommended. Choices that are no longer open are quiet text, and the one the owner picked is marked. */
+.agentChatReplies, .agentChatChoices { margin: 0; padding: 0; list-style: none; }
+.agentChatReplies { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.agentChatChoices { display: flex; flex-direction: column; gap: var(--space-1); }
+.agentChatQuestion { display: flex; flex-direction: column; gap: var(--space-2); }
+.agentChatQuestionText { margin: 0; overflow-wrap: anywhere; font: 600 var(--text-sm)/1.4 var(--font-ui); }
+.agentChatReply.commandQuietAction, .agentChatChoice.commandQuietAction { background: var(--command-panel-2); color: var(--command-ink); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.agentChatReply.commandQuietAction { width: auto; max-width: 100%; min-height: var(--control-compact); padding: var(--space-1) var(--space-3); }
+.agentChatChoice.commandQuietAction { width: 100%; min-height: var(--control-compact); padding: var(--space-2) var(--space-3); flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: var(--space-1); }
+.agentChatReply.commandQuietAction:hover:not(:disabled), .agentChatChoice.commandQuietAction:hover:not(:disabled) { background: color-mix(in srgb, var(--command-ink) 10%, var(--command-panel-2)); }
+.agentChatChoiceLabel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.agentChatChoiceDetail { color: var(--command-muted); font: 400 var(--text-caption)/1.4 var(--font-ui); }
+.agentChatReply.isPast, .agentChatChoice.isPast { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); overflow-wrap: anywhere; }
+.agentChatChoice.isPast { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.agentChatReply.isPicked, .agentChatChoice.isPicked { color: var(--command-ink); }
+.agentChatReply.isPicked, .agentChatChoice.isPicked .agentChatChoiceLabel { font-weight: 650; }
+
 /* Empty state. */
 .agentChatEmpty { display: flex; flex-direction: column; gap: var(--space-2); }
 .agentChatEmptyTitle { margin: 0; font: 650 var(--text-base)/1.4 var(--font-ui); }
@@ -190,7 +208,7 @@
 @media (max-width: 760px), (pointer: coarse) {
   .agentChatAttach, .agentChatImageRemove, .agentChatSend.commandIconAction { width: 44px; height: 44px; }
   .agentChatImagePicture { width: 96px; height: 96px; }
-  .agentChatLauncher, .agentChatField, .agentChatSearchField, .agentChatSearchResult, .agentChatComposer .commandSelectTrigger { min-height: 44px; }
+  .agentChatLauncher, .agentChatField, .agentChatSearchField, .agentChatSearchResult, .agentChatComposer .commandSelectTrigger, .agentChatReply.commandQuietAction, .agentChatChoice.commandQuietAction { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .agentChatPanel, .agentChatScrim { animation: none; }

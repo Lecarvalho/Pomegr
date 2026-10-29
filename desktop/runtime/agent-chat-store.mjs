@@ -7,6 +7,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 
 import { ARIL_FOLLOW_UP_END_REASONS } from "../../shared/aril-follow-up.mjs";
+import { normalizeChoices } from "./agent-chat-choices.mjs";
 import { normalizeChatImages } from "./agent-chat-images.mjs";
 import { normalizeTiming } from "./agent-chat-timing.mjs";
 import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
@@ -149,12 +150,18 @@ function storedMessage(message) {
     stored.proposal = proposal;
   }
   if (message.proposalUnreadable === true) stored.proposalUnreadable = true;
+  // Quick replies or one multiple-choice question, for an answer that offers no proposal. A value outside the contract keeps the message without it.
+  // `choicesUnreadable` is the quiet mark of a block Pomegr could not read: nothing is drawn for it, and the prompt reads it.
+  const choices = normalizeChoices(message.choices);
+  if (choices && !stored.proposal) stored.choices = choices;
+  else if (message.choicesUnreadable === true) stored.choicesUnreadable = true;
   // How long the run took and how large its prompt was, as numbers. A record without one, or with one outside the contract, keeps the message.
   const timing = normalizeTiming(message.timing);
   if (timing) stored.timing = timing;
   // A grant follow-up is a fixed line Pomegr wrote from the task log, with no provider run: it never carries a proposal.
   if (message.grantFollowUp !== undefined) {
-    if (message.grantFollowUp !== true || stored.proposal || stored.proposalUnreadable || stored.timing || message.followUp !== undefined || stored.status !== "complete") return null;
+    if (message.grantFollowUp !== true || stored.proposal || stored.proposalUnreadable || stored.timing || message.followUp !== undefined || stored.status !== "complete"
+      || message.choices !== undefined || message.choicesUnreadable !== undefined) return null;
     stored.grantFollowUp = true;
   }
   // A follow-up may offer another board proposal, but never a session start or queue-state change.

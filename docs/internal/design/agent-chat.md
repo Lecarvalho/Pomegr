@@ -1,6 +1,6 @@
 # Agent chat design
 
-> Scope: the Aril chat, its launcher, panel, repository choice, thread, search, messages, answer text, proposal card, and composer.
+> Scope: the Aril chat, its launcher, panel, repository choice, thread, search, messages, answer text, proposal card, choices, and composer.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/components/agent-chat/`, `app/styles/agent-chat.css`, the `/design-system` samples,
@@ -414,6 +414,59 @@ The task board is in [Task board design](task-board.md).
 - It draws only the shared warning notice (`.taskNotice.warning`).
 - The notice reads “Aril wrote a proposal that Pomegr could not read, so there is nothing to apply. Ask for it again.”
 
+## Choices
+
+- Aril may end an answer with quick replies or with one multiple-choice question, never both.
+- The choices sit inside Aril's message, after its text and its notes.
+- A choice only sends its label as the owner's own message, with the repository, model, and effort that the composer shows.
+- A choice applies, starts, and changes nothing by itself.
+- A choice leaves the message field as it is, so a draft stays.
+- Sending a choice closes the search, as sending a message does.
+- An answer that carries a proposal draws no choices: the proposal has its own **Apply changes** and **Dismiss**.
+- A grant follow-up line draws no choices.
+- A block that Pomegr could not read draws nothing and no notice: the answer text stays.
+
+### Quick replies
+
+- `.agentChatReplies` is a list named “Quick replies” that wraps, with an 8px gap.
+- It holds 1 to 4 replies, each one line of at most 40 characters, and no two the same whatever their case.
+- A reply (`.agentChatReply`) is a [Quiet](../../../DESIGN.md#buttons) button with the raised `--command-panel-2` fill, ink text, no border, and the control radius.
+- A reply is 32px high with 12px side padding, and 44px at 760px and narrower and on coarse pointers.
+- A reply wraps its label rather than widen the panel.
+- Hover takes a 10% ink tint over the raised fill.
+- A reply keeps the shared focus ring.
+- A reply is the Quiet role with a local fill, as **Jump to latest** is the Quiet role with a local line. It is not a seventh role.
+
+### Multiple-choice question
+
+- `.agentChatQuestion` is a group named by its question.
+- The question is a `--text-sm` line of weight 600, at most 120 characters, above the options.
+- The question is in the block and not in the answer text, so it is not said twice.
+- The options are a list of 2 to 4 rows, 4px apart.
+- A row (`.agentChatChoice`) is a full-width Quiet button with the raised fill and 8px by 12px padding.
+- A row holds the label over a detail.
+- The label is `--text-xs` at weight 500, at most 60 characters.
+- The detail is muted `--text-caption`, one line of at most 120 characters.
+- The first option is the one Aril recommends, and its label is followed by a neutral `.commandChip` **Recommended**.
+- A row is at least 44px high at 760px and narrower and on coarse pointers.
+- The panel draws no option for a free answer: the composer is the free answer.
+
+### When choices can be tapped
+
+| State | When | Look |
+| --- | --- | --- |
+| Active | The choices of the newest answer, while no message is on its way and no turn runs | Buttons |
+| Waiting | The same choices while a turn runs, one that another device started included | The same buttons, disabled |
+| Past | The owner sent anything after the answer, a newer answer came, or a message is on its way | Quiet text, not buttons |
+
+- The newest answer is the newest message of Aril's own run, so a grant follow-up line does not end the choices before it.
+- Past replies and rows keep their order, with muted `--text-xs` text and no fill.
+- The choice the owner picked is the one whose label is the owner's next message.
+- The picked choice reads in ink at weight 650 and follows its label with a neutral `.commandChip` **Chosen**.
+- When the owner answers in their own words, nothing is marked.
+- A choice sent by the keyboard returns focus to the message field, because the buttons leave the page.
+- A choice sent by a pointer moves no focus, so a tap on a phone opens no keyboard.
+
 ## Composer
 
 ### Layout
@@ -510,6 +563,7 @@ The task board is in [Task board design](task-board.md).
 - It renders the proposal card pending, with a delete, in flight, applied, partly applied, with a task that was not found, with every result word, and dismissed.
 - It renders the session start proposed, held, failed, launched, and on a paired device.
 - It renders the queue change proposed for on and for off, on a paired device, turned on, turned on and held, turned off, and not changed.
+- It renders the panel with quick replies, answered, and waiting, and with a multiple-choice question, open and answered.
 - It renders the composer with a repository choice, with the model and the effort, with no known model, with an error, and over the limit.
 - It renders the panel over a dimmed page, with the scrim.
 - It renders the answer text, including HTML and a link shown as literal text.

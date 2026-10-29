@@ -361,6 +361,8 @@ test("the answer of a compaction is stored as plain text: a proposal block is dr
   assert.equal(stored[0].messages, LONG, "no message was added by the compaction");
   assert.equal(summaryFromAnswer("Plain\r\ntext"), "Plain\ntext");
   assert.equal(summaryFromAnswer(undefined), "");
+  // A choices block is no part of a summary either, closed or not.
+  assert.equal(summaryFromAnswer('Decided.\n\n```pomegr-replies\n{"replies":["Yes"]}\n```\n\nOpen: model.\n\n```pomegr-replies\n{"replies":['), "Decided.\n\nOpen: model.");
 });
 
 test("a compaction runs after a complete turn of the chat, never after one that did not complete", async (context) => {

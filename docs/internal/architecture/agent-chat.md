@@ -15,7 +15,8 @@
 > 2026-10-15 (task T-123). Follow-up proposals with owner approval were added on
 > 2026-10-17 (task T-120). Grant follow-ups were added on 2026-10-26 (task T-183). One thread for each repository, with search, was
 > added on 2026-10-28 (Aril agent plan, phase 1), and so were its compaction into a summary
-> and the timing of each run. A change that widens exposure changes the
+> and the timing of each run. Quick replies and one multiple-choice question under an answer were added on 2026-10-28
+> (Aril agent plan, phase 2). A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -53,7 +54,9 @@ follow-up about the outcome without another message of the owner (see
 the chat, with no provider run (see [Grant follow-ups](#grant-follow-ups)). The owner sees each repository as one continuous
 conversation with search, not as a list of conversations (see [The thread](#the-thread)). When a thread
 outgrows what a prompt carries, Pomegr summarizes its older part in the background and keeps the summary
-for Aril's later runs; the owner still sees and searches every message (see [Compaction](#compaction)). The user guide is
+for Aril's later runs; the owner still sees and searches every message (see [Compaction](#compaction)). Aril talks briefly: it may end
+an answer with quick replies or one multiple-choice question, and a tap sends its label as the owner's own message and does nothing else (see
+[Choices](#choices)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -76,7 +79,8 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 | `desktop/runtime/agent-chat-task-bridge.mjs` | The temporary loopback bridge through which the chat's MCP server reads a task of the turn's repository | Serve more than the two task reads; outlive its turn |
 | `desktop/runtime/agent-chat-provider-files.mjs` | The fixed instructions file Claude reads and the entry of the chat's own MCP server | Hold owner, board, conversation, or credential text |
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
-| `desktop/runtime/agent-chat-store.mjs` | The saved conversations, with the [timing](#timing) of an answer | Write outside its directory, or overwrite a file outside the contract |
+| `desktop/runtime/agent-chat-choices.mjs` | The [choices](#choices) block: its strict reading and bounds, the text shown while an answer is written, and the line a later prompt reads | Apply, start, or change anything; read a block other than its own fence; store or send anything but the validated shape |
+| `desktop/runtime/agent-chat-store.mjs` | The saved conversations, with the [timing](#timing) and the [choices](#choices) of an answer | Write outside its directory, or overwrite a file outside the contract |
 | `desktop/runtime/agent-chat-workflow.mjs` | The [workflow changes](#workflow-changes) read: which workflow source files changed after the owner settled Aril's settings and memory | Run anything but read-only `git log` and `git status` with an argument array, in the repository root, within 5 seconds; read file content; list a name outside the fixed list and the workflows folder |
 | `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and two read-only task tools | Register a signal, write, or feature tool |
@@ -294,7 +298,8 @@ characters, including the fixed instructions even when Claude receives them thro
 1. **Instructions.** A fixed text (`AGENT_CHAT_INSTRUCTIONS`): who Aril is, what it may
    read, that it proposes changes for owner Apply except for rework recording and the fixed actions the desktop
    performs under an owner-started grant, how to advise on task size, Ready order, parallel groups, and models,
-   the proposal format, when it proposes a session start or a queue change, how it
+   the proposal format, how it talks and when it offers [choices](#choices) (the answer first and short, asking only what it cannot decide, quick replies by default),
+   when it proposes a session start or a queue change, how it
    names an image and puts it on a task, how it follows up an answered proposal, and
    that all following content is data, and what a summary of earlier conversation is. Capability answers briefly cover reads and images,
    board, start, and queue proposals, settled settings and repository memory, desktop-only
@@ -327,6 +332,7 @@ characters, including the fixed instructions even when Claude receives them thro
    line that says what it is and the summary's text, directly before the conversation. Owner-message turns and follow-ups carry it; a grant write turn passes no earlier message and no summary. The section is data, like the conversation, and the instructions say so and tell Aril to say that it no longer has something that neither shows.
 8. **Conversation.** The newest earlier messages of the repository's [thread](#the-thread) that fit 24,000 characters, oldest
    first, whichever conversation stores them, so Aril keeps its context across the boundary of two conversations. With a summary, only the messages after the position it ends at are read, and the line "(Earlier messages are left out.)" says that some of those did not fit. A grant write turn passes no earlier message. A proposal is one line with its summary, its outcome, and the IDs it created.
+   An answer that offered [choices](#choices) adds one line naming them, and one that offered a block Pomegr could not read says so.
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
    one line with the state it asked for and what happened: not answered, dismissed,
@@ -845,6 +851,42 @@ work before Apply.
   A follow-up that waits when the app closes is not written later: the outcome is in the
   conversation, and the next turn reads it.
 
+## Choices
+
+Aril talks just enough (the owner's rule of 2026-10-28, Aril agent plan, phase 2): the answer first, in as few words as carry it, and detail only on request. A question is asked with quick replies by default, and with one multiple-choice question only when each option needs a line of trade-off. Aril asks only what it cannot decide itself. A choice is a convenience for the owner's reply and carries no authority.
+
+### The block
+
+Aril offers choices by ending its answer with one fenced block tagged `pomegr-replies`, in one of two forms. `extractChoices` in `agent-chat-choices.mjs` takes the block out of the shown text and validates it; `extractProposal` then reads what is left.
+
+- **Quick replies:** `{"replies": ["Squash", "Merge commit", "Tell me more"]}`. 1 to 4 replies, each one line of at most 40 characters.
+- **One question:** `{"question": "...", "options": [{"label": "...", "detail": "..."}, ...]}`. The question is one line of at most 120 characters. There are 2 to 4 options, each exactly a label of at most 60 characters and a detail of one line of at most 120 characters. The first option is the one Aril recommends, and the panel marks it. There is no option for a free answer: the composer is the free answer.
+- **Strings:** every string is trimmed, not empty, and holds no control character, line break, or U+2028 or U+2029. No two replies, and no two option labels, are the same whatever their case.
+- **Strict reading:** the block is JSON of at most 8 KiB with exactly the keys above. An extra key, both forms in one block, a second block, a block that was never closed, or a value outside these bounds makes the block unreadable.
+- **Unreadable is silent:** an unreadable block is dropped and the answer text stays. The message is stored with `choicesUnreadable: true`, which the panel does not draw. The next prompt reads it, so Aril never assumes buttons that the owner did not see. It works as `proposalUnreadable` does, without a notice.
+- **While the answer is written:** a block that has begun is not shown, and an answer that does not complete shows its text without the block and stores no choices (`shownAnswer`).
+
+### Where they are dropped
+
+- Only a `complete` answer stores choices.
+- An answer that carries a proposal carries no choices, because the proposal has its own Apply and Dismiss. The block is dropped with no mark, and so is a block beside an unreadable proposal.
+- A grant task-writing turn stores none.
+- A follow-up after an outcome may offer choices when it carries no proposal.
+- A grant follow-up line is written with no provider run and never carries any. The store refuses a record that says it does.
+
+### What is stored and served
+
+- `choices` on the agent message is `{ replies }` or `{ question, options }`, in the one shape above.
+- The store keeps only that shape. A value outside it is left out, and the message is kept.
+- `read` and `thread` return the field with the message, as they return the answer text. `search` finds message text only, not choices.
+- The next prompts show each answer's choices as one line: the replies, or the question and the option labels without their details.
+
+### What a choice does
+
+- A tap sends the label as the owner's own message through `send`, with the composer's repository, model, and effort.
+- No operation, payload key, route, or channel was added for choices, so a choice has no authority beyond a message the owner could type.
+- Whether a choice can still be tapped, and which one the owner picked, are decided by the panel from the thread. They are not stored. [Agent chat design](../design/agent-chat.md#choices) owns the look.
+
 ## Images
 
 Task T-86, 2026-10-13. The owner may send images to Aril, such as a screenshot or a
@@ -1042,6 +1084,7 @@ Desktop main keeps one JSON file per conversation:
 - A message of the owner may list its images as `{ id, type, bytes }`. The file never
   holds image bytes or a path: the images are files of their own (see [Images](#images)).
 - An answer of Aril to an owner's message may hold `timing`, the numbers of its run (see [Timing](#timing)). A record without it is valid.
+- An answer of Aril may hold `choices`, its quick replies or one question (see [Choices](#choices)), or `choicesUnreadable: true` for a block that could not be read. A record without either is valid.
 - An answer of Aril may hold `followUp`, the ID of the proposal it follows up (see
   [Follow-up](#follow-up)). Such an answer has no message of the owner before it.
 - A grant follow-up is an answer with `grantFollowUp: true` and no proposal (see
@@ -1131,6 +1174,7 @@ never a session's.
 - **The thread and the search.** `thread` and `search` answer only what `read` of the same conversations answers, in pages and excerpts: the stored messages with their proposals and the IDs, types, and sizes of their images (never the bytes), the turn, the ID of the conversation the next message goes to, the provider, model, and effort of the last run, the newest update time, an opaque cursor, and plain excerpts of message text. They go to the trusted renderer through `pomegr:agent-chat` and to a paired device through `POST /api/agent-chat`, as `read` does. No GET serves them. A query is held in memory while it is answered and by the panel while it is open: nothing keeps it, logs it, sends it to the monitor or a provider, or writes it to browser storage. A search is a plain substring match, so the owner's text is never read as a pattern. Desktop main holds in memory an index of each repository's conversations (titles, counts, and times, with no message) and the messages of sixteen conversations; nothing else of a conversation is in memory.
 - **The summary.** It is derived from the owner's own conversation: text that Aril wrote about what the owner and it said. It lives in desktop main's memory and in `summary.json` in the repository's chat folder under the desktop data root, and nowhere else: not in the monitor, the task store, the observation store, a checkpoint, a report, a log, a notification, diagnostics, or browser storage. It reaches only the provider the thread last ran with, in that repository's own runs: the compaction run that writes the next one and the prompts that carry it. It is never returned to the browser or to a paired device as text: `thread` answers where it ends and when it was written, and `list` answers when it was written. Another repository never receives it. The instructions tell the run to leave out file contents, tool output, code, and anything Aril only read; that is an instruction and not a filter, so the summary can hold what Aril concluded from them. Deleting a conversation does not rewrite it.
 - **A run with no owner action behind it.** A compaction is a provider run that Pomegr starts after a complete turn, with no message and no Apply of the owner, and it spends the owner's provider allowance. It sends the provider the older messages and the earlier summary, which a prompt already sends in part, and no board, task log, settings, memory, image, or path. It has no tool and no MCP server, cannot propose, apply, or start anything, and Pomegr stops it when a turn of its repository starts. This is the widening of 2026-10-28 (Aril agent plan, phase 1): before it, only an owner's message, an Apply, or a Dismiss started a run.
+- **Choices are the chat's own text.** Quick replies and the question with its options are text that Aril wrote for the owner, of the same data class as its answer. They are stored in the conversation file, returned by `read` and `thread` to the trusted renderer and to a paired device as the answer text is, and sent to the provider in later prompts as one history line (the replies, or the question and the option labels). A tap is the owner's own message and travels as any message does. Nothing keeps a choice anywhere else: not the monitor, the task store, a log, a notification, diagnostics, or browser storage. `choicesUnreadable` is one boolean. This widens no exposure beyond the conversation, and no choice adds a route, an operation, or an authority.
 - **Timing is numbers.** A timing holds whole milliseconds and prompt lengths in characters, and no text, path, name, or ID. It is stored with the answer or the summary it belongs to, shown only in the tooltip of an answer's time, and crosses the same two boundaries as the answer: the trusted renderer and a paired device. Nothing logs it or sends it to the monitor or a provider.
 - **The effort is a fixed word.** One of four levels, stored in the conversation file on the
   conversation and on each answer, shown in the panel, and sent to the provider only as a
@@ -1277,6 +1321,7 @@ never a session's.
 - A compaction changes no conversation, adds no message, and runs with no tool: one at a time for a repository, never while a turn of that repository runs, and stopped when one starts. It reads, proposes, applies, and starts nothing on the board.
 - Only a complete compaction run whose answer fits the summary's contract replaces the summary. A failed, stopped, or refused run leaves the old one, and a message that arrives never waits for a compaction.
 - No answer of the thread, the search, a read, a list, or a paired device holds the text of a summary.
+- A choice sends only the owner's own message. It applies, dismisses, starts, stops, and changes nothing by itself, and the answer of a proposal, a grant task-writing turn, and a grant follow-up line carry none.
 - A message never goes to a grant follow-up conversation, and the owner never chooses a conversation.
 - A repository's thread never refuses a message for being full, and no read of the thread, its search, or its history for the prompt loads every conversation: each takes conversations newest first and stops when it is complete.
 - An image is served only when a message of its conversation names it.
@@ -1402,6 +1447,7 @@ never a session's.
 23. **Compaction costs a run.** Each summary spends the owner's provider allowance in a run that no message of the owner asked for, and a thread that keeps outgrowing its prompt asks again after each complete turn. A provider that fails leaves no summary and is asked again after the next complete turn.
 24. **Compaction from a live provider.** Not probed. The tool-less arguments (`--tools ""` for Claude Code), the instructions' effect on a live model, and the summary a real run writes are covered by tests with fakes and not proven on a device. Codex has no switch that removes its shell: its compaction run keeps the read-only sandbox and is told to use no tool, and whether it obeys is not proven. Provider arguments change only with live evidence from one run of each provider, which this change did not collect.
 25. **Where the time goes.** Timing records the milliseconds and the prompt lengths of each owner-message turn and compaction run, so the slow step can be read from real answers. It changes nothing about speed, and no effort is lowered for a short message until the numbers show it would help.
+26. **Choices from a live provider.** Not probed. The block's reading and bounds, its storage, the prompt's rules and history lines, and the panel are covered by tests with fakes. Whether Claude Code and Codex write the block in this form, offer replies only when they must ask, and keep their answers short is not proven on a device. A model that writes an invalid block loses its choices silently, and the answer text stays.
 
 ## Change and verify
 

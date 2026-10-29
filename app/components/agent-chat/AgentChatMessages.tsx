@@ -1,11 +1,13 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AgentChatAgentMessage, AgentChatImage, AgentChatThreadMessage, AgentChatThreadSummary, AgentChatTiming, AgentChatTurn } from "../../../shared/agent-chat-contract";
 import type { Task } from "../../../shared/task-contract";
 import { threadMessageKey } from "../../agent-chat-client";
 import { CommandIcon } from "../command-center/CommandIcon";
+import { AgentChatChoicesView, type ChooseChoice } from "./AgentChatChoices";
 import { AgentChatImageStrip } from "./AgentChatImages";
+import { choiceStates, type ChoiceState } from "./agent-chat-choices";
 import type { AgentChatImageUrls } from "./agent-chat-images";
 import { SafeMarkdown } from "../markdown/SafeMarkdown";
 import { AgentChatProposalCard } from "./AgentChatProposalCard";
@@ -81,9 +83,11 @@ function QuietLine({ message, marked }: { message: AgentChatAgentMessage & { con
   </article>;
 }
 
-function AgentMessage({ message, marked, tasks, imageUrls, resolving, startHere, heldStart, onApply, onDismiss }: {
+function AgentMessage({ message, marked, choiceState, tasks, imageUrls, resolving, startHere, heldStart, onApply, onDismiss, onChoose }: {
   message: AgentChatAgentMessage & { conversationId: string };
   marked: boolean;
+  /** How the choices under this answer are drawn; absent for an answer with none. */
+  choiceState?: ChoiceState;
   tasks: readonly BoardTask[];
   imageUrls: AgentChatImageUrls;
   resolving: string | null;
@@ -91,6 +95,7 @@ function AgentMessage({ message, marked, tasks, imageUrls, resolving, startHere,
   heldStart?(taskId: string): string | null;
   onApply(conversationId: string, proposalId: string): void;
   onDismiss(conversationId: string, proposalId: string): void;
+  onChoose?: ChooseChoice;
 }) {
   if (message.grantFollowUp) return <QuietLine message={message} marked={marked} />;
   return <article className={`agentChatMessage isAgent${marked ? " isMarked" : ""}`} aria-label="Aril" data-conversation-id={message.conversationId} data-message-id={message.id}>
@@ -100,6 +105,7 @@ function AgentMessage({ message, marked, tasks, imageUrls, resolving, startHere,
     {message.proposal && <AgentChatProposalCard proposal={message.proposal} tasks={tasks} imageUrls={imageUrls} busy={resolving === message.proposal.id} startHere={startHere} heldStart={heldStart}
       onApply={(proposalId) => onApply(message.conversationId, proposalId)} onDismiss={(proposalId) => onDismiss(message.conversationId, proposalId)} />}
     {message.proposalUnreadable && <p className="taskNotice warning agentChatNotice">{UNREADABLE_PROPOSAL}</p>}
+    {message.choices && choiceState && <AgentChatChoicesView choices={message.choices} state={choiceState} onChoose={onChoose} />}
   </article>;
 }
 
@@ -120,7 +126,7 @@ function Empty({ onSuggest }: { onSuggest(text: string): void }) {
  * owner was reading. The partial answer is not a live region of its own: the log announces each stored message, and the
  * activity line is a status.
  */
-export function AgentChatMessages({ state, messages, summarized = null, turn, pendingMessage, pendingAt = null, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, target = null, hasOlder = false, loadingOlder = false, startHere = false, heldStart, onLoadOlder, onSuggest, onApply, onDismiss }: {
+export function AgentChatMessages({ state, messages, summarized = null, turn, pendingMessage, pendingAt = null, pendingImages = NO_IMAGES, imageUrls = NO_URLS, tasks, resolving, pinSignal = 0, target = null, hasOlder = false, loadingOlder = false, startHere = false, heldStart, onLoadOlder, onSuggest, onApply, onDismiss, onChoose }: {
   state: AgentChatLogState;
   messages: readonly AgentChatThreadMessage[];
   /** Where the thread was summarized for Aril: one quiet line follows the newest message the summary covers. */
@@ -150,6 +156,8 @@ export function AgentChatMessages({ state, messages, summarized = null, turn, pe
   onSuggest(text: string): void;
   onApply(conversationId: string, proposalId: string): void;
   onDismiss(conversationId: string, proposalId: string): void;
+  /** A tap on a quick reply or an option: the label goes to Aril as the owner's own message. */
+  onChoose?: ChooseChoice;
 }) {
   const log = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -158,6 +166,8 @@ export function AgentChatMessages({ state, messages, summarized = null, turn, pe
   const running = turn !== null || pendingMessage !== null;
   const [marked, setMarked] = useState<{ key: string; nonce: number } | null>(null);
   const summaryKey = summaryAnchor(messages, summarized);
+  // Only the newest answer's choices can be tapped; once the owner sent anything after them, they are quiet.
+  const choices = useMemo(() => choiceStates(messages, pendingMessage, turn !== null), [messages, pendingMessage, turn]);
 
   const toBottom = useCallback(() => {
     const element = log.current;
@@ -235,7 +245,7 @@ export function AgentChatMessages({ state, messages, summarized = null, turn, pe
           return <Fragment key={threadMessageKey(message)}>
             {message.role === "user"
               ? <OwnerMessage message={message} text={message.text} at={message.at} images={message.images ?? NO_IMAGES} urls={imageUrls} marked={isMarked} />
-              : <AgentMessage message={message} marked={isMarked} tasks={tasks} imageUrls={imageUrls} resolving={resolving} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} />}
+              : <AgentMessage message={message} marked={isMarked} choiceState={choices.get(threadMessageKey(message))} tasks={tasks} imageUrls={imageUrls} resolving={resolving} startHere={startHere} heldStart={heldStart} onApply={onApply} onDismiss={onDismiss} onChoose={onChoose} />}
             {summarized && summaryKey === threadMessageKey(message) && <SummaryLine summarized={summarized} />}
           </Fragment>;
         })}
