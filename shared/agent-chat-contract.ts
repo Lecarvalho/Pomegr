@@ -120,6 +120,15 @@ export type AgentChatProposal = {
   results?: AgentChatOperationResult[]; // one per operation, once the proposal ran or its start was tried
 };
 
+// How long one owner-message turn took, in milliseconds from the start of the provider process, and how large its prompt was, in
+// characters for each part. Numbers only. `eventMs` and `textMs` are null when the run ended before a provider event or any words.
+export type AgentChatTiming = {
+  eventMs: number | null;
+  textMs: number | null;
+  doneMs: number;
+  prompt: { instructions: number; board: number; taskLog: number; conversation: number; message: number; other: number };
+};
+
 export type AgentChatUserMessage = { id: string; role: "user"; text: string; at: string; images?: AgentChatImage[] };
 export type AgentChatAgentMessage = {
   id: string;
@@ -141,6 +150,8 @@ export type AgentChatAgentMessage = {
   // A grant follow-up: one fixed line Pomegr wrote from the task log while a grant worked, with no provider run.
   // It carries no proposal and is never a message of the owner.
   grantFollowUp?: true;
+  // The run's timing, on the answer of an owner's message that Pomegr measured. Absent for an older record and for any other answer.
+  timing?: AgentChatTiming;
 };
 export type AgentChatMessage = AgentChatUserMessage | AgentChatAgentMessage;
 
@@ -164,6 +175,8 @@ export type AgentChatTurn = { conversationId: string; startedAt: string; provide
 // The thread of one repository: its saved conversations as one continuous conversation, in message-time order. A message
 // carries the conversation it is stored in, which its proposal's Apply and Dismiss name. Nothing here is more than `read` answers.
 export type AgentChatThreadMessage = AgentChatMessage & { conversationId: string };
+// Where the thread's summary ends: the position of the newest message it covers and when it was written. Never the summary's text.
+export type AgentChatThreadSummary = { through: { conversationId: string; messageId: string; at: string }; at: string };
 // The run the thread last ran with, that of the newest conversation that is not a grant follow-up conversation.
 export type AgentChatThreadRun = { provider: AgentChatProvider; model: string | null; effort?: TaskEffort | null };
 export type AgentChatThread = {
@@ -177,12 +190,15 @@ export type AgentChatThread = {
   run: AgentChatThreadRun | null;
   // The newest time any conversation changed, or null before the first message.
   updatedAt: string | null;
+  // Where the thread was summarized for Aril, or null when it was not. The panel draws one quiet line there.
+  summarized: AgentChatThreadSummary | null;
 };
 // One message that holds the searched text: its conversation, its ID, its time, who wrote it, and a short plain excerpt.
 export type AgentChatSearchMatch = { conversationId: string; messageId: string; at: string; role: AgentChatMessage["role"]; snippet: string };
 
 export type AgentChatFailure = { ok: false; error: AgentChatError };
-export type AgentChatListResult = { ok: true; conversations: AgentChatConversationSummary[]; running: string | null } | AgentChatFailure;
+// `summarizedAt` is when the thread's summary was last written, present only once there is one: the panel reads the thread again when it changes.
+export type AgentChatListResult = { ok: true; conversations: AgentChatConversationSummary[]; running: string | null; summarizedAt?: string } | AgentChatFailure;
 export type AgentChatReadResult = { ok: true; conversation: AgentChatConversation; turn: AgentChatTurn | null } | AgentChatFailure;
 export type AgentChatThreadResult = ({ ok: true } & AgentChatThread) | AgentChatFailure;
 export type AgentChatSearchResult = { ok: true; matches: AgentChatSearchMatch[] } | AgentChatFailure;
@@ -210,6 +226,8 @@ export const AGENT_CHAT_BOUNDS = {
   searchMatches: 20,
   searchQueryLength: 100,
   cursorLength: 200,
+  // The longest time a timing may hold: an hour, in milliseconds.
+  timingMs: 3_600_000,
 } as const;
 
 export const AGENT_CHAT_CONVERSATION_ID_PATTERN = /^chat-[0-9a-f]{12}$/u;

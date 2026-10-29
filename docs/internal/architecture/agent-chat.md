@@ -14,7 +14,8 @@
 > (task T-95). Proposals of a change that Aril recommends by itself were added on
 > 2026-10-15 (task T-123). Follow-up proposals with owner approval were added on
 > 2026-10-17 (task T-120). Grant follow-ups were added on 2026-10-26 (task T-183). One thread for each repository, with search, was
-> added on 2026-10-28 (Aril agent plan, phase 1). A change that widens exposure changes the
+> added on 2026-10-28 (Aril agent plan, phase 1), and so were its compaction into a summary
+> and the timing of each run. A change that widens exposure changes the
 > Privacy section in the same pull request. The executable contract
 > `shared/agent-chat-contract.ts` wins on exact shapes. Repository-wide rules are in
 > [AGENTS.md](../../../AGENTS.md).
@@ -50,7 +51,9 @@ send images with a message, and a proposal may put those images on a task (see
 follow-up about the outcome without another message of the owner (see
 [Follow-up](#follow-up)). While a grant works, Pomegr also writes short grant follow-ups into
 the chat, with no provider run (see [Grant follow-ups](#grant-follow-ups)). The owner sees each repository as one continuous
-conversation with search, not as a list of conversations (see [The thread](#the-thread)). The user guide is
+conversation with search, not as a list of conversations (see [The thread](#the-thread)). When a thread
+outgrows what a prompt carries, Pomegr summarizes its older part in the background and keeps the summary
+for Aril's later runs; the owner still sees and searches every message (see [Compaction](#compaction)). The user guide is
 [Agent chat](../../public/using-pomegr/agent-chat.md).
 
 ## Ownership
@@ -62,14 +65,18 @@ catalog leaves that run out (see [The declared run](#the-declared-run)).
 
 | Owner | Responsibility | May not |
 | --- | --- | --- |
-| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the choice of the conversation a message goes to, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, the one request of an approved queue change, and the removal of the worktrees the owner approved | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; remove a worktree for a call that is not the desktop window's, or by any path but the unforced removal of `task-worktree.mjs`; send `queue_settings` with any setting but `on` |
-| `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, and the reading of its output | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds |
+| `desktop/runtime/agent-chat.mjs` | The operations, the one running turn, the choice of the conversation a message goes to, the follow-up after an answered proposal, the trusted IPC handler, the answers, the hand-off of an approved session start to the manual start, the one request of an approved queue change, the removal of the worktrees the owner approved, and the stop of a repository's compaction when a turn of it starts | Pass provider, monitor, or error text through; import `server/`; start a session by any path but the manual start it is given, or for a call that is not the desktop window's; remove a worktree for a call that is not the desktop window's, or by any path but the unforced removal of `task-worktree.mjs`; send `queue_settings` with any setting but `on` |
+| `desktop/runtime/agent-chat-runner.mjs` | The fixed provider arguments, the process, the reading of its output, and the run's own [timing](#timing) | Put the prompt or any owner text in an argument, a path, or the environment; name an image folder or file that is not in the fixed form desktop main builds; report any content in a timing |
 | `desktop/runtime/agent-chat-images.mjs` | The image files the owner sends: the staged ones and the ones of each conversation | Write outside the chat's directory; build a path from anything but a validated repository ID, conversation ID, and image ID; serve a file by itself |
-| `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, and the history of the thread for one turn | Read anything itself |
-| `desktop/runtime/agent-chat-thread.mjs` | The thread: the order of a repository's messages across its conversations, a page of them, the cursor, the conversation the next message goes to, the last run, and the search of their text | Read or write a file; answer more than `read` of the same conversations answers; read a pattern from the owner's text |
+| `desktop/runtime/agent-chat-prompt.mjs` | The instructions, the board snapshot, the summary of earlier conversation, the history of the thread for one turn, and the length of each part | Read anything itself |
+| `desktop/runtime/agent-chat-thread.mjs` | The thread: the order of a repository's messages across its conversations, a page of them, the cursor, the conversation the next message goes to, the last run, where the summary ends, and the search of their text | Read or write a file; answer more than `read` of the same conversations answers; read a pattern from the owner's text; answer the text of a summary |
+| `desktop/runtime/agent-chat-summary.mjs` | The summary of a repository's thread: its record, its file, and the view of it a client may have (a position and a time) | Write outside its directory; answer its text to a client |
+| `desktop/runtime/agent-chat-compaction.mjs` | [Compaction](#compaction): when it runs, the messages it takes, its prompt, its read-only run with no tool, the check of its answer, and its stop | Run more than one for a repository, or while a turn of it runs; use a tool, a proposal, or the board; store anything but plain text; keep a partial answer |
+| `desktop/runtime/agent-chat-timing.mjs` | The record of a [timing](#timing) and its bounds | Hold any text |
+| `desktop/runtime/agent-chat-task-bridge.mjs` | The temporary loopback bridge through which the chat's MCP server reads a task of the turn's repository | Serve more than the two task reads; outlive its turn |
 | `desktop/runtime/agent-chat-provider-files.mjs` | The fixed instructions file Claude reads and the entry of the chat's own MCP server | Hold owner, board, conversation, or credential text |
 | `desktop/runtime/agent-chat-proposal.mjs` | Reading, validating, and applying a proposal | Reach the board except through the caller's task-action request and image request; read an image; start a session; change the queue |
-| `desktop/runtime/agent-chat-store.mjs` | The saved conversations | Write outside its directory, or overwrite a file outside the contract |
+| `desktop/runtime/agent-chat-store.mjs` | The saved conversations, with the [timing](#timing) of an answer | Write outside its directory, or overwrite a file outside the contract |
 | `desktop/runtime/agent-chat-workflow.mjs` | The [workflow changes](#workflow-changes) read: which workflow source files changed after the owner settled Aril's settings and memory | Run anything but read-only `git log` and `git status` with an argument array, in the repository root, within 5 seconds; read file content; list a name outside the fixed list and the workflows folder |
 | `server/providers/kernel/chat-run-declarations.mjs` | The declared session IDs of the chat's runs, in monitor memory, and their expiry | Hold anything but a version 4 UUID and its expiry; persist or serve it |
 | `mcp/agent-chat-server.mjs` | The chat's own MCP server with seven observation tools and two read-only task tools | Register a signal, write, or feature tool |
@@ -91,6 +98,8 @@ stored Apply or Dismiss starts exactly one provider run for a follow-up (see
 [Follow-up](#follow-up)). A follow-up may contain one board-change proposal only after
 any applied or partial outcome. The owner must Apply or Dismiss it, which starts its own
 single follow-up run; no proposal starts a run or applies itself. Follow-ups never propose a session start, a queue change, or a worktree removal.
+The one other run Pomegr starts is a [compaction](#compaction): a read-only run with no tools (Codex keeps its read-only sandbox) in the background that
+summarizes an outgrown thread. It is no turn, answers no one, and proposes nothing.
 
 1. The client sends `send` with the repository, the conversation or none (the panel always sends none: see [The thread](#the-thread)), the message,
    the provider, the model or none, the effort or none, and the IDs of the images it added,
@@ -119,8 +128,10 @@ single follow-up run; no proposal starts a run or applies itself. Follow-ups nev
    another device started: a `running` conversation, or an `updatedAt` newer than the
    one the thread was read at, makes the client read the thread's newest page again.
 7. When the run ends, desktop main withdraws the declaration and stores Aril's message
-   with one status: `complete`, `stopped`, `failed`, or `timed_out`. A run may take ten
-   minutes.
+   with one status: `complete`, `stopped`, `failed`, or `timed_out`, and with the run's
+   [timing](#timing). A run may take ten minutes.
+8. After a `complete` turn, an outgrown thread may be summarized in the background (see
+   [Compaction](#compaction)). A turn that starts stops that run first.
 
 The run is a new provider conversation every time. Pomegr sends the earlier messages of the thread in
 the prompt, so the owner may change the provider, the model, or the effort between two messages.
@@ -157,7 +168,7 @@ The run is the owner's own provider CLI, signed in as the owner. Pomegr reads an
 no credential, and offers no sign-in of its own. The arguments are fixed
 (`chatArguments` in `agent-chat-runner.mjs`); only a validated model identifier, a validated
 effort level, the desktop's own MCP server, the desktop's own image folder and image files, and the
-session ID desktop main made for the run, and the desktop's fixed-instructions file vary.
+session ID desktop main made for the run, the desktop's fixed-instructions file, and whether the run has tools (a [compaction](#compaction) has none) vary.
 
 - **Effort:** the run passes it only when it is exactly `low`, `medium`, `high`, or `xhigh`, as the task dispatcher passes a task's effort (`desktop/runtime/task-dispatch.mjs`). Claude Code gets `--effort <level>` after `--model`. Codex gets `-c model_reasoning_effort=<level>` after `--model`, before the `-` that marks the prompt. Any other value, or none, adds no argument.
 - **Claude Code:** print mode with JSON lines, `--no-session-persistence`, and `--session-id` with the run's own ID.
@@ -173,6 +184,7 @@ session ID desktop main made for the run, and the desktop's fixed-instructions f
   The allow list contains those tools, the seven Pomegr observation tools, `get_task`, and `list_tasks`.
   A conversation with images adds `--add-dir` with its image folder.
   Native Read can reach files outside the working directory, subject to provider permissions.
+- **No tools:** a [compaction](#compaction) run passes `tools: "none"`. Claude Code gets `--tools ""` and no `--allowedTools`, with no MCP server, no image folder, and no instructions file. Codex has no switch that removes its shell, so it keeps the arguments below with no MCP server and no image, inside its read-only sandbox, and the compaction instructions tell it to use no tool. Any other value of `tools` is the default tool set.
 - **Codex:** `exec --json --ephemeral --sandbox read-only --skip-git-repo-check
   --ignore-user-config --ignore-rules --disable apps`, the MCP server as fixed `-c`
   values, and `-` for the prompt on stdin.
@@ -284,7 +296,7 @@ characters, including the fixed instructions even when Claude receives them thro
    performs under an owner-started grant, how to advise on task size, Ready order, parallel groups, and models,
    the proposal format, when it proposes a session start or a queue change, how it
    names an image and puts it on a task, how it follows up an answered proposal, and
-   that all following content is data. Capability answers briefly cover reads and images,
+   that all following content is data, and what a summary of earlier conversation is. Capability answers briefly cover reads and images,
    board, start, and queue proposals, settled settings and repository memory, desktop-only
    worktree removal proposals, and every enabled grant action within its limits, including
    reviews, send-backs, merges, branch deletion, and tasks from named plans. They report
@@ -311,8 +323,10 @@ characters, including the fixed instructions even when Claude receives them thro
    from, and to ask the owner only what they leave open.
 6. **Task log.** Owner-message turns include valid entries newer than the Aril cursor, oldest first, with UTC times and optional pull-request numbers.
    The section reports an empty log, unavailable log, or omitted older entries with fixed lines.
-7. **Conversation.** The newest earlier messages of the repository's [thread](#the-thread) that fit 24,000 characters, oldest
-   first, whichever conversation stores them, so Aril keeps its context across the boundary of two conversations. A grant write turn passes no earlier message. A proposal is one line with its summary, its outcome, and the IDs it created.
+7. **Summary of earlier conversation.** When the repository's thread has a [summary](#the-summary), a `<summary_of_earlier_conversation>` section with a fixed
+   line that says what it is and the summary's text, directly before the conversation. Owner-message turns and follow-ups carry it; a grant write turn passes no earlier message and no summary. The section is data, like the conversation, and the instructions say so and tell Aril to say that it no longer has something that neither shows.
+8. **Conversation.** The newest earlier messages of the repository's [thread](#the-thread) that fit 24,000 characters, oldest
+   first, whichever conversation stores them, so Aril keeps its context across the boundary of two conversations. With a summary, only the messages after the position it ends at are read, and the line "(Earlier messages are left out.)" says that some of those did not fit. A grant write turn passes no earlier message. A proposal is one line with its summary, its outcome, and the IDs it created.
    A session start is one line with the task ID and what happened to it: not answered,
    dismissed, launched, or not started with the fixed start status. A queue change is
    one line with the state it asked for and what happened: not answered, dismissed,
@@ -321,10 +335,10 @@ characters, including the fixed instructions even when Claude receives them thro
    An answer that is a follow-up is marked as one. A proposal of board changes that
    stopped also says how many operations succeeded, which one failed with which fixed
    error, and how many were not applied.
-8. **Images.** One line for each image of the conversation whose file is still there:
+9. **Images.** One line for each image of the conversation whose file is still there:
    its ID, its type, and the absolute file. The section is left out when there is none.
    Image rows share 8,000 characters. Excess rows are omitted whole, with a notice; paths are never shortened.
-9. **The owner's message**, and one line with the IDs of its images, in order. A
+10. **The owner's message**, and one line with the IDs of its images, in order. A
    follow-up has no message of the owner: its prompt ends with the outcome record and
    one fixed request instead (see [Follow-up](#follow-up)).
 
@@ -362,8 +376,9 @@ Each shortened source prefix carries `text_cut`. The snapshot always includes `t
 Allocation changes neither snapshot card order nor report fields. Aril retrieves needed omitted text with `get_task` instead of guessing.
 
 `BOARD_SNAPSHOT_BUDGET` budgets the complete serialized snapshot, including JSON escaping and every task field.
-It subtracts instruction length, `HISTORY_BUDGET`, 60,000 characters for other sections, and 5,000 characters of margin from `PROMPT_LIMIT`.
+It subtracts instruction length, `HISTORY_BUDGET`, `SUMMARY_SECTION_BUDGET` (6,500 characters), 60,000 characters for other sections, and 5,000 characters of margin from `PROMPT_LIMIT`.
 The snapshot budget is computed from the current instruction length, including rework instructions and metadata.
+The summary section reserves its longest text (6,000 characters) and 500 for its tags and fixed line.
 Workflow changes reserve 12,000 characters. Owner turns reserve 10,000 each for task logs and worktrees, 500 for GitHub settings, and 4,000 for messages.
 Follow-ups instead reserve 32,000 for the outcome and request. Grant requests reserve 6,000. Image rows reserve 8,000 in either conversation turn.
 History includes the separators between messages in its budget.
@@ -901,7 +916,7 @@ image: every image is one the owner sent in the same conversation.
 
 Each repository is one continuous conversation with Aril, with search. The owner sees no list of conversations and chooses none. The thread is a view over the
 repository's [saved conversations](#conversations), which are stored as before, with the same files, bounds, grant follow-up mark, and follow-up
-conversations. Compacting an outgrown thread into a summary is a later change and is not built.
+conversations. A thread that outgrows a prompt is [compacted](#compaction) into a summary that only the prompt uses: the thread, its search, and its files stay whole.
 
 ### Order
 
@@ -928,18 +943,20 @@ A repository holds any number of conversations, so no read of the thread loads t
 - The messages of the sixteen conversations read last stay in memory. A conversation that was saved and not yet written is read from memory; a conversation being written is read after its write.
 - A page takes conversations from the one that can reach the newest message, and stops when the next one cannot reach above the oldest message of the page. A page of a long thread reads one conversation, or a few where times overlap.
 - A search reads conversations one at a time, newest first, and stops once it has twenty matches and the next conversation cannot reach above the twentieth. A search with fewer matches reads every conversation, one at a time, in batches of 200 messages with a pause between them.
-- The prompt's history reads pages back from the newest message until its 24,000 characters are full, at most 100 pages. The time of the newest complete answer comes from the index alone.
+- The prompt's history reads pages back from the newest message until its 24,000 characters are full, or until a page reaches the position the [summary](#the-summary) ends at, at most 100 pages. The time of the newest complete answer comes from the index alone.
+- A compaction reads pages back from the newest message until a page reaches that position, at most 100 pages (6,000 messages).
 - The choice of the conversation for the next message, the last run, `updatedAt`, and the grant follow-up conversation come from the index alone.
 
 `thread` takes `{ repositoryId }` and may take `before`, a cursor, and `limit`, a whole number from 1 to 60 (60 when absent). Another key, a `before` that is not a string, a cursor this module did not write, or a `limit` outside its bound answers `invalid`.
 
-- The answer holds `messages`, `before`, `turn`, `sendTo`, `run`, and `updatedAt`.
+- The answer holds `messages`, `before`, `turn`, `sendTo`, `run`, `updatedAt`, and `summarized`.
 - `messages` are the newest `limit` messages before the cursor (or the newest of all, with no cursor), oldest first. Each is a stored message as `read` answers it, with the ID of its conversation in `conversationId`. A message ID repeats across conversations, so a message is known by both.
 - `before` is an opaque cursor for the page before the first message of this one, or null when there is none. It names the oldest message of the page it was made for, in the form this module writes; nothing else is a cursor.
 - `turn` is the repository's turn in the shape `read` answers it, with its `conversationId`: the one that answers, else the oldest follow-up that waits (it reads as `starting`), else null.
 - `sendTo` is the ID of the conversation the next message goes to, or null when a new one will be made.
 - `run` is `{ provider, model, effort? }` of the thread's last run, or null before the first message.
 - `updatedAt` is the newest update time of any conversation of the repository, or null. A client compares it with the one it read at.
+- `summarized` is `{ through: { conversationId, messageId, at }, at }`, or null when the thread has no summary: where the [summary](#the-summary) ends and when it was written, in every page, and never its text.
 - Like `read`, it repairs a conversation that ends on the owner's message with no run behind it by adding one answer with the status `interrupted`, but not while a send or a grant write of the repository holds the turn.
 - The answer never holds a path, a `grantFollowUps` mark, or image bytes.
 
@@ -951,7 +968,59 @@ A repository holds any number of conversations, so no read of the thread loads t
 - A match is `{ conversationId, messageId, at, role, snippet }`. `role` is `user` or `agent`.
 - A message matches when its text holds the query as a substring, whatever the case of either. The query is never read as a pattern, and no accent is folded.
 - The snippet is a short plain excerpt around the first place the text matches: up to 40 characters before and 80 after, with runs of white space made single spaces and an ellipsis at each cut end. It is at most about 220 characters.
-- Only the text of a message is searched: not a proposal, an image, a status, or a grant follow-up mark. A grant follow-up line is searched like any message.
+- Only the text of a message is searched: not a proposal, an image, a status, a timing, a summary, or a grant follow-up mark. A grant follow-up line is searched like any message.
+
+## Compaction
+
+When a repository's thread outgrows what a prompt carries, Pomegr summarizes the older part with one provider run and keeps the summary, instead of dropping those messages from the prompt. It changes only what the prompt carries: the owner's messages stay readable and searchable in full, and the conversation files are not touched. Aril settings and repository memory live outside the thread, so compaction never changes them.
+
+### The summary
+
+- There is one summary for each repository: `<desktop data root>/agent-chat-v1/<repository ID>/summary.json`, holding `{ version: 1, repositoryId, summary }` (`agent-chat-summary.mjs`). The conversation store lists only files whose name is a conversation ID, so it never lists this one.
+- `summary` is `{ text, through, at, provider, model, effort?, timing? }`. `text` is 1 to 6,000 characters of plain text with no control character except a line break or a tab. `through` is the thread position of the newest message the text covers: `{ conversationId, messageId, at }`. `at` is when it was written. `provider`, `model`, and `effort` (always `low`) are those of the run that wrote it, and `timing` is that run's [timing](#timing).
+- A record outside the contract reads as none. A `timing` outside its contract is left out of an otherwise valid record. A file of another version, for another repository, over 64 KiB, or that is no JSON reads as none and stays until a new summary is written.
+- A write replaces the file whole, through a temporary file and a rename, one at a time. A write that fails changes nothing.
+- `through` divides the thread by [its order](#order): a message is covered when it is not after that position. A message ID is its place in its conversation plus one, so the position stays exact when its conversation is no longer stored, which then counts as created before every other.
+- A new summary replaces the old one whole and covers the old summary and the messages after it.
+
+### When a compaction runs
+
+- After a turn of the repository ends `complete` and is handled: an owner's message, a follow-up, or a grant write turn. A turn that fails, is stopped, or times out starts none, so a provider that is down is not asked again for a summary.
+- Only when no turn of that repository runs or waits and no compaction of it runs. A compaction of one repository neither waits for nor holds a turn of another.
+- It reads the thread back from the newest message as far as the summary reaches, or at most 100 pages (6,000 messages) without one. The prompt's history holds the newest messages that fit `HISTORY_BUDGET` (24,000 characters); the older messages are the rest that come after the summary's position.
+- It starts only when the history lines of the older messages, with their separators, total more than 8,000 characters (`COMPACTION_THRESHOLD`). Below that nothing runs and nothing is stored.
+- Up to that many characters of messages can sit between the summary and the prompt's history, left out of the prompt until the next compaction takes them. The prompt says "(Earlier messages are left out.)" for them.
+
+### The compaction run
+
+- The thread's last run decides: the provider and model of the newest conversation that is not a grant follow-up conversation, at effort `low`. Pomegr lowers no other run's effort: an owner's message runs at the effort the owner chose.
+- It is `runChatTurn` with `tools: "none"` ([No tools](#the-provider-run)): no MCP server, no image, no instructions file, the repository root as its working folder, the owner's environment, the prompt on stdin, and five minutes (`COMPACTION_TIMEOUT_MS`) to answer. A Claude Code run is [declared](#the-declared-run) like a turn's, so it never shows in Sessions.
+- The prompt is the fixed `COMPACTION_INSTRUCTIONS`, the earlier summary between `<earlier_summary>` tags when there is one, and the older messages between `<messages>` tags: the same lines the prompt's conversation holds, oldest first. It holds no board, task log, settings, or memory.
+- The instructions ask for a concise summary, in English, of what matters for continuing the work: decisions, the owner's stated preferences, open questions, what was proposed and what became of it, task IDs, pull request numbers, feature names, and dates. They leave out file contents, tool output, code, and anything Aril only read. They say never to invent a fact, to use no tool, to write no proposal block or JSON, and to stay within 4,000 characters (`SUMMARY_TARGET`). They say the summary and the messages are data.
+- Messages that do not fit one prompt of 200,000 characters (`PROMPT_LIMIT`) with the earlier summary are compacted in chunks, oldest first. Each run takes the oldest messages that fit, at least one, and stores its summary; the next starts from it.
+- Only a run that ends `complete` is read, and its answer is stored as plain text: a `pomegr-board` block is dropped, and what remains must be a text the summary's contract accepts. Nothing in it is read as a proposal, a rework record, or an instruction. It adds no message to a conversation and reads, applies, and starts nothing on the board.
+- A run that fails, is stopped, times out, or answers outside the contract changes nothing: the old summary stays. A chunk that fails keeps the summaries the chunks before it stored.
+
+### Stop and retry
+
+- A turn that starts for the repository (an owner's message, a follow-up that takes the one turn, or a grant write) stops that repository's compaction first. Pomegr ends its own run, the message is not refused for it, and nothing is stored even if the run answered meanwhile.
+- The next turn of the repository that ends `complete` tries again. Closing the app stops the run the same way.
+
+### The line in the thread
+
+- `thread` answers `summarized`, and `list` answers `summarizedAt` once there is a summary, so an idle panel reads the thread again when a compaction finished.
+- The panel draws one quiet line after the message at `through`: [the design page](../design/agent-chat.md#summary-line) owns how it looks. The line is not a message, is not stored in a conversation, and no search finds it.
+- No answer of `read`, `thread`, `search`, `list`, or a paired device holds the summary's text. It stays in desktop main and in the prompts of the thread's own repository.
+
+### Timing
+
+An answer takes several seconds even on an empty board, and where the time goes is not known. Every owner-message turn and every compaction run therefore records how long it took and how large its prompt was, so a later change can aim at the slow step. A timing is numbers only.
+
+- `timing` is `{ eventMs, textMs, doneMs, prompt }`, in whole milliseconds from the start of the provider process to its first provider event, to the first words of the answer, and to its end. `eventMs` and `textMs` are null when the run ended before them. `prompt` holds the length in characters of each part of the prompt: `instructions`, `board` (the snapshot), `taskLog`, `conversation` (the summary section and the conversation), `message` (the owner's message), and `other` (workflow changes, worktrees, GitHub settings, images, and framing). The parts add up to the prompt, with the instructions counted even when Claude Code reads them from its file. A compaction run has no board, task log, or message, so those are 0, and its `conversation` is the earlier summary and the messages.
+- `runChatTurn` measures with a monotonic clock and answers `timing()` once the run ended, or null before the process started. The outcome of the run keeps its shape.
+- It is stored on the answer of an owner's message, whatever its status, and on the summary record, from the run that wrote that summary. A follow-up, a grant write turn, and a grant follow-up line store none.
+- Every time is 0 to 3,600,000 and every part 0 to 1,000,000, as whole numbers, with the first event not after the first words and neither after the end. The writer cuts a measured number to those bounds, and a run that measured nothing usable stores no timing. A stored `timing` outside the contract is left out when the record is read, and the message or summary is kept. A record without one, as an older version wrote, stays valid.
+- The panel adds it to the tooltip of the answer's time. No console line, log, notification, or monitor request carries a timing. It is Pomegr's own clock around a process it started, not an authoritative measurement of the provider.
 
 ## Conversations
 
@@ -972,6 +1041,7 @@ Desktop main keeps one JSON file per conversation:
 - Desktop main keeps an index of each repository's conversations in memory (see [Reading the thread](#reading-the-thread)) and the messages of the sixteen read last. Every other message stays in its file until a read asks for it.
 - A message of the owner may list its images as `{ id, type, bytes }`. The file never
   holds image bytes or a path: the images are files of their own (see [Images](#images)).
+- An answer of Aril to an owner's message may hold `timing`, the numbers of its run (see [Timing](#timing)). A record without it is valid.
 - An answer of Aril may hold `followUp`, the ID of the proposal it follows up (see
   [Follow-up](#follow-up)). Such an answer has no message of the owner before it.
 - A grant follow-up is an answer with `grantFollowUp: true` and no proposal (see
@@ -980,6 +1050,7 @@ Desktop main keeps one JSON file per conversation:
 - A write replaces the file whole, through a temporary file and a rename.
 - A file outside the contract, of another version, or over the size bound is never
   listed and never overwritten.
+- The repository's [summary](#the-summary) is one more file in the repository's folder. `delete` does not rewrite it, so a summary can outlive the conversation it was made from.
 - Nothing deletes a conversation except `delete`, which also removes the folder of its images. The panel no longer offers it:
   the owner sees one thread, and no client calls `delete`. Storage
   retention and the prune cycle of the observation store do not touch this directory.
@@ -1005,15 +1076,16 @@ Aril may record a rework link (references and a cause from a fixed list) without
 | `POST /internal/tasks/<action>` on the monitor | Desktop main, with the desktop token | One of `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`, `queue_remove`, `queue_group`, `queue_ungroup`, and `after_set`, for an approved proposal of board changes; `queue_settings` with exactly `{ on }`, for an approved queue proposal |
 | `POST /internal/tasks/image-add` on the monitor | Desktop main, with the desktop token | The bytes of one image the owner sent in the conversation, with the repository ID, the task ID, and the image ID in the query, for an approved proposal that names the image |
 | The provider run | Desktop main | The prompt on stdin, with Claude's fixed instructions optionally in its desktop-owned system-prompt file; JSON lines on stdout |
+| The compaction run | Desktop main | The same kind of run with `tools: "none"`: a compaction prompt on stdin and the plain-text summary on stdout, after a complete turn and never while a turn of its repository runs ([Compaction](#compaction)) |
 | Read-only `git log -1` and `git status --porcelain` in the repository root | Desktop main | One call per workflow source and one for the set, started with an argument array and no shell, within 5 seconds in total ([Workflow changes](#workflow-changes)); only repository-relative names and dates are kept |
 
 The operations and their payloads, each with `repositoryId`:
 
 | Operation | Other keys | Answer on success |
 | --- | --- | --- |
-| `list` | none | The newest 50 conversations (ID, title, update time, message count) and the conversation being answered, or null. The 50 bound an answer and not a repository. The panel asks it only to learn that something changed |
-| `read` | `conversationId` | The conversation and the running `turn` or null |
-| `thread` | optional `before` (a cursor) and `limit` (1 to 60) | The newest page of the thread, a `turn`, `sendTo`, `run`, and `updatedAt`: see [Reading the thread](#reading-the-thread) |
+| `list` | none | The newest 50 conversations (ID, title, update time, message count), the conversation being answered or null, and `summarizedAt` once the thread has a summary. The 50 bound an answer and not a repository. The panel asks it only to learn that something changed |
+| `read` | `conversationId` | The conversation (an answer's `timing` included) and the running `turn` or null |
+| `thread` | optional `before` (a cursor) and `limit` (1 to 60) | The newest page of the thread, a `turn`, `sendTo`, `run`, `updatedAt`, and `summarized`: see [Reading the thread](#reading-the-thread) |
 | `search` | `query` (1 to 100 characters) | At most 20 matches of the thread's text, newest first: see [Searching the thread](#searching-the-thread) |
 | `send` | `conversationId` or null (the panel sends null), `text`, `provider`, `model` or null; optional `effort` (`low`, `medium`, `high`, `xhigh`, or null), optional `images`, one to four IDs of images added with the image operation `add` | The conversation ID |
 | `stop` | `conversationId` | Nothing more |
@@ -1057,6 +1129,9 @@ is the one place where Pomegr shows a prompt and a response, and they are the ch
 never a session's.
 
 - **The thread and the search.** `thread` and `search` answer only what `read` of the same conversations answers, in pages and excerpts: the stored messages with their proposals and the IDs, types, and sizes of their images (never the bytes), the turn, the ID of the conversation the next message goes to, the provider, model, and effort of the last run, the newest update time, an opaque cursor, and plain excerpts of message text. They go to the trusted renderer through `pomegr:agent-chat` and to a paired device through `POST /api/agent-chat`, as `read` does. No GET serves them. A query is held in memory while it is answered and by the panel while it is open: nothing keeps it, logs it, sends it to the monitor or a provider, or writes it to browser storage. A search is a plain substring match, so the owner's text is never read as a pattern. Desktop main holds in memory an index of each repository's conversations (titles, counts, and times, with no message) and the messages of sixteen conversations; nothing else of a conversation is in memory.
+- **The summary.** It is derived from the owner's own conversation: text that Aril wrote about what the owner and it said. It lives in desktop main's memory and in `summary.json` in the repository's chat folder under the desktop data root, and nowhere else: not in the monitor, the task store, the observation store, a checkpoint, a report, a log, a notification, diagnostics, or browser storage. It reaches only the provider the thread last ran with, in that repository's own runs: the compaction run that writes the next one and the prompts that carry it. It is never returned to the browser or to a paired device as text: `thread` answers where it ends and when it was written, and `list` answers when it was written. Another repository never receives it. The instructions tell the run to leave out file contents, tool output, code, and anything Aril only read; that is an instruction and not a filter, so the summary can hold what Aril concluded from them. Deleting a conversation does not rewrite it.
+- **A run with no owner action behind it.** A compaction is a provider run that Pomegr starts after a complete turn, with no message and no Apply of the owner, and it spends the owner's provider allowance. It sends the provider the older messages and the earlier summary, which a prompt already sends in part, and no board, task log, settings, memory, image, or path. It has no tool and no MCP server, cannot propose, apply, or start anything, and Pomegr stops it when a turn of its repository starts. This is the widening of 2026-10-28 (Aril agent plan, phase 1): before it, only an owner's message, an Apply, or a Dismiss started a run.
+- **Timing is numbers.** A timing holds whole milliseconds and prompt lengths in characters, and no text, path, name, or ID. It is stored with the answer or the summary it belongs to, shown only in the tooltip of an answer's time, and crosses the same two boundaries as the answer: the trusted renderer and a paired device. Nothing logs it or sends it to the monitor or a provider.
 - **The effort is a fixed word.** One of four levels, stored in the conversation file on the
   conversation and on each answer, shown in the panel, and sent to the provider only as a
   validated argument of the run. It is never taken from text, and it adds no path to the
@@ -1082,7 +1157,7 @@ never a session's.
   The renderer keeps it in memory only; browser storage holds only the ID of the
   repository chosen last.
 - **What reaches the provider.** Each turn sends the prompt to the provider the owner
-  chose, through the owner's CLI. Its conversation section holds the newest earlier messages of the repository's thread, from every conversation, in the same bound of 24,000 characters and as the same kinds of line: text the owner and Aril wrote in the chat, and grant follow-up lines, which the prompt held before only when the owner replied in their own conversation. From 2026-10-25 (Aril operator phase 1), an owner-message prompt also holds unseen task-log entries.
+  chose, through the owner's CLI. Its conversation section holds the newest earlier messages of the repository's thread, from every conversation, in the same bound of 24,000 characters and as the same kinds of line, preceded by the thread's summary when it has one (see [The summary](#the-summary) above): text the owner and Aril wrote in the chat, and grant follow-up lines, which the prompt held before only when the owner replied in their own conversation. From 2026-10-25 (Aril operator phase 1), an owner-message prompt also holds unseen task-log entries.
   These entries carry only task IDs, fixed kinds, times, and pull-request numbers; no text. A grant usage pause or resume has no task ID and carries only the fixed provider ID.
   The cursor moves only after a complete turn. Follow-ups neither read nor acknowledge the log.
   From 2026-10-25 (Aril operator phase 2), the board snapshot also sends the latest review verdict, its time, and its one-line reasons (written by a reviewer session) for a task in Review, never the reviewer session ID.
@@ -1199,6 +1274,9 @@ never a session's.
   same conversation, through the monitor's own image route and under its bounds.
 - A proposal that names an image the conversation does not hold is never offered.
 - The thread adds no content kind: it shows, searches, and sends to the provider messages that are already stored, in pages and excerpts of the same bounds.
+- A compaction changes no conversation, adds no message, and runs with no tool: one at a time for a repository, never while a turn of that repository runs, and stopped when one starts. It reads, proposes, applies, and starts nothing on the board.
+- Only a complete compaction run whose answer fits the summary's contract replaces the summary. A failed, stopped, or refused run leaves the old one, and a message that arrives never waits for a compaction.
+- No answer of the thread, the search, a read, a list, or a paired device holds the text of a summary.
 - A message never goes to a grant follow-up conversation, and the owner never chooses a conversation.
 - A repository's thread never refuses a message for being full, and no read of the thread, its search, or its history for the prompt loads every conversation: each takes conversations newest first and stops when it is complete.
 - An image is served only when a message of its conversation names it.
@@ -1319,8 +1397,11 @@ never a session's.
     the session reports in, so the snapshot of that follow-up usually shows no session
     on the task yet. The request tells Aril that the launch is the only confirmed fact.
 20. **Images across a rollover.** The prompt lists the image files of the conversation it answers in. An image the owner sent in an earlier conversation of the thread is named in its message line, but not listed as a file, and a proposal can name only an image of the conversation it is answered in.
-21. **No compaction yet.** A thread longer than the 24,000 characters of the prompt's conversation section drops its oldest messages from the prompt, as one long conversation did. The owner still sees and searches them all. A repository's conversations are never deleted by size, so their files grow with use; the first read of a repository after the app starts reads each file once to build the index.
+21. **Compaction.** A thread longer than the 24,000 characters of the prompt's conversation section is summarized once its older messages total more than 8,000 characters. Up to 8,000 characters between the summary and the prompt's history can be left out of a prompt until then. The summary is Aril's own reading at effort `low`: it can miss a detail or put weight on the wrong one, and the prompt tells Aril to say that it no longer has what neither shows. A compaction reads at most the newest 6,000 messages without a summary, so older ones beyond that are never summarized. A repository's conversations are never deleted by size, so their files grow with use; the first read of a repository after the app starts reads each file once to build the index. Deleting a conversation does not rewrite the summary.
 22. **Search is plain.** It matches a substring, whatever the case, in message text only: it does not rank, fold accents, or read a proposal's operations.
+23. **Compaction costs a run.** Each summary spends the owner's provider allowance in a run that no message of the owner asked for, and a thread that keeps outgrowing its prompt asks again after each complete turn. A provider that fails leaves no summary and is asked again after the next complete turn.
+24. **Compaction from a live provider.** Not probed. The tool-less arguments (`--tools ""` for Claude Code), the instructions' effect on a live model, and the summary a real run writes are covered by tests with fakes and not proven on a device. Codex has no switch that removes its shell: its compaction run keeps the read-only sandbox and is told to use no tool, and whether it obeys is not proven. Provider arguments change only with live evidence from one run of each provider, which this change did not collect.
+25. **Where the time goes.** Timing records the milliseconds and the prompt lengths of each owner-message turn and compaction run, so the slow step can be read from real answers. It changes nothing about speed, and no effort is lowered for a short message until the numbers show it would help.
 
 ## Change and verify
 

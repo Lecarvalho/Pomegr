@@ -126,8 +126,16 @@ the context of what you said before.
   messages and starts a new part when one is full, however many parts there are. You see one
   thread, and Aril reads the newest messages of all the parts. A message a notification links to opens in the same thread.
 
-Pomegr does not shorten an old thread yet: when it is longer than what Aril can read at once, the
-oldest messages stay on screen and in the search, but Aril no longer reads them.
+When the conversation gets longer than what Aril can read at once, Pomegr summarizes the older part
+in the background and gives Aril the summary with the newest messages. A quiet line, "Earlier
+messages summarized for Aril", shows where. Nothing is removed: you can still read and search
+every message, and your settings and repository memory are not part of the summary. The summary
+keeps what Aril concluded (decisions, your preferences, open questions, what became of its
+proposals), so Aril can lose a detail that was only in a file it read. If you send a message while
+Pomegr is summarizing, Pomegr stops the summary and tries again after Aril's next answer.
+
+Hover the time of an answer to see how long it took: when the process started, when the first
+words came, and when it finished. Pomegr measures this on your computer and keeps only the numbers.
 
 ## Apply a proposal
 
@@ -280,12 +288,17 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
 ## Understand what is kept and sent
 
 - **Kept on this computer.** Pomegr saves your conversation with Aril in its private data folder,
-  in parts of up to 200 messages, with the images you sent. A repository has no limit of
+  in parts of up to 200 messages, with the images you sent and, once a long conversation is summarized, its
+  summary. The summary never leaves your computer except in the prompts to your provider, and no
+  phone or browser receives its text. A repository has no limit of
   parts. An image that Aril puts on a task is a copy of the image. The search and the older
   pages are answered from these files on your computer.
-- **Sent to the provider.** Each message sends the newest earlier messages of the repository's
-  conversation (as many as fit in 24,000 characters) and the board to the
-  provider you chose, through your own coding tool. The search sends nothing. Applying or dismissing a proposal
+- **Sent to the provider.** Each message sends the summary of the older messages, when there is one,
+  the newest earlier messages of the repository's conversation (as many as fit in 24,000 characters)
+  and the board to the
+  provider you chose, through your own coding tool. The search sends nothing. After an answer, Pomegr may also run your provider once, read-only and told to use no
+  tool, to write or update the summary of a long conversation. It sends only the older messages and the
+  earlier summary, and it spends your provider allowance like an answer does. Applying or dismissing a proposal
   sends them once more, with the result of the proposal, for Aril's follow-up. That run
   uses the provider, model, and effort of the last message. The board includes the text of your
   tasks. Aril may also send file content and session evidence that it reads. The images

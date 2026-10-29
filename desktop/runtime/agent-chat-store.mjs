@@ -8,6 +8,7 @@ import path from "node:path";
 
 import { ARIL_FOLLOW_UP_END_REASONS } from "../../shared/aril-follow-up.mjs";
 import { normalizeChatImages } from "./agent-chat-images.mjs";
+import { normalizeTiming } from "./agent-chat-timing.mjs";
 import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT, QUEUE_OPERATION, QUEUE_RESULTS, queueProposalState, START_FAILURES, START_OPERATION, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 
 export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
@@ -148,9 +149,12 @@ function storedMessage(message) {
     stored.proposal = proposal;
   }
   if (message.proposalUnreadable === true) stored.proposalUnreadable = true;
+  // How long the run took and how large its prompt was, as numbers. A record without one, or with one outside the contract, keeps the message.
+  const timing = normalizeTiming(message.timing);
+  if (timing) stored.timing = timing;
   // A grant follow-up is a fixed line Pomegr wrote from the task log, with no provider run: it never carries a proposal.
   if (message.grantFollowUp !== undefined) {
-    if (message.grantFollowUp !== true || stored.proposal || stored.proposalUnreadable || message.followUp !== undefined || stored.status !== "complete") return null;
+    if (message.grantFollowUp !== true || stored.proposal || stored.proposalUnreadable || stored.timing || message.followUp !== undefined || stored.status !== "complete") return null;
     stored.grantFollowUp = true;
   }
   // A follow-up may offer another board proposal, but never a session start or queue-state change.

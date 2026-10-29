@@ -86,16 +86,16 @@ test("a page holds at most sixty messages and the pages together hold every mess
 
 test("a thread answers the messages as read answers them, a turn, the next conversation, and the last run, and nothing else", async (context) => {
   const h = await chatHarness(context);
-  assert.deepEqual(await thread(h), { ok: true, messages: [], before: null, turn: null, sendTo: null, run: null, updatedAt: null });
+  assert.deepEqual(await thread(h), { ok: true, messages: [], before: null, turn: null, sendTo: null, run: null, updatedAt: null, summarized: null });
   const stored = await seed(h, { provider: "codex", model: "gpt-6-luna", messages: [asked(1, "Question", 1), answered(2, "Answer", 2, { proposal: pendingProposal(), provider: "codex", model: "gpt-6-luna" })] });
   const page = await thread(h);
-  assert.deepEqual(Object.keys(page), ["ok", "messages", "before", "turn", "sendTo", "run", "updatedAt"]);
+  assert.deepEqual(Object.keys(page), ["ok", "messages", "before", "turn", "sendTo", "run", "updatedAt", "summarized"]);
   assert.equal(page.updatedAt, stored.updatedAt, "the newest time any conversation changed");
   assert.deepEqual(page.messages, (await h.handle("read", { repositoryId, conversationId: stored.id })).conversation.messages.map((message) => ({ conversationId: stored.id, ...message })));
   assert.equal(page.sendTo, stored.id);
   assert.deepEqual(page.run, { provider: "codex", model: "gpt-6-luna" });
   assert.equal(JSON.stringify(page).includes("grantFollowUps"), false);
-  assert.deepEqual(await thread(h, {}, otherRepositoryId), { ok: true, messages: [], before: null, turn: null, sendTo: null, run: null, updatedAt: null }, "another repository has its own thread");
+  assert.deepEqual(await thread(h, {}, otherRepositoryId), { ok: true, messages: [], before: null, turn: null, sendTo: null, run: null, updatedAt: null, summarized: null }, "another repository has its own thread");
 });
 
 test("a request outside the shape of thread or search is refused before anything is read", async (context) => {

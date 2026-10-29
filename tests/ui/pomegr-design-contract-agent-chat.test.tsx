@@ -166,6 +166,13 @@ describe("Aril chat visual contract", () => {
     expect(designContract).toMatch(/A time reads `HH:MM` \(24-hour, local\) for a message of today/);
     expect(designContract).toMatch(/A time reads `Mon D, HH:MM` for a message of an earlier day/);
     expect(designContract).toMatch(/A grant follow-up is drawn as a quiet line and not as a message/);
+    // The line where earlier messages were summarized for Aril reuses the quiet line and adds no style; the timing is a tooltip of numbers.
+    expect(designContract).toMatch(/### Summary line[^]*a 14px `history` glyph, the words “Earlier messages summarized for Aril”, and the time the summary was written/);
+    expect(designContract).toMatch(/It is drawn like the grant follow-up line, in a `\.agentChatQuietLine`, and it adds no style of its own/);
+    expect(designContract).toMatch(/The desktop sends the panel only a position and a time, never the summary/);
+    expect(designContract).toMatch(/adds a second line: “Started 1\.2s · first words 6\.8s · done 11\.4s”/);
+    expect(read("AgentChatMessages.tsx")).toMatch(/<div className="agentChatQuietLine isSummary">\s*<CommandIcon name="history" size="small" \/>/);
+    expect(chatStyles).not.toMatch(/isSummary/);
     expect(designContract).toMatch(/#### Agent chat exceptions[^]*The composer uses the 12px composer radius, token `--composer-radius`[^]*Send and Stop are one round 32px action, `\.agentChatSend`/);
     expect(designContract).toMatch(/composer: "12px"/);
     expect(designContract).toMatch(/At 760px and narrower, the panel is a full-screen sheet \(`inset: 0`, z-index 85, no border, padded by the safe area\)/);

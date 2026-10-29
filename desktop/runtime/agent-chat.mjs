@@ -1,22 +1,25 @@
 // Desktop main owns Aril's read-only runs, conversations, approved changes, grant writes, grant follow-ups, and direct rework records.
 
 import { execFile as execFileChild, spawn as spawnChild } from "node:child_process";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { createServer } from "node:http";
 import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { RUN_MODEL_AGENTS_QUERY } from "../../shared/task-run-models.mjs";
 import { CHAT_IMAGE_ID, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGES_PER_CONVERSATION, conversationImages, createAgentChatImages } from "./agent-chat-images.mjs";
 import { createGrantFollowUps } from "./agent-chat-grant-follow-up.mjs";
+import { createTaskBridge } from "./agent-chat-task-bridge.mjs";
 import { chatTaskLog } from "./agent-chat-task-log.mjs";
 import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
-import { composePrompt, conversationHistory, proposalOutcome } from "./agent-chat-prompt.mjs";
+import { createCompaction, threadSince } from "./agent-chat-compaction.mjs";
+import { composePrompt, composePromptParts, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, visibleAnswer, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 import { CHAT_EFFORTS, runChatTurn } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
-import { createAgentChatThread, currentConversation, LIST_LIMIT, lastAnswer, threadHistory, threadSource } from "./agent-chat-thread.mjs";
+import { createAgentChatSummaries, summarizedView } from "./agent-chat-summary.mjs";
+import { createAgentChatThread, currentConversation, LIST_LIMIT, lastAnswer } from "./agent-chat-thread.mjs";
+import { timingOf } from "./agent-chat-timing.mjs";
 import { readWorkflowChanges } from "./agent-chat-workflow.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
@@ -51,6 +54,7 @@ const MONITOR_TIMEOUT_MS = 10_000;
 const IMAGE_TIMEOUT_MS = 20_000;
 const DECLARATION_TIMEOUT_MS = 2_000;
 
+const NO_SUMMARIES = Object.freeze({ read: async () => null, write: async () => false });
 const refused = (error) => Object.freeze({ ok: false, error });
 const INVALID = refused("invalid");
 const UNAVAILABLE = refused("unavailable");
@@ -98,6 +102,8 @@ export function createAgentChat(options = {}) {
     ? createAgentChatStore({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
   const images = options.images || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
     ? createAgentChatImages({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
+  const summaries = options.summaries || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
+    ? createAgentChatSummaries({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
   let disposed = false;
   // One turn at a time for the whole app: `{ repositoryId, conversationId, ... }` from the moment a send is accepted.
   let active = null;
@@ -147,48 +153,8 @@ export function createAgentChat(options = {}) {
     try { return chatTaskLog(await postAction("log-read", repositoryId, { limit: 100 })); } catch { return null; }
   }
 
-  // One memory-only capability per turn. Only this bridge knows the repository and desktop credential.
-  async function taskReadServer(turn) {
-    if (!mcpServer) return null;
-    const key = randomBytes(32).toString("base64url");
-    const server = createServer(async (request, response) => {
-      const supplied = request.headers["x-pomegr-chat-task-key"];
-      const authenticated = typeof supplied === "string" && /^[A-Za-z0-9_-]{43}$/u.test(supplied)
-        && timingSafeEqual(Buffer.from(supplied), Buffer.from(key));
-      let url = null;
-      try { url = new URL(request.url || "/", "http://127.0.0.1"); } catch { /* malformed request is refused */ }
-      const taskId = url?.searchParams.get("task_id");
-      const listing = url?.pathname === "/tasks";
-      const filters = ["query", "state", "feature", "editable"];
-      const listValid = listing && [...url.searchParams.keys()].every((name) => filters.includes(name))
-        && [...url.searchParams.keys()].length === new Set(url.searchParams.keys()).size;
-      const valid = authenticated && request.headers.origin === undefined
-        && request.headers.host === `127.0.0.1:${server.address()?.port}`
-        && request.method === "GET" && (listing ? listValid : url?.pathname === "/task" && TASK_ID.test(taskId ?? "")
-          && [...url.searchParams.keys()].length === 1) && !request.headers["transfer-encoding"]
-        && !(Number(request.headers["content-length"] || 0) > 0) && active === turn && !disposed && !turn.stopped;
-      let answer = { ok: false };
-      if (valid) {
-        try {
-          const params = listing ? Object.fromEntries(url.searchParams) : { taskId };
-          answer = await monitor(`/internal/agent-chat/task?${new URLSearchParams({ repositoryId: turn.repositoryId, ...params })}`, { method: "GET" });
-        }
-        catch { /* fixed unavailable answer */ }
-      }
-      response.writeHead(valid ? 200 : 403, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      response.end(JSON.stringify(answer));
-    });
-    const close = () => { server.close(); server.closeAllConnections(); };
-    turn.closeTaskRead = close;
-    try {
-      await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
-      if (disposed || turn.stopped || active !== turn) { close(); return null; }
-    return { ...mcpServer, env: { ...mcpServer.env,
-        POMEGR_CHAT_TASK_ORIGIN: `http://127.0.0.1:${server.address().port}`,
-        POMEGR_CHAT_TASK_KEY: key,
-      } };
-    } catch { close(); return mcpServer; }
-  }
+  // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
+  const taskReadServer = createTaskBridge({ mcpServer, monitor, current: (turn) => active === turn && !disposed });
 
   // The Pomegr task worktrees still on disk, as facts only (never a path). A turn goes on without them when they cannot be read.
   async function readWorktrees(repositoryId, root, board) {
@@ -276,7 +242,7 @@ export function createAgentChat(options = {}) {
     const waiting = running ? null : [...followUps.values()].find((entry) => entry.repositoryId === repositoryId);
     return running ? turnView(running) : waiting ? turnView(waitingTurn(waiting)) : null;
   };
-  const chatThread = createAgentChatThread({ store, settle: (repositoryId, conversation) => settled(repositoryId, conversation), turn: threadTurn });
+  const chatThread = createAgentChatThread({ store, settle: (repositoryId, conversation) => settled(repositoryId, conversation), turn: threadTurn, summarized: async (repositoryId) => summarizedView(await summaries?.read(repositoryId)) });
 
   // The one turn is free again: the oldest follow-up that waits takes it.
   function release(holder) {
@@ -307,6 +273,7 @@ export function createAgentChat(options = {}) {
       startedAt: now().toISOString(), activity: "starting", text: "", stopped: false, stop: () => { turn.stopped = true; },
     };
     active = turn;
+    compaction.cancel(turn.repositoryId);
     void runFollowUp(turn);
   }
 
@@ -315,10 +282,16 @@ export function createAgentChat(options = {}) {
     return lastAnswer(await store.index(repositoryId));
   }
 
-  // The newest earlier messages of the repository's thread that the prompt's history holds, read from the newest conversation back.
-  async function threadMessages(repositoryId) {
-    return threadHistory(threadSource(store, repositoryId, await store.index(repositoryId)), (messages) => conversationHistory(messages).omitted);
+  // The summary of the repository's thread, and the newest messages after it that the prompt's history holds, read from the newest conversation back.
+  async function threadContext(repositoryId) {
+    const { summary, messages } = await threadSince({ store, summaries: summaries ?? NO_SUMMARIES, repositoryId, toWindow: true });
+    return { summary: summary?.text ?? null, messages };
   }
+
+  // After a turn is stored, an outgrown thread is summarized in the background; a turn that starts stops that run.
+  const compaction = createCompaction({ store, summaries: summaries ?? NO_SUMMARIES, now, runTurn, spawn, env: userSessionEnvironment(sourceEnvironment), executable, repositoryRoot,
+    declare: declareRun, withdraw: withdrawRun, timeoutMs: options.compactionTimeoutMs,
+    busy: (repositoryId) => active?.repositoryId === repositoryId || [...followUps.values()].some((entry) => entry.repositoryId === repositoryId) });
 
   async function runFollowUp(turn) {
     try {
@@ -338,7 +311,7 @@ export function createAgentChat(options = {}) {
       turn.followUpOutcome = proposalOutcome(proposal)?.outcome;
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const instructionsFile = turn.provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
-      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, messages: await threadMessages(turn.repositoryId), followUp: proposal, images: shown, now: now() });
+      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(turn.repositoryId), repositoryName: path.basename(root), runs, workflowChanges, ...await threadContext(turn.repositoryId), followUp: proposal, images: shown, now: now() });
       if (!prompt) return await finishTurn(turn, null);
       if (disposed) return release(turn);
       if (turn.stopped) return await finishTurn(turn, { status: "stopped", text: "" });
@@ -359,6 +332,7 @@ export function createAgentChat(options = {}) {
         onActivity: (value) => { turn.activity = value; },
       });
       turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
+      turn.timing = () => run.timing?.() ?? null;
       void run.done.finally(() => { turn.closeTaskRead?.(); withdrawRun(sessionId); }).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
     } catch { await finishTurn(turn, null); }
   }
@@ -396,6 +370,9 @@ export function createAgentChat(options = {}) {
         headers: { "content-type": "application/json" }, body: JSON.stringify({ repositoryId: turn.repositoryId, ...payload }),
       }), ANSWER_LENGTH);
       const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, ...effortField(turn.effort), status };
+      // How long the run took and how large its prompt was, as numbers, for an owner's message.
+      const timing = turn.promptSections ? timingOf(turn.timing?.(), turn.promptSections) : null;
+      if (timing) message.timing = timing;
       // Only a successful or partial outcome may offer another board proposal. It still waits for the owner.
       if (turn.followUp) {
         message.followUp = turn.followUp;
@@ -424,7 +401,7 @@ export function createAgentChat(options = {}) {
       if (read.unreadable) message.proposalUnreadable = true;
       return await store.save(turn.repositoryId, { ...conversation, updatedAt: message.at, messages: [...conversation.messages, message] });
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
-    finally { release(turn); }
+    finally { release(turn); if (status === "complete") compaction.afterTurn(turn.repositoryId); }
   }
 
   async function send(payload) {
@@ -480,7 +457,8 @@ export function createAgentChat(options = {}) {
       const workflowChanges = await readWorkflowChanges(root, board.aril, { execFile });
       const inventory = await readWorktrees(repositoryId, root, board);
       const instructionsFile = provider === "claude" ? await prepareInstructionsFile(options.dataRoot) : null;
-      const prompt = composePrompt({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, messages: await threadMessages(repositoryId), message: text, images: shown, attached, repositoryGithub: github, now: now() });
+      const composed = composePromptParts({ includeInstructions: !instructionsFile, board, lastCompletedAt: await lastCompletedAnswer(repositoryId), repositoryName: path.basename(root), runs, taskLog, workflowChanges, worktrees: inventory, ...await threadContext(repositoryId), message: text, images: shown, attached, repositoryGithub: github, now: now() });
+      const prompt = composed?.prompt;
       if (!prompt) return abandoned(INVALID);
       const at = now().toISOString();
       const message = { id: `m-${conversation.messages.length + 1}`, role: "user", text, at, ...(attached.length > 0 ? { images: attached } : {}) };
@@ -491,11 +469,12 @@ export function createAgentChat(options = {}) {
       const runImages = shown.length > 0 ? { folder: images.folder(repositoryId, conversation.id), files: shown.filter((image) => newest.has(image.id)).map((image) => image.file) } : null;
       sessionId = await declareRun(provider);
       if (disposed) { withdrawRun(sessionId); return UNAVAILABLE; }
-      turn = { repositoryId, conversationId: conversation.id, provider, model, effort, startedAt: at, activity: "starting", text: "", stopped: false,
+      turn = { repositoryId, conversationId: conversation.id, provider, model, effort, startedAt: at, activity: "starting", text: "", stopped: false, promptSections: composed.sections,
         logThrough: Math.max(0, ...(taskLog?.entries ?? []).map((entry) => entry.id)),
         stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
       started = true;
+      compaction.cancel(repositoryId);
       const taskServer = await taskReadServer(turn);
       if (disposed || turn.stopped) {
         withdrawRun(sessionId);
@@ -508,6 +487,7 @@ export function createAgentChat(options = {}) {
         onActivity: (value) => { turn.activity = value; },
       });
       turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
+      turn.timing = () => run.timing?.() ?? null;
       void run.done.finally(() => { turn.closeTaskRead?.(); withdrawRun(sessionId); }).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
       return { ok: true, conversationId: conversation.id };
     } catch {
@@ -547,6 +527,7 @@ export function createAgentChat(options = {}) {
         logThrough: Math.max(0, ...(taskLog?.entries ?? []).map((entry) => entry.id)),
         stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
+      compaction.cancel(repositoryId);
       sessionId = await declareRun(provider);
       const taskServer = await taskReadServer(turn);
       if (disposed || turn.stopped) { await finishTurn(turn, { status: "stopped", text: "" }); return UNAVAILABLE; }
@@ -554,6 +535,7 @@ export function createAgentChat(options = {}) {
         cwd: root, env: userSessionEnvironment(sourceEnvironment), prompt, timeoutMs: options.turnTimeoutMs,
         onText: (value) => { turn.text = value; }, onActivity: (value) => { turn.activity = value; } });
       turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
+      turn.timing = () => run.timing?.() ?? null;
       return await finishTurn(turn, await run.done) ? { ok: true, conversationId: conversation.id } : UNAVAILABLE;
     } catch {
       if (turn) await finishTurn(turn, null);
@@ -572,7 +554,8 @@ export function createAgentChat(options = {}) {
     if (!exactly(payload, ["repositoryId"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
     const conversations = (await store.index(payload.repositoryId)).slice(0, LIST_LIMIT);
     const running = active && !active.reserved && active.repositoryId === payload.repositoryId ? active.conversationId : null;
-    return { ok: true, conversations: conversations.map(summary), running };
+    const summarized = summarizedView(await summaries?.read(payload.repositoryId));
+    return { ok: true, conversations: conversations.map(summary), running, ...(summarized ? { summarizedAt: summarized.at } : {}) };
   }
 
   async function located(payload, keys) {
@@ -759,7 +742,7 @@ export function createAgentChat(options = {}) {
     grantWrite,
     grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)),
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; followUps.clear(); try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); compaction.dispose(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 

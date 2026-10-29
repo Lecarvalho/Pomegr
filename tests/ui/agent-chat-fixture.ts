@@ -53,6 +53,8 @@ export class FakeChat {
   followUps = false;
   /** The messages of one page of the thread, as the desktop's bound is sixty. */
   pageSize = 60;
+  /** Where the thread was summarized for Aril, as the desktop tells it: a position and a time, never the text. */
+  summarized: { through: { conversationId: string; messageId: string; at: string }; at: string } | null = null;
   readonly agentChat = vi.fn((operation: string, payload: Json) => this.handle(operation, payload));
   /** The bytes of each image the desktop holds, by ID. */
   readonly images = new Map<string, { type: string; bytes: Uint8Array }>();
@@ -168,7 +170,7 @@ export class FakeChat {
     const stored = conversationId === null ? undefined : this.conversation(repositoryId, conversationId);
     switch (operation) {
       case "list":
-        return { ok: true, conversations: this.summaries(repositoryId), running: this.turn?.repositoryId === repositoryId ? this.turn.conversationId : null };
+        return { ok: true, conversations: this.summaries(repositoryId), running: this.turn?.repositoryId === repositoryId ? this.turn.conversationId : null, ...(this.summarized ? { summarizedAt: this.summarized.at } : {}) };
       case "read": {
         if (!stored) return { ok: false, error: "not_found" };
         const running = this.turn?.repositoryId === repositoryId && this.turn.conversationId === stored.id ? this.turn : null;
@@ -191,7 +193,7 @@ export class FakeChat {
           ok: true, messages: page.map((entry) => ({ conversationId: entry.conversation.id, ...structuredClone(entry.message) })),
           before: eligible.length > page.length ? this.cursorOf(page[0]) : null, turn: running ? this.turnView(running) : null,
           sendTo: this.current(repositoryId)?.id ?? null, run: own ? { provider: own.provider, model: own.model, ...(own.effort ? { effort: own.effort } : {}) } : null,
-          updatedAt: conversations[0]?.updatedAt ?? null,
+          updatedAt: conversations[0]?.updatedAt ?? null, summarized: this.summarized,
         };
       }
       case "search": {
