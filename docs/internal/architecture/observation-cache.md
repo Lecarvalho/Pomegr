@@ -2397,8 +2397,13 @@ reachability.
   non-spawning liveness check retires a positive identity as soon as its process is gone.
   After 1.5 seconds, on Windows, the last answer is served while one asynchronous process
   enumeration re-confirms the start identity, so a read inside that five-second bound never
-  blocks the event loop on a process spawn. A first check, a changed start identity, and an
-  answer older than five seconds still use a synchronous probe. On Windows the helper
+  blocks the event loop on a process spawn. The synchronous PowerShell probe held the event
+  loop for 0.4 to 1.5 seconds each time (measured on 2026-10-29), so the last answer is also
+  served while a refresh that started less than five seconds ago runs, and an answer older
+  than five seconds starts such a refresh when the non-spawning check still finds the
+  process. A first check, a changed start identity, a refresh that has not answered five
+  seconds after it started, and an old answer for an owner the non-spawning check cannot
+  confirm still use a synchronous probe. On Windows the helper
   answers for every process ID it was asked about, and marks one that is gone. An answer
   that lacks a requested ID is no answer and leaves every owner in it unknown: a helper
   that its three-second timeout cuts off as it finishes returns success with empty
@@ -3412,6 +3417,18 @@ its own time and cadence. Repository-root lookups (`git rev-parse --show-topleve
 directory read that recognizes a linked worktree) run once
 per directory: concurrent callers share the lookup, and its answer is reused for the same
 300-second freshness the providers' memoized repository resolver already applies.
+
+Starting a child process is synchronous work in the thread that starts it. On Windows about
+one start in ten takes 300 to 900 ms (measured on 2026-10-29). When the monitor thread started
+them, bursts of `git` starts blocked every monitor route: 23 and 17 seconds for the root
+lookups at startup and at their 300-second expiry, and up to about 2 seconds whenever live
+sessions' inspections ran. So the monitor's `git` and `gh` reads, the asynchronous owner probe, the Codex writer
+probe, and the resource sampler start their processes through one command runner
+(`server/normalize/exec-file-runner.mjs`). One worker thread runs `execFile` and posts each
+result back, so a start no longer holds the event loop. The runner sends at most one start
+per event-loop turn and keeps at most eight commands running. A command's timeout starts
+when its process starts, so waiting in the runner never times it out. Without a worker
+thread, a command starts on the monitor thread as before.
 The committed public state of a live session may carry monitor-private `readAt` stamps on
 `session.repository` (the start of the Git read its working-tree files and branch comparison
 come from) and `session.pullRequests` (the start of the oldest read its items rest on).

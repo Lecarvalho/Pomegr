@@ -1,6 +1,7 @@
-import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+
+import { runExecFile } from "../normalize/exec-file-runner.mjs";
 
 const DEFAULT_INTERVAL_MS = 5_000;
 const DEFAULT_WINDOW_MS = 30 * 60_000;
@@ -73,7 +74,7 @@ function defaultReadSnapshot(options = {}) {
     "v1.0",
     "powershell.exe",
   );
-  const execute = options.execFile || execFile;
+  const execute = options.execFile || runExecFile;
   const timeout = Number.isFinite(options.collectionTimeoutMs) ? Math.max(1, options.collectionTimeoutMs) : 5_000;
   return new Promise((resolve, reject) => {
     execute(powershell, ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_SNAPSHOT_SCRIPT], {

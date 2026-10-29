@@ -21,6 +21,7 @@
     "diagnostics:snapshot": "node scripts/diagnostics-snapshot.mjs",
     "diagnostics:analyze": "node scripts/diagnostics-logs.mjs",
     "diagnostics:logs": "node scripts/diagnostics-logs.mjs",
+    "diagnostics:event-loop": "node scripts/measure-monitor-event-loop.mjs",
     "test:diagnostics": "node --test tests/server/session-trace-scope.test.mjs tests/server/diagnostics-logs.test.mjs tests/server/diagnostics/pipeline-log-stream.test.mjs tests/server/diagnostics/pipeline-log-writer.test.mjs",
     "mcp": "node mcp/server.mjs",
     "build:brand": "node scripts/export-brand-assets.mjs",

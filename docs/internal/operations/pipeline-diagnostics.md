@@ -153,6 +153,21 @@ the web dev server's worker inspector. Start the dev app with
 `NODE_OPTIONS=--inspect-port=9330`, run `node -e "process._debugProcess(<monitor pid>)"`, and
 connect to `http://127.0.0.1:9330/json/list`. Relaunch the dev app normally afterwards.
 
+## Measuring event-loop stalls
+
+`npm run diagnostics:event-loop -- --seconds 600 --profile <file>.cpuprofile` starts a
+separate monitor on loopback port 4399 with a fresh temporary data folder, observes this
+machine's real sessions read-only, and deletes the folder when it ends. It prints the
+event-loop delay, every stall of 100 ms or more, and the `/api/sessions` latency seen by a
+client on its own thread. With `--profile` it names the monitor code that ran during each
+stall of 500 ms or more (`--stall-ms` changes that bound). It prints numbers and code
+locations only. The monitor starts cold, so the first minutes include the startup reads.
+Run it while sessions are live, and compare runs of the same length on the same machine.
+
+`npm run diagnostics:event-loop -- --spawn-burst 60` starts no monitor. It runs `git status`
+in this repository 60 times at once, first with `execFile` on its own thread and then
+through the monitor's command runner, and prints the longest stall of each.
+
 ## Verification
 
 Use focused checks after changing diagnostics:
