@@ -256,7 +256,7 @@ An owner-started grant is scoped and time-bound authority for the desktop runner
 - **Mark done under a grant** (T-182, owner decision of 2026-10-26: acceptance settled with Aril is enough). With the grant's snapshotted `actions.markDone`, a task is marked Done only when all hold: a matching work rule (or the active grant's written-task marker) selects it; it is in `needs_review` with a linked builder session, so neither Blocked nor Stalled, and it has no owner block hold; the committed pull-request facts say its pull request is `merged`; with `actions.review` its latest verdict since entering Review passed, and without it no failing or running review stands; and Complete when holds at least one check and no `user_validated`, which stays the owner's. A task with no Complete when check has no acceptance Pomegr can verify, so it stays the owner's.
 - `grant-next` offers `{ repositoryId, taskId, kind: "mark_done" }` for such a task, at most once a minute per task (`meta` key `task_grant_done_offered:<repositoryId>:<taskId>` holds the last offer time); it uses no task slot, is never held for provider usage, and does not count as a new grant task.
 - `POST /internal/tasks/grant-done` accepts exactly `{ repositoryId, taskId }` with the desktop token and rejects paired requests. It checks the rule in one transaction, reads the builder session's checks fresh through the same read a session's own report uses (`readTaskCheckFacts`), then checks the rule again with that reading in a second transaction, where every Complete when check must pass: an unavailable check is no pass. A grant stopped or ended between the two answers `not_active`; any other failed condition answers `not_eligible`.
-- That transaction calls the owner's shared acceptance (`markTaskDone`: Done state and column, `done` event, outcome, worktree cleanup, queue release) and appends `grant_done`, which the desktop and app log readers label “Marked done by Aril under a grant”. The desktop runner posts each offered step once and records nothing itself.
+- That transaction calls the owner's shared acceptance (`markTaskDone`: Done state and column, `done` event, outcome, worktree cleanup, queue release) and appends `grant_done`, which the desktop and app log readers label “Marked done by Aril under a grant”. The desktop runner posts each offered step once and records nothing itself. After an accepted `grant-done` it asks the starter to end that task's idle terminal-host sessions at once (see [Ending a Done task's sessions](#ending-a-done-tasks-sessions)); it never ends a working one, because a grant has nobody to ask.
 - With `actions.markDone`, a grant that used its tasks does not end for `tasks_used` while a task merged since the grant started is not Done and has at least one Complete when check and no `user_validated` check, until ten minutes after that merge. `expired` and a stop still end it at once.
 - The owner's **Mark done**, the merge rules, and the agent report tools are unchanged: a session's `complete_task` still sets Review, never Done.
 - Selection uses current settings work rules, with any matching rule sufficient: an exact tag from the leading tag run (the board parser with the settings' 40-character bound), a case-insensitive text substring, a matching feature ID, or a listed task ID; plan rules select no existing task, and no rules select only tasks written by the active grant.
@@ -485,7 +485,7 @@ task state.
 | Needs review | The agent reported complete; the report holds each checked condition's result and the optional attention line | Verification of a `complete_task` report |
 | Stalled | The bound session ended without a report | Observation of an established session end; it leaves when that session reports or is confirmed live again |
 | Blocked by agent | The agent called `block_task` with a reason | The agent |
-| Done | The owner accepted the task | The user's Mark done (`resolve_done`) or explicit card move to Done, or an active grant's [Mark done rule](#aril-grants) |
+| Done | The owner accepted the task; the sessions Pomegr started for it end (see [Ending a Done task's sessions](#ending-a-done-tasks-sessions)) | The user's Mark done (`resolve_done`) or explicit card move to Done, or an active grant's [Mark done rule](#aril-grants) |
 
 **No transient states.** Never show a state and then retract it. The state is decided
 at first observation of its evidence: Stalled is assigned only once the end of the
@@ -934,7 +934,8 @@ paths stay desktop-private and never reach the monitor store or browser state.
 - **When a task is done.** Mark done (`resolve_done`) on a task that does not keep its
   worktree (`run.keepWorktree`) stores that the task waits for the removal. The desktop
   queue runner asks `POST /internal/tasks/worktree-cleanups` on its first tick and on
-  every fourth after it (about once a minute), and gets at most 64
+  every fourth after it (about once a minute), just after it has ended the idle sessions
+  of Done tasks (see [Ending a Done task's sessions](#ending-a-done-tasks-sessions)), and gets at most 64
   `{ repositoryId, taskId, repositoryRoot }` entries; a repository whose root the monitor
   has not located in this run is left out. For each it runs the removal above with the
   branch delete. When the worktree is removed, or there is none (the task ran in the
@@ -1221,14 +1222,17 @@ its parallel group. Every start first passes the [start gates](#start-gates).
     Scheduled, and no report). Pomegr never marks such a task Done or Stalled by itself,
     and the queue never advances past it by itself, because the task can matter to the
     whole feature; the user decides in the Pomegr UI, where the task modal offers **Mark
-    done** and **Requeue task** with a line that neither stops the session. Neither
-    action stops, attaches to, or writes to the session. Requeue clears the link, so a
+    done** and **Requeue task** with a line that Mark done ends the session and Requeue
+    does not. Requeue stops, attaches to, and writes to nothing. Mark done ends the sessions
+    Pomegr started for the task (see [Ending a Done task's sessions](#ending-a-done-tasks-sessions)),
+    after the owner's answer when one still works. Requeue clears the link, so a
     later report from the old session is `not_found`; Mark done leaves an outcome, so a
     later report is `already_reported`. A live dispatch with no linked session and a task
     that is already Done still answer `conflict`. The agent's own path is `block_task`,
     which works on such a task and blocks a running queue.
 - **No stop.** Pomegr never stops a running session, whether for a schedule, a
-  gate, or a blocked queue.
+  gate, or a blocked queue. A session ends only with its task's Done
+  (see [Ending a Done task's sessions](#ending-a-done-tasks-sessions)).
 - **Scheduling.** A task or the queue can start at a given time, and the queue can
   stop starting tasks after a given time. Every time is one instant, stored as epoch
   milliseconds, not a daily time: the Schedule panel takes a time of day and sends its
@@ -2376,7 +2380,7 @@ Aril's provider run gains no authority and never starts a review; an active gran
 - Desktop main uses the task's worktree when Git lists it on `tasks/T-n`, looking under `.pomegr/worktrees` and the legacy task-worktree directory; otherwise it uses the repository root, and never creates a worktree.
 - Review starts share the busy slot with builder starts and return only the same fixed start statuses; a failure after planning aborts the matching review dispatch.
 - Review terminal keys end in `review-` plus 16 random bytes in hex and never participate in the task's builder terminal binding.
-- The owner can watch a reviewer beside its task's builder sessions in the desktop Terminal tab, labeled **Review**, with the same attach and owner-only input rules; nothing ends the session.
+- The owner can watch a reviewer beside its task's builder sessions in the desktop Terminal tab, labeled **Review**, with the same attach and owner-only input rules; only its task's Done ends the session.
 - Review starts are Windows-only and have no paired-device, Aril-run, or queue start path; the desktop grant runner is the only additional start path.
 - `review-abort` clears only the dispatch whose token matches.
 - Binding compares every review candidate after no builder dispatch matches; it refuses any builder session or another task's reviewer.
@@ -2526,8 +2530,9 @@ with the started session linked to its task and run in Pomegr's terminal host.
 
 Claude Code and Codex are both startable. The owner may type or paste into a session
 Pomegr started in the terminal host through the trusted Terminal view. No agent, Aril,
-queue, MCP tool, or monitor path may send input or end it. Observation does not interpret
-terminal text as session state.
+queue, MCP tool, or monitor path may send input to it. A session ends only with its
+task's Done (see [Ending a Done task's sessions](#ending-a-done-tasks-sessions)).
+Observation does not interpret terminal text as session state.
 
 ### Terminal binding
 
@@ -2543,6 +2548,53 @@ terminal text as session state.
   keys or task bindings.
 - A terminal that has not bound to a session remains in the task's start view. A host
   terminal record alone never proves a task session exists.
+
+### Ending a Done task's sessions
+
+Decided by the product owner on 2026-10-28. Sessions in the terminal host never ended unless
+the owner typed `/exit`, so provider processes and the helper processes they start piled up.
+Marking a task Done now ends the sessions Pomegr started for it. This is the only way Pomegr
+ends a session; it is a control action of the desktop, not of the monitor, an agent, or Aril.
+
+- **Which sessions.** The terminal-host keys of the Done task: its builder keys
+  (`<repositoryId>/<taskId>/<nonce>`) and its review keys (`<repositoryId>/<taskId>/review-<nonce>`).
+  A Continue key (`continue/...`), a session the owner started outside Pomegr, an assigned
+  session, and every key of another task are never ended. A key counts only when the board the
+  monitor serves lists its task as Done; no renderer value names a session or a state.
+- **Working or not.** A builder session is working unless the monitor observes its linked session as
+  `idle`, `open`, `stopped`, or `closed`. `working`, `needs_input`, `unknown`, and a key that is not linked
+  to a session yet count as working. A reviewer is working until its task's review has a verdict
+  (`passed` or `failed`). This reads the observed state and the review verdict, never terminal text, and
+  it is a reading, not proof: a Codex session may be `open` while it still runs.
+- **The owner's Done.** On the desktop, Mark done, Mark done and resume, and a card moved into the Done
+  column first ask `pomegr:task-sessions` (`inspect`) how many sessions of the task work. None working: the
+  Done action runs and the idle sessions end at once. Some working: the modal or the board asks “Its session
+  is still working. End it?” (“Its sessions are still working. End them?”) with **End session** and **Keep it
+  running**, before anything is marked. Both mark the task Done; only **End session** ends the working
+  sessions. **Keep it running** is remembered in desktop main's memory until the app closes, so no pass ends
+  that session when it turns idle. After a successful Done action the interface calls `settle`.
+- **Settle and pass.** `settle` ends the idle sessions of the named task, and the working ones when it says
+  so, but only after desktop main reads the task as Done from the monitor. A paired device, a task Done
+  before this change, and a card moved to Done by an applied proposal have no question to ask: the queue
+  runner's pass (its first tick and every fourth after it, about once a minute, before the worktree pass)
+  ends the idle sessions of every Done task and leaves a working one.
+- **A grant.** When `grant-done` marks a task Done, the runner asks the starter to end that task's idle
+  sessions at once. It never ends a working one: nobody is there to ask.
+- **Which hosts.** Desktop main reaches every host under the terminal-host folder of the data root whose
+  process is alive and speaks the current protocol version, with the token file of that host. After a pass it
+  closes its connection to a host with no running session, so a host with nothing left exits by itself after
+  its idle minute. A host of an older build has no `end` command (`UNKNOWN_COMMAND`): desktop main ends that
+  terminal's process tree itself from the process ID the host listed for the key, in the same way.
+- **How.** Host command `end` takes a key. The host runs `taskkill /PID <process ID of that terminal> /T /F`
+  through `execFile` with an argument array, which ends the provider CLI and the helper processes it started,
+  and falls back to the pty's own kill when that fails. The exit is then reported like any other. Desktop
+  main waits up to three seconds to read the key as exited, then acknowledges it so the host frees its place.
+  A key the host does not list as exited stays and is tried again by the next pass.
+- **Who may.** Only desktop main, with the host token, as for every other host command. The renderer, a
+  paired device, the LAN gateway, an MCP tool, an Aril run, and the queue's start path have no way to send
+  `end`; the only triggers are the Done paths above. `pomegr:task-sessions` carries a repository ID, a task
+  ID, and fixed words in; fixed statuses and counts out. No process ID, key, path, or session text crosses it.
+- **Never.** Stopping a grant, Requeue, delete, closing the window, and the queue end no session.
 
 ### Continuing an ended session
 
@@ -2897,11 +2949,12 @@ Aril may record a rework link (references and a cause from a fixed list) without
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status. The agent chat's applied start proposal reaches the same starter in desktop main, with the event of its own trusted `pomegr:agent-chat` call; its confirmation is **Start session** on the proposal card, not the native one |
 | `POST /api/tasks/start` | A paired device through the desktop LAN gateway, behind confirmation on that device and repeated authorization checks | `{ repositoryId, taskId, confirmed: true, worktree?: true }`, at most 512 bytes; answers only `{ status }` from the IPC start allowlist; never forwards or exposes a start plan |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
+| `pomegr:task-sessions` IPC | The renderer, through a trusted main frame only (the Done actions of the task modal, the board, and the Queue banner) | A repository ID, a task ID, and the fixed operation `inspect`, or `settle` with a boolean `endWorking`; answers `{ status: "ok", live, working }` (counts), `{ status: "ok", ended, working }`, or a fixed `invalid` or `unavailable`. Desktop main ends a session only for a task the monitor lists as Done. No key, process ID, or terminal text crosses it |
 | `pomegr:terminal` IPC | The renderer through the trusted main frame | Fixed `list`, `attach`, `input`, `resize`, and `detach` operations. Input is at most 16 KiB |
 | `pomegr:terminal-output` IPC | Desktop main to the one renderer attaching to that terminal | Terminal output keyed only by the attach ID, delivered only to that attaching renderer |
 | `pomegr:session-continue` IPC | The owner through the trusted desktop main frame and native confirmation | A qualified session ID in; only a fixed status out. No plan, title, working folder, executable, or arguments reach the renderer |
 | `POST /internal/sessions/continue-plan` | Desktop main through the private-action gate | The fields in [Continue plan](privacy/session-evidence.md#continue-plan); no browser, paired-device, agent, or tool access |
-| Terminal host pipe | Desktop main, authenticated with its private token | Fixed host commands and their bounded replies. The pipe, token, and terminal output stay out of HTTP and monitor routes |
+| Terminal host pipe | Desktop main, authenticated with its private token | Fixed host commands (`hello`, `list`, `create`, `attach`, `input`, `resize`, `detach`, and `end`, which ends one terminal's process tree for a Done task) and their bounded replies. The pipe, token, and terminal output stay out of HTTP and monitor routes |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/start-bind` | Desktop main, with the desktop token, for a Codex task or review session it started; not reachable through `pomegr:task-action` | A task ID, its build or review dispatch token, and the `codex:` session ID the monitor observed in the launched process in; `{ ok: true }` or one fixed error out, with no task data. Desktop main keeps the token in memory only, at most ten minutes |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |

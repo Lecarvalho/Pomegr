@@ -10,6 +10,8 @@ const KEY = /^(repo-[a-f0-9]{24})\/(T-[1-9][0-9]{0,8})\/(review-)?[a-f0-9]{32}$/
 const CONTINUE_KEY = /^continue\/(claude|codex)\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/[a-f0-9]{32}$/iu;
 const SESSION = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const ATTACH = /^[A-Za-z0-9_-]{1,128}$/u;
+// A session in one of these observed states is not answering; any other state, or none, counts as working.
+const NOT_WORKING = new Set(["idle", "open", "stopped", "closed"]);
 const failed = (status) => ({ ok: false, status });
 const dimensions = (cols, rows) => Number.isInteger(cols) && cols >= 1 && cols <= 1000 && Number.isInteger(rows) && rows >= 1 && rows <= 1000;
 const plain = (value) => value && typeof value === "object" && !Array.isArray(value)
@@ -31,6 +33,10 @@ export function createTerminalController(options = {}) {
   const records = new Map();
   const attachments = new Map();
   const watched = new Map();
+  // The boards the last listing read, and the keys of working sessions the owner chose to keep running (this app run only).
+  const boards = new Map();
+  const kept = new Set();
+  let ending = Promise.resolve();
   const isTrustedEvent = options.isTrustedEvent || (() => false);
   const fetchImpl = options.fetch || fetch;
   let origin;
@@ -118,8 +124,9 @@ export function createTerminalController(options = {}) {
     // A host that answered no longer holds the key only after its process exited and the exit was acknowledged.
     for (const record of records.values()) if (!seen.has(record.key) && record.state !== "exited") record.state = listed.has(record.connection) ? "exited" : "host_unavailable";
     const repositories = [...new Set([...records.values()].map((row) => row.repositoryId).filter(Boolean))];
-    const boards = await Promise.all(repositories.map(async (id) => [id, await readBoard(id)]));
-    for (const [id, board] of boards) {
+    const read = await Promise.all(repositories.map(async (id) => [id, await readBoard(id)]));
+    for (const [id, board] of read) {
+      if (board) boards.set(id, board); else boards.delete(id);
       for (const task of board?.tasks || []) for (const role of ["build", "review"]) {
         const taskRows = [...records.values()].filter((row) => row.repositoryId === id && row.taskId === task.id && row.role === role && (seen.has(row.key) || row.state === "exited"));
         const live = taskRows.filter((row) => row.state !== "exited");
@@ -199,6 +206,54 @@ export function createTerminalController(options = {}) {
     finally { await detach(attachment); }
   }
 
+  // A builder is working unless the monitor observes its linked session in a state above; a reviewer is working until its verdict.
+  // A session that is not linked to the task yet has no observed state, so it counts as working.
+  const isWorking = (record, task) => record.role === "review" ? !["passed", "failed"].includes(task.review?.state)
+    : !(record.sessionId && task.session?.id === record.sessionId && NOT_WORKING.has(task.session.state));
+
+  // The task keys that are running now, each with the task the monitor lists for it. A key of another kind never appears.
+  async function liveTaskSessions({ repositoryId, taskId, done }) {
+    if ((await snapshot()).ok !== true) return [];
+    const found = [];
+    for (const record of records.values()) {
+      if (record.state !== "starting" || !record.role || (repositoryId && record.repositoryId !== repositoryId) || (taskId && record.taskId !== taskId)) continue;
+      const task = boards.get(record.repositoryId)?.tasks.find((item) => item.id === record.taskId);
+      if (task && (!done || task.state === "done")) found.push({ record, task });
+    }
+    return found;
+  }
+
+  // Ends the process tree of each running key of a Done task: a working one only when `endWorking` says so.
+  // The owner's own settle (`owner`) remembers the working ones it left running, so a later pass does not end them.
+  async function endNow({ repositoryId, taskId, endWorking = false, owner = false }) {
+    let ended = 0;
+    let working = 0;
+    for (const { record, task } of await liveTaskSessions({ repositoryId, taskId, done: true })) {
+      if (isWorking(record, task) && !endWorking) {
+        working += 1;
+        if (owner) kept.add(record.key);
+        continue;
+      }
+      if (!owner && kept.has(record.key)) continue;
+      try {
+        // A key the host does not list as exited yet is left as it is; the next pass reads it again.
+        if (await record.connection.end(record.key)) {
+          record.state = "exited";
+          kept.delete(record.key);
+          await record.connection.detach(record.key, true).catch(() => {});
+          ended += 1;
+        }
+      } catch { /* The host or the process could not be reached; the next pass asks again. */ }
+    }
+    // A host of an older build exits by itself once no connection holds it and no session runs.
+    for (const [buildId, connection] of clients) {
+      const busy = [...records.values()].some((record) => record.connection === connection && record.state === "starting")
+        || [...attachments.values()].some((attachment) => attachment.connection === connection);
+      if (!busy) { connection.close(); clients.delete(buildId); }
+    }
+    return { ended, working };
+  }
+
   async function run(event, operation, payload) {
     if (!trusted(event)) return failed("invalid");
     if (operation === "list") return payload === undefined || (plain(payload) && Object.keys(payload).length === 0) ? snapshot() : failed("invalid");
@@ -261,6 +316,19 @@ export function createTerminalController(options = {}) {
         const row = (await client.list()).find((item) => item.key === key);
         return row && row.exited !== true && Number.isInteger(row.pid) && row.pid > 0 ? row.pid : null;
       } catch { return null; }
+    },
+    // How many keys of one task run now and how many of them work, for the question the Done action asks.
+    async taskSessions(repositoryId, taskId) {
+      if (!client || disposed) return { live: 0, working: 0 };
+      const found = await liveTaskSessions({ repositoryId, taskId, done: false });
+      return { live: found.length, working: found.filter(({ record, task }) => isWorking(record, task)).length };
+    },
+    // Ends the sessions of Done tasks (every repository, or one task). Only the owner's Done action may pass `endWorking`.
+    endDone(scope = {}) {
+      if (!client || disposed) return Promise.resolve({ ended: 0, working: 0 });
+      const next = ending.then(() => endNow(scope), () => endNow(scope));
+      ending = next.catch(() => {});
+      return next;
     },
     dispose() {
       disposed = true;

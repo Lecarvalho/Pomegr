@@ -244,6 +244,15 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
       || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
     return ipcRenderer.invoke("pomegr:task-worktree-open", repositoryId, taskId);
   },
+  // The Done action's two questions about a task's running sessions: `inspect` counts them, `settle` ends them once the task is Done.
+  taskSessions(repositoryId, taskId, operation, endWorking) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
+      || typeof taskId !== "string" || !TASK_ID.test(taskId)
+      || (operation === "inspect" ? endWorking !== undefined : operation !== "settle" || typeof endWorking !== "boolean")) return Promise.resolve({ status: "invalid" });
+    return operation === "inspect"
+      ? ipcRenderer.invoke("pomegr:task-sessions", repositoryId, taskId, "inspect")
+      : ipcRenderer.invoke("pomegr:task-sessions", repositoryId, taskId, "settle", endWorking);
+  },
   setNativeTheme,
   quit() {
     return ipcRenderer.invoke("pomegr:quit");

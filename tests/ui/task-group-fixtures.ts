@@ -62,7 +62,7 @@ export function withReady(ids: readonly string[]): TaskBoard {
 /** Edits whose actions are spies that answer true. */
 export function edits(value: TaskBoard): TaskBoardEdits {
   return {
-    board: value, failure: null, busy: false, settled: 0,
+    board: value, failure: null, busy: false, settled: 0, doneAsk: null,
     moveTask: vi.fn(async () => true), groupTasks: vi.fn(async () => true), ungroupTasks: vi.fn(async () => true), queueGroup: vi.fn(async () => true),
     setQueue: vi.fn(async () => true), setGateThreshold: vi.fn(async () => true), setQueueSchedule: vi.fn(async () => true), resolveTask: vi.fn(async () => true),
   };

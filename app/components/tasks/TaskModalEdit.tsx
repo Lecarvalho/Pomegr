@@ -6,6 +6,8 @@ import { CommandSelect } from "../command-center/CommandSelect";
 import { FeatureFields } from "./FeatureFields";
 import { TaskIssueRow } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
+import { TaskDoneSessionsAsk } from "./TaskDoneSessionsAsk";
+import { useDoneSessions } from "./use-task-done-sessions";
 import { TaskQueueWait } from "./TaskQueueWait";
 import { CompleteWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskReadView } from "./TaskReadView";
@@ -83,6 +85,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const cancel = useRef<HTMLButtonElement>(null);
   const saveInFlight = useRef(false);
   const createFeature = useFeatureCreation(repositoryId, board, refresh);
+  const { ask: doneAsk, beforeDone } = useDoneSessions(repositoryId);
   useEffect(() => { if (confirming) cancel.current?.focus({ preventScroll: true }); }, [confirming]);
 
   const chip = taskChip(task, task.id === board.queue?.order[0]);
@@ -121,7 +124,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   // A started task never starts again, and a queued one whose session started has left the queue: those two actions are not offered for it.
   const startOffered = showStart && !locked;
   const queueOffered = waiting && !(locked && inProgress);
-  const notes = !confirming && Boolean(startLine || reviewStart.line || saveLine || folderLine || awaitingReport || droppedNote);
+  const notes = !confirming && !doneAsk && Boolean(startLine || reviewStart.line || saveLine || folderLine || awaitingReport || droppedNote);
 
   const save = async () => {
     if (!canSave || saveInFlight.current) return;
@@ -181,9 +184,12 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
     if (resolving) return;
     setResolving(true);
     setFailure(null);
+    // On the desktop, a session of the task that still works is asked about first; either answer marks the task Done.
+    const gate = done ? await beforeDone(task.id) : null;
     const result = await (done ? resolveDesktopTaskDone(repositoryId, task.id) : requeueDesktopTask(repositoryId, task.id));
     setResolving(false);
     if (!result.ok) { setFailure(done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE); return; }
+    void gate?.settle();
     onChanged();
     // A task marked done needs nothing more from its modal. A requeued task can be edited again, so its modal stays.
     if (done) onClose();
@@ -247,7 +253,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
           <button type="button" className="commandSecondaryAction" disabled={deleting} onClick={() => void remove()}>Delete {task.id}</button>
           <button ref={cancel} type="button" className="commandQuietAction" disabled={deleting} onClick={() => setConfirming(false)}>Keep task</button>
         </div>
-        : <button type="button" className="commandQuietAction" disabled={blocked} onClick={() => setConfirming(true)}>Delete task</button>}
+        : doneAsk ? <TaskDoneSessionsAsk ask={doneAsk} />
+          : <button type="button" className="commandQuietAction" disabled={blocked} onClick={() => setConfirming(true)}>Delete task</button>}
       {notes
         ? <div className="taskModalNotes">
           {startLine && <span className="taskModalNote" role="status" aria-live="polite">{startLine}</span>}
@@ -258,7 +265,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
           {droppedNote && <span className="taskModalNote" role="status" aria-live="polite">{EDITS_DROPPED_NOTE}</span>}
         </div>
         : <span className="taskModalSpacer" aria-hidden="true" />}
-      {!confirming && <>
+      {!confirming && !doneAsk && <>
         {folderOffered && <button type="button" className="commandSecondaryAction" disabled={start.folder.opening} onClick={() => void start.folder.open()}>Open folder</button>}
         {separateOffered && <button type="button" className="commandSecondaryAction" onClick={() => void start.separate.run()}>Start in separate worktree</button>}
         {queueOffered && <button type="button" className="commandSecondaryAction" disabled={queueing || dirty || inProgress} onClick={() => void changeQueue(task.state === "not_queued")}>

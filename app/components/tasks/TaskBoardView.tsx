@@ -13,6 +13,7 @@ import { QueueSettingsPanel } from "./QueueSettingsPanel";
 import type { FeatureEntry } from "./FeatureActions";
 import { FeatureFilter } from "./FeatureFilter";
 import { QueueBanner } from "./QueueBanner";
+import { TaskDoneSessionsAsk } from "./TaskDoneSessionsAsk";
 import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
 import { ReadyGroup, ReadyLink, type ReadyGroupActions } from "./ReadyGroup";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
@@ -174,6 +175,7 @@ function ReadyBoard({ board, readTaskLog, readScorecard, onOpenTask, edits, newT
   return <>
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
+    {edits?.doneAsk && <TaskDoneSessionsAsk ask={edits.doneAsk} className="taskBoardConfirm" />}
     <CapacityStrip queue={board.queue} grant={board.aril?.grant} settingsRef={settingsTrigger} onOpenSettings={() => setSettingsOpen(true)}
       arilRef={arilTrigger} onOpenAril={() => setArilOpen(true)}
       {...(readTaskLog ? { logRef: logTrigger, onOpenLog: () => setLogOpen(true) } : {})}

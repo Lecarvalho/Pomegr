@@ -616,7 +616,7 @@ A task has started when it has a session or an outcome: Needs review, Stalled, B
 - The confirmation uses no native dialog.
 - The notes follow in `.taskModalNotes`, which takes the width the actions leave.
 - Without a note, a spacer pushes the actions to the end.
-- The notes are the start-status line, “Save your changes first.”, the folder line, and, for a linked task that has not reported, the line that neither exit stops the session.
+- The notes are the start-status line, “Save your changes first.”, the folder line, and, for a linked task that has not reported, the line that Mark done ends the session and Requeue does not.
 - A modal whose task started while it held an unsaved draft adds the line “This task started before your changes were saved.”
 - Then the actions, in this order: **Open folder**, **Start in separate worktree**, **Add to queue** or **Remove from queue**, **Start session**, **Start review**, **Requeue task**, **Mark done**, and **Save**.
 - A state shows only the actions it has.
@@ -630,8 +630,16 @@ A task has started when it has a session or an outcome: Needs review, Stalled, B
 - A task that is Blocked by agent or Stalled reads **Mark done and resume queue**.
 - A linked task that has not reported offers **Requeue task** and a Secondary **Mark done**.
 - That task has no primary.
-- A linked task that has not reported shows a line that neither action stops the session.
+- A linked task that has not reported shows the line “The session has not reported. Mark done ends it; Requeue does not.”
 - A **Mark done** that works closes the modal, under either of its names.
+- On the desktop, **Mark done** first asks which sessions Pomegr started for the task still work; with none working, it marks the task Done and its idle sessions end at once.
+- With a session working, the footer swaps in an inline question and sends nothing yet.
+- The question is “Its session is still working. End it?”, or “Its sessions are still working. End them?” for two or more.
+- The question holds a Secondary **End session** and a Quiet **Keep it running**, which has the focus.
+- The question replaces **Delete task** and every action while it is open, and uses no native dialog.
+- Both answers mark the task Done and close the modal; only **End session** ends a working session.
+- A refused Done action shows the fixed failure line and keeps the modal open.
+- A browser or paired device draws no question: the desktop alone knows the sessions.
 - **Requeue task** keeps the modal open and turns it into the form of a task that has not started.
 - **Add to queue** and **Remove from queue** are disabled while the draft is unsaved or a change runs.
 - A queued task whose session has started has left the queue, so it shows no **Remove from queue** and no **Add to queue**.
@@ -937,7 +945,7 @@ The [Feature filter](task-board.md#feature-filter) opens it. A paired device and
 - `/design-system` renders the Start at row empty and with a refused time.
 - `/design-system` renders the rich text Task field with no image, with tags and a title line, with an image in the text, and full with an error line.
 - `/design-system` renders the task modal chrome (`TaskModalChrome`) in modes new, promote, and edit.
-- The edit samples are a task that has not started, a task that needs review, a started task that has not reported, and the GitHub issue confirmation open.
+- The edit samples are a task that has not started, a task that needs review, a started task that has not reported, the Mark done question with a session working, and the GitHub issue confirmation open.
 - The first edit sample holds long text and an inline image to exercise full-height editing and body scrolling.
 - `/design-system` renders the GitHub issue row closed, disabled until the draft is saved, and after a failure, and the confirmation open, creating, and disabled.
 - The mode new sample ends with the split action.

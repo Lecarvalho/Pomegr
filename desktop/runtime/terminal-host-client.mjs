@@ -2,6 +2,7 @@ import { spawn as spawnChild } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
+import { killProcessTree } from "../terminal-host/host.mjs";
 import { VERSION, encodeFrame, decodeFrames } from "../terminal-host/protocol.mjs";
 import { hostIsAlive, prepareTerminalHostCopy, readHostState } from "./terminal-host-runtime.mjs";
 import { minimalRuntimeEnvironment } from "./environment-policy.mjs";
@@ -51,7 +52,7 @@ function outputStream(onReturn) {
 }
 
 /** Desktop-main only; tokens, process plans, and raw output never enter HTTP. */
-export function createTerminalHostClient({ source, userData, spawn = spawnChild }) {
+export function createTerminalHostClient({ source, userData, spawn = spawnChild, killTree = killProcessTree, pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)) }) {
   let socket;
   let ensuring;
   let sequence = 0;
@@ -207,6 +208,23 @@ export function createTerminalHostClient({ source, userData, spawn = spawnChild 
       await Promise.all(requests);
     },
     resize: (key, cols, rows) => request("resize", { key, cols, rows }),
+    // Ends the process tree of one terminal and answers whether the host lists it as exited within about three seconds.
+    async end(key) {
+      try { await request("end", { key }); }
+      catch (error) {
+        if (error.message !== "UNKNOWN_COMMAND") throw error;
+        // A host of an older build has no `end`. It lists the process ID of each terminal, so the tree is ended from here.
+        const row = (await request("list")).sessions.find((item) => item.key === key);
+        if (!row) throw new Error("TERMINAL_NOT_FOUND");
+        if (!row.exited && !await killTree(row.pid)) throw unavailable();
+      }
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const row = (await request("list")).sessions.find((item) => item.key === key);
+        if (!row || row.exited) return true;
+        await pause(100);
+      }
+      return false;
+    },
     detach,
     close() { if (socket) { socket.destroy(); disconnected(socket); } },
   });

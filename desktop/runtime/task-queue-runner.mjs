@@ -185,7 +185,10 @@ export function createTaskQueueRunner(options = {}) {
       if (kind === "send_back") continue;
       // The monitor reads the task's checks and marks it Done only when the grant still allows it.
       if (kind === "mark_done") {
-        try { await post("grant-done", { repositoryId, taskId }); } catch { /* a refused or failed mark-done is offered again later */ }
+        let marked = false;
+        try { marked = (await post("grant-done", { repositoryId, taskId }))?.ok === true; } catch { /* a refused or failed mark-done is offered again later */ }
+        // The task is Done: its idle sessions end at once. A grant has nobody to ask, so a working one is left.
+        if (marked) await starter.endDoneSessions?.({ repositoryId, taskId });
         continue;
       }
       const isAuthorized = async () => {
@@ -256,7 +259,11 @@ export function createTaskQueueRunner(options = {}) {
       try { await grantTick(); } catch { /* a failed tick never ends the chain */ }
       try { await followUpTick(); } catch { /* a failed tick never ends the chain */ }
       ticks += 1;
-      if (ticks % CLEANUP_EVERY_TICKS === 1) { try { await cleanup(); } catch { /* a failed pass never ends the chain */ } }
+      if (ticks % CLEANUP_EVERY_TICKS === 1) {
+        // The sessions of Done tasks first: a task marked Done anywhere, or before this run, leaves nothing running.
+        try { await starter.endDoneSessions?.(); } catch { /* a failed pass never ends the chain */ }
+        try { await cleanup(); } catch { /* a failed pass never ends the chain */ }
+      }
       arm();
     }, intervalMs);
     timer?.unref?.();

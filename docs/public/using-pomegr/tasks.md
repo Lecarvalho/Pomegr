@@ -8,8 +8,10 @@ description: "Plan work on a repository's task board, queue it, and have the Pom
 A task board holds the work you want coding agents to do in one repository. You start
 a session for a task yourself, turn on the queue and let the desktop app start tasks
 one after another, or start an [Aril grant](#aril-grants). After a start, Pomegr only
-observes the session: it never stops, attaches to, answers, or approves anything in a
-running session. Observing sessions works the same whether or not you use tasks.
+observes the session: it never attaches to, answers, or approves anything in a
+running session, and it ends the session only when its task is done
+([Done ends the task's sessions](#done-ends-the-tasks-sessions)). Observing sessions
+works the same whether or not you use tasks.
 
 Click through the demo below to see a board at work. It is a demo with sample tasks,
 not the Pomegr app, and it starts nothing.
@@ -36,6 +38,20 @@ A board has five fixed columns:
 
 Pomegr moves a card when its task changes state. You can also drag a card to another
 column. [Board and task states](tasks-board.md) explains each state and move.
+
+### Done ends the task's sessions
+
+When a task is done, Pomegr ends the sessions it started for the task in its terminal: the
+builder session and any review session. This stops the provider process and the helper
+processes it started, so finished work does not keep using memory. Pomegr never ends a session
+you started outside Pomegr, and it never ends a session for another task.
+
+When you choose **Mark done** or drag a card into **Done** in the desktop app, an idle session
+ends at once. If the session is still working, Pomegr asks first: "Its session is still working.
+End it?" **End session** ends it. **Keep it running** leaves it running until you close Pomegr. Both
+choices mark the task done. A session that is still working when a grant marks a task done is left
+running, and Pomegr ends it later if it goes idle and the task is still done. Pomegr also ends the
+idle sessions of tasks that were done before you updated, or that you marked done on your phone.
 
 ### Read the task log
 
@@ -103,7 +119,8 @@ While a grant is active, the desktop app does these things, as far as you allowe
 - **Mark done.** With **Mark done when acceptance passes**, it marks a task **Done** after its pull request
   merged, when a fresh check shows every **Complete when** condition passed and its review passed (when reviews
   are on). A condition Pomegr could not check is no pass. A task with no **Complete when** condition, or whose
-  **Complete when** asks for your validation, stays yours. Tasks that run after it can then start. The log reads “Marked done by Aril under a grant”.
+  **Complete when** asks for your validation, stays yours. Tasks that run after it can then start. The task's
+  idle sessions end, and a session that still works is left running. The log reads “Marked done by Aril under a grant”.
 - **Write tasks.** With **Write tasks from plans**, Aril creates tasks in **Ready** from the next unbuilt
   step of the plans you named. It writes at most **Tasks** tasks, and they join the grant's work set.
 
@@ -134,7 +151,7 @@ sessions, and a review carries a **Review** label.
 
 The strip above the board shows **Aril grant until** the end time, and the panel shows the tasks used.
 Select **Stop grant** to stop every further grant action at once. Running sessions continue, because
-Pomegr never ends a session. A paired phone can always stop a grant. It can start one only when you allow
+stopping a grant ends no session. A paired phone can always stop a grant. It can start one only when you allow
 paired devices in **Aril settings**. The panel shows when the last grant ended and why.
 
 ## Before you start
@@ -215,7 +232,8 @@ wait for another, see [Parallel tasks and Runs after](tasks-order.md).
 
 ## What Pomegr does not do
 
-- It never stops, attaches to, answers, or approves work in a running session. A pull
+- It never attaches to, answers, or approves work in a running session, and it ends a
+  session only when its task is done. A pull
   request can be merged only by the desktop runner under an active grant, after passing
   CI and review. Only you mark a task Done, or a grant you allowed to, after its acceptance passes.
 - It makes no AI judgment about whether work is complete. It compares the agent's

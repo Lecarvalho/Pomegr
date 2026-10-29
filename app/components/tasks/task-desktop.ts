@@ -17,6 +17,7 @@ export type TaskDesktopBridge = {
   taskStart?: (repositoryId: string, taskId: string, separateWorktree?: true) => Promise<{ status: TaskStartStatus }>;
   taskReviewStart?: (repositoryId: string, taskId: string) => Promise<{ status: TaskStartStatus }>;
   taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
+  taskSessions?: (repositoryId: string, taskId: string, operation: "inspect" | "settle", endWorking?: boolean) => Promise<unknown>;
   taskFeature?: (repositoryId: string, featureId: string) => Promise<unknown>;
   taskScorecard?: (repositoryId: string) => Promise<unknown>;
   taskLog?: (repositoryId: string) => Promise<unknown>;
@@ -160,6 +161,37 @@ export async function openDesktopTaskWorktree(repositoryId: string, id: string):
     return typeof status === "string" && OPEN_STATUSES.has(status) ? status as TaskWorktreeOpenStatus : "unavailable";
   } catch {
     return "unavailable";
+  }
+}
+
+const SESSIONS_INSPECT_LIMIT_MS = 5_000;
+
+/** The sessions Pomegr started for a task that still run: how many, and how many of them work. Null without the desktop app or an answer. */
+export async function inspectDesktopTaskSessions(repositoryId: string, id: string): Promise<{ live: number; working: number } | null> {
+  const bridge = taskDesktopBridge();
+  if (typeof bridge?.taskSessions !== "function") return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // A desktop that does not answer in time never holds the Done action: the idle sessions then end on a later pass.
+    const answer = await Promise.race([
+      bridge.taskSessions(repositoryId, id, "inspect"),
+      new Promise<null>((resolve) => { timer = setTimeout(resolve, SESSIONS_INSPECT_LIMIT_MS, null); }),
+    ]) as { status?: unknown; live?: unknown; working?: unknown } | null;
+    return answer?.status === "ok" && Number.isSafeInteger(answer.live) && Number.isSafeInteger(answer.working)
+      ? { live: answer.live as number, working: answer.working as number } : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** After the task is Done: the desktop ends its idle sessions, and the working ones too when `endWorking` is true. */
+export async function settleDesktopTaskSessions(repositoryId: string, id: string, endWorking: boolean): Promise<void> {
+  try {
+    await taskDesktopBridge()?.taskSessions?.(repositoryId, id, "settle", endWorking);
+  } catch {
+    // The idle ones end on a later pass of the desktop.
   }
 }
 

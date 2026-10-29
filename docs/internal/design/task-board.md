@@ -471,6 +471,11 @@ Each row below the tags shows only when it is set, in this order:
 - An empty lane draws no line. A drop that would leave the card where it is draws no line.
 - The dragged card itself does not change.
 - Dropping or moving a card into Done accepts its task and shows the Done chip, including a move within Done.
+- On the desktop, a move into Done first asks which sessions Pomegr started for the task still work, and the card stays where it is until that is answered.
+- With a session working, the board draws the question above the capacity strip, below any failure line: “Its session is still working. End it?”
+- The question is the same group as the modal's: a Secondary **End session** and a Quiet **Keep it running**, which has the focus. Both answers move the card; only **End session** ends the working session.
+- **Mark done and resume** in the Queue banner asks the same question. One question is open at a time, and a later Done action waits for the answer.
+- With no session working, the card moves at once and its idle sessions end. A browser or paired device draws no question.
 - Other column moves preserve the task state. Moving a Done card elsewhere does not reopen it.
 
 ### Auto-scroll

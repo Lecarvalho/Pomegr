@@ -89,12 +89,13 @@ A task whose session never reports holds the queue too. Pomegr never marks it do
 stalled by itself while it cannot tell that the session ended, for example after the
 computer or Pomegr restarted. The queue never moves past it, because the task can matter
 to the whole feature. Open the task and choose **Mark done** or **Requeue task**; the
-task window says "The session has not reported. Mark done and Requeue do not stop it."
+task window says "The session has not reported. Mark done ends it; Requeue does not."
 
-- Neither action stops the session.
-- **Mark done** accepts the task, and a later report from that session changes nothing.
+- **Mark done** accepts the task and ends the session Pomegr started for it. If the session is
+  still working, Pomegr asks first: **End session** or **Keep it running**. Either way the task is
+  done, and a later report from that session changes nothing.
 - **Requeue task** clears the session link, so a later report from the old session is
-  not accepted.
+  not accepted. It does not stop the session.
 
 ## Review a report
 

@@ -62,7 +62,17 @@ export async function restrictDirectory(directory) {
   catch { throw new Error('TERMINAL_RUNTIME_PRIVATE'); }
 }
 
-export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer = setTimeout, clearTimer = clearTimeout, idleMilliseconds = 60000, onIdle = () => {} }) {
+// Ends the process with this ID and every process it started, such as the MCP servers a provider CLI runs.
+// The ID is one the caller read from a terminal it owns; nothing else is named, and no shell sees the call.
+export async function killProcessTree(pid, runner = run) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return false;
+  if (process.platform !== 'win32') { try { process.kill(pid, 'SIGKILL'); return true; } catch { return false; } }
+  const taskkill = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
+  try { await runner(taskkill, ['/PID', String(pid), '/T', '/F'], { windowsHide: true, timeout: 10000 }); return true; }
+  catch { return false; }
+}
+
+export async function startTerminalHost({ runtimeDirectory, spawnPty, killTree = killProcessTree, setTimer = setTimeout, clearTimer = clearTimeout, idleMilliseconds = 60000, onIdle = () => {} }) {
   // Desktop main prepares the private directory before launching this process.
   const suffix = createHash('sha256').update(path.resolve(runtimeDirectory).toLowerCase()).digest('hex').slice(0, 32);
   const pipe = process.platform === 'win32' ? `\\\\.\\pipe\\pomegr-terminal-${suffix}` : path.join(runtimeDirectory, 'host.sock');
@@ -157,6 +167,19 @@ export async function startTerminalHost({ runtimeDirectory, spawnPty, setTimer =
         checkIdle();
       });
       checkIdle(); reply({ key: plan.key, pid: pty.pid }); return;
+    }
+    if (frame.command === 'end') {
+      const target = sessions.get(frame.key);
+      if (!target) { fail('TERMINAL_NOT_FOUND'); return; }
+      if (target.exited) { reply({}); return; }
+      // The process tree ends here, in the host that started it; the exit event and `list` then report it.
+      void (async () => {
+        if (!await killTree(target.pty.pid) && !target.exited) {
+          try { target.pty.kill(); } catch { fail('TERMINAL_INVALID'); return; }
+        }
+        reply({});
+      })();
+      return;
     }
     if (!['attach', 'input', 'resize', 'detach'].includes(frame.command)) { fail('UNKNOWN_COMMAND'); return; }
     const session = sessions.get(frame.key);

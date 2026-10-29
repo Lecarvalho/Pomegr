@@ -105,8 +105,9 @@ start. See [Agent chat](../using-pomegr/agent-chat.md).
 
 *A real board from the Pomegr project, with Aril proposing a task.*
 
-After a start, Pomegr only observes the session: it never stops, attaches to,
-answers, or approves anything in a running session. Sessions always run on the
+After a start, Pomegr only observes the session: it never attaches to, answers, or
+approves anything in a running session, and it ends the session only when its task
+is done. Sessions always run on the
 computer running Pomegr. A paired phone can change tasks and apply Aril's proposals,
 but Aril's start proposals are applied in the desktop app. Observing sessions works
 the same whether or not you use tasks.
