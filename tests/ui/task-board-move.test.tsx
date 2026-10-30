@@ -105,7 +105,8 @@ describe("without the desktop bridge", () => {
   it("stays read-only for a board shown without edits and in the server pass", () => {
     render(<TaskBoardView board={setBoard()} />);
     expect(document.querySelector("[draggable]")).toBeNull();
-    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Aril settings", "Queue settings"]);
+    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Queue settings"]);
+    expect(screen.getByRole("link", { name: "Aril settings" })).toHaveAttribute("href", expect.stringMatching(/^\/settings\?section=aril&repository=repo-[a-f0-9]{24}$/u));
     expect(renderToString(<TaskBoardPane repositoryId={repositoryId} />)).not.toMatch(/draggable|Move T-/);
   });
 

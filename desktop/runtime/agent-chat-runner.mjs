@@ -8,6 +8,10 @@
 export const TURN_TIMEOUT_MS = 10 * 60_000;
 export const STDOUT_LINE_LIMIT = 4 * 1024 * 1024;
 export const ANSWER_LIMIT = 32_000;
+// How long a process that has no prompt yet may take to acknowledge a change of effort. A probe on 2026-10-29 saw 45 to 455 ms, and once 1.9 s
+// for the first request of a cold process; a process that does not answer in time is discarded and the turn starts fresh.
+export const EFFORT_ACK_MS = 2_000;
+const EFFORT_REQUEST_ID = "pomegr-effort";
 
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 // The effort levels of a run; the same values the task dispatcher passes to a session.
@@ -234,6 +238,14 @@ export function claudeUserLine(prompt) {
 }
 
 /**
+ * The one control request Pomegr sends a Claude Code process that is waiting for its prompt: it merges the effort level into the
+ * process's flag settings (`apply_flag_settings`). The request holds a level from the fixed list and nothing else.
+ */
+export function claudeEffortLine(level) {
+  return `${JSON.stringify({ type: "control_request", request_id: EFFORT_REQUEST_ID, request: { subtype: "apply_flag_settings", settings: { effortLevel: level } } })}\n`;
+}
+
+/**
  * Starts the provider process with every argument fixed and answers a handle, or null when the provider, its arguments, or the start are
  * not usable. The process has no prompt yet: `begin({ prompt, onText, onActivity, timeoutMs, warm })` writes it and answers the run, once,
  * or null when the process already ended. The run answers `{ status, text }` from `done` when it ends: `complete`, `failed`, `timed_out`,
@@ -243,6 +255,9 @@ export function claudeUserLine(prompt) {
  * clock in milliseconds. Output that arrives before the prompt was written belongs to no turn and is dropped.
  * `alive()` says whether the process has not ended, `onExit(listener)` calls the listener once when it ends, and `close()` ends a process
  * that was never given a prompt: its stdin closes, and Pomegr's own process is ended.
+ * `setEffort(level, ackMs)` changes the effort of a Claude Code process that has no prompt yet and answers true only once the process
+ * acknowledged the change; it answers false for any other provider, for a process that ended or has its prompt, for a level outside the
+ * list, for an error answer, and when no answer came in `ackMs`. The prompt must be written after that answer, never beside the request.
  */
 export function startChatProcess({ spawn, executable, provider, model = null, effort = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, tools = "read", cwd, env, clock = () => performance.now() }) {
   const args = chatArguments(provider, model, mcpServer, images, sessionId, instructionsFile, effort, tools);
@@ -252,6 +267,8 @@ export function startChatProcess({ spawn, executable, provider, model = null, ef
   let began = false;
   // Takes a piece of stdout once a prompt was written, and ends the run when the process ends.
   let reading = null;
+  // Takes a piece of stdout while a change of effort waits for its answer, before any prompt was written.
+  let control = null;
   let finishRun = null;
   const listeners = new Set();
   const kill = () => { try { child?.kill?.(); } catch { /* already gone */ } };
@@ -267,7 +284,7 @@ export function startChatProcess({ spawn, executable, provider, model = null, ef
     const processEnvironment = Object.keys(capability).length > 0 ? { ...env, ...capability } : env;
     child = spawn(executable, args, { cwd, env: processEnvironment, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
     child.stdout?.setEncoding?.("utf8");
-    child.stdout?.on?.("data", (chunk) => reading?.(String(chunk)));
+    child.stdout?.on?.("data", (chunk) => (reading ?? control)?.(String(chunk)));
     child.once("error", () => exit(null));
     child.once("close", (code) => exit(code));
     // A closed pipe is reported by the exit, not here.
@@ -319,9 +336,35 @@ export function startChatProcess({ spawn, executable, provider, model = null, ef
     };
   }
 
+  function setEffort(level, ackMs = EFFORT_ACK_MS) {
+    if (provider !== "claude" || began || ended || control !== null || !CHAT_EFFORTS.includes(level)) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let buffer = "";
+      const finish = (acknowledged) => { clearTimeout(timer); control = null; listeners.delete(onEnd); resolve(acknowledged); };
+      const onEnd = () => finish(false);
+      // Not unref'd: a turn awaits this answer, and the timer is cleared as soon as the process answers or ends.
+      const timer = setTimeout(() => finish(false), ackMs);
+      listeners.add(onEnd);
+      // Only the answer to this request counts; any other line the process writes before its prompt belongs to no turn.
+      control = (chunk) => {
+        buffer += chunk;
+        for (let at = buffer.indexOf("\n"); at !== -1; at = buffer.indexOf("\n")) {
+          const raw = buffer.slice(0, at).trim();
+          buffer = buffer.slice(at + 1);
+          let event = null;
+          try { event = raw.startsWith("{") ? JSON.parse(raw) : null; } catch { /* not a control answer */ }
+          if (isObject(event) && event.type === "control_response" && isObject(event.response) && event.response.request_id === EFFORT_REQUEST_ID) return finish(event.response.subtype === "success");
+        }
+        if (buffer.length > STDOUT_LINE_LIMIT) finish(false);
+      };
+      try { child.stdin?.write?.(claudeEffortLine(level), "utf8"); } catch { finish(false); }
+    });
+  }
+
   return Object.freeze({
     alive: () => !ended,
     onExit(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    setEffort,
     begin,
     close() { try { child?.stdin?.end?.(); } catch { /* already closed */ } kill(); },
   });

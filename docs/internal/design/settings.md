@@ -1,6 +1,6 @@
 # Settings design
 
-> Scope: the Settings sections Providers, GitHub, Storage, and the storage usage meter, plus the About pane.
+> Scope: the Settings sections Providers, GitHub, Aril, Storage, and the storage usage meter, plus the About pane.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > Related code and checks: `app/settings/`, `app/styles/`, the `/design-system` samples,
@@ -10,9 +10,10 @@ This page states how each Settings section looks and how the user operates it.
 
 ## Section order
 
-- Settings shows the sections in this order: **Providers**, **GitHub**, **Storage**, **Data display**.
+- Settings shows the sections in this order: **Providers**, **GitHub**, **Aril**, **Storage**, **Data display**.
 - **Providers** is present in the desktop app and the browser.
-- **GitHub** and **Storage** are always present.
+- **GitHub**, **Aril**, and **Storage** are always present.
+- `/settings?section=aril` opens **Aril**, and `&repository=<repository ID>` opens it for that repository. A value that is no repository ID is no choice.
 - Each section is a feature composition of existing controls. It is not a new shared control or visual authority.
 
 ## Providers
@@ -149,6 +150,34 @@ This page states how each Settings section looks and how the user operates it.
 - A browser or paired LAN client sees one desktop-only row and reads nothing.
 - The section never shows a username, path, URL, or error text.
 
+## Aril
+
+### Layout
+
+- The section reuses the GitHub section's header: an `h2` **Aril** and one muted line, “What Aril may do under a grant you start, and what it remembers. These settings belong to one repository.”
+- Under the header, one bordered panel holds the **Repository** row (`SettingRow`).
+- Under the panel, the body is the [Aril settings content](task-board.md#aril-settings-section) in a column of at most 560px, with no frame of its own.
+- Its sections keep their `h3` headings: Grant, Actions under a grant, Limits, Work rules, Reviewer, Paired devices, Memory, and, in the desktop app only, Effort routing.
+- The section is a feature composition of existing controls. It adds no shared control.
+
+### Repository
+
+- Aril's settings, memory, and grants belong to one repository, so the section holds a choice, as the chat does.
+- The row's control is a `CommandSelect` named **Repository**, listing every known repository by its display name.
+- With one repository, the control is its name in the data font.
+- The section opens at the repository the link names, else the last one the owner chose in the chat or here, else the first listed.
+- Choosing a repository is remembered in the browser's storage as the repository ID alone, under the key the chat uses.
+- Changing the repository reads that repository's board. An unsaved draft is discarded, and the new draft starts from that repository's saved settings.
+- With no repository, the section says “No repositories observed yet.” while a read says “Reading repositories…”.
+
+### States
+
+- While the board is read, the section says “Reading Aril settings…” as a status. A board that is not ready or holds no Aril settings says “Aril settings are unavailable.” and draws nothing else.
+- In the desktop app the section edits. On a paired device it edits only when the saved **Allow paired devices to change Aril settings and memory** permits, and it can always stop an active grant.
+- A browser with neither reads the saved values as text.
+- The Effort routing section, its key field, and its state are drawn only by the desktop app. A paired device shows no heading, no state, and no field, and never asks the desktop whether a key is set.
+- The Board keeps one quiet **Aril settings** link to this section for the board's repository, in its capacity strip.
+
 ## About pane
 
 - The About pane presents the painted mark beside the product name and purpose before operational metadata.
@@ -157,5 +186,6 @@ This page states how each Settings section looks and how the user operates it.
 ## Samples
 
 - `/design-system` renders every GitHub state from static data.
+- `/design-system` renders the Aril section's body from static data in each state listed in the [Task board design](task-board.md#aril-settings-section).
 - `/design-system` renders the storage usage meter.
 - `/design-system` renders the settings tab rail (`.commandSettingsNav`) with its pane.

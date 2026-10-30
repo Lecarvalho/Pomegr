@@ -68,8 +68,10 @@ and adds **Rework** to the log. Causes are declarations, not automatic detection
 
 ### Aril settings
 
-Select **Aril settings** above the board to edit action preferences, limits, work rules, and reviewer preferences.
-An unset limit means “Not settled: Aril will ask”. Select **Save** to save your changes.
+Open **Settings** and select **Aril** to edit action preferences, limits, work rules, and reviewer preferences.
+**Aril settings** above the board opens the same section for that board's repository. The settings belong to one
+repository: choose it in the **Repository** row, which Pomegr remembers. An unset limit means “Not settled: Aril will ask”.
+Select **Save** to save your changes, or **Discard changes** to go back to the saved ones.
 
 The **Memory** section lists repository preferences, oldest first. You can add, edit, or delete entries independently of settings.
 Each entry holds at most 300 characters; a repository holds at most 100 entries. Confirm deletion inside the panel.
@@ -85,7 +87,7 @@ action. A grant ends at its end time or when you quit Pomegr, and it never renew
 
 To start a grant:
 
-1. In **Aril settings**, under **Actions under a grant**, allow at least one of **Start tasks**,
+1. In **Settings**, under **Aril**, under **Actions under a grant**, allow at least one of **Start tasks**,
    **Start reviews**, or **Merge on green**. You can also allow **Send work back** and **Write tasks from plans**.
 2. Under **Limits**, set **Hours**, **Tasks**, **Tasks at a time**, and **Usage limit %**.
    If **Send work back** is on, also set **Send-backs per task**.
@@ -149,10 +151,10 @@ with the provider name, and each refused merge or branch deletion.
 To watch a review, open the task's **Terminal** tab in the desktop app. It lists the task's build and review
 sessions, and a review carries a **Review** label.
 
-The strip above the board shows **Aril grant until** the end time, and the panel shows the tasks used.
+The strip above the board shows **Aril grant until** the end time, and the **Aril** section of Settings shows the tasks used.
 Select **Stop grant** to stop every further grant action at once. Running sessions continue, because
 stopping a grant ends no session. A paired phone can always stop a grant. It can start one only when you allow
-paired devices in **Aril settings**. The panel shows when the last grant ended and why.
+paired devices in the **Aril** section of Settings. That section shows when the last grant ended and why.
 
 ## Before you start
 

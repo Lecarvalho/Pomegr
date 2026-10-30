@@ -510,7 +510,7 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-github.mjs", "agent-chat-warm.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs", "agent-chat-jev.mjs", "agent-chat-jev-key.mjs", "agent-chat-jev-transport.mjs", "agent-chat-github.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {

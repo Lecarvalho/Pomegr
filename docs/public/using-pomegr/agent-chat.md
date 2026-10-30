@@ -25,7 +25,7 @@ you need not ask what happened. Each one is one or two sentences: the task IDs, 
 did, and what needs you, such as a refused merge. Actions close together are one follow-up. Each
 follow-up is also a notification; clicking it opens the chat at that follow-up. A follow-up is a
 fixed line that Pomegr writes from the task log: no model runs, and it proposes nothing. Turn
-them off with **Send follow-ups** in Aril settings.
+them off with **Send follow-ups** in the **Aril** section of Settings.
 
 ## Before you start
 
@@ -154,6 +154,21 @@ waiting. It sends nothing to Claude and spends none of your allowance until you 
 It closes the process after five minutes without a message, when a message needs another model
 or effort, and when you quit Pomegr; closing the panel does not close it. The time of an answer
 that used a ready process reads "Started 0.1s (warm)". Codex starts only when you send a message.
+
+### Let Jev choose a lower effort (optional)
+
+Replies like "thanks" or a yes or no do not need much thinking. If you have a Jev key, enter it
+under **Effort routing** in the **Aril** section of **Settings** in the desktop app. Then, for each message, Pomegr
+asks Jev how much effort the reply needs, while it prepares the answer. The **Effort** you chose
+stays the highest: Jev can lower it for a simple reply and never raises it, and it never changes
+the provider or the model. If Jev does not answer within 1.5 seconds, or fails, your effort is used.
+
+Pomegr stores the key encrypted by your operating system, on your computer only. A paired phone
+cannot set, see, or read it. Jev receives your message and the last 2,000 characters of Aril's
+previous answer, and nothing else; it receives no board, task text, image, or file path. A message
+with an image is not sent to Jev. When you click into the message field, Pomegr also connects to Jev ahead of time so
+the answer is quick; that connection carries no message, no key, and no text. Hover the time of an answer to see the effort it used, such as
+"Effort low, chosen by Jev in 0.4s". Select **Remove key** to turn this off.
 
 ## Apply a proposal
 
@@ -295,8 +310,8 @@ A kept worktree does not stop the next row. Pomegr never forces a removal.
 Ask Aril to settle this repository's actions, limits, work rules, merge settings, or
 reviewer choice, or to remember a working preference. Aril proposes each change, and you
 select **Apply changes** to save it. Aril never changes settings or memory by itself. Only
-you can allow paired devices to manage these settings, in the desktop app. The panel is in
-[Aril settings](tasks.md#aril-settings), where you can also edit or delete memory entries.
+you can allow paired devices to manage these settings, in the desktop app. They are in the
+**Aril** section of Settings (see [Aril settings](tasks.md#aril-settings)), where you can also edit or delete memory entries.
 
 Aril does not ask again what a setting or memory entry already answers. It asks again when
 you say that a rule changed, or when a workflow file of the repository changed after you
@@ -330,6 +345,8 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
   settings (whether squash, merge commit, rebase, auto-merge, and delete-branch-on-merge are on) and its default branch name.
   It gets the names and dates of the changed workflow files, but not their content, and the facts of the task worktrees that remain, but not their paths.
   Merge and branch results appear as fixed task-log labels.
+- **Sent to Jev, only with your key.** If you set a Jev key, each message without an image also sends Jev your message and the last
+  2,000 characters of Aril's previous answer, so it can suggest a lower effort. Nothing else goes to Jev.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows. The same holds for a Claude Code process that
   waits for your next message: it holds no message, board, or conversation text until you send.

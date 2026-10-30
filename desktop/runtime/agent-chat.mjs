@@ -14,6 +14,7 @@ import { createTurnPreparation } from "./agent-chat-prepare.mjs";
 import { agentChatMcpServer, prepareInstructionsFile } from "./agent-chat-provider-files.mjs";
 import { extractChoices, shownAnswer } from "./agent-chat-choices.mjs";
 import { createCompaction } from "./agent-chat-compaction.mjs";
+import { createChatJev, installJevKeyIpc, previousAnswer } from "./agent-chat-jev.mjs";
 import { composePrompt, composePromptParts, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
 import { CHAT_EFFORTS, runChatTurn, startChatProcess } from "./agent-chat-runner.mjs";
@@ -113,12 +114,11 @@ export function createAgentChat(options = {}) {
   // again in the background before the reader's 30 minutes end, for the repositories in use, so a turn does not wait for `gh`.
   const repositoryGithub = typeof options.repositoryGithub?.read === "function" ? createGithubKeeper({ ...options.githubKeeper, github: options.repositoryGithub }) : null;
   const mcpServer = options.mcpServer === undefined ? agentChatMcpServer({ executable: options.executable, unpackedRoot: options.unpackedRoot, fileExists }) : options.mcpServer;
-  const store = options.store || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
-    ? createAgentChatStore({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
-  const images = options.images || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
-    ? createAgentChatImages({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
-  const summaries = options.summaries || (typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot)
-    ? createAgentChatSummaries({ directory: path.join(options.dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
+  const dataRoot = typeof options.dataRoot === "string" && path.isAbsolute(options.dataRoot) ? options.dataRoot : null;
+  const store = options.store || (dataRoot ? createAgentChatStore({ directory: path.join(dataRoot, AGENT_CHAT_DIRECTORY), now }) : null);
+  const images = options.images || (dataRoot ? createAgentChatImages({ directory: path.join(dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
+  const summaries = options.summaries || (dataRoot ? createAgentChatSummaries({ directory: path.join(dataRoot, AGENT_CHAT_DIRECTORY) }) : null);
+  const { key: jevKey, routing: jev } = createChatJev({ ...options, dataRoot, clock });
   let disposed = false;
   // One turn at a time for the whole app: `{ repositoryId, conversationId, ... }` from the moment a send is accepted.
   let active = null;
@@ -365,7 +365,7 @@ export function createAgentChat(options = {}) {
       }), ANSWER_LENGTH);
       const message = { id: `m-${conversation.messages.length + 1}`, role: "agent", text: read.text, at: now().toISOString(), provider: turn.provider, model: turn.model, ...effortField(turn.effort), status };
       // How long the run took, how large its prompt was, and how long each step of its preparation took, as numbers, for an owner's message.
-      const timing = turn.promptSections ? timingOf(turn.timing?.(), turn.promptSections, turn.prepare) : null;
+      const timing = turn.promptSections ? timingOf(turn.timing?.(), turn.promptSections, turn.prepare, turn.route) : null;
       if (timing) message.timing = timing;
       // Only a successful or partial outcome may offer another board proposal. It still waits for the owner.
       if (turn.followUp) {
@@ -407,7 +407,7 @@ export function createAgentChat(options = {}) {
         const compacted = compaction.afterTurn(turn.repositoryId);
         // The next message of the thread finds a run ready: the owner's message has just been answered, and the same run is the likely next one.
         // It waits for a compaction of the thread to end, and a turn that has started by then makes the request a no-op.
-        if (turn.promptSections) void compacted.then(() => warm.request(turn.repositoryId, { provider: turn.provider, model: turn.model ?? null, effort: turn.effort ?? null }));
+        if (turn.promptSections) void compacted.then(() => warm.request(turn.repositoryId, { provider: turn.provider, model: turn.model ?? null, effort: turn.ownerEffort ?? null }));
       }
     }
   }
@@ -445,6 +445,8 @@ export function createAgentChat(options = {}) {
       const held = conversationImages(existing?.messages);
       if (imageIds.length > 0 && !images) return UNAVAILABLE;
       if (held.length + imageIds.length > CHAT_IMAGES_PER_CONVERSATION) return refused("limit");
+      // With a Jev key, Jev picks the effort while the reads run; the turn waits for it only after them, never past its own timeout.
+      const routing = jev.route({ text, previous: previousAnswer(existing?.messages), effort, images: imageIds.length });
       // Every read that needs no other begins now; the ones that need the root or the board begin when those arrive.
       prep.startMonitor({ taskLog: true });
       // A ready warm run already holds the run's environment, so a turn it is expected to serve leaves that read out.
@@ -475,7 +477,9 @@ export function createAgentChat(options = {}) {
       // The run may read the folder of this conversation's images, and nothing else outside the repository.
       const newest = new Set(attached.map((image) => image.id));
       const runImages = shown.length > 0 ? { folder: images.folder(repositoryId, conversation.id), files: shown.filter((image) => newest.has(image.id)).map((image) => image.file) } : null;
-      turn = { repositoryId, conversationId: conversation.id, provider, model, effort, startedAt: at, activity: "starting", text: "", stopped: false, promptSections: composed.sections,
+      const routed = await routing;
+      // `effort` is the owner's (the warm run's key and the next warm run); the turn runs and records the routed one.
+      turn = { repositoryId, conversationId: conversation.id, provider, model, effort: routed.effort, ownerEffort: effort, route: routed.route, startedAt: at, activity: "starting", text: "", stopped: false, promptSections: composed.sections,
         logThrough: Math.max(0, ...(taskLog?.entries ?? []).map((entry) => entry.id)),
         stop: () => { turn.stopped = true; turn.closeTaskRead?.(); } };
       active = turn;
@@ -483,7 +487,9 @@ export function createAgentChat(options = {}) {
       compaction.cancel(repositoryId);
       // A warm run whose fixed arguments are this turn's takes the prompt, and its bridge answers for this turn from now on. Otherwise the
       // run's declaration, the task bridge, and the environment (begun with the first reads) need nothing from each other.
-      const warmed = warm.take({ repositoryId, provider, model, effort, command, root, instructions: instructionsFile?.file ?? null, imageFolder: runImages?.folder ?? null }, turn);
+      let warmed = warm.take({ repositoryId, provider, model, effort, command, root, instructions: instructionsFile?.file ?? null, imageFolder: runImages?.folder ?? null }, turn);
+      // A lowered effort goes to the waiting run before its prompt; a run that does not acknowledge it is closed and the turn starts fresh at that effort.
+      if (warmed && routed.effort !== effort && !await warmed.setEffort(routed.effort)) { warmed.discard(); warmed = null; }
       const [sessionId, taskServer, env] = warmed ? [warmed.sessionId, null, null]
         : await Promise.all([prep.time("declare", () => declareRun(provider)), prep.time("server", () => taskReadServer(turn)), prep.environment()]);
       if (disposed || turn.stopped) {
@@ -494,7 +500,7 @@ export function createAgentChat(options = {}) {
       turn.prepare = warmed ? { ...prep.measure(), ...WARM_PREPARE } : prep.measure();
       const callbacks = { onText: (value) => { turn.text = value; }, onActivity: (value) => { turn.activity = value; } };
       const run = warmed ? warmed.begin({ prompt, timeoutMs: options.turnTimeoutMs, ...callbacks }) : runTurn({ instructionsFile,
-        spawn, executable: command, provider, model, effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs, ...callbacks });
+        spawn, executable: command, provider, model, effort: routed.effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs, ...callbacks });
       turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
       turn.timing = () => run.timing?.() ?? null;
       void run.done.finally(() => { turn.closeTaskRead?.(); withdrawRun(sessionId); }).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
@@ -734,6 +740,7 @@ export function createAgentChat(options = {}) {
     if (named && (!PROVIDERS.has(provider) || !(model === null || (typeof model === "string" && MODEL.test(model))) || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort))))) return INVALID;
     // The owner is at the chat: the repository's GitHub settings are read in the background when they are old. Nothing waits for it.
     void repositoryGithub?.open(repositoryId, () => repositoryRoot(repositoryId));
+    void jev.preconnect(); // With a Jev key, the connection to Jev opens ahead too: a name lookup and a handshake, no key and no text.
     const run = named ? { provider, model, effort } : lastRun(await store.index(repositoryId));
     if (run) await warm.request(repositoryId, { provider: run.provider, model: run.model ?? null, effort: run.effort ?? null });
     return { ok: true };
@@ -767,7 +774,7 @@ export function createAgentChat(options = {}) {
     handle,
     image,
     grantWrite,
-    grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)),
+    grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)), jevKey,
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
     dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); githubPrefetch?.cancel(); repositoryGithub?.close(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
@@ -788,5 +795,6 @@ export function installAgentChatIpc(options = {}) {
     if (!isTrustedEvent(event)) return INVALID;
     try { return await chat.image?.(operation, payload) ?? UNAVAILABLE; } catch { return UNAVAILABLE; }
   });
-  return () => { ipcMain.removeHandler(AGENT_CHAT_CHANNEL); ipcMain.removeHandler(AGENT_CHAT_IMAGE_CHANNEL); chat.dispose?.(); };
+  const removeJevKey = chat.jevKey ? installJevKeyIpc({ ipcMain, isTrustedEvent, key: chat.jevKey }) : null;
+  return () => { removeJevKey?.(); ipcMain.removeHandler(AGENT_CHAT_CHANNEL); ipcMain.removeHandler(AGENT_CHAT_IMAGE_CHANNEL); chat.dispose?.(); };
 }

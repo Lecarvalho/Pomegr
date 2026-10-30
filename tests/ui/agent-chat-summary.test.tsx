@@ -27,7 +27,7 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
 
 import { AgentChatDock } from "../../app/components/agent-chat/AgentChatDock";
 import { parseTiming } from "../../app/agent-chat-client";
-import { SUMMARIZED_LINE, answerTimeTitle, fullMessageTime, prepareLine, timingLine } from "../../app/components/agent-chat/agent-chat-presentation";
+import { SUMMARIZED_LINE, answerTimeTitle, fullMessageTime, prepareLine, routeLine, timingLine } from "../../app/components/agent-chat/agent-chat-presentation";
 
 // The thread of a repository that was summarized for Aril shows one quiet line where the summary ends, and a measured answer's time
 // shows its timing in the tooltip. The desktop tells where the summary ends and never what it says.
@@ -207,6 +207,42 @@ describe("the time of a measured answer", () => {
     const answers = within(log()).getAllByRole("article", { name: "Aril" });
     expect(answers[1]).toHaveTextContent("Second answer");
     expect(answers[1].querySelector("time")!.getAttribute("title")).not.toContain("done");
+  });
+
+  it("says which effort ran and who chose it, first under the date, when a Jev key was set", async () => {
+    const JEV = { ...TIMING, route: { effort: "low" as const, by: "jev" as const, ms: 412 } };
+    seedFour({ timing: JEV });
+    await open();
+    const measured = within(log()).getAllByRole("article", { name: "Aril" })[1].querySelector("time")!;
+    expect(measured.getAttribute("title")).toBe([fullMessageTime(minute(4)), "Effort low, chosen by Jev in 0.4s", "Started 1.2s · first words 6.8s · done 11.4s"].join("\n"));
+    expect(routeLine(JEV)).toBe("Effort low, chosen by Jev in 0.4s");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "kept", ms: 380 } })).toBe("Effort high, your choice (Jev agreed in 0.4s)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500 } })).toBe("Effort high, your choice (Jev did not answer in time)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500, phase: "dns" } })).toBe("Effort high, your choice (Jev did not answer in time, looking up its address)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500, phase: "connect" } })).toBe("Effort high, your choice (Jev did not answer in time, connecting)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "timeout", ms: 1500, phase: "response" } })).toBe("Effort high, your choice (Jev did not answer in time, waiting for its answer)");
+    expect(routeLine({ ...TIMING, route: { effort: "medium", by: "owner", reason: "error", ms: 30 } })).toBe("Effort medium, your choice (Jev was not reachable)");
+    expect(routeLine({ ...TIMING, route: { effort: null, by: "owner", reason: "invalid", ms: 30 } })).toBe("Effort default, your choice (Jev's answer was not usable)");
+    expect(routeLine({ ...TIMING, route: { effort: "high", by: "owner", reason: "images" } })).toBe("Effort high, your choice (a message with images is not sent to Jev)");
+    expect(routeLine(TIMING)).toBeNull();
+    expect(routeLine(null)).toBeNull();
+    expect(answerTimeTitle(AT, { ...JEV, prepare: PREPARE })!.split("\n")).toEqual([answerTimeTitle(AT)!, "Effort low, chosen by Jev in 0.4s", "Prepared in 3.2s (slowest: GitHub 2.9s)", "Started 1.2s · first words 6.8s · done 11.4s"]);
+  });
+
+  it("reads a route only inside its contract, and keeps the run's timing when the route is outside it", () => {
+    const jev = { effort: "low", by: "jev", ms: 412 };
+    expect(parseTiming({ ...TIMING, route: jev })).toEqual({ ...TIMING, route: jev });
+    const owner = { effort: "high", by: "owner", reason: "timeout", ms: 1500 };
+    expect(parseTiming({ ...TIMING, route: owner })!.route).toEqual(owner);
+    expect(parseTiming({ ...TIMING, route: { ...owner, phase: "connect" } })!.route).toEqual({ ...owner, phase: "connect" });
+    expect(parseTiming({ ...TIMING, route: { effort: null, by: "owner", reason: "images" } })!.route).toEqual({ effort: null, by: "owner", reason: "images" });
+    expect(Object.hasOwn(parseTiming(TIMING)!, "route")).toBe(false);
+    for (const bad of [null, "low", [], {}, { ...jev, effort: "xhigh" }, { ...jev, ms: undefined }, { ...jev, ms: -1 }, { ...jev, ms: "5" }, { ...owner, reason: "the API said no" }, { ...owner, effort: "max" },
+      { ...owner, ms: 1.5 }, { by: "someone", effort: "low", ms: 1 }, { ...owner, phase: "tls" }, { ...owner, reason: "error", phase: "dns" }]) {
+      const timing = parseTiming({ ...TIMING, route: bad });
+      expect(timing, JSON.stringify(bad)).toEqual(TIMING);
+      expect(Object.hasOwn(timing!, "route")).toBe(false);
+    }
   });
 });
 

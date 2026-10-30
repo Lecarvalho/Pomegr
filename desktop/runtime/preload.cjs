@@ -22,6 +22,7 @@ const TERMINAL_ATTACH_ID = /^[A-Za-z0-9_-]{1,128}$/u;
 const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const TASK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const AGENT_CHAT_CONVERSATION_ID = /^chat-[0-9a-f]{12}$/u;
+const JEV_KEY = /^[!-~]{8,512}$/u;
 const ISSUE_DIGEST = /^[a-f0-9]{64}$/u;
 const ISSUE_TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const HOME_UPDATE_ID =/^[a-z0-9][a-z0-9-]{0,63}$/u;
@@ -225,6 +226,14 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     } else valid = false;
     if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:agent-chat-image", operation, payload);
+  },
+  // The Jev key of Aril's effort routing: the renderer may set it, remove it, and ask whether it is set. No answer ever holds the key.
+  agentChatJev(operation, payload) {
+    const plain = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.keys(payload).length === 1;
+    const valid = operation === "status" || operation === "remove" ? payload === undefined
+      : operation === "set" && plain && typeof payload.key === "string" && JEV_KEY.test(payload.key);
+    if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
+    return ipcRenderer.invoke("pomegr:agent-chat-jev", operation, payload);
   },
   taskStart(repositoryId, taskId, separateWorktree) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)

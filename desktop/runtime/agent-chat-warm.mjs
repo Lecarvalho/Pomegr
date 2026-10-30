@@ -118,7 +118,9 @@ export function createWarmRuns({ startProcess, spawn, clock, executable, reposit
      * The warm run for a turn that would start with exactly `key` (`{ repositoryId, provider, model, effort, command, root, instructions,
      * imageFolder }`), bound to `turn`: its bridge answers from now on, for that turn, and `turn.closeTaskRead` closes it. A held run
      * that does not match, is still starting, or has exited is closed, and the turn starts fresh. Answers null then, else
-     * `{ sessionId, begin(options), discard() }`: `begin` writes the prompt (see `startChatProcess`), and `discard` closes the run.
+     * `{ sessionId, setEffort(level), begin(options), discard() }`: `setEffort` lowers the effort the run holds and answers whether the
+     * run acknowledged it, `begin` writes the prompt (see `startChatProcess`), and `discard` closes the run. The key's effort is the one
+     * the run was started with, the owner's; a turn that lowers it does so after taking the run.
      */
     take(key, turn) {
       const entry = entries.get(key.repositoryId);
@@ -133,6 +135,8 @@ export function createWarmRuns({ startProcess, spawn, clock, executable, reposit
       redeclare(sessionId);
       return {
         sessionId,
+        // Changes the effort the waiting run holds (see `startChatProcess`). A turn calls it only to lower the effort it was started with.
+        setEffort: (level) => handle.setEffort(level),
         begin: (options) => handle.begin({ ...options, warm: true }) ?? failedChatRun(),
         discard() { stand.closeTaskRead?.(); handle.close(); withdraw(sessionId); },
       };

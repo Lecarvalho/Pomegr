@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
-import type { ArilSettings as Settings, TaskBoard } from "../../../shared/task-contract";
-import { useTasks } from "../../tasks-store";
-import { CommandIcon } from "../command-center/CommandIcon";
-import { CommandSelect } from "../command-center/CommandSelect";
-import { TaskDialog } from "./TaskModalFrame";
-import { sendTaskAction, useTaskEditAvailability, type GrantActionResult } from "./task-desktop";
-import { timeOfDay } from "./task-schedule";
+import { useId, useMemo, useState } from "react";
+import type { ArilSettings as Settings, TaskBoard } from "../../shared/task-contract";
+import { useRepositoryInventory } from "../repository-inventory-client";
+import { useTasks } from "../tasks-store";
+import { readStoredRepository, storeRepository } from "../components/agent-chat/agent-chat-presentation";
+import { CommandSelect } from "../components/command-center/CommandSelect";
+import { JEV_KEY_PATTERN, useJevKey, type JevKeyControl } from "../components/tasks/jev-key-desktop";
+import { sendTaskAction, useTaskEditAvailability, type GrantActionResult } from "../components/tasks/task-desktop";
+import { timeOfDay } from "../components/tasks/task-schedule";
+import { SettingRow } from "./SettingRow";
 
 const ACTIONS = { start: "Start tasks", review: "Start reviews", sendBack: "Send work back", merge: "Merge on green", writeTasks: "Write tasks from plans",
   markDone: "Mark done when acceptance passes" };
@@ -28,16 +30,27 @@ const grantTime = (at: number) => timeOfDay(new Date(at).toISOString());
 type Action = "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "aril_memory_remove" | "grant_start" | "grant_stop";
 type Props = {
   board: TaskBoard & { aril: NonNullable<TaskBoard["aril"]> }; desktop: boolean; editable: boolean;
-  onAction(action: Action, payload: unknown): Promise<GrantActionResult>; onClose(): void;
+  onAction(action: Action, payload: unknown): Promise<GrantActionResult>;
+  /** The Jev key of the effort routing: given only in the desktop app, so a paired device neither sets nor sees it. */
+  jev?: JevKeyControl;
 };
 
-/** The same content in the live dialog and the static design-system frames. */
-export function ArilSettings({ board, desktop, editable, onAction, onClose, titleId, closeRef, initialFailure = null, initialConfirm = false }: Props & {
-  titleId: string; closeRef?: RefObject<HTMLButtonElement | null>; initialFailure?: "settings" | "memory" | null; initialConfirm?: boolean | number;
+/** The settings of one repository's Aril: the same content in the live Settings section and the static design-system frames. */
+export function ArilSettings({ board, desktop, editable, onAction, jev, initialFailure = null, initialConfirm = false }: Props & {
+  initialFailure?: "settings" | "memory" | null; initialConfirm?: boolean | number;
 }) {
   const allowed = editable && (desktop || board.aril.settings.pairedDevices);
-  const [original] = useState(board.aril.settings);
-  const [edited, setDraft] = useState(original);
+  // The board is read again after every action, so the saved settings can change under a draft: a field the owner has not touched follows
+  // the saved value, and a field the owner changed keeps the owner's value, so a save never writes an older value over a newer one.
+  const savedKey = JSON.stringify(board.aril.settings);
+  const [base, setBase] = useState({ key: savedKey, settings: board.aril.settings });
+  const [edited, setDraft] = useState(base.settings);
+  if (savedKey !== base.key) {
+    const next = board.aril.settings;
+    setDraft((current) => Object.fromEntries((Object.keys(next) as (keyof Settings)[]).map((key) => [key, JSON.stringify(current[key]) === JSON.stringify(base.settings[key]) ? next[key] : current[key]])) as Settings);
+    setBase({ key: savedKey, settings: next });
+  }
+  const original = base.settings;
   const draft = allowed ? edited : board.aril.settings;
   const [kind, setKind] = useState<keyof typeof KINDS>("tag");
   const [value, setValue] = useState("");
@@ -46,6 +59,9 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const [removing, setRemoving] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<keyof typeof FAILURES | null>(initialFailure);
+  const [jevKey, setJevKey] = useState("");
+  const [jevBusy, setJevBusy] = useState(false);
+  const [jevFailed, setJevFailed] = useState<"save" | "remove" | null>(null);
   const saved = board.aril.settings;
   const grant = board.aril.grant;
   const confirmation = () => ({ settings: JSON.stringify(saved), until: Date.now() + saved.limits.hours! * 3600000 });
@@ -84,6 +100,16 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
     } catch { setFailure(errorKind); }
     finally { setBusy(false); }
   };
+  // The key is sent once and the field is emptied when it was saved: the renderer never receives the key back, only whether one is set.
+  const changeJev = async (which: "save" | "remove") => {
+    if (!jev || jevBusy) return;
+    const key = jevKey;
+    setJevBusy(true); setJevFailed(null);
+    try {
+      if (await (which === "save" ? jev.save(key) : jev.remove())) setJevKey(""); else setJevFailed(which);
+    } catch { setJevFailed(which); }
+    finally { setJevBusy(false); }
+  };
   const toggle = (label: string, checked: boolean, onChange: (next: boolean) => void) => allowed
     ? <label className="taskCheckRow"><input type="checkbox" role="switch" checked={checked} disabled={busy} onChange={(event) => onChange(event.currentTarget.checked)} /><span>{label}</span></label>
     : <div className="taskGateRow"><span>{label}</span><span className="taskGateReadOnly">{checked ? "On" : "Off"}</span></div>;
@@ -91,10 +117,7 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
     {allowed ? <CommandSelect aria-label={label} disabled={busy} value={value} options={options} onChange={onChange} />
       : <span className="taskGateReadOnly">{options.find((option) => option.value === value)?.label}</span>}
   </div>;
-  return <div className="taskQueueSettings" aria-busy={busy} style={{ overflowWrap: "anywhere" }}>
-    <header className="taskQueueSettingsHead"><h2 id={titleId}>Aril settings</h2>
-      <button ref={closeRef} type="button" className="commandIconAction" aria-label="Close" onClick={onClose}><CommandIcon name="close" /></button>
-    </header>
+  return <div className="taskQueueSettings arilSettingsBody" aria-busy={busy} style={{ overflowWrap: "anywhere" }}>
     <section className="taskGatesPanel">
       <h3 className="taskGatesHeading">Grant</h3>
       {grant?.active ? <>
@@ -178,9 +201,9 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
         : <p className="taskGatesCaption">{board.aril.settings.pairedDevices ? "Paired devices can change Aril settings and memory." : "Paired devices cannot change Aril settings and memory."}</p>}
     </section>
     <div className="taskHeadActions">
-      <button type="button" className="commandQuietAction" onClick={onClose}>Cancel</button>
+      {allowed && <button type="button" className="commandQuietAction" disabled={busy || !unsaved} onClick={() => { setConfirm(null); setDraft(original); }}>Discard changes</button>}
       {allowed && <button type="button" className="commandPrimaryAction" disabled={busy || !modelValid || Object.keys(changed).length === 0}
-        onClick={() => void send("aril_settings_set", { settings: changed.reviewer ? { ...changed, reviewer: { ...draft.reviewer, model: model || null } } : changed }, onClose)}>Save</button>}
+        onClick={() => void send("aril_settings_set", { settings: changed.reviewer ? { ...changed, reviewer: { ...draft.reviewer, model: model || null } } : changed }, () => {})}>Save</button>}
     </div>
     {(failure === "settings" || failure === "memory") && <p className="newTaskError" role="alert">{FAILURES[failure]}</p>}
     <section className="taskGatesPanel taskSchedulePanel">
@@ -204,25 +227,69 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       {allowed && <><label className="taskGateField"><span className="taskGateFieldLabel">Add entry</span><input className="taskOwnInput" value={adding} maxLength={300} disabled={busy || memory.length >= 100} onChange={(event) => setAdding(event.currentTarget.value)} /></label>
         <button type="button" className="commandSecondaryAction" disabled={busy || memory.length >= 100 || !line(adding, 300)} onClick={() => void send("aril_memory_add", { text: adding }, () => setAdding(""))}>Add entry</button></>}
     </section>
+    {desktop && jev && <section className="taskGatesPanel taskSchedulePanel">
+      <h3 className="taskGatesHeading">Effort routing</h3>
+      <p className="taskGatesCaption">With a Jev key, Aril may lower the effort you chose for simple replies, never raise it. Jev sees your message and the end of Aril&apos;s previous answer.</p>
+      <p className="taskGatesCaption">{jev.state === "set" ? "Key set" : jev.state === "unset" ? "No key set" : jev.state === "unavailable" ? "This computer cannot store the key safely." : "Checking…"}</p>
+      {jev.state !== "unavailable" && <>
+        <label className="taskGateField"><span className="taskGateFieldLabel">Jev key</span><input className="taskOwnInput" type="password" autoComplete="off" spellCheck={false} maxLength={512}
+          value={jevKey} disabled={jevBusy} aria-invalid={jevKey !== "" && !JEV_KEY_PATTERN.test(jevKey)} onChange={(event) => setJevKey(event.currentTarget.value)} /></label>
+        <div className="taskHeadActions">
+          <button type="button" className="commandSecondaryAction" disabled={jevBusy || !JEV_KEY_PATTERN.test(jevKey)} onClick={() => void changeJev("save")}>Save key</button>
+          {jev.state === "set" && <button type="button" className="commandQuietAction" disabled={jevBusy} onClick={() => void changeJev("remove")}>Remove key</button>}
+        </div>
+      </>}
+      {jevKey !== "" && !JEV_KEY_PATTERN.test(jevKey) && <p className="newTaskError">Use 8 to 512 characters without spaces.</p>}
+      {jevFailed && <p className="newTaskError" role="alert">{jevFailed === "save" ? "The key could not be saved. Try again." : "The key could not be removed. Try again."}</p>}
+    </section>}
   </div>;
 }
 
-export function ArilSettingsPanel({ board, returnFocus, onClose }: { board: TaskBoard; returnFocus: RefObject<HTMLElement | null>; onClose(): void }) {
-  const titleId = useId();
-  const closeRef = useRef<HTMLButtonElement>(null);
+/** One repository's settings, read from its board and saved through the fixed task actions. A board that is not ready says so in a line. */
+function ArilRepositorySettings({ repositoryId, jev }: { repositoryId: string; jev: JevKeyControl | undefined }) {
   const access = useTaskEditAvailability();
-  const { refresh } = useTasks(board.repositoryId);
-  useEffect(() => {
-    closeRef.current?.focus({ preventScroll: true });
-    const opener = returnFocus.current;
-    return () => { if (opener?.isConnected) opener.focus({ preventScroll: true }); };
-  }, [returnFocus]);
-  return <TaskDialog className="taskModalScrim taskQueueSettingsScrim" labelledBy={titleId} closeOnScrim onClose={onClose}>
-    {board.aril ? <ArilSettings board={{ ...board, aril: board.aril }} desktop={access === "desktop"} editable={access === "desktop" || access === "paired"}
-      onClose={onClose} titleId={titleId} closeRef={closeRef} onAction={async (action, payload) => {
-        const result = await sendTaskAction(board.repositoryId, action, payload);
-        if (result.ok) await refresh();
-        return result;
-      }} /> : <div className="taskQueueSettings"><h2 id={titleId}>Aril settings</h2><p>Aril settings are unavailable.</p><button ref={closeRef} type="button" className="commandQuietAction" onClick={onClose}>Close</button></div>}
-  </TaskDialog>;
+  const { board, refresh } = useTasks(repositoryId);
+  if (access === "pending" || board.readiness === "loading") return <p className="arilSettingsNote" role="status">Reading Aril settings…</p>;
+  if (!board.aril) return <p className="arilSettingsNote">Aril settings are unavailable.</p>;
+  return <ArilSettings board={{ ...board, aril: board.aril }} desktop={access === "desktop"} editable={access === "desktop" || access === "paired"} jev={jev}
+    onAction={async (action, payload) => {
+      const result = await sendTaskAction(repositoryId, action, payload);
+      if (result.ok) await refresh();
+      return result;
+    }} />;
+}
+
+/**
+ * The Aril section of Settings. Aril's settings, memory, and grant belong to one repository, so the section holds a repository choice
+ * like the chat's: the repository the page was opened for, else the last one used, else the first listed. With one repository the choice
+ * is its name. The Jev key belongs to the desktop app and is given only there.
+ */
+export function ArilSettingsSection({ initialRepositoryId = null }: { initialRepositoryId?: string | null }) {
+  const headingId = useId();
+  const { snapshot, loading } = useRepositoryInventory();
+  const access = useTaskEditAvailability();
+  const jev = useJevKey(access === "desktop");
+  const [picked, setPicked] = useState<string | null>(null);
+  const options = useMemo(() => snapshot.repositories.map((repository) => ({ value: repository.id, label: repository.displayName })), [snapshot.repositories]);
+  const known = (id: string | null) => id !== null && options.some((option) => option.value === id);
+  const repositoryId = [picked, initialRepositoryId, readStoredRepository()].find(known) ?? options[0]?.value ?? null;
+  const choose = (id: string) => { storeRepository(id); setPicked(id); };
+  return <section className="arilSettings" aria-labelledby={headingId}>
+    <header>
+      <h2 id={headingId}>Aril</h2>
+      <p>What Aril may do under a grant you start, and what it remembers. These settings belong to one repository.</p>
+    </header>
+    {repositoryId === null
+      ? <p className="arilSettingsNote">{loading ? "Reading repositories…" : "No repositories observed yet."}</p>
+      : <>
+        <div className="arilSettingsRepository">
+          <SettingRow label="Repository" description="The repository these settings, its memory, and its grant belong to.">
+            {options.length > 1
+              ? <CommandSelect aria-label="Repository" value={repositoryId} options={options} onChange={choose} />
+              : <span className="commandMonoValue">{options[0].label}</span>}
+          </SettingRow>
+        </div>
+        <ArilRepositorySettings key={repositoryId} repositoryId={repositoryId} jev={jev} />
+      </>}
+  </section>;
 }

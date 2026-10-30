@@ -58,7 +58,8 @@ describe("Settings, GitHub section", () => {
     render(<SettingsPage />);
     const names = screen.getAllByRole("tab").map((tab) => tab.textContent);
     expect(names.indexOf("GitHub")).toBe(names.indexOf("Providers") + 1);
-    expect(names.indexOf("Storage")).toBe(names.indexOf("GitHub") + 1);
+    expect(names.indexOf("Aril")).toBe(names.indexOf("GitHub") + 1);
+    expect(names.indexOf("Storage")).toBe(names.indexOf("Aril") + 1);
     const element = await SettingsRoute({ searchParams: Promise.resolve({ section: "github" }) });
     expect(element.props).toMatchObject({ initialSection: "github" });
     expect((await SettingsRoute({ searchParams: Promise.resolve({ section: "elsewhere" }) })).props).toMatchObject({ initialSection: "appearance" });
