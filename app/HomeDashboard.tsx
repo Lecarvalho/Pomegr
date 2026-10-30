@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useAgentChatAvailability } from "./agent-chat-client";
 import { CommandPageHeader } from "./components/command-center/CommandPage";
-import { ProviderStatusQuiet } from "./components/ProviderStatus";
 import { AGENT_CHAT_CLOSED_EVENT, HOME_SECTION_ID, homeSuggestions } from "./components/agent-chat/agent-chat-presentation";
 import { HomeAril, type HomeMode } from "./components/home/HomeAril";
 import { HomeArilLine } from "./components/home/HomeArilLine";
@@ -15,7 +14,6 @@ import { arilLine, greetingFor, needsYou, suggestionFacts } from "./components/h
 import { useHomeLogs } from "./components/home/useHomeLogs";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useHomePreferences } from "./hooks/useHomePreferences";
-import { useProviderStatus } from "./provider-status-client";
 import { useRepositoryInventory } from "./repository-inventory-client";
 import { useTaskHome } from "./tasks-home-store";
 import { createEmptyTaskHome } from "../shared/task-contract";
@@ -29,7 +27,6 @@ const useGreeting = () => useSyncExternalStore(subscribeNever, () => greetingFor
 const NO_TASKS = createEmptyTaskHome("ready");
 
 export function HomeDashboard() {
-  const providerStatus = useProviderStatus();
   const preferences = useHomePreferences();
   const { ready, updateDismissed, dismissUpdate, updateSeen, markUpdateSeen } = preferences;
   const greeting = useGreeting();
@@ -86,22 +83,20 @@ export function HomeDashboard() {
 
         <HomeContinue preferences={preferences} names={names} browseRef={browseRef} />
 
-        <div className={styles.status}>
-          <ProviderStatusQuiet providers={providerStatus.providers} className={styles.providerStatus} />
-          {ready && !updateDismissed && <HomeUpdateCard
-            title="Let Aril run your backlog"
-            description="A grant lets Aril start the Ready tasks your work rules select and their reviews, send failed work back, merge on green CI after a passing review, and write tasks from plans you name. It stays within the hours, tasks, and usage limit you set."
-            highlights={[
-              "Set the limits in Aril settings, add a work rule, and select Start grant.",
-              "Only you start a grant, in the desktop app or on a paired phone you allow. Stop grant ends it at once and ends no running session.",
-              "The Log lists each grant action, each usage pause, and each refused merge. Starting sessions works on Windows only.",
-            ]}
-            illustration={<HomeUpdateIllustration />}
-            autoOpen={!updateSeen}
-            onAutoOpen={markUpdateSeen}
-            onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
-          />}
-        </div>
+        {ready && !updateDismissed && <HomeUpdateCard
+          title="Let Aril run your backlog"
+          summary="Under a grant, Aril starts, reviews, and merges tasks within limits you set."
+          description="A grant lets Aril start the Ready tasks your work rules select and their reviews, send failed work back, merge on green CI after a passing review, and write tasks from plans you name. It stays within the hours, tasks, and usage limit you set."
+          highlights={[
+            "Set the limits in Aril settings, add a work rule, and select Start grant.",
+            "Only you start a grant, in the desktop app or on a paired phone you allow. Stop grant ends it at once and ends no running session.",
+            "The Log lists each grant action, each usage pause, and each refused merge. Starting sessions works on Windows only.",
+          ]}
+          illustration={<HomeUpdateIllustration />}
+          autoOpen={!updateSeen}
+          onAutoOpen={markUpdateSeen}
+          onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
+        />}
       </div>
 
       {aril && <div className={styles.composer}><HomeAril suggestions={suggestions} mode={mode} onFocus={enterFocus} onSent={sent} onLeave={leave} onEmptyChange={setEmptyDraft} /></div>}

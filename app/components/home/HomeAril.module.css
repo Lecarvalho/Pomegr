@@ -5,8 +5,10 @@
 .aril :global(.agentChatComposer) { transition: box-shadow 480ms ease; }
 .aril.isFocus :global(.agentChatComposer) { box-shadow: var(--command-overlay-shadow); }
 
-.chipBlock { max-height: 8rem; overflow: hidden; transition: opacity 220ms ease, max-height 300ms ease; }
-.isThread .chipBlock { max-height: 0; opacity: 0; pointer-events: none; }
+/* The chips collapse after Send with the grid-rows pattern, so no layout property is animated: the block is one grid row that goes from its content to nothing. */
+.chipBlock { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 300ms ease, opacity 220ms ease; }
+.chipInner { min-height: 0; overflow: hidden; }
+.isThread .chipBlock { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
 .chips { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
 .chipList { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; margin: 0; padding: 0; list-style: none; }
 

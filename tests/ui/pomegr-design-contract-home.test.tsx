@@ -26,7 +26,7 @@ describe("Home visual contract", () => {
     expect(tokenOnly).not.toMatch(/font(?:-size)?:[^;}]*\b\d+px/);
     // A state dot is round, as the provider status dot is; everything else is a control or a panel.
     for (const [, radius] of tokenOnly.matchAll(/border-radius:\s*([^;}]+)/g)) expect(radius.trim()).toMatch(/^(?:var\(--(?:control|panel)-radius\)|50%)$/);
-    // The What's new line has no literal color either; only the dialog keeps its documented backdrop.
+    // The What's new card has no literal color either; only the dialog keeps its documented backdrop.
     const update = read("HomeUpdateCard.module.css");
     expect([...update.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(([color]) => color)).toEqual(["#0008"]);
     expect(designContract).toMatch(/The backdrop is `#0008`, the same scrim as the phone agent-filter sheet/);
@@ -37,13 +37,13 @@ describe("Home visual contract", () => {
     expect(pageStyles).toMatch(/\.column \{[^}]*flex-direction: column; flex: 1 1 auto; gap: var\(--space-8\); width: min\(720px, 100%\);[^}]*margin: 0 auto; \}/);
     expect(pageStyles).toMatch(/\.composer \{ margin-top: auto;/);
     expect(pageStyles).toMatch(/\.home h1 \{ min-height: 1\.25em; \}/);
-    expect(pageStyles).toMatch(/\.status \{[^}]*flex-wrap: wrap;[^}]*border-top: 1px solid var\(--command-line\);/);
-    // The column keeps one reading order: the header, Needs you, Continue, the status line, and the composer.
+    expect(pageStyles).not.toMatch(/\.status|providerStatus/);
+    // The column keeps one reading order: the header, Needs you, Continue, the What's new card, and the composer.
     const source = readFileSync(join(process.cwd(), "app", "HomeDashboard.tsx"), "utf8");
-    const order = ["<CommandPageHeader", "<HomeNeedsYou", "<HomeContinue", "styles.status", "<HomeAril suggestions"].map((part) => source.indexOf(part));
+    const order = ["<CommandPageHeader", "<HomeNeedsYou", "<HomeContinue", "<HomeUpdateCard", "<HomeAril suggestions"].map((part) => source.indexOf(part));
     expect(order.every((index) => index > 0)).toBe(true);
     expect([...order].sort((left, right) => left - right)).toEqual(order);
-    expect(source).not.toMatch(/Session coach|On the horizon|Understand your sessions|Open conversation/);
+    expect(source).not.toMatch(/Session coach|On the horizon|Understand your sessions|Open conversation|ProviderStatus|provider-status/);
   });
 
   it("draws a Needs you line as the action, a failure in amber, and the repository, with no task ID and no title", () => {
@@ -72,14 +72,21 @@ describe("Home visual contract", () => {
     expect(read("HomeContinue.tsx")).toContain('session.waiting ? "Waiting for you" : "Working"');
   });
 
-  it("draws the provider line quietly: a muted dot and the name, and amber words only for a provider that is not healthy", () => {
-    const styles = readFileSync(join(process.cwd(), "app", "components", "ProviderStatus.module.css"), "utf8");
-    expect(styles).toMatch(/\.quiet \.dot \{ width: 6px; height: 6px; opacity: \.7; \}/);
-    expect(styles).toMatch(/\.quietName \{ color: var\(--command-muted\);/);
-    expect(styles).toMatch(/\.quietWords \{ color: var\(--command-amber\);/);
-    const source = readFileSync(join(process.cwd(), "app", "components", "ProviderStatus.tsx"), "utf8");
-    expect(source).toContain('const tone = providerStatusTone(status); return tone === "warning" || tone === "critical"; };');
-    expect(source).toContain("{providerNeedsWords(status) && <span className={styles.quietWords}>{label}</span>}");
+  it("draws the What's new card horizontal, with a thumbnail of a small fixed size on the left, the text beside it, and a smaller thumbnail on a phone", () => {
+    const styles = read("HomeUpdateCard.module.css");
+    expect(styles).toMatch(/\.card \{\s*position: relative;\s*display: flex;\s*align-items: center;\s*gap: 16px;[^}]*border-inline-start: 3px solid var\(--command-brand\);\s*border-block: 1px solid var\(--command-line\);\s*background: var\(--command-panel\);/);
+    expect(styles).toMatch(/--thumb-width: 132px;\s*--thumb-height: 84px;\s*--thumb-scale: \.28;\s*--thumb-offset: 10px 0 0 9px;/);
+    expect(styles).toMatch(/\.thumbnail \{ flex-shrink: 0; width: var\(--thumb-width\); height: var\(--thumb-height\); overflow: hidden; border: 1px solid var\(--command-line\); border-radius: var\(--control-radius\); background: var\(--command-panel-2\); \}/);
+    expect(styles).toMatch(/\.thumbnail > div \{ width: 408px; margin: var\(--thumb-offset\); transform: scale\(var\(--thumb-scale\)\); transform-origin: top left; \}/);
+    expect(styles).toMatch(/@media \(max-width: 760px\) \{[^@]*\.card \{ --thumb-width: 88px; --thumb-height: 56px; --thumb-scale: \.18; --thumb-offset: 6px 0 0 7px; flex-wrap: wrap;/);
+    expect(styles).toMatch(/\.content \{ flex: 1 1 0; \}\s*\.open \{ flex-basis: 100%; \}/);
+    expect(styles).not.toMatch(/\.thumbnail \{ display: none; \}/);
+    // The thumbnail comes first in the card, then the text, the Secondary action, and the dismiss; the card shows the summary.
+    const card = read("HomeUpdateCard.tsx");
+    const order = ["styles.thumbnail", "styles.content", "{summary}", "commandSecondaryAction", "commandIconAction"].map((part) => card.indexOf(part));
+    expect(order.every((index) => index > 0)).toBe(true);
+    expect([...order].sort((left, right) => left - right)).toEqual(order);
+    expect(readFileSync(join(process.cwd(), "app", "HomeDashboard.tsx"), "utf8")).toContain('summary="Under a grant, Aril starts, reviews, and merges tasks within limits you set."');
   });
 
   it("moves in focus mode with the documented durations and curve, takes the overlay shadow once lifted, and stops moving under reduced motion", () => {
@@ -88,7 +95,10 @@ describe("Home visual contract", () => {
     expect(aril).toMatch(/\.aril\.isFocus, \.aril\.isThread \{ transform: translateY\(var\(--focus-shift, 0px\)\); \}/);
     expect(aril).toMatch(/\.aril\.isFocus :global\(\.agentChatComposer\) \{ box-shadow: var\(--command-overlay-shadow\); \}/);
     expect(aril).toMatch(/\.hint \{ position: absolute; inset-inline: 0; top: 100%;[^}]*font: 400 var\(--text-caption\)\/1\.4 var\(--font-ui\);[^}]*transition: opacity 280ms ease; \}/);
-    expect(aril).toMatch(/\.isThread \.chipBlock \{ max-height: 0; opacity: 0; pointer-events: none; \}/);
+    expect(aril).toMatch(/\.chipBlock \{ display: grid; grid-template-rows: 1fr; transition: grid-template-rows 300ms ease, opacity 220ms ease; \}/);
+    expect(aril).toMatch(/\.chipInner \{ min-height: 0; overflow: hidden; \}/);
+    expect(aril).toMatch(/\.isThread \.chipBlock \{ grid-template-rows: 0fr; opacity: 0; pointer-events: none; \}/);
+    expect(aril).not.toMatch(/max-height/);
     expect(aril).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.aril, \.aril :global\(\.agentChatComposer\), \.chipBlock, \.hint \{ transition: none; \}/);
     expect(pageStyles).toMatch(/\.content \{[^}]*transition: opacity 280ms ease, transform 280ms ease; \}/);
     expect(pageStyles).toMatch(/\.content\.isHidden \{ opacity: 0; transform: translateY\(-10px\); pointer-events: none; \}/);
@@ -155,7 +165,10 @@ describe("Home visual contract", () => {
     expect(designContract).toMatch(/A session started for a task, or assigned to it, shows the title line of that task\. Any other session, a review session included, shows its own title/);
     expect(designContract).toMatch(/The task text is a board value, so it never enters `\/api\/state`\. Home draws only that one line/);
     expect(designContract).toMatch(/The rows wait for the boards of the shown sessions, so no title is drawn and then replaced by another/);
-    expect(designContract).toMatch(/A provider that is healthy, or that Pomegr cannot read, adds no word/);
+    expect(designContract).toMatch(/Home does not show the provider status and does not read it/);
+    expect(designContract).toMatch(/The card is horizontal: the thumbnail on the left, the text beside it, and the actions at the end/);
+    expect(designContract).toMatch(/The thumbnail has a small fixed size, so the card never grows with the artwork/);
+    expect(designContract).toMatch(/On the phone, the card stays horizontal and the thumbnail is smaller/);
     expect(designContract).toMatch(/Home calls no new route and stores no board value/);
     expect(designContract).toMatch(/Focusing the message field of the composer, or picking a suggestion chip, starts focus mode/);
     expect(designContract).toMatch(/Escape returns to Home, and the draft stays/);
@@ -194,9 +207,8 @@ describe("Home visual contract", () => {
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemHomeUpdateSample.tsx"), "utf8");
     for (const label of [
       "Aril line, with counts", "Aril line, nothing logged", "Aril line, a log could not be read", "Aril line, reading", "Needs you", "Continue, running sessions",
-      "Provider status, healthy", "Provider status, not healthy", "Composer on Home, with suggestions", "Composer on Home, focus mode", "With illustration", "Text only",
+      "Composer on Home, with suggestions", "Composer on Home, focus mode", "With illustration", "Text only",
     ]) expect(sample).toContain(`label="${label}"`);
     expect(designContract).toMatch(/It renders Home's Needs you list with every line kind and a failure detail/);
-    expect(designContract).toMatch(/It renders the quiet provider line, healthy and with a provider that is not/);
   });
 });

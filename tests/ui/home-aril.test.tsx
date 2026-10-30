@@ -229,15 +229,22 @@ describe("Continue", () => {
   });
 });
 
-describe("the status line", () => {
-  it("is quiet: a dot and the name of each provider, and What's new on the same line", async () => {
+describe("the What’s new card", () => {
+  it("is a horizontal card at the foot of the content, above the composer, with the thumbnail on the left, and no provider status", async () => {
     home();
     await settle();
-    const status = screen.getByRole("complementary", { name: "Provider service status" });
-    expect(within(status).getByText("Claude Code")).toBeInTheDocument();
-    expect(within(status).getByText("Codex")).toBeInTheDocument();
-    expect(status.parentElement).toBe(screen.getByRole("complementary", { name: "What’s new" }).parentElement);
-    expect(screen.queryByText("Provider status")).toBeNull();
+    const card = screen.getByRole("complementary", { name: "What’s new" });
+    expect(within(card).getByRole("heading", { name: "Let Aril run your backlog" })).toBeInTheDocument();
+    expect(within(card).getByText(/^Under a grant, Aril starts, reviews, and merges tasks/)).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "See what’s new" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Dismiss this update" })).toBeInTheDocument();
+    // The thumbnail is the first thing in the card, then the text, and it is decorative.
+    expect(card.firstElementChild).toHaveAttribute("aria-hidden", "true");
+    expect(card.firstElementChild).toContainElement(card.querySelector("[inert]"));
+    expect(card.compareDocumentPosition(screen.getByRole("region", { name: "Ask Aril" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("region", { name: /^Continue/ }).compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Provider service status" })).toBeNull();
+    expect(screen.queryByText("Claude Code")).toBeNull();
   });
 });
 

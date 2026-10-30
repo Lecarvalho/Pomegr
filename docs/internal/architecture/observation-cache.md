@@ -862,7 +862,7 @@ worker queue, session store, Home derivation, or checkpoint writer.
   Provider network cadence does not depend on browser tabs or selected sessions.
   Frontend failures retain visible data, but elapsed freshness never remains green
   indefinitely when the monitor is unreachable. No browser storage caches status.
-- Home and Usage limits show compact fixed status. A live session shows a dismissible
+- Usage limits shows compact fixed status. A live session shows a dismissible
   yellow notice only for a fresh relevant service issue; healthy, unknown, stale, and
   historical views show no session notice. Dismissal is bounded tab-memory view state,
   keyed by a monitor-issued incident identity and severity. Recovery removes a notice;
@@ -3136,10 +3136,10 @@ reinterpreted as a different request. Preload and visible-page revisions never m
 ## Home navigation preferences
 
 Home is a personal entry point, not an aggregate monitoring view. It does not request
-`/api/home`, `/api/state`, or `/api/usage-limits`; the shell's existing catalog cadence
-continues unchanged for navigation and notifications. Pins never display activity,
-progress, usage, or context counters. Loading or unavailable catalogs affect destination
-labels only, and never hide the static feature previews or clear saved pins.
+`/api/home`, `/api/state`, `/api/usage-limits`, or `/api/provider-status`; the shell's existing
+catalog cadence continues unchanged for navigation and notifications. Pins never display
+activity, progress, usage, or context counters. Loading or unavailable catalogs affect
+destination labels only, and never clear saved pins.
 
 Browser storage key `pomegr-home-v1` may retain only a schema version, up to six validated
 session/project/view identifiers, one last-viewed normalized session identifier, and two optional copies of the fixed current-update identifier: one for dismissing the product update and one recording that its dialog already opened by itself once. Older or unknown update identifiers are discarded, so a new update can appear, and open its dialog once, again. The desktop renderer's browser storage does not survive a restart (its session is in-memory and its loopback origin changes per launch), so there the same two markers also persist in desktop `settings.json` as `homeUpdate.seenId` and `homeUpdate.dismissedId`: fixed keys, each null or one bounded identifier (lowercase letters, digits, and hyphens, at most 64 characters), written through the trusted-main-frame `pomegr:set-home-update` channel and read back in the bounded desktop state. Home waits for that state before showing the update, so it is never shown and then withdrawn. Pins and the last-viewed session stay in browser storage only and do not survive a desktop restart.

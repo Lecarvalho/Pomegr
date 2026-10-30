@@ -1,11 +1,35 @@
-.line { display: flex; align-items: center; gap: var(--space-1); min-width: 0; margin: 0; }
+.card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  padding: 12px 48px 12px 16px;
+  border-inline-start: 3px solid var(--command-brand);
+  border-block: 1px solid var(--command-line);
+  background: var(--command-panel);
+  /* The thumbnail has a small fixed size: the 408px artwork scaled to fit. A phone keeps a smaller one. */
+  --thumb-width: 132px;
+  --thumb-height: 84px;
+  --thumb-scale: .28;
+  --thumb-offset: 10px 0 0 9px;
+}
+
+.card :is(h2, h3, p),
 .dialog :is(h2, p) { margin: 0; }
 
-.open { min-width: 0; gap: var(--space-2); }
-.eyebrow, .dialog .eyebrow { color: var(--command-brand-text); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.name { min-width: 0; overflow: hidden; color: var(--command-muted); text-overflow: ellipsis; white-space: nowrap; }
-.open:hover .name { color: var(--command-ink); }
-.dismiss { flex: 0 0 auto; }
+.content { flex: 1; min-width: 0; }
+.card .eyebrow,
+.dialog .eyebrow { color: var(--command-brand-text); font: 500 var(--text-caption, 11px)/1.4 var(--font-ui, sans-serif); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.card h3 { margin-top: 2px; color: var(--command-ink); font-size: var(--text-base, 14px); font-weight: 650; }
+.content p { margin-top: 2px; color: var(--command-muted); font-size: var(--text-xs, 12px); }
+.open { flex-shrink: 0; }
+
+/* The illustration is authored 408px wide; the card shows the same artwork scaled down. */
+.thumbnail { flex-shrink: 0; width: var(--thumb-width); height: var(--thumb-height); overflow: hidden; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel-2); }
+.thumbnail > div { width: 408px; margin: var(--thumb-offset); transform: scale(var(--thumb-scale)); transform-origin: top left; }
+
+.dismiss { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; }
 
 .dialog {
   width: min(560px, calc(100vw - 32px));
@@ -46,6 +70,10 @@
 .dialog :is(button):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 @media (max-width: 760px) {
+  /* A phone keeps the card horizontal with a smaller thumbnail; the Secondary action takes the row below. */
+  .card { --thumb-width: 88px; --thumb-height: 56px; --thumb-scale: .18; --thumb-offset: 6px 0 0 7px; flex-wrap: wrap; gap: 8px 12px; padding: 10px 48px 12px 12px; }
+  .content { flex: 1 1 0; }
+  .open { flex-basis: 100%; }
   .dialog { position: fixed; inset: auto 0 0; width: 100%; max-width: none; max-height: 90dvh; margin: 0; border-inline: 0; border-bottom: 0; border-radius: var(--panel-radius) var(--panel-radius) 0 0; }
   @starting-style { .dialog[open] { transform: translateY(32px); } }
   .stage { height: 188px; padding-top: 24px; }

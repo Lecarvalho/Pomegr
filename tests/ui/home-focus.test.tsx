@@ -83,19 +83,19 @@ describe("focus mode", () => {
     await settle();
     expect(inFocusMode()).toBe(false);
     expect(hidden()).toBeNull();
-    expect(page().querySelector("[inert]")).toBeNull();
+    expect(page().querySelector('[class*="_content_"][inert]')).toBeNull();
     expect(hint()).toHaveAttribute("aria-hidden", "true");
     expect(dim()).toBeNull();
     await person.click(homeField());
     expect(inFocusMode()).toBe(true);
-    // Everything but the composer block fades out and cannot be reached; the greeting, Needs you, Continue, and the status line are in it.
+    // Everything but the composer block fades out and cannot be reached; the greeting, Needs you, Continue, and the What’s new card are in it.
     const faded = hidden()!;
     expect(faded).not.toBeNull();
     expect(faded).toHaveAttribute("inert");
     expect(faded).toContainElement(screen.getByRole("heading", { level: 1 }));
     expect(faded).toContainElement(screen.getByRole("region", { name: "Needs you" }));
     expect(faded).toContainElement(screen.getByRole("region", { name: /^Continue/ }));
-    expect(faded).toContainElement(screen.getByRole("complementary", { name: "Provider service status" }));
+    expect(faded).toContainElement(screen.getByRole("complementary", { name: "What’s new" }));
     expect(faded).not.toContainElement(block());
     // The chips stay above the composer, and the hint shows under it.
     expect(within(block()).getByRole("list", { name: "Suggestions" })).toBeInTheDocument();
@@ -134,7 +134,7 @@ describe("focus mode", () => {
     await person.keyboard("{Escape}");
     expect(inFocusMode()).toBe(false);
     expect(hidden()).toBeNull();
-    expect(page().querySelector("[inert]")).toBeNull();
+    expect(page().querySelector('[class*="_content_"][inert]')).toBeNull();
     expect(hint()).toHaveAttribute("aria-hidden", "true");
     expect(homeField()).toHaveValue("A draft I keep");
     expect(page()).toHaveFocus();
@@ -268,7 +268,7 @@ describe("Send from focus mode", () => {
     await settle();
     expect(/isThread|isFocus/.test(block().className)).toBe(false);
     expect(hidden()).toBeNull();
-    expect(page().querySelector("[inert]")).toBeNull();
+    expect(page().querySelector('[class*="_content_"][inert]')).toBeNull();
     expect(page()).toHaveFocus();
     expect(homeField()).not.toHaveFocus();
     expect(screen.queryByRole("button", { name: /^Open Aril, the Pomegr agent/ })).toBeNull();

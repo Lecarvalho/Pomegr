@@ -169,7 +169,7 @@ Each product surface has its own page. See [Find the page](#find-the-page).
 | Token values | `app/styles/tokens.css` |
 | Usage limits and provider connection help | [Usage limits design](docs/internal/design/usage-limits.md) |
 | Settings sections and the storage usage meter | [Settings design](docs/internal/design/settings.md) |
-| Home: the greeting, the Aril line, Needs you, Continue, the status line, the What's new line and dialog | [Home design](docs/internal/design/home.md) |
+| Home: the greeting, the Aril line, Needs you, Continue, the What's new card and dialog, the composer and its focus mode | [Home design](docs/internal/design/home.md) |
 | Sessions directory, session header, Overview, Events, Signals | [Sessions design](docs/internal/design/sessions.md) |
 | Agents panel, inspector, grid, tree, the Agents route, role tint | [Agents design](docs/internal/design/agents.md) |
 | Activities feed and the Requests chart | [Activities design](docs/internal/design/activities.md) |

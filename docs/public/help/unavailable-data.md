@@ -71,7 +71,7 @@ question or approval reason, so check the coding tool itself. See
 
 ## What provider status can tell you
 
-**Provider status** on Home, a status dot beside each provider on
+A status dot beside each provider on
 **Usage limits**, a chip such as **Degraded service** beside a live session, and
 the **Notifications** tray show what each provider's public status page reports.
 Select one for **Last checked** (when Pomegr fetched the report), **Provider

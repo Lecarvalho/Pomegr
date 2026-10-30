@@ -1,6 +1,6 @@
 # Home design
 
-> Scope: the Home page: its greeting, the Aril line, Needs you, Continue, the status line, the composer with its suggestions and focus mode, and the What's new line and dialog.
+> Scope: the Home page: its greeting, the Aril line, Needs you, Continue, the What's new card and dialog, and the composer with its suggestions and focus mode.
 > Authority: visual and interaction contract for this surface. [DESIGN.md](../../../DESIGN.md)
 > owns the tokens, the six button roles, the chip contract, and the shared controls.
 > The composer and the suggestion chips are specified in [Agent chat design](agent-chat.md#composer-on-home).
@@ -24,7 +24,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 | 1 | Greeting and the Aril line | Always; the Aril line only where the task log can be read |
 | 2 | Needs you | When something waits for the owner |
 | 3 | Continue | Always |
-| 4 | Status line | Always |
+| 4 | What's new card | Until the owner dismisses the announcement |
 | 5 | Suggestions and composer | Only where the chat can be reached |
 
 - The session guides and the roadmap preview are not on Home.
@@ -37,7 +37,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - The chat is reached in the desktop app and on a paired phone. Nowhere else.
 - That decision is made before anything is drawn: `useAgentChatAvailability` decides.
 - While the client is still identified, Home draws no Aril line, no Needs you, and no composer.
-- A browser on the same computer draws the greeting, Needs you, Continue, and the status line.
+- A browser on the same computer draws the greeting, Needs you, Continue, and the What's new card.
 - That browser draws no Aril line, no failure detail on Needs you, and no composer, because it reads no task log and cannot reach the chat.
 - So no part is drawn and then taken away.
 
@@ -181,16 +181,6 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - The preferences keep only the kind and the identity of a pin.
 - Pins and the last viewed session stay in browser storage and do not survive a desktop restart.
 
-## Status line
-
-- The status line is one quiet line at the foot of the content, above the composer.
-- It holds a muted dot and the name of each provider, and the What's new line.
-- A dot is green at reduced strength when a provider is healthy, and neutral when Pomegr cannot tell.
-- A provider that reports a degraded service, a maintenance, or an outage, freshly read, adds its words in amber text.
-- A provider that is healthy, or that Pomegr cannot read, adds no word.
-- Each provider is a popover trigger with the details: when it was checked, and the status page.
-- The line wraps on a narrow window. The What's new line stays last.
-
 ## Composer and suggestions
 
 - The composer is the chat composer. [Agent chat design](agent-chat.md#composer-on-home) owns its parts and its look.
@@ -203,7 +193,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 
 - Focusing the message field of the composer, or picking a suggestion chip, starts focus mode.
 - Another control of the composer, such as attach or the repository choice, does not start it.
-- In focus mode the greeting, the Aril line, Needs you, Continue, and the status line fade out and cannot be reached.
+- In focus mode the greeting, the Aril line, Needs you, Continue, and the What's new card fade out and cannot be reached.
 - They fade over 280ms, and they rise 10px as they go.
 - The block of the chips and the composer moves to the vertical middle of the content area over 480ms, with the curve `cubic-bezier(.2, .8, .2, 1)`.
 - The page does not move: the shift is measured from the place of the block in the page, and the block keeps its place in the flow.
@@ -238,7 +228,6 @@ The owner approved the revised design, with Needs you, the running sessions, and
 | Read | Where it comes from | What it draws |
 | --- | --- | --- |
 | Session catalog | The shell | Needs you, Continue |
-| Provider status | `GET /api/provider-status` | The status line |
 | Tasks home | `GET /api/tasks?view=home` | Needs you, the suggestions |
 | Task log | The desktop or the paired route, once for each of 12 boards | The Aril line, the failure details of Needs you |
 | Boards | `GET /api/tasks?repositoryId=`, through the Tasks page's store, for the repositories of the shown running sessions | The title line of the task of a running session |
@@ -246,24 +235,38 @@ The owner approved the revised design, with Needs you, the running sessions, and
 | Thread run | The chat's `thread` operation, once for the repository the composer shows | The composer's first model and effort |
 
 - Home calls no new route and stores no board value.
+- Home does not show the provider status and does not read it. Usage limits and the session header show it.
 - Home never reads a prompt, an answer, a credential, or a transcript.
 - [Tasks](../architecture/tasks.md#tasks-home) owns the privacy of the board reads.
 
-## What's new line
+## What's new card
 
-`HomeUpdateCard` is the What's new line. It is not the announcement itself.
+`HomeUpdateCard` is a teaser. It is not the announcement itself.
+
+### Layout
+
+- The card sits at the foot of the content, above the composer, and as wide as the column.
+- The card is horizontal: the thumbnail on the left, the text beside it, and the actions at the end.
+- The card has the panel fill, a 3px brand line at its start, and one-pixel rules above and below.
+- The thumbnail has a small fixed size, so the card never grows with the artwork.
+- On the phone, the card stays horizontal and the thumbnail is smaller.
+- On the phone, the **See what's new** action takes the row below.
+- The card uses tokens only, as the rest of Home does.
 
 ### Content
 
-- A neutral `aside` named **What's new**, in the status line.
-- A [Quiet](../../../DESIGN.md#buttons) action that reads “What's new: ” and the title of the announcement.
+- A 132×84 thumbnail, 88×56 on the phone.
+- An uppercase caption eyebrow in brand text.
+- A 14px/650 title.
+- One muted 12px summary line.
+- A [Secondary](../../../DESIGN.md#buttons) **See what's new** action.
 - An icon dismiss.
 
 ## What's new dialog
 
 ### Layout
 
-- The Quiet action opens a modal `<dialog>`.
+- The **See what's new** action opens a modal `<dialog>`.
 - The panel is 560px wide and centered, with the overlay shadow.
 - The backdrop is `#0008`, the same scrim as the phone agent-filter sheet.
 - On the phone, the dialog is a bottom sheet.
@@ -271,7 +274,7 @@ The owner approved the revised design, with Needs you, the running sessions, and
 ### Content
 
 - The illustration on the raised fill (`--command-panel-2`).
-- The same eyebrow as the line.
+- The same eyebrow as the card.
 - A 16px/650 title.
 - The description.
 - Short muted highlights.
@@ -279,12 +282,12 @@ The owner approved the revised design, with Needs you, the running sessions, and
 
 ### States
 
-- **Got it**, the icon close, Escape, and a backdrop click close the dialog and keep the line.
+- **Got it**, the icon close, Escape, and a backdrop click close the dialog and keep the card.
 - Closing the dialog returns focus to the trigger.
-- Only the line's icon dismiss dismisses the announcement.
+- Only the card's icon dismiss dismisses the announcement.
 - The dialog opens by itself once for each announcement, the first time Home renders it.
 - Pomegr records that opening when the dialog opens.
-- After that, the dialog opens only on the Quiet action. This holds whether it was closed or the page reloaded.
+- After that, the dialog opens only on the **See what's new** action. This holds whether it was closed or the page reloaded.
 - The automatic opening waits 300ms after Home renders, so the entrance does not compete with first paint.
 - The privacy rules for the stored markers are in [Desktop and diagnostics](../architecture/privacy/desktop-and-diagnostics.md#home-announcement-markers).
 
@@ -301,17 +304,16 @@ The owner approved the revised design, with Needs you, the running sessions, and
 - `HomeUpdateIllustration` is decorative static artwork.
 - It is built from tokens and sample data.
 - It is authored 408px wide.
-- Only the dialog shows it.
-- The copy in the dialog is inert and hidden from assistive technology.
+- The card thumbnail scales the same node down.
+- Both copies are inert and hidden from assistive technology.
 - An announcement without an illustration renders text only.
 - It never reads session state.
 - It never ships a screenshot.
 
 ## Samples
 
-- `/design-system` renders the What's new line and the dialog.
+- `/design-system` renders both forms of the What's new card, and the dialog.
 - It renders Home's Needs you list with every line kind and a failure detail.
 - It renders the running sessions with a session that waits.
-- It renders the quiet provider line, healthy and with a provider that is not.
 - It renders the Aril line with counts, with nothing logged, with a log that could not be read, and while it reads.
 - It renders the suggestion chips above the composer, and the composer in focus mode, as [Agent chat design](agent-chat.md#samples) lists.

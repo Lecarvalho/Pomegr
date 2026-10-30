@@ -133,7 +133,7 @@ function HomeComposer({ repositoryId, repositories, onRepositoryChange, suggesti
   };
 
   return <>
-    <div className={styles.chipBlock}><HomeChips suggestions={suggestions} onPick={(text) => { setDraft(text); onFocus(); composer.current?.focus(); }} /></div>
+    <div className={styles.chipBlock}><div className={styles.chipInner}><HomeChips suggestions={suggestions} onPick={(text) => { setDraft(text); onFocus(); composer.current?.focus(); }} /></div></div>
     <AgentChatComposer ref={composer} fieldId={HOME_COMPOSER_FIELD_ID} value={draft} onChange={setDraft} onSend={send} onStop={() => undefined}
       onFieldFocusChange={(focusedNow) => { setFocused(focusedNow); if (focusedNow) onFocus(); }}
       modelOptions={state.modelOptions} modelValue={state.modelValue} onModelChange={state.chooseModel} effort={run.effort} onEffortChange={state.chooseEffort}
