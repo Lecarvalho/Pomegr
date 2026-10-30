@@ -35,6 +35,10 @@
   width: min(560px, calc(100vw - 32px));
   max-height: min(720px, calc(100dvh - 32px));
   margin: auto;
+  /* Centered on the Home column (--dialog-center, set when it opens), kept 16px inside the window. */
+  inset-inline: auto;
+  left: clamp(16px, calc(var(--dialog-center, 50vw) - min(280px, 50vw - 16px)), calc(100vw - 16px - min(560px, 100vw - 32px)));
+  margin-inline: 0;
   padding: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -74,7 +78,7 @@
   .card { --thumb-width: 88px; --thumb-height: 56px; --thumb-scale: .18; --thumb-offset: 6px 0 0 7px; flex-wrap: wrap; gap: 8px 12px; padding: 10px 48px 12px 12px; }
   .content { flex: 1 1 0; }
   .open { flex-basis: 100%; }
-  .dialog { position: fixed; inset: auto 0 0; width: 100%; max-width: none; max-height: 90dvh; margin: 0; border-inline: 0; border-bottom: 0; border-radius: var(--panel-radius) var(--panel-radius) 0 0; }
+  .dialog { position: fixed; inset: auto 0 0; left: 0; width: 100%; max-width: none; max-height: 90dvh; margin: 0; border-inline: 0; border-bottom: 0; border-radius: var(--panel-radius) var(--panel-radius) 0 0; }
   @starting-style { .dialog[open] { transform: translateY(32px); } }
   .stage { height: 188px; padding-top: 24px; }
   .body { padding: 20px 16px 16px; }
