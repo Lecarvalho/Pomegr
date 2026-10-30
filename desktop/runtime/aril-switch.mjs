@@ -4,8 +4,9 @@
 // the owner turns it On: no Aril run, tool, queue, or monitor path reaches this module. A fresh install, a missing file, and a file
 // outside the contract all read as Off.
 //
-// `pairedOn` is the owner's permission for a paired device to turn Aril On (a paired device may always turn it Off). It is the
-// global counterpart of a repository's `pairedDevices` setting, which lets a paired device start a grant.
+// `pairedOn` is the owner's one permission for paired devices, for every repository: a paired device may then turn Aril On, and change the
+// repositories' memory and Aril's settings. A paired device may always turn Aril Off and stop a grant. It is false until the owner allows it, or
+// until the one-time carry-over of the old per-repository `pairedDevices` setting does (aril-paired-carry.mjs).
 
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs/promises";

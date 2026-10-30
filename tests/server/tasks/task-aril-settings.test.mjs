@@ -45,14 +45,30 @@ test("defaults, subset replacement, repository isolation and persistence", (t) =
   const { store, directory, set } = setup(t);
   assert.deepEqual(store.readBoard(REPO).aril, { settings: { ...defaults(), settledAt: null }, memory: EMPTY, grant: null });
   assert.deepEqual(set({}), { ok: true, settings: defaults() });
-  assert.equal(set({ actions: { ...defaults().actions, start: true }, pairedDevices: true }).ok, true);
-  assert.deepEqual(set({ actions: defaults().actions }), { ok: true, settings: { ...defaults(), pairedDevices: true } });
+  assert.equal(set({ actions: { ...defaults().actions, start: true }, followUps: false }).ok, true);
+  assert.deepEqual(set({ actions: defaults().actions }), { ok: true, settings: { ...defaults(), followUps: false } });
   assert.deepEqual(store.readBoard(OTHER).aril, { settings: { ...defaults(), settledAt: null }, memory: EMPTY, grant: null });
   const again = openTaskStore({ directory });
-  try { assert.equal(again.readBoard(REPO).aril.settings.pairedDevices, true); } finally { again.close(); }
+  try { assert.equal(again.readBoard(REPO).aril.settings.followUps, false); } finally { again.close(); }
   const leaked = store.readBoard(REPO).aril;
   leaked.settings.actions.start = true;
   assert.equal(store.readBoard(REPO).aril.settings.actions.start, false);
+});
+
+test("the first version's pairedDevices stays stored and served for the carry-over, is never set by an action, and survives other changes", (t) => {
+  const { store, directory, set } = setup(t);
+  assert.equal(store.readBoard(REPO).aril.settings.pairedDevices, false, "false until a stored value says otherwise");
+  set({});
+  const database = new DatabaseSync(path.join(directory, "tasks.sqlite"));
+  try {
+    database.prepare("UPDATE aril_settings SET value = ? WHERE repository_id = ?").run(JSON.stringify({ ...defaults(), pairedDevices: true }), REPO);
+  } finally { database.close(); }
+  assert.equal(store.readBoard(REPO).aril.settings.pairedDevices, true, "an old stored value is still served");
+  assert.equal(store.readBoard(OTHER).aril.settings.pairedDevices, false);
+  // No action sets it, either way, and a change to another field leaves it as it was.
+  for (const value of [true, false, "yes", null]) invalid(set({ pairedDevices: value }));
+  assert.equal(set({ mergeMethod: "squash" }).settings.pairedDevices, true);
+  assert.equal(store.readBoard(REPO).aril.settings.pairedDevices, true);
 });
 
 test("settings reject unknown keys and invalid whole fields without partial writes", (t) => {
@@ -142,7 +158,7 @@ test("legacy grant limits migrate on read and write using the new names", (t) =>
   } finally { database.close(); }
   assert.deepEqual(store.readBoard(REPO).aril.settings.limits,
     { hours: 4, tasks: 8, tasksAtATime: 2, sendBacks: 3, usagePercent: 60 });
-  assert.deepEqual(set({ pairedDevices: true }).settings.limits,
+  assert.deepEqual(set({ followUps: true }).settings.limits,
     { hours: 4, tasks: 8, tasksAtATime: 2, sendBacks: 3, usagePercent: 60 });
   const reopened = new DatabaseSync(path.join(directory, "tasks.sqlite"));
   try {

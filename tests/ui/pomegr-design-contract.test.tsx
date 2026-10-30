@@ -13,13 +13,15 @@ import { ArilControlSamples } from "../../app/components/design-system/DesignSys
 import { ArilSettingsSamples } from "../../app/components/design-system/DesignSystemTaskGatesSample";
 import type { StorageSnapshot } from "../../shared/storage-contract";
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
-it("includes every state of the repository settings and the running-grant line that Settings › Aril keeps", () => {
+it("includes the running-grant line that Settings › Aril keeps, and no per-repository settings card", () => {
   render(<ArilSettingsSamples />);
-  for (const state of ["desktop editable", "paired read-only", "paired allowed", "save failure"]) expect(screen.getByText(`Aril repository settings, ${state}`)).toBeInTheDocument();
   for (const label of ["Grant line, active", "Grant line, Aril off", "Grant line, browser", "Capacity strip, grant active"]) expect(screen.getByText(label)).toBeInTheDocument();
-  expect(screen.getByRole("alert")).toHaveTextContent("Aril settings could not be saved. Try again.");
+  // The per-repository card (Reviewer, Different provider than the builder, Paired devices, and its repository choice) is gone from the samples as from the page.
+  expect(screen.queryByText(/Aril repository settings/u)).toBeNull();
+  for (const name of [/Reviewer/u, /Different provider than the builder/u, /Paired devices/u]) expect(screen.queryByText(name)).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
   // A grant's own sections are gone from the samples as from the page.
-  for (const heading of ["Grant", "Actions under a grant", "Limits", "Work rules"]) expect(screen.queryByRole("heading", { name: heading })).toBeNull();
+  for (const heading of ["Grant", "Actions under a grant", "Limits", "Work rules", "Per repository"]) expect(screen.queryByRole("heading", { name: heading })).toBeNull();
 });
 it("includes every state of the Aril cards, drawn with the shared switch, the six button roles, and the one chip", () => {
   const { container } = render(<ArilControlSamples />);

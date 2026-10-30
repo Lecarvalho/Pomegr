@@ -68,16 +68,14 @@ and adds **Rework** to the log. Causes are declarations, not automatic detection
 
 ### Aril settings
 
-Open **Settings** and select **Aril** to turn Aril on or off, edit memory, see the space conversations take, and set the reviewer.
-**Aril settings** above the board opens the same section for that board's repository. In the **Per repository** card, choose the repository,
-which Pomegr remembers, then choose the reviewer's provider and model, and whether a different provider than the builder reviews.
-Each change saves at once.
+Open **Settings** and select **Aril** to turn Aril on or off, edit memory, and see the space conversations take.
+**Aril settings** above the board opens the same section, with the memory of that board's repository open.
 
 The **Memory** card has a tab for each repository: free text of at most 6,000 characters about how things are done there. Aril keeps it current
 and you can edit it; it is context and not permission (see [Aril's settings and memory](agent-chat.md#arils-settings-and-memory)).
 
-Paired devices can read these settings and the memory. To allow changes, enable **Allow paired devices to change Aril settings and memory** in the desktop app.
-Only the desktop app can change that permission. A grant's own settings (actions, limits, and work rules) are no longer in Settings.
+Paired devices can read the memory. To let a phone also turn Aril on and change a repository's memory and Aril's settings, turn on the small switch under Aril's switch in the desktop app.
+One switch covers every repository, and only the desktop app can change it. Settings no longer has a card for each repository, and a grant's own settings (actions, limits, and work rules) are not in Settings either. The reviewer choice will move to an agreement, when agreements replace grants.
 
 ### Aril grants
 
@@ -148,7 +146,7 @@ sessions, and a review carries a **Review** label.
 The strip above the board shows **Aril grant until** the end time, and the **Aril** section of Settings shows the tasks used.
 Select **Stop grant** to stop every further grant action at once. Running sessions continue, because
 stopping a grant ends no session. A paired phone can always stop a grant. It can start one only when you allow
-paired devices in the **Aril** section of Settings. That section shows when the last grant ended and why.
+paired devices with the switch under Aril's switch in Settings. That section shows when the last grant ended and why.
 
 ## Before you start
 

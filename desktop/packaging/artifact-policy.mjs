@@ -58,6 +58,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/agent-chat-space.mjs",
   "desktop/runtime/agent-chat-prompt-parts.mjs",
   "desktop/runtime/aril-switch.mjs",
+  "desktop/runtime/aril-paired-carry.mjs",
   "desktop/runtime/aril-owner-memory.mjs",
   "desktop/runtime/aril-thread-limit.mjs",
   "desktop/runtime/agent-chat-memory.mjs",

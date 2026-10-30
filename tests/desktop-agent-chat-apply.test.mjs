@@ -510,7 +510,7 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs", "agent-chat-jev.mjs", "agent-chat-jev-key.mjs", "agent-chat-jev-transport.mjs", "agent-chat-github.mjs", "agent-chat-aril.mjs", "agent-chat-space.mjs", "agent-chat-prompt-parts.mjs", "aril-switch.mjs", "aril-owner-memory.mjs", "aril-thread-limit.mjs", "agent-chat-memory.mjs", "agent-chat-approved.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs", "agent-chat-jev.mjs", "agent-chat-jev-key.mjs", "agent-chat-jev-transport.mjs", "agent-chat-github.mjs", "agent-chat-aril.mjs", "agent-chat-space.mjs", "agent-chat-prompt-parts.mjs", "aril-switch.mjs", "aril-paired-carry.mjs", "aril-owner-memory.mjs", "aril-thread-limit.mjs", "agent-chat-memory.mjs", "agent-chat-approved.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {
@@ -583,6 +583,10 @@ test("the chat is wired once into the shell, the LAN gateway, and the preload", 
   assert.match(preload, /new Set\(\["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"\]\)/u);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat-image", operation, payload\)/u);
   assert.match(sharing, /agentChat: options\.agentChat/u);
+  // The owner's one permission for paired devices reaches the LAN gateway from desktop main, and the carry-over of the old per-repository setting runs there too.
+  assert.match(main, /arilOn: agentChat\.arilOn, arilPairedOn: agentChat\.arilPairedOn,/u);
+  assert.match(main, /prefetchGithub: true, sweepThreads: true, carryPaired: true,/u);
+  assert.match(sharing, /arilOn: options\.arilOn, arilPairedOn: options\.arilPairedOn,/u);
 });
 
 test("an applied set_after sends after_set with the list, and a task the board does not hold answers not_found without a request", async (context) => {

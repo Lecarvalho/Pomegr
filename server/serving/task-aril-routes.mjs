@@ -6,19 +6,10 @@ const json = (response, status, body) => {
   response.end(JSON.stringify(body));
 };
 
-export function serveArilActionRoute({ request, response, taskStore, repositoryId, action, payload }) {
+export function serveArilActionRoute({ response, taskStore, repositoryId, action, payload }) {
   try {
-    if (request.headers["x-pomegr-lan-gateway"] === "1") {
-      if (action === "aril_settings_set" && payload.settings && typeof payload.settings === "object"
-        && !Array.isArray(payload.settings) && Object.hasOwn(payload.settings, "pairedDevices")) {
-        json(response, 400, { ok: false, error: "invalid" });
-        return;
-      }
-      if (action !== "grant_stop" && taskStore?.readBoard(repositoryId)?.aril?.settings?.pairedDevices !== true) {
-        json(response, 403, { ok: false, error: "unavailable" });
-        return;
-      }
-    }
+    // The monitor does not know whether the owner allows paired devices: that is the Aril switch's `pairedOn`, kept by desktop main. The LAN gateway
+    // judges it before the web host forwards a paired request here, so the marked request is trusted like any other paired action.
     if (typeof taskStore?.apply !== "function") {
       json(response, 503, { ok: false, error: "conflict" });
       return;

@@ -321,14 +321,15 @@ The first thing in the **Aril** section of Settings is one switch. The panel's h
 - **Aril is Off until you turn it on.** Only you turn it on. Aril never does, and it is Off again only when you turn it off. A restart keeps what you chose.
 - **Off takes effect at once**, in the desktop app and on a paired phone. A grant then starts, reviews, sends back, merges, and marks Done nothing, and writes no tasks. After you apply or dismiss a proposal, Aril writes no follow-up. A session that is already running goes on.
 - **The chat still answers.** Write to Aril while it is Off and it answers, as it always does. Aril saves nothing to memory while it is Off.
-- **Settings turns read only.** Everything under the switch in **Settings**, under **Aril**, is gray and read only while Aril is Off: your memory and each repository's, the conversation space and its limit, the effort routing, and the repository settings. Pomegr refuses those changes too, on the computer and from a paired phone. A notice says so. Turn Aril on to change them. Pomegr still flushes a conversation that passes your limit, because that is housekeeping on your own files, not something Aril does.
-- **A phone** can always turn Aril off. It can turn Aril on only after you allow that with **Paired devices** under the switch in the desktop app.
+- **Settings turns read only.** Everything under the switch in **Settings**, under **Aril**, is gray and read only while Aril is Off: your memory and each repository's, the conversation space and its limit, and the effort routing. Pomegr refuses those changes too, and any change to Aril's settings, on the computer and from a paired phone. A notice says so. Turn Aril on to change them. Pomegr still flushes a conversation that passes your limit, because that is housekeeping on your own files, not something Aril does.
+- **A phone** can always turn Aril off. It can also turn Aril on, and change Aril's settings and each repository's memory, only after you allow that in the desktop app. Turn on the small switch under Aril's switch: "A paired phone can always turn Aril off. Let it also turn Aril on and change Aril's repository memory and settings." One switch covers every repository, and a phone never edits your own memory.
+- **If you allowed paired devices before.** Earlier versions had a **Paired devices** switch for each repository. If you turned it on for any repository, Pomegr turns the one switch on for you, once. You can turn it off, and Pomegr does not turn it on again.
 
 ## Aril's settings and memory
 
 Ask Aril to settle this repository's merge settings or reviewer choice. Aril proposes each
 change, and you select **Apply changes** to save it. Aril never changes settings by itself. Only
-you can allow paired devices to manage these settings, in the desktop app. They are in the
+you can allow paired devices to manage these settings, with the switch under Aril's switch in the desktop app. They are in the
 **Aril** section of Settings (see [Aril settings](tasks.md#aril-settings)).
 
 Aril does not ask again what a setting or the memory already answers. It asks again when
@@ -339,7 +340,7 @@ file, then proposes an update or asks only about what the change left unclear.
 
 ### Memory
 
-**Memory** in the **Aril** section holds what Aril should know about how you like things done. It has one tab for you, for every repository, and one for each repository. Each memory is free text of at most 6,000 characters, such as "Reply in the language I write in." Edit it in the field; it saves when you leave the field. A paired phone reads your memory, and edits a repository's memory only when you allowed paired devices for that repository.
+**Memory** in the **Aril** section holds what Aril should know about how you like things done. It has one tab for you, for every repository, and one for each repository. Each memory is free text of at most 6,000 characters, such as "Reply in the language I write in." Edit it in the field; it saves when you leave the field. A paired phone reads your memory and never edits it. It edits a repository's memory only when you allowed paired devices in the desktop app.
 
 Memory is context for Aril. It is not permission: a line in it lets Aril do nothing new, and it is not an agreement about what Aril may do on its own.
 

@@ -129,9 +129,13 @@ function validRule(database, repositoryId, rule) {
       "SELECT 1 FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, Number(id.slice(2))) !== undefined);
 }
 
+// `pairedDevices` is the first version's per-repository permission for paired devices. It stays stored and served, read only by desktop main's one-time
+// carry-over to the owner's one global permission, and no action sets it any more: the permission is the Aril switch's `pairedOn`.
+const SETTABLE = Object.freeze(Object.keys(defaults()).filter((field) => field !== "pairedDevices"));
+
 export function arilSettingsSet({ database, repositoryId, ensureRepository, now }, payload) {
   const base = defaults();
-  if (!exact(payload, ["settings"]) || !keys(payload.settings, Object.keys(base))) return invalid();
+  if (!exact(payload, ["settings"]) || !keys(payload.settings, SETTABLE)) return invalid();
   const input = payload.settings;
   for (const [field, value] of Object.entries(input)) {
     if (field === "actions" && (!exact(value, Object.keys(base.actions)) || !Object.values(value).every((v) => typeof v === "boolean"))) return invalid();
@@ -143,7 +147,7 @@ export function arilSettingsSet({ database, repositoryId, ensureRepository, now 
     if (field === "workRules" && (!Array.isArray(value) || value.length > 20 || !value.every((rule) => validRule(database, repositoryId, rule)))) return invalid();
     if (field === "reviewer" && (!exact(value, Object.keys(base.reviewer)) || ![null, "claude", "codex"].includes(value.provider)
       || normalizeModelIdentifier(value.model) === undefined || typeof value.differentFromBuilder !== "boolean")) return invalid();
-    if ((field === "pairedDevices" || field === "followUps") && typeof value !== "boolean") return invalid();
+    if (field === "followUps" && typeof value !== "boolean") return invalid();
   }
   const settings = { ...readSettings(database, repositoryId), ...input };
   if (input.reviewer) settings.reviewer = { ...input.reviewer, model: normalizeModelIdentifier(input.reviewer.model) };

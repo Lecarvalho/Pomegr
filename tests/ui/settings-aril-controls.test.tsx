@@ -62,7 +62,8 @@ const asDesktop = () => setBridge({
 const asPhone = () => {
   access.mode = "lan"; setBridge(undefined);
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
-    const body = JSON.parse(String(init.body)) as { operation?: string; payload: Json };
+    const body = JSON.parse(String(init.body)) as { operation?: string; repositoryId?: string; action?: string; payload: Json };
+    if (String(url).includes("/api/tasks/action")) desktop.taskCalls.push({ repositoryId: String(body.repositoryId), action: String(body.action), payload: body.payload });
     if (String(url).includes("/api/tasks/action")) return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify(await answer(body.operation!, body.payload)), { status: 200, headers: { "content-type": "application/json" } });
   }));
@@ -137,16 +138,20 @@ describe("Settings › Aril: the top card", () => {
     expect(within(hero()).getByText("Off")).toBeInTheDocument();
   });
 
-  it("holds the paired-device permission in a row under it, with a small switch", async () => {
+  it("holds the one paired-device permission in a row under it, with a small switch, and no other row asks for it", async () => {
     asDesktop();
     await open();
-    const permission = await within(section()).findByRole("switch", { name: "A paired phone can always turn Aril off. Let it turn Aril on too" });
+    const permission = await within(section()).findByRole("switch", { name: "A paired phone can always turn Aril off. Let it also turn Aril on and change Aril's repository memory and settings." });
     expect(permission).toHaveClass("isSmall");
     expect(permission).not.toBeChecked();
     expect(hero().contains(permission)).toBe(true);
     await userEvent.click(permission);
     await waitFor(() => expect(permission).toBeChecked());
     expect(calls("aril_paired_on_set")).toEqual([{ operation: "aril_paired_on_set", payload: { allowed: true } }]);
+    // It is the only paired-device permission on the page: the repository has no row for it, and it says what a phone may do once it is on.
+    expect(within(section()).getAllByRole("switch", { name: /paired/iu })).toEqual([permission]);
+    expect(within(section()).queryByText(/Paired devices/u)).toBeNull();
+    expect(within(hero()).getByText("A paired phone can always turn Aril off. Let it also turn Aril on and change Aril's repository memory and settings.")).toBeInTheDocument();
   });
 
   it("on a paired device: Off with no permission cannot be turned on, and says where to", async () => {
@@ -268,19 +273,28 @@ describe("Settings › Aril: memory", () => {
     await waitFor(() => expect(desktop.taskCalls).toEqual([{ repositoryId: current.board.repositoryId, action: "aril_memory_set", payload: { text: "- Docs in English.\n- Plan-only pull requests merge at once." } }]));
   });
 
-  it("is read-only on a paired device: yours, and a repository's unless the desktop allowed it", async () => {
+  it("is read-only on a paired device: yours always, and a repository's unless the owner allowed paired devices (the one global permission)", async () => {
     asPhone();
+    desktop.state.on = true;
     desktop.memory = { text: "- Answer briefly.", previous: null, updatedAt: Date.now() - HOUR, updatedBy: "owner" };
+    // A repository whose old per-repository setting says yes grants nothing: the permission is the switch card's.
+    current.board = { ...current.board, aril: { ...current.board.aril!, settings: { ...settings, pairedDevices: true } } } as TaskBoard;
     await open();
     const field = await within(section()).findByRole("textbox", { name: "Your memory" });
     expect(field).toHaveAttribute("readonly");
     await userEvent.click(within(section()).getByRole("tab", { name: "pomegr" }));
     expect(await within(section()).findByRole("textbox", { name: "pomegr memory" })).toHaveAttribute("readonly");
     cleanup();
-    current.board = { ...current.board, aril: { ...current.board.aril!, settings: { ...settings, pairedDevices: true } } } as TaskBoard;
+    desktop.state.pairedOn = true;
+    current.board = { ...current.board, aril: { ...current.board.aril!, settings: { ...settings, pairedDevices: false } } } as TaskBoard;
     await open();
+    expect(await within(section()).findByRole("textbox", { name: "Your memory" })).toHaveAttribute("readonly");
     await userEvent.click(await within(section()).findByRole("tab", { name: "pomegr" }));
-    expect(await within(section()).findByRole("textbox", { name: "pomegr memory" })).not.toHaveAttribute("readonly");
+    const allowed = await within(section()).findByRole("textbox", { name: "pomegr memory" });
+    await waitFor(() => expect(allowed).not.toHaveAttribute("readonly"));
+    await userEvent.type(allowed, "{enter}- Plan-only pull requests merge at once.");
+    fireEvent.blur(allowed);
+    await waitFor(() => expect(desktop.taskCalls).toEqual([{ repositoryId: current.board.repositoryId, action: "aril_memory_set", payload: { text: "- Docs in English.\n- Plan-only pull requests merge at once." } }]));
   });
 });
 
@@ -495,7 +509,7 @@ describe("Settings › Aril: while Aril is off", () => {
     expect(below().contains(hero())).toBe(false);
   });
 
-  it("disables every real control under it: both memory tabs, the limit and the flushes, the effort routing, and the repository's settings", async () => {
+  it("disables every real control under it: both memory tabs, the limit and the flushes, and the effort routing", async () => {
     const agentChatJev = vi.fn(async () => ({ ok: true, state: "set" }));
     asDesktop();
     setBridge({ ...(window as Window & { pomegrDesktop?: Json }).pomegrDesktop, agentChatJev });
@@ -514,16 +528,15 @@ describe("Settings › Aril: while Aril is off", () => {
     const effort = await waitFor(() => card("Effort routing"));
     expect(await within(effort).findByRole("button", { name: "Replace key" })).toBeDisabled();
     expect(within(effort).getByRole("button", { name: "Remove Jev key" })).toBeDisabled();
-    const repository = card("Per repository");
-    expect(within(repository).getByRole("combobox", { name: "Repository" })).toBeDisabled();
-    expect(within(repository).getByRole("combobox", { name: "Reviewer provider" })).toBeDisabled();
-    expect(within(repository).getByRole("textbox", { name: "Reviewer model" })).toBeDisabled();
-    for (const toggle of within(repository).getAllByRole("switch")) expect(toggle).toBeDisabled();
+    // The page has no per-repository card, so nothing else is left that could write Aril's settings.
+    expect(within(section()).queryByRole("heading", { name: "Per repository" })).toBeNull();
+    expect(within(below()).queryByRole("combobox", { name: "Repository" })).toBeNull();
+    for (const control of within(below()).queryAllByRole("switch")) expect(control).toBeDisabled();
     await userEvent.click(within(memory).getByRole("tab", { name: "pomegr" }), { pointerEventsCheck: 0 });
     expect(within(memory).getByRole("tab", { name: "You" })).toHaveAttribute("aria-selected", "true");
     // The switch card stays active: the main switch and its paired-device row.
     expect(within(hero()).getByRole("switch", { name: "Let Aril act" })).toBeEnabled();
-    expect(within(hero()).getByRole("switch", { name: "A paired phone can always turn Aril off. Let it turn Aril on too" })).toBeEnabled();
+    expect(within(hero()).getByRole("switch", { name: "A paired phone can always turn Aril off. Let it also turn Aril on and change Aril's repository memory and settings." })).toBeEnabled();
     // A repository's memory is read only too.
     const repositoryMemory = within(section()).queryByRole("textbox", { name: "pomegr memory" });
     expect(repositoryMemory === null || (repositoryMemory as HTMLTextAreaElement).disabled).toBe(true);
@@ -545,10 +558,10 @@ describe("Settings › Aril: while Aril is off", () => {
     await waitFor(() => expect(within(memory).getByRole("textbox", { name: "Your memory" })).toBeEnabled());
     expect(within(memory).getAllByRole("tab").every((tab) => !(tab as HTMLButtonElement).disabled)).toBe(true);
     expect(within(card("Conversation space")).getByRole("combobox", { name: "Flush oldest at" })).toBeEnabled();
-    expect(within(card("Per repository")).getByRole("textbox", { name: "Reviewer model" })).toBeEnabled();
+    expect(desktop.taskCalls).toEqual([]);
   });
 
-  it("closes any open edit when Aril is turned off: a flush question, the key field, a memory draft, and the reviewer's model", async () => {
+  it("closes any open edit when Aril is turned off: a flush question, the key field, and a memory draft", async () => {
     const agentChatJev = vi.fn(async () => ({ ok: true, state: "set" }));
     asDesktop();
     setBridge({ ...(window as Window & { pomegrDesktop?: Json }).pomegrDesktop, agentChatJev });
@@ -576,16 +589,7 @@ describe("Settings › Aril: while Aril is off", () => {
     expect(within(effort).queryByLabelText("Jev key")).toBeNull();
     expect(desktop.calls.filter((call) => call.operation === "owner_memory_set")).toEqual([]);
     expect(agentChatJev).not.toHaveBeenCalledWith("set", expect.anything());
-    // The reviewer's model draft is closed the same way.
-    fireEvent.click(within(hero()).getByRole("switch", { name: "Let Aril act" }));
-    await waitFor(() => expect(below()).not.toHaveClass("isLocked"));
-    const model = within(card("Per repository")).getByRole("textbox", { name: "Reviewer model" });
-    await waitFor(() => expect(model).toBeEnabled());
-    await userEvent.type(model, "gpt-6");
-    fireEvent.click(within(hero()).getByRole("switch", { name: "Let Aril act" }));
-    await waitFor(() => expect(below()).toHaveClass("isLocked"));
-    expect(within(card("Per repository")).getByRole("textbox", { name: "Reviewer model" })).toHaveValue("");
-    expect(JSON.stringify(desktop.taskCalls)).not.toContain("gpt-6");
+    expect(desktop.taskCalls).toEqual([]);
   });
 
   it("reads as locked, with no notice, until the desktop has answered, and is not locked in a plain browser", async () => {

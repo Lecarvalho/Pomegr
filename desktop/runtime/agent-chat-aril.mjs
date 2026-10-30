@@ -5,7 +5,8 @@
 //
 // Who may do what:
 // - The switch: anyone may read it. The desktop window turns it On or Off. A paired device may always turn it Off (a stop is always
-//   allowed, as a grant's is), and may turn it On only when the owner allowed that on the desktop (`aril_paired_on_set`).
+//   allowed, as a grant's is), and may turn it On only when the owner allowed paired devices on the desktop (`aril_paired_on_set`). That one
+//   permission, `pairedOn`, is also what lets a paired device change a repository's memory and Aril's settings; `pairedAllowed` answers it.
 // - The owner's memory: anyone may read it; only the desktop window edits it. Aril keeps it current through one fixed update that desktop
 //   main validates (agent-chat-memory.mjs); the operations here are not that path.
 // - The thread space, the limit ("Flush oldest at"), and the owner's flush: the desktop window only.
@@ -15,6 +16,7 @@
 import path from "node:path";
 
 import { createArilSwitch, ARIL_DIRECTORY, ARIL_SWITCH_FILE } from "./aril-switch.mjs";
+import { createPairedCarryOver, PAIRED_CARRY_FILE } from "./aril-paired-carry.mjs";
 import { createOwnerMemory, OWNER_MEMORY_FILE } from "./aril-owner-memory.mjs";
 import { createThreadLimit, THREAD_LIMIT_FILE } from "./aril-thread-limit.mjs";
 import { AGENT_CHAT_DIRECTORY } from "./agent-chat-store.mjs";
@@ -34,11 +36,13 @@ const exactly = (value, keys) => isPlainObject(value) && Object.keys(value).leng
 
 /**
  * `dataRoot` holds the switch, the owner's memory, and the thread limit (`<dataRoot>/aril-v1/`) and the threads (`<dataRoot>/agent-chat-v1/`).
- * Tests give `arilSwitch`, `ownerMemory`, `threadLimit`, and `space` of their own. `busy(repositoryId)` says whether a turn of the repository
+ * Tests give `arilSwitch`, `ownerMemory`, `threadLimit`, `space`, and `pairedCarry` of their own. `busy(repositoryId)` says whether a turn of the repository
  * runs or waits, and `onOff()` is called each time the switch turns Off, to drop what Off must not run.
  */
-export function createArilControl({ dataRoot = null, arilSwitch, ownerMemory, threadLimit, space, store, images, busy = () => false, onOff = () => {}, now } = {}) {
+export function createArilControl({ dataRoot = null, arilSwitch, ownerMemory, threadLimit, space, pairedCarry, store, images, busy = () => false, onOff = () => {}, now } = {}) {
   const held = arilSwitch ?? createArilSwitch(dataRoot ? { file: path.join(dataRoot, ARIL_DIRECTORY, ARIL_SWITCH_FILE) } : {});
+  // The one-time carry-over of the old per-repository permission. A control with no data root keeps no marker and carries nothing.
+  const carry = pairedCarry ?? (dataRoot ? createPairedCarryOver({ file: path.join(dataRoot, ARIL_DIRECTORY, PAIRED_CARRY_FILE), arilSwitch: held }) : null);
   const memory = ownerMemory ?? createOwnerMemory({ ...(dataRoot ? { file: path.join(dataRoot, ARIL_DIRECTORY, OWNER_MEMORY_FILE) } : {}), ...(now ? { now: () => now().getTime() } : {}) });
   // A new limit is judged at once for every thread: one that is over it and idle is flushed now.
   let threads = null;
@@ -49,6 +53,8 @@ export function createArilControl({ dataRoot = null, arilSwitch, ownerMemory, th
   const desktop = (origin) => Boolean(origin?.event);
   // The switch is read before the first write it judges, so a write at start never meets an Off that is only the unread state.
   const isOff = async () => { await held.ready; return !held.isOn(); };
+  // Whether the owner allows paired devices: the one global permission. False until the switch has been read.
+  const pairedAllowed = async () => { await held.ready; return held.state().pairedOn === true; };
   const memoryAnswer = (answer) => (answer.ok ? answer : refused(answer.error));
 
   const handlers = {
@@ -68,6 +74,8 @@ export function createArilControl({ dataRoot = null, arilSwitch, ownerMemory, th
     aril_paired_on_set: async (payload, origin) => {
       if (!exactly(payload, ["allowed"]) || typeof payload.allowed !== "boolean") return INVALID;
       if (!desktop(origin)) return DESKTOP_ONLY;
+      // The owner's choice ends the carry-over of the old per-repository permission, so it never undoes what the owner chose.
+      void carry?.settle();
       const outcome = await held.setPairedOn(payload.allowed);
       return outcome === "ok" ? { ok: true, pairedOn: held.state().pairedOn } : outcome === "superseded" ? refused("conflict") : UNAVAILABLE;
     },
@@ -101,7 +109,10 @@ export function createArilControl({ dataRoot = null, arilSwitch, ownerMemory, th
   return Object.freeze({
     /** Whether Aril is On now: the one question the grant runner, the grant write, and the automatic follow-ups ask before they act. */
     isOn: () => held.isOn(),
+    /** Whether paired devices may turn Aril On and change a repository's memory and Aril's settings: the owner's one permission (`pairedOn`). */
+    pairedAllowed,
     arilSwitch: held,
+    pairedCarry: carry,
     ownerMemory: memory,
     threadLimit: limit,
     /** Whether a flush of the repository runs now. A message of the owner waits for it, so a flush never works on a conversation a turn is saving. */

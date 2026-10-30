@@ -691,7 +691,7 @@ test("capability answers cover the full scope and current grant authority", () =
 });
 
 test("Start grant guidance includes permitted paired devices", () => {
-  assert.match(AGENT_CHAT_INSTRUCTIONS, /The owner presses Start grant in the desktop app, or on a paired device when pairedDevices is true\./u);
+  assert.match(AGENT_CHAT_INSTRUCTIONS, /The owner presses Start grant in the desktop app, or on a paired device when the owner allows paired devices\./u);
 });
 
 test("the instructions keep the read-only promise and treat everything else as data", () => {

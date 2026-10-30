@@ -57,7 +57,7 @@ const defaults = () => ({
   actions: { start: false, review: false, sendBack: false, merge: false, writeTasks: false, markDone: false },
   mergeMethod: null, mergeMode: null, deleteBranch: null,
   limits: { hours: null, tasks: null, tasksAtATime: null, sendBacks: null, usagePercent: 80 },
-  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, pairedDevices: false, followUps: true,
+  workRules: [], reviewer: { provider: null, model: null, differentFromBuilder: false }, followUps: true,
 });
 
 test("grant writing routes keep exact payloads and fixed answers, and serve write steps", async (t) => {
@@ -148,21 +148,21 @@ test("grant actions use fixed envelopes and the start grant is not ready by defa
   assert.deepEqual(await post(port, "grant_stop", envelope({})).then((response) => response.json), { ok: true });
 });
 
-test("paired-device marker can stop a grant, never start one, and needs the paired setting", async (t) => {
+test("a paired-device marker reaches grant start and stop like the desktop: the owner's one permission is judged by desktop main's gateway", async (t) => {
   const { port, store } = await setup(t);
-  fixedError(await post(port, "grant_start", envelope({}), PAIRED), 403, "unavailable");
+  // The monitor does not know the permission, and a repository's old pairedDevices grants nothing here: a marked start meets the grant's own rules.
+  fixedError(await post(port, "grant_start", envelope({}), PAIRED), 409, "not_ready");
   assert.deepEqual(await post(port, "grant_stop", envelope({}), PAIRED).then((response) => response.json), { ok: true });
-  assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings: { pairedDevices: true } }).ok, true);
   const readySettings = defaults();
   readySettings.actions.start = true;
   readySettings.actions.review = true;
   readySettings.limits = { ...readySettings.limits, hours: 1, tasks: 1, tasksAtATime: 1 };
-  readySettings.pairedDevices = true;
   assert.equal(store.apply(REPOSITORY_ID, "aril_settings_set", { settings: readySettings }).ok, true);
   const started = await post(port, "grant_start", envelope({}), PAIRED);
   assert.equal(started.status, 200);
   assert.deepEqual(Object.keys(started.json), ["ok", "grant"]);
   assert.deepEqual(started.json.grant, store.readBoard(REPOSITORY_ID).aril.grant);
+  assert.deepEqual(await post(port, "grant_stop", envelope({}), PAIRED).then((response) => response.json), { ok: true });
 });
 
 test("grant runner routes require desktop authorization and reject paired requests", async (t) => {

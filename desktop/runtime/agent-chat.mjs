@@ -127,7 +127,7 @@ export function createAgentChat(options = {}) {
   const followUps = new Map();
   // The On/Off switch, the owner's memory, the thread space, and its limit (see agent-chat-aril.mjs). Off drops the follow-ups that wait. A thread is
   // busy while a turn, a follow-up, a compaction, or the owner's Apply of a proposal of it runs: nothing flushes it then.
-  const aril = createArilControl({ dataRoot, now, store, images, arilSwitch: options.arilSwitch, ownerMemory: options.ownerMemory, threadLimit: options.threadLimit, space: options.threadSpace, onOff: () => followUps.clear(),
+  const aril = createArilControl({ dataRoot, now, store, images, arilSwitch: options.arilSwitch, ownerMemory: options.ownerMemory, threadLimit: options.threadLimit, space: options.threadSpace, pairedCarry: options.pairedCarry, onOff: () => followUps.clear(),
     busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId) || [...applying].some((key) => key.startsWith(`${repositoryId}/`)) });
   // Desktop main alone asks for it, a little after it starts: a thread that grew past the owner's limit while the app was closed is flushed then.
   if (options.sweepThreads) void aril.sweep();
@@ -177,6 +177,9 @@ export function createAgentChat(options = {}) {
   const worktreePrefetch = options.prefetchWorktrees ? prefetchWorktreeFacts({ inventory: worktreeInventory, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, ...(typeof options.prefetchWorktrees === "object" ? options.prefetchWorktrees : {}) }) : null;
   // Desktop main alone asks for it too: the repositories Aril was used for recently have their GitHub settings read before the first message.
   const githubPrefetch = repositoryGithub && store && options.prefetchGithub ? prefetchGithubSettings({ keeper: repositoryGithub, readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), rootOf: repositoryRoot, store, ...(typeof options.prefetchGithub === "object" ? options.prefetchGithub : {}) }) : null;
+
+  // Desktop main alone asks for it too: the old per-repository permission for paired devices is carried to the global one, once (aril-paired-carry.mjs).
+  const pairedCarry = options.carryPaired && aril.pairedCarry ? aril.pairedCarry.start({ readHome: () => monitor("/api/tasks?view=home", { method: "GET" }), readBoard }) : null;
 
   // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
   const taskReadServer = createTaskBridge({ mcpServer, monitor, current: (turn) => active === turn && !disposed });
@@ -688,9 +691,11 @@ export function createAgentChat(options = {}) {
       } else if (approve) {
         const board = await readBoard(repositoryId);
         if (!board) return UNAVAILABLE;
-        // Only the trusted window edits a feature, and applies Aril settings or memory freely; those need the paired-device switch.
-        if (!origin?.event && message.proposal.operations.some(({ op }) => FEATURE_EDIT_OPERATIONS.includes(op)
-          || (ARIL_OPERATIONS.includes(op) && board.aril?.settings?.pairedDevices !== true))) return refused("desktop_only");
+        // Only the trusted window edits a feature, and applies Aril settings freely; a paired device needs the owner's one permission for paired devices.
+        if (!origin?.event) {
+          const pairedAllowed = await aril.pairedAllowed();
+          if (message.proposal.operations.some(({ op }) => FEATURE_EDIT_OPERATIONS.includes(op) || (ARIL_OPERATIONS.includes(op) && !pairedAllowed))) return refused("desktop_only");
+        }
         const results = await applyOperations(message.proposal.operations, {
           board, post: (action, body) => taskAction(repositoryId, action, body),
           attach: (taskId, imageId) => attachImage(repositoryId, found.conversation, taskId, imageId),
@@ -753,9 +758,9 @@ export function createAgentChat(options = {}) {
     handle,
     image,
     grantWrite,
-    grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)), jevKey, arilOn: aril.isOn,
+    grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)), jevKey, arilOn: aril.isOn, arilPairedOn: aril.pairedAllowed,
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); githubPrefetch?.cancel(); repositoryGithub?.close(); try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); githubPrefetch?.cancel(); pairedCarry?.cancel(); repositoryGithub?.close(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 

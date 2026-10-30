@@ -31,7 +31,6 @@
 .arilCardAside { display: flex; align-items: center; gap: var(--space-2); color: var(--command-muted); font-size: var(--text-xs); }
 .arilCardCaption { margin: 0; padding: 0 var(--space-6) var(--space-3); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
 .arilCardNote { margin: 0; padding: 0 var(--space-6) var(--space-4); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
-.arilSettings > .arilCardNote { padding: 0; }
 .arilCardAlert { margin: 0; padding: 0 var(--space-6) var(--space-3); font-size: var(--text-xs); }
 
 /* Memory: tabs, one free-text field, and a footer. The field shows no focus ring: the caret marks focus (DESIGN.md, Agent chat exceptions). */
@@ -82,15 +81,6 @@
 .arilEffortKey label { color: var(--command-muted); font-size: var(--text-xs); }
 .arilEffortKey input { flex: 1 1 220px; min-width: 0; }
 
-/* Per repository: the settings a grant does not own. */
-.arilRows .commandSettingRow { padding: 14px var(--space-6); }
-.arilRows > .commandSettingRow + .commandSettingRow { border-top: 1px solid var(--command-line); }
-.arilReviewerControls { display: flex; align-items: center; gap: var(--space-2); }
-.arilReviewerControls input { width: 180px; }
-.arilReadOnly { color: var(--command-muted); font-size: var(--text-xs); }
-.arilRowNote { margin: 0; padding: 0 var(--space-6) var(--space-3); font-size: var(--text-xs); }
-.arilRepositoryCard .commandMonoValue { overflow-wrap: anywhere; }
-
 /* A grant that is still running: when it ends, and Stop grant. */
 .arilGrantLine { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-6); color: var(--command-ink); font-size: var(--text-xs); }
 .arilGrantLine > :first-child { flex: 1; min-width: 0; }
@@ -99,7 +89,7 @@
 @media (max-width: 760px) {
   .arilHeroMain { gap: var(--space-4); padding: var(--space-4); }
   .arilHeroRow { padding: var(--space-3) var(--space-4); }
-  .arilCardHead, .arilCardCaption, .arilCardNote, .arilCardAlert, .arilMemoryFooter, .arilMemoryChange, .arilRowNote { padding-inline: var(--space-4); }
+  .arilCardHead, .arilCardCaption, .arilCardNote, .arilCardAlert, .arilMemoryFooter, .arilMemoryChange { padding-inline: var(--space-4); }
   .arilMemoryField { width: calc(100% - 32px); margin-inline: var(--space-4); }
   .arilMemoryChange { grid-template-columns: minmax(0, 1fr); }
   .arilSpaceRow { grid-template-columns: minmax(0, 1fr) auto; padding-inline: var(--space-4); }
@@ -109,9 +99,6 @@
   .arilSpaceSize { grid-column: 1 / -1; order: 4; }
   .arilEffort { padding-inline: var(--space-4); }
   .arilEffortRow { flex-wrap: wrap; }
-  .arilRows .commandSettingRow { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding-inline: var(--space-4); }
-  .arilReviewerControls { flex-wrap: wrap; }
-  .arilReviewerControls input { width: 100%; }
   .arilGrantLine { padding-inline: var(--space-4); }
 }
 @media (pointer: coarse) {

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { normalizeOperation, normalizeProposal, applyOperations } from "../desktop/runtime/agent-chat-proposal.mjs";
 import { AGENT_CHAT_INSTRUCTIONS, boardSnapshot, composePrompt, PROMPT_LIMIT, proposalOutcome } from "../desktop/runtime/agent-chat-prompt.mjs";
+import { createArilSwitch } from "../desktop/runtime/aril-switch.mjs";
 import { chatHarness, seed, pendingProposal, withProposal, repositoryId, root, send } from "./helpers/agent-chat-harness.mjs";
 
 const actions = { start: false, review: true, sendBack: false, merge: false, writeTasks: false, markDone: false };
@@ -86,14 +87,14 @@ test("applied operations use exact monitor payloads and fixed outcomes, stopping
   }
 });
 
-test("paired Apply reads current pairedDevices; desktop Apply is unaffected for every operation", async (context) => {
-  for (const operation of operations) for (const pairedDevices of [undefined, false, true]) for (const paired of [false, true]) {
-    const h = await chatHarness(context);
-    h.state.board.aril = { settings: { ...settings, pairedDevices }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } };
+test("paired Apply needs the owner's one permission for paired devices, whatever a repository's old pairedDevices says; desktop Apply is unaffected", async (context) => {
+  for (const operation of operations) for (const pairedOn of [false, true]) for (const legacy of [undefined, false, true]) for (const paired of [false, true]) {
+    const h = await chatHarness(context, { arilSwitch: createArilSwitch({ initial: { on: true, pairedOn } }) });
+    h.state.board.aril = { settings: { ...settings, pairedDevices: legacy }, memory: { text: "", previous: null, updatedAt: null, updatedBy: null } };
     const saved = pendingProposal(proposal([operation]));
     const conversation = await seed(h, { messages: withProposal(saved) });
     const payload = { repositoryId, conversationId: conversation.id, proposalId: saved.id };
-    const allowed = !paired || pairedDevices === true;
+    const allowed = !paired || pairedOn;
     assert.deepEqual(await h.chat.handle("apply", payload, paired ? { paired: true } : { event: {} }), allowed ? { ok: true } : { ok: false, error: "desktop_only" });
     assert.equal(h.actionCalls().length, allowed ? 1 : 0);
     assert.ok(h.calls.some((call) => call.pathname === "/api/tasks"));
@@ -122,7 +123,8 @@ test("snapshot includes served settings and the repository's memory text within 
   const memory = { text: Array.from({ length: 20 }, (_, index) => `- Line ${index + 1} ${"x".repeat(280)}`).join("\n"), previous: "- an older text", updatedAt: 999, updatedBy: "aril" };
   const board = { aril: { settings: served, memory }, features: [{ id: "feat-1", name: "Delivery", done: false }], tasks: Array.from({ length: 100 }, (_, i) => ({ id: `T-${i + 1}`, text: "x".repeat(4000) })) };
   const snapshot = boardSnapshot(board, { repositoryName: "Repo" });
-  assert.deepEqual(snapshot.aril_settings, served);
+  assert.deepEqual(snapshot.aril_settings, { ...settings, settledAt: served.settledAt }, "the first version's per-repository pairedDevices grants nothing now and is not sent");
+  assert.equal(Object.hasOwn(snapshot.aril_settings, "pairedDevices"), false);
   assert.deepEqual(snapshot.features, [{ id: "feat-1", name: "Delivery", done: false }], "work rules need feature IDs, not titles");
   assert.deepEqual(snapshot.memory, { text: memory.text, updatedAt: new Date(999).toISOString() });
   assert.equal(snapshot.memory_omitted, undefined);

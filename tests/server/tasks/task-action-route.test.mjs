@@ -449,7 +449,7 @@ test("the paired-device route's mirrored list takes the group actions, refuses q
   assert.deepEqual(TASK_ACTIONS.filter((name) => !listed.includes(name)), ["feature_update", "feature_delete", "grant_start", "grant_stop"]);
 });
 
-test("Aril actions use the real store; paired writes are denied by default and gated settings remain desktop-only", async (context) => {
+test("Aril actions use the real store; a marked paired request is trusted, and no action sets the first version's per-repository pairedDevices", async (context) => {
   const store = await realStore(context);
   const { port } = await startRoute(context, { taskStore: store });
   const paired = { headers: { "x-pomegr-lan-gateway": "1" } };
@@ -470,26 +470,20 @@ test("Aril actions use the real store; paired writes are denied by default and g
   assert.deepEqual((await action("aril_memory_set", REPOSITORY_ID, { text: "" }, { port })).json.memory.text, "");
   for (const retired of ["aril_memory_add", "aril_memory_update", "aril_memory_remove"]) assert.equal((await action(retired, REPOSITORY_ID, { text: "x" }, { port })).status, 404, retired);
 
-  const pairedActions = [
-    ["aril_settings_set", { settings: { limits } }],
-    ["aril_memory_set", { text: "- Use pull requests" }],
-  ];
-  for (const [name, payload] of pairedActions) assert.equal((await action(name, REPOSITORY_ID, payload, { port, ...paired })).status, 403, name);
-  assert.deepEqual(store.readBoard(REPOSITORY_ID).aril.memory, { text: "", previous: "- Keep reviews focused", updatedAt: store.readBoard(REPOSITORY_ID).aril.memory.updatedAt, updatedBy: "owner" }, "a refused paired write changed nothing");
-
-  assert.deepEqual((await setSettings({ pairedDevices: true })).json.settings.pairedDevices, true);
+  // The monitor does not know the owner's one permission for paired devices (the Aril switch's `pairedOn`, kept by desktop main): the LAN gateway judges
+  // it before the web host forwards a request. A marked request is trusted like any other paired action, and a repository's old pairedDevices grants nothing.
   const pairedSettings = await action("aril_settings_set", REPOSITORY_ID, { settings: { limits } }, { port, ...paired });
   assert.equal(pairedSettings.status, 200);
   const pairedWritten = await action("aril_memory_set", REPOSITORY_ID, { text: "- Use pull requests" }, { port, ...paired });
   assert.equal(pairedWritten.status, 200);
   assert.equal(pairedWritten.json.memory.updatedBy, "owner", "a paired device is the owner's, never Aril");
   assert.equal((await action("aril_memory_set", REPOSITORY_ID, { text: "- Keep reviews focused", updatedBy: "aril" }, { port, ...paired })).status, 400);
-  for (const value of [true, false]) {
-    const response = await action("aril_settings_set", REPOSITORY_ID, { settings: { pairedDevices: value } }, { port, ...paired });
-    assertFixedError(response, 400, "invalid");
+  // pairedDevices is only stored and served now, for the one-time carry-over: no action sets it, from the desktop or from a paired device.
+  for (const value of [true, false]) for (const extra of [{}, paired]) {
+    assertFixedError(await action("aril_settings_set", REPOSITORY_ID, { settings: { pairedDevices: value } }, { port, ...extra }), 400, "invalid");
   }
-  assert.equal(store.readBoard(REPOSITORY_ID).aril.settings.pairedDevices, true);
-  // Follow-ups (T-183): on by default, switched off by the desktop, and on again by a paired device the owner allowed.
+  assert.equal(store.readBoard(REPOSITORY_ID).aril.settings.pairedDevices, false);
+  // Follow-ups (T-183): on by default, switched off by the desktop, and on again by a paired device.
   assert.equal((await setSettings({ followUps: false })).json.settings.followUps, false);
   assert.equal((await action("aril_settings_set", REPOSITORY_ID, { settings: { followUps: true } }, { port, ...paired })).json.settings.followUps, true);
   assertFixedError(await setSettings({ followUps: "off" }), 400, "invalid");

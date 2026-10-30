@@ -114,7 +114,7 @@ test("the automatic flush keeps running while Aril is Off: it is housekeeping an
   assert.deepEqual(await h.handlers.thread_flush({ repositoryId }, desktop), conflict, "while the owner's own flush is refused");
 });
 
-test("the renderer's task actions refuse a repository's memory edit while Aril is Off, and send every other action as before", async () => {
+test("the renderer's task actions refuse a repository's memory edit and Aril's settings while Aril is Off, and send every other action as before", async () => {
   const sent = [];
   let on = false;
   const action = createTaskAction({
@@ -123,16 +123,23 @@ test("the renderer's task actions refuse a repository's memory edit while Aril i
   });
   const trusted = { trusted: true };
   assert.deepEqual(await action.run(trusted, repositoryId, "aril_memory_set", { text: "- x" }), conflict);
+  // The reviewer and the other settings are read only too: the same refusal, and no request reaches the monitor.
+  assert.deepEqual(await action.run(trusted, repositoryId, "aril_settings_set", { settings: { reviewer: { provider: "codex", model: null, differentFromBuilder: false } } }), conflict);
+  assert.deepEqual(await action.run(trusted, repositoryId, "aril_settings_set", { settings: {} }), conflict);
   assert.deepEqual(sent, [], "no request reached the monitor");
-  assert.deepEqual(await action.run(trusted, repositoryId, "aril_settings_set", { settings: {} }), { ok: true });
   assert.deepEqual(await action.run(trusted, repositoryId, "grant_stop", {}), { ok: true }, "a grant can always be stopped");
+  // The origin and payload checks keep their words: the Off check follows them.
+  assert.deepEqual(await action.run({}, repositoryId, "aril_settings_set", { settings: {} }), { ok: false, error: "invalid" });
+  assert.deepEqual(await action.run(trusted, "repo-x", "aril_settings_set", { settings: {} }), { ok: false, error: "invalid" });
   on = true;
   assert.deepEqual(await action.run(trusted, repositoryId, "aril_memory_set", { text: "- x" }), { ok: true });
-  assert.deepEqual(sent.map((url) => url.split("/").at(-1)), ["aril_settings_set", "grant_stop", "aril_memory_set"]);
+  assert.deepEqual(await action.run(trusted, repositoryId, "aril_settings_set", { settings: {} }), { ok: true });
+  assert.deepEqual(sent.map((url) => url.split("/").at(-1)), ["grant_stop", "aril_memory_set", "aril_settings_set"]);
   // A bridge made without the switch behaves as it did.
   const plain = createTaskAction({ isTrustedEvent: () => true, monitorOrigin: "http://127.0.0.1:4317", authorizationToken: "secret",
     fetch: async () => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } }) });
   assert.deepEqual(await plain.run({}, repositoryId, "aril_memory_set", { text: "- x" }), { ok: true });
+  assert.deepEqual(await plain.run({}, repositoryId, "aril_settings_set", { settings: {} }), { ok: true });
 });
 
 test("the task action IPC takes the switch from desktop main", () => {
@@ -141,34 +148,83 @@ test("the task action IPC takes the switch from desktop main", () => {
   const remove = installTaskActionIpc({ ipcMain, isTrustedEvent: () => true, monitorOrigin: "http://127.0.0.1:4317", authorizationToken: "secret", arilOn: () => false,
     fetch: async () => { throw new Error("no request while Aril is Off"); } });
   assert.equal(handlers.size, 1);
-  return handlers.values().next().value({}, repositoryId, "aril_memory_set", { text: "- x" }).then((answer) => { assert.deepEqual(answer, conflict); remove(); });
+  const run = handlers.values().next().value;
+  return Promise.all([run({}, repositoryId, "aril_memory_set", { text: "- x" }), run({}, repositoryId, "aril_settings_set", { settings: {} })])
+    .then((answers) => { assert.deepEqual(answers, [conflict, conflict]); remove(); });
 });
 
-test("the paired device's route refuses a repository's memory edit while Aril is Off, before the web host, and forwards the rest", async (context) => {
-  let on = false;
+// A LAN gateway in front of a stand-in web host that records what reaches it. `post` is one paired device's request to the task action route.
+async function pairedGateway(context, { arilOn, arilPairedOn }) {
   const observed = [];
   const upstream = http.createServer((request, response) => { observed.push(`${request.method} ${request.url}`); response.end("{}"); });
   upstream.listen(0, "127.0.0.1");
   await once(upstream, "listening");
   const gateway = await startLanGateway({
     host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin: `http://127.0.0.1:${upstream.address().port}`,
-    authorizationToken: AUTHORIZATION, isNetworkAllowed: async () => true, networkPolicy: loopbackTestNetwork, arilOn: () => on,
+    authorizationToken: AUTHORIZATION, isNetworkAllowed: async () => true, networkPolicy: loopbackTestNetwork, arilOn, ...(arilPairedOn ? { arilPairedOn } : {}),
   });
   context.after(async () => { await gateway.close?.(); upstream.close(); });
   const secret = new URL(gateway.createPairing().url).hash.slice(1);
   const paired = await fetch(`${gateway.origin}/__pomegr/pair`, { method: "POST", headers: { Origin: gateway.origin, "Content-Type": "application/json" }, body: JSON.stringify({ secret }) });
   const headers = { Cookie: paired.headers.get("set-cookie").split(";")[0], Origin: gateway.origin, "Content-Type": "application/json" };
   const post = (body) => fetch(`${gateway.origin}/api/tasks/action`, { method: "POST", headers, body: JSON.stringify(body) });
+  return { observed, post };
+}
+
+test("the paired device's route refuses a repository's memory edit and Aril's settings while Aril is Off, before the web host, and forwards the rest", async (context) => {
+  let on = false;
+  const { observed, post } = await pairedGateway(context, { arilOn: () => on, arilPairedOn: async () => true });
   const memory = { repositoryId, action: "aril_memory_set", payload: { text: "- x" } };
-  const refused = await post(memory);
-  assert.equal(refused.status, 409);
-  assert.deepEqual(await refused.json(), conflict);
+  const settings = { repositoryId, action: "aril_settings_set", payload: { settings: { reviewer: { provider: "codex", model: null, differentFromBuilder: false } } } };
+  for (const body of [memory, settings]) {
+    const refused = await post(body);
+    assert.equal(refused.status, 409, body.action);
+    assert.deepEqual(await refused.json(), conflict);
+  }
   assert.deepEqual(observed, [], "the web host was never asked");
-  // Everything else goes on: a settings change, a grant stop, and a board action.
-  assert.equal((await post({ repositoryId, action: "aril_settings_set", payload: { settings: {} } })).status, 200);
+  // Everything else goes on: a grant stop and a board action.
   assert.equal((await post({ repositoryId, action: "grant_stop", payload: {} })).status, 200);
+  assert.equal((await post({ repositoryId, action: "create", payload: { text: "x" } })).status, 200);
   assert.equal(observed.length, 2);
   on = true;
   assert.equal((await post(memory)).status, 200);
-  assert.equal(observed.length, 3);
+  assert.equal((await post(settings)).status, 200);
+  assert.equal(observed.length, 4);
+});
+
+test("the paired device's route needs the owner's one permission for a memory edit, Aril's settings, and a grant's start, and fails closed without the question", async (context) => {
+  let allowed = false;
+  const { observed, post } = await pairedGateway(context, { arilOn: () => true, arilPairedOn: async () => allowed });
+  const unavailable = { ok: false, error: "unavailable" };
+  const bodies = [
+    { repositoryId, action: "aril_memory_set", payload: { text: "- x" } },
+    { repositoryId, action: "aril_settings_set", payload: { settings: {} } },
+    { repositoryId, action: "grant_start", payload: {} },
+  ];
+  for (const body of bodies) {
+    const refused = await post(body);
+    assert.equal(refused.status, 403, body.action);
+    assert.deepEqual(await refused.json(), unavailable);
+  }
+  assert.deepEqual(observed, [], "the web host was never asked");
+  // A stop is always allowed, and so is any board action the permission does not cover.
+  assert.equal((await post({ repositoryId, action: "grant_stop", payload: {} })).status, 200);
+  assert.equal((await post({ repositoryId, action: "create", payload: { text: "x" } })).status, 200);
+  assert.equal(observed.length, 2);
+  allowed = true;
+  for (const body of bodies) assert.equal((await post(body)).status, 200, body.action);
+  assert.equal(observed.length, 5);
+  // Turning the permission off takes effect on the next request.
+  allowed = false;
+  assert.equal((await post(bodies[0])).status, 403);
+  assert.equal(observed.length, 5);
+
+  // A gateway made without the question allows none of the three, and one whose question fails allows none either.
+  const none = await pairedGateway(context, { arilOn: () => true });
+  for (const body of bodies) assert.equal((await none.post(body)).status, 403, body.action);
+  assert.deepEqual(none.observed, []);
+  assert.equal((await none.post({ repositoryId, action: "grant_stop", payload: {} })).status, 200);
+  const failing = await pairedGateway(context, { arilOn: () => true, arilPairedOn: async () => { throw new Error("unavailable"); } });
+  for (const body of bodies) assert.equal((await failing.post(body)).status, 403, body.action);
+  assert.deepEqual(failing.observed, []);
 });

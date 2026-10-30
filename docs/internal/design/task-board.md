@@ -596,7 +596,7 @@ Each row below the tags shows only when it is set, in this order:
 - The section lives in Settings (`app/settings/ArilSettings.tsx`); its cards and states are in [Settings design](settings.md#aril). It was the Queue settings side panel opened from the Board until 2026-10-29.
 - A grant's own sections (**Grant**, **Actions under a grant**, **Limits**, **Work rules**) left it on 2026-10-30. Phase 5 of the [Aril agent plan](../plans/aril-agent.md) replaces grants with agreements. The grant runtime is unchanged, and a grant that is still running keeps one line in the section with its end time and **Stop grant**.
 - While a grant is active, the capacity strip shows “Aril grant until HH:MM” as muted caption-size text immediately before **Aril settings**, with no button behavior.
-- The Board keeps one quiet **Aril settings** link to the section for the board's repository, in its capacity strip.
+- The Board keeps one quiet **Aril settings** link to the section for the board's repository, in its capacity strip. The link opens the memory at that repository's tab.
 - The design-system samples of the section are in [Settings design](settings.md#samples).
 
 ### Scorecard panel

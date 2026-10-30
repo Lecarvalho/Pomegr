@@ -9,8 +9,8 @@ import { JEV_KEY_PATTERN, type JevKeyControl } from "../components/tasks/jev-key
 import { MemoryEditor } from "./MemoryEditor";
 import { formatStorageBytes } from "./StorageSettings";
 
-// The cards of Settings › Aril that belong to Aril itself and not to one repository: the On/Off switch, the memory, the space each thread
-// takes, and the effort routing. Each takes the control it shows, so the live section and the static design-system frames draw the same markup.
+// The cards of Settings › Aril: the On/Off switch with the one paired-device permission, the memory, the space each thread takes, and the
+// effort routing. Each takes the control it shows, so the live section and the static design-system frames draw the same markup.
 
 const STATE_ON = "Keeping work moving as you settled it. Turn off to stop every action at once; running sessions keep going.";
 const STATE_OFF = "Takes no action of its own. The chat still answers when you write.";
@@ -31,7 +31,8 @@ function Mark() {
 /**
  * The top card of the section: the mark, the page heading with Aril's state, one line about that state, and the one switch. A soft green glow
  * shows while Aril is On. Nothing of the state is drawn until the desktop has answered, so the card never shows a state and takes it back.
- * The desktop app adds a row for the paired-device permission; a paired device that may not turn Aril on says so there instead.
+ * The desktop app adds a row for the one paired-device permission (turn Aril on, and change repository memory and Aril's settings); a paired
+ * device that may not turn Aril on says so there instead.
  */
 export function ArilSwitchCard({ control, headingId }: { control: ArilSwitchControl; headingId: string }) {
   const pairedId = useId();
@@ -52,7 +53,7 @@ export function ArilSwitchCard({ control, headingId }: { control: ArilSwitchCont
       {reachable && state !== null && <CommandSwitch checked={state.on} disabled={busy || (!state.on && !canTurnOn)} aria-label="Let Aril act" aria-describedby={lineId} onChange={(next) => void control.setOn(next)} />}
     </div>
     {reachable && state !== null && availability === "desktop" && <div className="arilHeroRow">
-      <span id={pairedId}>A paired phone can always turn Aril off. Let it turn Aril on too</span>
+      <span id={pairedId}>A paired phone can always turn Aril off. Let it also turn Aril on and change Aril&apos;s repository memory and settings.</span>
       <CommandSwitch small checked={state.pairedOn} disabled={busy} aria-labelledby={pairedId} onChange={(next) => void control.setPairedOn(next)} />
     </div>}
     {reachable && state !== null && availability === "paired" && !state.on && !canTurnOn && <div className="arilHeroRow"><span>Turning Aril on needs the desktop app.</span></div>}

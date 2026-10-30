@@ -100,6 +100,7 @@ export type ArilSettings = {
   limits: { hours: number | null; tasks: number | null; tasksAtATime: number | null; sendBacks: number | null; usagePercent: number | null };
   workRules: ({ kind: "tag" | "text" | "feature" | "plan"; value: string } | { kind: "tasks"; value: string[] })[];
   reviewer: { provider: TaskProvider | null; model: string | null; differentFromBuilder: boolean };
+  /** The first version's per-repository permission for paired devices. Stored and served only for the one-time carry-over to the Aril switch's `pairedOn`; it grants nothing and no action sets it. */
   pairedDevices: boolean;
   followUps: boolean; // while a grant works, a fixed follow-up line goes to the chat and a notification
 };

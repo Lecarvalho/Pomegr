@@ -30,6 +30,8 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const INVALID = Object.freeze({ ok: false, error: "invalid" });
 const UNAVAILABLE = Object.freeze({ ok: false, error: "unavailable" });
 const CONFLICT = Object.freeze({ ok: false, error: "conflict" });
+// With Aril Off, a repository's memory and Aril's settings are read only: these two actions answer `conflict` without a request.
+const READ_ONLY_WHILE_OFF = new Set(["aril_memory_set", "aril_settings_set"]);
 
 function trustedMonitorOrigin(value) {
   try {
@@ -77,7 +79,7 @@ export function createTaskAction(options = {}) {
   const monitorOrigin = trustedMonitorOrigin(options.monitorOrigin);
   const authorizationToken = options.authorizationToken;
   const timeoutMs = options.timeoutMs ?? 10_000;
-  // `arilOn()` is desktop main's switch. With Aril Off a repository's memory is read only, so `aril_memory_set` answers `conflict` without a request.
+  // `arilOn()` is desktop main's switch. With Aril Off a repository's memory and Aril's settings are read only, so `aril_memory_set` and `aril_settings_set` answer `conflict` without a request.
   const arilOn = typeof options.arilOn === "function" ? options.arilOn : null;
   let disposed = false;
 
@@ -88,7 +90,7 @@ export function createTaskAction(options = {}) {
     const body = requestBody(repositoryId, payload);
     if (body === null) return INVALID;
     if (!monitorOrigin || !authorizationToken || disposed) return UNAVAILABLE;
-    if (action === "aril_memory_set" && arilOn !== null && !arilOn()) return CONFLICT;
+    if (READ_ONLY_WHILE_OFF.has(action) && arilOn !== null && !arilOn()) return CONFLICT;
     try {
       const response = await fetchImpl(`${monitorOrigin}/internal/tasks/${action}`, {
         method: "POST",

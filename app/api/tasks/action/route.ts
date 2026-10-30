@@ -44,6 +44,7 @@ export async function POST(request: Request) {
   const { repositoryId, action, payload } = body;
   // A paired device makes a feature from a name alone; the description and app version are the desktop app's.
   if (action === "feature_create" && Object.keys(payload).some((key) => key !== "name")) return answer({ ok: false, error: "invalid" });
+  // `pairedDevices` is the first version's per-repository permission and no action sets it any more; the owner's one permission is the Aril switch's.
   if (action === "aril_settings_set" && plainObject(payload.settings) && Object.hasOwn(payload.settings, "pairedDevices")) return answer({ ok: false, error: "invalid" });
   const serialized = JSON.stringify(payload);
   if (Buffer.byteLength(serialized, "utf8") > PAYLOAD_MAX_BYTES) return answer({ ok: false, error: "invalid" });

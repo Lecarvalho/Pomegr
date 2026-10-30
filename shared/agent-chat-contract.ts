@@ -22,7 +22,7 @@ export type AgentChatOperationName = "list" | "read" | "thread" | "search" | "se
 export const AGENT_CHAT_OPERATIONS: readonly AgentChatOperationName[] = ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"];
 
 // Why an operation was refused.
-// `desktop_only` refuses a non-desktop session start or worktree removal, or a paired settings/memory Apply without pairedDevices enabled.
+// `desktop_only` refuses a non-desktop session start or worktree removal, or a paired settings Apply while the owner has not allowed paired devices.
 export type AgentChatError = "invalid" | "not_found" | "busy" | "limit" | "cli_missing" | "conflict" | "unavailable" | "desktop_only";
 export const AGENT_CHAT_ERRORS: readonly AgentChatError[] = ["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"];
 
@@ -279,7 +279,8 @@ export const AGENT_CHAT_MESSAGE_ID_PATTERN = /^m-[1-9][0-9]{0,5}$/u;
 // desktop; the rest is for the desktop window.
 export type ArilControlOperationName = "aril_switch" | "aril_switch_set" | "aril_paired_on_set" | "owner_memory" | "owner_memory_set" | "thread_space" | "thread_limit_set" | "thread_flush";
 export const ARIL_CONTROL_OPERATIONS: readonly ArilControlOperationName[] = ["aril_switch", "aril_switch_set", "aril_paired_on_set", "owner_memory", "owner_memory_set", "thread_space", "thread_limit_set", "thread_flush"];
-// `on` is the switch; `pairedOn` is whether a paired device may turn Aril On (it may always turn it Off).
+// `on` is the switch; `pairedOn` is the owner's one permission for paired devices, for every repository: they may then turn Aril On and change a
+// repository's memory and Aril's settings. A paired device may always turn Aril Off and stop a grant.
 export type ArilSwitchState = { on: boolean; pairedOn: boolean };
 // The owner's memory: free text of at most 6,000 characters (`shared/aril-memory.mjs`), the text before the last change, and who wrote it last
 // and when, in milliseconds since the epoch. A repository's memory has the same shape (`ArilMemory` in the task contract).
