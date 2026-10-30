@@ -77,10 +77,10 @@ test("the embedded terminal bridge and pinned renderer dependencies ship with th
   }
 });
 
-test("the agent chat's twenty-two runtime files and its MCP worker are packaged, and its MCP sources are not shipped as modules", async () => {
+test("the agent chat's twenty-three runtime files and its MCP worker are packaged, and its MCP sources are not shipped as modules", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const packaged = new Set(packageJson.build.files);
-  const runtimeFiles = ["agent-chat.mjs", "agent-chat-images.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-task-log.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs", "agent-chat-jev.mjs", "agent-chat-jev-key.mjs", "agent-chat-jev-transport.mjs"].map((name) => `desktop/runtime/${name}`);
+  const runtimeFiles = ["agent-chat.mjs", "agent-chat-images.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-task-log.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs", "agent-chat-jev.mjs", "agent-chat-jev-key.mjs", "agent-chat-jev-transport.mjs", "agent-chat-github.mjs"].map((name) => `desktop/runtime/${name}`);
   const worker = "desktop/workers/agent-chat-mcp.cjs";
   for (const file of [...runtimeFiles, worker]) {
     assert.ok(DESKTOP_RUNTIME_FILES.includes(file), `${file} is in the runtime allowlist`);
@@ -91,7 +91,7 @@ test("the agent chat's twenty-two runtime files and its MCP worker are packaged,
   assert.ok(WORKER_BUNDLE_FILES.includes(worker), "the MCP worker is unpacked with the other worker bundles");
   assert.deepEqual(WORKER_BUNDLE_FILES.filter((file) => file.includes("agent-chat")), [worker]);
   assert.equal(DESKTOP_RUNTIME_FILES.some((file) => file.startsWith("mcp/")), false, "the MCP sources are bundled into the worker, not packaged");
-  assert.equal(DESKTOP_RUNTIME_FILES.filter((file) => file.includes("agent-chat")).length, 23);
+  assert.equal(DESKTOP_RUNTIME_FILES.filter((file) => file.includes("agent-chat")).length, 24);
   assert.doesNotThrow(() => assertPackagedApplicationFiles([...REQUIRED_FILES]));
 });
 

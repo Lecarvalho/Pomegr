@@ -4,7 +4,10 @@
 // more than its own timeout. Jev sees the owner's message and the end of Aril's previous answer, and nothing else. The key is read here
 // and goes nowhere but the `Authorization` header of that one call: never a log, a record, a prompt, the monitor, or a renderer.
 
+import path from "node:path";
+
 import { CHAT_EFFORTS } from "./agent-chat-runner.mjs";
+import { createJevKey, installJevKeyIpc, JEV_KEY_FILE } from "./agent-chat-jev-key.mjs";
 import { createJevTransport } from "./agent-chat-jev-transport.mjs";
 import { ROUTE_EFFORTS, ROUTE_PHASES } from "./agent-chat-timing.mjs";
 
@@ -139,4 +142,15 @@ export function createJevRouting({ key, fetch: fetchImpl = null, transport: give
       } catch { return false; }
     },
   });
+}
+
+export { installJevKeyIpc };
+
+/**
+ * The chat's Jev key store and routing from its options: the key store given, or the one in `dataRoot` (null with no data root), and
+ * the routing over it with the fetch, transport, and timeout the options name. Desktop main passes `safeStorage`; tests pass fakes.
+ */
+export function createChatJev({ jevKey, dataRoot, safeStorage, jevFetch, jevTransport, jevTimeoutMs, clock }) {
+  const key = jevKey || (dataRoot ? createJevKey({ file: path.join(dataRoot, JEV_KEY_FILE), safeStorage }) : null);
+  return { key, routing: createJevRouting({ key, fetch: jevFetch, transport: jevTransport, clock, timeoutMs: jevTimeoutMs }) };
 }

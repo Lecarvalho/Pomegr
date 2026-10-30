@@ -49,6 +49,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/agent-chat-prepare.mjs",
   "desktop/runtime/agent-chat-provider-files.mjs",
   "desktop/runtime/agent-chat-worktrees.mjs",
+  "desktop/runtime/agent-chat-github.mjs",
   "desktop/runtime/agent-chat-warm.mjs",
   "desktop/runtime/agent-chat-jev.mjs",
   "desktop/runtime/agent-chat-jev-key.mjs",
