@@ -95,12 +95,13 @@ export const SUMMARIZED_LINE = "Earlier messages summarized for Aril";
 const seconds = (milliseconds: number) => `${(milliseconds / 1000).toFixed(1)}s`;
 
 /**
- * What a measured answer's time shows besides the date: "Started 1.2s · first words 6.8s · done 11.4s". A step the run never reached
- * is left out. Null when there is no timing. Numbers only: no text of the answer or the prompt is ever placed in it.
+ * What a measured answer's time shows besides the date: "Started 1.2s · first words 6.8s · done 11.4s", and "Started 0.1s (warm)" when a
+ * warm run answered. A step the run never reached is left out. Null when there is no timing. Numbers and fixed words only: no text of the
+ * answer or the prompt is ever placed in it.
  */
 export function timingLine(timing: AgentChatTiming | undefined | null): string | null {
   if (!timing) return null;
-  const steps = [timing.eventMs === null ? null : `Started ${seconds(timing.eventMs)}`, timing.textMs === null ? null : `first words ${seconds(timing.textMs)}`, `done ${seconds(timing.doneMs)}`];
+  const steps = [timing.eventMs === null ? null : `Started ${seconds(timing.eventMs)}${timing.warm ? " (warm)" : ""}`, timing.textMs === null ? null : `first words ${seconds(timing.textMs)}`, `done ${seconds(timing.doneMs)}`];
   return steps.filter((step): step is string => step !== null).join(" · ");
 }
 

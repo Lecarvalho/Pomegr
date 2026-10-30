@@ -142,12 +142,16 @@ export function createCompaction({ store, summaries, now, runTurn, spawn, env, e
   }
 
   return Object.freeze({
-    /** A turn of the repository was stored: starts a compaction when none runs, no turn of the repository runs or waits, and the older messages are long enough. */
+    /**
+     * A turn of the repository was stored: starts a compaction when none runs, no turn of the repository runs or waits, and the older
+     * messages are long enough. Answers a promise that settles when the compaction it started has ended or been given up, or at once when it
+     * started none, so a caller can wait for the thread to be free of one. It never rejects.
+     */
     afterTurn(repositoryId) {
-      if (disposed || jobs.has(repositoryId) || busy(repositoryId)) return;
+      if (disposed || jobs.has(repositoryId) || busy(repositoryId)) return Promise.resolve();
       const job = { stopped: false, run: null };
       jobs.set(repositoryId, job);
-      void compact(repositoryId, job).catch(() => {}).finally(() => { if (jobs.get(repositoryId) === job) jobs.delete(repositoryId); });
+      return compact(repositoryId, job).catch(() => {}).finally(() => { if (jobs.get(repositoryId) === job) jobs.delete(repositoryId); });
     },
     cancel,
     running: (repositoryId) => jobs.has(repositoryId),

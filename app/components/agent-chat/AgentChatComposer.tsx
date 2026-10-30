@@ -21,6 +21,8 @@ export type AgentChatComposerProps = {
   /** Sends the trimmed text; the composer has already checked that sending is allowed. */
   onSend(): void;
   onStop(): void;
+  /** The message field gained or lost focus, whatever moved it. The panel asks the desktop to keep a run ready while it has focus; the field itself changes in no way. */
+  onFieldFocusChange?(focused: boolean): void;
   /** The named models of each provider, grouped by provider; never a default. */
   modelOptions: ReadonlyArray<CommandSelectOption>;
   modelValue: string;
@@ -58,7 +60,7 @@ export type AgentChatComposerHandle = {
 };
 
 /** The message field, the repository, model, and effort choices, and Send, or Stop while an answer is being written. */
-export function AgentChatComposer({ value, onChange, onSend, onStop, modelOptions, modelValue, onModelChange, effort, onEffortChange, repositories = NO_REPOSITORIES, repositoryId, onRepositoryChange, disabled = false, running, busy, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, ref }: AgentChatComposerProps) {
+export function AgentChatComposer({ value, onChange, onSend, onStop, onFieldFocusChange, modelOptions, modelValue, onModelChange, effort, onEffortChange, repositories = NO_REPOSITORIES, repositoryId, onRepositoryChange, disabled = false, running, busy, error, images = NO_IMAGES, imageUrls = NO_URLS, uploading = false, imageError = null, onAttach, onRemoveImage, ref }: AgentChatComposerProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const length = value.length;
   const over = length > MESSAGE_LIMIT;
@@ -101,7 +103,7 @@ export function AgentChatComposer({ value, onChange, onSend, onStop, modelOption
     {error && <p className="agentChatError" role="alert">{error}</p>}
     {imageError && <p className="agentChatError" role="alert">{imageError}</p>}
     <textarea ref={own} className="agentChatField" aria-label="Message Aril" placeholder="Ask Aril…" rows={1}
-      value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} onKeyDown={keyDown}
+      value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} onKeyDown={keyDown} onFocus={() => onFieldFocusChange?.(true)} onBlur={() => onFieldFocusChange?.(false)}
       onPaste={(event) => {
         const files = imageFiles(event.clipboardData?.files);
         if (!canAttach || files.length === 0) return;

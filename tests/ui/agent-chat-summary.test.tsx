@@ -188,6 +188,19 @@ describe("the time of a measured answer", () => {
     }
   });
 
+  it("says warm after the start of an answer that a warm run gave, and reads the flag only as true", async () => {
+    const WARM = { ...TIMING, eventMs: 100, warm: true as const };
+    seedFour({ timing: { ...WARM, prepare: { total: 900, board: 700, environment: 0, declare: 0, server: 0 } } });
+    await open();
+    const measured = within(log()).getAllByRole("article", { name: "Aril" })[1].querySelector("time")!;
+    expect(measured.getAttribute("title")).toBe([fullMessageTime(minute(4)), "Prepared in 0.9s (slowest: board 0.7s)", "Started 0.1s (warm) · first words 6.8s · done 11.4s"].join("\n"));
+    expect(timingLine(WARM)).toBe("Started 0.1s (warm) · first words 6.8s · done 11.4s");
+    expect(timingLine({ ...WARM, eventMs: null })).toBe("first words 6.8s · done 11.4s");
+    expect(timingLine(TIMING)).toBe("Started 1.2s · first words 6.8s · done 11.4s");
+    expect(parseTiming(WARM)).toEqual(WARM);
+    for (const bad of [false, "true", 1, null, {}]) expect(Object.hasOwn(parseTiming({ ...TIMING, warm: bad })!, "warm")).toBe(false);
+  });
+
   it("does not put the timing of a record outside the contract in the tooltip, and keeps the answer", async () => {
     seedFour({ timing: { ...TIMING, doneMs: -1 } });
     await open();

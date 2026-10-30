@@ -113,6 +113,19 @@ test("timingOf rounds what a run measured, cuts it to the bounds, and stores not
   assert.equal(timingOf({ eventMs: 900, textMs: 100, doneMs: 1_000 }, PROMPT), null);
 });
 
+test("a warm flag is kept only as true, beside the preparation, and a timing keeps its numbers without it", () => {
+  const warm = { ...TIMING, warm: true };
+  assert.deepEqual(normalizeTiming(warm), warm);
+  assert.deepEqual(normalizeTiming({ ...warm, prepare: PREPARE }), { ...TIMING, prepare: PREPARE, warm: true });
+  assert.deepEqual(Object.keys(normalizeTiming({ ...warm, prepare: PREPARE })), ["eventMs", "textMs", "doneMs", "prompt", "prepare", "warm"]);
+  // Anything but true is left out alone: the run's numbers stay, and the record is still a timing.
+  for (const value of [false, "true", 1, null, {}, []]) assert.deepEqual(normalizeTiming({ ...TIMING, warm: value }), TIMING, JSON.stringify(value));
+  assert.equal(normalizeTiming({ ...warm, extra: 1 }), null, "another key is still outside the contract");
+  assert.deepEqual(timingOf({ eventMs: 100, textMs: 900, doneMs: 1_200, warm: true }, PROMPT), { eventMs: 100, textMs: 900, doneMs: 1_200, prompt: PROMPT, warm: true });
+  assert.deepEqual(timingOf({ eventMs: 100, textMs: 900, doneMs: 1_200, warm: true }, PROMPT, { board: 4, total: 9, environment: 0, declare: 0, server: 0 }).prepare, { board: 4, environment: 0, declare: 0, server: 0, total: 9 });
+  for (const value of [false, 1, "yes", undefined]) assert.equal(Object.hasOwn(timingOf({ eventMs: 100, textMs: 900, doneMs: 1_200, warm: value }, PROMPT), "warm"), false, String(value));
+});
+
 test("an owner's message stores the timing of its run on the answer, with the length of each part of its prompt", async (context) => {
   const h = await chatHarness(context);
   const sent = await send(h, { text: "What should I do first?" });

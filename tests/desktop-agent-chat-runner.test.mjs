@@ -70,6 +70,7 @@ import {
   ANSWER_LIMIT,
   CLAUDE_FILE_TOOLS,
   chatArguments,
+  claudeUserLine,
   createTurnReader,
   POMEGR_READ_TOOLS,
   runChatTurn,
@@ -97,7 +98,7 @@ test("the runner's fixed names and bounds", () => {
 
 test("the Claude arguments are fixed, with the model and the MCP server as the only variable parts", () => {
   const fixed = [
-    "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
+    "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
     "--setting-sources", "", "--settings", '{"disableAllHooks":true,"autoMemoryEnabled":false}', "--strict-mcp-config", "--mcp-config",
   ];
   const tail = ["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools", ["Read", "Grep", "Glob", ...READ_TOOL_ARGUMENT].join(",")];
@@ -425,7 +426,8 @@ test("a Codex turn.failed or error event fails the turn, and no agent message is
 function fakeChild({ killCloses = false } = {}) {
   const child = new EventEmitter();
   child.stdout = Object.assign(new EventEmitter(), { encoding: null, setEncoding(value) { this.encoding = value; } });
-  child.stdin = Object.assign(new EventEmitter(), { writes: [], ended: false, end(data, encoding) { this.writes.push([data, encoding]); this.ended = true; } });
+  child.stdin = Object.assign(new EventEmitter(), { writes: [], ended: false, write(data, encoding) { this.writes.push([data, encoding]); return true; },
+    end(data, encoding) { if (data !== undefined) this.writes.push([data, encoding]); this.ended = true; } });
   child.kills = 0;
   child.kill = () => { child.kills += 1; if (killCloses) queueMicrotask(() => child.emit("close", null)); return true; };
   return child;
@@ -478,8 +480,11 @@ test("a turn starts the provider with the fixed arguments and options and sends 
   assert.deepEqual(args, chatArguments("claude", "claude-opus-4-1", server));
   assert.deepEqual(spawnOptions, { cwd: options.cwd, env: options.env, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
   assert.equal(spawnOptions.env, options.env);
-  assert.deepEqual(child.stdin.writes, [[options.prompt, "utf8"]]);
-  assert.equal(child.stdin.ended, true);
+  // Claude Code gets one stream-json user message line and keeps its stdin open until its result; the text of the prompt is in no argument.
+  assert.deepEqual(child.stdin.writes, [[claudeUserLine(options.prompt), "utf8"]]);
+  assert.deepEqual(JSON.parse(child.stdin.writes[0][0]), { type: "user", message: { role: "user", content: [{ type: "text", text: options.prompt }] } });
+  assert.equal(child.stdin.writes[0][0].endsWith("\n"), true);
+  assert.equal(child.stdin.ended, false);
   assert.equal(child.stdout.encoding, "utf8");
   for (const argument of args) assert.equal(argument.includes("SYNTHETIC-PROMPT"), false);
   assert.equal(JSON.stringify(spawnOptions).includes("SYNTHETIC-PROMPT"), false);

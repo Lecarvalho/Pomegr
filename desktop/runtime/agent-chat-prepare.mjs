@@ -113,13 +113,19 @@ export function createTurnPreparation({ monitor, postAction, worktreeInventory, 
         reads.runs = step("runs", readRuns);
         if (taskLog) reads.taskLog = step("taskLog", () => readTaskLog(repositoryId));
       },
-      startRepository({ provider, github = false, worktrees: inventory = false, thread = false }) {
+      // `withEnvironment` false leaves the environment out when a warm run, which already holds one, is expected to serve the turn.
+      startRepository({ provider, github = false, worktrees: inventory = false, thread = false, environment: withEnvironment = true }) {
         if (github && repositoryGithub) reads.github = step("github", (root) => readGithub(repositoryId, root), [reads.root]);
         reads.workflow = step("workflow", (root, board) => (root && board ? workflowReader.read(root, board.aril) : undefined), [reads.root, reads.board]);
         if (inventory) reads.inventory = step("worktrees", (root, board) => (root && board ? readWorktrees(repositoryId, root, board) : NO_WORKTREES), [reads.root, reads.board]);
         if (provider === "claude") reads.instructions = step("instructions", () => prepareInstructionsFile(dataRoot));
         reads.context = step("context", () => readContext(repositoryId, thread));
-        reads.environment = step("environment", environment);
+        if (withEnvironment) reads.environment = step("environment", environment);
+      },
+      // The run's environment: the read `startRepository` began, else one that begins now, for a turn the warm run could not serve.
+      environment() {
+        reads.environment ??= step("environment", environment);
+        return reads.environment();
       },
       async values(...names) {
         const found = await Promise.all(names.map((name) => reads[name]?.()));

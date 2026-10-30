@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
-import { useAgentChat, type AgentChatAvailability } from "../../agent-chat-client";
+import { useAgentChat, WARM_DEBOUNCE_MS, type AgentChatAvailability } from "../../agent-chat-client";
 import { useAgentChatSearch } from "../../agent-chat-search";
 import { useTasks } from "../../tasks-store";
 import { AGENT_CHAT_BOUNDS, type AgentChatImage, type AgentChatProvider } from "../../../shared/agent-chat-contract";
@@ -99,6 +99,16 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
   const run = resolveChatRun(models, { ...base, ...chosen.pick, effort: chosen.effort ?? base.effort });
   const modelOptions = chatModelOptions(models, run);
 
+  // A field that keeps its focus asks the desktop to keep a provider run ready for the next message, once for a burst of focus events and
+  // with the run the composer shows by then. The thread is read first, so the run is the thread's and not the starting default.
+  const [fieldFocused, setFieldFocused] = useState(false);
+  const { ready, warm } = view;
+  useEffect(() => {
+    if (!fieldFocused || !ready) return;
+    const timer = window.setTimeout(() => warm(run.provider, run.model, run.effort), WARM_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [fieldFocused, ready, warm, run.provider, run.model, run.effort]);
+
   const closeSearch = () => { setSearchOpen(false); search.setQuery(""); searchToggle.current?.focus({ preventScroll: true }); };
   const send = async () => {
     const text = draft.trim();
@@ -162,7 +172,7 @@ function AgentChatBody({ repositoryId, availability, open, repositories, onRepos
         resolving={view.resolving} pinSignal={pin} target={target} hasOlder={view.hasOlder} loadingOlder={view.loadingOlder} startHere={availability === "desktop"} heldStart={heldStart}
         onLoadOlder={() => { void view.loadOlder(); }} onSuggest={suggest} onChoose={(label, byKeyboard) => { void choose(label, byKeyboard); }} onApply={(conversationId, proposalId) => { void apply(conversationId, proposalId); }} onDismiss={(conversationId, proposalId) => { void view.dismiss(conversationId, proposalId); }} />
     </div>
-    <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop}
+    <AgentChatComposer ref={composer} value={draft} onChange={setDraft} onSend={() => { void send(); }} onStop={view.stop} onFieldFocusChange={setFieldFocused}
       modelOptions={modelOptions} modelValue={chatModelValue(run)}
       repositories={repositories} repositoryId={repositoryId} onRepositoryChange={onRepositoryChange}
       onModelChange={(value) => { const pick = chatModelFromValue(value); if (pick) setChosen({ ...chosen, pick }); }}

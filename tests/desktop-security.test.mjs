@@ -161,7 +161,7 @@ test("the agent chat bridge is one trusted-frame channel and its provider run is
     "../desktop/runtime/agent-chat-runner.mjs", "../desktop/runtime/agent-chat-store.mjs",
   ].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat", operation, payload\)/u);
-  assert.match(preload, /new Set\(\["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"\]\)/u);
+  assert.match(preload, /new Set\(\["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"\]\)/u);
   assert.match(main, /installAgentChatIpc\(\{ \.\.\.taskBridge, chat: agentChat \}\)/u);
   assert.match(main, /isTrustedEvent: trustedDesktopEvent/u);
   assert.match(bridge, /export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat"/u);

@@ -33,7 +33,7 @@ type Props = {
 
 /** The same content in the live dialog and the static design-system frames. */
 export function ArilSettings({ board, desktop, editable, onAction, onClose, titleId, closeRef, initialFailure = null, initialConfirm = false }: Props & {
-  titleId: string; closeRef?: RefObject<HTMLButtonElement | null>; initialFailure?: "settings" | "memory" | null; initialConfirm?: boolean;
+  titleId: string; closeRef?: RefObject<HTMLButtonElement | null>; initialFailure?: "settings" | "memory" | null; initialConfirm?: boolean | number;
 }) {
   const allowed = editable && (desktop || board.aril.settings.pairedDevices);
   const [original] = useState(board.aril.settings);
@@ -49,7 +49,8 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const saved = board.aril.settings;
   const grant = board.aril.grant;
   const confirmation = () => ({ settings: JSON.stringify(saved), until: Date.now() + saved.limits.hours! * 3600000 });
-  const [confirm, setConfirm] = useState<ReturnType<typeof confirmation> | null>(() => initialConfirm ? confirmation() : null);
+  // A static frame passes the end time it shows, so rendering it never reads the clock: a render on the server and the hydration after it must agree.
+  const [confirm, setConfirm] = useState<ReturnType<typeof confirmation> | null>(() => initialConfirm ? { ...confirmation(), ...(typeof initialConfirm === "number" ? { until: initialConfirm } : {}) } : null);
   const change = <K extends keyof Settings>(key: K, next: Settings[K]) => { setConfirm(null); setDraft({ ...draft, [key]: next }); };
   const changed = Object.fromEntries((Object.keys(draft) as (keyof Settings)[])
     .filter((key) => (desktop || key !== "pairedDevices") && JSON.stringify(draft[key]) !== JSON.stringify(original[key]))

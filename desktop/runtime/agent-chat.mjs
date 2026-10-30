@@ -15,11 +15,12 @@ import { extractChoices, shownAnswer } from "./agent-chat-choices.mjs";
 import { createCompaction } from "./agent-chat-compaction.mjs";
 import { composePrompt, composePromptParts, proposalOutcome } from "./agent-chat-prompt.mjs";
 import { applyOperations, ARIL_OPERATIONS, chatImageIds, extractProposal, FEATURE_EDIT_OPERATIONS, proposalImages, queueProposalState, recordRework, START_FAILURES, startProposalTask, WORKTREE_RESULTS } from "./agent-chat-proposal.mjs";
-import { CHAT_EFFORTS, runChatTurn } from "./agent-chat-runner.mjs";
+import { CHAT_EFFORTS, runChatTurn, startChatProcess } from "./agent-chat-runner.mjs";
 import { AGENT_CHAT_DIRECTORY, ANSWER_LENGTH, conversationTitle, createAgentChatStore, MESSAGE_LENGTH, MESSAGE_LIMIT, newProposalId } from "./agent-chat-store.mjs";
 import { createAgentChatSummaries, summarizedView } from "./agent-chat-summary.mjs";
-import { createAgentChatThread, currentConversation, LIST_LIMIT } from "./agent-chat-thread.mjs";
+import { createAgentChatThread, currentConversation, LIST_LIMIT, lastRun } from "./agent-chat-thread.mjs";
 import { timingOf } from "./agent-chat-timing.mjs";
+import { createWarmRuns, WARM_PREPARE } from "./agent-chat-warm.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
@@ -33,7 +34,7 @@ export const AGENT_CHAT_CHANNEL = "pomegr:agent-chat";
 // The images the owner sends to Aril travel on a channel of their own, because they are bytes and not a JSON payload.
 export const AGENT_CHAT_IMAGE_CHANNEL = "pomegr:agent-chat-image";
 export const AGENT_CHAT_IMAGE_OPERATIONS = Object.freeze(["add", "read"]);
-export const AGENT_CHAT_OPERATIONS = Object.freeze(["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"]);
+export const AGENT_CHAT_OPERATIONS = Object.freeze(["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"]);
 export const AGENT_CHAT_ERRORS = Object.freeze(["invalid", "not_found", "busy", "limit", "cli_missing", "conflict", "unavailable", "desktop_only"]);
 export const AGENT_CHAT_REQUEST_MAX_BYTES = 17 * 1024;
 
@@ -99,6 +100,8 @@ export function createAgentChat(options = {}) {
   // A monotonic clock in milliseconds, for the time a turn's preparation takes.
   const clock = options.clock || (() => performance.now());
   const runTurn = options.runTurn || runChatTurn;
+  // The runner's process start, for the warm runs. A caller that replaces the whole run with its own `runTurn` has no process to warm.
+  const startProcess = options.startProcess || (options.runTurn ? null : startChatProcess);
   // The desktop's manual start for a start the owner approved in the chat: `(event, repositoryId, taskId)` answers `{ status }`.
   const startTask = typeof options.startTask === "function" ? options.startTask : null;
   // The same Git worktrees as the dispatcher, found where it makes them. Their paths stay in this file's calls and never leave desktop main.
@@ -143,6 +146,11 @@ export function createAgentChat(options = {}) {
     return sessionId;
   }
 
+  // A warm run that waits and is then used is declared again, which starts the monitor's eleven minutes over; nothing waits for it.
+  function redeclareRun(sessionId) {
+    void monitor(`/internal/agent-chat/run-declare?${new URLSearchParams({ sessionId })}`, { method: "POST", signal: AbortSignal.timeout(DECLARATION_TIMEOUT_MS) }).catch(() => {});
+  }
+
   function withdrawRun(sessionId) {
     if (!sessionId) return;
     void monitor(`/internal/agent-chat/run-withdraw?${new URLSearchParams({ sessionId })}`, { method: "POST", signal: AbortSignal.timeout(DECLARATION_TIMEOUT_MS) }).catch(() => {});
@@ -160,6 +168,8 @@ export function createAgentChat(options = {}) {
 
   // The chat's own MCP server reads a task of the turn's repository through a bridge that lives only while the turn runs.
   const taskReadServer = createTaskBridge({ mcpServer, monitor, current: (turn) => active === turn && !disposed });
+  // A warm run's bridge opens before its turn exists and answers only for the turn that takes the run (`stand.bound`).
+  const warmTaskReadServer = createTaskBridge({ mcpServer, monitor, current: (stand) => stand.bound !== null && active === stand.bound && !disposed, opens: () => !disposed });
 
   const monitorRefusal = (answer) => refused(isPlainObject(answer) && typeof answer.error === "string" && MONITOR_ERRORS.has(answer.error) ? answer.error : "unavailable");
 
@@ -258,9 +268,20 @@ export function createAgentChat(options = {}) {
   }
 
   // After a turn is stored, an outgrown thread is summarized in the background; a turn that starts stops that run.
+  const turnBusy = (repositoryId) => active?.repositoryId === repositoryId || [...followUps.values()].some((entry) => entry.repositoryId === repositoryId);
   const compaction = createCompaction({ store, summaries: summaries ?? NO_SUMMARIES, now, runTurn, spawn, env: runEnvironment, executable, repositoryRoot,
-    declare: declareRun, withdraw: withdrawRun, timeoutMs: options.compactionTimeoutMs,
-    busy: (repositoryId) => active?.repositoryId === repositoryId || [...followUps.values()].some((entry) => entry.repositoryId === repositoryId) });
+    declare: declareRun, withdraw: withdrawRun, timeoutMs: options.compactionTimeoutMs, busy: turnBusy });
+
+  // The folder of the images the thread's current conversation holds, when it holds any: the one folder a warm run could be given.
+  async function warmImageFolder(repositoryId) {
+    const current = images ? currentConversation(await store.index(repositoryId), (candidate) => candidate.images <= CHAT_IMAGES_PER_CONVERSATION) : null;
+    const existing = current ? await store.read(repositoryId, current.id) : null;
+    return existing && conversationImages(existing.messages).length > 0 ? images.folder(repositoryId, existing.id) : null;
+  }
+  // The runs that wait for an owner's message (see agent-chat-warm.mjs): Claude Code only, never while a turn or a compaction of the thread runs.
+  const warm = createWarmRuns({ startProcess, spawn, clock, executable, repositoryRoot, instructions: () => prepareInstructionsFile(options.dataRoot), imageFolder: warmImageFolder,
+    environment: runEnvironment, declare: declareRun, redeclare: redeclareRun, withdraw: withdrawRun, openBridge: warmTaskReadServer,
+    busy: (repositoryId) => turnBusy(repositoryId) || compaction.running(repositoryId), ...options.warmOptions });
 
   async function runFollowUp(turn) {
     try {
@@ -376,7 +397,15 @@ export function createAgentChat(options = {}) {
       }
       return await store.save(turn.repositoryId, { ...conversation, updatedAt: message.at, messages: [...conversation.messages, message] });
     } catch { /* The conversation keeps the owner's message; the next read marks the answer as interrupted. */ }
-    finally { release(turn); if (status === "complete") compaction.afterTurn(turn.repositoryId); }
+    finally {
+      release(turn);
+      if (status === "complete") {
+        const compacted = compaction.afterTurn(turn.repositoryId);
+        // The next message of the thread finds a run ready: the owner's message has just been answered, and the same run is the likely next one.
+        // It waits for a compaction of the thread to end, and a turn that has started by then makes the request a no-op.
+        if (turn.promptSections) void compacted.then(() => warm.request(turn.repositoryId, { provider: turn.provider, model: turn.model ?? null, effort: turn.effort ?? null }));
+      }
+    }
   }
 
   async function send(payload) {
@@ -414,7 +443,8 @@ export function createAgentChat(options = {}) {
       if (held.length + imageIds.length > CHAT_IMAGES_PER_CONVERSATION) return refused("limit");
       // Every read that needs no other begins now; the ones that need the root or the board begin when those arrive.
       prep.startMonitor({ taskLog: true });
-      prep.startRepository({ provider, github: true, worktrees: true, thread: true });
+      // A ready warm run already holds the run's environment, so a turn it is expected to serve leaves that read out.
+      prep.startRepository({ provider, github: true, worktrees: true, thread: true, environment: !warm.holds(repositoryId, provider) });
       const { board, root } = await prep.values("board", "root");
       if (!board || !root || disposed) return UNAVAILABLE;
       const conversation = existing ?? await prep.time("store", () => store.create(repositoryId, { provider, model, effort, title: conversationTitle(text) }));
@@ -447,19 +477,20 @@ export function createAgentChat(options = {}) {
       active = turn;
       started = true;
       compaction.cancel(repositoryId);
-      // The run's declaration, the task bridge, and the environment (begun with the first reads) need nothing from each other.
-      const [sessionId, taskServer, { environment: env }] = await Promise.all([prep.time("declare", () => declareRun(provider)), prep.time("server", () => taskReadServer(turn)), prep.values("environment")]);
+      // A warm run whose fixed arguments are this turn's takes the prompt, and its bridge answers for this turn from now on. Otherwise the
+      // run's declaration, the task bridge, and the environment (begun with the first reads) need nothing from each other.
+      const warmed = warm.take({ repositoryId, provider, model, effort, command, root, instructions: instructionsFile?.file ?? null, imageFolder: runImages?.folder ?? null }, turn);
+      const [sessionId, taskServer, env] = warmed ? [warmed.sessionId, null, null]
+        : await Promise.all([prep.time("declare", () => declareRun(provider)), prep.time("server", () => taskReadServer(turn)), prep.environment()]);
       if (disposed || turn.stopped) {
-        withdrawRun(sessionId);
+        if (warmed) warmed.discard(); else withdrawRun(sessionId);
         await finishTurn(turn, { status: "stopped", text: "" });
         return UNAVAILABLE;
       }
-      turn.prepare = prep.measure();
-      const run = runTurn({ instructionsFile,
-        spawn, executable: command, provider, model, effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs,
-        onText: (value) => { turn.text = value; },
-        onActivity: (value) => { turn.activity = value; },
-      });
+      turn.prepare = warmed ? { ...prep.measure(), ...WARM_PREPARE } : prep.measure();
+      const callbacks = { onText: (value) => { turn.text = value; }, onActivity: (value) => { turn.activity = value; } };
+      const run = warmed ? warmed.begin({ prompt, timeoutMs: options.turnTimeoutMs, ...callbacks }) : runTurn({ instructionsFile,
+        spawn, executable: command, provider, model, effort, mcpServer: taskServer, images: runImages, sessionId, cwd: root, env, prompt, timeoutMs: options.turnTimeoutMs, ...callbacks });
       turn.stop = () => { turn.stopped = true; turn.closeTaskRead?.(); run.stop(); };
       turn.timing = () => run.timing?.() ?? null;
       void run.done.finally(() => { turn.closeTaskRead?.(); withdrawRun(sessionId); }).then((outcome) => finishTurn(turn, outcome), () => finishTurn(turn, null));
@@ -690,7 +721,19 @@ export function createAgentChat(options = {}) {
     }
   }
 
-  const handlers = { list, read, thread: chatThread.thread, search: chatThread.search, send, stop, delete: remove, apply: (payload, origin) => resolve(payload, true, origin), dismiss: (payload) => resolve(payload, false) };
+  // Asks for a run to wait for the thread's next message, with the run the composer shows or, without one, the run the thread last had. It is
+  // never a model call and stores nothing. A valid request is answered ok whether or not it started a run, so the answer says nothing of the runs.
+  async function warmThread(payload) {
+    const named = isPlainObject(payload) && Object.hasOwn(payload, "provider");
+    if (!exactly(payload, named ? ["repositoryId", "provider", "model", "effort"] : ["repositoryId"]) || !REPOSITORY_ID.test(String(payload.repositoryId))) return INVALID;
+    const { repositoryId, provider, model, effort } = payload;
+    if (named && (!PROVIDERS.has(provider) || !(model === null || (typeof model === "string" && MODEL.test(model))) || !(effort === null || (typeof effort === "string" && EFFORTS.has(effort))))) return INVALID;
+    const run = named ? { provider, model, effort } : lastRun(await store.index(repositoryId));
+    if (run) await warm.request(repositoryId, { provider: run.provider, model: run.model ?? null, effort: run.effort ?? null });
+    return { ok: true };
+  }
+
+  const handlers = { list, read, thread: chatThread.thread, search: chatThread.search, send, stop, delete: remove, warm: warmThread, apply: (payload, origin) => resolve(payload, true, origin), dismiss: (payload) => resolve(payload, false) };
 
   /**
    * One operation for the owner: from the desktop window, or from a paired device through the LAN gateway. `origin`
@@ -720,7 +763,7 @@ export function createAgentChat(options = {}) {
     grantWrite,
     grantFollowUp: (request) => (disposed ? Promise.resolve(UNAVAILABLE) : grantFollowUp(request)),
     /** Ends Pomegr's own running turn; no session the owner started is touched. */
-    dispose() { disposed = true; followUps.clear(); compaction.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); try { active?.stop?.(); } catch { /* already gone */ } },
+    dispose() { disposed = true; followUps.clear(); compaction.dispose(); warm.dispose(); worktreeInventory.close?.(); worktreePrefetch?.cancel(); try { active?.stop?.(); } catch { /* already gone */ } },
   });
 }
 

@@ -1,6 +1,9 @@
 // One chat turn is one headless run of the owner's own provider CLI, signed in as the owner. The run is read-only:
 // it gets a fixed argument list, the prompt on stdin, and no way to ask for a permission. Nothing the owner typed
 // reaches a command line or a path. The images of a conversation are files desktop main named itself.
+// The process and its prompt are two steps: `startChatProcess` starts the process with every argument fixed, and `begin` writes the
+// prompt. A Claude Code process started with stream-json input waits for its prompt, so a warm run (`agent-chat-warm.mjs`) can start
+// before the owner sends. Codex reads its prompt until the end of stdin, so it cannot start early.
 
 export const TURN_TIMEOUT_MS = 10 * 60_000;
 export const STDOUT_LINE_LIMIT = 4 * 1024 * 1024;
@@ -61,6 +64,8 @@ export function validInstructionsFile(instructions) {
  * The run uses provider-native read access, the conversation images, and Pomegr's read tools. Native permissions
  * can permit reads outside the repository. User settings and hooks are excluded; managed provider policy still
  * applies. No write access or interactive approval is enabled.
+ * Claude Code reads its prompt as one stream-json user message line (`--input-format stream-json`), so the process can start before
+ * the prompt exists; Codex reads it as text up to the end of stdin. Neither prompt is ever an argument.
  */
 export function chatArguments(provider, model = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, effort = null, tools = "read") {
   const chosen = typeof model === "string" && MODEL.test(model) ? model : null;
@@ -75,7 +80,7 @@ export function chatArguments(provider, model = null, mcpServer = null, images =
   const noTools = tools === "none";
   if (provider === "claude") {
     return [
-      "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
+      "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
       // Claude Code registers even a run that keeps no session file. The ID desktop main gave the run is the one the
       // monitor holds for the turn, so the registration never shows as a session.
       ...(identity ? ["--session-id", identity] : []),
@@ -132,7 +137,7 @@ const isObject = (value) => value !== null && typeof value === "object" && !Arra
  * The turn is "starting" only until the process writes its first event. That event, whatever it holds, makes the activity
  * "thinking", and a tool, text, or other block then changes it. A label is reported when it changes.
  */
-export function createTurnReader(provider, { onText = () => {}, onActivity: report = () => {}, onEvent = () => {}, onFirstText = () => {} } = {}) {
+export function createTurnReader(provider, { onText = () => {}, onActivity: report = () => {}, onEvent = () => {}, onFirstText = () => {}, onResult = () => {} } = {}) {
   let buffer = "";
   let overflow = false;
   let text = "";
@@ -142,7 +147,8 @@ export function createTurnReader(provider, { onText = () => {}, onActivity: repo
   let shown = null;
   const onActivity = (activity) => { if (activity !== shown) { shown = activity; report(activity); } };
 
-  // `onEvent` and `onFirstText` only tell that something arrived, for the run's timing; they carry no content.
+  // `onEvent` and `onFirstText` only tell that something arrived, for the run's timing, and `onResult` that Claude Code ended its turn;
+  // they carry no content.
   const setText = (next) => { text = next.length > ANSWER_LIMIT ? next.slice(0, ANSWER_LIMIT) : next; if (text !== "") onFirstText(); onText(text); };
 
   function claude(event) {
@@ -162,6 +168,7 @@ export function createTurnReader(provider, { onText = () => {}, onActivity: repo
     if (event.type === "result") {
       failed = event.is_error === true || event.subtype !== "success";
       if (!failed && typeof event.result === "string") final = event.result;
+      onResult();
     }
   }
 
@@ -214,62 +221,114 @@ export function createTurnReader(provider, { onText = () => {}, onActivity: repo
   };
 }
 
+// A turn that could not start, or ended before it began: the outcome a failed run has, with nothing to stop.
+export const failedChatRun = () => ({ done: Promise.resolve({ status: "failed", text: "" }), stop() {}, timing: () => null });
+
 /**
- * Starts one turn and answers `{ status, text }` when the run ends: `complete`, `failed`, `timed_out`, or `stopped`.
- * `stop()` ends Pomegr's own headless run; it is never a session the owner started. `timing()` answers the milliseconds the run
- * took, from the start of the process to its first provider event, to the first words of the answer, and to its end, or null before
- * the process started. They are numbers only. `clock` is a monotonic clock in milliseconds.
+ * The one line that starts a Claude Code turn in stream-json input mode: a user message with the prompt as its only text block. JSON
+ * leaves U+2028 and U+2029 as they are, and a reader that splits lines on them would cut the message, so they are escaped.
  */
-export function runChatTurn({ spawn, executable, provider, model = null, effort = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, tools = "read", cwd, env, prompt, timeoutMs = TURN_TIMEOUT_MS, onText, onActivity, clock = () => performance.now() }) {
+export function claudeUserLine(prompt) {
+  const line = JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: prompt }] } });
+  return `${line.replace(/\u2028/gu, "\\u2028").replace(/\u2029/gu, "\\u2029")}\n`;
+}
+
+/**
+ * Starts the provider process with every argument fixed and answers a handle, or null when the provider, its arguments, or the start are
+ * not usable. The process has no prompt yet: `begin({ prompt, onText, onActivity, timeoutMs, warm })` writes it and answers the run, once,
+ * or null when the process already ended. The run answers `{ status, text }` from `done` when it ends: `complete`, `failed`, `timed_out`,
+ * or `stopped`. `stop()` ends Pomegr's own headless run; it is never a session the owner started. `timing()` answers the milliseconds the
+ * run took, from the moment its prompt was written to its first provider event, to the first words of the answer, and to its end, or null
+ * before it ended, with `warm: true` when `begin` was told the process had been waiting. They are numbers only. `clock` is a monotonic
+ * clock in milliseconds. Output that arrives before the prompt was written belongs to no turn and is dropped.
+ * `alive()` says whether the process has not ended, `onExit(listener)` calls the listener once when it ends, and `close()` ends a process
+ * that was never given a prompt: its stdin closes, and Pomegr's own process is ended.
+ */
+export function startChatProcess({ spawn, executable, provider, model = null, effort = null, mcpServer = null, images = null, sessionId = null, instructionsFile = null, tools = "read", cwd, env, clock = () => performance.now() }) {
   const args = chatArguments(provider, model, mcpServer, images, sessionId, instructionsFile, effort, tools);
+  if (!args || typeof executable !== "string") return null;
   let child = null;
-  let stopped = false;
-  let timedOut = false;
-  let settle;
-  const done = new Promise((resolve) => { settle = resolve; });
-  if (!args || typeof executable !== "string" || typeof prompt !== "string" || !prompt) {
-    settle({ status: "failed", text: "" });
-    return { done, stop() {}, timing: () => null };
-  }
-  let begun = null;
-  let eventAt = null;
-  let textAt = null;
-  let doneAt = null;
-  const reader = createTurnReader(provider, { onText, onActivity, onEvent: () => { eventAt ??= clock(); }, onFirstText: () => { textAt ??= clock(); } });
-  let finished = false;
-  let timer;
-  const finish = (exitCode) => {
-    if (finished) return;
-    finished = true;
-    clearTimeout(timer);
-    doneAt = clock();
-    const result = reader.end();
-    const status = stopped ? "stopped" : timedOut ? "timed_out" : result.ok && exitCode === 0 ? "complete" : "failed";
-    settle({ status, text: result.text });
-  };
+  let ended = false;
+  let began = false;
+  // Takes a piece of stdout once a prompt was written, and ends the run when the process ends.
+  let reading = null;
+  let finishRun = null;
+  const listeners = new Set();
   const kill = () => { try { child?.kill?.(); } catch { /* already gone */ } };
+  const exit = (code) => {
+    if (ended) return;
+    ended = true;
+    finishRun?.(code);
+    for (const listener of [...listeners]) { try { listener(code); } catch { /* A listener's failure is its own. */ } }
+  };
   try {
     const capability = validServer(mcpServer) ? Object.fromEntries(CHAT_TASK_ENV
       .filter((name) => Object.hasOwn(mcpServer.env, name)).map((name) => [name, mcpServer.env[name]])) : {};
     const processEnvironment = Object.keys(capability).length > 0 ? { ...env, ...capability } : env;
-    begun = clock();
     child = spawn(executable, args, { cwd, env: processEnvironment, shell: false, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
     child.stdout?.setEncoding?.("utf8");
-    child.stdout?.on?.("data", (chunk) => reader.push(String(chunk)));
-    child.once("error", () => finish(null));
-    child.once("close", (code) => finish(code));
+    child.stdout?.on?.("data", (chunk) => reading?.(String(chunk)));
+    child.once("error", () => exit(null));
+    child.once("close", (code) => exit(code));
     // A closed pipe is reported by the exit, not here.
     child.stdin?.on?.("error", () => {});
-    child.stdin?.end?.(prompt, "utf8");
-    timer = setTimeout(() => { timedOut = true; kill(); }, timeoutMs);
-    timer.unref?.();
   } catch {
-    finish(null);
+    kill();
+    return null;
   }
-  const since = (instant) => (begun === null || instant === null ? null : Math.max(0, instant - begun));
-  return {
-    done,
-    stop() { if (!finished) { stopped = true; kill(); } },
-    timing: () => (begun === null || doneAt === null ? null : { eventMs: since(eventAt), textMs: since(textAt), doneMs: since(doneAt) }),
-  };
+
+  function begin({ prompt, onText, onActivity, timeoutMs = TURN_TIMEOUT_MS, warm = false }) {
+    if (began || ended || typeof prompt !== "string" || !prompt) return null;
+    began = true;
+    let stopped = false;
+    let timedOut = false;
+    let finished = false;
+    let timer;
+    let settle;
+    const done = new Promise((resolve) => { settle = resolve; });
+    const written = clock();
+    let eventAt = null;
+    let textAt = null;
+    let doneAt = null;
+    // Claude Code waits for more input after its result; closing stdin lets it exit.
+    const reader = createTurnReader(provider, { onText, onActivity, onEvent: () => { eventAt ??= clock(); }, onFirstText: () => { textAt ??= clock(); },
+      onResult: () => { try { child.stdin?.end?.(); } catch { /* A closed pipe is reported by the exit. */ } } });
+    finishRun = (exitCode) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      doneAt = clock();
+      const result = reader.end();
+      const status = stopped ? "stopped" : timedOut ? "timed_out" : result.ok && exitCode === 0 ? "complete" : "failed";
+      settle({ status, text: result.text });
+    };
+    reading = (chunk) => reader.push(chunk);
+    try {
+      if (provider === "claude") child.stdin?.write?.(claudeUserLine(prompt), "utf8");
+      else child.stdin?.end?.(prompt, "utf8");
+      timer = setTimeout(() => { timedOut = true; kill(); }, timeoutMs);
+      timer.unref?.();
+    } catch {
+      finishRun(null);
+    }
+    const since = (instant) => (instant === null ? null : Math.max(0, instant - written));
+    return {
+      done,
+      stop() { if (!finished) { stopped = true; kill(); } },
+      timing: () => (doneAt === null ? null : { eventMs: since(eventAt), textMs: since(textAt), doneMs: since(doneAt), ...(warm ? { warm: true } : {}) }),
+    };
+  }
+
+  return Object.freeze({
+    alive: () => !ended,
+    onExit(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    begin,
+    close() { try { child?.stdin?.end?.(); } catch { /* already closed */ } kill(); },
+  });
+}
+
+/** Starts one turn on a new process and answers its run (see `startChatProcess`); a turn that cannot start fails at once. */
+export function runChatTurn({ prompt, onText, onActivity, timeoutMs, ...start }) {
+  if (typeof prompt !== "string" || !prompt) return failedChatRun();
+  return startChatProcess(start)?.begin({ prompt, onText, onActivity, timeoutMs }) ?? failedChatRun();
 }

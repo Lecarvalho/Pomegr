@@ -499,18 +499,18 @@ test("the preload bridge invokes the chat channel only for the seven operations 
   }
   assert.equal(invokes.length, 0, "nothing reached the main process");
 
-  for (const operation of ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"]) {
+  for (const operation of ["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"]) {
     const payload = { repositoryId, conversationId, extra: "validated by the main process" };
     assert.deepEqual(await exposed.agentChat(operation, payload), { ok: true, from: "main" });
     assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", operation, payload]);
   }
-  assert.equal(invokes.length, 9);
+  assert.equal(invokes.length, 10);
   const bare = Object.assign(Object.create(null), { repositoryId });
   await exposed.agentChat("list", bare);
   assert.deepEqual(invokes.at(-1), ["pomegr:agent-chat", "list", bare]);
 });
 
-const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs"];
+const RUNTIME_FILES = ["agent-chat.mjs", "agent-chat-grant-follow-up.mjs", "agent-chat-images.mjs", "agent-chat-task-log.mjs", "agent-chat-prompt.mjs", "agent-chat-proposal.mjs", "agent-chat-choices.mjs", "agent-chat-runner.mjs", "agent-chat-store.mjs", "agent-chat-workflow.mjs", "agent-chat-thread.mjs", "agent-chat-compaction.mjs", "agent-chat-summary.mjs", "agent-chat-task-bridge.mjs", "agent-chat-timing.mjs", "agent-chat-prepare.mjs", "agent-chat-provider-files.mjs", "agent-chat-worktrees.mjs", "agent-chat-warm.mjs"];
 const sourceOf = (file) => readFile(new URL(`../desktop/runtime/${file}`, import.meta.url), "utf8");
 
 function callText(source, start) {
@@ -580,7 +580,7 @@ test("the chat is wired once into the shell, the LAN gateway, and the preload", 
   assert.match(main, /startTask: \(event, repositoryId, taskId\) => taskStarter\.startApproved\(event, repositoryId, taskId\) \}\);/u);
   assert.equal([...main.matchAll(/createAgentChat\(/gu)].length, 1);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat", operation, payload\)/u);
-  assert.match(preload, /new Set\(\["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete"\]\)/u);
+  assert.match(preload, /new Set\(\["list", "read", "thread", "search", "send", "stop", "apply", "dismiss", "delete", "warm"\]\)/u);
   assert.match(preload, /ipcRenderer\.invoke\("pomegr:agent-chat-image", operation, payload\)/u);
   assert.match(sharing, /agentChat: options\.agentChat/u);
 });

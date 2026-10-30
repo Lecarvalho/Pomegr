@@ -148,6 +148,13 @@ Pomegr is summarizing, Pomegr stops the summary and tries again after Aril's nex
 Hover the time of an answer to see how long it took: when the process started, when the first
 words came, and when it finished. Pomegr measures this on your computer and keeps only the numbers.
 
+With Claude Code, an answer starts faster when Pomegr has a Claude Code process ready. When you
+click into the message field, and after Aril answers, Pomegr starts that process and leaves it
+waiting. It sends nothing to Claude and spends none of your allowance until you send a message.
+It closes the process after five minutes without a message, when a message needs another model
+or effort, and when you quit Pomegr; closing the panel does not close it. The time of an answer
+that used a ready process reads "Started 0.1s (warm)". Codex starts only when you send a message.
+
 ## Apply a proposal
 
 When you ask for a change, or when Aril recommends one, it ends its answer with a
@@ -324,12 +331,13 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
   It gets the names and dates of the changed workflow files, but not their content, and the facts of the task worktrees that remain, but not their paths.
   Merge and branch results appear as fixed task-log labels.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
-  Its usage counts in your account's usage windows.
+  Its usage counts in your account's usage windows. The same holds for a Claude Code process that
+  waits for your next message: it holds no message, board, or conversation text until you send.
 - **On a paired device.** The conversation crosses your local network without
   encryption, like the rest of phone access. Anyone who holds a paired phone can read
   and search the conversation and its images, send a message or an image, and apply a proposal
   of board changes or a queue change. Applying or dismissing a proposal there also runs
-  Aril's follow-up on your computer. Turning the queue on lets Pomegr start queued tasks on your computer. A start
+  Aril's follow-up on your computer. Clicking into the message field there also starts a waiting Claude Code process on your computer. Turning the queue on lets Pomegr start queued tasks on your computer. A start
   that Aril proposed can be applied only in the desktop app.
 
 ## If the result is missing
