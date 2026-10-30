@@ -6,6 +6,7 @@ import { useTasks } from "../../tasks-store";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { TaskDialog } from "./TaskModalFrame";
+import { JEV_KEY_PATTERN, useJevKey, type JevKeyControl } from "./jev-key-desktop";
 import { sendTaskAction, useTaskEditAvailability, type GrantActionResult } from "./task-desktop";
 import { timeOfDay } from "./task-schedule";
 
@@ -29,10 +30,12 @@ type Action = "aril_settings_set" | "aril_memory_add" | "aril_memory_update" | "
 type Props = {
   board: TaskBoard & { aril: NonNullable<TaskBoard["aril"]> }; desktop: boolean; editable: boolean;
   onAction(action: Action, payload: unknown): Promise<GrantActionResult>; onClose(): void;
+  /** The Jev key of the effort routing: given only in the desktop app, so a paired device neither sets nor sees it. */
+  jev?: JevKeyControl;
 };
 
 /** The same content in the live dialog and the static design-system frames. */
-export function ArilSettings({ board, desktop, editable, onAction, onClose, titleId, closeRef, initialFailure = null, initialConfirm = false }: Props & {
+export function ArilSettings({ board, desktop, editable, onAction, onClose, titleId, closeRef, jev, initialFailure = null, initialConfirm = false }: Props & {
   titleId: string; closeRef?: RefObject<HTMLButtonElement | null>; initialFailure?: "settings" | "memory" | null; initialConfirm?: boolean | number;
 }) {
   const allowed = editable && (desktop || board.aril.settings.pairedDevices);
@@ -46,6 +49,9 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
   const [removing, setRemoving] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<keyof typeof FAILURES | null>(initialFailure);
+  const [jevKey, setJevKey] = useState("");
+  const [jevBusy, setJevBusy] = useState(false);
+  const [jevFailed, setJevFailed] = useState<"save" | "remove" | null>(null);
   const saved = board.aril.settings;
   const grant = board.aril.grant;
   const confirmation = () => ({ settings: JSON.stringify(saved), until: Date.now() + saved.limits.hours! * 3600000 });
@@ -83,6 +89,16 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       if (result.ok) done(); else setFailure(grantAction && (result.error === "not_ready" || result.error === "conflict") ? result.error : errorKind);
     } catch { setFailure(errorKind); }
     finally { setBusy(false); }
+  };
+  // The key is sent once and the field is emptied when it was saved: the renderer never receives the key back, only whether one is set.
+  const changeJev = async (which: "save" | "remove") => {
+    if (!jev || jevBusy) return;
+    const key = jevKey;
+    setJevBusy(true); setJevFailed(null);
+    try {
+      if (await (which === "save" ? jev.save(key) : jev.remove())) setJevKey(""); else setJevFailed(which);
+    } catch { setJevFailed(which); }
+    finally { setJevBusy(false); }
   };
   const toggle = (label: string, checked: boolean, onChange: (next: boolean) => void) => allowed
     ? <label className="taskCheckRow"><input type="checkbox" role="switch" checked={checked} disabled={busy} onChange={(event) => onChange(event.currentTarget.checked)} /><span>{label}</span></label>
@@ -204,6 +220,21 @@ export function ArilSettings({ board, desktop, editable, onAction, onClose, titl
       {allowed && <><label className="taskGateField"><span className="taskGateFieldLabel">Add entry</span><input className="taskOwnInput" value={adding} maxLength={300} disabled={busy || memory.length >= 100} onChange={(event) => setAdding(event.currentTarget.value)} /></label>
         <button type="button" className="commandSecondaryAction" disabled={busy || memory.length >= 100 || !line(adding, 300)} onClick={() => void send("aril_memory_add", { text: adding }, () => setAdding(""))}>Add entry</button></>}
     </section>
+    {desktop && jev && <section className="taskGatesPanel taskSchedulePanel">
+      <h3 className="taskGatesHeading">Effort routing</h3>
+      <p className="taskGatesCaption">With a Jev key, Aril may lower the effort you chose for simple replies, never raise it. Jev sees your message and the end of Aril&apos;s previous answer.</p>
+      <p className="taskGatesCaption">{jev.state === "set" ? "Key set" : jev.state === "unset" ? "No key set" : jev.state === "unavailable" ? "This computer cannot store the key safely." : "Checking…"}</p>
+      {jev.state !== "unavailable" && <>
+        <label className="taskGateField"><span className="taskGateFieldLabel">Jev key</span><input className="taskOwnInput" type="password" autoComplete="off" spellCheck={false} maxLength={512}
+          value={jevKey} disabled={jevBusy} aria-invalid={jevKey !== "" && !JEV_KEY_PATTERN.test(jevKey)} onChange={(event) => setJevKey(event.currentTarget.value)} /></label>
+        <div className="taskHeadActions">
+          <button type="button" className="commandSecondaryAction" disabled={jevBusy || !JEV_KEY_PATTERN.test(jevKey)} onClick={() => void changeJev("save")}>Save key</button>
+          {jev.state === "set" && <button type="button" className="commandQuietAction" disabled={jevBusy} onClick={() => void changeJev("remove")}>Remove key</button>}
+        </div>
+      </>}
+      {jevKey !== "" && !JEV_KEY_PATTERN.test(jevKey) && <p className="newTaskError">Use 8 to 512 characters without spaces.</p>}
+      {jevFailed && <p className="newTaskError" role="alert">{jevFailed === "save" ? "The key could not be saved. Try again." : "The key could not be removed. Try again."}</p>}
+    </section>}
   </div>;
 }
 
@@ -211,6 +242,7 @@ export function ArilSettingsPanel({ board, returnFocus, onClose }: { board: Task
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const access = useTaskEditAvailability();
+  const jev = useJevKey(access === "desktop");
   const { refresh } = useTasks(board.repositoryId);
   useEffect(() => {
     closeRef.current?.focus({ preventScroll: true });
@@ -219,7 +251,7 @@ export function ArilSettingsPanel({ board, returnFocus, onClose }: { board: Task
   }, [returnFocus]);
   return <TaskDialog className="taskModalScrim taskQueueSettingsScrim" labelledBy={titleId} closeOnScrim onClose={onClose}>
     {board.aril ? <ArilSettings board={{ ...board, aril: board.aril }} desktop={access === "desktop"} editable={access === "desktop" || access === "paired"}
-      onClose={onClose} titleId={titleId} closeRef={closeRef} onAction={async (action, payload) => {
+      onClose={onClose} titleId={titleId} closeRef={closeRef} jev={jev} onAction={async (action, payload) => {
         const result = await sendTaskAction(board.repositoryId, action, payload);
         if (result.ok) await refresh();
         return result;

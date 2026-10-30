@@ -2,7 +2,7 @@ import {
   AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN,
   type AgentChatActivity, type AgentChatBoardOperation, type AgentChatError, type AgentChatMessage,
   type AgentChatOperationResult, type AgentChatProposal, type AgentChatProposalState, type AgentChatProvider, type AgentChatQueueResult, type AgentChatStartFailure,
-  type AgentChatPrepareStep, type AgentChatTiming, type AgentChatTurnStatus,
+  type AgentChatPrepareStep, type AgentChatRouteReason, type AgentChatTiming, type AgentChatTurnStatus,
 } from "../../../shared/agent-chat-contract";
 import { plainTaskText, type Task, type TaskEffort } from "../../../shared/task-contract";
 import { repositoryRouteId } from "../repositories/repository-route";
@@ -129,10 +129,27 @@ export function prepareLine(timing: AgentChatTiming | undefined | null): string 
   return `Prepared in ${seconds(prepare.total)}${named}`;
 }
 
-/** The tooltip of an answer's time: the whole local date and time, and under it what the answer's timing says: its preparation, then its run. */
+// What the tooltip says when the run kept the owner's effort although a Jev key was set. Chosen by a fixed reason, never by error text.
+const ROUTE_KEPT: Record<AgentChatRouteReason, string> = {
+  kept: "Jev agreed", timeout: "Jev did not answer in time", error: "Jev was not reachable", invalid: "Jev's answer was not usable", images: "a message with images is not sent to Jev",
+};
+
+/**
+ * What a measured answer's tooltip says about the effort it ran with when a Jev key was set: "Effort low, chosen by Jev in 0.4s", or "Effort
+ * high, your choice (Jev did not answer in time)". Null when there is no routing. Numbers and fixed words only.
+ */
+export function routeLine(timing: AgentChatTiming | undefined | null): string | null {
+  const route = timing?.route;
+  if (!route) return null;
+  if (route.by === "jev") return `Effort ${route.effort}, chosen by Jev in ${seconds(route.ms)}`;
+  const time = route.ms === undefined ? "" : ` in ${seconds(route.ms)}`;
+  return `Effort ${route.effort ?? "default"}, your choice (${ROUTE_KEPT[route.reason]}${route.reason === "kept" ? time : ""})`;
+}
+
+/** The tooltip of an answer's time: the whole local date and time, and under it what the answer's timing says: its effort routing, its preparation, then its run. */
 export function answerTimeTitle(at: string, timing?: AgentChatTiming | null): string | null {
   const full = fullMessageTime(at);
-  return full === null ? null : [full, prepareLine(timing), timingLine(timing)].filter((line): line is string => line !== null).join("\n");
+  return full === null ? null : [full, routeLine(timing), prepareLine(timing), timingLine(timing)].filter((line): line is string => line !== null).join("\n");
 }
 
 /** Whether the pending message of the owner is already the last stored message, so it is not drawn twice. */

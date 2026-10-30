@@ -630,7 +630,15 @@ Each row below the tags shows only when it is set, in this order:
 - **Add entry** is unavailable when memory has 100 entries.
 - A failed memory action preserves the draft and shows “Memory could not be saved. Try again.”.
 - Read-only clients have no Save, memory edit, delete, or add actions.
-- Design-system samples cover desktop editable, paired read-only, paired allowed, empty memory, full memory, save failure, and grants not ready, ready, confirming, active, last ended, and paired stop-only.
+- **Effort routing** is the last section, drawn only by the desktop app: a paired device shows no heading, no state, and no field.
+- Its caption reads “With a Jev key, Aril may lower the effort you chose for simple replies, never raise it. Jev sees your message and the end of Aril's previous answer.”
+- A second caption says “Key set”, “No key set”, “Checking…” while the state is read, or “This computer cannot store the key safely.” with no field.
+- The key field is a masked single-line field of at most 512 characters, labeled **Jev key**, with browser autofill off, in the panel's usual field style.
+- **Save key** is a secondary button, unavailable until the field holds 8 to 512 characters without spaces; a shorter or spaced key shows “Use 8 to 512 characters without spaces.”.
+- **Remove key** is a quiet button, shown only while a key is set; it acts at once.
+- **Save key** and **Remove key** act at once and do not use the panel's **Save**. A saved key empties the field. The page never shows the key, only that one is set.
+- A failed action keeps what was typed and shows “The key could not be saved. Try again.” or “The key could not be removed. Try again.” as an alert.
+- Design-system samples cover desktop editable, paired read-only, paired allowed, empty memory, full memory, save failure, grants not ready, ready, confirming, active, last ended, and paired stop-only, and the effort routing section with a key set and not set.
 
 ### Scorecard panel
 

@@ -194,3 +194,26 @@ Behavior: [Claude Code session status](../claude-session-status.md)
 - A successful CLI exit requests a separate asynchronous usage check and proves neither usage availability nor provider health.
 
 Behavior: [Observation cache](../observation-cache.md#local-claude-usage-observations-and-desktop-recovery)
+
+## The Jev key
+
+The owner may set a Jev key so that Aril's chat can ask Jev, a third-party model service, to lower the effort of a simple reply ([Effort routing](../agent-chat.md#effort-routing)). The key is the only credential of the owner's that Pomegr itself keeps.
+
+**Storage:**
+
+- Desktop main stores the key in one file under the desktop data root (`jev-key-v1.bin`), encrypted with Electron's `safeStorage`, which uses the operating system's store.
+- Where the operating system offers no encryption, or only a weak backend, nothing is stored. The option stays off, and the key is never written as plain text.
+- The key is also held in desktop main's memory, once read, for the call below.
+- The owner removes it in the Aril settings, which deletes the file and the copy in memory.
+
+**Who can set it, remove it, or ask about it:**
+
+- The trusted desktop window only, on the channel `pomegr:agent-chat-jev`, with the operations `status`, `set`, and `remove`.
+- The renderer holds the key only while the owner types it into a masked field. It is sent once, the field is emptied once the key is saved, and no answer returns it: the renderer learns only `set`, `unset`, or `unavailable`.
+- A paired device has no route to it and cannot set, remove, or see whether one is set. A browser on the same computer has none either.
+
+**Where it goes:**
+
+- The `Authorization: Bearer` header of one `POST https://api.typesafe.ai/v1/systemone`, made by desktop main for an owner message (with what the call sends, in [Agent chat: Privacy](../agent-chat.md#privacy)). Nothing else sends it anywhere.
+- Never the monitor, a task or conversation file, a prompt, a provider process (argument, environment, or MCP server), a log, a notification, diagnostics, a report, a checkpoint, an error text, or browser storage.
+- A timing keeps only a time and a fixed word about the call.

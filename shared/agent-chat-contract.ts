@@ -128,6 +128,13 @@ export type AgentChatPrepareStep = (typeof AGENT_CHAT_PREPARE_STEPS)[number];
 // Whole milliseconds by step. `total` is always there and no step is longer than it; a step the turn did not need is absent.
 export type AgentChatPrepare = { total: number } & Partial<Record<AgentChatPrepareStep, number>>;
 
+// The effort routing of an owner-message turn, present only when a Jev key was set. `jev`: Jev lowered the owner's effort to `effort`, in `ms`
+// milliseconds. `owner`: the run kept the owner's effort (null for the provider's own) for a fixed `reason`; `ms` is the time Jev took or was
+// waited for, absent when it was not asked. Numbers and fixed words only.
+export const AGENT_CHAT_ROUTE_REASONS = ["kept", "timeout", "error", "invalid", "images"] as const;
+export type AgentChatRouteReason = (typeof AGENT_CHAT_ROUTE_REASONS)[number];
+export type AgentChatRoute = { by: "jev"; effort: "low" | "medium" | "high"; ms: number } | { by: "owner"; effort: TaskEffort | null; reason: AgentChatRouteReason; ms?: number };
+
 // How long one owner-message turn took, in milliseconds from the start of the provider process, how large its prompt was, in
 // characters for each part, and how long its preparation took. Numbers only. `eventMs` and `textMs` are null when the run ended before
 // a provider event or any words. `prepare` is absent for an older record. `warm` is true when a warm run answered: a Claude Code process that
@@ -139,6 +146,7 @@ export type AgentChatTiming = {
   prompt: { instructions: number; board: number; taskLog: number; conversation: number; message: number; other: number };
   prepare?: AgentChatPrepare;
   warm?: true;
+  route?: AgentChatRoute;
 };
 
 // What Aril offers under an answer: 1 to 4 quick replies, or one multiple-choice question with 2 to 4 options. The first option is

@@ -223,6 +223,9 @@ The task board is in [Task board design](task-board.md).
 - The `title` of the time of an answer that Pomegr measured adds a second line: “Started 1.2s · first words 6.8s · done 11.4s”.
 - The seconds have one decimal, and a step the run never reached is left out.
 - An answer that a [warm run](../architecture/agent-chat.md#the-warm-run) gave reads “Started 0.1s (warm)” in place of “Started 0.1s”. The words “(warm)” are fixed and come after the seconds of the start; an answer with no start has no such words.
+- A timing that holds an [effort routing](../architecture/agent-chat.md#effort-routing) record adds one line right under the date: “Effort low, chosen by Jev in 0.4s”.
+- When the run kept the owner's effort, that line reads “Effort high, your choice (Jev agreed in 0.4s)”, and in place of the parenthesis “Jev did not answer in time”, “Jev was not reachable”, “Jev's answer was not usable”, or “a message with images is not sent to Jev”. No effort chosen reads “Effort default”.
+- `routeLine` in `agent-chat-presentation.ts` builds that line from a fixed shape; no error text is ever placed in it.
 - A timing that holds the preparation adds a line above it: “Prepared in 3.2s (slowest: GitHub 2.9s)”.
 - The slowest step is named in fixed words, only when it took a tenth of a second or more; a quicker preparation reads “Prepared in 0.2s”.
 - An answer with no timing keeps the date and time alone, and the time itself still reads the clock.

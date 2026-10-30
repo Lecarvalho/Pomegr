@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PREPARE_STEPS, AGENT_CHAT_PROPOSAL_ID_PATTERN,
+  AGENT_CHAT_ACTIVITIES, AGENT_CHAT_BOARD_OPERATIONS, AGENT_CHAT_BOUNDS, AGENT_CHAT_CONVERSATION_ID_PATTERN, AGENT_CHAT_ERRORS, AGENT_CHAT_IMAGE_ID_PATTERN, AGENT_CHAT_MESSAGE_ID_PATTERN, AGENT_CHAT_PREPARE_STEPS, AGENT_CHAT_PROPOSAL_ID_PATTERN, AGENT_CHAT_ROUTE_REASONS,
   AGENT_CHAT_PROPOSAL_STATES, AGENT_CHAT_QUEUE_RESULTS, AGENT_CHAT_START_FAILURES, AGENT_CHAT_TURN_STATUSES, AGENT_CHAT_WORKTREE_RESULTS,
   type AgentChatActionFailure, type AgentChatActivity, type AgentChatAgentMessage, type AgentChatBoardOperation, type AgentChatChoices, type AgentChatConversation, type AgentChatConversationSummary,
   type AgentChatDoneResult, type AgentChatError, type AgentChatImage, type AgentChatListResult, type AgentChatMessage, type AgentChatOperationName, type AgentChatOperationResult, type AgentChatPrepare,
-  type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
+  type AgentChatProposal, type AgentChatProvider, type AgentChatReadResult, type AgentChatRoute, type AgentChatRouteReason, type AgentChatSearchMatch, type AgentChatSearchResult, type AgentChatSendResult, type AgentChatThreadMessage,
   type AgentChatThreadResult, type AgentChatThreadRun, type AgentChatThreadSummary, type AgentChatTiming, type AgentChatTurn,
 } from "../shared/agent-chat-contract";
 import { TASK_EFFORTS, TASK_IMAGE_TYPES, type TaskEffort } from "../shared/task-contract";
@@ -170,6 +170,18 @@ function parsePrepare(value: unknown): AgentChatPrepare | null {
   return Object.fromEntries(AGENT_CHAT_PREPARE_STEPS.filter((name) => Object.hasOwn(prepare, name)).map((name) => [name, prepare[name]])) as AgentChatPrepare;
 }
 
+/** The effort routing of a turn: a fixed shape with whole milliseconds and fixed words, or nothing. A route outside the contract is left out. */
+function parseRoute(value: unknown): AgentChatRoute | null {
+  const route = record(value);
+  if (!route) return null;
+  const ms = route.ms;
+  const timed = ms === undefined || wholeNumber(ms, AGENT_CHAT_BOUNDS.timingMs);
+  if (route.by === "jev") return (route.effort === "low" || route.effort === "medium" || route.effort === "high") && wholeNumber(ms, AGENT_CHAT_BOUNDS.timingMs) ? { by: "jev", effort: route.effort, ms } : null;
+  const effort = route.effort === null || (TASK_EFFORTS as readonly string[]).includes(route.effort as string) ? route.effort as TaskEffort | null : undefined;
+  if (route.by !== "owner" || effort === undefined || !(AGENT_CHAT_ROUTE_REASONS as readonly string[]).includes(route.reason as string) || !timed) return null;
+  return { by: "owner", effort, reason: route.reason as AgentChatRouteReason, ...(typeof ms === "number" ? { ms } : {}) };
+}
+
 /** How long a turn took, how large its prompt was, and how long its preparation took: whole numbers inside their bounds, or nothing. A timing outside the contract is not drawn, and a preparation outside it is left out; the message keeps its text. */
 export function parseTiming(value: unknown): AgentChatTiming | null {
   const timing = record(value);
@@ -178,12 +190,14 @@ export function parseTiming(value: unknown): AgentChatTiming | null {
   if (!timing || !prompt || !wholeNumber(timing.doneMs, max) || !(timing.eventMs === null || wholeNumber(timing.eventMs, max)) || !(timing.textMs === null || wholeNumber(timing.textMs, max))
     || !PROMPT_PARTS.every((part) => wholeNumber(prompt[part], 1_000_000))) return null;
   const prepare = parsePrepare(timing.prepare);
+  const route = parseRoute(timing.route);
   return {
     eventMs: timing.eventMs as number | null, textMs: timing.textMs as number | null, doneMs: timing.doneMs,
     prompt: Object.fromEntries(PROMPT_PARTS.map((part) => [part, prompt[part]])) as AgentChatTiming["prompt"],
     ...(prepare ? { prepare } : {}),
     // Only `true` means a warm run answered; anything else reads as a run that started cold.
     ...(timing.warm === true ? { warm: true as const } : {}),
+    ...(route ? { route } : {}),
   };
 }
 

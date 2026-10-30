@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, shell, Tray } from "electron";
 import {
   createAgentQueryCapability,
   resolveAgentQueryDescriptorPath,
@@ -676,7 +676,7 @@ async function startDesktop() {
         });
         // An applied chat start takes the Tasks page's manual start, including its native confirmation. The start and the chat share one set of task worktrees, so the chat's cached worktree facts follow a start and a Done task's removal.
         const repositoryGithub = createRepositoryGithub(), taskWorktrees = createTaskWorktrees({ root: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY), environment: sessionEnvironment.startup });
-        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktrees: taskWorktrees, prefetchWorktrees: true, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
+        const agentChat = createAgentChat({ monitorOrigin: privateMonitorOrigin, authorizationToken, environment: sessionEnvironment.startup, sessionEnvironment: sessionEnvironment.current, worktrees: taskWorktrees, prefetchWorktrees: true, dataRoot: desktopPaths.dataRoot, executable: process.execPath, unpackedRoot: desktopPaths.unpackedRoot, repositoryGithub, safeStorage, startTask: (event, repositoryId, taskId) => taskStarter.startApproved(event, repositoryId, taskId) });
         taskStarter = createTaskStart({
           sessionForProcess: (pid) => requestTerminalSession(monitorChild, pid),
           isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken,

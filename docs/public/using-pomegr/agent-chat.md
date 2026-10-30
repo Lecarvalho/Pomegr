@@ -155,6 +155,20 @@ It closes the process after five minutes without a message, when a message needs
 or effort, and when you quit Pomegr; closing the panel does not close it. The time of an answer
 that used a ready process reads "Started 0.1s (warm)". Codex starts only when you send a message.
 
+### Let Jev choose a lower effort (optional)
+
+Replies like "thanks" or a yes or no do not need much thinking. If you have a Jev key, enter it
+under **Effort routing** in **Aril settings** in the desktop app. Then, for each message, Pomegr
+asks Jev how much effort the reply needs, while it prepares the answer. The **Effort** you chose
+stays the highest: Jev can lower it for a simple reply and never raises it, and it never changes
+the provider or the model. If Jev does not answer within 1.5 seconds, or fails, your effort is used.
+
+Pomegr stores the key encrypted by your operating system, on your computer only. A paired phone
+cannot set, see, or read it. Jev receives your message and the last 2,000 characters of Aril's
+previous answer, and nothing else; it receives no board, task text, image, or file path. A message
+with an image is not sent to Jev. Hover the time of an answer to see the effort it used, such as
+"Effort low, chosen by Jev in 0.4s". Select **Remove key** to turn this off.
+
 ## Apply a proposal
 
 When you ask for a change, or when Aril recommends one, it ends its answer with a
@@ -330,6 +344,8 @@ Settings and repository memory are sent with each chat prompt to your chosen pro
   settings (whether squash, merge commit, rebase, auto-merge, and delete-branch-on-merge are on) and its default branch name.
   It gets the names and dates of the changed workflow files, but not their content, and the facts of the task worktrees that remain, but not their paths.
   Merge and branch results appear as fixed task-log labels.
+- **Sent to Jev, only with your key.** If you set a Jev key, each message without an image also sends Jev your message and the last
+  2,000 characters of Aril's previous answer, so it can suggest a lower effort. Nothing else goes to Jev.
 - **Not observed.** A chat run leaves no session, so it does not show in **Sessions**.
   Its usage counts in your account's usage windows. The same holds for a Claude Code process that
   waits for your next message: it holds no message, board, or conversation text until you send.

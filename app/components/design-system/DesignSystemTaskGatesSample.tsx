@@ -34,7 +34,7 @@ const ARIL_SETTINGS: Settings = {
 };
 
 export function ArilSettingsSamples() {
-  return <div className="designSystemGrid">{["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure", "not ready", "ready", "confirm", "active", "last ended", "paired stop-only"].map((state, index) => {
+  return <div className="designSystemGrid">{["desktop editable", "paired read-only", "paired allowed", "empty memory", "full memory", "save failure", "not ready", "ready", "confirm", "active", "last ended", "paired stop-only", "jev key set", "jev key not set"].map((state, index) => {
     const memory = Array.from({ length: state === "empty memory" ? 0 : state === "full memory" ? 100 : 1 }, (_, id) => ({ id: id + 1, text: `Repository habit ${id + 1}: keep changes focused.`, createdAt: id, updatedAt: id }));
     const ready = ["paired allowed", "ready", "confirm", "active", "last ended", "paired stop-only"].includes(state);
     const settings: Settings = { ...ARIL_SETTINGS, pairedDevices: state === "paired allowed", ...(ready ? {
@@ -46,7 +46,8 @@ export function ArilSettingsSamples() {
     return <Sample key={state} label={`Aril settings, ${state}`} note="Queue settings frame, existing fields and button roles. Settings and memory grant no actions.">
       <Frame>{state === "active" && <CapacityStrip queue={board.queue} grant={grant} onOpenSettings={noop} onOpenAril={noop} />}
         <ArilSettings board={board} desktop={!state.startsWith("paired")} editable={state !== "paired read-only"} onClose={noop}
-        titleId={`design-system-aril-${index}`} initialConfirm={state === "confirm" && Date.parse(SAMPLE_FUTURE_STOP)} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })} /></Frame>
+        titleId={`design-system-aril-${index}`} initialConfirm={state === "confirm" && Date.parse(SAMPLE_FUTURE_STOP)} initialFailure={state === "save failure" ? "settings" : null} onAction={async () => ({ ok: false, error: "unavailable" })}
+        jev={state.startsWith("jev") ? { state: state === "jev key set" ? "set" : "unset", save: async () => false, remove: async () => false } : undefined} /></Frame>
     </Sample>;
   })}</div>;
 }
